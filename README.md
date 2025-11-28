@@ -164,14 +164,20 @@ ollama create your-character -f config/modelfiles/Modelfile.yourcharacter
 Each character maintains its own consistent personality across conversations while leveraging AICO's full memory system, knowledge graph, and adaptive learning capabilities. See `config/modelfiles/Modelfile.eve` for the complete reference implementation.
 
 ### 😊 Emotional Intelligence
-- **[WIP]** Multi-modal emotion recognition (text analysis done, facial/voice planned)
-- **[WIP]** Advanced emotion simulation using AppraisalCloudPCT (Component Process Model)
-- **[WIP]** 4-stage appraisal process: Relevance → Implication → Coping → Normative
-- **[WIP]** Mood tracking and empathetic response generation with emotional memory
-- **[PLANNED]** Personality simulation with evolving traits, values, and behavioral consistency
-- **[PLANNED]** Crisis detection and appropriate support mechanisms
-- **[WIP]** Emotional memory integration for consistent personality expression
-- **[WIP]** Gradual emotional transitions and contextual appropriateness
+- **[DONE]** Advanced emotion simulation using C-CPM (Conversational Component Process Model)
+- **[DONE]** 4-stage appraisal process: Relevance → Implication → Coping → Normative
+- **[DONE]** Conversational context tracking: Dialogue state, episode detection, speech act recognition
+- **[DONE]** Emotional state persistence: Database storage with history tracking (schema v17)
+- **[DONE]** LLM conditioning: Emotional tone influences response generation via system prompts
+- **[DONE]** REST API endpoints: Current state and history access with JWT authentication
+- **[DONE]** CLI commands: Status, history, reset, export for emotion diagnostics
+- **[DONE]** Mood tracking with valence/arousal dimensions and intensity scoring
+- **[DONE]** Emotional episode detection: Stress → support → resolution arcs
+- **[DONE]** Crisis detection and emotion regulation for extreme situations
+- **[PLANNED]** Multi-modal emotion recognition (facial/voice input - Phase 2+)
+- **[PLANNED]** User emotion detection (text/voice/facial analysis - Phase 2+)
+- **[PLANNED]** Personality simulation with evolving traits (Phase 3+)
+- **[PLANNED]** Avatar expression coordination (Phase 4)
 
 ### 🤖 Autonomous Agency
 - **[PLANNED]** Multi-faceted self-directed behavior and initiative
@@ -239,7 +245,7 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - **Frontend**: v1.0.0 - Flutter UI with encrypted local storage
 - **Studio**: v0.0.1 - React admin dashboard (early development)
 
-**Database Schema**: v15 (core.py)
+**Database Schema**: v17 (core.py)
 - v1: Core tables (logs, events, auth, users)
 - v2: User UUID standardization
 - v3: Session type differentiation
@@ -255,11 +261,13 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - v13: AMS Phase 1 - Consolidation state tracking
 - v14: AMS Phase 3 - Behavioral learning (skills, user_skill_confidence, feedback_events, trajectories, Thompson sampling)
 - v15: AMS Phase 3 - Skill tracking (message_id linkage)
+- v16: AMS Phase 3 - Trajectory cleanup and retention policies
+- v17: Emotion Phase 1 - Emotional state persistence (emotion_state, emotion_history tables)
 
 **Production-Ready Subsystems**:
 - ✅ **Message Bus**: CurveZMQ-encrypted broker with protobuf serialization
 - ✅ **Security**: Master key management, JWT auth, encrypted audit logs
-- ✅ **Database**: Encrypted libSQL with automatic schema migrations (v15)
+- ✅ **Database**: Encrypted libSQL with automatic schema migrations (v17)
 - ✅ **Memory System**: Complete 3-tier architecture
   - Working Memory (LMDB): 30-day TTL, conversation-scoped isolation
   - Semantic Memory (ChromaDB): Hybrid search V3 with RRF fusion
@@ -273,10 +281,12 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - ✅ **TTS**: Dual-engine support (Piper TTS + Coqui XTTS v2) with backend API
 - ✅ **Language Detection**: Ultra-fast detection (217 languages, 95% accuracy)
 - ✅ **Memory Album**: User-curated memories with REST API
-- 🚧 **Emotion/Personality**: Architecture defined, text analysis working, full integration in progress
+- ✅ **Emotion Simulation**: C-CPM Phase 1 complete with LLM conditioning, database persistence, API endpoints, CLI tools
 - 🚧 **Agency**: Goal generation and planning framework in progress
 - 🚧 **Avatar**: Three.js integration planned
 - 🚧 **Studio**: React admin dashboard in early development
+- 🚧 **User Emotion Detection**: Text/voice/facial analysis (Phase 2+)
+- 🚧 **Personality Simulation**: Evolving traits and values (Phase 3+)
 
 ## Who's This For?
 
