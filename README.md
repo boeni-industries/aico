@@ -1,5 +1,10 @@
 # AICO – The AI+Companion Project
 
+**Quick Links**
+
+- [Join the AICO Discord](https://discord.gg/xtfbMw9sJs) – real-time chat for support, dev discussion, and showcases.
+- [Homepage](https://boeni.industries/aico) – easy to digest basics about project AICO.
+
 **Purpose**
 
 AICO is an open-source, local-first AI companion designed to be emotionally present, embodied, and proactive. It is built for privacy, extensibility, and genuine relationship—not just productivity. AICO naturally recognizes and builds individual relationships with family members while maintaining a consistent personality, creating authentic bonds without technical barriers. It combines advanced conversation, emotion simulation, personality, and agency with a modular, message-driven architecture that prioritizes user autonomy and security.
