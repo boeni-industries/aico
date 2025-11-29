@@ -52,7 +52,7 @@ final class ConversationAudioSettingsNotifierProvider
 }
 
 String _$conversationAudioSettingsNotifierHash() =>
-    r'0e90c8d8e13bb69d6d60d30e8d5069e81181cab1';
+    r'8f0373bf26092edd889c31a78e405f3ed64a49e6';
 
 /// Provider for conversation audio settings (input/reply channels, silent mode)
 

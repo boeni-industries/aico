@@ -33,9 +33,9 @@ This isn't just feature development—it's relationship evolution. We start with
   - **Component**: Individual functional units (e.g., Trait Vector, Appraisal Engine)
 
 - **Key Technologies:**
-  - **Backend:** Python 3.13, FastAPI, ZeroMQ (CurveZMQ), Protocol Buffers, libSQL (SQLCipher), DuckDB, ChromaDB, LMDB
-  - **Frontend:** Flutter 3.27+, Drift (SQLCipher), Dio HTTP client, Riverpod state management
-  - **Modelservice:** ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings)
+  - **Backend:** Python 3.13, FastAPI, ZeroMQ (CurveZMQ), Protocol Buffers 6.32+, libSQL (SQLCipher), DuckDB, ChromaDB, LMDB
+  - **Frontend:** Flutter 3.27+, Drift (SQLCipher), Dio HTTP client, Riverpod state management, just_audio
+  - **Modelservice:** ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), Piper TTS, Coqui XTTS v2
   - **Shared Library:** Cross-subsystem Python package with AI, data, security, and core modules
   - **CLI:** Typer + Rich with 15 command groups (security, database, gateway, ollama, kg, scheduler, logs)
   - **Admin Tools:** React-based Studio UI (in development)
@@ -60,6 +60,11 @@ This isn't just feature development—it's relationship evolution. We start with
     - Twitter RoBERTa Sentiment (cardiffnlp/twitter-roberta-base-sentiment-latest)
   - **Intent Classification:**
     - XLM-RoBERTa Base - Multilingual intent understanding
+  - **Text-to-Speech:**
+    - Piper TTS - Ultra-fast neural TTS (<300ms synthesis, 217 languages)
+    - Coqui XTTS v2 - High-quality voice cloning (17 languages, ~20s synthesis)
+  - **Language Detection:**
+    - fast-langdetect - Ultra-fast detection (80x faster than langdetect, 95% accuracy, 217 languages)
   - **Knowledge Graph:**
     - NetworkX - Graph data structure and algorithms
     - PageRank - Node importance scoring
@@ -76,54 +81,55 @@ This isn't just feature development—it's relationship evolution. We start with
 AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience.
 
 ### 👥 Social Relationship Intelligence
-- **Hybrid Vector-Graph Architecture**: Production-ready property graph with NetworkX + DuckDB storage
-- **Knowledge Graph Extraction**: Multi-pass GLiNER entity extraction with semantic classification
-- **Entity Resolution**: HNSW-based semantic matching with LLM batch verification
-- **Graph Analytics**: PageRank importance scoring, community detection, centrality analysis
-- **GQL/Cypher Queries**: Full graph query language support via GrandCypher
-- **Temporal Reasoning**: Multi-hop path finding with temporal validity tracking
-- **Graph Fusion**: Intelligent merging of new knowledge with existing graph structure
-- **Relationship Modeling**: Dynamic edge creation with confidence scoring and provenance
+- **[DONE]** Hybrid Vector-Graph Architecture: Production-ready property graph with NetworkX + DuckDB storage
+- **[DONE]** Knowledge Graph Extraction: Multi-pass GLiNER entity extraction with semantic classification
+- **[DONE]** Entity Resolution: HNSW-based semantic matching with LLM batch verification
+- **[DONE]** Graph Analytics: PageRank importance scoring, community detection, centrality analysis
+- **[DONE]** GQL/Cypher Queries: Full graph query language support via GrandCypher
+- **[DONE]** Temporal Reasoning: Multi-hop path finding with temporal validity tracking
+- **[DONE]** Graph Fusion: Intelligent merging of new knowledge with existing graph structure
+- **[DONE]** Relationship Modeling: Dynamic edge creation with confidence scoring and provenance
 
 ### 🗣️ Conversation & Memory
 **Three-Tier Architecture** with brain-inspired complementary learning systems:
 
 **1. Working Memory (Fast Learning - Hippocampal)**
-- **LMDB Storage**: Memory-mapped key-value store with sub-millisecond access
-- **24-Hour TTL**: Automatic expiration with conversation-scoped isolation
-- **Dual Role**: Immediate context + conversation history (no separate episodic tier)
-- **Temporal Metadata**: Tracks access patterns and preference evolution
+- **[DONE]** LMDB Storage: Memory-mapped key-value store with sub-millisecond access
+- **[DONE]** 30-Day TTL: Automatic expiration with conversation-scoped isolation (extended from 24h)
+- **[DONE]** Dual Role: Immediate context + conversation history (no separate episodic tier)
+- **[DONE]** Temporal Metadata: Tracks access patterns and preference evolution
 
 **2. Semantic Memory + Knowledge Graph (Slow Learning - Cortical)**
-- **Hybrid Search V3**: Semantic embeddings + BM25 keyword matching with IDF filtering
-- **Reciprocal Rank Fusion (RRF)**: Robust score combination across retrieval methods
-- **ChromaDB**: 768-dim multilingual embeddings with cosine similarity
-- **Full-Corpus BM25**: Accurate IDF statistics for precise keyword matching
-- **Relevance Thresholds**: Automatic filtering (min_score=0.35, min_idf=0.6)
-- **Knowledge Graph**: Property graph with 204 nodes, 27 edges, 552 indexed properties
-- **Multi-Pass Extraction**: GLiNER entities + LLM relationships
-- **Entity Resolution**: 3-step deduplication (blocking → matching → merging)
-- **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
-- **Graph Analytics**: PageRank, community detection, centrality analysis
-- **GQL/Cypher Queries**: Full graph query language via GrandCypher
+- **[DONE]** Hybrid Search V3: Semantic embeddings + BM25 keyword matching with IDF filtering
+- **[DONE]** Reciprocal Rank Fusion (RRF): Robust score combination across retrieval methods
+- **[DONE]** ChromaDB: 768-dim multilingual embeddings with cosine similarity
+- **[DONE]** Full-Corpus BM25: Accurate IDF statistics for precise keyword matching
+- **[DONE]** Relevance Thresholds: Automatic filtering (min_score=0.35, min_idf=0.6)
+- **[DONE]** Knowledge Graph: Property graph with NetworkX + DuckDB storage
+- **[DONE]** Multi-Pass Extraction: GLiNER entities + LLM relationships
+- **[DONE]** Entity Resolution: 3-step deduplication (blocking → matching → merging)
+- **[DONE]** Temporal Reasoning: Bi-temporal tracking (valid_from, valid_until, is_current)
+- **[DONE]** Graph Analytics: PageRank, community detection, centrality analysis
+- **[DONE]** GQL/Cypher Queries: Full graph query language via GrandCypher
 
 **3. Adaptive Memory System (AMS) - Orchestration Layer**
-- **Memory Consolidation**: Background "sleep phases" integrate experiences without forgetting
-- **Behavioral Learning**: Skill library with RLHF and Thompson Sampling (Beta distribution)
-- **Temporal Intelligence**: Tracks preference evolution and changing patterns
-- **Unified Memory**: Seamless cross-tier retrieval (working → semantic → behavioral)
-- **Context Assembly**: Multi-factor scoring (recency, relevance, relationship)
-- **Zero Configuration**: Learns automatically from natural interactions
+- **[DONE]** Memory Consolidation: Background "sleep phases" integrate experiences without forgetting
+- **[DONE]** Behavioral Learning: Skill library with RLHF and Thompson Sampling (Beta distribution)
+- **[DONE]** Temporal Intelligence: Tracks preference evolution and changing patterns
+- **[DONE]** Unified Memory: Seamless cross-tier retrieval (working → semantic → behavioral)
+- **[DONE]** Context Assembly: Multi-factor scoring (recency, relevance, relationship)
+- **[DONE]** Zero Configuration: Learns automatically from natural interactions
 
 **Memory Album (User-Curated)**
-- **Conversation-Level**: Full conversation capture with title, summary, key moments
-- **Message-Level**: Individual message bookmarking with notes and tags
-- **Emotional Tone**: Automatic sentiment classification for memory organization
-- **Favorites & Revisits**: Track meaningful moments with revisit counting
+- **[DONE]** Conversation-Level: Full conversation capture with title, summary, key moments
+- **[DONE]** Message-Level: Individual message bookmarking with notes and tags
+- **[DONE]** Emotional Tone: Automatic sentiment classification for memory organization
+- **[DONE]** Favorites & Revisits: Track meaningful moments with revisit counting
+- **[DONE]** REST API: Complete CRUD endpoints for memory management
 
 ### 🎭 Custom Character Personalities
 
-AICO supports custom character personalities through Ollama Modelfiles, allowing you to define unique AI companions with distinct traits, communication styles, and behaviors.
+**[DONE]** AICO supports custom character personalities through Ollama Modelfiles, allowing you to define unique AI companions with distinct traits, communication styles, and behaviors.
 
 **Eve - The Default Personality**
 
@@ -143,11 +149,11 @@ ollama create your-character -f config/modelfiles/Modelfile.yourcharacter
 ```
 
 **Modelfile Capabilities:**
-- **Character Definition**: System prompts defining personality, background, and communication style
-- **Model Parameters**: Fine-tune temperature, context window, sampling for character consistency
-- **Thinking Process**: Ollama 0.12+ native thinking API for internal reasoning
-- **Memory Integration**: Characters naturally reference past conversations via AICO's memory system
-- **Behavioral Traits**: Define quirks, preferences, moods, and communication patterns
+- **[DONE]** Character Definition: System prompts defining personality, background, and communication style
+- **[DONE]** Model Parameters: Fine-tune temperature, context window, sampling for character consistency
+- **[DONE]** Thinking Process: Ollama 0.12+ native thinking API for internal reasoning
+- **[DONE]** Memory Integration: Characters naturally reference past conversations via AICO's memory system
+- **[DONE]** Behavioral Traits: Define quirks, preferences, moods, and communication patterns
 
 **Example Use Cases:**
 - **Professional Assistant**: Formal, structured, task-oriented personality
@@ -158,65 +164,72 @@ ollama create your-character -f config/modelfiles/Modelfile.yourcharacter
 Each character maintains its own consistent personality across conversations while leveraging AICO's full memory system, knowledge graph, and adaptive learning capabilities. See `config/modelfiles/Modelfile.eve` for the complete reference implementation.
 
 ### 😊 Emotional Intelligence
-- Multi-modal emotion recognition (facial, voice, text analysis)
-- Advanced emotion simulation using AppraisalCloudPCT (Component Process Model)
-- 4-stage appraisal process: Relevance → Implication → Coping → Normative
-- Mood tracking and empathetic response generation with emotional memory
-- Personality simulation with evolving traits, values, and behavioral consistency
-- Crisis detection and appropriate support mechanisms
-- Emotional memory integration for consistent personality expression
-- Gradual emotional transitions and contextual appropriateness
+- **[DONE]** Advanced emotion simulation using C-CPM (Conversational Component Process Model)
+- **[DONE]** 4-stage appraisal process: Relevance → Implication → Coping → Normative
+- **[DONE]** Conversational context tracking: Dialogue state, episode detection, speech act recognition
+- **[DONE]** Emotional state persistence: Database storage with history tracking (schema v17)
+- **[DONE]** LLM conditioning: Emotional tone influences response generation via system prompts
+- **[DONE]** REST API endpoints: Current state and history access with JWT authentication
+- **[DONE]** CLI commands: Status, history, reset, export for emotion diagnostics
+- **[DONE]** Mood tracking with valence/arousal dimensions and intensity scoring
+- **[DONE]** Emotional episode detection: Stress → support → resolution arcs
+- **[DONE]** Crisis detection and emotion regulation for extreme situations
+- **[PLANNED]** Multi-modal emotion recognition (facial/voice input - Phase 2+)
+- **[PLANNED]** User emotion detection (text/voice/facial analysis - Phase 2+)
+- **[PLANNED]** Personality simulation with evolving traits (Phase 3+)
+- **[PLANNED]** Avatar expression coordination (Phase 4)
 
 ### 🤖 Autonomous Agency
-- Multi-faceted self-directed behavior and initiative
-- Goal generation: self-formulated objectives and hierarchical planning (MCTS)
-- Curiosity-driven learning (RND, ICM) and intrinsic motivation
-- Interest development and autonomous preference formation
-- Planning & reasoning: multi-step strategic thinking and adaptation
-- Meta-cognition: self-awareness of learning progress and capabilities
-- Proactive engagement: reminders, suggestions, conversation starters, and contextual follow-ups
-- Background learning and skill development, even when not actively conversing
+- **[PLANNED]** Multi-faceted self-directed behavior and initiative
+- **[PLANNED]** Goal generation: self-formulated objectives and hierarchical planning (MCTS)
+- **[PLANNED]** Curiosity-driven learning (RND, ICM) and intrinsic motivation
+- **[PLANNED]** Interest development and autonomous preference formation
+- **[PLANNED]** Planning & reasoning: multi-step strategic thinking and adaptation
+- **[PLANNED]** Meta-cognition: self-awareness of learning progress and capabilities
+- **[PLANNED]** Proactive engagement: reminders, suggestions, conversation starters, and contextual follow-ups
+- **[PLANNED]** Background learning and skill development, even when not actively conversing
 
 ### 🎭 Embodiment & Presence
-- **Flutter Frontend**: Cross-platform UI (macOS, iOS, Android, Linux, Windows)
-- **Glassmorphic Design**: Premium UI with backdrop blur, noise textures, organic curves
-- **Message Actions**: Hover-based action toolbar (Copy, Remember, Regenerate, Feedback)
-- **Encrypted Local Storage**: Drift + SQLCipher for offline-first message persistence
-- **Cache-First Loading**: Instant message load from encrypted local DB (<200ms)
-- **Connection Management**: Resilient API service with exponential backoff and protocol fallback
-- **Real-time Streaming**: WebSocket support for streaming AI responses
-- **Status Indicators**: Comprehensive connection state with glassmorphic overlays
-- **Avatar Integration**: Ready for Three.js + Ready Player Me + TalkingHead.js (planned)
+- **[DONE]** Flutter Frontend: Cross-platform UI (macOS, iOS, Android, Linux, Windows)
+- **[DONE]** Glassmorphic Design: Premium UI with backdrop blur, noise textures, organic curves
+- **[DONE]** Message Actions: Hover-based action toolbar (Copy, Remember, Regenerate, Feedback)
+- **[DONE]** Encrypted Local Storage: Drift + SQLCipher for offline-first message persistence
+- **[DONE]** Cache-First Loading: Instant message load from encrypted local DB (<200ms)
+- **[DONE]** Connection Management: Resilient API service with exponential backoff and protocol fallback
+- **[DONE]** Real-time Streaming: WebSocket support for streaming AI responses
+- **[DONE]** Status Indicators: Comprehensive connection state with glassmorphic overlays
+- **[WIP]** Text-to-Speech: Dual-engine support (Piper TTS for speed, XTTS v2 for quality)
+- **[PLANNED]** Avatar Integration: Three.js + Ready Player Me + TalkingHead.js
 
 ### 🔒 Privacy & Security
-- **Encrypted Database**: libSQL with SQLCipher (AES-256), PBKDF2 key derivation
-- **CurveZMQ Transport**: 100% encrypted message bus with mandatory mutual authentication
-- **Key Management**: Argon2id-based master key derivation with platform keychain storage
-- **Frontend Encryption**: Drift + SQLCipher for local message cache with per-database salts
-- **JWT Authentication**: HS256 tokens with 24-hour expiry and refresh mechanism
-- **Audit Logging**: Comprehensive encrypted log persistence with ZMQ transport
-- **Database Resilience**: FULL synchronous mode for crash-safe operations
-- **Security CLI**: Complete key management, rotation, and authentication commands
+- **[DONE]** Encrypted Database: libSQL with SQLCipher (AES-256), PBKDF2 key derivation
+- **[DONE]** CurveZMQ Transport: 100% encrypted message bus with mandatory mutual authentication
+- **[DONE]** Key Management: Argon2id-based master key derivation with platform keychain storage
+- **[DONE]** Frontend Encryption: Drift + SQLCipher for local message cache with per-database salts
+- **[DONE]** JWT Authentication: HS256 tokens with 24-hour expiry and refresh mechanism
+- **[DONE]** Audit Logging: Comprehensive encrypted log persistence with ZMQ transport
+- **[DONE]** Database Resilience: FULL synchronous mode for crash-safe operations
+- **[DONE]** Security CLI: Complete key management, rotation, and authentication commands
 
 ### 🔌 Extensibility & Admin
-- **Task Scheduler**: Production-ready cron-based scheduler with resource-aware execution
-- **Scheduled Tasks**: Maintenance (log cleanup, key rotation, health checks, vacuum)
-- **AMS Tasks**: Consolidation, feedback classification, Thompson sampling, trajectory cleanup
-- **KG Tasks**: Graph consolidation, entity resolution, relationship inference
-- **REST API**: 12+ endpoint groups (users, conversation, memory_album, scheduler, kg, logs, health)
-- **CLI Commands**: 15 command groups with 100+ subcommands (security, database, gateway, ollama, kg, scheduler)
-- **Plugin System**: Message bus, log consumer, validation, security, rate limiting, encryption
-- **Admin UI**: React-based dashboard (studio subsystem)
-- **Developer Tools**: Schema management, protobuf generation, testing utilities
+- **[DONE]** Task Scheduler: Production-ready cron-based scheduler with resource-aware execution
+- **[DONE]** Scheduled Tasks: Maintenance (log cleanup, key rotation, health checks, vacuum)
+- **[DONE]** AMS Tasks: Consolidation, feedback classification, Thompson sampling, trajectory cleanup
+- **[DONE]** KG Tasks: Graph consolidation, entity resolution, relationship inference
+- **[DONE]** REST API: 14+ endpoint groups (users, conversation, memory_album, scheduler, kg, logs, health, tts, emotion, behavioral)
+- **[DONE]** CLI Commands: 15 command groups with 100+ subcommands (security, database, gateway, ollama, kg, scheduler, logs)
+- **[DONE]** Plugin System: Message bus, log consumer, validation, security, rate limiting, encryption
+- **[WIP]** Admin UI: React-based dashboard (studio subsystem)
+- **[DONE]** Developer Tools: Schema management, protobuf generation, testing utilities
 
 ### 🤝 Community & Collaboration
-- **Privacy-Preserving Collective Learning**: Improve AICO's emotional intelligence through federated learning and anonymized data sharing (opt-in only)
-- **Federated Architecture Benefits**: Distributed resilience, peer-to-peer mesh, and community-driven innovation
-- **Open-Source Governance**: Transparent development with community input on major decisions
-- **Global Community Connections**: Connect with other AICO users while maintaining privacy and autonomy
-- **Distributed Problem-Solving**: Collaborative research on AI companionship, emotion, and agency
-- **Plugin Ecosystem Participation**: Enable users to contribute to and benefit from a vibrant plugin ecosystem
-- **Balanced Connection**: Maintains individual relationship while enabling community benefits
+- **[PLANNED]** Privacy-Preserving Collective Learning: Improve AICO's emotional intelligence through federated learning and anonymized data sharing (opt-in only)
+- **[PLANNED]** Federated Architecture Benefits: Distributed resilience, peer-to-peer mesh, and community-driven innovation
+- **[DONE]** Open-Source Governance: Transparent development with community input on major decisions
+- **[PLANNED]** Global Community Connections: Connect with other AICO users while maintaining privacy and autonomy
+- **[PLANNED]** Distributed Problem-Solving: Collaborative research on AI companionship, emotion, and agency
+- **[PLANNED]** Plugin Ecosystem Participation: Enable users to contribute to and benefit from a vibrant plugin ecosystem
+- **[PLANNED]** Balanced Connection: Maintains individual relationship while enabling community benefits
 
 This represents the culmination of AICO's evolution from individual companion to community-connected intelligence—always preserving the core values of privacy, agency, and authentic relationship.
 
@@ -232,7 +245,7 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - **Frontend**: v1.0.0 - Flutter UI with encrypted local storage
 - **Studio**: v0.0.1 - React admin dashboard (early development)
 
-**Database Schema**: v15 (core.py)
+**Database Schema**: v17 (core.py)
 - v1: Core tables (logs, events, auth, users)
 - v2: User UUID standardization
 - v3: Session type differentiation
@@ -248,20 +261,32 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - v13: AMS Phase 1 - Consolidation state tracking
 - v14: AMS Phase 3 - Behavioral learning (skills, user_skill_confidence, feedback_events, trajectories, Thompson sampling)
 - v15: AMS Phase 3 - Skill tracking (message_id linkage)
+- v16: AMS Phase 3 - Trajectory cleanup and retention policies
+- v17: Emotion Phase 1 - Emotional state persistence (emotion_state, emotion_history tables)
 
 **Production-Ready Subsystems**:
 - ✅ **Message Bus**: CurveZMQ-encrypted broker with protobuf serialization
 - ✅ **Security**: Master key management, JWT auth, encrypted audit logs
-- ✅ **Database**: Encrypted libSQL with automatic schema migrations
-- ✅ **Memory**: Working (LMDB), semantic (ChromaDB), knowledge graph (DuckDB)
+- ✅ **Database**: Encrypted libSQL with automatic schema migrations (v17)
+- ✅ **Memory System**: Complete 3-tier architecture
+  - Working Memory (LMDB): 30-day TTL, conversation-scoped isolation
+  - Semantic Memory (ChromaDB): Hybrid search V3 with RRF fusion
+  - Knowledge Graph (DuckDB): Property graph with GQL/Cypher queries
+  - Adaptive Memory System: Consolidation, behavioral learning, temporal intelligence
 - ✅ **Task Scheduler**: Cron-based with resource awareness and execution history
-- ✅ **CLI**: Complete admin tooling with 100+ commands
-- ✅ **API Gateway**: REST + WebSocket with plugin architecture
-- ✅ **Knowledge Graph**: Entity extraction, resolution, analytics, GQL queries
-- ✅ **Frontend**: Encrypted message cache, glassmorphic UI, offline-first
-- 🚧 **Emotion/Personality**: Architecture defined, implementation in progress
+- ✅ **CLI**: Complete admin tooling with 100+ commands across 15 groups
+- ✅ **API Gateway**: REST + WebSocket with plugin architecture (14+ endpoint groups)
+- ✅ **Knowledge Graph**: Entity extraction, resolution, analytics, GQL queries, graph fusion
+- ✅ **Frontend**: Encrypted message cache, glassmorphic UI, offline-first, streaming support
+- ✅ **TTS**: Dual-engine support (Piper TTS + Coqui XTTS v2) with backend API
+- ✅ **Language Detection**: Ultra-fast detection (217 languages, 95% accuracy)
+- ✅ **Memory Album**: User-curated memories with REST API
+- ✅ **Emotion Simulation**: C-CPM Phase 1 complete with LLM conditioning, database persistence, API endpoints, CLI tools
 - 🚧 **Agency**: Goal generation and planning framework in progress
 - 🚧 **Avatar**: Three.js integration planned
+- 🚧 **Studio**: React admin dashboard in early development
+- 🚧 **User Emotion Detection**: Text/voice/facial analysis (Phase 2+)
+- 🚧 **Personality Simulation**: Evolving traits and values (Phase 3+)
 
 ## Who's This For?
 

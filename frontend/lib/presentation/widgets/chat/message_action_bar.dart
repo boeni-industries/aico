@@ -163,8 +163,8 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
       // Stop current playback
       await ref.read(ttsProvider.notifier).stop();
     } else {
-      // Start reading this message
-      await ref.read(ttsProvider.notifier).speak(widget.messageContent);
+      // Start reading this message (fire-and-forget, non-blocking)
+      ref.read(ttsProvider.notifier).speak(widget.messageContent);
     }
   }
 
@@ -299,21 +299,37 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
                       ),
                     ),
                     
-                    // Read Aloud (toggle play/stop)
+                    // Read Aloud (toggle play/stop with loading spinner)
                     Consumer(
                       builder: (context, ref, child) {
                         final ttsState = ref.watch(ttsProvider);
                         final isSpeaking = ttsState.status == TtsStatus.speaking;
+                        final isInitializing = ttsState.status == TtsStatus.initializing;
                         
-                        return _buildActionButton(
-                          icon: isSpeaking 
-                              ? Icons.stop_rounded 
-                              : Icons.volume_up_rounded,
-                          tooltip: isSpeaking ? 'Stop reading' : 'Read aloud',
-                          onTap: _handleReadAloud,
-                          isExecuted: false,
-                          isEnabled: true,
-                          isActive: isSpeaking,
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            _buildActionButton(
+                              icon: isSpeaking 
+                                  ? Icons.stop_rounded 
+                                  : Icons.volume_up_rounded,
+                              tooltip: isInitializing 
+                                  ? 'Preparing voice...'
+                                  : (isSpeaking ? 'Stop reading' : 'Read aloud'),
+                              onTap: _handleReadAloud,
+                              isExecuted: false,
+                              isEnabled: true,
+                              isActive: isSpeaking,
+                              isLoading: isInitializing,
+                            ),
+                            // Buffering indicator
+                            if (isInitializing)
+                              Positioned(
+                                top: -28,
+                                left: -20,
+                                child: _buildBufferingIndicator(isDark),
+                              ),
+                          ],
                         );
                       },
                     ),
@@ -349,6 +365,45 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
     );
   }
 
+  /// Build subtle buffering indicator with animated dots
+  Widget _buildBufferingIndicator(bool isDark) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value * 0.9, // More subtle
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF2F3241).withValues(alpha: 0.85)
+                  : const Color(0xFFF5F6FA).withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.06),
+                width: 0.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: _AnimatedDots(
+              color: widget.accentColor.withValues(alpha: 0.7),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   /// Build individual action button with clear hover and active states
   Widget _buildActionButton({
     required IconData icon,
@@ -357,6 +412,7 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
     bool isExecuted = false,
     bool isEnabled = true,
     bool isActive = false,
+    bool isLoading = false,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -413,15 +469,97 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
                   ),
                 );
               },
-              child: Icon(
-                icon,
-                key: ValueKey(icon),
-                size: 18,
-                color: iconColor,
-              ),
+              child: isLoading
+                  ? SizedBox(
+                      key: const ValueKey('loading'),
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+                      ),
+                    )
+                  : Icon(
+                      icon,
+                      key: ValueKey(icon),
+                      size: 18,
+                      color: iconColor,
+                    ),
             ),
           ),
         ),
       );
+  }
+}
+
+/// Animated dots for buffering indicator
+class _AnimatedDots extends StatefulWidget {
+  final Color color;
+  
+  const _AnimatedDots({required this.color});
+  
+  @override
+  State<_AnimatedDots> createState() => _AnimatedDotsState();
+}
+
+class _AnimatedDotsState extends State<_AnimatedDots> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    )..repeat();
+  }
+  
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Buffering',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: widget.color,
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(width: 2),
+            ...List.generate(3, (index) {
+              final delay = index * 0.2;
+              final opacity = ((_controller.value + delay) % 1.0) < 0.5 ? 1.0 : 0.3;
+              return Padding(
+                padding: const EdgeInsets.only(left: 1),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: opacity,
+                  child: Text(
+                    '•',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: widget.color,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
   }
 }

@@ -15,11 +15,13 @@ from aico.proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
 from aico.proto.aico_modelservice_pb2 import (
     # Request messages
     HealthRequest, CompletionsRequest, ModelsRequest, ModelInfoRequest,
-    EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest, StatusRequest, OllamaStatusRequest, OllamaModelsRequest,
+    EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest, StatusRequest, TtsRequest,
+    OllamaStatusRequest, OllamaModelsRequest,
     OllamaPullRequest, OllamaRemoveRequest, OllamaServeRequest, OllamaShutdownRequest,
     # Response messages
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
-    EmbeddingsResponse, NerResponse, IntentClassificationResponse, SentimentResponse, StatusResponse, OllamaStatusResponse, OllamaModelsResponse,
+    EmbeddingsResponse, NerResponse, IntentClassificationResponse, SentimentResponse, StatusResponse,
+    OllamaStatusResponse, OllamaModelsResponse,
     OllamaPullResponse, OllamaRemoveResponse, OllamaServeResponse, OllamaShutdownResponse,
     # Data structures
     ConversationMessage
@@ -257,6 +259,7 @@ class ModelserviceMessageParser:
             AICOTopics.MODELSERVICE_INTENT_REQUEST: IntentClassificationRequest,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: SentimentRequest,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: StatusRequest,
+            AICOTopics.MODELSERVICE_TTS_REQUEST: TtsRequest,
             AICOTopics.OLLAMA_STATUS_REQUEST: OllamaStatusRequest,
             AICOTopics.OLLAMA_MODELS_REQUEST: OllamaModelsRequest,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST: OllamaPullRequest,

@@ -221,6 +221,8 @@ class AICOTopics:
     MODELSERVICE_SENTIMENT_RESPONSE = "modelservice/sentiment/response/v1"
     MODELSERVICE_STATUS_REQUEST = "modelservice/status/request/v1"
     MODELSERVICE_STATUS_RESPONSE = "modelservice/status/response/v1"
+    MODELSERVICE_TTS_REQUEST = "modelservice/tts/request/v1"
+    MODELSERVICE_TTS_STREAM = "modelservice/tts/stream/v1"
     
     # AI Processing Domain (Message Bus Coordination)
     # Emotion Analysis

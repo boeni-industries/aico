@@ -104,6 +104,14 @@ message OllamaShutdownRequest {
   // Empty - no parameters needed
 }
 
+// TTS request
+message TtsRequest {
+  string text = 1;
+  string language = 2;  // ISO 639-1 code (e.g., "en", "de")
+  optional float speed = 3;  // Speech speed multiplier (default: 1.0)
+  optional string voice = 4;  // Voice identifier (optional, uses default per language)
+}
+
 // ============================================================================
 // RESPONSE MESSAGES
 // ============================================================================
@@ -226,6 +234,14 @@ message OllamaShutdownResponse {
   bool success = 1;
   optional string message = 2;
   optional string error = 3;
+}
+
+// TTS streaming chunk
+message TtsStreamChunk {
+  bytes audio_data = 1;  // Raw audio bytes (WAV format)
+  int32 sample_rate = 2;  // Sample rate (e.g., 22050)
+  bool is_final = 3;  // True if this is the last chunk
+  optional string error = 4;  // Error message if synthesis failed
 }
 
 // ============================================================================

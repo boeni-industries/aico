@@ -12,14 +12,11 @@ class EmotionRepository {
   /// Get current emotional state from backend
   Future<EmotionModel?> getCurrentEmotion() async {
     try {
-      print('[EMOTION_REPO] Fetching emotion from /emotion/current');
       final data = await _apiClient.get<Map<String, dynamic>>('/emotion/current');
       
       if (data != null) {
-        print('[EMOTION_REPO] Got emotion data: $data');
         return EmotionModel.fromJson(data);
       } else {
-        print('[EMOTION_REPO] No emotional state available (null response)');
         return null;
       }
     } catch (e) {

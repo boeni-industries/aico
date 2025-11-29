@@ -149,6 +149,7 @@ AICO uses UV workspace management with a unified `pyproject.toml` at the root an
   # Verify installation
   uv run aico --help
   uv run python -c "import fastapi; print('Backend deps ready')"
+  uv run python -c "import TTS; print('TTS ready')"
   ```
 
 **Key Changes from Previous Setup:**
@@ -156,6 +157,7 @@ AICO uses UV workspace management with a unified `pyproject.toml` at the root an
 - **Unified `pyproject.toml`** with optional dependency groups (`cli`, `backend`, `test`)
 - **UV workspace commands** replace manual venv activation
 - **Shared dependencies** automatically resolved across all components
+- **Dependency overrides**: UV's `override-dependencies` resolves GLiNER/Coqui-TTS conflict (transformers version)
 
 **Working with the Workspace:**
 

@@ -28,9 +28,9 @@ dependencies = [
     "pynacl>=1.5.0",
     "lmdb>=1.7.3",
     "chromadb>=1.0.16", # Phase 2 semantic memory - core functionality
-    "transformers==4.50.3",
     "grand-cypher", # GQL/Cypher query language support for knowledge graph
     "hnswlib", # HNSW approximate nearest neighbor search for entity resolution
+    "fast-langdetect>=0.2.1", # Ultra-fast language detection (80x faster, 95% accuracy, 217 languages)
 ]
 
 [project.optional-dependencies]
@@ -52,10 +52,12 @@ cli = [
 ]
 
 modelservice = [
-    "transformers==4.50.3", # Sentiment analysis with multilingual BERT (fixed version)
+    "transformers==4.50.3", # Fixed version compatible with GLiNER 0.2.22
     "torch>=1.12.0", # Required by transformers for model inference
-    "gliner>=0.2.22", # Advanced entity extraction for fact extraction
+    "gliner==0.2.22", # Advanced entity extraction (requires transformers <=4.51.0)
     "sentence-transformers>=5.1.1", # Multilingual embeddings for semantic memory
+    "coqui-tts", # Source specified in tool.uv.sources, dependencies overridden
+    "piper-tts>=1.2.0", # Fast neural TTS (100x faster than XTTS, no voice cloning)
 ]
 
 test = [
@@ -72,6 +74,17 @@ packages = ["aico", "cli", "backend", "modelservice"]
 aico = "shared/aico"
 cli = "cli"
 backend = "backend"
+
+[tool.uv]
+# Override transformers requirement from coqui-tts to allow 4.50.3
+# Coqui-tts dev branch declares transformers>=4.52.1 but works fine with 4.50.3
+override-dependencies = [
+    "transformers==4.50.3",
+]
+
+[tool.uv.sources]
+# Specify git source for coqui-tts
+coqui-tts = { git = "https://github.com/idiap/coqui-ai-TTS.git", branch = "dev" }
 
 [dependency-groups]
 test = [

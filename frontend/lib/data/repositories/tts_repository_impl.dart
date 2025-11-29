@@ -1,71 +1,59 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:typed_data';
+
 import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/data/datasources/remote/tts_remote_datasource.dart';
 import 'package:aico_frontend/domain/entities/tts_state.dart';
 import 'package:aico_frontend/domain/repositories/tts_repository.dart';
-import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:kokoro_tts_flutter/kokoro_tts_flutter.dart'; 
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
-/// TTS repository implementation with neural TTS (bundled model)
+/// TTS repository implementation with backend streaming and LRU cache
 class TtsRepositoryImpl implements TtsRepository {
+  final TtsRemoteDataSource _remoteDataSource;
   final _stateController = StreamController<TtsState>.broadcast();
   TtsState _currentState = TtsState.initial();
   bool _isDisposed = false;
 
-  Kokoro? _kokoro;
   AudioPlayer? _audioPlayer;
   bool _isAvailable = false;
+  StreamSubscription? _audioStreamSubscription;
 
-  TtsRepositoryImpl();
+  // LRU cache for audio data (text hash -> WAV bytes)
+  final _audioCache = LinkedHashMap<String, Uint8List>();
+  static const int _maxCacheSize = 20; // Max 20 cached audio files
+  static const int _maxCacheBytes = 50 * 1024 * 1024; // 50MB max
+  int _currentCacheBytes = 0;
+
+  TtsRepositoryImpl(this._remoteDataSource);
 
   @override
   Future<void> initialize() async {
-    // Prevent re-initialization if already available
     if (_isAvailable) {
       AICOLog.info('TTS already initialized, skipping');
       return;
     }
 
     try {
-      AICOLog.info('🎤 Starting TTS initialization...');
+      AICOLog.info('🎤 Initializing TTS (backend streaming)...');
       _updateState(_currentState.copyWith(status: TtsStatus.initializing));
 
-      // Model is bundled in assets - just load it
-      const config = KokoroConfig(
-        modelPath: 'assets/tts/kokoro-v1.0.onnx',
-        voicesPath: 'assets/tts/voices.json',
-      );
-
-      _kokoro = Kokoro(config);
-      await _kokoro!.initialize();
-
       _audioPlayer = AudioPlayer();
-
-      // Set available BEFORE state update to ensure it's set even if state update is blocked
       _isAvailable = true;
-      AICOLog.info('🎤 TTS availability flag set to true');
 
       _updateState(_currentState.copyWith(
         status: TtsStatus.idle,
-        engine: TtsEngine.neural,
+        engine: TtsEngine.backend,
         isModelDownloaded: true,
       ));
 
-      AICOLog.info('✅ Neural TTS initialized successfully - ready to speak');
+      AICOLog.info('✅ TTS initialized - ready for backend streaming');
     } catch (e, stackTrace) {
       _isAvailable = false;
-      AICOLog.error(
-        'TTS initialization failed',
-        error: e,
-        stackTrace: stackTrace,
-      );
-      
-      // Print detailed error for debugging
-      debugPrint('🔴 TTS INIT ERROR: ${e.toString()}');
-      debugPrint('🔴 TTS INIT ERROR TYPE: ${e.runtimeType}');
-      debugPrint('🔴 TTS INIT STACK TRACE:\n$stackTrace');
-      
+      AICOLog.error('TTS initialization failed', error: e, stackTrace: stackTrace);
       _updateState(_currentState.copyWith(
         status: TtsStatus.error,
         errorMessage: 'TTS initialization failed: ${e.toString()}',
@@ -73,175 +61,126 @@ class TtsRepositoryImpl implements TtsRepository {
     }
   }
 
-
   @override
   Future<void> speak(String text) async {
-    AICOLog.info('🎤 TTS speak() called with ${text.length} chars');
-    debugPrint('🎤 [TTS] speak() - _isAvailable: $_isAvailable, _isDisposed: $_isDisposed, _kokoro: ${_kokoro != null}, _audioPlayer: ${_audioPlayer != null}');
-    
-    if (text.isEmpty) {
-      AICOLog.warn('Attempted to speak empty text');
-      return;
-    }
-
-    if (!_isAvailable) {
-      AICOLog.warn('TTS unavailable - _isAvailable=$_isAvailable, _kokoro=${_kokoro != null}, _audioPlayer=${_audioPlayer != null}');
-      debugPrint('🔴 [TTS] BLOCKED: _isAvailable is false!');
-      return;
-    }
+    if (text.isEmpty || !_isAvailable) return;
 
     try {
-      AICOLog.info('🎤 Setting TTS status to speaking');
+      // Generate cache key from text
+      final cacheKey = _generateCacheKey(text);
+      
+      // Check cache first
+      Uint8List? wavData = _audioCache[cacheKey];
+      
+      if (wavData != null) {
+        AICOLog.info('🎯 Cache HIT for text (${text.length} chars)');
+        // Move to end (most recently used)
+        _audioCache.remove(cacheKey);
+        _audioCache[cacheKey] = wavData;
+      } else {
+        AICOLog.info('🎤 Cache MISS - Requesting TTS from backend: ${text.length} chars');
+        
+        // Set status to preparing (NOT speaking yet)
+        _updateState(_currentState.copyWith(
+          status: TtsStatus.initializing,
+          currentText: text,
+          progress: 0.0,
+        ));
+        
+        // Collect raw PCM chunks
+        final pcmBuffer = <int>[];
+        int chunkCount = 0;
+        
+        await for (final chunk in _remoteDataSource.synthesize(
+          text: text,
+          language: 'en', // TODO: Get from user preferences
+          speed: 1.0,
+        )) {
+          chunkCount++;
+          pcmBuffer.addAll(chunk);
+          AICOLog.info('📦 Chunk $chunkCount: ${chunk.length} bytes PCM data');
+        }
+        
+        if (pcmBuffer.isEmpty) {
+          throw Exception('No audio data received from backend');
+        }
+        
+        AICOLog.info('✅ Received $chunkCount chunks, total ${pcmBuffer.length} bytes (complete WAV file from backend)');
+        
+        // Backend now sends complete WAV file with proper header - no need to add one
+        wavData = Uint8List.fromList(pcmBuffer);
+        
+        // Add to cache
+        _addToCache(cacheKey, wavData);
+      }
+      
+      // Set up audio source first
+      await _audioPlayer?.setAudioSource(
+        _BytesAudioSource(wavData),
+      );
+      
+      // Set up completion listener
+      _audioStreamSubscription?.cancel();
+      _audioStreamSubscription = _audioPlayer?.playerStateStream.listen((playerState) async {
+        debugPrint('🎵 [TTS] Player state: ${playerState.processingState}, playing: ${playerState.playing}');
+        
+        // When playback completes, pause and rewind to avoid pop/click
+        // This is the recommended practice from just_audio documentation
+        if (playerState.processingState == ProcessingState.completed) {
+          debugPrint('🎵 [TTS] ✅ Playback completed - pausing and rewinding');
+          await _audioPlayer?.pause();
+          await _audioPlayer?.seek(Duration.zero);
+          _updateState(_currentState.copyWith(
+            status: TtsStatus.idle,
+            currentText: null,
+            progress: 1.0,
+          ));
+        }
+      });
+      
+      // NOW set status to speaking and start playback
+      debugPrint('🎵 [TTS] Setting status to SPEAKING');
       _updateState(_currentState.copyWith(
         status: TtsStatus.speaking,
         currentText: text,
         progress: 0.0,
       ));
-
-      // Split text into chunks to avoid 510 phoneme limit
-      final chunks = _splitTextIntoChunks(text, maxChars: 350); // Increased for fewer chunks
-      AICOLog.info('🎤 Split text into ${chunks.length} chunks');
-
-      // Pre-synthesize first chunk to reduce initial delay
-      dynamic currentResult = await _kokoro!.createTTS(
-        text: chunks[0],
-        voice: 'af_heart',
-        speed: 1.0,
-      );
-
-      for (int i = 0; i < chunks.length; i++) {
-        AICOLog.info('🎤 Playing chunk ${i + 1}/${chunks.length}');
-
-        // Start synthesizing next chunk while playing current
-        Future<dynamic>? nextChunkFuture;
-        if (i + 1 < chunks.length) {
-          nextChunkFuture = _kokoro!.createTTS(
-            text: chunks[i + 1],
-            voice: 'af_heart',
-            speed: 1.0,
-          );
-        }
-
-        // Convert current chunk to WAV
-        final audioBytes = _convertToWav(currentResult.audio, currentResult.sampleRate);
-
-        // Play the audio
-        await _audioPlayer!.setAudioSource(
-          _RawAudioSource(audioBytes, sampleRate: currentResult.sampleRate),
-        );
-
-        await _audioPlayer!.play();
-
-        // Wait for next chunk synthesis to complete (if started)
-        if (nextChunkFuture != null) {
-          currentResult = await nextChunkFuture;
-          AICOLog.info('🎤 Chunk ${i + 2} pre-synthesized during playback');
-        }
-
-        // Wait for playback to complete
-        await _audioPlayer!.playerStateStream.firstWhere(
-          (state) => state.processingState == ProcessingState.completed,
-        );
-
-        // Update progress
-        final progress = (i + 1) / chunks.length;
-        _updateState(_currentState.copyWith(progress: progress));
-      }
-
-      AICOLog.info('🎤 All chunks completed, returning to idle');
-      _updateState(_currentState.copyWith(
-        status: TtsStatus.idle,
-        currentText: null,
-        progress: 1.0,
-      ));
+      
+      // Start playback
+      await _audioPlayer?.play();
+      debugPrint('🎵 [TTS] Playback started');
+      
     } catch (e, stackTrace) {
-      AICOLog.error('TTS synthesis/playback failed', error: e, stackTrace: stackTrace);
-      debugPrint('🔴 [TTS] SYNTHESIS ERROR: ${e.toString()}');
-      debugPrint('🔴 [TTS] ERROR TYPE: ${e.runtimeType}');
-      debugPrint('🔴 [TTS] STACK TRACE:\n$stackTrace');
-      _isAvailable = false; // Disable for session
+      AICOLog.error('TTS speak failed', error: e, stackTrace: stackTrace);
       _updateState(_currentState.copyWith(
         status: TtsStatus.error,
-        errorMessage: 'Voice synthesis failed: ${e.toString()}',
+        errorMessage: 'TTS failed: ${e.toString()}',
       ));
     }
-  }
-
-
-  /// Split text into chunks at sentence boundaries to avoid phoneme limit
-  List<String> _splitTextIntoChunks(String text, {int maxChars = 300}) {
-    final chunks = <String>[];
-    final sentences = text.split(RegExp(r'[.!?]\s+'));
-    
-    String currentChunk = '';
-    for (final sentence in sentences) {
-      if (sentence.trim().isEmpty) continue;
-      
-      final sentenceWithPunctuation = sentence.trim() + '. ';
-      
-      if (currentChunk.isEmpty) {
-        currentChunk = sentenceWithPunctuation;
-      } else if ((currentChunk.length + sentenceWithPunctuation.length) <= maxChars) {
-        currentChunk += sentenceWithPunctuation;
-      } else {
-        // Current chunk is full, save it and start new one
-        chunks.add(currentChunk.trim());
-        currentChunk = sentenceWithPunctuation;
-      }
-    }
-    
-    // Add remaining chunk
-    if (currentChunk.isNotEmpty) {
-      chunks.add(currentChunk.trim());
-    }
-    
-    return chunks.isEmpty ? [text] : chunks;
   }
 
   @override
   Future<void> stop() async {
-    if (!_isAvailable) return;
-
-    try {
-      // Stop audio playback
-      if (_audioPlayer != null) {
-        await _audioPlayer!.stop();
-      }
-      
-      _updateState(_currentState.copyWith(
-        status: TtsStatus.idle,
-        currentText: null,
-        progress: 0.0,
-      ));
-    } catch (e, stackTrace) {
-      AICOLog.error('TTS stop failed', error: e, stackTrace: stackTrace);
-    }
+    if (!_isAvailable || _currentState.status != TtsStatus.speaking) return;
+    await _audioPlayer?.stop();
+    _updateState(_currentState.copyWith(
+      status: TtsStatus.idle,
+      currentText: null,
+      progress: 0.0,
+    ));
   }
 
   @override
-  Future<void> pause() async {
-    // Kokoro doesn't support pause - would need custom implementation
-    AICOLog.warn('TTS pause not supported');
-  }
+  Future<void> pause() async {}
 
   @override
-  Future<void> resume() async {
-    // Kokoro doesn't support resume - would need custom implementation
-    AICOLog.warn('TTS resume not supported');
-  }
+  Future<void> resume() async {}
 
   @override
-  Future<bool> isModelDownloaded() async {
-    // Model is bundled in assets - always available
-    return true;
-  }
+  Future<bool> isModelDownloaded() async => true;
 
   @override
-  Future<void> downloadModel({
-    required Function(double progress) onProgress,
-  }) async {
-    // Model is bundled in assets - no download needed
-    AICOLog.info('Model bundled in assets - no download required');
+  Future<void> downloadModel({required Function(double progress) onProgress}) async {
     onProgress(1.0);
   }
 
@@ -252,115 +191,70 @@ class TtsRepositoryImpl implements TtsRepository {
   TtsState get currentState => _currentState;
 
   void _updateState(TtsState newState) {
-    if (_isDisposed) {
-      AICOLog.warn('Attempted to update state after disposal');
-      return;
-    }
+    if (_isDisposed) return;
     _currentState = newState;
     if (!_stateController.isClosed) {
       _stateController.add(newState);
     }
   }
 
-  /// Convert audio samples to WAV format (just_audio requires a container format)
-  Uint8List _convertToWav(List<num> samples, int sampleRate) {
-    final pcmData = _convertToPCM16(samples);
-    return _createWavFile(pcmData, sampleRate);
+  /// Generate cache key from text (SHA256 hash)
+  String _generateCacheKey(String text) {
+    final bytes = utf8.encode(text.trim().toLowerCase());
+    final digest = sha256.convert(bytes);
+    return digest.toString();
   }
 
-  /// Convert audio samples to PCM16 bytes
-  Uint8List _convertToPCM16(List<num> samples) {
-    final bytes = Uint8List(samples.length * 2);
-    for (int i = 0; i < samples.length; i++) {
-      // Clamp to [-1.0, 1.0] and convert to 16-bit PCM
-      final sample = (samples[i].toDouble().clamp(-1.0, 1.0) * 32767).round();
-      bytes[i * 2] = sample & 0xFF;
-      bytes[i * 2 + 1] = (sample >> 8) & 0xFF;
+  /// Add audio to cache with LRU eviction
+  void _addToCache(String key, Uint8List data) {
+    final dataSize = data.length;
+    
+    // Evict oldest entries if cache is full
+    while (_audioCache.length >= _maxCacheSize || 
+           (_currentCacheBytes + dataSize) > _maxCacheBytes) {
+      if (_audioCache.isEmpty) break;
+      
+      final oldestKey = _audioCache.keys.first;
+      final oldestData = _audioCache.remove(oldestKey);
+      if (oldestData != null) {
+        _currentCacheBytes -= oldestData.length;
+        AICOLog.info('🗑️ Evicted cache entry (${oldestData.length} bytes)');
+      }
     }
-    return bytes;
-  }
-
-  /// Create a WAV file header + PCM data
-  Uint8List _createWavFile(Uint8List pcmData, int sampleRate) {
-    final dataSize = pcmData.length;
-    final fileSize = 36 + dataSize;
     
-    final wav = ByteData(44 + dataSize);
-    
-    // RIFF header
-    wav.setUint8(0, 0x52); // 'R'
-    wav.setUint8(1, 0x49); // 'I'
-    wav.setUint8(2, 0x46); // 'F'
-    wav.setUint8(3, 0x46); // 'F'
-    wav.setUint32(4, fileSize, Endian.little);
-    wav.setUint8(8, 0x57);  // 'W'
-    wav.setUint8(9, 0x41);  // 'A'
-    wav.setUint8(10, 0x56); // 'V'
-    wav.setUint8(11, 0x45); // 'E'
-    
-    // fmt chunk
-    wav.setUint8(12, 0x66); // 'f'
-    wav.setUint8(13, 0x6D); // 'm'
-    wav.setUint8(14, 0x74); // 't'
-    wav.setUint8(15, 0x20); // ' '
-    wav.setUint32(16, 16, Endian.little); // fmt chunk size
-    wav.setUint16(20, 1, Endian.little);  // audio format (1 = PCM)
-    wav.setUint16(22, 1, Endian.little);  // num channels (1 = mono)
-    wav.setUint32(24, sampleRate, Endian.little); // sample rate
-    wav.setUint32(28, sampleRate * 2, Endian.little); // byte rate
-    wav.setUint16(32, 2, Endian.little);  // block align
-    wav.setUint16(34, 16, Endian.little); // bits per sample
-    
-    // data chunk
-    wav.setUint8(36, 0x64); // 'd'
-    wav.setUint8(37, 0x61); // 'a'
-    wav.setUint8(38, 0x74); // 't'
-    wav.setUint8(39, 0x61); // 'a'
-    wav.setUint32(40, dataSize, Endian.little);
-    
-    // Copy PCM data
-    final wavBytes = wav.buffer.asUint8List();
-    wavBytes.setRange(44, 44 + dataSize, pcmData);
-    
-    return wavBytes;
+    // Add new entry
+    _audioCache[key] = data;
+    _currentCacheBytes += dataSize;
+    AICOLog.info('💾 Cached audio: ${_audioCache.length} entries, ${(_currentCacheBytes / 1024 / 1024).toStringAsFixed(1)}MB');
   }
 
   @override
   Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
-    
-    if (_audioPlayer != null) {
-      await _audioPlayer!.dispose();
-    }
-    
-    if (_isAvailable && _kokoro != null) {
-      _kokoro!.dispose();
-    }
-    
+    await _audioStreamSubscription?.cancel();
+    await _audioPlayer?.dispose();
     if (!_stateController.isClosed) {
       await _stateController.close();
     }
   }
 }
 
-/// Custom audio source for WAV data
-class _RawAudioSource extends StreamAudioSource {
-  final Uint8List _audioBytes;
-  final int sampleRate;
+/// Custom audio source for playing bytes with just_audio
+class _BytesAudioSource extends StreamAudioSource {
+  final Uint8List _bytes;
 
-  _RawAudioSource(this._audioBytes, {required this.sampleRate});
+  _BytesAudioSource(this._bytes);
 
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
     start ??= 0;
-    end ??= _audioBytes.length;
-    
+    end ??= _bytes.length;
     return StreamAudioResponse(
-      sourceLength: _audioBytes.length,
+      sourceLength: _bytes.length,
       contentLength: end - start,
       offset: start,
-      stream: Stream.value(_audioBytes.sublist(start, end)),
+      stream: Stream.value(_bytes.sublist(start, end)),
       contentType: 'audio/wav',
     );
   }
