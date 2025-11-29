@@ -5,7 +5,7 @@
 
 **Quick Links**
 
-- [Join the AICO Discord](https://discord.gg/xtfbMw9sJs) – real-time chat for support, dev discussion, and showcases.
+- [Join the AICO Discord](https://discord.gg/4tGyGtbCPt) – real-time chat for support, dev discussion, and showcases.
 - [Homepage](https://boeni.industries/aico) – easy to digest basics about project AICO.
 
 
