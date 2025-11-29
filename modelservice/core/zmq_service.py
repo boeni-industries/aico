@@ -29,6 +29,9 @@ class ModelserviceZMQService:
         # Initialize logger first
         self.logger = get_logger("modelservice", "zmq_service")
         
+        # Store full config manager for handlers
+        self.config_manager = config
+        
         # Configuration is stored under 'core' domain in the config manager
         core_config = config.get("core", {})
         self.config = core_config.get("modelservice", {})
@@ -39,8 +42,8 @@ class ModelserviceZMQService:
         
         self.logger.info("About to instantiate ModelserviceZMQHandlers...")
         try:
-            # Pass the bus client to handlers for streaming support
-            self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager, None)  # Will be set later
+            # Pass the config manager to handlers for TTS configuration
+            self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager, None, config_manager=self.config_manager)
             self.logger.info("ModelserviceZMQHandlers instantiated successfully")
         except Exception as e:
             self.logger.error(f"CRITICAL: Failed to instantiate ModelserviceZMQHandlers: {e}")
@@ -60,6 +63,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_INTENT_REQUEST: self.handlers.handle_intent_request,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: self.handlers.handle_sentiment_request,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: self.handlers.handle_status_request,
+            AICOTopics.MODELSERVICE_TTS_REQUEST: self.handlers.handle_tts_request,
             # Ollama management topics
             AICOTopics.OLLAMA_STATUS_REQUEST: self._handle_ollama_status,
             AICOTopics.OLLAMA_MODELS_REQUEST: self._handle_ollama_models,
@@ -137,6 +141,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
             AICOTopics.MODELSERVICE_NER_REQUEST,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
+            AICOTopics.MODELSERVICE_TTS_REQUEST,  # TTS synthesis requests
             AICOTopics.OLLAMA_STATUS_REQUEST,
             AICOTopics.OLLAMA_MODELS_REQUEST,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
@@ -146,12 +151,16 @@ class ModelserviceZMQService:
         ]
             
             subscribed_topics = []
+            print(f"🔍 [MODELSERVICE] About to subscribe to {len(modelservice_topics)} topics...")
             for topic in modelservice_topics:
                 if topic in self.topic_handlers:
+                    print(f"🎧 [MODELSERVICE] Subscribing to: {topic}")
                     await self.bus_client.subscribe(topic, self._handle_message)
                     subscribed_topics.append(topic)
+                    print(f"✅ [MODELSERVICE] Subscribed to: {topic}")
                     self.logger.info(f"Subscribed to topic: {topic}")
                 else:
+                    print(f"⚠️ [MODELSERVICE] Topic {topic} NOT in topic_handlers - skipping")
                     self.logger.warning(f"No handler found for topic {topic} during subscription")
             
             self.logger.info(f"Successfully subscribed to {len(subscribed_topics)} modelservice topics")
@@ -240,16 +249,59 @@ class ModelserviceZMQService:
                 if topic == AICOTopics.MODELSERVICE_CHAT_REQUEST:
                     # Chat requests need correlation_id for streaming
                     response = await self.topic_handlers[topic](request_payload, correlation_id)
+                elif topic == AICOTopics.MODELSERVICE_TTS_REQUEST:
+                    # TTS requests are streaming - handle async generator
+                    import time
+                    stream_start = time.time()
+                    print(f"🎤 [MODELSERVICE ZMQ] Handling TTS streaming request")
+                    chunk_count = 0
+                    async for chunk in self.topic_handlers[topic](request_payload):
+                        chunk_count += 1
+                        # Publish each chunk to the stream topic
+                        publish_start = time.time()
+                        print(f"📤 [MODELSERVICE ZMQ] Publishing TTS chunk #{chunk_count} (is_final={chunk.is_final})")
+                        await self.bus_client.publish(
+                            AICOTopics.MODELSERVICE_TTS_STREAM,
+                            chunk
+                        )
+                        publish_time = time.time() - publish_start
+                        print(f"✅ [MODELSERVICE ZMQ] Chunk #{chunk_count} published in {publish_time*1000:.2f}ms")
+                    stream_total = time.time() - stream_start
+                    print(f"⏱️ [MODELSERVICE ZMQ TIMING] Total streaming time: {stream_total*1000:.2f}ms ({chunk_count} chunks)")
+                    print(f"🎤 [MODELSERVICE ZMQ] TTS streaming complete - {chunk_count} chunks published")
+                    return  # No single response to send
                 else:
                     # Other handlers don't need correlation_id yet
                     response = await self.topic_handlers[topic](request_payload)
                 
                 # Send Protocol Buffer response if correlation_id is provided
                 if correlation_id and self.bus_client:
-                    response_topic = self._get_response_topic(topic)
+                    # Check if request specified a reply_to topic (request-specific routing)
+                    self.logger.info(f"🔍 [REPLY_TO_DEBUG] Checking for reply_to in metadata.attributes: {envelope.metadata.attributes}")
+                    print(f"🤖 [MODELSERVICE] 🔎 Incoming request: topic={topic}, correlation_id={correlation_id}")
+                    print(f"🤖 [MODELSERVICE] 🔎 metadata.attributes={dict(envelope.metadata.attributes)}")
+                    reply_to = envelope.metadata.attributes.get("reply_to")
+                    self.logger.info(f"🔍 [REPLY_TO_DEBUG] Extracted reply_to: {reply_to}")
+                    if reply_to:
+                        # Use request-specific response topic for targeted delivery
+                        response_topic = reply_to
+                        self.logger.info(f"🔍 [REPLY_TO_DEBUG] Using reply_to topic: {response_topic}")
+                        print(f"🤖 [MODELSERVICE] 📤 Using reply_to topic for response: {response_topic}")
+                    else:
+                        # Fallback to default response topic (legacy behavior)
+                        response_topic = self._get_response_topic(topic)
+                        self.logger.info(f"🔍 [REPLY_TO_DEBUG] Using default response topic: {response_topic}")
+                        print(f"🤖 [MODELSERVICE] 📤 Using DEFAULT response topic: {response_topic}")
+                    
                     if response_topic:
+                        import time
+                        publish_start = time.time()
+                        self.logger.info(f"🔍 [REPLY_TO_DEBUG] Publishing response to: {response_topic} with correlation_id: {correlation_id}")
+                        print(f"🤖 [MODELSERVICE] 🚀 Publishing sentiment response to '{response_topic}' (correlation_id={correlation_id})")
                         await self.bus_client.publish(response_topic, response, correlation_id=correlation_id)
-                        self.logger.debug(f"Response published to {response_topic}")
+                        publish_time = time.time() - publish_start
+                        self.logger.info(f"🔍 [REPLY_TO_DEBUG] Response published successfully to {response_topic}")
+                        print(f"🤖 [MODELSERVICE] ✅ Sentiment response published to '{response_topic}' (publish took {publish_time:.3f}s)")
             else:
                 self.logger.error(f"No handler found for topic: {topic}")
             
@@ -265,7 +317,13 @@ class ModelserviceZMQService:
                 correlation_id = None
                 
             if correlation_id and self.bus_client:
-                response_topic = self._get_response_topic(topic)
+                # Check for reply_to in error path as well
+                reply_to = envelope.metadata.attributes.get("reply_to") if hasattr(envelope, 'metadata') else None
+                if reply_to:
+                    response_topic = reply_to
+                else:
+                    response_topic = self._get_response_topic(topic)
+                
                 if response_topic:
                     self.logger.info(f"[ZMQ_SERVICE] Sending error response to topic: {response_topic}")
                     if topic == AICOTopics.MODELSERVICE_HEALTH_REQUEST:

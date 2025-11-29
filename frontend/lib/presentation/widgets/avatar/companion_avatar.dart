@@ -1,7 +1,14 @@
+import 'dart:ui';
+
 import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/data/models/emotion_model.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
+import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
+import 'package:aico_frontend/presentation/widgets/avatar/avatar_viewer.dart';
+import 'package:aico_frontend/presentation/widgets/emotion/emotion_color_mapper.dart';
+import 'package:aico_frontend/presentation/widgets/emotion/emotion_formatter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -247,44 +254,106 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     }
   }
 
-  String _getTooltipMessage(AvatarMode avatarMode) {
-    // Avatar mode messages take priority
-    switch (avatarMode) {
-      case AvatarMode.thinking:
-        return 'Thinking...';
-      case AvatarMode.processing:
-        return 'Processing...';
-      case AvatarMode.listening:
-        return 'Listening...';
-      case AvatarMode.speaking:
-        return 'Speaking...';
-      case AvatarMode.success:
-        return 'Done!';
-      case AvatarMode.error:
-        return 'Error occurred';
-      case AvatarMode.attention:
-        return 'Attention needed';
-      case AvatarMode.connecting:
-        return 'Connecting...';
-      case AvatarMode.idle:
-        // Fall back to connection status
-        if (!_isAuthenticated) {
-          return 'Touch to authenticate';
-        }
-        
-        switch (_currentStatus) {
-          case InternalConnectionStatus.connected:
-            return 'Ready to chat';
-          case InternalConnectionStatus.connecting:
-            return 'Connecting...';
-          case InternalConnectionStatus.disconnected:
-            return 'Reconnecting in background';
-          case InternalConnectionStatus.offline:
-            return 'Check network connection';
-          case InternalConnectionStatus.error:
-            return 'Connection issue - will retry automatically';
-        }
+  InlineSpan _buildTooltipContent(AvatarMode avatarMode, EmotionModel? emotion) {
+    // Get base status message
+    final String statusMessage = switch (avatarMode) {
+      AvatarMode.thinking => 'Thinking...',
+      AvatarMode.processing => 'Processing...',
+      AvatarMode.listening => 'Listening...',
+      AvatarMode.speaking => 'Speaking...',
+      AvatarMode.success => 'Done!',
+      AvatarMode.error => 'Error occurred',
+      AvatarMode.attention => 'Attention needed',
+      AvatarMode.connecting => 'Connecting...',
+      AvatarMode.idle => !_isAuthenticated
+          ? 'Touch to authenticate'
+          : switch (_currentStatus) {
+              InternalConnectionStatus.connected => 'Ready to chat',
+              InternalConnectionStatus.connecting => 'Connecting...',
+              InternalConnectionStatus.disconnected => 'Reconnecting in background',
+              InternalConnectionStatus.offline => 'Check network connection',
+              InternalConnectionStatus.error => 'Connection issue - will retry automatically',
+            },
+    };
+
+    // Build rich tooltip with clear hierarchy
+    final spans = <InlineSpan>[
+      // Status (primary info)
+      TextSpan(
+        text: statusMessage,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.95),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.02,
+        ),
+      ),
+    ];
+
+    // Add emotion section if available
+    if (emotion != null) {
+      final emotionColor = EmotionColorMapper.getColor(emotion.primary);
+      final label = EmotionFormatter.formatLabel(emotion.primary);
+      final description = EmotionFormatter.getDescription(emotion.primary);
+      final confidence = (emotion.confidence * 100).round();
+
+      spans.addAll([
+        const TextSpan(text: '\n'),
+        // Emotion indicator with color dot
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            width: 6,
+            height: 6,
+            margin: const EdgeInsets.only(right: 6, top: 2),
+            decoration: BoxDecoration(
+              color: emotionColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: emotionColor.withValues(alpha: 0.4),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Emotion label
+        TextSpan(
+          text: label,
+          style: TextStyle(
+            color: emotionColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.03,
+          ),
+        ),
+        // Confidence percentage
+        TextSpan(
+          text: ' $confidence%',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.5),
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const TextSpan(text: '\n'),
+        // Description (tertiary info)
+        TextSpan(
+          text: description,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.65),
+            fontSize: 11,
+            fontWeight: FontWeight.w400,
+            height: 1.3,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ]);
     }
+
+    return TextSpan(children: spans);
   }
 
   double _getPulseMultiplier(AvatarMode mode, double intensity) {
@@ -377,17 +446,35 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
           });
         }
         
+        // Watch emotion state to keep provider alive and get updates
+        final emotion = ref.watch(emotionStateProvider);
+        
         return Tooltip(
-          message: _getTooltipMessage(avatarState.mode),
+          richMessage: _buildTooltipContent(avatarState.mode, emotion),
           decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(8),
+            // Glassmorphic tooltip matching AICO design
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.12),
+                Colors.white.withValues(alpha: 0.08),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
+            ],
           ),
-          textStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: AnimatedBuilder(
             animation: _pulseController,
             builder: (context, child) {
@@ -395,140 +482,71 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
               final ringColor = _colorTransitionController.isAnimating 
                   ? (_ringColorAnimation.value ?? _targetRingColor)
                   : _getRingColor(avatarState.mode);
-              final ringOpacity = _shouldPulse(avatarState.mode) ? _pulseAnimation.value : 0.8;
               
-              // Pulse expansion with smooth transition
-              final pulseMultiplier = _expansionTransitionController.isAnimating
-                  ? _expansionAnimation.value
-                  : _currentExpansion;
-              
-              return SizedBox(
-                width: 240, // Increased to allow glow to extend
-                height: 240,
-                child: Stack(
-                  clipBehavior: Clip.none, // Allow glow to extend beyond bounds
-                  alignment: Alignment.center,
-                  children: [
-                    // Outer breathing ring with glow
-                    Container(
-                      width: 148 + (_pulseAnimation.value * 26 * pulseMultiplier),
-                      height: 148 + (_pulseAnimation.value * 26 * pulseMultiplier),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.transparent,
-                        border: Border.all(
-                          color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? ringOpacity * 0.75 : ringOpacity * 0.95),
-                          width: 3.0,
-                        ),
-                        boxShadow: [
-                          // Dark contrast shadow behind ring for definition
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 0.15),
-                            blurRadius: 8,
-                            spreadRadius: -2,
-                          ),
-                          // Multi-layer glow for smooth gradient (reduces banding)
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 0.3),
-                            blurRadius: 50,
-                            spreadRadius: 15,
-                          ),
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.22),
-                            blurRadius: 70,
-                            spreadRadius: 22,
-                          ),
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.22 : 0.16),
-                            blurRadius: 90,
-                            spreadRadius: 28,
-                          ),
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.15 : 0.11),
-                            blurRadius: 110,
-                            spreadRadius: 35,
-                          ),
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.08 : 0.06),
-                            blurRadius: 130,
-                            spreadRadius: 42,
-                          ),
-                        ],
-                      ),
-                    ),
-                      // Inner breathing ring with subtle glow
-                      Container(
-                        width: 135 + (_pulseAnimation.value * 16 * pulseMultiplier),
-                        height: 135 + (_pulseAnimation.value * 16 * pulseMultiplier),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.transparent,
-                          border: Border.all(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? ringOpacity * 0.65 : ringOpacity * 0.8),
-                            width: 1.8,
-                          ),
-                          boxShadow: [
-                            // Dark contrast shadow for definition
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.1),
-                              blurRadius: 6,
-                              spreadRadius: -1,
+              // Full-body avatar with seamless background integration
+              // Background aura is rendered as a layer behind the avatar for depth
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  // Use available space, maintain aspect ratio ~9:16 for portrait
+                  final maxHeight = constraints.maxHeight;
+                  final maxWidth = constraints.maxWidth;
+                  final aspectRatio = 9 / 16;
+                  
+                  double width, height;
+                  
+                  // Always try to maximize height first (fills vertical space)
+                  height = maxHeight;
+                  width = height * aspectRatio;
+                  
+                  // If width exceeds available space, constrain by width instead
+                  if (width > maxWidth) {
+                    width = maxWidth;
+                    height = width / aspectRatio;
+                  }
+                  
+                  // Determine if we're width-constrained (voice mode) for alignment
+                  final bool isWidthConstrained = width >= maxWidth * 0.99;
+                  
+                  // Allow glow to overflow by using clipBehavior: Clip.none
+                  // In voice mode (width constrained), top-align to eliminate gap
+                  return Stack(
+                    clipBehavior: Clip.none, // Allow glow to extend beyond bounds
+                    alignment: isWidthConstrained ? Alignment.topCenter : Alignment.center,
+                    children: [
+                      // Radial glow behind avatar - extends beyond avatar bounds
+                      Positioned(
+                        left: -maxWidth * 0.2, // Extend glow beyond left
+                        right: -maxWidth * 0.2, // Extend glow beyond right
+                        top: -maxHeight * 0.1, // Extend glow beyond top
+                        bottom: -maxHeight * 0.1, // Extend glow beyond bottom
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: const Alignment(0, -0.1), // Centered on upper body
+                              radius: 0.5, // Tighter radius since we extended the container
+                              colors: [
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.35 : 0.28), // Stronger center
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.22 : 0.16), // Mid fade
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.12 : 0.08), // Outer fade
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.35, 0.65, 1.0],
                             ),
-                            // Subtle inner glow for depth
-                            BoxShadow(
-                              color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.15 : 0.12),
-                              blurRadius: 10,
-                              spreadRadius: 0,
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                      // Clean avatar circle with mood-colored gradient overlay
-                      SizedBox(
-                        width: 125,
-                        height: 125,
-                        child: ClipOval(
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              // Avatar image
-                              Image.asset(
-                                'assets/images/aico.png',
-                                width: 125,
-                                height: 125,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  // Fallback to icon if image fails to load
-                                  return Icon(
-                                    Icons.person_2,
-                                    size: 62,
-                                    color: ringColor,
-                                  );
-                                },
-                              ),
-                              // Subtle mood-colored radial gradient overlay
-                              // Creates seamless transition from rings to avatar
-                              Container(
-                                decoration: BoxDecoration(
-                                  gradient: RadialGradient(
-                                    center: Alignment.center,
-                                    radius: 0.8,
-                                    colors: [
-                                      Colors.transparent, // Clear center - avatar fully visible
-                                      Colors.transparent, // Keep center clear
-                                      ringColor.withValues(alpha: 0.08), // Very subtle at mid-range
-                                      ringColor.withValues(alpha: 0.18), // Gentle glow at edges
-                                    ],
-                                    stops: const [0.0, 0.4, 0.7, 1.0],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                      // Avatar viewer - responsive size, transparent background
+                      // Use RepaintBoundary to isolate repaints
+                      RepaintBoundary(
+                        child: SizedBox(
+                          width: width,
+                          height: height,
+                          child: AvatarViewer(),
                         ),
                       ),
                     ],
-                  ),
+                  );
+                },
               );
             },
           ),

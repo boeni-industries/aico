@@ -634,6 +634,96 @@ class UnifiedApiClient {
     }
   }
 
+  /// Stream binary data from endpoint (e.g., audio)
+  /// Returns a stream of byte chunks as they arrive
+  Stream<List<int>> streamBinary(
+    String method,
+    String endpoint, {
+    Map<String, dynamic>? data,
+    Map<String, String>? queryParameters,
+    bool skipTokenRefresh = false,
+  }) async* {
+    // Auto-initialize if not done yet
+    if (!_isInitialized) {
+      await initialize();
+    }
+
+    try {
+      // Build headers with authentication (same as other requests)
+      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
+
+      // Ensure encryption session is active
+      if (!_encryptionService.isSessionActive) {
+        await _performHandshake();
+      }
+
+      // Encrypt request data (required for all AICO API requests)
+      final requestData = data != null 
+          ? _encryptionService.createEncryptedRequest(data) 
+          : _encryptionService.createEncryptedRequest({});
+
+      AICOLog.debug('🎤 Streaming binary request: $method $endpoint',
+        topic: 'network/stream/binary');
+
+      // Make streaming request
+      final response = await _dio!.request<ResponseBody>(
+        endpoint,
+        data: requestData,
+        queryParameters: queryParameters,
+        options: Options(
+          method: method,
+          headers: headers,
+          responseType: ResponseType.stream,
+        ),
+      );
+
+      // Handle 401 Unauthorized - reset session and retry
+      if (response.statusCode == 401 && !skipTokenRefresh) {
+        AICOLog.warn('401 Unauthorized in binary streaming - retrying',
+          topic: 'network/stream/binary/unauthorized');
+        
+        _encryptionService.resetSession();
+        yield* streamBinary(
+          method,
+          endpoint,
+          data: data,
+          queryParameters: queryParameters,
+          skipTokenRefresh: true,
+        );
+        return;
+      }
+
+      if (response.statusCode == 200 && response.data != null) {
+        AICOLog.info('✅ Binary streaming started',
+          topic: 'network/stream/binary/started');
+
+        // Stream chunks as they arrive
+        await for (final chunk in response.data!.stream) {
+          yield chunk;
+        }
+
+        AICOLog.info('✅ Binary streaming complete',
+          topic: 'network/stream/binary/complete');
+      } else {
+        throw Exception('Binary stream request failed with status: ${response.statusCode}');
+      }
+    } on DioException catch (e) {
+      AICOLog.error('Binary streaming failed',
+        topic: 'network/stream/binary/error',
+        extra: {
+          'endpoint': endpoint,
+          'status_code': e.response?.statusCode,
+          'error': e.toString()
+        });
+      rethrow;
+    } catch (e) {
+      AICOLog.error('Unexpected error in binary streaming',
+        topic: 'network/stream/binary/unexpected_error',
+        extra: {'endpoint': endpoint, 'error': e.toString()});
+      rethrow;
+    }
+  }
+
   /// Dispose of resources
   Future<void> dispose() async {
     _dio?.close();

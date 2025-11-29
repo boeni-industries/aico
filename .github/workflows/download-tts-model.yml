@@ -1,0 +1,48 @@
+name: Download TTS Model
+
+on:
+  # Manual trigger
+  workflow_dispatch: {}
+
+  # Reusable workflow: can be called from other workflows (e.g. frontend build)
+  workflow_call: {}
+
+jobs:
+  download-model:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create TTS assets directory
+        run: mkdir -p frontend/assets/tts
+
+      - name: Download Kokoro model
+        run: |
+          wget -O frontend/assets/tts/kokoro-v1.0.onnx \
+            https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+
+      - name: Download voices binary
+        run: |
+          wget -O frontend/assets/tts/voices-v1.0.bin \
+            https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+
+      - name: Install Python dependencies
+        run: pip install numpy
+
+      - name: Convert voices to JSON
+        run: |
+          python3 -c "
+          import numpy as np
+          import json
+          data = np.load('frontend/assets/tts/voices-v1.0.bin')
+          all_voices = {k: v.tolist() for k, v in data.items()}
+          json.dump(all_voices, open('frontend/assets/tts/voices.json', 'w'))
+          "
+
+      - name: Verify downloads
+        run: |
+          ls -lh frontend/assets/tts/
+          echo "Model size: $(du -h frontend/assets/tts/kokoro-v1.0.onnx | cut -f1)"
+          echo "Voices JSON size: $(du -h frontend/assets/tts/voices.json | cut -f1)"
+          echo "Total TTS assets: $(du -sh frontend/assets/tts/ | cut -f1)"

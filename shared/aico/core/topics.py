@@ -221,6 +221,8 @@ class AICOTopics:
     MODELSERVICE_SENTIMENT_RESPONSE = "modelservice/sentiment/response/v1"
     MODELSERVICE_STATUS_REQUEST = "modelservice/status/request/v1"
     MODELSERVICE_STATUS_RESPONSE = "modelservice/status/response/v1"
+    MODELSERVICE_TTS_REQUEST = "modelservice/tts/request/v1"
+    MODELSERVICE_TTS_STREAM = "modelservice/tts/stream/v1"
     
     # AI Processing Domain (Message Bus Coordination)
     # Emotion Analysis
@@ -323,6 +325,18 @@ class AICOTopics:
     def ai_coordination(correlation_id: str, component: str, operation: str, version: str = "v1") -> str:
         """Build AI coordination topic with correlation ID: ai/<component>/<operation>/<version>/<correlation_id>"""
         return f"ai/{component}/{operation}/{version}/{correlation_id}"
+    
+    @staticmethod
+    def build_response_topic(base_topic: str, service_id: str, request_id: str) -> str:
+        """Build request-specific response topic: <base_topic>/<service_id>/<request_id>
+        
+        Example:
+            base_topic = "modelservice/chat/response/v1"
+            service_id = "conversation_engine"
+            request_id = "abc-123"
+            returns: "modelservice/chat/response/v1/conversation_engine/abc-123"
+        """
+        return f"{base_topic}/{service_id}/{request_id}"
     
     @staticmethod
     def build_logs_topic(topic: str) -> str:

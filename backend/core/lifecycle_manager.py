@@ -262,16 +262,28 @@ class BackendLifecycleManager:
             priority=25
         )
         
+        # Emotion engine factory
+        def create_emotion_engine(container: ServiceContainer, zmq_context=None):
+            from backend.services.emotion_engine import EmotionEngine
+            return EmotionEngine("emotion_engine", container)
+        
+        self.container.register_service(
+            "emotion_engine",
+            create_emotion_engine,
+            dependencies=["zmq_context"],
+            priority=30  # Start after message_bus (20), before conversation_engine (35)
+        )
+        
         # Conversation engine factory
-        def create_conversation_engine(container: ServiceContainer, zmq_context=None):
+        def create_conversation_engine(container: ServiceContainer, zmq_context=None, emotion_engine=None):
             from backend.services.conversation_engine import ConversationEngine
             return ConversationEngine("conversation_engine", container)
         
         self.container.register_service(
             "conversation_engine",
             create_conversation_engine,
-            dependencies=["zmq_context"],  # Ensure ZMQ is ready before conversation engine
-            priority=35  # Start after message_bus (20) and core plugins (25-30)
+            dependencies=["zmq_context", "emotion_engine"],  # Ensure emotion engine is ready
+            priority=35  # Start after message_bus (20) and emotion_engine (30)
         )
         
         self.logger.debug("Core services registered")
@@ -325,12 +337,8 @@ class BackendLifecycleManager:
         ai_registry.register("memory", memory_manager)
         self.logger.info("Registered 'memory' processor.")
 
-        # TODO: Register other core AI processors here as they are implemented.
-        # Example:
-        # from aico.ai.emotion import EmotionProcessor
-        # emotion_processor = EmotionProcessor(self.config)
-        # ai_registry.register("emotion", emotion_processor)
-        # self.logger.info("Registered 'emotion' processor.")
+        # EmotionEngine is already registered in _register_core_services() (lines 266-275)
+        # and will be started automatically by the service container
 
         self.logger.info("AI processors registered.")
     
@@ -360,13 +368,13 @@ class BackendLifecycleManager:
         # Register AI plugin classes
         from backend.services.embodiment_engine import EmbodimentPlugin
         from backend.services.agency_engine import AgencyPlugin
-        from backend.services.emotion_engine import EmotionPlugin
         from backend.services.personality_engine import PersonalityPlugin
         
         registry.register_plugin_class("embodiment", EmbodimentPlugin)
         registry.register_plugin_class("agency", AgencyPlugin)
-        registry.register_plugin_class("emotion", EmotionPlugin)
         registry.register_plugin_class("personality", PersonalityPlugin)
+        
+        # Note: EmotionEngine is registered as a service (lines 266-275), not a plugin
         
         self.logger.debug("Plugin classes registered")
     
@@ -528,9 +536,12 @@ class BackendLifecycleManager:
                 # (actual shutdown called from main())
                 pass
         
+        # Import version function
+        from aico.core.version import get_backend_version
+        
         app = FastAPI(
             title="AICO Backend API",
-            version="0.5.0",
+            version=get_backend_version(),
             description="AICO Backend REST API with clean architecture",
             lifespan=app_lifespan
         )
@@ -770,6 +781,8 @@ class BackendLifecycleManager:
         from backend.api.memory_album import router as memory_album_router
         from backend.api.kg.router import router as kg_router
         from backend.api.behavioral.router import router as behavioral_router
+        from backend.api.emotion.router import router as emotion_router
+        from backend.api.tts.router import router as tts_router
         
         # Mount routers with prefixes
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
@@ -795,6 +808,12 @@ class BackendLifecycleManager:
         
         self.app.include_router(behavioral_router, prefix="/api/v1/behavioral", tags=["behavioral"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/behavioral", "tags": ["behavioral"]})
+        
+        self.app.include_router(emotion_router, prefix="/api/v1/emotion", tags=["emotion"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/emotion", "tags": ["emotion"]})
+        
+        self.app.include_router(tts_router, prefix="/api/v1/tts", tags=["tts"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/tts", "tags": ["tts"]})
         
     
     def _display_routes(self) -> None:

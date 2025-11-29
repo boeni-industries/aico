@@ -64,6 +64,9 @@ dependencies:
   # Network connectivity
   connectivity_plus: ^7.0.0
   
+  # Package info for version
+  package_info_plus: ^8.1.2
+  
   # JSON serialization
   json_annotation: ^4.8.1
   
@@ -85,6 +88,16 @@ dependencies:
   window_manager: ^0.5.1
   sodium: ^3.4.6
   sodium_libs: ^3.4.6+1
+  
+  # 3D Avatar rendering - WebView + Three.js
+  flutter_inappwebview: ^6.1.5
+  
+  # Markdown rendering with full styling control
+  flutter_markdown: ^0.7.4+1
+  flutter_highlight: ^0.7.0
+
+  # Audio playback for TTS (backend streaming)
+  just_audio: ^0.10.5
 
   stack_trace: any
   uuid: any
@@ -123,6 +136,12 @@ flutter:
   assets:
     - assets/images/aico.png
     - assets/images/noise_tile.png
+    - assets/avatar/
+    - assets/avatar/libs/
+    - assets/avatar/libs/addons/loaders/
+    - assets/avatar/libs/addons/utils/
+    - assets/avatar/models/
+    - assets/avatar/animations/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

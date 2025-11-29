@@ -92,9 +92,9 @@ async def submit_feedback(
             "user_id": user_id
         })
         
-        # Store feedback event
+        # Store feedback event in AMS behavioral feedback table (schema v18)
         db.execute(
-            """INSERT INTO feedback_events (
+            """INSERT INTO ams_behavioral_feedback (
                 event_id, user_id, message_id, skill_id, reward,
                 reason, free_text, timestamp, processed
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -114,7 +114,7 @@ async def submit_feedback(
         
         logger.info("📊 [FEEDBACK] Feedback event stored in database", extra={
             "event_id": event_id,
-            "table": "feedback_events"
+            "table": "ams_behavioral_feedback"
         })
         
         # Update skill confidence if skill_id available and reward is not neutral

@@ -59,7 +59,16 @@ class MessageDatabase extends _$MessageDatabase {
   }
 
   /// Get messages for a conversation (most recent first, limited to 100)
+  /// Pass empty string to get ALL user messages across all conversations
   Future<List<Message>> getConversationMessages(String conversationId, {int limit = 100}) {
+    if (conversationId.isEmpty) {
+      // Get all messages for user (no conversation filter)
+      return (select(messages)
+        ..orderBy([(t) => OrderingTerm.desc(t.timestamp)])
+        ..limit(limit))
+        .get();
+    }
+    
     return (select(messages)
       ..where((t) => t.conversationId.equals(conversationId))
       ..orderBy([(t) => OrderingTerm.desc(t.timestamp)])

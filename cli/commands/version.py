@@ -67,7 +67,7 @@ def get_versions_path():
         return (Path(__file__).parent.parent.parent / "VERSIONS").resolve()
 
 VERSIONS_PATH = get_versions_path()
-SUBSYSTEMS = ["shared", "cli", "backend", "frontend", "studio", "modelservice"]
+SUBSYSTEMS = ["aico", "shared", "cli", "backend", "frontend", "studio", "modelservice"]
 
 
 def read_versions():
@@ -319,13 +319,26 @@ def update_cli_version(version: str):
     return False
 
 def update_shared_version(version: str):
-    """Shared uses shared version module - no local files to update"""
-    # Shared gets version from VERSIONS file via shared/aico/core/version.py
-    # No local files need updating since it reads from VERSIONS dynamically
-    return True  # Always return True since VERSIONS file is already updated
+    """Update version in shared/aico/__version__.py"""
+    shared_version_file = get_project_root() / "shared" / "aico" / "__version__.py"
+    if not shared_version_file.exists():
+        return False
+    
+    content = shared_version_file.read_text(encoding='utf-8')
+    import re
+    new_content = re.sub(
+        r'__version__\s*=\s*["\']([^"\']*)["\']',
+        f'__version__ = "{version}"',
+        content
+    )
+    
+    if new_content != content:
+        shared_version_file.write_text(new_content, encoding='utf-8')
+        return True
+    return False
 
-def update_root_version(version: str):
-    """Update version in root pyproject.toml for unified versioning"""
+def update_aico_version(version: str):
+    """Update version in root pyproject.toml (AICO product version)"""
     root_file = get_project_root() / "pyproject.toml"
     if not root_file.exists():
         return False
@@ -442,6 +455,7 @@ def sync():
     
     # Update each subsystem
     update_functions = {
+        "aico": update_aico_version,
         "shared": update_shared_version,
         "cli": update_cli_version,
         "backend": update_backend_version,
@@ -514,6 +528,7 @@ def check(
     """
     versions = read_versions()
     readers = {
+        "aico": read_aico_version,
         "shared": read_shared_version,
         "cli": read_cli_version,
         "backend": read_backend_version,
@@ -619,8 +634,8 @@ def read_shared_version():
     except Exception:
         return None
 
-def read_root_version():
-    """Read version from root pyproject.toml for unified versioning"""
+def read_aico_version():
+    """Read version from root pyproject.toml (AICO product version)"""
     root_file = get_project_root() / "pyproject.toml"
     if not root_file.exists():
         return None
@@ -825,8 +840,13 @@ def bump(
     # Commit changes
     commit_msg = f"Bump {subsystem} version to {new_version}"
     subprocess.run(["git", "add", str(versions_path)], check=True)
-    # For git commits, we need to add both files for backend
-    if subsystem == "backend":
+    # For git commits, we need to add project files
+    if subsystem == "aico":
+        # For aico product version, add root pyproject.toml
+        root_pyproject = get_project_root() / "pyproject.toml"
+        if root_pyproject.exists():
+            subprocess.run(["git", "add", str(root_pyproject)], check=True)
+    elif subsystem == "backend":
         # Backend only has main.py now (no pyproject.toml)
         backend_main = get_project_root() / "backend" / "main.py"
         if backend_main.exists():

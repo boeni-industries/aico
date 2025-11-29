@@ -62,15 +62,27 @@ def validate_topic(topic: str) -> str:
             detail="Topic cannot be empty"
         )
     
-    # Basic validation - should follow slash notation
-    if not all(part.replace('_', '').replace('-', '').isalnum() 
-              for part in topic.split('/')):
+    # Split by slash and filter out empty parts (handles trailing/leading slashes)
+    parts = [part.strip() for part in topic.split('/') if part.strip()]
+    
+    if not parts:
         raise HTTPException(
             status_code=400,
-            detail="Topic must follow slash notation (e.g., 'auth/login/attempt/v1')"
+            detail="Topic must contain at least one valid part"
         )
     
-    return topic.strip()
+    # Validate each part - should be alphanumeric (allowing underscores and hyphens)
+    for part in parts:
+        # Remove underscores and hyphens, check if remaining is alphanumeric
+        cleaned = part.replace('_', '').replace('-', '')
+        if not cleaned or not cleaned.isalnum():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Topic part '{part}' is invalid. Topic must follow slash notation (e.g., 'auth/login/attempt/v1')"
+            )
+    
+    # Return normalized topic (removes trailing/leading slashes and extra spaces)
+    return '/'.join(parts)
 
 
 def validate_message(message: str) -> str:

@@ -43,6 +43,37 @@ class EntityResolver:
     Based on: Google Grale (NeurIPS 2020), TDS "Rise of Semantic Entity Resolution" (2025)
     """
     
+    @staticmethod
+    def _get_node_name(node: Node) -> str:
+        """
+        Safely extract name from node properties.
+        Handles both string (correct) and list (data corruption) cases.
+        """
+        # Defensive: Check if node is actually a Node object
+        if not hasattr(node, 'properties'):
+            logger.error(f"Invalid node object (no properties attribute): {type(node)} = {node}")
+            return ""
+        
+        # Defensive: Check if properties is a dict
+        if not isinstance(node.properties, dict):
+            logger.error(f"Node {getattr(node, 'id', 'unknown')} has non-dict properties: {type(node.properties)}")
+            return ""
+        
+        name = node.properties.get("name", "")
+        
+        # Handle corrupted data where name is a list instead of string
+        if isinstance(name, list):
+            # Take first element if list is non-empty, otherwise empty string
+            name = name[0] if name else ""
+            logger.warning(f"Node {node.id} has list 'name' property (data corruption): {name}")
+        
+        # Final safety: ensure we have a string
+        if not isinstance(name, str):
+            logger.warning(f"Node {node.id} has non-string name after processing: {type(name)}")
+            name = str(name)
+        
+        return name.strip().lower()
+    
     def __init__(
         self,
         modelservice_client: Any,
@@ -404,8 +435,19 @@ class EntityResolver:
         fuzzy_candidates = []
         
         for c in candidates:
-            new_name = c["new_node"].properties.get("name", "").strip().lower()
-            existing_name = c["existing_node"].properties.get("name", "").strip().lower()
+            # Defensive: Validate candidate structure
+            if not isinstance(c, dict) or "new_node" not in c or "existing_node" not in c:
+                logger.error(f"Invalid candidate structure: {type(c)}")
+                continue
+            
+            new_name = self._get_node_name(c["new_node"])
+            existing_name = self._get_node_name(c["existing_node"])
+            
+            # Defensive: Check if nodes have label attribute
+            if not hasattr(c["new_node"], 'label') or not hasattr(c["existing_node"], 'label'):
+                logger.error(f"Candidate nodes missing label attribute")
+                continue
+            
             same_label = c["new_node"].label == c["existing_node"].label
             
             if same_label and new_name and new_name == existing_name:
@@ -776,7 +818,17 @@ Return valid JSON only."""
     
     def _node_to_text(self, node: Node) -> str:
         """Convert node to text for embedding."""
-        props_text = " ".join(f"{k}:{v}" for k, v in node.properties.items())
+        # Handle properties that might be lists (data corruption)
+        props_parts = []
+        for k, v in node.properties.items():
+            if isinstance(v, list):
+                # Join list elements or take first element
+                v_str = ", ".join(str(x) for x in v) if v else ""
+            else:
+                v_str = str(v)
+            props_parts.append(f"{k}:{v_str}")
+        
+        props_text = " ".join(props_parts)
         return f"{node.label} {props_text}"
     
     def _parse_json_response(self, text: str) -> Dict[str, Any]:

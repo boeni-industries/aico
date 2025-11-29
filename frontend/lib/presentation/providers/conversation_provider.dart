@@ -6,9 +6,12 @@ import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/database/message_database.dart' hide Message;
 import 'package:aico_frontend/data/repositories/message_repository_impl.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
+import 'package:aico_frontend/domain/providers/tts_provider.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
 import 'package:aico_frontend/domain/usecases/send_message_usecase.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
+import 'package:aico_frontend/presentation/providers/avatar_controller_provider.dart';
+import 'package:aico_frontend/presentation/providers/conversation_audio_settings_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -134,49 +137,59 @@ class ConversationNotifier extends _$ConversationNotifier {
 
   Future<void> _loadConversationFromCache() async {
     try {
-      var conversationId = state.currentConversationId;
+      debugPrint('🔍 [CONVERSATION_PROVIDER] Starting _loadConversationFromCache');
+      // Load all recent messages for the user (no conversation_id needed)
+      AICOLog.info('Loading recent messages from cache',
+        topic: 'conversation_provider/load_messages');
       
-      // If no conversation ID, try to find the most recent one from cache
-      if (conversationId == null) {
-        final allMessages = await _messageRepository.getMessages('default');
-        
-        if (allMessages.isEmpty) {
-          AICOLog.info('No cached conversations found',
-            topic: 'conversation_provider/cache_load_skip');
-          
-          // Small delay to show skeleton loader briefly
-          await Future.delayed(const Duration(milliseconds: 300));
-          state = state.copyWith(isLoading: false);
-          return;
-        }
-        
-        // Use the conversation ID from the most recent message
-        conversationId = allMessages.first.conversationId;
-      }
-
-      // Fetch messages for conversation
+      // Get all user messages from cache (empty string = all conversations)
+      debugPrint('🔍 [CONVERSATION_PROVIDER] Calling getMessages with empty string');
       final allMessages = await _messageRepository.getMessages(
-        conversationId,
+        '', // Empty string loads all user messages
         onBackgroundSyncComplete: (freshMessages) {
-          // Update with all fresh messages from background sync
+          debugPrint('🔄 [CONVERSATION_PROVIDER] Background sync complete: ${freshMessages.length} messages');
+          // Update with fresh messages from background sync
           state = state.copyWith(
             messages: freshMessages,
             allMessages: freshMessages,
           );
         },
       );
+      debugPrint('🔍 [CONVERSATION_PROVIDER] getMessages returned ${allMessages.length} messages');
       
-      // Show all messages - let Flutter handle it smoothly
+      if (allMessages.isEmpty) {
+        debugPrint('⚠️ [CONVERSATION_PROVIDER] No messages found in cache');
+        AICOLog.info('No messages found',
+          topic: 'conversation_provider/no_messages');
+        
+        // Small delay to show skeleton loader briefly
+        await Future.delayed(const Duration(milliseconds: 300));
+        state = state.copyWith(isLoading: false);
+        return;
+      }
+      
+      // Show all messages
+      debugPrint('✅ [CONVERSATION_PROVIDER] Setting state with ${allMessages.length} messages');
+      if (allMessages.isNotEmpty) {
+        final firstContent = allMessages.first.content.length > 50 
+            ? allMessages.first.content.substring(0, 50) 
+            : allMessages.first.content;
+        final lastContent = allMessages.last.content.length > 50 
+            ? allMessages.last.content.substring(0, 50) 
+            : allMessages.last.content;
+        debugPrint('   First message: ${allMessages.first.timestamp} - $firstContent...');
+        debugPrint('   Last message: ${allMessages.last.timestamp} - $lastContent...');
+      }
       state = state.copyWith(
         messages: allMessages,
         allMessages: allMessages,
         isLoading: false,
-        currentConversationId: conversationId,
+        currentConversationId: allMessages.first.conversationId, // Track for new messages
       );
       
-      AICOLog.info('Loaded conversation from cache',
+      AICOLog.info('Loaded messages from cache',
         topic: 'conversation_provider/cache_load',
-        extra: {'conversation_id': conversationId, 'message_count': allMessages.length});
+        extra: {'message_count': allMessages.length});
         
     } catch (e, stackTrace) {
       AICOLog.error('Failed to load conversation from cache',
@@ -321,6 +334,12 @@ class ConversationNotifier extends _$ConversationNotifier {
           final currentContent = state.streamingContent ?? '';
           final newContent = currentContent + chunk;
           
+          // Start talking animation on first response chunk (NOT thinking)
+          if (currentContent.isEmpty && newContent.isNotEmpty) {
+            debugPrint('[ConversationProvider] 🗣️ First response chunk - starting talking animation');
+            ref.read(avatarControllerProvider).startTalking();
+          }
+          
           state = state.copyWith(streamingContent: newContent);
           
           // Update the AI message in the list
@@ -362,6 +381,10 @@ class ConversationNotifier extends _$ConversationNotifier {
           ];
         }
         
+        // Stop talking animation when streaming completes
+        debugPrint('[ConversationProvider] 🤫 Streaming complete - stopping talking animation');
+        ref.read(avatarControllerProvider).stopTalking();
+        
         state = state.copyWith(
           messages: updatedMessages,
           isStreaming: false,
@@ -370,6 +393,17 @@ class ConversationNotifier extends _$ConversationNotifier {
           streamingThinking: null, // Clear streaming thinking
           thinkingHistory: updatedHistory, // Update history
         );
+        
+        // TTS Auto-play: Speak AI response if voice replies are enabled
+        final audioSettings = ref.read(conversationAudioSettingsProvider);
+        debugPrint('[ConversationProvider] 🔊 TTS Check - replyChannel: ${audioSettings.replyChannel}, isSilent: ${audioSettings.isSilent}, shouldPlayTTS: ${audioSettings.shouldPlayTTS}');
+        
+        if (audioSettings.shouldPlayTTS && finalResponse.trim().isNotEmpty) {
+          debugPrint('[ConversationProvider] 🔊 Auto-playing TTS for AI response (${finalResponse.length} chars)');
+          ref.read(ttsProvider.notifier).speak(finalResponse);
+        } else {
+          debugPrint('[ConversationProvider] 🔇 TTS skipped - shouldPlayTTS: ${audioSettings.shouldPlayTTS}, responseEmpty: ${finalResponse.trim().isEmpty}');
+        }
       },
       (String error) {
         // Handle streaming error
@@ -382,6 +416,10 @@ class ConversationNotifier extends _$ConversationNotifier {
           }
           return msg;
         }).toList();
+        
+        // Stop talking animation on error
+        debugPrint('[ConversationProvider] ❌ Streaming error - stopping talking animation');
+        ref.read(avatarControllerProvider).stopTalking();
         
         state = state.copyWith(
           messages: updatedMessages,

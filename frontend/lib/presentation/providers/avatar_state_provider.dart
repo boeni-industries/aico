@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart';
+import 'package:aico_frontend/domain/entities/tts_state.dart';
+import 'package:aico_frontend/domain/providers/tts_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'avatar_state_provider.g.dart';
@@ -63,6 +66,39 @@ enum AvatarMode {
 class AvatarRingStateNotifier extends _$AvatarRingStateNotifier {
   @override
   AvatarRingState build() {
+    // Listen to TTS state changes to sync avatar animations
+    ref.listen(ttsProvider, (previous, next) {
+      debugPrint('[AvatarRingState] TTS state changed: ${previous?.status} → ${next.status}');
+      // Only react to status changes
+      if (previous?.status != next.status) {
+        switch (next.status) {
+          case TtsStatus.speaking:
+            // Start speaking animation when TTS begins
+            debugPrint('[AvatarRingState] 🎤 TTS started speaking - triggering talking animation');
+            startSpeaking(intensity: 0.7);
+            break;
+          case TtsStatus.idle:
+            // Return to idle when TTS completes
+            if (previous?.status == TtsStatus.speaking) {
+              returnToIdle();
+            }
+            break;
+          case TtsStatus.error:
+            // Show error state briefly, then return to idle
+            showError(errorMessage: next.errorMessage);
+            Future.delayed(const Duration(seconds: 2), () {
+              if (state.mode == AvatarMode.error) {
+                returnToIdle();
+              }
+            });
+            break;
+          default:
+            // No action for other states (loading, etc.)
+            break;
+        }
+      }
+    });
+    
     return const AvatarRingState();
   }
   
@@ -84,6 +120,7 @@ class AvatarRingStateNotifier extends _$AvatarRingStateNotifier {
   
   /// Set avatar to speaking mode (voice output)
   void startSpeaking({double intensity = 0.7, Map<String, dynamic>? audioData}) {
+    debugPrint('[AvatarRingState] 🎬 Setting mode to SPEAKING (intensity: $intensity)');
     state = state.copyWith(
       mode: AvatarMode.speaking,
       intensity: intensity,
@@ -135,6 +172,7 @@ class AvatarRingStateNotifier extends _$AvatarRingStateNotifier {
   
   /// Return to idle state
   void returnToIdle() {
+    debugPrint('[AvatarRingState] 🛑 Returning to IDLE mode');
     state = const AvatarRingState(
       mode: AvatarMode.idle,
       intensity: 0.5,

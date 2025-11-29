@@ -281,5 +281,7 @@ nav:
       - Confidante: roadmap/confidante.md
       - Embodied Presence: roadmap/embodied-presence.md
       - Community: roadmap/community.md
+  - Business & GTM:
+      - GTM Strategy: gtm/GTM_strategy.md
+      - GTM Roadmap: gtm/GTM_roadmap.md
   - Glossary: guides/developer/terminology-glossary.md
-  

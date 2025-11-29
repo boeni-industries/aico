@@ -61,6 +61,7 @@ from cli.commands.ollama import app as ollama_app
 from cli.commands.lmdb import app as lmdb_app
 from cli.commands.chroma import app as chroma_app
 from cli.commands.kg import app as kg_app
+from cli.commands.emotion import app as emotion_app
 from cli.utils.platform import get_platform_chars
 
 # Get platform-appropriate characters
@@ -83,6 +84,7 @@ app.add_typer(kg_app, name="kg", help="💡 Knowledge graph management")
 app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
 app.add_typer(logs_app, name="logs", help=f"{chars['logs']} Log management and analysis")
 app.add_typer(scheduler_app, name="scheduler", help="⏰ Task scheduler management")
+app.add_typer(emotion_app, name="emotion", help="🎭 Emotional simulation management")
 app.add_typer(dev_app, name="dev", help=f"{chars['dev']} Development utilities")
 app.add_typer(bus_app, name="bus", help=f"{chars['bus']} Message bus management")
 app.add_typer(modelservice_app, name="modelservice", help="🤖 Model service management")
@@ -122,6 +124,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             (chars["config"], "config", "Configuration management and validation"),
             (chars["logs"], "logs", "Log management and analysis"),
             ("⏰", "scheduler", "Task scheduler management"),
+            ("🎭", "emotion", "Emotional simulation state management"),
             ("🚌", "bus", "Message bus testing, monitoring, and management"),
             ("🌐", "gateway", "API Gateway management and protocol control"),
             ("🤖", "modelservice", "Model service management and control"),
@@ -134,7 +137,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             "aico security setup", 
             "aico db init",
             "aico scheduler ls",
-            "aico scheduler status",
+            "aico emotion status",
             "aico config list"
         ]
         

@@ -9,7 +9,12 @@ import sys
 import os
 import asyncio
 import signal
+import warnings
 from pathlib import Path
+
+# Suppress harmless SyntaxWarnings from third-party dependencies (Python 3.13)
+# These are from jsonlines, pysbd (used by Coqui TTS) - not our code
+warnings.filterwarnings('ignore', category=SyntaxWarning)
 
 # Fix Windows asyncio event loop compatibility with ZMQ
 if sys.platform == "win32":
@@ -157,6 +162,25 @@ async def initialize_modelservice():
     
     # Inject the preloaded TransformersManager into ZMQ service
     zmq_service.set_transformers_manager(transformers_manager)
+    
+    # Initialize TTS system (blocking - must complete before service is ready)
+    print("🎤 Initializing TTS system...")
+    print("⏳ First run will download ~1.8GB model from HuggingFace...")
+    logger.info("Starting TTS system initialization")
+    
+    try:
+        await zmq_service.handlers.initialize_tts_system()
+        print("✅ TTS system ready")
+        logger.info("TTS system initialized successfully")
+    except Exception as e:
+        print(f"\n❌ FATAL: TTS initialization failed: {e}")
+        logger.error(f"TTS initialization failed: {e}")
+        print("\nModelservice cannot start without TTS support.")
+        print("Please check:")
+        print("  - Internet connection (for model download)")
+        print("  - Disk space (~2GB required)")
+        print("  - HuggingFace access")
+        raise SystemExit(1)
     
     print("=" * 60)
     print("[+] ZMQ service ready... (Press Ctrl+C to stop)\n")

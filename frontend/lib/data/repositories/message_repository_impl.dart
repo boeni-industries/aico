@@ -279,10 +279,13 @@ class MessageRepositoryImpl implements MessageRepository {
     Function(List<Message>)? onBackgroundSyncComplete,
   }) async {
     try {
+      debugPrint('📥 [MESSAGE_REPO] getMessages called with conversationId: "$conversationId"');
       // 1. Load from local cache first (instant)
       final cachedMessages = await _database.getConversationMessages(conversationId);
+      debugPrint('📥 [MESSAGE_REPO] Local cache returned ${cachedMessages.length} messages');
       
       if (cachedMessages.isNotEmpty) {
+        debugPrint('✅ [MESSAGE_REPO] Cache hit! Returning ${cachedMessages.length} cached messages');
         // 2. Return cached data immediately (reverse since DB returns DESC)
         final messages = cachedMessages.map((dbMsg) {
           return Message(
@@ -296,6 +299,7 @@ class MessageRepositoryImpl implements MessageRepository {
           );
         }).toList().reversed.toList(); // Reverse to get oldest-first for chat UI
         
+        debugPrint('🔄 [MESSAGE_REPO] Starting background sync...');
         // 3. Sync in background (fire and forget)
         _syncMessagesInBackground(conversationId, onComplete: onBackgroundSyncComplete);
         
@@ -303,6 +307,7 @@ class MessageRepositoryImpl implements MessageRepository {
       }
       
       // 4. Cache empty - fetch from backend
+      debugPrint('⚠️ [MESSAGE_REPO] Cache empty! Fetching from backend...');
       return await _fetchMessagesFromBackend(conversationId, limit: limit, beforeMessageId: beforeMessageId);
       
     } catch (e) {
@@ -316,20 +321,25 @@ class MessageRepositoryImpl implements MessageRepository {
   }
 
   Future<List<Message>> _fetchMessagesFromBackend(String conversationId, {int? limit, String? beforeMessageId}) async {
+    debugPrint('🌐 [MESSAGE_REPO] _fetchMessagesFromBackend called');
     final queryParams = <String, String>{
       'page': '1',
-      if (limit != null) 'page_size': limit.toString(),
+      'page_size': (limit ?? 100).toString(), // Default to 100 messages (backend max)
       if (beforeMessageId != null) 'before': beforeMessageId,
+      // Note: No conversation_id - backend returns all user messages in sequence
     };
+    debugPrint('🌐 [MESSAGE_REPO] Query params: $queryParams');
 
     final response = await _apiClient.request<Map<String, dynamic>>(
       'GET',
       '/conversation/messages',
       queryParameters: queryParams,
     );
+    debugPrint('🌐 [MESSAGE_REPO] Backend response received: ${response != null}');
 
     if (response != null) {
       final messagesData = response['messages'] as List<dynamic>? ?? [];
+      debugPrint('🌐 [MESSAGE_REPO] Backend returned ${messagesData.length} messages');
       
       final messages = messagesData
           .map((json) => MessageModel.fromJson(json as Map<String, dynamic>))
@@ -338,6 +348,7 @@ class MessageRepositoryImpl implements MessageRepository {
           .reversed.toList(); // Backend returns DESC, reverse to ASC for chat UI
 
       // Store in cache for next time
+      debugPrint('💾 [MESSAGE_REPO] Caching ${messages.length} messages to local database...');
       // Note: MessageModel.fromJson already converted userId to 'aico' for assistant messages
       for (final msg in messages) {
         final role = msg.userId == 'aico' ? 'assistant' : 'user';
@@ -354,6 +365,7 @@ class MessageRepositoryImpl implements MessageRepository {
           ),
         );
       }
+      debugPrint('✅ [MESSAGE_REPO] Successfully cached ${messages.length} messages');
 
       return messages;
     } else {
@@ -362,14 +374,19 @@ class MessageRepositoryImpl implements MessageRepository {
   }
 
   void _syncMessagesInBackground(String conversationId, {Function(List<Message>)? onComplete}) {
+    debugPrint('🔄 [MESSAGE_REPO] Background sync started for conversationId: "$conversationId"');
     _fetchMessagesFromBackend(conversationId).then((messages) {
+      debugPrint('🔄 [MESSAGE_REPO] Background sync fetched ${messages.length} messages');
       AICOLog.info('Background sync completed', 
         topic: 'message_repository/background_sync',
         extra: {'conversation_id': conversationId, 'count': messages.length});
       
       // Notify caller with fresh messages
       if (onComplete != null) {
+        debugPrint('🔄 [MESSAGE_REPO] Calling onComplete callback with ${messages.length} messages');
         onComplete(messages);
+      } else {
+        debugPrint('⚠️ [MESSAGE_REPO] No onComplete callback provided');
       }
     }).catchError((e) {
       AICOLog.warn('Background sync failed', 

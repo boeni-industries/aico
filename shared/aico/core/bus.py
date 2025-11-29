@@ -274,8 +274,18 @@ class MessageBusClient:
         return _get_shared_broker_public_key()
     
     async def publish(self, topic: str, payload: ProtobufMessage, 
-                     correlation_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None):
-        """Publish a protobuf message to a topic"""
+                     correlation_id: Optional[str] = None, 
+                     reply_to: Optional[str] = None,
+                     attributes: Optional[Dict[str, str]] = None):
+        """Publish a protobuf message to a topic
+        
+        Args:
+            topic: Topic to publish to
+            payload: Protobuf message payload
+            correlation_id: Optional correlation ID for request/response matching
+            reply_to: Optional specific response topic for this request (enables targeted responses)
+            attributes: Optional additional metadata attributes
+        """
         if not self.running:
             raise MessageBusError("Client not connected")
         
@@ -289,6 +299,8 @@ class MessageBusClient:
         # Add optional attributes
         if correlation_id:
             metadata.attributes["correlation_id"] = correlation_id
+        if reply_to:
+            metadata.attributes["reply_to"] = reply_to
         if attributes:
             metadata.attributes.update(attributes)
         
@@ -675,44 +687,21 @@ class MessageBusBroker:
                         # No messages - this is normal, continue polling
                         continue
                     
-                    #   print(f"[BROKER PROXY] Poll returned {len(socks)} socket(s) with events")
-                    
                     for sock, event in socks:
                         if sock == self.frontend and event == zmq.POLLIN:
                             # Forward from frontend (publishers) to backend (subscribers)
-                            import time
-                            recv_start = time.time()
                             message = await self.frontend.recv_multipart()
-                            recv_time = time.time() - recv_start
-                            
-                            send_start = time.time()
                             await self.backend.send_multipart(message)
-                            send_time = time.time() - send_start
-                            
-                            total_time = time.time() - recv_start
-                            if total_time > 0.01:  # Log if > 10ms
-                                print(f"⏱️ [BROKER] Message forwarding: recv={recv_time*1000:.2f}ms, send={send_time*1000:.2f}ms, total={total_time*1000:.2f}ms", flush=True)
                             
                         elif sock == self.backend and event == zmq.POLLIN:
                             # Forward from backend (subscribers) to frontend (publishers)
                             # This handles BOTH subscription messages AND response messages from subscribers
-                            import time
-                            recv_start = time.time()
                             message = await self.backend.recv_multipart()
-                            recv_time = time.time() - recv_start
-                            
-                            send_start = time.time()
                             await self.frontend.send_multipart(message)
-                            send_time = time.time() - send_start
-                            
-                            total_time = time.time() - recv_start
-                            if total_time > 0.01:  # Log if > 10ms
-                                print(f"⏱️ [BROKER_REVERSE] Message forwarding (sub→pub): recv={recv_time*1000:.2f}ms, send={send_time*1000:.2f}ms, total={total_time*1000:.2f}ms", flush=True)
                             
                 except Exception as e:
                     if self.running:
-                        self.logger.error(f"Error in proxy loop iteration: {e}")
-                        await asyncio.sleep(0.1)
+                        self.logger.error(f"Error in proxy loop: {e}")
             
             #print(f"[BROKER PROXY] Proxy loop exiting")
             self.logger.info("Broker Proxy loop exiting")

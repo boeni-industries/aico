@@ -78,7 +78,11 @@ Thumbs.db
 *.log
 .aico/
 site/
+frontend/assets/tts/
 
 # Misc
 *.bak
 *.tmp
+
+# TTS assets (downloaded at build/CI time, not stored in Git)
+frontend/assets/tts/

@@ -931,5 +931,137 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # Note: SQLite doesn't support DROP COLUMN, so we can't easily rollback
             # In production, would need to recreate table without message_id
         ]
+    ),
+    
+    16: SchemaVersion(
+        version=16,
+        name="Reconcile Feedback Events Schema Conflict",
+        description="Rename AMS feedback_events to ams_feedback_events and restore Memory Album feedback_events table",
+        sql_statements=[
+            # Rename AMS feedback_events table to avoid conflict
+            "ALTER TABLE feedback_events RENAME TO ams_feedback_events",
+            
+            # Recreate Memory Album feedback_events table (v6 schema)
+            """CREATE TABLE IF NOT EXISTS feedback_events (
+                id TEXT PRIMARY KEY,
+                user_uuid TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                message_id TEXT,
+                event_type TEXT NOT NULL,
+                event_category TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                is_sensitive INTEGER DEFAULT 0,
+                federated_at INTEGER,
+                FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Recreate Memory Album indexes
+            "CREATE INDEX IF NOT EXISTS idx_feedback_user_time ON feedback_events(user_uuid, timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_conversation ON feedback_events(conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_type ON feedback_events(event_type, event_category)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback_events(message_id) WHERE message_id IS NOT NULL",
+        ],
+        rollback_statements=[
+            # Drop Memory Album feedback_events
+            "DROP INDEX IF EXISTS idx_feedback_message",
+            "DROP INDEX IF EXISTS idx_feedback_type",
+            "DROP INDEX IF EXISTS idx_feedback_conversation",
+            "DROP INDEX IF EXISTS idx_feedback_user_time",
+            "DROP TABLE IF EXISTS feedback_events",
+            
+            # Restore AMS feedback_events
+            "ALTER TABLE ams_feedback_events RENAME TO feedback_events",
+        ]
+    ),
+    
+    17: SchemaVersion(
+        version=17,
+        name="Emotion Simulation State Persistence",
+        description="Add tables for persisting AICO's emotional state and history across restarts",
+        sql_statements=[
+            # Emotion state table - current emotional state
+            """CREATE TABLE IF NOT EXISTS emotion_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                user_id TEXT NOT NULL DEFAULT 'system',
+                timestamp TEXT NOT NULL,
+                subjective_feeling TEXT NOT NULL,
+                mood_valence REAL NOT NULL,
+                mood_arousal REAL NOT NULL,
+                intensity REAL NOT NULL,
+                warmth REAL NOT NULL,
+                directness REAL NOT NULL,
+                formality REAL NOT NULL,
+                engagement REAL NOT NULL,
+                closeness REAL NOT NULL,
+                care_focus REAL NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
+            # Emotion history table - mood arc over time
+            """CREATE TABLE IF NOT EXISTS emotion_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'system',
+                timestamp TEXT NOT NULL,
+                feeling TEXT NOT NULL,
+                valence REAL NOT NULL,
+                arousal REAL NOT NULL,
+                intensity REAL NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
+            # Indexes for efficient queries
+            "CREATE INDEX IF NOT EXISTS idx_emotion_history_user_time ON emotion_history(user_id, timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_emotion_history_feeling ON emotion_history(feeling)",
+            
+            # Insert default neutral state
+            """INSERT OR IGNORE INTO emotion_state (id, user_id, timestamp, subjective_feeling, 
+                mood_valence, mood_arousal, intensity, warmth, directness, formality, 
+                engagement, closeness, care_focus)
+            VALUES (1, 'system', datetime('now'), 'neutral', 0.0, 0.5, 0.5, 0.6, 0.5, 0.3, 0.6, 0.5, 0.7)""",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_emotion_history_feeling",
+            "DROP INDEX IF EXISTS idx_emotion_history_user_time",
+            "DROP TABLE IF EXISTS emotion_history",
+            "DROP TABLE IF EXISTS emotion_state",
+        ]
+    ),
+    
+    18: SchemaVersion(
+        version=18,
+        name="Fix Schema v16 Mistake - Correct AMS Behavioral Feedback Table",
+        description="Fix v16 error: Rename misnamed ams_feedback_events, create proper ams_behavioral_feedback table",
+        sql_statements=[
+            # Rename the incorrectly named table from v16
+            "ALTER TABLE ams_feedback_events RENAME TO temp_memory_album_feedback",
+            
+            # Create the CORRECT AMS Behavioral Learning feedback table
+            """CREATE TABLE IF NOT EXISTS ams_behavioral_feedback (
+                event_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                skill_id TEXT,
+                reward INTEGER NOT NULL CHECK (reward IN (-1, 0, 1)),
+                reason TEXT,
+                free_text TEXT,
+                timestamp TEXT NOT NULL,
+                processed INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_user ON ams_behavioral_feedback(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_skill ON ams_behavioral_feedback(skill_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_processed ON ams_behavioral_feedback(processed)",
+            
+            # Note: DROP temp table removed - causes lock issues, will be cleaned in v19
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_ams_behavioral_feedback_processed",
+            "DROP INDEX IF EXISTS idx_ams_behavioral_feedback_skill",
+            "DROP INDEX IF EXISTS idx_ams_behavioral_feedback_user",
+            "DROP TABLE IF EXISTS ams_behavioral_feedback",
+            "ALTER TABLE temp_memory_album_feedback RENAME TO ams_feedback_events",
+        ]
     )
 })

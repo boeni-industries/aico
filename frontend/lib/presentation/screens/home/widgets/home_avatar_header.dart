@@ -1,6 +1,6 @@
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
-import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:aico_frontend/presentation/providers/layout_provider.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,23 +23,11 @@ class HomeAvatarHeader extends ConsumerStatefulWidget {
 }
 
 class _HomeAvatarHeaderState extends ConsumerState<HomeAvatarHeader> {
-  Color _getAvatarMoodColor(AvatarMode mode, bool isDark) {
-    switch (mode) {
-      case AvatarMode.thinking:
-        return widget.accentColor;
-      case AvatarMode.speaking:
-        return widget.accentColor.withValues(alpha: 0.8);
-      case AvatarMode.idle:
-      default:
-        return widget.accentColor.withValues(alpha: 0.5);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final conversationState = ref.watch(conversationProvider);
     final avatarState = ref.watch(avatarRingStateProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final layoutState = ref.watch(layoutProvider);
     final isThinking = conversationState.isSendingMessage || conversationState.isStreaming;
 
     // Sync avatar mode with thinking state
@@ -53,25 +41,18 @@ class _HomeAvatarHeaderState extends ConsumerState<HomeAvatarHeader> {
       });
     }
 
-    final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, isDark);
-
     return AnimatedBuilder(
       animation: widget.glowController,
       builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: GlassTheme.pulsingGlow(
-                color: avatarMoodColor,
-                animationValue: widget.glowAnimation.value,
-                baseIntensity: 0.2,
-                pulseIntensity: 0.5,
-              ),
-            ),
-            child: const CompanionAvatar(),
-          ),
+        // In text mode: center alignment
+        // In voice mode: top-center to maximize viewport (from top to input area)
+        final alignment = layoutState.modality == ConversationModality.text
+            ? Alignment.center // Center for text mode
+            : Alignment.topCenter; // Top-aligned in voice mode for maximum viewport
+        
+        return Align(
+          alignment: alignment,
+          child: const CompanionAvatar(), // Full-body with seamless aura
         );
       },
     );
