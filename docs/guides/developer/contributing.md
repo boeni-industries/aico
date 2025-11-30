@@ -8,7 +8,7 @@ Welcome to the AICO project! 🤝 We're building an **emotionally present, embod
 ## 🌟 Why Contribute to AICO?
 
 - **Shape the Future of AI Companionship** - Help define what authentic human-AI relationships look like
-- **Work with Cutting-Edge Technology** - AppraisalCloudPCT emotion simulation, MCTS planning, RND curiosity, federated learning
+- **Work with Cutting-Edge Technology** - C-CPM emotion simulation (Phase 1 implemented), message-driven architecture, local LLMs via Ollama, and planned components like advanced planning and federated learning
 - **Privacy-First Innovation** - Build local-first AI that respects user autonomy and data ownership
 - **Open Research** - Contribute to advancing affective computing and autonomous agency
 - **Welcoming Community** - Join a respectful, collaborative environment focused on authentic relationships
@@ -168,12 +168,12 @@ AICO needs diverse skills and perspectives. Here's how you can contribute:
 - Resource management systems
 - Security and encryption framework
 
-### **Coming Next: MVP Phase**
-- Flutter UI development
-- Local LLM integration (Ollama)
-- Basic avatar system
-- Memory and personality engines
-- Voice interaction systems
+### **MVP Phase (Ongoing / Planned)**
+- Flutter UI development (initial app scaffolded and under active development)
+- Local LLM integration via Ollama (Qwen3 Abliterated 8B + Eve Modelfile in place)
+- Basic avatar system (planned)
+- Memory and personality engines (memory system implemented; personality engine planned)
+- Voice interaction systems (backend TTS via Piper/XTTS implemented; richer voice UX planned)
 
 ## 🆘 Getting Help
 

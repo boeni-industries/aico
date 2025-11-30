@@ -125,7 +125,7 @@ You should see `Python 3.13.5`.
 
 > **ℹ️ Data Encryption Approach**
 > 
-> AICO uses application-level encryption with SQLCipher for all databases (libSQL, Drift). Additional databases (DuckDB for knowledge graph, ChromaDB for semantic memory, LMDB for working memory) are implemented with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
+> AICO uses application-level encryption with SQLCipher for all databases (libSQL in the backend and Drift on the frontend). Semantic memory and knowledge graph embeddings use ChromaDB, and working memory/cache uses LMDB, all with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
 ### 3. UV Workspace Setup (Single Virtual Environment)
 AICO uses UV workspace management with a unified `pyproject.toml` at the root and a single shared virtual environment for all Python components.
@@ -149,7 +149,6 @@ AICO uses UV workspace management with a unified `pyproject.toml` at the root an
   # Verify installation
   uv run aico --help
   uv run python -c "import fastapi; print('Backend deps ready')"
-  uv run python -c "import TTS; print('TTS ready')"
   ```
 
 **Key Changes from Previous Setup:**
@@ -442,8 +441,8 @@ aico/
 ├── data/
 │   ├── aico.db              # Main libSQL database (encrypted)
 │   ├── aico.db.salt         # Encryption salt
-│   ├── analytics.duckdb     # Analytics database (planned)
-│   └── chroma/              # Vector database directory (planned)
+│   ├── analytics.db         # Analytics database (planned, backend TBD)
+│   └── chroma/              # Vector database directory (ChromaDB)
 ├── config/
 │   ├── defaults/            # Default configuration files
 │   └── environments/        # Environment-specific overrides
