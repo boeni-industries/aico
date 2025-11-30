@@ -4043,7 +4043,7 @@
 <p>AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.</p>
 <h3 id="social-relationship-intelligence-production">👥 <strong>Social Relationship Intelligence</strong> ✅ <em>Production</em><a class="headerlink" href="#social-relationship-intelligence-production" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Property Graph Storage</strong>: NetworkX + DuckDB with 204 nodes, 27 edges, 552 indexed properties</li>
+<li><strong>Property Graph Storage</strong>: Hybrid storage using libSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties</li>
 <li><strong>Multi-Pass Entity Extraction</strong>: GLiNER zero-shot recognition + LLM relationship extraction</li>
 <li><strong>Entity Resolution</strong>: 3-step deduplication (semantic blocking → LLM matching → merging)</li>
 <li><strong>Temporal Reasoning</strong>: Bi-temporal tracking (valid_from, valid_until, is_current)</li>
@@ -4053,17 +4053,18 @@
 <li><strong>HNSW Search</strong>: Approximate nearest neighbor for fast entity similarity</li>
 </ul>
 <p><em>Planned:</em> Dynamic relationship learning, voice biometrics, natural family recognition</p>
-<h3 id="conversation-memory-production">🗣️ <strong>Conversation &amp; Memory</strong> ✅ <em>Production</em><a class="headerlink" href="#conversation-memory-production" title="Permanent link">&para;</a></h3>
+<h3 id="conversation-memory-voice-production">🗣️ <strong>Conversation, Memory &amp; Voice</strong> ✅ <em>Production</em><a class="headerlink" href="#conversation-memory-voice-production" title="Permanent link">&para;</a></h3>
 <p><strong>Three-Tier Architecture</strong> with brain-inspired complementary learning:
-- <strong>Working Memory (LMDB)</strong>: 24-hour TTL, sub-millisecond access, conversation-scoped
+- <strong>Working Memory (LMDB)</strong>: 30-day TTL, sub-millisecond access, conversation-scoped
 - <strong>Semantic Memory (ChromaDB)</strong>: Hybrid Search V3 with semantic + BM25 + IDF filtering + RRF fusion
-- <strong>Knowledge Graph (DuckDB)</strong>: Property graph with temporal reasoning and multi-hop queries
+- <strong>Knowledge Graph (libSQL + ChromaDB)</strong>: Hybrid property graph with temporal reasoning and multi-hop queries
 - <strong>Adaptive Memory System (AMS)</strong>: Memory consolidation, Thompson Sampling, RLHF behavioral learning
 - <strong>Memory Album</strong>: User-curated conversation and message-level memories with emotional tone
 - <strong>Real-time Streaming</strong>: WebSocket-based token streaming for responsive conversations
 - <strong>Local LLM</strong>: Qwen3 Abliterated 8B via Ollama with automatic model management
-- <strong>Context Assembly</strong>: Multi-factor scoring (recency, relevance, relationship) across all memory tiers</p>
-<p><em>Planned:</em> Voice conversations, proactive conversation starters</p>
+- <strong>Context Assembly</strong>: Multi-factor scoring (recency, relevance, relationship) across all memory tiers
+- <strong>Text-to-Speech</strong>: Backend TTS via Piper/XTTS with streaming audio to Flutter (<code>just_audio</code>)</p>
+<p><em>Planned:</em> Local speech-to-text, proactive conversation starters</p>
 <h3 id="custom-character-personalities-production">🎭 <strong>Custom Character Personalities</strong> ✅ <em>Production</em><a class="headerlink" href="#custom-character-personalities-production" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Eve Character</strong>: Warm, curious, contemplative companion with genuine thoughts and feelings</li>
@@ -4074,13 +4075,13 @@
 <li><strong>Create Your Own</strong>: Define professional assistants, creative collaborators, philosophical thinkers, or supportive friends</li>
 </ul>
 <h3 id="emotional-intelligence-in-development">😊 <strong>Emotional Intelligence</strong> 🚧 <em>In Development</em><a class="headerlink" href="#emotional-intelligence-in-development" title="Permanent link">&para;</a></h3>
-<p><strong>Production:</strong>
+<p><strong>Production / Implemented:</strong>
 - <strong>Text Sentiment</strong>: BERT Multilingual sentiment classification
 - <strong>Emotion Analysis</strong>: RoBERTa 6-emotion classification (joy, sadness, anger, fear, surprise, disgust)
 - <strong>Intent Classification</strong>: XLM-RoBERTa multilingual intent understanding
-- <strong>Memory Album Integration</strong>: Automatic emotional tone detection</p>
+- <strong>Memory Album Integration</strong>: Automatic emotional tone detection
+- <strong>Emotion Simulation</strong>: C-CPM Component Process Model, Phase 1 (4-stage appraisal) implemented</p>
 <p><strong>Planned:</strong>
-- Advanced emotion simulation (AppraisalCloudPCT with 4-stage appraisal)
 - Multi-modal emotion recognition (facial, voice)
 - Personality simulation with evolving traits (Big Five, HEXACO)
 - Crisis detection and empathetic response generation</p>
@@ -4106,10 +4107,11 @@
 <li><strong>Message Actions</strong>: Hover-based toolbar (Copy, Remember, Regenerate, Feedback)</li>
 <li><strong>Real-time Streaming</strong>: WebSocket support for streaming AI responses</li>
 <li><strong>Offline-First</strong>: Cache-first loading with background sync</li>
+<li><strong>3D Avatar System</strong>: Three.js + Ready Player Me viewer with idle/talking animations and emotion blend-shapes driven by AICO's emotion state</li>
 </ul>
-<p><strong>Planned:</strong>
-- 3D Avatar System (Three.js + Ready Player Me + TalkingHead.js)
-- Voice interaction (speech-to-text and text-to-speech)
+<p><strong>Planned / Extending:</strong>
+- Local speech-to-text and richer voice controls
+- Scene-aware avatar behavior driven by vision context and agency
 - Multi-device roaming with P2P encrypted sync
 - AR/VR integration and spatial computing</p>
 <h3 id="privacy-security-production">🔒 <strong>Privacy &amp; Security</strong> ✅ <em>Production</em><a class="headerlink" href="#privacy-security-production" title="Permanent link">&para;</a></h3>
@@ -4155,13 +4157,18 @@
 <p>AICO represents a new paradigm in AI companionship—prioritizing emotional connection, personal growth, privacy, and genuine relationship over mere task completion. All features are designed to be modular, extensible, and evolve with the needs of users and developers.</p>
 <h2 id="development-roadmap">🛤️ Development Roadmap<a class="headerlink" href="#development-roadmap" title="Permanent link">&para;</a></h2>
 <div class="admonition info">
-<p class="admonition-title">Current Phase: Foundation</p>
-<p>We're currently building the core infrastructure scaffolding. See our roadmap for the complete development journey.</p>
+<p class="admonition-title">Current Status</p>
+<ul>
+<li><strong>Foundation I</strong>: ✅ Complete (core infrastructure in place)</li>
+<li><strong>MVP Companion</strong>: 🚧 In Progress (conversation + memory complete, voice/avatar/agency evolving)</li>
+<li><strong>Foundation II</strong>: 🚧 Partially Complete (selected advanced infrastructure)</li>
+</ul>
+<p>See the detailed roadmap docs in <code>/docs/roadmap/</code> for full status.</p>
 </div>
 <h3 id="development-stages"><strong>Development Stages</strong><a class="headerlink" href="#development-stages" title="Permanent link">&para;</a></h3>
 <ol>
 <li>
-<p><strong>🛠️ Foundation I</strong> ✅ <em>(Complete)</em> - Essential infrastructure</p>
+<p><strong>🛠️ Foundation I</strong> ✅ <em>(Complete)</em> – Essential infrastructure</p>
 <ul>
 <li>✅ CurveZMQ encrypted message bus with Protocol Buffers</li>
 <li>✅ FastAPI backend with plugin architecture</li>
@@ -4172,7 +4179,7 @@
 </ul>
 </li>
 <li>
-<p><strong>🤝 Companion</strong> 🚧 <em>(In Progress)</em> - MVP with basic companionship</p>
+<p><strong>🤝 MVP Companion</strong> 🚧 <em>(In Progress)</em> – Basic companion that talks, remembers, and (eventually) initiates</p>
 <ul>
 <li>✅ Text conversation with streaming responses</li>
 <li>✅ Three-tier memory system (working, semantic, knowledge graph)</li>
@@ -4180,12 +4187,13 @@
 <li>✅ Custom character personalities (Eve + Modelfile system)</li>
 <li>✅ Knowledge graph with 204 nodes, 27 edges</li>
 <li>✅ Memory Album for user-curated memories</li>
-<li>🚧 Voice interaction (planned)</li>
-<li>🚧 3D avatar (ready for integration)</li>
+<li>✅ Voice output via backend TTS (Piper/XTTS streaming to Flutter)</li>
+<li>✅ 3D avatar with emotions and animations</li>
+<li>🚧 Speech input (local STT) and proactive initiation</li>
 </ul>
 </li>
 <li>
-<p><strong>🛠️ Foundation II</strong> 🚧 <em>(Partially Complete)</em> - Advanced infrastructure</p>
+<p><strong>🛠️ Foundation II</strong> 🚧 <em>(Partially Complete)</em> – Advanced infrastructure (deployment, monitoring, plugins, updates)</p>
 <ul>
 <li>✅ Plugin system (message bus, log consumer, security)</li>
 <li>✅ Advanced resource management (CPU/memory monitoring)</li>
@@ -4196,31 +4204,31 @@
 </ul>
 </li>
 <li>
-<p><strong>💭 Confidante</strong> - Deep emotional intelligence</p>
+<p><strong>💭 Confidante</strong> – Deep emotional intelligence (see <code>roadmap/confidante.md</code>)</p>
 <ul>
 <li>Advanced emotion simulation, crisis support, empathy modeling</li>
 </ul>
 </li>
 <li>
-<p><strong>🦾 Sidekick</strong> - Advanced autonomous agency</p>
+<p><strong>🦾 Sidekick</strong> – Advanced autonomous agency (see <code>roadmap/sidekick.md</code>)</p>
 <ul>
 <li>MCTS planning, curiosity-driven learning, proactive assistance</li>
 </ul>
 </li>
 <li>
-<p><strong>🌟 Co-Adventurer</strong> - Collaborative learning and growth</p>
+<p><strong>🌟 Co-Adventurer</strong> – Collaborative learning and growth</p>
 <ul>
 <li>Shared goal pursuit, collaborative problem-solving, meta-learning</li>
 </ul>
 </li>
 <li>
-<p><strong>🌐 Embodied Presence</strong> - Multi-modal integration</p>
+<p><strong>🌐 Embodied Presence</strong> – Multi-modal integration</p>
 <ul>
 <li>Federated device roaming, AR/VR, IoT, robotics, spatial computing</li>
 </ul>
 </li>
 <li>
-<p><strong>🤝 Community</strong> - Collective intelligence</p>
+<p><strong>🤝 Community</strong> – Collective intelligence</p>
 <ul>
 <li>Privacy-preserving social features, federated learning</li>
 </ul>
@@ -4263,10 +4271,10 @@
 <li>
 <p><strong>Key Technologies:</strong></p>
 </li>
-<li><strong>Backend:</strong> Python 3.13, FastAPI 0.116+, ZeroMQ 27.0+ (CurveZMQ), Protocol Buffers 6.32, libSQL 0.1.8 (SQLCipher), DuckDB 1.3.2+, ChromaDB 1.0.16+, LMDB</li>
+<li><strong>Backend:</strong> Python 3.13, FastAPI 0.116+, ZeroMQ 27.0+ (CurveZMQ), Protocol Buffers 6.32, libSQL 0.1.8 (SQLCipher), ChromaDB 1.0.16+, LMDB</li>
 <li><strong>Frontend:</strong> Flutter 3.27+, Dart 3.8+, Riverpod 3.0, Drift 2.29 (SQLCipher), Dio 5.4, Protocol Buffers 5.0</li>
-<li><strong>Modelservice:</strong> ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), BERT/RoBERTa (sentiment/emotion)</li>
-<li><strong>AI Models:</strong> Qwen3 Abliterated 8B (conversation), Llama 3.2 Vision 11B (optional), Llama 3.2 1B (optional)</li>
+<li><strong>Modelservice:</strong> ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), BERT/RoBERTa (sentiment/emotion), Piper/XTTS TTS</li>
+<li><strong>AI Models:</strong> Qwen3 Abliterated 8B (conversation), vision model (planned), additional small models as needed</li>
 <li><strong>CLI:</strong> Typer 0.12, Rich 13.7, PyInstaller (v1.1.0, production-ready)</li>
 <li><strong>Security:</strong> CurveZMQ encryption, Argon2id, PBKDF2, NaCl/libsodium, JWT (HS256), SQLCipher (AES-256-GCM)</li>
 </ul>

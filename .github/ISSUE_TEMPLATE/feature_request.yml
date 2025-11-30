@@ -1,0 +1,71 @@
+name: Feature request
+description: Suggest an idea to improve AICO
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping shape AICO.
+        Please describe the problem and the change you’d like to see.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to solve or improve?
+      placeholder: >-
+        I’m trying to ..., but AICO currently ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like AICO to behave?
+      placeholder: >-
+        AICO could ... so that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative solutions or workarounds?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this mostly affect?
+      options:
+        - Backend APIs (FastAPI HTTP / WebSocket)
+        - Backend Scheduler / background tasks
+        - Backend Message Bus / CurveZMQ
+        - Memory & Knowledge Graph (working, semantic, AMS, KG)
+        - Emotion Simulation (Appraisal / affect models)
+        - Agency / Autonomous Behavior
+        - Modelservice / AI behavior (LLM, NER, embeddings, TTS)
+        - Flutter app (mobile/desktop UI/UX)
+        - Studio (web/admin UI)
+        - CLI / developer tooling
+        - Documentation / guides
+        - Other
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who would benefit from this feature and how?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links to related issues/discussions, mockups, or prior art.
+
+  - type: markdown
+    attributes:
+      value: |
+        **Questions or how-to help?**
+        For general questions or brainstorming, you can also start a [Discussion](https://github.com/boeni-industries/aico/discussions).

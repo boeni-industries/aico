@@ -86,10 +86,10 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **libSQL 0.1.8** | Primary relational storage | SQLite fork with SQLCipher encryption (AES-256), schema v15 with 15 migrations |
-| **LMDB** | Working memory (24hr TTL) | Memory-mapped key-value store for conversation history, sub-millisecond access |
-| **ChromaDB 1.0.16+** | Vector database | Embedded vector storage for semantic memory with cosine similarity |
-| **DuckDB 1.3.2+** | Knowledge graph storage | Columnar storage for property graph nodes and edges |
+| **libSQL 0.1.8** | Primary relational storage | SQLite-compatible engine with SQLCipher-style encryption, schema v17 with 17 migrations |
+| **LMDB** | Working memory (30-day TTL) | Memory-mapped key-value store for conversation history, sub-millisecond access |
+| **ChromaDB 1.0.16+** | Vector database | Embedded vector storage for semantic memory and KG embeddings with cosine similarity |
+| **libSQL + ChromaDB** | Knowledge graph storage | Encrypted relational storage + vector index for property graph nodes and edges |
 | **SQLCipher** | Database encryption | AES-256-GCM encryption for all structured data at rest |
 | **Drift (Flutter)** | Frontend database | Type-safe SQL with SQLCipher encryption for local message cache |
 | **P2P Sync Protocol** | Federated device sync (planned) | Custom protocol for secure device-to-device synchronization |
@@ -126,13 +126,15 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 ## Deployment & Distribution Layer
 
-| Technology | Purpose | Justification |
-|------------|---------|---------------|
-| **Docker/Podman** | Containerization | Isolated, reproducible environments |
-| **Alpine Linux** | Base images | Minimal footprint for containers |
-| **Electron** | Desktop packaging | Cross-platform desktop application packaging |
-| **Delta Updates** | Efficient updates | Bandwidth-efficient update mechanism |
-| **Cryptographic Signatures** | Update verification | Ensures update authenticity |
+> AICO is currently designed for local-first, non-containerized installs. Docker/Podman are **not** used in the reference setup.
+
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **Local Python/uv env** | Backend/modelservice runtime | ✅ Current reference setup (no containers) |
+| **Flutter builds** | Frontend distribution | ✅ Native builds for desktop/mobile |
+| **Electron** | Desktop packaging | 🚧 Planned wrapper for packaged desktop app |
+| **Delta Updates** | Efficient updates | 🚧 Planned update mechanism |
+| **Cryptographic Signatures** | Update verification | 🚧 Planned for packaged releases |
 
 ## Development & Testing Layer
 
@@ -210,8 +212,8 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology | Purpose | Status |
 |------------|---------|--------|
-| **AppraisalCloudPCT** | Emotion architecture | Architecture defined, implementation planned |
-| **4-Stage Appraisal** | Emotion generation | Research complete, implementation planned |
+| **C-CPM (Conversational Component Process Model)** | Emotion architecture | ✅ Phase 1 implemented (core appraisal engine, C-CPM pipeline) |
+| **4-Stage Appraisal** | Emotion generation | ✅ Implemented (Relevance → Implication → Coping → Normative) |
 
 ### Autonomous Agency (Planned)
 

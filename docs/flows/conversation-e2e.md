@@ -8,10 +8,10 @@ flowchart TD
     B --> C[🌐 API Gateway<br/>HTTP → ProtoBuf]
     C --> D[🚌 Message Bus<br/>user/input/multimodal]
     
-    D --> E[🎯 Multimodal Service<br/>Llama 3.2 Vision 11B]
+    D --> E[🎯 Multimodal Service (Planned)<br/>Vision Model]
     E --> F[🚌 Message Bus<br/>vision/analysis/complete]
     
-    F --> G1[😊 Emotion Simulation<br/>AppraisalCloudPCT]
+    F --> G1[😊 Emotion Simulation<br/>C-CPM (4-stage appraisal)]
     F --> G2[👥 Social Relationship<br/>Vector Analysis]
     F --> G3[🎭 Personality Sim<br/>Trait Expression]
     F --> G4[💬 Conversation Engine<br/>Context Integration]
@@ -24,12 +24,12 @@ flowchart TD
     I --> G4
     J --> G4
     
-    G4 --> K[🧠 Nous Hermes 3<br/>Response Generation]
+    G4 --> K[🧠 Qwen3 Abliterated 8B<br/>Response Generation]
     K --> L[🚌 Message Bus<br/>conversation/response/generated]
     
     L --> M1[🧠 Memory System<br/>Episodic Storage]
     L --> M2[🎭 Avatar System<br/>Expression Sync]
-    L --> M3[🎯 Goal System<br/>Proactive Planning]
+    L --> M3[🎯 Goal System (Planned)<br/>Proactive Planning]
     L --> M4[🌐 API Gateway<br/>Response Routing]
     
     M4 --> N[📱 Flutter Frontend<br/>WebSocket Delivery]
@@ -112,7 +112,7 @@ Payload: MultimodalInput {
 ## **Step 3: Multimodal Processing Service**
 
 ### **Model Selection & Analysis**
-**Multimodal Processor** receives message and routes to **Llama 3.2 Vision 11B** (optimal for emotional/social context):
+**Multimodal Processor** (planned) receives message and routes to a local vision model (target: Llama-3.2 Vision class) for emotional/social context.
 
 ### **Vision Analysis Results**
 ```python
@@ -147,10 +147,10 @@ Payload: EmotionalContext {
 
 ---
 
-## **Step 4: Emotion Simulation Processing**
+## **Step 4: Emotion Simulation Processing (Current)**
 
-### **AppraisalCloudPCT Processing**
-**Emotion Simulation** receives visual emotional context and processes through 4-stage appraisal:
+### **C-CPM Processing (Current)**
+**Emotion Simulation** (C-CPM) receives emotional context and processes it through 4-stage appraisal:
 
 #### **Stage 1: Relevance Appraisal**
 ```python
@@ -230,7 +230,7 @@ Payload: RelationshipContext {
 
 ---
 
-## **Step 6: Personality Expression Mapping**
+## **Step 6: Personality Expression Mapping (Planned)**
 
 ### **Trait Vector Processing**
 **Personality Simulation** receives emotional and social context:
@@ -290,7 +290,7 @@ User Message: "AICO, look at my science fair project! I'm nervous about the judg
 
 ---
 
-## **Step 8: Autonomous Agency Enhancement**
+## **Step 8: Autonomous Agency Enhancement (Planned)**
 
 ### **Goal Recognition & Initiative**
 **Goal System** identifies opportunity for proactive support:
@@ -318,10 +318,12 @@ Payload: ProactiveInitiative {
 
 ---
 
-## **Step 9: Avatar System Integration**
+## **Step 9: Avatar System Integration (Current, with Planned Extensions)**
 
-### **Scene-Aware Avatar Behavior**
-**Avatar System** receives visual context for appropriate expressions:
+### **Scene-Aware Avatar Behavior (Planned Extension)**
+**Avatar System** (current) already supports 3D avatar rendering, idle/talking animations, and emotion blend-shapes driven by the emotion engine.
+
+Planned extension: receive visual context for scene-aware expressions:
 
 ```
 Topic: avatar/scene/analysis
@@ -365,7 +367,7 @@ Payload: ConversationResponse {
 
 ---
 
-## **Step 11: Memory Formation**
+## **Step 11: Memory Formation (Current)**
 
 ### **Episodic Memory Storage**
 **Memory System** creates lasting memory of interaction:
@@ -416,7 +418,7 @@ ConversationMessage {
 
 ---
 
-## **Step 13: Autonomous Follow-Up Planning**
+## **Step 13: Autonomous Follow-Up Planning (Planned)**
 
 ### **Background Agency Processing**
 **Initiative Manager** schedules proactive follow-up:
@@ -439,14 +441,14 @@ proactive_initiative = {
 ### **Components Involved (in order)**
 1. **Flutter Frontend** → HTTP/JSON → **API Gateway**
 2. **API Gateway** → ZeroMQ/ProtoBuf → **Message Bus**
-3. **Message Bus** → **Multimodal Processing Service**
-4. **Multimodal Service** → **Llama 3.2 Vision 11B** (local inference)
+3. **Message Bus** → **Multimodal Processing Service** (planned)
+4. **Multimodal Service** → Vision model (local inference, planned)
 5. **Multimodal Service** → ZeroMQ → **Message Bus** (vision results)
-6. **Message Bus** → **Emotion Simulation** (AppraisalCloudPCT)
+6. **Message Bus** → **Emotion Simulation** (C-CPM 4-stage appraisal)
 7. **Message Bus** → **Social Relationship System** (vector analysis)
 8. **Message Bus** → **Personality Simulation** (trait expression)
 9. **Message Bus** → **Conversation Engine** (context integration)
-10. **Conversation Engine** → **Nous Hermes 3** (response generation)
+10. **Conversation Engine** → **Qwen3 Abliterated 8B** (response generation)
 11. **Conversation Engine** → ZeroMQ → **Message Bus** (response)
 12. **Message Bus** → **Memory System** (episodic storage)
 13. **Message Bus** → **Avatar System** (expression sync)
@@ -461,7 +463,7 @@ proactive_initiative = {
 - Scene-appropriate emotional and social context detection
 
 #### **😊 Emotional Intelligence**
-- 4-stage AppraisalCloudPCT processing of achievement + anxiety
+- 4-stage C-CPM appraisal processing of achievement + anxiety (Phase 1 implemented)
 - Relationship-appropriate emotional support and validation
 - Recognition of pride mixed with pre-competition nervousness
 
@@ -470,7 +472,7 @@ proactive_initiative = {
 - Authority balance: guidance without control
 - High care responsibility driving supportive response approach
 
-#### **🤖 Autonomous Agency**
+#### **🤖 Autonomous Agency (Planned)**
 - Proactive follow-up planning for science fair judging day
 - Goal recognition: immediate emotional support + long-term confidence building
 - Initiative scheduling based on temporal context and relationship needs
@@ -480,22 +482,25 @@ proactive_initiative = {
 - Visual memory embedding for future similarity-based retrieval
 - Context preservation for conversation continuity
 
-#### **🎭 Embodied Presence**
-- Avatar expressions synchronized with emotional tone
-- Visual indicators confirming multimodal understanding
-- Gesture coordination with supportive communication style
+#### **🎭 Embodied Presence (Current / Planned)**
+- **Current:**
+  - 3D avatar with idle/talking animations
+  - Avatar expressions synchronized with emotional tone via emotion labels and blend-shapes
+- **Planned:**
+  - Scene-aware behavior from vision context
+  - Gesture coordination with supportive communication style
 
 #### **🔒 Privacy & Security**
 - Local-only image processing (no cloud APIs)
 - Encrypted transport and storage of visual data
 - Relationship-compartmentalized memory storage
 
-### **Performance Metrics**
-- **Total Latency**: 180ms (user input → response delivery)
-- **Image Processing**: 850ms (Llama 3.2 Vision inference)
-- **Context Integration**: 45ms (emotion + relationship + personality)
-- **Response Generation**: 320ms (Nous Hermes 3 with visual context)
-- **Memory Storage**: 25ms (episodic + visual memory formation)
+### **Performance Metrics (Target/Planned)**
+- **Total Latency**: ~180ms (user input → response delivery)
+- **Image Processing**: ~850ms (vision model inference, when implemented)
+- **Context Integration**: ~45ms (emotion + relationship + personality)
+- **Response Generation**: ~320ms (Qwen3 Abliterated 8B with rich context)
+- **Memory Storage**: ~25ms (episodic + visual memory formation)
 
 ### **Message Bus Traffic**
 - **Input**: 1 message (800KB image + text)

@@ -38,7 +38,7 @@ This isn't just feature development—it's relationship evolution. We start with
   - **Component**: Individual functional units (e.g., Trait Vector, Appraisal Engine)
 
 - **Key Technologies:**
-  - **Backend:** Python 3.13, FastAPI, ZeroMQ (CurveZMQ), Protocol Buffers 6.32+, libSQL (SQLCipher), DuckDB, ChromaDB, LMDB
+  - **Backend:** Python 3.13, FastAPI, ZeroMQ (CurveZMQ), Protocol Buffers 6.32+, libSQL (SQLCipher), ChromaDB, LMDB
   - **Frontend:** Flutter 3.27+, Drift (SQLCipher), Dio HTTP client, Riverpod state management, just_audio
   - **Modelservice:** ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), Piper TTS, Coqui XTTS v2
   - **Shared Library:** Cross-subsystem Python package with AI, data, security, and core modules
@@ -86,7 +86,7 @@ This isn't just feature development—it's relationship evolution. We start with
 AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience.
 
 ### 👥 Social Relationship Intelligence
-- **[DONE]** Hybrid Vector-Graph Architecture: Production-ready property graph with NetworkX + DuckDB storage
+- **[DONE]** Hybrid Vector-Graph Architecture: Production-ready property graph with NetworkX + libSQL + ChromaDB storage
 - **[DONE]** Knowledge Graph Extraction: Multi-pass GLiNER entity extraction with semantic classification
 - **[DONE]** Entity Resolution: HNSW-based semantic matching with LLM batch verification
 - **[DONE]** Graph Analytics: PageRank importance scoring, community detection, centrality analysis
@@ -110,7 +110,7 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 - **[DONE]** ChromaDB: 768-dim multilingual embeddings with cosine similarity
 - **[DONE]** Full-Corpus BM25: Accurate IDF statistics for precise keyword matching
 - **[DONE]** Relevance Thresholds: Automatic filtering (min_score=0.35, min_idf=0.6)
-- **[DONE]** Knowledge Graph: Property graph with NetworkX + DuckDB storage
+- **[DONE]** Knowledge Graph: Property graph with NetworkX + libSQL + ChromaDB storage
 - **[DONE]** Multi-Pass Extraction: GLiNER entities + LLM relationships
 - **[DONE]** Entity Resolution: 3-step deduplication (blocking → matching → merging)
 - **[DONE]** Temporal Reasoning: Bi-temporal tracking (valid_from, valid_until, is_current)
@@ -276,7 +276,7 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - ✅ **Memory System**: Complete 3-tier architecture
   - Working Memory (LMDB): 30-day TTL, conversation-scoped isolation
   - Semantic Memory (ChromaDB): Hybrid search V3 with RRF fusion
-  - Knowledge Graph (DuckDB): Property graph with GQL/Cypher queries
+  - Knowledge Graph (libSQL + ChromaDB): Property graph with GQL/Cypher queries
   - Adaptive Memory System: Consolidation, behavioral learning, temporal intelligence
 - ✅ **Task Scheduler**: Cron-based with resource awareness and execution history
 - ✅ **CLI**: Complete admin tooling with 100+ commands across 15 groups

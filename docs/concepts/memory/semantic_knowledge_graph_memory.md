@@ -62,151 +62,58 @@ Conversation → Multi-Pass Extraction → Property Graph → Semantic Entity Re
 
 ---
 
-## Core Algorithms
+## Core Algorithms (Conceptual)
 
 ### 1. Multi-Pass Extraction (Gleanings)
 
-**Problem:** LLMs extract only 60-70% of information on first pass (Microsoft GraphRAG research, 2024).
+**Problem:** Single-pass extraction misses information; repeated conversations create duplicate facts.
 
-**Algorithm:**
-```python
-def extract_with_gleanings(text: str, max_passes: int = 2) -> PropertyGraph:
-    graph = PropertyGraph()
-    
-    # Pass 1: Initial extraction
-    entities_1 = gliner_extract_entities(text)
-    relations_1 = llm_extract_relations(text, entities_1)
-    graph.add(entities_1, relations_1)
-    
-    # Pass 2+: Gleaning (extract missed information)
-    for i in range(max_passes):
-        prompt = f"Previously extracted: {graph}. Extract ADDITIONAL information from: {text}"
-        new_extractions = llm_extract(prompt)
-        if not new_extractions:
-            break
-        graph.add(new_extractions)
-    
-    # Pass N: Novel inference (implicit relations from conversation history)
-    implicit_relations = infer_from_context(graph, conversation_history)
-    graph.add(implicit_relations)
-    
-    return graph
-```
+**Concept:**
 
-**Benefits:**
-- 90%+ information capture vs 60-70% single-pass
-- Discovers implicit relationships from context
-- Deterministic: same conversation → same graph structure
+- **Pass 1:** Extract entities and relations.
+- **Pass 2+:** Ask the model "what did we miss?" and add only genuinely new facts.
+- **Final step:** Infer implicit relations from accumulated context.
+
+This produces a **deterministic property graph** for a conversation and significantly reduces missed information without mirroring the full Python implementation here.
 
 ---
 
 ### 2. Property Graph Model
 
-**Problem:** Simple triplets `[subject, relation, object]` lack expressiveness for rich metadata.
+**Problem:** Simple triplets `[subject, relation, object]` are too limited for rich metadata.
 
-**Data Model:**
-```python
-@dataclass
-class PropertyGraphNode:
-    """Entity with typed properties"""
-    id: str
-    label: str  # PERSON, PLACE, ORGANIZATION, EVENT
-    properties: Dict[str, Any]  # name, age, location, etc.
-    embedding: List[float]  # For similarity search
-    confidence: float
-    source_text: str
-    created_at: datetime
+**Conceptual model:**
 
-@dataclass
-class PropertyGraphEdge:
-    """Relationship with typed properties"""
-    source_id: str
-    target_id: str
-    relation_type: str  # WORKS_AT, MOVED_TO, KNOWS
-    properties: Dict[str, Any]  # since, until, reason, etc.
-    confidence: float
-    source_text: str
-    created_at: datetime
+```text
+Node:
+  id: string
+  label: PERSON | PLACE | ORGANIZATION | EVENT | ...
+  properties: map<string, any>   # name, age, city, etc.
+  embedding: vector<float>
+
+Edge:
+  source_id: Node.id
+  target_id: Node.id
+  relation_type: string          # WORKS_AT, MOVED_TO, KNOWS, ...
+  properties: map<string, any>   # since, until, reason, etc.
 ```
 
-**Benefits:**
-- Richer representation than flat text
-- Typed entities and relations enable schema validation
-- Properties store contextual metadata
-- Direct migration path to Neo4j graph database
-- Supports complex queries (future: Cypher)
+Typed nodes and edges with flexible properties make the graph expressive and easy to extend without encoding full class definitions here.
 
 ---
 
 ### 3. Semantic Entity Resolution (Multi-Tier)
 
-**Problem:** String matching fails on variants ("NMT" vs "neural machine translation"). Embedding similarity alone creates false positives. LLM matching for all pairs is expensive.
+**Problem:** Simple string or embedding similarity is either too weak or too noisy.
 
-**Algorithm (Enhanced 2-tier process):**
+**Concept:**
 
-#### Tier 1: Exact Name Matching (Deterministic)
-```python
-def exact_match(candidates: List[Tuple[Node, Node]]) -> List[Tuple[Node, Node]]:
-    """Auto-merge entities with identical names (case-insensitive)"""
-    exact_matches = []
-    for new_node, existing_node in candidates:
-        new_name = new_node.properties.get('name', '').lower().strip()
-        existing_name = existing_node.properties.get('name', '').lower().strip()
-        if new_name == existing_name and new_name:
-            exact_matches.append((new_node, existing_node))
-    return exact_matches
-```
+1. **Exact matching:** Case-insensitive comparison on canonical names to merge obvious duplicates (fast, 100% precision).
+2. **Semantic blocking:** Use embeddings to create candidate pairs that might match.
+3. **LLM verification:** Only for ambiguous pairs, to decide if they are truly the same real-world entity.
+4. **Canonical merge:** Choose a canonical node and remap edges to preserve referential integrity.
 
-**Benefits:**
-- 100% precision for exact duplicates
-- Instant (no LLM call)
-- 60-80% of duplicates are exact matches
-- Reduces LLM load by 60-80%
-
-#### Tier 2: LLM Verification (Fuzzy/Ambiguous Cases)
-```python
-def llm_batch_matching(fuzzy_candidates: List[Tuple[Node, Node]]) -> List[Tuple[Node, Node]]:
-    """LLM verification only for non-exact matches"""
-    # Only process candidates that didn't match exactly
-    # Batch process for efficiency (50-100 pairs per call)
-    prompt = f"""
-    Determine which pairs are duplicates (same real-world entity).
-    Candidate pairs: {fuzzy_candidates}
-    Return JSON array with is_duplicate and reasoning.
-    """
-    return llm_call(prompt, response_format="json")
-```
-
-#### Step 3: LLM Merging (Conflict Resolution)
-```python
-def llm_merge(entities: List[Node]) -> Node:
-    """Merge duplicates with conflict resolution"""
-    # Track node mapping for edge integrity
-    merged_node = select_canonical(entities)  # Keep oldest/highest confidence
-    node_mapping = {node.id: merged_node.id for node in entities if node.id != merged_node.id}
-    return merged_node, node_mapping
-```
-
-#### Step 4: Edge Integrity (Critical)
-```python
-def update_edges(node_mapping: Dict[str, str]):
-    """Update all edges to point to canonical nodes"""
-    for superseded_id, canonical_id in node_mapping.items():
-        # Update source references
-        db.execute("UPDATE kg_edges SET source_id = ? WHERE source_id = ?", 
-                   (canonical_id, superseded_id))
-        # Update target references
-        db.execute("UPDATE kg_edges SET target_id = ? WHERE target_id = ?",
-                   (canonical_id, superseded_id))
-```
-
-**Benefits:**
-- 95%+ deduplication accuracy (maintained)
-- 60-80% fewer LLM calls (cost/latency reduction)
-- 100% referential integrity (edges always valid)
-- Explainable decisions (chain-of-thought reasoning)
-- Handles semantic equivalence ("SF" = "San Francisco")
-- Conflict resolution preserves data integrity
+This preserves accuracy while dramatically reducing LLM calls and maintaining a clean graph, without embedding the full function implementations here.
 
 **Implementation Status:** ✅ **Fully Implemented** with enhancements beyond original design
 
@@ -216,51 +123,15 @@ def update_edges(node_mapping: Dict[str, str]):
 
 ### 4. Graph Fusion (Global Perspective)
 
-**Problem:** Local sentence-level extraction misses global relationships across conversation history.
+**Problem:** Per-message extraction misses global relationships across history.
 
-**Algorithm (Graphusion framework, ACL 2024):**
+**Concept:**
 
-```python
-def fuse_graphs(new_graph: PropertyGraph, existing_graph: PropertyGraph) -> PropertyGraph:
-    """Fuse new extractions with existing knowledge"""
-    
-    # Step 1: Entity Merging
-    # Normalize variants: "NMT" + "neural machine translation" → canonical form
-    merged_nodes = {}
-    for new_node in new_graph.nodes:
-        canonical = find_canonical_entity(new_node, existing_graph)
-        if canonical:
-            merged_nodes[new_node.id] = merge_entities(canonical, new_node)
-        else:
-            merged_nodes[new_node.id] = new_node
-    
-    # Step 2: Conflict Resolution
-    # Multiple relations between same entities? Choose best one.
-    resolved_edges = []
-    for (source, target), relations in group_by_endpoints(all_edges):
-        if len(relations) == 1:
-            resolved_edges.append(relations[0])
-        else:
-            best = llm_resolve_conflict(relations, conversation_context)
-            resolved_edges.append(best)
-    
-    # Step 3: Novel Triplet Discovery
-    # Infer implicit relationships from conversation history
-    novel_edges = llm_infer_implicit_relations(
-        merged_nodes, 
-        resolved_edges,
-        conversation_history
-    )
-    resolved_edges.extend(novel_edges)
-    
-    return PropertyGraph(merged_nodes, resolved_edges)
-```
+- Merge new graph slices into the existing graph by reusing entity resolution.
+- Resolve conflicting edges between the same endpoints.
+- Optionally infer new edges from the global structure and conversation history.
 
-**Benefits:**
-- Global understanding vs local sentence extraction
-- Discovers implicit relationships
-- Resolves conflicting information
-- Maintains knowledge consistency
+This turns incremental extractions into a coherent, evolving knowledge graph.
 
 ---
 
@@ -290,338 +161,23 @@ chromadb.get_collection('kg_nodes').add(
     metadatas=[node_metadata],
     ids=[node.id]
 )
-
-# Collection: kg_edges
-# Purpose: Semantic search over relationships
-edge_doc = f"{edge.relation_type}: {edge.source_id} -> {edge.target_id} ({edge.source_text})"
-edge_metadata = {
-    'edge_id': edge.id,
-    'source_id': edge.source_id,
-    'target_id': edge.target_id,
-    'relation_type': edge.relation_type,
-    'properties': json.dumps(edge.properties),
-    'confidence': edge.confidence,
-    'user_id': user_id,
-    'created_at': edge.created_at.isoformat()
-}
-chromadb.get_collection('kg_edges').add(
-    documents=[edge_doc],
-    embeddings=[edge.embedding],
-    metadatas=[edge_metadata],
-    ids=[edge.id]
-)
 ```
 
 #### libSQL Tables (Relational Index)
 
-```sql
--- Nodes table: Fast filtering by label, user, properties
-CREATE TABLE kg_nodes (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    label TEXT NOT NULL,
-    properties JSON NOT NULL,
-    confidence REAL NOT NULL,
-    source_text TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    INDEX idx_user_label (user_id, label),
-    INDEX idx_user_created (user_id, created_at)
-);
-
--- Edges table: Fast graph traversal
-CREATE TABLE kg_edges (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    source_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    relation_type TEXT NOT NULL,
-    properties JSON NOT NULL,
-    confidence REAL NOT NULL,
-    source_text TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    INDEX idx_source (source_id),
-    INDEX idx_target (target_id),
-    INDEX idx_user_relation (user_id, relation_type),
-    FOREIGN KEY (source_id) REFERENCES kg_nodes(id),
-    FOREIGN KEY (target_id) REFERENCES kg_nodes(id)
-);
-
--- Node property index: Fast property-based queries on entities
--- Note: Properties are DUPLICATED here from kg_nodes.properties JSON for performance
-CREATE TABLE kg_node_properties (
-    node_id TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (node_id, key, value),
-    FOREIGN KEY (node_id) REFERENCES kg_nodes(id),
-    INDEX idx_key_value (key, value)
-);
-
--- Edge property index: Fast property-based queries on relationships
--- Note: Properties are DUPLICATED here from kg_edges.properties JSON for performance
-CREATE TABLE kg_edge_properties (
-    edge_id TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (edge_id, key, value),
-    FOREIGN KEY (edge_id) REFERENCES kg_edges(id),
-    INDEX idx_key_value (key, value)
-);
-```
-
-**Property Storage Pattern:**
-
-Properties are stored in **two places** for different query patterns:
-
-1. **JSON columns** (`kg_nodes.properties`, `kg_edges.properties`): Source of truth, easy to retrieve full object
-2. **Property index tables** (`kg_node_properties`, `kg_edge_properties`): Flattened key-value pairs for fast filtering
-
-Example:
-```sql
--- Stored in kg_nodes.properties as JSON
-{"name": "John Smith", "age": 30, "city": "San Francisco"}
-
--- ALSO indexed in kg_node_properties as rows
-(node_id, "name", "John Smith")
-(node_id, "age", "30")
-(node_id, "city", "San Francisco")
-
--- Enables fast queries like:
-SELECT * FROM kg_nodes n 
-JOIN kg_node_properties p ON n.id = p.node_id 
-WHERE p.key = 'city' AND p.value = 'San Francisco'
-```
-
-This is a standard **denormalization pattern** for performance - properties are duplicated but enable fast WHERE clauses on specific property values without JSON parsing.
-
-**Maintaining Consistency (Critical):**
-
-To prevent data inconsistency between JSON and index tables, we use **database triggers** for automatic synchronization:
-
-```sql
--- Automatic index sync for nodes
-CREATE TRIGGER sync_node_properties_insert
-AFTER INSERT ON kg_nodes
-FOR EACH ROW
-BEGIN
-    INSERT INTO kg_node_properties (node_id, key, value)
-    SELECT NEW.id, key, value FROM json_each(NEW.properties);
-END;
-
-CREATE TRIGGER sync_node_properties_update
-AFTER UPDATE OF properties ON kg_nodes
-FOR EACH ROW
-BEGIN
-    DELETE FROM kg_node_properties WHERE node_id = NEW.id;
-    INSERT INTO kg_node_properties (node_id, key, value)
-    SELECT NEW.id, key, value FROM json_each(NEW.properties);
-END;
-
-CREATE TRIGGER sync_node_properties_delete
-AFTER DELETE ON kg_nodes
-FOR EACH ROW
-BEGIN
-    DELETE FROM kg_node_properties WHERE node_id = OLD.id;
-END;
-
--- Automatic index sync for edges (same pattern)
-CREATE TRIGGER sync_edge_properties_insert
-AFTER INSERT ON kg_edges
-FOR EACH ROW
-BEGIN
-    INSERT INTO kg_edge_properties (edge_id, key, value)
-    SELECT NEW.id, key, value FROM json_each(NEW.properties);
-END;
-
-CREATE TRIGGER sync_edge_properties_update
-AFTER UPDATE OF properties ON kg_edges
-FOR EACH ROW
-BEGIN
-    DELETE FROM kg_edge_properties WHERE edge_id = NEW.id;
-    INSERT INTO kg_edge_properties (edge_id, key, value)
-    SELECT NEW.id, key, value FROM json_each(NEW.properties);
-END;
-
-CREATE TRIGGER sync_edge_properties_delete
-AFTER DELETE ON kg_edges
-FOR EACH ROW
-BEGIN
-    DELETE FROM kg_edge_properties WHERE edge_id = OLD.id;
-END;
-```
-
-**Benefits of trigger-based synchronization:**
-- ✅ **Atomic**: Index updates happen in same transaction as JSON update (all-or-nothing)
-- ✅ **Automatic**: Impossible for developers to forget index updates
-- ✅ **Consistent**: Database guarantees synchronization at all times
-- ✅ **Zero application logic**: Handled transparently at database level
-- ✅ **Crash-safe**: Partial updates automatically rolled back
-
-**Verified:** libsql 0.1.8 fully supports triggers with `json_each()` function. Tested and confirmed working for INSERT, UPDATE, and DELETE operations.
-
----
-
-### Property Conventions (Future-Proofing)
-
-The schema uses flexible JSON properties to accommodate future applications without schema migrations. Standard property conventions ensure consistency across the system:
-
-#### **Node Property Conventions:**
-```yaml
-# Temporal validity (for facts that change over time)
-temporal:
-  valid_from: "2024-01-01T00:00:00Z"  # ISO8601 timestamp
-  valid_until: "2025-12-31T23:59:59Z" # ISO8601 or null for current facts
-  is_current: true                     # Boolean flag for active facts
-
-# Provenance tracking (where facts came from)
-provenance:
-  conversation_id: "conv_abc123"       # Source conversation
-  message_id: "msg_xyz789"             # Specific message
-  extraction_method: "gliner"          # Extraction algorithm used
-  extraction_pass: 1                   # Which extraction pass (1, 2, gleaning)
-
-# Emotional context (for emotional memory)
-emotional:
-  primary_emotion: "proud"             # Primary emotion
-  intensity: 0.8                       # Float 0-1
-  valence: "positive"                  # positive/negative/neutral
-  trigger: "achievement"               # What caused the emotion
-```
-
-#### **Edge Property Conventions:**
-```yaml
-# Temporal relationships (for time-bound connections)
-temporal:
-  valid_from: "2020-01-01T00:00:00Z"  # When relationship started
-  valid_until: "2023-12-31T23:59:59Z" # When relationship ended (null if ongoing)
-  duration_days: 1461                  # Computed duration
-
-# Relationship metadata (for relationship intelligence)
-relationship:
-  privacy_level: "private"             # public/private/intimate
-  closeness: 0.9                       # Float 0-1 (relationship strength)
-  contact_frequency: "weekly"          # Interaction frequency
-  relationship_type: "family"          # Category of relationship
-
-# Planning metadata (for autonomous agency)
-planning:
-  priority: 1                          # Int 1-5 (1=highest)
-  status: "active"                     # pending/active/completed/failed
-  progress: 0.6                        # Float 0-1 (completion percentage)
-  deadline: "2025-12-31T23:59:59Z"    # Target completion date
-  dependencies: ["task_id_1", "task_id_2"]  # Task dependencies
-
-# Emotional interactions (for emotional memory)
-emotions:
-  user_emotion: "proud"                # User's emotional state
-  other_emotion: "nervous"             # Other person's emotional state
-  user_intensity: 0.8                  # Float 0-1
-  other_intensity: 0.6                 # Float 0-1
-  outcome: "successful"                # Result of interaction
-  context: "piano_recital"             # What triggered emotions
-
-# Conversation metadata (for context assembly)
-conversation:
-  conversation_id: "conv_abc123"       # Source conversation
-  timestamp: "2025-10-01T14:30:00Z"   # When discussed
-  sentiment: "positive"                # Overall sentiment
-  relevance_score: 0.85                # Float 0-1 (importance)
-  topic: "career_change"               # Discussion topic
-```
-
-#### **Future Application Support:**
-
-| Application | Required Properties | Schema Support |
-|-------------|-------------------|----------------|
-| **Relationship Intelligence** | privacy_level, closeness, contact_frequency | ✅ Edge properties |
-| **Autonomous Agency** | priority, status, progress, deadline, dependencies | ✅ Edge properties |
-| **Conversation Context** | conversation_id, timestamp, sentiment, relevance | ✅ Edge properties |
-| **Emotional Memory** | emotions, intensity, valence, trigger, outcome | ✅ Node/Edge properties |
-| **Temporal Facts** | valid_from, valid_until, is_current | ✅ Node/Edge properties |
-
-**Migration Strategy:**
-- **Phase 1:** Use JSON properties with documented conventions (current)
-- **Phase 2:** Add indexed temporal fields if temporal queries become frequent (>10% of queries)
-- **Phase 3:** Add version history table if audit trail becomes critical requirement
-
-The current schema is **future-proof** - all identified future applications can be supported without schema changes by following these property conventions.
-
----
-
-**Why Hybrid?**
-- ✅ **ChromaDB:** Semantic search (find similar entities), already in use
-- ✅ **libSQL:** Fast relational queries (find all PERSON nodes, traverse edges), already in use
-- ✅ **No new dependencies:** Leverage existing AICO stack
-- ✅ **Dual-write:** Write to both stores for different query patterns
-
-### Future: Neo4j (Native Graph Database)
-
-Direct migration path when complex graph queries needed (Cypher, multi-hop traversal, community detection). Property graph model is Neo4j-compatible.
+Properties are stored both as JSON (source of truth) and as flattened key/value rows for efficient filtering. Database-level triggers keep these representations in sync.
 
 ---
 
 ## Module Integration: Semantic Memory
 
-The knowledge graph module integrates with semantic memory as follows:
+At a high level, semantic memory uses the knowledge graph module by:
 
-```python
-# aico/ai/memory/semantic.py
-from aico.ai.knowledge_graph import PropertyGraph, Extractor, EntityResolver, GraphFusion
-
-class SemanticMemoryStore:
-    def __init__(self, config, modelservice):
-        # Initialize knowledge graph components
-        self.graph = PropertyGraph(
-            storage_backend="chromadb+libsql",
-            config=config.knowledge_graph
-        )
-        self.extractor = Extractor(
-            modelservice=modelservice,
-            max_gleanings=config.knowledge_graph.extraction.max_gleanings
-        )
-        self.resolver = EntityResolver(
-            modelservice=modelservice,
-            config=config.knowledge_graph.entity_resolution
-        )
-        self.fusion = GraphFusion(
-            modelservice=modelservice,
-            config=config.knowledge_graph.fusion
-        )
-    
-    async def add_facts(self, text: str, user_id: str, conversation_id: str):
-        """Extract and store facts from conversation using knowledge graph"""
-        # Step 1: Multi-pass extraction
-        new_graph = await self.extractor.extract(
-            text=text,
-            context={"user_id": user_id, "conversation_id": conversation_id}
-        )
-        
-        # Step 2: Semantic entity resolution
-        resolved_graph = await self.resolver.resolve(
-            new_graph=new_graph,
-            user_id=user_id
-        )
-        
-        # Step 3: Graph fusion with existing knowledge
-        await self.fusion.fuse(
-            new_graph=resolved_graph,
-            existing_graph=self.graph,
-            user_id=user_id
-        )
-        
-        # Step 4: Store in hybrid backend
-        await self.graph.save(user_id=user_id)
-    
-    async def search_facts(self, query: str, user_id: str, top_k: int = 10):
-        """Search facts using semantic similarity"""
-        return await self.graph.search_nodes(
-            query=query,
-            user_id=user_id,
-            top_k=top_k
-        )
-```
+1. Running multi-pass extraction on new conversation text.
+2. Resolving entities against the user-specific graph.
+3. Fusing the results into the existing graph.
+4. Persisting to the hybrid ChromaDB + libSQL backend.
+5. Querying facts via semantic search and graph traversal.
 
 ---
 
@@ -631,81 +187,19 @@ The knowledge graph module is designed for reuse across AICO's AI features:
 
 ### 1. Relationship Intelligence
 
-```python
-# aico/ai/relationships/social_graph.py
-from aico.ai.knowledge_graph import PropertyGraph
-
-class SocialRelationshipGraph:
-    def __init__(self):
-        self.graph = PropertyGraph(storage_backend="chromadb+libsql")
-    
-    async def get_relationship_context(self, user_id: str, person_id: str):
-        return await self.graph.traverse(
-            start=user_id,
-            relations=["KNOWS", "FAMILY_MEMBER"],
-            target=person_id,
-            max_depth=2
-        )
-```
-
-**Use Case:** Multi-dimensional relationship understanding, privacy boundaries, context-appropriate responses.
+Use case: multi-dimensional relationship understanding, privacy boundaries, context-appropriate responses via graph traversal over `KNOWS`, `FAMILY_MEMBER`, and related relations.
 
 ### 2. Autonomous Agency
 
-```python
-# aico/ai/agency/goal_planner.py
-from aico.ai.knowledge_graph import PropertyGraph
-
-class GoalPlanner:
-    def __init__(self):
-        self.graph = PropertyGraph(storage_backend="chromadb+libsql")
-    
-    async def generate_goals(self, user_id: str):
-        # Query user's current situation
-        context = await self.graph.get_user_context(user_id)
-        # Infer goals from graph structure
-        return infer_goals_from_context(context)
-```
-
-**Use Case:** Proactive suggestions, goal generation, multi-step planning.
+Use case: proactive suggestions, goal generation, and multi-step planning by querying the user’s context graph and inferring candidate goals.
 
 ### 3. Conversation Context Assembly
 
-```python
-# aico/ai/conversation/context_assembler.py
-from aico.ai.knowledge_graph import PropertyGraph
-
-class ContextAssembler:
-    def __init__(self):
-        self.graph = PropertyGraph(storage_backend="chromadb+libsql")
-    
-    async def assemble_context(self, query: str, user_id: str):
-        # Multi-hop graph traversal for rich context
-        return await self.graph.traverse(
-            start=user_id,
-            query=query,
-            max_depth=3
-        )
-```
-
-**Use Case:** Intelligent context retrieval, reduced hallucination, multi-hop reasoning.
+Use case: multi-hop reasoning to assemble rich conversational context from the user’s graph, reducing hallucination.
 
 ### 4. Emotional Memory
 
-```python
-# Track emotional context in relationships
-Edge(source="user", target="sarah", relation="DISCUSSED", properties={
-    "topic": "piano_recital",
-    "user_emotion": "proud",
-    "sarah_emotion": "nervous",
-    "date": "2025-09-30",
-    "outcome": "successful"
-})
-```
-
-**Use Case:** Emotional memory integration, context-aware empathy.
-
-**Note:** These applications are **not implemented** in this proposal. They demonstrate the module's reusability and future potential
+Use case: attaching emotional metadata to interactions and relationships so that future responses can respect emotional history.
 
 ---
 
@@ -727,82 +221,25 @@ Timeline:
 2500ms: Complete (memory fully processed)
 ```
 
-**Benefits:** 600ms user-perceived latency, full state-of-the-art processing, transparent UX.
-
 ### Strategy 2: Lazy Graph Construction
 
-**Approach:** Respond immediately with simple extraction, build full graph during conversation pauses (idle time).
-
-```python
-# Fast path: 700ms
-response = await generate_response(text, simple_entities)
-await store_simple_facts(text, entities)
-
-# Schedule for idle time (2-3s gaps between messages)
-await schedule_background_task(build_full_knowledge_graph)
-```
-
-**Benefits:** 700ms response time, graph processing during natural pauses, efficient resource usage.
+**Approach:** Respond immediately with simple extraction, then build the full knowledge graph during conversation pauses (idle time). This keeps perceived latency low while still building a rich graph in the background.
 
 ### Strategy 3: Incremental Graph Construction
 
 **Approach:** Build graph incrementally across multiple turns, not all at once.
 
-```
-Turn N:   Fast response + Pass 1 extraction (600ms + 800ms background)
-Turn N+1: Fast response + Pass 2 gleaning (600ms + 500ms background)
-Turn N+2: Fast response + Entity resolution (600ms + 820ms background)
-```
-
-**Benefits:** Distributed compute load, graph quality improves over conversation.
-
 ### Strategy 4: Parallel Processing
 
-**Approach:** Run extraction passes and entity resolution in parallel where possible.
-
-```python
-# Parallel extraction: 800ms (vs 1700ms sequential)
-results = await asyncio.gather(
-    extract_pass1(text),
-    extract_pass2(text),
-    extract_pass3(text)
-)
-
-# Parallel entity resolution: 400ms (vs 640ms sequential)
-blocks, existing = await asyncio.gather(
-    semantic_blocking(graph),
-    fetch_user_entities(user_id)
-)
-```
-
-**Savings:** 1200ms background processing (vs 2340ms), 49% faster, no quality loss.
+**Approach:** Run extraction passes and entity resolution in parallel where possible to reduce background latency, without changing the conversational path.
 
 ### Strategy 5: Smart Caching
 
 **Approach:** Cache expensive LLM operations for repeated entities.
 
-```python
-# First mention: 640ms (full entity resolution)
-# Repeated mention: 50ms (cache hit)
-# Savings: 92% for repeated entities
-```
-
-**Benefits:** Dramatic speedup for common entities (names, places), scales with conversation length.
-
 ### Strategy 6: Cognitive State UI
 
-**Approach:** Show users AICO's "inner monologue" to make processing time feel intentional.
-
-```
-AICO: 🧠 Understanding your message
-      ├─ Extracted: "San Francisco" (PLACE)
-      └─ Extracted: "moved" (EVENT)
-      
-      💭 Thinking about my response...
-      
-      "That's exciting! How are you finding the city?"
-      
-      📚 Storing in memory... (background)
+**Approach:** Show users AICO's "inner monologue" (what is being extracted/stored) to make processing time feel intentional and transparent.
       └─ Connecting to previous locations
 ```
 

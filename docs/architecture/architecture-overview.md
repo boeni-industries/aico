@@ -29,7 +29,7 @@ AICO's features are organized into logical modules for development and deploymen
 
 ### 👥 Social Relationship Intelligence
 **Production Implementation:**
-- **Property Graph Storage**: NetworkX + DuckDB with 204 nodes, 27 edges, 552 indexed properties
+- **Property Graph Storage**: NetworkX + libSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties
 - **Multi-Pass Entity Extraction**: GLiNER zero-shot recognition + LLM relationship extraction
 - **Entity Resolution**: 3-step deduplication (semantic blocking → LLM matching → merging)
 - **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
@@ -47,7 +47,7 @@ AICO's features are organized into logical modules for development and deploymen
 **Production Implementation:**
 - **Three-Tier Memory Architecture**: Working (LMDB) + Semantic (ChromaDB) + Adaptive (AMS)
 - **Hybrid Search V3**: Semantic embeddings + BM25 keyword + IDF filtering + RRF fusion
-- **Working Memory**: 24-hour TTL, sub-millisecond access, conversation-scoped
+- **Working Memory**: 30-day TTL, sub-millisecond access, conversation-scoped
 - **Knowledge Graph**: Full property graph with temporal reasoning and multi-hop queries
 - **Memory Album**: User-curated memories (conversation + message level) with emotional tone
 - **Memory Consolidation**: Background "sleep phases" integrate experiences without forgetting
@@ -73,7 +73,7 @@ AICO's features are organized into logical modules for development and deploymen
 
 **Planned Features:**
 - Personality simulation (trait-based modeling with Big Five/HEXACO)
-- Emotion simulation (AppraisalCloudPCT with 4-stage appraisal)
+- Emotion simulation (C-CPM 4-stage appraisal; Phase 1 implemented, further phases planned)
 - Meta-cognition and self-assessment
 
 ### 😊 Sentiment & Emotion Analysis
@@ -87,7 +87,7 @@ AICO's features are organized into logical modules for development and deploymen
 - Facial emotion recognition (computer vision)
 - Voice emotion analysis (audio-based)
 - Mood tracking and empathetic response generation
-- Advanced emotion simulation (AppraisalCloudPCT)
+- Advanced emotion simulation (C-CPM extensions)
 
 ### 🎭 Frontend & User Experience
 **Production Implementation:**
@@ -156,14 +156,14 @@ AICO's features are organized into logical modules for development and deploymen
 - **Topic-Based Pub/Sub** - Hierarchical topics with wildcard pattern matching
 - **Three-Tier Memory** - Working (LMDB) + Semantic (ChromaDB) + Adaptive (AMS)
 - **Hybrid Search V3** - Semantic + BM25 + IDF filtering + RRF fusion
-- **Property Graph** - NetworkX + DuckDB for knowledge graph with temporal reasoning
+- **Property Graph** - NetworkX + libSQL + ChromaDB for knowledge graph with temporal reasoning
 - **Thompson Sampling** - Contextual bandit for skill selection and behavioral learning
 - **Qwen3 Abliterated 8B** - Uncensored foundation model for character consistency
 - **Plugin Architecture** - Modular backend with lifecycle management
 - **Encrypted Storage** - SQLCipher (AES-256-GCM) for all databases
 
 **Planned:**
-- **AppraisalCloudPCT** - Component Process Model for emotion simulation
+- **C-CPM Emotion Model** - Component Process Model for emotion simulation (Phase 1 implemented, advanced phases planned)
 - **Multi-Faceted Agency** - Goal generation, curiosity, planning, meta-cognition
 - **3D Avatar System** - Three.js + Ready Player Me + TalkingHead.js
 - **Sandboxed Plugin Execution** - Isolated environments with permission controls
@@ -693,9 +693,9 @@ with conn:
     conn.execute("INSERT INTO logs (message) VALUES (?)", ["Hello World"])
 ```
 
-- **Primary Storage (libSQL):** Encrypted SQLite with SQLCipher integration
-- **Vector Database (ChromaDB):** Embedding storage for semantic search
-- **Analytical Engine (DuckDB):** Fast OLAP queries and analytics
+- **Primary Storage (libSQL):** Encrypted SQLite-compatible engine with SQLCipher-style integration
+- **Vector Database (ChromaDB):** Embedding storage for semantic search and KG embeddings
+- **Analytical Engine:** libSQL + ChromaDB hybrid queries for analytics
 - **Unified Schema:** Single core schema with atomic migrations
 
 #### Learning System

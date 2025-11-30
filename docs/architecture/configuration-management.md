@@ -141,7 +141,7 @@ The system manages configuration across five primary domains:
 ### Database Configuration
 - **LibSQL**: Connection paths, encryption settings, journal modes
 - **ChromaDB**: Vector storage paths, collection names, distance functions
-- **DuckDB**: Analytics database settings, memory limits, threading
+- **Analytics DB (planned)**: Future analytical database settings, memory limits, threading
 
 ### Personality Configuration
 - **Traits**: Big Five personality dimensions (0.0-1.0 scale)
