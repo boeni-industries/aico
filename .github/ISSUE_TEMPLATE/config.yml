@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions / How-to / Usage
+    url: https://github.com/boeni-industries/aico/discussions
+    about: >-
+      For general questions, setup help, and architecture discussions, please open a Discussion instead of an issue.
