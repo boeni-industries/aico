@@ -46,7 +46,7 @@ Each stage builds deeper companionship rather than just adding features.
 AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.
 
 ### 👥 **Social Relationship Intelligence** ✅ *Production*
-- **Property Graph Storage**: NetworkX + DuckDB with 204 nodes, 27 edges, 552 indexed properties
+- **Property Graph Storage**: Hybrid storage using libSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties
 - **Multi-Pass Entity Extraction**: GLiNER zero-shot recognition + LLM relationship extraction
 - **Entity Resolution**: 3-step deduplication (semantic blocking → LLM matching → merging)
 - **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
@@ -57,18 +57,19 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 
 *Planned:* Dynamic relationship learning, voice biometrics, natural family recognition
 
-### 🗣️ **Conversation & Memory** ✅ *Production*
+### 🗣️ **Conversation, Memory & Voice** ✅ *Production*
 **Three-Tier Architecture** with brain-inspired complementary learning:
-- **Working Memory (LMDB)**: 24-hour TTL, sub-millisecond access, conversation-scoped
+- **Working Memory (LMDB)**: 30-day TTL, sub-millisecond access, conversation-scoped
 - **Semantic Memory (ChromaDB)**: Hybrid Search V3 with semantic + BM25 + IDF filtering + RRF fusion
-- **Knowledge Graph (DuckDB)**: Property graph with temporal reasoning and multi-hop queries
+- **Knowledge Graph (libSQL + ChromaDB)**: Hybrid property graph with temporal reasoning and multi-hop queries
 - **Adaptive Memory System (AMS)**: Memory consolidation, Thompson Sampling, RLHF behavioral learning
 - **Memory Album**: User-curated conversation and message-level memories with emotional tone
 - **Real-time Streaming**: WebSocket-based token streaming for responsive conversations
 - **Local LLM**: Qwen3 Abliterated 8B via Ollama with automatic model management
 - **Context Assembly**: Multi-factor scoring (recency, relevance, relationship) across all memory tiers
+- **Text-to-Speech**: Backend TTS via Piper/XTTS with streaming audio to Flutter (`just_audio`)
 
-*Planned:* Voice conversations, proactive conversation starters
+*Planned:* Local speech-to-text, proactive conversation starters
 
 ### 🎭 **Custom Character Personalities** ✅ *Production*
 - **Eve Character**: Warm, curious, contemplative companion with genuine thoughts and feelings
@@ -79,14 +80,14 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 - **Create Your Own**: Define professional assistants, creative collaborators, philosophical thinkers, or supportive friends
 
 ### 😊 **Emotional Intelligence** 🚧 *In Development*
-**Production:**
+**Production / Implemented:**
 - **Text Sentiment**: BERT Multilingual sentiment classification
 - **Emotion Analysis**: RoBERTa 6-emotion classification (joy, sadness, anger, fear, surprise, disgust)
 - **Intent Classification**: XLM-RoBERTa multilingual intent understanding
 - **Memory Album Integration**: Automatic emotional tone detection
+- **Emotion Simulation**: C-CPM Component Process Model, Phase 1 (4-stage appraisal) implemented
 
 **Planned:**
-- Advanced emotion simulation (AppraisalCloudPCT with 4-stage appraisal)
 - Multi-modal emotion recognition (facial, voice)
 - Personality simulation with evolving traits (Big Five, HEXACO)
 - Crisis detection and empathetic response generation
@@ -114,10 +115,11 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 - **Message Actions**: Hover-based toolbar (Copy, Remember, Regenerate, Feedback)
 - **Real-time Streaming**: WebSocket support for streaming AI responses
 - **Offline-First**: Cache-first loading with background sync
+- **3D Avatar System**: Three.js + Ready Player Me viewer with idle/talking animations and emotion blend-shapes driven by AICO's emotion state
 
-**Planned:**
-- 3D Avatar System (Three.js + Ready Player Me + TalkingHead.js)
-- Voice interaction (speech-to-text and text-to-speech)
+**Planned / Extending:**
+- Local speech-to-text and richer voice controls
+- Scene-aware avatar behavior driven by vision context and agency
 - Multi-device roaming with P2P encrypted sync
 - AR/VR integration and spatial computing
 
@@ -165,12 +167,16 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 
 ## 🛤️ Development Roadmap
 
-!!! info "Current Phase: Foundation"
-    We're currently building the core infrastructure scaffolding. See our roadmap for the complete development journey.
+!!! info "Current Status"
+    - **Foundation I**: ✅ Complete (core infrastructure in place)
+    - **MVP Companion**: 🚧 In Progress (conversation + memory complete, voice/avatar/agency evolving)
+    - **Foundation II**: 🚧 Partially Complete (selected advanced infrastructure)
+    
+    See the detailed roadmap docs in `/docs/roadmap/` for full status.
 
 ### **Development Stages**
 
-1. **🛠️ Foundation I** ✅ *(Complete)* - Essential infrastructure
+1. **🛠️ Foundation I** ✅ *(Complete)* – Essential infrastructure
     - ✅ CurveZMQ encrypted message bus with Protocol Buffers
     - ✅ FastAPI backend with plugin architecture
     - ✅ Task scheduler with resource awareness
@@ -178,17 +184,18 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
     - ✅ WebSocket streaming communication
     - ✅ CLI v1.1.0 with 100+ commands
 
-2. **🤝 Companion** 🚧 *(In Progress)* - MVP with basic companionship
+2. **🤝 MVP Companion** 🚧 *(In Progress)* – Basic companion that talks, remembers, and (eventually) initiates
     - ✅ Text conversation with streaming responses
     - ✅ Three-tier memory system (working, semantic, knowledge graph)
     - ✅ Local LLM integration (Qwen3 Abliterated via Ollama)
     - ✅ Custom character personalities (Eve + Modelfile system)
     - ✅ Knowledge graph with 204 nodes, 27 edges
     - ✅ Memory Album for user-curated memories
-    - 🚧 Voice interaction (planned)
-    - 🚧 3D avatar (ready for integration)
+    - ✅ Voice output via backend TTS (Piper/XTTS streaming to Flutter)
+    - ✅ 3D avatar with emotions and animations
+    - 🚧 Speech input (local STT) and proactive initiation
 
-3. **🛠️ Foundation II** 🚧 *(Partially Complete)* - Advanced infrastructure
+3. **🛠️ Foundation II** 🚧 *(Partially Complete)* – Advanced infrastructure (deployment, monitoring, plugins, updates)
     - ✅ Plugin system (message bus, log consumer, security)
     - ✅ Advanced resource management (CPU/memory monitoring)
     - ✅ Production deployment patterns
@@ -196,19 +203,19 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
     - 🚧 CI/CD pipeline
     - 🚧 Advanced monitoring and alerting
 
-4. **💭 Confidante** - Deep emotional intelligence
+4. **💭 Confidante** – Deep emotional intelligence (see `roadmap/confidante.md`)
     - Advanced emotion simulation, crisis support, empathy modeling
 
-5. **🦾 Sidekick** - Advanced autonomous agency
+5. **🦾 Sidekick** – Advanced autonomous agency (see `roadmap/sidekick.md`)
     - MCTS planning, curiosity-driven learning, proactive assistance
 
-6. **🌟 Co-Adventurer** - Collaborative learning and growth
+6. **🌟 Co-Adventurer** – Collaborative learning and growth
     - Shared goal pursuit, collaborative problem-solving, meta-learning
 
-7. **🌐 Embodied Presence** - Multi-modal integration
+7. **🌐 Embodied Presence** – Multi-modal integration
     - Federated device roaming, AR/VR, IoT, robotics, spatial computing
 
-8. **🤝 Community** - Collective intelligence
+8. **🤝 Community** – Collective intelligence
     - Privacy-preserving social features, federated learning
 
 ## 🤝 Who's This For?
@@ -247,10 +254,10 @@ AICO is an open experiment—all code and progress are public. Whether you want 
   - **Component**: Individual functional units (e.g., Trait Vector, Appraisal Engine)
 
 - **Key Technologies:**
-  - **Backend:** Python 3.13, FastAPI 0.116+, ZeroMQ 27.0+ (CurveZMQ), Protocol Buffers 6.32, libSQL 0.1.8 (SQLCipher), DuckDB 1.3.2+, ChromaDB 1.0.16+, LMDB
+  - **Backend:** Python 3.13, FastAPI 0.116+, ZeroMQ 27.0+ (CurveZMQ), Protocol Buffers 6.32, libSQL 0.1.8 (SQLCipher), ChromaDB 1.0.16+, LMDB
   - **Frontend:** Flutter 3.27+, Dart 3.8+, Riverpod 3.0, Drift 2.29 (SQLCipher), Dio 5.4, Protocol Buffers 5.0
-  - **Modelservice:** ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), BERT/RoBERTa (sentiment/emotion)
-  - **AI Models:** Qwen3 Abliterated 8B (conversation), Llama 3.2 Vision 11B (optional), Llama 3.2 1B (optional)
+  - **Modelservice:** ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), BERT/RoBERTa (sentiment/emotion), Piper/XTTS TTS
+- **AI Models:** Qwen3 Abliterated 8B (conversation), vision model (planned), additional small models as needed
   - **CLI:** Typer 0.12, Rich 13.7, PyInstaller (v1.1.0, production-ready)
   - **Security:** CurveZMQ encryption, Argon2id, PBKDF2, NaCl/libsodium, JWT (HS256), SQLCipher (AES-256-GCM)
 

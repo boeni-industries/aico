@@ -125,19 +125,6 @@ api.aico.local              # Local API endpoint
 ws.aico.local               # WebSocket endpoint
 ```
 
-### Docker & Containers
-```bash
-# Docker images
-aico/backend:latest
-aico/frontend:latest
-aico/cli:latest
-
-# Container names
-aico-backend
-aico-frontend
-aico-database
-```
-
 ## Data Layer Namespacing
 
 ### Database Tables

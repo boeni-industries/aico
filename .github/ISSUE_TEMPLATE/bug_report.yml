@@ -1,0 +1,92 @@
+name: Bug report
+description: Report a reproducible problem in AICO
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug in AICO.
+        Please fill out as much as you can so we can reproduce and fix it.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+      placeholder: >-
+        When I ..., I expected ... but instead ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect AICO to do instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step instructions so we can reproduce the problem.
+      placeholder: |-
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part of AICO?
+      options:
+        - Backend APIs (FastAPI HTTP / WebSocket)
+        - Backend Scheduler (background tasks)
+        - Backend Message Bus / CurveZMQ
+        - Memory & Knowledge Graph (working, semantic, AMS, KG)
+        - Emotion Simulation (Appraisal / affect models)
+        - Agency / Autonomous Behavior
+        - Modelservice (LLM, embeddings, NER, TTS)
+        - Flutter app (mobile/desktop client)
+        - Studio (React admin / web UI)
+        - CLI (Typer commands)
+        - Docs / MkDocs site
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: AICO version / commit
+      description: Tag or commit hash you are using (e.g. output of `git rev-parse HEAD`).
+      placeholder: e.g. main @ 1234abcd
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and how you run AICO (e.g. macOS, `uv run backend`, Flutter debug, `aico gateway start`, etc.).
+      placeholder: e.g. macOS 14.5, uv 0.x, Python 3.12, Flutter 3.27
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any relevant logs or stack traces. Please redact sensitive data.
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Any other context, screenshots, or information that might help.
+
+  - type: markdown
+    attributes:
+      value: |
+        **Questions or how-to help?**
+        For general questions or usage help, please open a [Discussion](https://github.com/boeni-industries/aico/discussions) instead of an issue.

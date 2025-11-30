@@ -6,55 +6,37 @@ title: Text-to-Speech Architecture
 
 ## Overview
 
-AICO implements a **single-tier, frontend-native TTS architecture** that prioritizes local-first operation, privacy, and cross-platform consistency. The system uses platform-native TTS engines as the foundation with optional on-device neural TTS for premium voice quality.
+**Current implementation:** AICO uses a backend TTS service in the modelservice (Piper TTS and Coqui XTTS v2) and streams ready-to-play audio to the Flutter frontend, which plays it via `just_audio`.
 
 ## Design Principles
 
 ### Local-First Operation
-All TTS processing occurs on-device without backend dependencies. Text never leaves the user's device, preserving privacy and enabling offline functionality.
+TTS synthesis runs in the local backend modelservice; audio is then streamed to the frontend. Text and audio remain on the user's device.
 
 ### Thin Client Alignment
-TTS is presentation layer functionality—audio output for the UI. No business logic or backend orchestration required. Audio playback is inherently client-side.
+Synthesis is handled by the backend modelservice; audio playback is client-side.
 
 ### Zero Latency
-On-device processing eliminates network round-trips, providing instant audio response with no buffering or streaming delays.
+Local backend processing eliminates external network round-trips, providing fast audio response with minimal buffering or streaming delays.
 
 ### Cross-Platform Consistency
-While platform engines vary, the architecture supports optional neural TTS (Kokoro-82M via ONNX) for consistent voice quality across all platforms when needed.
+Using a centralized backend TTS engine (Piper/XTTS and potentially Kokoro) ensures consistent voice quality and behavior across all frontend platforms.
 
 ## Architecture Components
 
-### Primary: Platform Native TTS (flutter_tts)
+### Primary (Current): Backend TTS (Modelservice)
 
-**Technology**: `flutter_tts` package (MIT License)
+The primary, production implementation for TTS is the backend modelservice, using Piper TTS (recommended) and Coqui XTTS v2, with the Flutter app receiving only the audio stream and playing it via `just_audio`.
 
-**Platform Engines**:
-- **iOS/macOS**: AVSpeechSynthesizer
-- **Android**: TextToSpeech API  
-- **Windows**: SpeechSynthesizer
-- **Web**: Web Speech API
-- **Linux**: espeak/festival
+### Future Backend Engine (Planned): Kokoro TTS
 
-**Characteristics**:
-- Zero setup complexity
-- Excellent quality on iOS/macOS
-- Minimal battery impact
-- Instant availability
-- No model downloads required
+**Status**: Under evaluation as a potential **third backend engine** (alongside Piper and XTTS). Not implemented yet.
 
-**Use Cases**:
-- MVP implementation
-- Default voice output
-- Fallback when neural TTS unavailable
-- Low-latency requirements
+**Conceptual Technology**: Kokoro-82M via ONNX Runtime (Apache 2.0 License)
 
-### Optional: Neural TTS (kokoro_tts_flutter)
-
-**Technology**: Kokoro-82M via ONNX Runtime (Apache 2.0 License)
-
-**Characteristics**:
+**Target Characteristics** (if adopted):
 - 82M parameter model
-- On-device inference (<300ms latency)
+- Fast inference on local backend
 - Consistent voice across platforms
 - ~100MB model download
 - Multi-language support
@@ -66,37 +48,13 @@ While platform engines vary, the architecture supports optional neural TTS (Koko
 - Emotional expressiveness
 - Cross-platform voice uniformity
 
-## Implementation Strategy
-
-### Phase 1: MVP (Platform Native)
-
-Use `flutter_tts` for immediate functionality:
-- Rapid implementation
-- Zero configuration
-- Good quality baseline
-- Works everywhere
-
-### Phase 2: Neural Enhancement (Optional)
-
-Add `kokoro_tts_flutter` for premium experiences:
-- User preference toggle (native vs neural)
-- Model download on first use
-- Cached for offline use
-- Graceful fallback to native
-
-### Phase 3: Character Voices
-
-Implement custom voice models for AI personalities:
-- Fine-tuned Kokoro models per character
-- Emotional tone variations
-- Consistent character identity
-- Voice cloning for brand consistency
+## Custom Voice Creation (Planned Backend Models)
 
 ## Custom Voice Creation
 
 ### Training Custom Character Voices
 
-For consistent cross-platform character voices (e.g., Eve personality), AICO supports custom voice model training:
+For consistent cross-platform character voices (e.g., Eve personality), AICO envisions custom backend voice model training:
 
 **Approach**: Fine-tune Kokoro-82M on character-specific voice samples
 
@@ -134,85 +92,14 @@ For consistent cross-platform character voices (e.g., Eve personality), AICO sup
 
 ### Voice Consistency Strategy
 
-**Single Source of Truth**: One trained model deployed across all platforms via ONNX ensures identical voice output regardless of device.
+**Single Source of Truth**: One trained backend model deployed across all platforms via ONNX ensures identical voice output regardless of device.
 
-**Fallback Hierarchy**:
-1. Custom neural voice (Kokoro fine-tuned)
-2. Generic neural voice (Kokoro base model)
-3. Platform native TTS
-
-**Model Management**:
-- Models stored in app assets or downloaded on-demand
+**Model Management (Planned):**
+- Models stored on the local backend or downloaded on-demand
 - Versioned model files for updates
-- Automatic fallback if model unavailable
-- User preference persistence
+- Automatic backend-side fallback if a model is unavailable
 
-## Technical Integration
-
-### Repository Pattern
-
-```dart
-abstract class TtsRepository {
-  Future<void> speak(String text, {TtsVoiceType? voiceType});
-  Future<void> stop();
-  Future<void> pause();
-  Stream<TtsState> get stateStream;
-}
-```
-
-### Voice Type Enumeration
-
-```dart
-enum TtsVoiceType {
-  platformNative,    // flutter_tts
-  neuralGeneric,     // Kokoro base
-  characterEve,      // Custom Eve voice
-  characterCustom,   // User-trained voice
-}
-```
-
-### State Management (Riverpod)
-
-```dart
-final ttsRepositoryProvider = Provider<TtsRepository>((ref) {
-  return TtsRepositoryImpl(
-    nativeTts: FlutterTts(),
-    neuralTts: KokoroTts(),
-    preferences: ref.read(userPreferencesProvider),
-  );
-});
-
-final ttsProvider = StateNotifierProvider<TtsNotifier, TtsState>((ref) {
-  return TtsNotifier(ref.read(ttsRepositoryProvider));
-});
-```
-
-## Performance Characteristics
-
-| Metric | Platform Native | Neural (Kokoro) |
-|--------|----------------|-----------------|
-| Latency | <100ms | ~300ms |
-| Quality | Good | Excellent |
-| Memory | <10MB | ~150MB |
-| Battery Impact | Minimal | Low |
-| Offline | ✅ | ✅ |
-| Consistency | Platform-dependent | Uniform |
-
-## Privacy & Security
-
-### Data Flow
-- Text input → On-device TTS → Audio output
-- No network transmission
-- No backend logging
-- No cloud dependencies
-
-### Model Security
-- ONNX models stored in encrypted app storage
-- Model integrity verification via checksums
-- Secure model download over HTTPS
-- No telemetry or usage tracking
-
-## Future Enhancements
+## Future Enhancements (Planned Backend Capabilities)
 
 ### Emotional Prosody Control
 - Dynamic pitch/rate adjustment based on emotion state
@@ -239,22 +126,8 @@ final ttsProvider = StateNotifierProvider<TtsNotifier, TtsState>((ref) {
 
 ## Dependencies
 
-### Flutter Packages
-- `flutter_tts: ^4.2.3` (MIT) - Platform native TTS
-- `kokoro_tts_flutter: ^0.2.0+1` (Apache 2.0) - Neural TTS (optional)
-- `audioplayers` - Audio playback control (if needed)
-
-### Platform Requirements
-- **iOS**: iOS 13+ for AVSpeechSynthesizer features
-- **Android**: API 21+ for TextToSpeech API
-- **macOS**: macOS 10.15+ for AVSpeechSynthesizer
-- **Windows**: Windows 10+ for SpeechSynthesizer
-- **Linux**: espeak-ng installed
-
-### Model Assets
-- Kokoro base model: ~100MB (optional download)
-- Custom character voices: ~100MB each
-- Cached locally after first download
+### Flutter Packages (Current)
+- `just_audio` - Audio playback for streamed WAV from backend modelservice TTS
 
 ## Testing Strategy
 
@@ -265,17 +138,10 @@ final ttsProvider = StateNotifierProvider<TtsNotifier, TtsState>((ref) {
 - State management transitions
 
 ### Integration Tests
-- Platform TTS engine integration
-- Neural TTS model loading
-- Audio output verification
+- Backend TTS request/response
+- Audio streaming over network (ZeroMQ/WebSocket)
+- Audio output verification on client (via `just_audio`)
 - Error handling and recovery
-
-### Platform Tests
-- iOS/macOS AVSpeechSynthesizer
-- Android TextToSpeech API
-- Windows SpeechSynthesizer
-- Web Speech API
-- Linux espeak integration
 
 ## Monitoring & Observability
 
@@ -287,10 +153,10 @@ final ttsProvider = StateNotifierProvider<TtsNotifier, TtsState>((ref) {
 - Model download success rate
 
 ### Error Handling
-- Graceful fallback to platform native
+- Graceful fallback between TTS engines (e.g., XTTS → Piper)
 - Model loading failure recovery
-- Audio output device errors
-- Network timeout (model download)
+- Audio output device errors (client-side)
+- Network errors (model download or audio streaming)
 
 ## Backend TTS (Modelservice)
 
@@ -340,30 +206,31 @@ AICO's backend supports two TTS engines: **Piper TTS** (ultra-fast, local) and *
 
 ### Configuration
 
-Both engines are configured in `config/defaults/core.yaml`:
+Both engines are configured in `config/defaults/core.yaml` under the `core.modelservice.tts` section:
 
 ```yaml
-modelservice:
-  tts:
-    enabled: true
-    engine: "piper"  # or "xtts"
-    auto_detect_language: true
-    
-    # XTTS Configuration
-    xtts:
-      voices:
-        en: "Daisy Studious"
-        de: "Daisy Studious"
-      custom_voice_path: null
-    
-    # Piper Configuration
-    piper:
-      voices:
-        en: "en_US-amy-medium"
-        de: "de_DE-kerstin-low"
-      quality: "medium"
-    
-    speed: 1.0
+core:
+  modelservice:
+    tts:
+      enabled: true
+      engine: "piper"  # or "xtts"
+      auto_detect_language: true
+      
+      # XTTS Configuration
+      xtts:
+        voices:
+          en: "Daisy Studious"
+          de: "Daisy Studious"
+        custom_voice_path: null
+      
+      # Piper Configuration
+      piper:
+        voices:
+          en: "en_US-amy-medium"
+          de: "de_DE-kerstin-low"
+        quality: "medium"
+      
+      speed: 1.0
 ```
 
 ### Piper Available Voices
@@ -500,17 +367,16 @@ Custom voice overrides built-in speakers for all languages.
 
 ## Conclusion
 
-AICO's TTS system provides flexible, high-quality voice synthesis across multiple tiers:
+AICO's TTS system focuses on a single, consistent architecture:
 
-**Frontend (Local-First)**:
-- Platform-native TTS for instant, zero-setup voice output
-- Optional Kokoro neural TTS for premium, consistent character voices
-- Complete privacy with on-device processing
-
-**Backend (Modelservice)**:
+**Current Backend (Modelservice)**:
 - **Piper TTS** (recommended): Ultra-fast synthesis (15-24x faster than XTTS) with 100+ voices across 40+ languages
 - **XTTS v2** (alternative): High-quality synthesis with voice cloning capabilities
 - Automatic language detection and text preprocessing
 - Optimized audio processing with speed adjustments and artifact removal
+- Audio is streamed as WAV to the Flutter client and played via `just_audio`.
 
-The system prioritizes speed and quality while maintaining privacy and local-first operation. Piper TTS provides the best balance of performance and quality for most use cases, with XTTS available for scenarios requiring voice cloning or maximum quality.
+**Planned Backend Extension**:
+- **Kokoro TTS** considered as a potential third engine for the modelservice and for custom character voices.
+
+The system prioritizes speed and quality while maintaining privacy and local-first operation on the user's machine. Piper TTS currently provides the best balance of performance and quality for most use cases, with XTTS available for scenarios requiring voice cloning or maximum quality, and Kokoro evaluated as a future backend option.

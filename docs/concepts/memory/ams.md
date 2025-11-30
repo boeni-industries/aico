@@ -515,90 +515,16 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
   - Task priority and resource limits
   - Execution history and monitoring
 
-**AMS Scheduled Tasks**:
+**AMS Scheduled Tasks**
 
-```python
-# 1. Daily Memory Consolidation (2 AM, idle-aware, 7-day user sharding)
-{
-    "task_id": "ams.consolidation.daily",
-    "schedule": "0 2 * * *",  # 2 AM daily
-    "enabled": True,
-    "config": {
-        "require_idle": True,
-        "max_duration_minutes": 120,  # 2 hours max
-        "user_sharding_cycle_days": 7,  # Process 1/7 of users each day
-        "max_concurrent_users": 4  # Semaphore limit
-    }
-}
+AMS defines several recurring jobs that plug into the existing backend scheduler:
 
-# 2. Weekly Temporal Evolution Analysis (Sunday 3 AM)
-{
-    "task_id": "ams.temporal.evolution",
-    "schedule": "0 3 * * 0",  # Sunday 3 AM
-    "enabled": True,
-    "config": {
-        "lookback_days": 30,
-        "min_interactions": 10
-    }
-}
+- **Daily memory consolidation** (around 2 AM): consolidates working → semantic memory with user sharding and idle-awareness.
+- **Weekly temporal evolution analysis** (e.g. Sunday 3 AM): analyzes preference history and updates temporal metadata.
+- **Daily behavioral learning batch** (around 4 AM): refines skill selection parameters from accumulated feedback.
+- **Hourly unified index maintenance** (idle-aware): keeps cross-layer indices up to date incrementally.
 
-# 3. Daily Behavioral Learning Batch (4 AM)
-{
-    "task_id": "ams.behavioral.batch_refinement",
-    "schedule": "0 4 * * *",  # 4 AM daily
-    "enabled": True,
-    "config": {
-        "min_feedback_count": 5,
-        "thompson_sampling_update": True  # Update Beta distribution parameters
-    }
-}
-
-# 4. Hourly Unified Index Maintenance (top of hour, idle-aware)
-{
-    "task_id": "ams.unified.index_maintenance",
-    "schedule": "0 * * * *",  # Every hour
-    "enabled": True,
-    "config": {
-        "require_idle": True,
-        "incremental": True
-    }
-}
-```
-
-**Task Implementation Pattern**:
-
-```python
-# /backend/scheduler/tasks/ams_consolidation.py
-from backend.scheduler.tasks.base import BaseTask, TaskContext, TaskResult
-
-class MemoryConsolidationTask(BaseTask):
-    task_id = "ams.consolidation.daily"
-    description = "Daily memory consolidation from working to semantic memory"
-    
-    async def execute(self, context: TaskContext) -> TaskResult:
-        # Check if system is idle (if required)
-        if context.get_config("require_idle", True):
-            if not context.system_idle():
-                return TaskResult(
-                    success=True,
-                    message="Skipped: system not idle",
-                    skipped=True
-                )
-        
-        # Get memory manager
-        memory_manager = await self._get_memory_manager(context)
-        
-        # Run consolidation
-        result = await memory_manager.consolidate_memories(
-            max_duration_minutes=context.get_config("max_duration_minutes", 30)
-        )
-        
-        return TaskResult(
-            success=True,
-            message=f"Consolidated {result['users_processed']} users",
-            data=result
-        )
-```
+These tasks are registered using the standard scheduler configuration format and implemented as small task classes under `/backend/scheduler/tasks/`, but the exact JSON and class definitions are intentionally omitted here to keep this document conceptual.
 
 ### Resource Management
 

@@ -30,24 +30,20 @@ The system operates on an event-driven paradigm where:
 
 ### 3. Standardized Communication
 
-All messages follow a consistent envelope structure defined in Protocol Buffers:
+All messages follow a consistent envelope structure defined in Protocol Buffers. Conceptually:
 
 ```protobuf
 message AicoMessage {
   MessageMetadata metadata = 1;
-  oneof payload {
-    EmotionState emotion_state = 2;
-    ConversationMessage conversation_message = 3;
-    // Other message types...
-  }
+  google.protobuf.Any any_payload = 2; // Domain-specific message
 }
 
 message MessageMetadata {
-  string message_id = 1;       // UUID string
-  string timestamp = 2;        // ISO 8601 format
-  string source = 3;           // Source module name
-  string message_type = 4;     // topic/subtopic format
-  string version = 5;          // Schema version
+  string message_id = 1;   // UUID
+  string timestamp = 2;    // ISO 8601
+  string source = 3;       // Originating module
+  string message_type = 4; // Topic name from AICOTopics
+  string version = 5;      // Schema version
 }
 ```
 
@@ -88,36 +84,12 @@ The Core Message Bus implements a **hybrid broker pattern** with the backend ser
 
 The Core Message Bus uses **ZeroMQ** with **CurveZMQ encryption**:
 
-```python
-# Example: Creating encrypted message bus client
-from aico.core.bus import create_client
-
-client = create_client("api_gateway")
-await client.connect()  # Automatically sets up CurveZMQ encryption
-```
-
 - **High-performance:** Asynchronous messaging with minimal overhead
 - **Secure by default:** Mandatory CurveZMQ encryption for all communication
 - **Flexible patterns:** Pub/sub with hierarchical topic routing
 - **Embedded:** No external message broker dependencies
 
 ### Message Format
-
-```protobuf
-// Example: Core message envelope
-message AicoMessage {
-  MessageMetadata metadata = 1;
-  google.protobuf.Any any_payload = 2;
-}
-
-message MessageMetadata {
-  string message_id = 1;
-  string timestamp = 2;
-  string source = 3;
-  string message_type = 4;
-  string version = 5;
-}
-```
 
 Protocol Buffers provide:
 - **Binary serialization:** Compact, fast encoding/decoding
@@ -315,20 +287,20 @@ This bidirectional communication happens without direct dependencies between the
 
 ### Using the Central Topic Registry
 
-All code should use the `AICOTopics` class instead of string literals:
+All code should use the `AICOTopics` class instead of string literals. In practice this looks like:
 
 ```python
+from aico.core.bus import create_client
 from aico.core.topics import AICOTopics
 
-# Correct usage
-await client.publish(AICOTopics.EMOTION_STATE_CURRENT, emotion_data)
-await client.subscribe(AICOTopics.ALL_PERSONALITY, handler)
+client = create_client("api_gateway")
+await client.connect()
 
-# Incorrect usage (deprecated)
-await client.publish("emotion.state.current", emotion_data)  # DON'T DO THIS
+await client.publish(AICOTopics.EMOTION_STATE_CURRENT, emotion_data)
+await client.subscribe(AICOTopics.CONVERSATION_USER_INPUT, handler)
 ```
 
-**Migration Support**: The `TopicMigration` class provides automatic conversion from old dot notation to new slash notation for backward compatibility during the transition period.
+The `TopicMigration` helper converts legacy dot-notation topics to the new slash-based scheme for backward compatibility where needed.
 
 ## Plugin Integration
 
@@ -409,39 +381,6 @@ The message bus is designed to handle:
    - Message filtering at the source when possible
    - Local caching of frequently accessed message data
 
-## Message Persistence
-
-### Storage Strategy
-
-**Database**: libSQL (already integrated and encrypted)
-- **Selective persistence** for audit logs, debugging, and cross-device sync
-- **Append-only message log** with SQL queryability
-- **JSON metadata** support for flexible message attributes
-
-**Storage Schema**:
-```sql
-CREATE TABLE events (
-    id INTEGER PRIMARY KEY,
-    timestamp DATETIME,
-    topic TEXT,
-    source TEXT,
-    message_type TEXT,
-    payload BLOB,      -- Protocol Buffer binary
-    metadata JSON,     -- Flexible attributes
-    INDEX(topic, timestamp)
-);
-```
-
-**Persistence Policy**:
-- **Always**: Security events, audit logs, admin actions
-- **Optional**: Debug mode message replay, cross-device sync
-- **Never**: High-frequency emotion states (unless debugging)
-
-## Monitoring and Debugging
-
-The message bus includes facilities for:
-
-1. **Message Tracing**:
    - Correlation IDs link related messages
    - End-to-end tracing of message flows
    - Timing metrics for message processing
@@ -477,209 +416,20 @@ The build process automatically generates language-specific code from these defi
 2. Dart classes for Flutter frontend
 3. Additional language bindings as needed
 
-## CurveZMQ Implementation
-
-### Security Architecture
+### CurveZMQ Implementation
 
 AICO's message bus implements mandatory CurveZMQ encryption for all inter-component communication with the following core principles:
 
-1. **Mandatory Encryption**: No plaintext fallback - system fails securely if encryption cannot be established
-2. **Mutual Authentication**: Both broker and clients authenticate using public key cryptography
-3. **Deterministic Key Derivation**: All keys derived from master key using Argon2id + Z85 encoding
-4. **Fail-Secure Design**: Encryption failures result in system failure, not insecure fallback
+1. **Mandatory Encryption**: No plaintext fallback – system fails securely if encryption cannot be established.
+2. **Mutual Authentication**: Broker and clients authenticate using public key cryptography.
+3. **Deterministic Key Derivation**: All keys derived from the master key using Argon2id + Z85 encoding.
+4. **Fail-Secure Design**: Encryption failures result in system failure, not insecure fallback.
 
-### Key Management
-
-#### Master Key Integration
-```python
-from aico.security.key_manager import AICOKeyManager
-from aico.core.config import ConfigurationManager
-
-# Initialize key manager
-config = ConfigurationManager()
-key_manager = AICOKeyManager(config)
-
-# Authenticate and get master key
-master_key = key_manager.authenticate(interactive=True)
-
-# Derive CurveZMQ keypair for specific component
-public_key, secret_key = key_manager.derive_curve_keypair(master_key, "message_bus_client_api_gateway")
-```
-
-#### Key Derivation Process
-1. **Input**: Master key + component identifier
-2. **KDF**: Argon2id with fixed salt and parameters
-3. **Encoding**: Z85 encoding for ZeroMQ compatibility
-4. **Output**: 40-character public/secret key pair
-
-### Broker Configuration
-
-#### Authentication Setup
-```python
-from aico.core.bus import MessageBusBroker
-
-# Create encrypted broker
-broker = MessageBusBroker()
-await broker.start()
-
-# Broker automatically:
-# 1. Derives broker keypair from master key
-# 2. Sets up ThreadAuthenticator
-# 3. Configures authorized client public keys
-# 4. Enables CurveZMQ on all sockets
-```
-
-#### Authorized Clients
-The broker maintains a fixed list of authorized clients (derived from master key):
-- `message_bus_client_api_gateway` - API Gateway service
-- `message_bus_client_log_consumer` - Log persistence service
-- `message_bus_client_scheduler` - Task scheduler service
-- `message_bus_client_cli` - CLI commands
-- `message_bus_client_modelservice` - Model inference service
-- `message_bus_client_system_host` - System host process
-- `message_bus_client_backend_modules` - Backend module communication
-
-**Production Status:** All clients successfully authenticate and communicate with CurveZMQ encryption.
-
-### Client Configuration
-
-#### Basic Usage
-```python
-from aico.core.bus import MessageBusClient, create_client
-
-# Create encrypted client (recommended)
-client = create_client("api_gateway")
-await client.connect()
-
-# Manual creation
-client = MessageBusClient("api_gateway")
-await client.connect()
-
-# Client automatically:
-# 1. Derives client keypair from master key
-# 2. Retrieves broker public key
-# 3. Configures CurveZMQ on publisher/subscriber sockets
-# 4. Authenticates with broker
-```
-
-#### Message Publishing
-```python
-# Publish encrypted message
-await client.publish("test.topic", {"data": "encrypted content"})
-
-# All messages are automatically encrypted with CurveZMQ
-```
-
-#### Message Subscription
-```python
-# Subscribe to encrypted messages
-def message_handler(topic: str, message: dict):
-    print(f"Received encrypted message on {topic}: {message}")
-
-await client.subscribe("test.*", message_handler)
-
-# All received messages are automatically decrypted
-```
-
-### Implementation Details
-
-#### Socket Configuration
-
-**Publisher Socket:**
-```python
-# CurveZMQ configuration applied automatically
-publisher.setsockopt(zmq.CURVE_SERVER, 0)  # Client mode
-publisher.setsockopt_string(zmq.CURVE_SECRETKEY, secret_key)
-publisher.setsockopt_string(zmq.CURVE_PUBLICKEY, public_key)
-publisher.setsockopt_string(zmq.CURVE_SERVERKEY, broker_public_key)
-```
-
-**Subscriber Socket:**
-```python
-# CurveZMQ configuration applied automatically
-subscriber.setsockopt(zmq.CURVE_SERVER, 0)  # Client mode
-subscriber.setsockopt_string(zmq.CURVE_SECRETKEY, secret_key)
-subscriber.setsockopt_string(zmq.CURVE_PUBLICKEY, public_key)
-subscriber.setsockopt_string(zmq.CURVE_SERVERKEY, broker_public_key)
-```
-
-**Broker Sockets:**
-```python
-# Frontend (clients connect here)
-frontend.setsockopt(zmq.CURVE_SERVER, 1)  # Server mode
-frontend.setsockopt_string(zmq.CURVE_SECRETKEY, broker_secret_key)
-frontend.setsockopt_string(zmq.CURVE_PUBLICKEY, broker_public_key)
-
-# Backend (internal forwarding)
-backend.setsockopt(zmq.CURVE_SERVER, 1)  # Server mode
-backend.setsockopt_string(zmq.CURVE_SECRETKEY, broker_secret_key)
-backend.setsockopt_string(zmq.CURVE_PUBLICKEY, broker_public_key)
-```
-
-#### Security Logging
-
-All CurveZMQ operations include comprehensive security logging:
-
-**Client Logging:**
-```python
-self.logger.info(f"[SECURITY] CurveZMQ encryption enabled for client: {self.client_id}")
-self.logger.debug(f"[SECURITY] Client public key fingerprint: {self.public_key[:8]}...")
-self.logger.debug(f"[SECURITY] Authenticating broker with public key fingerprint: {broker_public_key[:8]}...")
-self.logger.info(f"[SECURITY] CurveZMQ socket encryption configured for client {self.client_id}")
-```
-
-**Broker Logging:**
-```python
-self.logger.info("[SECURITY] Setting up CurveZMQ authentication for message bus broker")
-self.logger.debug(f"[SECURITY] Authorized CurveZMQ client: {client_name} (key: {client_public_key[:8]}...)")
-self.logger.info("[SECURITY] Broker authentication setup complete - all connections will be encrypted")
-```
-
-#### Error Handling
-
-**Fail-Secure Behavior:**
-```python
-try:
-    # Setup CurveZMQ encryption
-    await self._setup_curve_encryption(config)
-    self._configure_curve_sockets()
-except Exception as e:
-    # NO PLAINTEXT FALLBACK - Fail securely
-    self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption: {e}")
-    raise MessageBusError(f"CurveZMQ encryption setup failed: {e}")
-```
+Key management, broker/client configuration, socket options, and security logging are all encapsulated in `MessageBusBroker`, `MessageBusClient`, and `AICOKeyManager`, so most code only needs to create a client and connect.
 
 ### Testing and Validation
 
-#### Test Script
-Use the provided test script to verify encryption:
-```bash
-python scripts/test_curve_zmq.py
-```
-
-Expected output:
-```
-🔒 Testing CurveZMQ Message Bus Encryption
-==================================================
-✅ Broker started (encryption: enabled)
-✅ Publisher connected (encryption: enabled)
-✅ Subscriber connected (encryption: enabled)
-✅ All 3 encrypted messages received successfully!
-🎉 CurveZMQ Message Bus Encryption Test: PASSED
-```
-
-#### CLI Testing
-Test encrypted CLI commands:
-```bash
-# Test encrypted message bus
-aico bus test
-
-# Monitor encrypted traffic
-aico bus monitor
-
-# Check broker statistics
-aico bus stats
-```
+Encryption and message bus behavior can be verified via the existing test script (`scripts/test_curve_zmq.py`) and the `aico bus` CLI commands (`test`, `monitor`, `stats`). Detailed command output is omitted here to keep the architecture doc focused.
 
 ### Migration from Plaintext
 
@@ -717,11 +467,8 @@ MessageBusError: CurveZMQ socket configuration failed
 **Solution**: Ensure broker is running and client public key is in authorized list.
 
 #### Debug Logging
-Enable debug logging to see detailed CurveZMQ operations:
-```python
-import logging
-logging.getLogger('aico.core.bus').setLevel(logging.DEBUG)
-```
+
+Debug logging for the message bus can be enabled via the standard Python logging configuration on the `aico.core.bus` logger.
 
 ### Security Guarantees
 
