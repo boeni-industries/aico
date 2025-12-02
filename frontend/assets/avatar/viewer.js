@@ -886,6 +886,38 @@ const visemeMap = {
         jawOpen: 0.15,
         tongueOut: 0.2
     },
+    
+    // DD - alveolar (d, t, n) - tongue behind teeth
+    'DD': {
+        jawOpen: 0.2,
+        tongueOut: 0.15,
+        mouthSmileLeft: 0.1,
+        mouthSmileRight: 0.1
+    },
+    
+    // kk - velar (k, g) - back of tongue, slight jaw
+    'kk': {
+        jawOpen: 0.22,
+        mouthStretchLeft: 0.12,
+        mouthStretchRight: 0.12
+    },
+    
+    // SS - sibilant (s, z) - teeth together, stretched
+    'SS': {
+        jawOpen: 0.08,
+        mouthStretchLeft: 0.2,
+        mouthStretchRight: 0.2,
+        mouthSmileLeft: 0.15,
+        mouthSmileRight: 0.15
+    },
+    
+    // CH - postalveolar (ch, j, sh) - lips forward, rounded
+    'CH': {
+        jawOpen: 0.15,
+        mouthPucker: 0.25,
+        mouthFunnel: 0.2,
+        jawForward: 0.1
+    },
 };
 
 // Smooth interpolation state
@@ -934,7 +966,7 @@ function detectViseme() {
         // Use frequency content + amplitude to distinguish phonemes
         // More sensitive thresholds for better variety
         
-        // More granular detection with 8 volume levels
+        // Enhanced detection with 12 visemes across 9 volume levels
         if (rms > 0.18) {
             // Very loud - wide open vowels
             return lowFreq > midFreq * 1.2 ? 'aa' : 'O';
@@ -948,43 +980,60 @@ function detectViseme() {
                 return 'O'; // Rounded
             }
         } else if (rms > 0.10) {
-            // Medium-high - mix of vowels
-            if (highFreq > lowFreq * 1.2) {
+            // Medium-high - mix of vowels and some consonants
+            if (highFreq > lowFreq * 1.3) {
                 return 'I'; // Closed vowel
-            } else if (midFreq > highFreq * 1.1) {
+            } else if (midFreq > highFreq * 1.15) {
+                return 'kk'; // Velar (k, g)
+            } else if (midFreq > lowFreq * 1.2) {
                 return 'E'; // Mid vowel
             } else {
                 return 'aa'; // Open
             }
         } else if (rms > 0.07) {
-            // Medium - varied vowels
-            if (highFreq > midFreq * 1.25) {
-                return 'I'; // Closed
+            // Medium - varied vowels and consonants
+            if (highFreq > midFreq * 1.35) {
+                return 'SS'; // Sibilant (s, z)
+            } else if (highFreq > midFreq * 1.2) {
+                return 'I'; // Closed vowel
             } else if (lowFreq > highFreq * 1.15) {
-                return 'E'; // Mid
+                return 'DD'; // Alveolar (d, t, n)
             } else {
                 return 'U'; // Rounded quiet
             }
         } else if (rms > 0.05) {
-            // Medium-low - quieter vowels and consonants
-            if (highFreq > midFreq * 1.3) {
-                return 'FF'; // Labiodental
+            // Medium-low - consonants and quiet vowels
+            if (highFreq > midFreq * 1.4) {
+                return 'SS'; // Sibilant
+            } else if (highFreq > midFreq * 1.25) {
+                return 'CH'; // Postalveolar (ch, sh)
             } else if (midFreq > lowFreq * 1.2) {
-                return 'I'; // Closed vowel
+                return 'DD'; // Alveolar
             } else {
                 return 'U'; // Rounded
             }
-        } else if (rms > 0.03) {
+        } else if (rms > 0.035) {
             // Low - consonants
+            if (highFreq > midFreq * 1.5) {
+                return 'SS'; // Sibilant
+            } else if (highFreq > midFreq * 1.3) {
+                return 'FF'; // Labiodental
+            } else if (midFreq > lowFreq * 1.15) {
+                return 'DD'; // Alveolar
+            } else {
+                return 'kk'; // Velar
+            }
+        } else if (rms > 0.025) {
+            // Very low - subtle consonants
             if (highFreq > midFreq * 1.4) {
                 return 'PP'; // Bilabial
             } else if (lowFreq > highFreq) {
                 return 'TH'; // Dental
             } else {
-                return 'FF'; // Labiodental
+                return 'CH'; // Postalveolar
             }
         } else if (rms > 0.018) {
-            // Very low - subtle consonants
+            // Extremely low
             return highFreq > midFreq ? 'PP' : 'TH';
         } else {
             return 'sil'; // Silence
