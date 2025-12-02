@@ -27,6 +27,7 @@ let audioContext;
 let audioAnalyser;
 let audioSource;
 let audioElement = null; // Reference to audio element
+let frequencyData; // Buffer for frequency analysis
 let lipSyncEnabled = false;
 let currentViseme = 'sil';
 let lipSyncFrameTime = 0;
@@ -739,6 +740,9 @@ function initLipSync() {
         audioAnalyser.fftSize = 2048; // Higher resolution for frequency analysis
         audioAnalyser.smoothingTimeConstant = 0.8; // Smooth audio analysis
         
+        // Initialize frequency data buffer
+        frequencyData = new Uint8Array(audioAnalyser.frequencyBinCount);
+        
         lipSyncEnabled = true;
         console.log('[AICO Avatar] 🎤 Lip-sync system initialized');
         console.log('[AICO Avatar] ✅ Using Web Audio API frequency analysis');
@@ -812,32 +816,64 @@ window.playAudioForLipSync = function(base64Audio) {
 };
 
 /**
- * Frequency-based viseme mapping to ARKit Blend Shapes
- * Maps audio amplitude/frequency patterns to mouth shapes
+ * Simplified viseme to ARKit blend shapes mapping
+ * Reduced values for natural, subtle lip movement
+ * Focuses on jaw and basic mouth shapes, avoids extreme deformations
  */
 const visemeMap = {
-    // Silence
-    'sil': { jawOpen: 0 },
+    // Silence - neutral mouth
+    'sil': {},
     
-    // Open vowels (high amplitude, low frequency)
-    'aa': { jawOpen: 0.6 },
-    'O': { jawOpen: 0.5, mouthFunnel: 0.3 },
+    // aa - open vowel (ah) - just open jaw
+    'aa': { 
+        jawOpen: 0.4
+    },
     
-    // Mid vowels (medium amplitude)
-    'E': { jawOpen: 0.4 },
+    // E - mid vowel (eh) - slight smile, less open
+    'E': { 
+        jawOpen: 0.25,
+        mouthSmileLeft: 0.15,
+        mouthSmileRight: 0.15
+    },
     
-    // Closed vowels (lower amplitude, higher frequency)
-    'I': { jawOpen: 0.3 },
-    'U': { jawOpen: 0.35, mouthFunnel: 0.2 },
+    // I - closed vowel (ih) - wider smile, minimal jaw
+    'I': { 
+        jawOpen: 0.15,
+        mouthSmileLeft: 0.25,
+        mouthSmileRight: 0.25
+    },
     
-    // Consonants (low amplitude, varied frequency)
-    'PP': { jawOpen: 0.1 },
+    // O - rounded vowel (oh) - pucker + slight jaw
+    'O': { 
+        jawOpen: 0.2,
+        mouthPucker: 0.3,
+        mouthFunnel: 0.15
+    },
+    
+    // U - rounded vowel (oo) - more pucker, less jaw
+    'U': { 
+        jawOpen: 0.1,
+        mouthFunnel: 0.35,
+        mouthPucker: 0.2
+    },
+    
+    // PP - bilabial (p, b, m) - lips together, minimal jaw
+    'PP': { 
+        jawOpen: 0.05
+    },
 };
 
+// Smooth interpolation state
+let targetVisemeWeights = {};
+let currentVisemeWeights = {};
+const LERP_SPEED = 0.5; // Interpolation speed (0-1, higher = faster)
+let lastVisemeChangeTime = 0;
+const MIN_VISEME_DURATION_MS = 50; // Minimum time to hold a viseme
+
 /**
- * Detect current viseme from audio amplitude
- * Uses frequency analysis to estimate mouth shape
- * Returns viseme code based on volume
+ * Detect current viseme from audio amplitude AND frequency
+ * Uses both volume and spectral content for better variety
+ * Returns viseme code based on audio characteristics
  */
 function detectViseme() {
     if (!audioAnalyser || !lipSyncEnabled) {
@@ -845,35 +881,68 @@ function detectViseme() {
     }
     
     try {
-        // Get frequency data from audio
-        const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
-        audioAnalyser.getByteFrequencyData(dataArray);
+        // Get frequency data
+        audioAnalyser.getByteFrequencyData(frequencyData);
         
-        // Calculate RMS (root mean square) for better amplitude detection
+        // Calculate RMS (root mean square) for volume
         let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i] * dataArray[i];
+        for (let i = 0; i < frequencyData.length; i++) {
+            const normalized = frequencyData[i] / 255.0;
+            sum += normalized * normalized;
         }
-        const rms = Math.sqrt(sum / dataArray.length);
-        const normalizedVolume = rms / 255;
+        const rms = Math.sqrt(sum / frequencyData.length);
         
-        // If very quiet, return silence
-        if (normalizedVolume < 0.01) {
+        // Analyze frequency bands for better viseme detection
+        const lowFreq = frequencyData.slice(0, 85).reduce((a, b) => a + b, 0) / 85 / 255;
+        const midFreq = frequencyData.slice(85, 170).reduce((a, b) => a + b, 0) / 85 / 255;
+        const highFreq = frequencyData.slice(170, 255).reduce((a, b) => a + b, 0) / 85 / 255;
+        
+        // Add time-based variation to prevent sticking
+        const now = performance.now();
+        const timeSinceLastChange = now - lastVisemeChangeTime;
+        
+        // Silence threshold
+        if (rms < 0.015) {
             return 'sil';
         }
         
-        // Volume-based mouth opening
-        // More volume = more open mouth
-        if (normalizedVolume > 0.15) {
-            return 'aa'; // Wide open
-        } else if (normalizedVolume > 0.10) {
-            return 'O'; // Open rounded
-        } else if (normalizedVolume > 0.06) {
-            return 'E'; // Mid open
-        } else if (normalizedVolume > 0.03) {
-            return 'I'; // Slightly open
+        // Use frequency content + amplitude to distinguish phonemes
+        // More sensitive thresholds for better variety
+        
+        if (rms > 0.15) {
+            // Very loud sounds - alternate between open vowels
+            if (lowFreq > midFreq * 1.2) {
+                return 'aa'; // Wide open
+            } else {
+                return 'O'; // Rounded open
+            }
+        } else if (rms > 0.10) {
+            // Loud sounds - vary based on frequency
+            if (highFreq > lowFreq * 1.1) {
+                return 'E'; // Mid vowel
+            } else if (midFreq > highFreq) {
+                return 'aa'; // Open
+            } else {
+                return 'O'; // Rounded
+            }
+        } else if (rms > 0.06) {
+            // Medium volume - more variation
+            if (highFreq > midFreq * 1.2) {
+                return 'I'; // Closed vowel
+            } else if (lowFreq > highFreq) {
+                return 'E'; // Mid vowel
+            } else {
+                return 'U'; // Rounded quiet
+            }
+        } else if (rms > 0.03) {
+            // Quiet sounds
+            if (highFreq > midFreq * 1.3) {
+                return 'PP'; // Consonants
+            } else {
+                return 'I'; // Slightly open
+            }
         } else {
-            return 'PP'; // Nearly closed
+            return 'PP'; // Very quiet = lips together
         }
         
     } catch (error) {
@@ -883,35 +952,54 @@ function detectViseme() {
 }
 
 /**
- * Apply viseme blend shapes to avatar face
+ * Apply viseme blend shapes to avatar face with smooth interpolation
  * Blends with current emotion expression
  */
 function applyViseme(visemeCode, intensity = 1.0) {
     const viseme = visemeMap[visemeCode] || visemeMap['sil'];
     
+    // Set target weights for this viseme
+    targetVisemeWeights = {};
+    for (const [target, weight] of Object.entries(viseme)) {
+        targetVisemeWeights[target] = weight * intensity;
+    }
+    
+    // Smooth interpolation toward target
     eyeMeshes.forEach(mesh => {
         const dict = mesh.morphTargetDictionary;
         const influences = mesh.morphTargetInfluences;
         
-        // Apply each blend shape in the viseme
-        for (const [target, weight] of Object.entries(viseme)) {
+        // List of all mouth targets we control
+        const mouthTargets = ['jawOpen', 'mouthPucker', 'mouthFunnel', 'mouthSmileLeft', 'mouthSmileRight'];
+        
+        mouthTargets.forEach(target => {
             if (dict[target] !== undefined) {
                 const targetIndex = dict[target];
                 
-                // Blend with current emotion (additive, clamped to 1.0)
+                // Initialize current weight if not set
+                if (currentVisemeWeights[target] === undefined) {
+                    currentVisemeWeights[target] = 0;
+                }
+                
+                // Get target weight (0 if not in current viseme)
+                const targetWeight = targetVisemeWeights[target] || 0;
+                
+                // Smooth interpolation (lerp)
+                currentVisemeWeights[target] += (targetWeight - currentVisemeWeights[target]) * LERP_SPEED;
+                
+                // Blend with emotion
                 const emotionWeight = currentEmotionValues[target] || 0;
-                const visemeWeight = weight * intensity;
-                const blendedWeight = Math.min(emotionWeight + visemeWeight, 1.0);
+                const blendedWeight = Math.min(emotionWeight + currentVisemeWeights[target], 1.0);
                 
                 influences[targetIndex] = blendedWeight;
             }
-        }
+        });
     });
 }
 
 /**
  * Update lip-sync in animation loop
- * Called every frame when talking
+ * Called every frame when talking - updates blend shapes smoothly
  */
 function updateLipSync() {
     const startTime = performance.now();
@@ -920,12 +1008,16 @@ function updateLipSync() {
         // Detect viseme from audio frequency
         const viseme = detectViseme();
         
-        // Only update if viseme changed (reduce overhead)
+        // Log only when viseme changes
         if (viseme !== currentViseme) {
+            const now = performance.now();
+            lastVisemeChangeTime = now;
             currentViseme = viseme;
             console.log('[AICO Avatar] 👄 Viseme:', viseme);
-            applyViseme(viseme, 1.0); // Full intensity for visible movement
         }
+        
+        // ALWAYS update blend shapes for smooth interpolation
+        applyViseme(viseme, 1.0);
         
         // Performance monitoring
         lipSyncFrameTime = performance.now() - startTime;
@@ -947,7 +1039,26 @@ function updateLipSync() {
  */
 function resetLipSync() {
     currentViseme = 'sil';
-    applyViseme('sil');
+    
+    // Clear all lip-sync blend shapes (reset mouth to neutral)
+    eyeMeshes.forEach(mesh => {
+        const dict = mesh.morphTargetDictionary;
+        const influences = mesh.morphTargetInfluences;
+        
+        // Reset all mouth-related blend shapes to emotion-only values
+        const mouthTargets = ['jawOpen', 'mouthPucker', 'mouthFunnel', 'mouthPressLeft', 'mouthPressRight',
+                             'mouthDimpleLeft', 'mouthDimpleRight', 'mouthRollLower', 'mouthRollUpper',
+                             'mouthUpperUpLeft', 'mouthUpperUpRight', 'jawForward'];
+        
+        mouthTargets.forEach(target => {
+            if (dict[target] !== undefined) {
+                const targetIndex = dict[target];
+                // Reset to emotion value only (no lip-sync)
+                influences[targetIndex] = currentEmotionValues[target] || 0;
+            }
+        });
+    });
+    
     if (audioElement) {
         audioElement.pause();
         audioElement = null;
