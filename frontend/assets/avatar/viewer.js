@@ -22,6 +22,16 @@ let targetEmotionValues = {};
 let currentEmotionValues = {};
 const emotionTransitionSpeed = 0.05; // Smooth transition speed
 
+// Lip-sync system (pure Web Audio API frequency analysis)
+let audioContext;
+let audioAnalyser;
+let audioSource;
+let audioElement = null; // Reference to audio element
+let lipSyncEnabled = false;
+let currentViseme = 'sil';
+let lipSyncFrameTime = 0;
+const MAX_LIPSYNC_TIME_MS = 2; // Performance budget: 2ms max per frame
+
 // Initialize the scene
 function init() {
     console.log('[AICO Avatar] Initializing...');
@@ -69,6 +79,9 @@ function init() {
     
     // Handle window resize
     window.addEventListener('resize', onWindowResize, false);
+    
+    // Initialize lip-sync system
+    initLipSync();
     
     // Start render loop
     animate();
@@ -602,6 +615,11 @@ function startTalking() {
     } else {
         console.warn('[AICO Avatar] Talking animation group not loaded');
     }
+    
+    // Enable lip-sync for this talking session
+    if (lipSyncEnabled) {
+        console.log('[AICO Avatar] 🎤 Lip-sync enabled for talking');
+    }
 }
 
 // Switch to idle state
@@ -621,6 +639,9 @@ function stopTalking() {
     
     // Stop talking animation group
     stopAnimationGroup('talking');
+    
+    // Reset lip-sync to neutral mouth position
+    resetLipSync();
     
     // IMMEDIATELY transition to idle (crossfade will handle smooth transition)
     if (animationGroups.idle) {
@@ -680,6 +701,11 @@ function animate() {
     applyEyeGaze();
     applyEmotionExpression();
     
+    // Update lip-sync if enabled (with performance monitoring)
+    if (lipSyncEnabled && currentAvatarState === 'talking') {
+        updateLipSync();
+    }
+    
     // Render scene
     renderer.render(scene, camera);
 }
@@ -697,9 +723,246 @@ function updateBackgroundColor(stateColor) {
     console.log(`[AICO Avatar] 🎨 updateBackgroundColor called (no-op - aura in Flutter): "${stateColor}"`);
 }
 
+// ============================================================================
+// LIP-SYNC SYSTEM
+// ============================================================================
+
+/**
+ * Initialize lip-sync system with Web Audio API
+ * Pure frequency analysis - TTS engine agnostic
+ */
+function initLipSync() {
+    try {
+        // Initialize Web Audio API
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioAnalyser = audioContext.createAnalyser();
+        audioAnalyser.fftSize = 2048; // Higher resolution for frequency analysis
+        audioAnalyser.smoothingTimeConstant = 0.8; // Smooth audio analysis
+        
+        lipSyncEnabled = true;
+        console.log('[AICO Avatar] 🎤 Lip-sync system initialized');
+        console.log('[AICO Avatar] ✅ Using Web Audio API frequency analysis');
+    } catch (error) {
+        console.error('[AICO Avatar] ❌ Lip-sync initialization failed:', error);
+        lipSyncEnabled = false;
+    }
+}
+
+/**
+ * Play audio in WebView and connect to lip-sync
+ * @param {string} base64Audio - Base64-encoded WAV audio data
+ */
+window.playAudioForLipSync = function(base64Audio) {
+    try {
+        console.log('[AICO Avatar] 🎵 Setting up audio for lip-sync');
+        
+        // Clean up previous audio
+        if (audioElement) {
+            audioElement.pause();
+            audioElement.src = '';
+        }
+        if (audioSource) {
+            try {
+                audioSource.disconnect();
+            } catch (e) {
+                // Ignore disconnect errors
+            }
+            audioSource = null;
+        }
+        
+        // Create new audio element
+        audioElement = new Audio();
+        audioElement.id = 'tts-audio';
+        
+        // Set audio source FIRST (before connecting to Web Audio API)
+        audioElement.src = `data:audio/wav;base64,${base64Audio}`;
+        
+        // Connect to Web Audio API for frequency analysis
+        // MUST be done after setting src but before play
+        if (audioContext && audioAnalyser) {
+            try {
+                audioSource = audioContext.createMediaElementSource(audioElement);
+                audioSource.connect(audioAnalyser);
+                audioAnalyser.connect(audioContext.destination);
+                console.log('[AICO Avatar] 🔊 Audio connected to analyser');
+            } catch (error) {
+                console.error('[AICO Avatar] Failed to connect audio to analyser:', error);
+            }
+        }
+        
+        // Handle playback end
+        audioElement.addEventListener('ended', () => {
+            console.log('[AICO Avatar] 🎵 Audio playback ended');
+            // Notify Flutter that audio ended
+            if (window.flutter_inappwebview) {
+                window.flutter_inappwebview.callHandler('audioEnded');
+            }
+        });
+        
+        // Play audio
+        audioElement.play().then(() => {
+            console.log('[AICO Avatar] 🎵 Audio playback started');
+        }).catch(error => {
+            console.error('[AICO Avatar] Failed to play audio:', error);
+        });
+        
+    } catch (error) {
+        console.error('[AICO Avatar] Failed to setup audio:', error);
+    }
+};
+
+/**
+ * Frequency-based viseme mapping to ARKit Blend Shapes
+ * Maps audio amplitude/frequency patterns to mouth shapes
+ */
+const visemeMap = {
+    // Silence
+    'sil': { jawOpen: 0 },
+    
+    // Open vowels (high amplitude, low frequency)
+    'aa': { jawOpen: 0.6 },
+    'O': { jawOpen: 0.5, mouthFunnel: 0.3 },
+    
+    // Mid vowels (medium amplitude)
+    'E': { jawOpen: 0.4 },
+    
+    // Closed vowels (lower amplitude, higher frequency)
+    'I': { jawOpen: 0.3 },
+    'U': { jawOpen: 0.35, mouthFunnel: 0.2 },
+    
+    // Consonants (low amplitude, varied frequency)
+    'PP': { jawOpen: 0.1 },
+};
+
+/**
+ * Detect current viseme from audio amplitude
+ * Uses frequency analysis to estimate mouth shape
+ * Returns viseme code based on volume
+ */
+function detectViseme() {
+    if (!audioAnalyser || !lipSyncEnabled) {
+        return 'sil';
+    }
+    
+    try {
+        // Get frequency data from audio
+        const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
+        audioAnalyser.getByteFrequencyData(dataArray);
+        
+        // Calculate RMS (root mean square) for better amplitude detection
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i] * dataArray[i];
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        const normalizedVolume = rms / 255;
+        
+        // If very quiet, return silence
+        if (normalizedVolume < 0.01) {
+            return 'sil';
+        }
+        
+        // Volume-based mouth opening
+        // More volume = more open mouth
+        if (normalizedVolume > 0.15) {
+            return 'aa'; // Wide open
+        } else if (normalizedVolume > 0.10) {
+            return 'O'; // Open rounded
+        } else if (normalizedVolume > 0.06) {
+            return 'E'; // Mid open
+        } else if (normalizedVolume > 0.03) {
+            return 'I'; // Slightly open
+        } else {
+            return 'PP'; // Nearly closed
+        }
+        
+    } catch (error) {
+        console.error('[AICO Avatar] Viseme detection error:', error);
+        return 'sil';
+    }
+}
+
+/**
+ * Apply viseme blend shapes to avatar face
+ * Blends with current emotion expression
+ */
+function applyViseme(visemeCode, intensity = 1.0) {
+    const viseme = visemeMap[visemeCode] || visemeMap['sil'];
+    
+    eyeMeshes.forEach(mesh => {
+        const dict = mesh.morphTargetDictionary;
+        const influences = mesh.morphTargetInfluences;
+        
+        // Apply each blend shape in the viseme
+        for (const [target, weight] of Object.entries(viseme)) {
+            if (dict[target] !== undefined) {
+                const targetIndex = dict[target];
+                
+                // Blend with current emotion (additive, clamped to 1.0)
+                const emotionWeight = currentEmotionValues[target] || 0;
+                const visemeWeight = weight * intensity;
+                const blendedWeight = Math.min(emotionWeight + visemeWeight, 1.0);
+                
+                influences[targetIndex] = blendedWeight;
+            }
+        }
+    });
+}
+
+/**
+ * Update lip-sync in animation loop
+ * Called every frame when talking
+ */
+function updateLipSync() {
+    const startTime = performance.now();
+    
+    try {
+        // Detect viseme from audio frequency
+        const viseme = detectViseme();
+        
+        // Only update if viseme changed (reduce overhead)
+        if (viseme !== currentViseme) {
+            currentViseme = viseme;
+            console.log('[AICO Avatar] 👄 Viseme:', viseme);
+            applyViseme(viseme, 1.0); // Full intensity for visible movement
+        }
+        
+        // Performance monitoring
+        lipSyncFrameTime = performance.now() - startTime;
+        
+        // Auto-disable if too slow (fail loudly)
+        if (lipSyncFrameTime > MAX_LIPSYNC_TIME_MS) {
+            console.error(`[AICO Avatar] ⚠️ Lip-sync too slow (${lipSyncFrameTime.toFixed(2)}ms > ${MAX_LIPSYNC_TIME_MS}ms), disabling`);
+            lipSyncEnabled = false;
+        }
+        
+    } catch (error) {
+        console.error('[AICO Avatar] Lip-sync update error:', error);
+        lipSyncEnabled = false; // Fail loudly and disable
+    }
+}
+
+/**
+ * Reset lip-sync state when stopping speech
+ */
+function resetLipSync() {
+    currentViseme = 'sil';
+    applyViseme('sil');
+    if (audioElement) {
+        audioElement.pause();
+        audioElement = null;
+    }
+    audioSource = null;
+    console.log('[AICO Avatar] 🤫 Lip-sync reset');
+}
+
 // Expose functions to Flutter
 window.playAnimation = playAnimation;
 window.updateBackgroundColor = updateBackgroundColor;
+window.startTalking = startTalking;
+window.stopTalking = stopTalking;
+window.setAvatarEmotion = setEmotion;
+// window.playAudioForLipSync is already exposed above
 
 // Initialize on load
 init();
