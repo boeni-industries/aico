@@ -816,50 +816,75 @@ window.playAudioForLipSync = function(base64Audio) {
 };
 
 /**
- * Simplified viseme to ARKit blend shapes mapping
- * Reduced values for natural, subtle lip movement
- * Focuses on jaw and basic mouth shapes, avoids extreme deformations
+ * Enhanced viseme to ARKit blend shapes mapping
+ * Natural movement with lateral stretch, jaw, and lip detail
+ * Based on professional animation principles
  */
 const visemeMap = {
     // Silence - neutral mouth
     'sil': {},
     
-    // aa - open vowel (ah) - just open jaw
+    // aa - open vowel (ah) - wide open, slight stretch
     'aa': { 
-        jawOpen: 0.4
+        jawOpen: 0.45,
+        mouthStretchLeft: 0.1,
+        mouthStretchRight: 0.1
     },
     
-    // E - mid vowel (eh) - slight smile, less open
+    // E - mid vowel (eh) - smile + stretch (wide vowel)
     'E': { 
-        jawOpen: 0.25,
-        mouthSmileLeft: 0.15,
-        mouthSmileRight: 0.15
+        jawOpen: 0.28,
+        mouthSmileLeft: 0.2,
+        mouthSmileRight: 0.2,
+        mouthStretchLeft: 0.15,
+        mouthStretchRight: 0.15
     },
     
-    // I - closed vowel (ih) - wider smile, minimal jaw
+    // I - closed vowel (ih) - wider smile, stretched (Ee shape)
     'I': { 
-        jawOpen: 0.15,
-        mouthSmileLeft: 0.25,
-        mouthSmileRight: 0.25
+        jawOpen: 0.18,
+        mouthSmileLeft: 0.35,
+        mouthSmileRight: 0.35,
+        mouthStretchLeft: 0.25,
+        mouthStretchRight: 0.25
     },
     
-    // O - rounded vowel (oh) - pucker + slight jaw
+    // O - rounded vowel (oh) - pucker + jaw + slight funnel
     'O': { 
-        jawOpen: 0.2,
-        mouthPucker: 0.3,
-        mouthFunnel: 0.15
+        jawOpen: 0.25,
+        mouthPucker: 0.35,
+        mouthFunnel: 0.18,
+        jawForward: 0.15
     },
     
-    // U - rounded vowel (oo) - more pucker, less jaw
+    // U - rounded vowel (oo) - more funnel, forward jaw
     'U': { 
-        jawOpen: 0.1,
-        mouthFunnel: 0.35,
-        mouthPucker: 0.2
+        jawOpen: 0.12,
+        mouthFunnel: 0.4,
+        mouthPucker: 0.25,
+        jawForward: 0.2
     },
     
-    // PP - bilabial (p, b, m) - lips together, minimal jaw
+    // PP - bilabial (p, b, m) - lips pressed, slight upper lip up
     'PP': { 
-        jawOpen: 0.05
+        jawOpen: 0.03,
+        mouthUpperUpLeft: 0.1,
+        mouthUpperUpRight: 0.1
+    },
+    
+    // FF - labiodental (f, v) - teeth on lower lip
+    'FF': {
+        jawOpen: 0.08,
+        mouthLowerDownLeft: 0.15,
+        mouthLowerDownRight: 0.15,
+        mouthStretchLeft: 0.1,
+        mouthStretchRight: 0.1
+    },
+    
+    // TH - dental (th) - tongue visible, slight jaw
+    'TH': {
+        jawOpen: 0.15,
+        tongueOut: 0.2
     },
 };
 
@@ -909,40 +934,60 @@ function detectViseme() {
         // Use frequency content + amplitude to distinguish phonemes
         // More sensitive thresholds for better variety
         
-        if (rms > 0.15) {
-            // Very loud sounds - alternate between open vowels
-            if (lowFreq > midFreq * 1.2) {
-                return 'aa'; // Wide open
-            } else {
-                return 'O'; // Rounded open
-            }
-        } else if (rms > 0.10) {
-            // Loud sounds - vary based on frequency
-            if (highFreq > lowFreq * 1.1) {
+        // More granular detection with 8 volume levels
+        if (rms > 0.18) {
+            // Very loud - wide open vowels
+            return lowFreq > midFreq * 1.2 ? 'aa' : 'O';
+        } else if (rms > 0.14) {
+            // Loud - open vowels with variation
+            if (highFreq > midFreq * 1.15) {
                 return 'E'; // Mid vowel
-            } else if (midFreq > highFreq) {
-                return 'aa'; // Open
+            } else if (lowFreq > highFreq * 1.1) {
+                return 'aa'; // Wide open
             } else {
                 return 'O'; // Rounded
             }
-        } else if (rms > 0.06) {
-            // Medium volume - more variation
-            if (highFreq > midFreq * 1.2) {
+        } else if (rms > 0.10) {
+            // Medium-high - mix of vowels
+            if (highFreq > lowFreq * 1.2) {
                 return 'I'; // Closed vowel
-            } else if (lowFreq > highFreq) {
+            } else if (midFreq > highFreq * 1.1) {
                 return 'E'; // Mid vowel
+            } else {
+                return 'aa'; // Open
+            }
+        } else if (rms > 0.07) {
+            // Medium - varied vowels
+            if (highFreq > midFreq * 1.25) {
+                return 'I'; // Closed
+            } else if (lowFreq > highFreq * 1.15) {
+                return 'E'; // Mid
             } else {
                 return 'U'; // Rounded quiet
             }
-        } else if (rms > 0.03) {
-            // Quiet sounds
+        } else if (rms > 0.05) {
+            // Medium-low - quieter vowels and consonants
             if (highFreq > midFreq * 1.3) {
-                return 'PP'; // Consonants
+                return 'FF'; // Labiodental
+            } else if (midFreq > lowFreq * 1.2) {
+                return 'I'; // Closed vowel
             } else {
-                return 'I'; // Slightly open
+                return 'U'; // Rounded
             }
+        } else if (rms > 0.03) {
+            // Low - consonants
+            if (highFreq > midFreq * 1.4) {
+                return 'PP'; // Bilabial
+            } else if (lowFreq > highFreq) {
+                return 'TH'; // Dental
+            } else {
+                return 'FF'; // Labiodental
+            }
+        } else if (rms > 0.018) {
+            // Very low - subtle consonants
+            return highFreq > midFreq ? 'PP' : 'TH';
         } else {
-            return 'PP'; // Very quiet = lips together
+            return 'sil'; // Silence
         }
         
     } catch (error) {
@@ -970,7 +1015,10 @@ function applyViseme(visemeCode, intensity = 1.0) {
         const influences = mesh.morphTargetInfluences;
         
         // List of all mouth targets we control
-        const mouthTargets = ['jawOpen', 'mouthPucker', 'mouthFunnel', 'mouthSmileLeft', 'mouthSmileRight'];
+        const mouthTargets = ['jawOpen', 'jawForward', 'mouthPucker', 'mouthFunnel', 
+                             'mouthSmileLeft', 'mouthSmileRight', 'mouthStretchLeft', 'mouthStretchRight',
+                             'mouthUpperUpLeft', 'mouthUpperUpRight', 'mouthLowerDownLeft', 'mouthLowerDownRight',
+                             'tongueOut'];
         
         mouthTargets.forEach(target => {
             if (dict[target] !== undefined) {
