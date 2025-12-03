@@ -57,13 +57,14 @@ class KokoroTtsHandler:
             except ImportError:
                 error_msg = (
                     "\n" + "="*80 + "\n"
-                    "❌ FATAL: kokoro-onnx package not installed!\n"
-                    "Please install: pip install kokoro-onnx\n"
+                    "❌ FATAL: kokoro package not installed!\n"
+                    "Please install: pip install kokoro\n"
+                    "Or run: uv sync --extra modelservice\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("kokoro-onnx package not installed")
+                raise RuntimeError("kokoro package not installed")
             
             # Get TTS configuration
             if not self._config:
