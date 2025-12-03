@@ -58,6 +58,8 @@ modelservice = [
     "sentence-transformers>=5.1.1", # Multilingual embeddings for semantic memory
     "coqui-tts", # Source specified in tool.uv.sources, dependencies overridden
     "piper-tts>=1.2.0", # Fast neural TTS (100x faster than XTTS, no voice cloning)
+    "kokoro-onnx>=0.4.9", # Kokoro TTS - Fast, high-quality ONNX-based TTS (82M params)
+    "soundfile>=0.12.1", # Audio I/O for Kokoro (WAV file handling)
 ]
 
 test = [
