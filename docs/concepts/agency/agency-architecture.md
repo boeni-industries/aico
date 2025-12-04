@@ -138,6 +138,217 @@ At a high level, agency data and control flows follow this pattern:
    - AMS and Behavioral Learning update preferences and skill selection.  
    - Personality and relationship models are gradually updated.
 
-## 5. References
+## 5. Component Relationship Diagram
 
-For conceptual background, see the references listed in `agency.md` (Section 6). Those works provide the theoretical basis for the agent loop, goal/plan structures, and memory‑driven self‑evolution that this architecture instantiates.
+The previous detailed component diagram is intentionally simplified here to emphasise clarity. Internal modules are described in the text above; this diagram focuses on **domains** and their main connections.
+
+```mermaid
+flowchart LR
+    classDef domain fill:#fffbe6,stroke:#c0a800,stroke-width:1px;
+    classDef core fill:#eef7ff,stroke:#4a90e2,stroke-width:1px;
+
+    User([User])
+
+    subgraph UF[User-Facing & Embodiment]
+        CE[Conversation Engine]
+        AV[3D Avatar & Living Space]
+    end
+
+    subgraph AG[Autonomous Agency Domain]
+        AGCore[Agency Core]
+    end
+
+    subgraph MW[Intelligence & Memory Domain]
+        MWCore[Memory & World Model]
+    end
+
+    subgraph PV[Personality, Values & Emotion]
+        PVCore[Personality & Emotion]
+    end
+
+    subgraph INF[Core Infrastructure]
+        INFCore[Infra Core]
+    end
+
+    class UF,AG,MW,PV,INF domain;
+    class CE,AV,AGCore,MWCore,PVCore,INFCore core;
+
+    %% Main flows
+    User --> CE
+    CE <--> AGCore
+    CE <--> AV
+
+    AGCore <--> MWCore
+    AGCore <--> PVCore
+    AGCore <--> INFCore
+
+    CE <--> MWCore
+    CE <--> PVCore
+    CE <--> INFCore
+    AV <--> MWCore
+```
+
+### 5.1 Autonomous Agency Detail Diagram
+
+This diagram focuses on the internal structure of the **Autonomous Agency Domain** and its main interfaces.
+
+```mermaid
+flowchart TD
+    classDef box fill:#eef7ff,stroke:#4a90e2,stroke-width:1px;
+    classDef ext fill:#f7f7f7,stroke:#999,stroke-width:1px,stroke-dasharray:3 3;
+
+    GS[Goal System]
+    GA[Goal Arbiter]
+    PL[Planning System]
+    CEg[Curiosity Engine]
+    SR[Self-Reflection]
+    IM[Initiative Manager]
+
+    class GS,GA,PL,CEg,SR,IM box;
+
+    CE[Conversation Engine]
+    AMS[AMS / World Model]
+    PVE[Personality & Emotion]
+    INF[Scheduler / Infra]
+
+    class CE,AMS,PVE,INF ext;
+
+    CE --> GS
+    CE --> GA
+
+    CEg --> GS
+    SR --> GS
+    GS --> GA
+    GA --> PL
+    GA --> IM
+
+    PL --> INF
+    INF --> CE
+
+    GS <--> AMS
+    CEg --> AMS
+    SR --> AMS
+
+    GS <--> PVE
+    GA --> PVE
+```
+
+### 5.2 Intelligence & Memory Detail Diagram
+
+This diagram highlights the **Intelligence & Memory Domain** and how it supports agency.
+
+```mermaid
+flowchart TD
+    classDef box fill:#eef7ff,stroke:#4a90e2,stroke-width:1px;
+    classDef ext fill:#f7f7f7,stroke:#999,stroke-width:1px,stroke-dasharray:3 3;
+
+    AMSCore[Adaptive Memory System]
+    WM[World Model Service]
+    REL[Social Relationship Modeling]
+
+    class AMSCore,WM,REL box;
+
+    GS[Goal System]
+    AG[Agency Core]
+    CE[Conversation Engine]
+    AV[3D Avatar]
+
+    class GS,AG,CE,AV ext;
+
+    CE --> AMSCore
+    CE --> REL
+
+    AMSCore --> WM
+    WM --> REL
+
+    GS <--> AMSCore
+    GS <--> WM
+    AG <--> AMSCore
+    AG <--> WM
+
+    AV <--> AMSCore
+```
+
+### 5.3 Personality, Values, Emotion & Safety Detail Diagram
+
+This diagram focuses on **Personality, Values, Emotion & Safety** and their role in shaping agency decisions.
+
+```mermaid
+flowchart TD
+    classDef box fill:#eef7ff,stroke:#4a90e2,stroke-width:1px;
+    classDef ext fill:#f7f7f7,stroke:#999,stroke-width:1px,stroke-dasharray:3 3;
+
+    PER[Personality Simulation]
+    EMO[Emotion Engine]
+    VAL[Values & Ethics]
+
+    class PER,EMO,VAL box;
+
+    GS[Goal System]
+    GA[Goal Arbiter]
+    CE[Conversation Engine]
+
+    class GS,GA,CE ext;
+
+    CE --> EMO
+
+    PER --> GS
+    EMO --> GS
+    VAL --> GS
+
+    PER --> GA
+    EMO --> GA
+    VAL --> GA
+```
+
+## 6. Execution Flows Diagram
+
+This diagram illustrates the main runtime execution flows of the Agency subsystem, from perception to evaluation, across typical operation.
+
+```mermaid
+sequenceDiagram
+    participant User as User
+    participant CE as Conversation Engine
+    participant AG as Agency (Goal/Planning/Arbiter)
+    participant AMS as AMS & World Model
+    participant PE as Personality & Emotion
+    participant SCH as Scheduler
+    participant SR as Self-Reflection
+    participant AV as Avatar & 3D Flat
+
+    %% Perception & Interpretation
+    User->>CE: Message / Event
+    CE->>AMS: Store interaction, update context
+    CE->>PE: Update emotional state
+    CE->>AG: Notify of new signals (context, emotion)
+
+    %% Goal update & planning
+    AG->>AMS: Query memories, open loops
+    AG->>PE: Query personality/values/emotion
+    AG->>AMS: Query world model (entities, projects, gaps)
+    AG->>AG: Update goals & intentions (incl. curiosity/hobby goals)
+    AG->>AG: Arbiter selects primary focus intention
+    AG->>AG: Planner decomposes intention into plan (steps, skills)
+
+    %% Scheduling & execution
+    AG->>SCH: Register/Update tasks for plan steps
+    SCH->>CE: Execute conversational skills (messages, check-ins)
+    SCH->>AMS: Execute memory/AMS skills (store, consolidate, query)
+    SCH->>AV: Update embodiment (room, posture, activity)
+
+    %% Evaluation & feedback
+    CE->>AG: User feedback / outcome signals
+    SCH->>AG: Task results (success/failure, metrics)
+    AG->>AMS: Write outcome summaries, update world model
+
+    %% Sleep-like phase & self-reflection
+    SCH->>AMS: Trigger consolidation (sleep-like phase)
+    SCH->>SR: Trigger self-reflection jobs
+    SR->>AMS: Read logs, emotions, goals, outcomes
+    SR->>AG: Write lessons & policy adjustments
+    SR->>AV: Indicate sleep/reflection state (e.g., bedroom)
+```
+
+## 7. References
+
+For conceptual background, see the references listed in `agency.md` (Section 6). Those works provide the theoretical basis for the agent loop, goal/plan structures, and memory-driven self-evolution that this architecture instantiates.
