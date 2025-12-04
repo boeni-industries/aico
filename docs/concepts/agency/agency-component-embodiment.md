@@ -4,7 +4,11 @@ title: Agency Component – Embodiment & Spatial State
 
 # Embodiment & Spatial State
 
-## Component Description
+## Embodiment Types
+
+Embodiment is a core element of AICO. It is used to represent AICO in the user's environment and to provide a visual interface to the user. This can have multiple embodiments, e.g. a 3D avatar, a 2D image, or a text description, or a holographic representation OR aico can be embodies in a robot or other device.
+
+### 3D Living Space
 
 The Embodiment & Spatial State component connects agency to AICO’s **3D avatar and living‑space**:
 
