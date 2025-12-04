@@ -31,6 +31,9 @@ This section states the high‑level requirements that AICO’s agency system mu
 - **R7 – Embodied Spatial Presence**  
   AICO’s agency must extend into a 3D embodied space (e.g., a flat with multiple rooms), where spatial location and posture (on the couch, at the desk, in bed, in the kitchen, etc.) reflect and constrain her current goals, activities, and lifecycle state.
 
+- **R8 – Curiosity and Intrinsic Motivation**  
+  AICO must maintain its own curiosity and intrinsic drives (e.g., reducing uncertainty about the user’s world, mastering new skills, exploring promising ideas), such that it can initiate behavior even when there is no immediate external request, while remaining aligned with user values and safety constraints.
+
 ### 1.2 Non‑Functional Requirements and Constraints
 
 - **N1 – Local‑First and Safe**  
@@ -81,7 +84,7 @@ AICO already has several of these layers (Adaptive Memory System, Task Scheduler
 
 ### 3.1 Core Agency Components
 
-At a high level, AICO’s agency is realized through the following components (each described in its own document for deeper design work):
+At a high level, AICO’s agency is realized through the following components (each described in its own document for deeper design work). Taken together, they are intended to go beyond today’s typical LLM "agent" patterns toward a truly self‑motivated, curiosity‑driven companion:
 
 - **Goal & Intention System** (`agency-component-goals-intentions.md`)  
   Maintains internal goals, intentions, and open loops at multiple horizons (long‑term themes, projects, short‑term tasks) informed by personality, memory, and social context.
@@ -99,7 +102,19 @@ At a high level, AICO’s agency is realized through the following components (e
   Connects agency to working memory, semantic memory, knowledge graph, and AMS consolidation/behavioral learning as the backbone for long‑term context and evolution.
 
 - **Emotion, Personality & Social Context** (`agency-component-emotion-personality-social.md`)  
-  Uses personality traits, values, emotional state, and relationship vectors to constrain which goals and behaviors are appropriate and how they are expressed.
+  Uses personality traits, values, emotional state, curiosity profile, and relationship vectors to shape which goals are attractive, how urgent they feel, and how they are expressed.
+
+- **World Model & Knowledge/Property Graph** (`agency-component-world-model.md`)  
+  Maintains structured understanding of people, entities, routines, environments, and uncertainties as a shared substrate for planning, curiosity, and self-reflection.
+
+- **Curiosity Engine** (`agency-component-curiosity-engine.md`)  
+  Computes intrinsic motivation signals from gaps and anomalies in the world model and memory, turning them into self-generated exploration goals.
+
+- **Goal Arbiter & Meta-Control** (`agency-component-goal-arbiter-meta-control.md`)  
+  Balances user-requested, curiosity-driven, and system/self-development goals under value, safety, and resource constraints to decide what AICO pursues when.
+
+- **Self-Reflection & Self-Model** (`agency-component-self-reflection.md`)  
+  Periodically reviews AICO’s own behavior and outcomes to derive lessons that adapt skills, strategies, and priorities over time.
 
 - **Scheduler & Resource Governance** (`agency-component-scheduler-governance.md`)  
   Uses the task scheduler and resource monitor as the enforcement layer for bounded autonomy (when and how background or long‑running plans execute).
@@ -133,12 +148,25 @@ This moves AICO from “LLM as function call” toward “LLM‑enabled cognitiv
   - **Personality Simulation** – trait vector, value system, curiosity and interests.
   - **Adaptive Memory System (AMS)** – preferences, history, unresolved tensions, open loops, user‑curated memories.
   - **Social Relationship Modeling** – roles, intimacy, care responsibilities, relationship strength.
+  - **Intrinsic Motivation Signals** – curiosity about poorly understood aspects of the user’s life, anomalies in the world model or memory graph, and long‑term self‑development objectives (e.g., becoming a better coach for a given user).
 - A dedicated **planning layer** decomposes goals into **concrete, executable elements**:
   - Identify required skills/tools.  
   - Produce plans (ordered or conditional sequences of actions).  
   - Track progress and update intentions when context or user state changes.
 
-### 3.3 Skills, Tools, and Actions
+### 3.3 Curiosity and Intrinsic Motivation
+
+- Curiosity and intrinsic motivation are **first‑class drivers** of AICO’s behavior, not an optional future add‑on:
+  - The **world model and knowledge/property graph** highlight gaps, inconsistencies, and under‑explored areas in the user’s life story and environment.
+  - **AMS and semantic memory** track what AICO has already explored or mastered, and where prediction errors or unresolved questions remain.
+  - **Emotion and personality** shape how these gaps feel (e.g., warm curiosity vs. caution) and which are worth pursuing.
+- From these signals, the agency layer can form **self‑generated goals**, such as:
+  - Clarifying an important but fuzzy life theme for the user.  
+  - Deepening understanding of a recurring emotional pattern.  
+  - Practicing a new conversational or coaching skill.
+- These intrinsically motivated goals compete and cooperate with user‑requested goals inside the same planning and scheduling machinery, always under user‑visible guardrails and preferences.
+
+### 3.4 Skills, Tools, and Actions
 
 - AICO’s actions are expressed as **skills** and **tool calls**, not arbitrary LLM improvisation:
   - Conversation skills: ask, reflect, challenge, encourage, teach, brainstorm.  
@@ -151,7 +179,7 @@ This moves AICO from “LLM as function call” toward “LLM‑enabled cognitiv
   - Safety, privacy, and resource constraints.
 - The **Task Scheduler** and **Agency Engine** decide **when** to execute which skills, resolving competition between user‑visible work and background work.
 
-### 3.4 Lifecycle and Daily Rhythm
+### 3.5 Lifecycle and Daily Rhythm
 
 - AICO is designed as a **living process** with a daily rhythm:
   - **Active phases (≈16–18 hours)**:  
@@ -164,7 +192,7 @@ This moves AICO from “LLM as function call” toward “LLM‑enabled cognitiv
     - Self‑assessment of behavior (what worked, what did not) without user interruption, visually represented by AICO retreating to her bedroom or sleep space.
 - This lifecycle is coordinated by the **Task Scheduler**, **AMS**, **Resource Monitor**, and the **Agency Engine**, and must respect user‑defined quiet hours and resource policies.
 
-### 3.5 Autonomy and Relationship
+### 3.6 Autonomy and Relationship
 
 - AICO should be perceived as an **independent entity** with its own continuity of experience:
   - It initiates conversations and suggestions, not only replies.  
@@ -217,17 +245,18 @@ Taken together, these foundations define **what AICO’s agency is** and **what 
 
 ## 6. References and Related Work
 
-This concept builds on established research in agents, cognition, and memory. Key references include:
+This concept is aligned with recent work on **LLM-based agents / agentic AI** and **long-term memory systems**. Representative references include:
 
-- **Intelligent Agents and BDI Architectures**  
-  - M. Wooldridge & N. Jennings, *Intelligent Agents: Theory and Practice*, Knowledge Engineering Review, 1995.  
-  - M. Bratman, *Intention, Plans, and Practical Reason*, Harvard University Press, 1987.  
-  - A. Rao & M. Georgeff, *BDI Agents: From Theory to Practice*, ICMAS, 1995.
-
-- **Agentic / Autonomously Acting AI Systems**  
-  - S. Russell & P. Norvig, *Artificial Intelligence: A Modern Approach*, 3rd ed., 2010 – chapters on agents and planning.  
+- **LLM Agents and Agentic AI**  
+  - *Agentic AI: A Comprehensive Survey of Architectures, Applications, and Open Problems*, Artificial Intelligence Review, 2025.  
+  - *Large Language Model Agents*, in *Foundations and Trends in AI* / Springer collection, 2024–2025.  
+  - *From Language to Action: A Review of Large Language Models as Agents*, 2025 (survey of planning, tools, and environments).  
   - IBM, *What is Agentic AI?* (technical overview, 2024).  
   - AWS, *What is Agentic AI?* (systems view, 2024).
+
+- **Tool Use, Planning, and Environments**  
+  - Work on AutoGPT, BabyAGI, and related open-source LLM agent frameworks (2023–2024).  
+  - Benchmarks and case studies of tool-using LLM agents in complex domains (e.g., clinical, open-world, and software engineering environments, 2023–2025).
 
 - **Memory and Self‑Evolution (for daily rhythm and consolidation)**  
   - Rudroff et al., *Neuroplasticity Meets Artificial Intelligence: A Hippocampus‑Inspired Approach to the Stability–Plasticity Dilemma*, 2024.  

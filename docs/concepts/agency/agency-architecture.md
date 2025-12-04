@@ -29,43 +29,64 @@ This loop is realized across several domains.
 ### 3.1 Autonomous Agency Domain
 
 - **Goal System**  
-+ Maintains the goal/intent graph (long‑term themes, projects, short‑term tasks).  
-+ Tracks status, priority, and dependencies.  
-+ Consumes signals from memory, personality, and social models.
+  + Maintains the goal/intent graph (long‑term themes, projects, short‑term tasks).  
+  + Tracks status, priority, and dependencies.  
+  + Consumes signals from memory, personality, social models, curiosity, and self-reflection.
 
 - **Planning System**  
-+ Uses the LLM and rule‑based templates to decompose goals into executable plans.  
-+ Produces sequences of skills/tool calls with preconditions and expected outcomes.  
-+ Interfaces with the Task Scheduler to register and update jobs.
+  + Uses the LLM and rule‑based templates to decompose goals into executable plans.  
+  + Produces sequences of skills/tool calls with preconditions and expected outcomes.  
+  + Interfaces with the Task Scheduler to register and update jobs.
 
 - **Curiosity Engine**  
-+ Detects novelty and information gaps in memory and interaction patterns.  
-+ Proposes exploration goals (e.g., learn more about a user’s interest, investigate a topic).  
-+ Feeds new candidate goals into the Goal System.
+  + Detects novelty, prediction errors, and informational gaps in the world model, AMS, and interaction patterns.  
+  + Computes intrinsic motivation signals (uncertainty reduction, potential insight, user relevance).  
+  + Proposes exploration and self-development goals and feeds them into the Goal System.
+
+- **Goal Arbiter & Meta-Control**  
+  + Collects candidate goals from user requests, Curiosity Engine, system maintenance, and long-term relationship themes.  
+  + Scores and ranks goals under personality, emotion, social context, values/ethics, and resource budgets.  
+  + Maintains the active intention set and decides what AICO actually pursues at a given time.
+
+- **Self-Reflection Engine**  
+  + Periodically analyzes recent actions, outcomes, and feedback (often during sleep-like phases).  
+  + Derives lessons and policy adjustments (what to do more/less of, when to intervene, how to express).  
+  + Feeds updated preferences and heuristics back into Goal System, Curiosity Engine, and Planning.
 
 - **Initiative Manager**  
-+ Decides when to surface proactive behavior to the user (check‑ins, suggestions, follow‑ups).  
-+ Ensures user‑visible initiatives respect quiet hours, preferences, and relationship context.
+  + Decides when to surface proactive behavior to the user (check‑ins, suggestions, follow‑ups).  
+  + Ensures user‑visible initiatives respect quiet hours, preferences, and relationship context, and reflects the current intention set.
 
 ### 3.2 Intelligence & Memory Domain
 
 - **Adaptive Memory System (AMS)**  
-+ Provides long‑term context, open loops, and preference evolution.  
-+ Runs consolidation and sleep‑phase processing that change future goals and behavior.  
-+ Supplies summaries and facts for use in planning.
+  + Provides long‑term context, open loops, and preference evolution.  
+  + Runs consolidation and sleep‑phase processing that change future goals and behavior.  
+  + Supplies summaries and facts for use in planning and reflection.
+
+- **World Model Service (Knowledge/Property Graph + Schemas)**  
+  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings.  
+  + Detects inconsistencies, drifts, and unknowns in AICO’s understanding of the user and environment.  
+  + Exposes graph-augmented queries and hypothesis APIs to planning, curiosity, and self-reflection.
 
 - **Knowledge Graph & Social Relationship Modeling**  
-+ Provides structured representations of people, entities, and relationships.  
-+ Supplies relationship vectors (intimacy, authority, care responsibility, stability) used in goal selection and initiative decisions.
+  + Provides structured representations of people, entities, and relationships.  
+  + Supplies relationship vectors (intimacy, authority, care responsibility, stability) used in goal selection and initiative decisions.
 
-### 3.3 Personality & Emotion Domain
+### 3.3 Personality, Values & Emotion Domain
 
 - **Personality Simulation**  
-+ Maintains the trait vector and value system.  
-+ Exposes decision‑making and communication parameters that bias planning and goal selection.
+  + Maintains the trait vector and value system.  
+  + Exposes decision‑making and communication parameters that bias planning, goal selection, and initiative.
+
+- **Values & Ethics Layer**  
+  + Encodes core AICO principles, user-specific boundaries, and relationship roles.  
+  + Evaluates goals and plans for long-term wellbeing, consent, and non-coercion.  
+  + Feeds constraints and annotations into the Goal Arbiter, Planning System, and Conversation Engine.
 
 - **Emotion Simulation**  
-+ Supplies emotional state and appraisals that modulate which goals are appropriate and how actions are expressed.
+  + Supplies emotional state and appraisals that modulate which goals are appropriate and how actions are expressed.  
+  + Provides affective signals (urgency, risk, comfort) used by the Goal Arbiter and Curiosity Engine.
 
 ### 3.4 Core Infrastructure
 
