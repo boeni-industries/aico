@@ -79,7 +79,40 @@ AICO already has several of these layers (Adaptive Memory System, Task Scheduler
 
 ## 3. AICO‑Specific Interpretation of Agency
 
-### 3.1 From Reactive Chatbot to Persistent Agent
+### 3.1 Core Agency Components
+
+At a high level, AICO’s agency is realized through the following components (each described in its own document for deeper design work):
+
+- **Goal & Intention System** (`agency-component-goals-intentions.md`)  
+  Maintains internal goals, intentions, and open loops at multiple horizons (long‑term themes, projects, short‑term tasks) informed by personality, memory, and social context.
+
+- **Planning & Decomposition** (`agency-component-planning.md`)  
+  Turns goals and intentions into executable plans: ordered steps, conditions, and branches that can be bound to skills, tools, and scheduled jobs.
+
+- **Skill & Tool Layer** (`agency-component-skills-tools.md`)  
+  Provides explicit, named skills and tools (conversation, memory, social, external integrations) with preconditions, expected outcomes, and safety constraints.
+
+- **Lifecycle & Daily Rhythm** (`agency-component-lifecycle.md`)  
+  Defines active vs sleep‑like phases, coordinates with AMS and scheduler, and maps internal state to visible 3D living‑space activity modes (rooms and postures).
+
+- **Memory & AMS Integration** (`agency-component-memory-ams.md`)  
+  Connects agency to working memory, semantic memory, knowledge graph, and AMS consolidation/behavioral learning as the backbone for long‑term context and evolution.
+
+- **Emotion, Personality & Social Context** (`agency-component-emotion-personality-social.md`)  
+  Uses personality traits, values, emotional state, and relationship vectors to constrain which goals and behaviors are appropriate and how they are expressed.
+
+- **Scheduler & Resource Governance** (`agency-component-scheduler-governance.md`)  
+  Uses the task scheduler and resource monitor as the enforcement layer for bounded autonomy (when and how background or long‑running plans execute).
+
+- **Embodiment & Spatial State** (`agency-component-embodiment.md`)  
+  Projects internal agency state into the 3D avatar and flat (room and posture as activity modes), making AICO’s current focus and lifecycle legible.
+
+- **Control, Safety & Transparency** (`agency-component-safety-control.md`)  
+  Provides user primacy, permissions, audit logging, and explainability for significant autonomous actions.
+
+The rest of this section explains how these components behave together at runtime.
+
+### 3.2 From Reactive Chatbot to Persistent Agent
 
 In AICO, **agency** means that the companion is a long‑lived software agent that:
 
