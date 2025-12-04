@@ -149,6 +149,7 @@ This moves AICO from “LLM as function call” toward “LLM‑enabled cognitiv
   - **Adaptive Memory System (AMS)** – preferences, history, unresolved tensions, open loops, user‑curated memories.
   - **Social Relationship Modeling** – roles, intimacy, care responsibilities, relationship strength.
   - **Intrinsic Motivation Signals** – curiosity about poorly understood aspects of the user’s life, anomalies in the world model or memory graph, and long‑term self‑development objectives (e.g., becoming a better coach for a given user).
+- AICO also maintains a small set of **agent‑self goals and hobbies**: recurring projects and interests that she pursues for her own curiosity or development (e.g., deepening her understanding of a topic, refining a conversational style, tending and organizing her 3D flat).
 - A dedicated **planning layer** decomposes goals into **concrete, executable elements**:
   - Identify required skills/tools.  
   - Produce plans (ordered or conditional sequences of actions).  
@@ -164,6 +165,7 @@ This moves AICO from “LLM as function call” toward “LLM‑enabled cognitiv
   - Clarifying an important but fuzzy life theme for the user.  
   - Deepening understanding of a recurring emotional pattern.  
   - Practicing a new conversational or coaching skill.
+  - Nurturing **AICO’s own hobbies** and self‑development projects (e.g., long‑term learning interests, ways of organizing her living space, or personal research notebooks about the shared world).
 - These intrinsically motivated goals compete and cooperate with user‑requested goals inside the same planning and scheduling machinery, always under user‑visible guardrails and preferences.
 
 ### 3.4 Skills, Tools, and Actions
@@ -240,6 +242,8 @@ To keep agency scientifically grounded and practically safe, AICO’s agency lay
 - **Scoped capabilities** – All tools and integrations are permissioned; the agent cannot invent new capabilities at runtime.
 - **Auditability** – Autonomous actions, their triggering goals, and the tools used must be logged in a way that can be inspected and reasoned about.
 - **Graceful degradation** – If agency subsystems fail (e.g., planner unavailable), AICO should fall back to a reactive, non‑agentic mode rather than behaving unpredictably.
+
+These guardrails, including values and safety constraints, are intended to be **fully configurable rather than hard‑coded**.
 
 Taken together, these foundations define **what AICO’s agency is** and **what it is not**. Future design and implementation documents (e.g., `agency-architecture.md`, `agency-scenarios.md`) should refine this into concrete data models, message contracts, and algorithms, but they must remain consistent with the requirements and concepts described here.
 

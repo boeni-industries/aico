@@ -18,6 +18,8 @@ The Values & Ethics layer provides **explicit value constraints and ethical reas
 - Support **contextual ethics reasoning** via LLM prompts, grounded in explicit value representations.
 - Maintain **auditability** of value/ethics decisions for later inspection.
 
+All value and ethics constraints must be **configurable**: users (or deployers) can tighten, relax, or, where compatible with overarching legal/ethical requirements, disable specific checks and policies via configuration.
+
 ## 3. Integration Points
 
 - Reads from: personality and social relationship models, user configuration, system-wide safety policies.
