@@ -138,17 +138,20 @@ class TtsRepositoryImpl implements TtsRepository {
         }
       });
       
-      // NOW set status to speaking and start playback
+      // NOW set status to speaking and pass audio data
       debugPrint('🎵 [TTS] Setting status to SPEAKING');
       _updateState(_currentState.copyWith(
         status: TtsStatus.speaking,
         currentText: text,
         progress: 0.0,
+        metadata: {
+          'audioData': base64.encode(wavData), // Pass audio for WebView lip-sync
+        },
       ));
       
-      // Start playback
-      await _audioPlayer?.play();
-      debugPrint('🎵 [TTS] Playback started');
+      // WebView will handle playback for lip-sync
+      // Don't play in Flutter to avoid double audio
+      debugPrint('🎵 [TTS] Audio passed to WebView (not playing in Flutter)');
       
     } catch (e, stackTrace) {
       AICOLog.error('TTS speak failed', error: e, stackTrace: stackTrace);

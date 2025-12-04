@@ -1,5 +1,5 @@
 """
-TTS Engine Factory - Dynamic selection between XTTS and Piper.
+TTS Engine Factory - Dynamic selection between XTTS, Piper, and Kokoro.
 
 Provides a unified interface for TTS synthesis with engine selection
 based on configuration.
@@ -18,6 +18,7 @@ class TtsFactory:
     Supports:
     - XTTS: High-quality voice cloning (slower)
     - Piper: Ultra-fast synthesis (no cloning)
+    - Kokoro: Fast, high-quality synthesis (no cloning)
     """
     
     @staticmethod
@@ -54,7 +55,7 @@ class TtsFactory:
                 "\n" + "="*80 + "\n"
                 "❌ FATAL: TTS engine not configured!\n"
                 "Expected path: core.modelservice.tts.engine\n"
-                "Valid options: 'xtts', 'piper'\n"
+                "Valid options: 'xtts', 'piper', 'kokoro'\n"
                 "Check config/defaults/core.yaml\n"
                 "="*80
             )
@@ -74,9 +75,14 @@ class TtsFactory:
             logger.info("✅ Using Piper TTS (ultra-fast, no cloning)")
             return PiperTtsHandler(config_manager)
         
+        elif engine == "kokoro":
+            from modelservice.handlers.kokoro_tts_handler import KokoroTtsHandler
+            logger.info("✅ Using Kokoro TTS (fast, high-quality)")
+            return KokoroTtsHandler(config_manager)
+        
         else:
             raise RuntimeError(
                 f"Invalid TTS engine '{engine}'. "
-                f"Valid options: 'xtts', 'piper'. "
+                f"Valid options: 'xtts', 'piper', 'kokoro'. "
                 f"Check modelservice.tts.engine in core.yaml"
             )

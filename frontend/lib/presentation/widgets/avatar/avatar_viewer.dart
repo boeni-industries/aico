@@ -1,4 +1,6 @@
 import 'package:aico_frontend/core/platform/transparent_webview_channel.dart';
+import 'package:aico_frontend/domain/entities/tts_state.dart';
+import 'package:aico_frontend/domain/providers/tts_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_controller_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
@@ -65,6 +67,13 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
       }
     });
     
+    // Listen to TTS state for lip-sync text preparation
+    ref.listen(ttsProvider, (previous, next) {
+      if (_isReady && _webViewController != null) {
+        _handleTtsStateChange(previous, next);
+      }
+    });
+    
     return InAppWebView(
         initialSettings: InAppWebViewSettings(
           isInspectable: kDebugMode,
@@ -99,6 +108,16 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
                 _isReady = true;
               });
             }
+          },
+        );
+        
+        // Add JavaScript handler for audio ended callback
+        controller.addJavaScriptHandler(
+          handlerName: 'audioEnded',
+          callback: (args) {
+            debugPrint('[AvatarViewer] Audio playback ended');
+            // Notify TTS provider that audio finished
+            ref.read(ttsProvider.notifier).stop();
           },
         );
       },
@@ -222,6 +241,35 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
     _webViewController!.evaluateJavascript(
       source: "window.stopTalking()",
     );
+  }
+  
+  /// Handle TTS state changes for lip-sync
+  /// 
+  /// Passes audio data to WebView for frequency-based lip-sync analysis.
+  /// Audio plays in both Flutter (for user) and WebView (for lip-sync).
+  void _handleTtsStateChange(TtsState? previous, TtsState next) {
+    // Only act when transitioning to speaking state
+    if (next.status == TtsStatus.speaking && previous?.status != TtsStatus.speaking) {
+      final audioData = next.metadata?['audioData'] as String?;
+      
+      if (audioData != null && audioData.isNotEmpty) {
+        debugPrint('[AvatarViewer] � Passing audio to WebView for lip-sync');
+        
+        // Pass audio to WebView for lip-sync
+        _webViewController!.evaluateJavascript(
+          source: """
+            (function() {
+              if (window.playAudioForLipSync) {
+                window.playAudioForLipSync('$audioData');
+              }
+            })();
+          """,
+        );
+        
+      } else {
+        debugPrint('[AvatarViewer] ⚠️ No audio data available for lip-sync');
+      }
+    }
   }
   
   @override
