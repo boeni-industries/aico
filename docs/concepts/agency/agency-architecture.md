@@ -24,6 +24,14 @@ AICO’s agency follows a recurrent control loop:
 
 This loop is realized across several domains.
 
+### 2.1 Perception, Sensors, and Semantic Events
+
+Across all domains, AICO distinguishes between **raw signals** (text, audio/video frames, sensor readings, calendar rows, web responses) and **semantic events** that agency can reason about.
+
+- A **Perception / Sensors layer** collects raw inputs from all authorised channels: conversation, AMS/World Model analyses, social/relationship updates, device sensors (e.g., camera/microphone), external services (calendar, web, OS events), etc.
+- These inputs are **interpreted upstream** by specialised components (Conversation Engine, AMS & World Model, Emotion Engine, sensor/external adapters) into **semantic PerceptualEvents** as defined in `agency-ontology-schemas.md`: structured objects containing a natural‑language summary plus structured slots (JSON‑like attributes such as entities, time spans, topics, scores, `percept_type`, `source_component`, salience/urgency).
+- The **Autonomous Agency Domain** (Goal System, Curiosity Engine, Goal Arbiter, Planning) consumes only these interpreted semantic events, not raw signals. Goals and intentions are therefore always grounded in explained, inspectable input rather than opaque sensor streams.
+
 ## 3. Domain and Module Mapping
 
 ### 3.1 Autonomous Agency Domain
@@ -65,9 +73,9 @@ This loop is realized across several domains.
   + Supplies summaries and facts for use in planning and reflection.
 
 - **World Model Service (Knowledge/Property Graph + Schemas)**  
-  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings.  
+  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings, following the core types and relations defined in `agency-ontology-schemas.md` (Person/User/AICOAgent, Activities/Goals/Hobbies, MemoryItem, WorldStateFact, Skill, Place, Device, PerceptualEvent links, etc.).  
   + Detects inconsistencies, drifts, and unknowns in AICO’s understanding of the user and environment.  
-  + Exposes graph-augmented queries and hypothesis APIs to planning, curiosity, and self-reflection.
+  + Exposes schema- and graph-augmented queries and hypothesis APIs to planning, curiosity, and self-reflection.
 
 - **Knowledge Graph & Social Relationship Modeling**  
   + Provides structured representations of people, entities, and relationships.  
@@ -352,3 +360,7 @@ sequenceDiagram
 ## 7. References
 
 For conceptual background, see the references listed in `agency.md` (Section 6). Those works provide the theoretical basis for the agent loop, goal/plan structures, and memory-driven self-evolution that this architecture instantiates.
+
+For the canonical definition of AICO’s ontology, core types, and `PerceptualEvent` schema and taxonomy, see:
+
+- `docs/concepts/agency/agency-ontology-schemas.md` – AICO Ontology & Schemas.
