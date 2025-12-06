@@ -14,8 +14,9 @@ This component integrates three existing systems into agency decisions:
 
 Agency uses these signals to:
 
-- Decide which goals are appropriate and when to pursue them.  
-- Shape how initiatives and responses are phrased and timed.  
+- Decide which goals are appropriate and when to pursue them (feeding directly into the Goal Arbiter scoring function).  
+- Shape how initiatives and responses are phrased and timed (Planner and Skills layer heuristics).  
+- Bias Curiosity and Values & Ethics (e.g., conservative curiosity under high stress, stricter policies in fragile contexts).  
 - Maintain a coherent long‑term character and relationship arc.
 
-Future iterations will formalize decision rules and weighting schemes that tie these signals into goal/plan selection.
+Future iterations will formalize decision rules and weighting schemes that tie these signals into goal/plan selection, curiosity gating, and value/policy evaluation.

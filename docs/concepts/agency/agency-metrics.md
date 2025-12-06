@@ -37,12 +37,14 @@ Each table uses these columns:
 | hobby_activity_time | coarse duration per hobby | per-user, per-hobby | Indicate recent engagement with each hobby (e.g., "spent time this week"). |
 | hobby_state | enum + summary | per-hobby | Present the status of each hobby (active/paused/completed) with a short description. |
 
-### 1.3 Memory, AMS & Open Loops
+### 1.3 Memory, World Model & Open Loops
 
 | Name | Type | Scope | Purpose |
 | ---- | ---- | ----- | ------- |
 | open_loops_count | gauge | per-user | Let users know how many unresolved threads AICO is tracking. |
 | last_consolidation_time | timestamp | per-user | Indicate when the last sleep-like consolidation ran ("last night", "2h ago"). |
+| life_area_coverage | coarse breakdown (e.g. low/medium/high per LifeArea) | per-user | Give the user a simple view of how well AICO understands different areas of their life (Health, Work, Relationships, etc.) based on World Model facts. |
+| known_conflicts_present | boolean + short summary | per-user | Indicate whether the World Model currently has unresolved contradictions in important domains (e.g. job, relationship, routine) and, optionally, offer to clarify them. |
 
 ### 1.4 Emotion, Relationship & Style
 
@@ -88,11 +90,19 @@ The following metrics are primarily intended for developers, operators, and eval
 
 | Name | Type | Scope | Purpose |
 | ---- | ---- | ----- | ------- |
-| curiosity_goals_created | count/time-series | per-user | Track frequency of intrinsically motivated goals. |
+| curiosity_signals_total | count/time-series | per-user, per-agent | Track overall rate of CuriositySignals emitted by detectors. |
+| curiosity_signals_by_type | breakdown by `curiosity_type` | per-user | Analyse which kinds of curiosity (knowledge_gap, novelty, self_performance, hobby_play) are most active. |
+| curiosity_signals_promoted | count/time-series | per-user | Count signals that passed all gates and became CuriositySignalEvents. |
+| curiosity_signals_deferred_or_rejected | breakdown (values/ethics / emotion / resources / low_score) | per-user | Understand why curiosity opportunities did not become events or goals. |
+| curiosity_goals_created | count/time-series | per-user | Track frequency of intrinsically motivated goals created from CuriositySignalEvents. |
+| curiosity_goals_active | gauge (count) | per-user | Monitor how many curiosity- or agent-self-origin goals are currently active. |
+| curiosity_goal_outcomes | breakdown (completed / user_rejected / auto_dropped) | per-user | Evaluate how curiosity-driven goals fare and whether users accept or dismiss them. |
 | world_model_nodes | gauge (count) | per-agent | Monitor size/growth of the world model. |
 | world_model_edges | gauge (count) | per-agent | Track relational complexity of the world model. |
-| uncertain_entities | gauge + list | per-user | Inspect entities marked as uncertain/underspecified. |
-| contradictions_detected | count/time-series | per-agent, per-user | Detect drift or conflicting information. |
+| world_model_facts_by_life_area | breakdown (fact counts per LifeArea) | per-user | Inspect how many WorldStateFacts exist per LifeArea to spot over- and under-represented domains. |
+| world_model_conflicts_active | gauge (count) | per-user | Monitor how many conflicting WorldStateFacts are currently unresolved. |
+| hypotheses_open | gauge (count) | per-user | Track how many open World Model hypotheses exist about the user. |
+| hypothesis_lifecycle_events | event log | per-user, per-hypothesis | Debug how hypotheses move between open/confirmed/rejected and what evidence drove the change. |
 | episodic_writes_rate | rate (events/time) | per-agent | Monitor memory write load. |
 | semantic_summaries_created | count/time-series | per-user | Track consolidation of long-term summaries. |
 

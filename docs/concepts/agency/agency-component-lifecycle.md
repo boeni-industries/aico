@@ -14,6 +14,8 @@ The Lifecycle & Daily Rhythm component defines AICO as a **long‑lived process*
 It coordinates with:
 
 - **AMS and MemoryManager** for nightly consolidation and evolution.  
+- **World Model Service** for updating routines, LifeArea mappings, and hypotheses based on recent data.  
+- **Curiosity Engine** for scheduling background exploration and hypothesis tests.  
 - **Task Scheduler and Resource Monitor** for timing and resource budgets.  
 - **Embodiment system** to map internal state to visible 3D activity modes (desk, couch, bedroom, kitchen, etc.).
 

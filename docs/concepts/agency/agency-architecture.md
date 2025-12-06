@@ -47,9 +47,9 @@ Across all domains, AICO distinguishes between **raw signals** (text, audio/vide
   + Interfaces with the Task Scheduler to register and update jobs.
 
 - **Curiosity Engine**  
-  + Detects novelty, prediction errors, and informational gaps in the world model, AMS, and interaction patterns.  
-  + Computes intrinsic motivation signals (uncertainty reduction, potential insight, user relevance).  
-  + Proposes exploration and self-development goals and feeds them into the Goal System.
+  + Detects novelty, prediction errors, informational gaps, and unstable routines in the World Model, AMS, and interaction patterns (including LifeAreas and WorldStateFacts).  
+  + Computes intrinsic motivation signals (uncertainty reduction, potential insight, user relevance) and opens/consumes World Model hypotheses where appropriate.  
+  + Proposes exploration and self-development goals and feeds them into the Goal System, clearly marked as curiosity- or agent-self-origin.
 
 - **Goal Arbiter & Meta-Control**  
   + Collects candidate goals from user requests, Curiosity Engine, system maintenance, and long-term relationship themes.  
@@ -73,9 +73,9 @@ Across all domains, AICO distinguishes between **raw signals** (text, audio/vide
   + Supplies summaries and facts for use in planning and reflection.
 
 - **World Model Service (Knowledge/Property Graph + Schemas)**  
-  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings, following the core types and relations defined in `agency-ontology-schemas.md` (Person/User/AICOAgent, Activities/Goals/Hobbies, MemoryItem, WorldStateFact, Skill, Place, Device, PerceptualEvent links, etc.).  
-  + Detects inconsistencies, drifts, and unknowns in AICO’s understanding of the user and environment.  
-  + Exposes schema- and graph-augmented queries and hypothesis APIs to planning, curiosity, and self-reflection.
+  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings, following the core types and relations defined in `agency-ontology-schemas.md` (Person/User/AICOAgent, Activities/Goals/Hobbies, MemoryItem, WorldStateFact, LifeArea, Skill, Place, Device, PerceptualEvent links, etc.), built on the shared AMS knowledge graph and libSQL store.  
+  + Detects inconsistencies, drifts, and unknowns in AICO’s understanding of the user and environment, including conflicts between facts, sparse coverage in key LifeAreas, and unstable routines.  
+  + Exposes schema- and graph-augmented queries, denormalised views, embedding-based similarity queries, and hypothesis APIs to planning, curiosity, and self-reflection.
 
 - **Knowledge Graph & Social Relationship Modeling**  
   + Provides structured representations of people, entities, and relationships.  
@@ -330,19 +330,19 @@ sequenceDiagram
     CE->>PE: Update emotional state
     CE->>AG: Notify of new signals (context, emotion)
 
-    %% Goal update & planning
+    %% Goal update & planning (Goal -> Plan steps -> Skills)
     AG->>AMS: Query memories, open loops
     AG->>PE: Query personality/values/emotion
-    AG->>AMS: Query world model (entities, projects, gaps)
+    AG->>AMS: Query world model (entities, projects, LifeAreas, conflicts, gaps, hypotheses)
     AG->>AG: Update goals & intentions (incl. curiosity/hobby goals)
-    AG->>AG: Arbiter selects primary focus intention
-    AG->>AG: Planner decomposes intention into plan (steps, skills)
+    AG->>AG: Arbiter selects primary focus intention (target goal)
+    AG->>AG: Planner decomposes target goal into plan steps/tasks and selects appropriate Skills from the registry
 
-    %% Scheduling & execution
-    AG->>SCH: Register/Update tasks for plan steps
-    SCH->>CE: Execute conversational skills (messages, check-ins)
-    SCH->>AMS: Execute memory/AMS skills (store, consolidate, query)
-    SCH->>AV: Update embodiment (room, posture, activity)
+    %% Scheduling & execution (Skills -> Tools)
+    AG->>SCH: Register/Update tasks for plan steps and chosen Skills
+    SCH->>CE: Execute conversational skills (messages, check-ins) via concrete tools/APIs
+    SCH->>AMS: Execute memory/AMS skills (store, consolidate, query) via concrete tools
+    SCH->>AV: Update embodiment (room, posture, activity) via embodiment tools
 
     %% Evaluation & feedback
     CE->>AG: User feedback / outcome signals

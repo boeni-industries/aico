@@ -14,9 +14,10 @@ Self-Reflection gives AICO a **model of itself**: what it tried, how it behaved,
 - Periodically run **reflection tasks** (often during sleep-like phases) over:
   - actions taken and their outcomes,
   - user feedback and emotional trajectories,
-  - goal completion and drop patterns.
+  - goal completion/drop patterns and World Model hypotheses/conflicts,
+  - agency metrics (see `agency-metrics.md`, e.g., curiosity outcomes, conflicts resolved, blocked actions).
 - Extract **lessons and adjustments** (e.g., "speak less during high-stress episodes", "check in earlier when pattern X appears").
-- Feed these lessons back into: skill selection, planning templates, curiosity focus, and personality/expression parameters.
+- Feed these lessons back into: skill selection metadata, planning templates, Goal Arbiter weights, curiosity focus, and personality/expression parameters.
 
 ## 3. Integration Points
 

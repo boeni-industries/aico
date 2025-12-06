@@ -25,6 +25,22 @@ The Goal Arbiter & Meta-Control layer decides **which goals AICO should pursue w
 
 ## 3. Integration Points
 
-- Reads from: Goal & Intention System (goal candidates), Curiosity Engine, Values & Ethics, Scheduler & Resource Monitor.
-- Writes to: Planning System (selected goals and their priorities), Scheduler (execution priorities).
-- Collaborates with: Conversation Engine to expose which goals are currently active and why.
+- Reads from: Goal & Intention System (goal candidates), Curiosity Engine (CuriositySignals and hypotheses), World Model (hypotheses/conflicts in key LifeAreas), Values & Ethics (EvaluationResult for goals), Scheduler & Resource Monitor (current load).
+- Writes to: Planning System (selected goals and their priorities), Scheduler (execution priorities), World Model (e.g., clarification goals linked to hypotheses).
+- Publishes: an explicit **active intention set** (goals + priorities + brief reasons) that Conversation Engine and UI can surface.
+
+## 4. Example Scoring & Prioritisation (Conceptual)
+
+The Arbiter can use a simple weighted scoring scheme per goal, for example:
+
+- `score(goal) = w_priority * priority + w_origin * origin_weight + w_life_area * life_area_weight + w_emotion * emotion_alignment + w_values * values_ok - w_load * system_load`.
+
+Where:
+
+- `origin_weight` prefers user-origin and safety/maintenance over curiosity/agent_self by default.  
+- `life_area_weight` boosts critical LifeAreas (Health, Finance, Safety) when not blocked by Values & Ethics.  
+- `emotion_alignment` boosts/rests goals depending on current EmotionState (e.g., prefer restorative goals under high stress).  
+- `values_ok` is 0 if Values & Ethics returns `block`, reduced if `needs_consent`.  
+- `system_load` reflects Scheduler/Resource Monitor pressure (high load penalises non-urgent goals).
+
+Priority bands can then be derived (e.g., **urgent**, **normal**, **background**) and exposed with reasons (which terms dominated), so downstream components and UIs can explain why some goals are active and others deferred.

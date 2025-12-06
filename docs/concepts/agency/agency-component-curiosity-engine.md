@@ -41,14 +41,14 @@ This section describes how curiosity behaves in practice: what kinds of curiosit
 
 ### 2.2 Sources and Triggers
 
-The Curiosity Engine may **observe the full stream of PerceptualEvents** plus internal metrics and world‑model state, but only events that match specific patterns are allowed to become CuriositySignals. This avoids flooding the system with noise, respects safety/consent, and keeps curiosity within resource budgets.
+The Curiosity Engine may **observe the full stream of PerceptualEvents**, internal metrics, and **World Model / AMS state**, but only events that match specific patterns are allowed to become CuriositySignals. This avoids flooding the system with noise, respects safety/consent, and keeps curiosity within resource budgets.
 
 CuriositySignals are produced by specialised detectors that watch for:
 
 - **World Model & AMS**  
-  - High prediction error or instability about key entities or relationships.  
-  - Sparse or missing facts in areas that matter for active goals or long‑term themes.  
-  - Under‑represented topics in memory given their apparent importance for the user.
+  - High prediction error, inconsistency, or drift around key entities or relationships, as exposed by World Model consistency and drift checks (see `agency-component-world-model.md`).  
+  - Sparse or missing `WorldStateFact`s in LifeAreas that matter for active goals or long‑term themes (e.g., poor coverage of Health despite many health‑related goals).  
+  - Under‑represented topics and patterns in AMS memories relative to their implied importance in World Model queries (e.g., many mentions of a hobby but few structured entities or facts).
 
 - **User behaviour**  
   - Repeated mentions of interests (e.g., music, writing, fitness) that are weakly supported by existing goals and plans.  
@@ -104,10 +104,12 @@ This section specifies the main data structures that the Curiosity Engine must r
 - Minimal conceptual fields:
   - `signal_id` – stable identifier.  
   - `source_component` – e.g., `world_model`, `ams`, `metrics_aggregator`.  
+  - `target_ref` – reference to the primary target in the ontology/KG (e.g., `LifeArea`, `WorldStateFact`, `Hobby`, `Person`, routine, pattern view).  
   - `topic_tags` – ontology tags for what the signal is about (domains, hobbies, skills).  
+  - `curiosity_type` – enum as defined in Section 2.1 (`knowledge_gap`, `novelty`, `self_performance`, `hobby_play`).  
   - `novelty_score` – how novel/unexplored this area is.  
-  - `uncertainty_score` – epistemic uncertainty or disagreement.  
-  - `user_relevance_score` – estimated impact on user’s long‑term wellbeing/relationship.  
+  - `uncertainty_score` – epistemic uncertainty or disagreement (often derived from World Model confidences and conflicts).  
+  - `user_relevance_score` – estimated impact on user’s long‑term wellbeing/relationship (often derived from LifeAreas and active goals).  
   - `cost_estimate` – rough resource/time estimate for investigating.
 
 ### 3.2 CuriositySignalEvent (PerceptualEvent View)
@@ -115,9 +117,11 @@ This section specifies the main data structures that the Curiosity Engine must r
 The Curiosity Engine turns selected CuriositySignals into PerceptualEvents with `percept_type = CuriositySignalEvent` and fields such as:
 
 - `percept_id`, `timestamp`, `source_component = curiosity_engine`.  
-- `summary_text` – natural‑language explanation of the curiosity opportunity.  
+- `summary_text` – natural‑language explanation of the curiosity opportunity and its target in the World Model or AMS.  
 - `topic_tags`, `opportunity_score`, `novelty_score`, `user_relevance_score`.  
-- Optional `candidate_goal_summaries`, `candidate_goal_horizon`, `candidate_origin = curiosity | agent_self`.
+- `curiosity_type` – copied from the originating CuriositySignal.  
+- Optional `candidate_goal_summaries`, `candidate_goal_horizon`, `candidate_origin = curiosity | agent_self`.  
+- Optional pointers into the World Model: e.g., `linked_life_area_ids`, `linked_fact_ids`, or hypothesis IDs, to ground the event in specific graph entities.
 
 ### 3.3 Curiosity-Linked Goal Metadata
 
@@ -164,6 +168,23 @@ This section describes the Curiosity Engine’s behaviours as operations with in
 ## 5. Interaction Semantics
 
 This section describes how curiosity behaves over time and in relation to user‑origin and maintenance goals.
+
+### 5.0 Use of World Model Hypotheses
+
+- **Opening hypotheses from curiosity**  
+  - When detectors find persistent gaps or anomalies in World Model state (e.g., unstable routines, unclear job situation, ambiguous preferences), the Curiosity Engine may request the World Model to `open_hypothesis` (see `agency-component-world-model.md`).  
+  - The hypothesis is anchored in concrete graph entities (LifeAreas, WorldStateFacts, Persons, Projects) and linked back to the originating CuriositySignals for traceability.
+
+- **Updating and consuming hypotheses**  
+  - As new PerceptualEvents and WorldStateFacts arrive, curiosity-related detectors can call `update_hypothesis` to attach evidence, adjust confidence, or change status (open, confirmed, rejected, needs_user_confirmation).  
+  - CuriosityPolicy uses hypothesis state to decide whether to:  
+    - keep probing (if confidence is low but potential value is high),  
+    - escalate to user-facing clarification (if impact is high and uncertainty remains), or  
+    - back off (if hypothesis seems wrong or user has expressed disinterest).
+
+- **Respecting safety and provenance**  
+  - Hypotheses opened by curiosity carry explicit provenance (CuriositySignal IDs, applied policies) so that Values/Ethics and the user can see *why* AICO became curious about a topic.  
+  - In sensitive domains, Values/Ethics may require that certain hypotheses never move to “confirmed” without explicit user confirmation, even if evidence is strong.
 
 ### 5.1 Relationship to User-Origin Goals
 

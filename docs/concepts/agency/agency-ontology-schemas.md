@@ -214,7 +214,8 @@ These types are used by the **Emotion/Personality/Social** components and influe
 
 - **Skill / Tool**  
   Capability AICO can invoke.
-  - Fields: `skill_id`, `name`, `description`, `input_schema_id`, `output_schema_id`, `side_effect_tags`, `safety_level`.
+  - Fields (ontology-level): `skill_id`, `name`, `description`, `input_schema_id`, `output_schema_id`, `side_effect_tags`, `safety_level`, `life_areas` (typical LifeAreas it touches), `implementation_ref` (pointer into the Skill Registry/tool layer).  
+  - Implementation-level details for concrete Tools (backend, endpoints, auth, runtime_context, resource_profile) live in the Skill & Tool Layer and Skill Registry, not in the core KG schema (see `agency-component-skills-tools.md`).
 
 - **Relations**
   - `REALISES(WorldStateFact, Goal)` (fact satisfies or contributes to goal conditions)
@@ -343,8 +344,8 @@ This section ties the ontology to concrete components described in other agency 
 
 ## 7. Representation and Implementation Notes
 
-- **Primary store**: property/knowledge graph (e.g. nodes and edges), plus:
-  - **JSON-like schemas** for PerceptualEvents, MemoryItems, Goals, Skills.
+- **Primary store**: property/knowledge graph (nodes/edges) backed by the shared libSQL store used by AMS and the World Model, plus:
+  - **JSON-like schemas** for PerceptualEvents, MemoryItems, Goals, Skills, and auxiliary libSQL tables for policy (ValueProfile/PolicyRule) and skill registries.
 - **We do not require** heavy OWL reasoning in v1.  
   Reasoning is largely delegated to:
   - LLM-based components (goal interpretation, planning, explanation).

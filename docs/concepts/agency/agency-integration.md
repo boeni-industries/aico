@@ -88,21 +88,21 @@ The conversation engine already exposes:
 - Influence **prompt construction** (via system/context prompts, skill selection, and planning templates).  
 - Trigger **proactive messages** (ResponseMode.PROACTIVE) without direct user input, via new topics like `AICOTopics.AGENCY_PROACTIVE_TRIGGER` and conversation engine callbacks.
 
-### 3.2 Over Memory and AMS
+### 3.2 Over Memory, World Model and AMS
 
-`MemoryManager` and AMS already implement:
+`MemoryManager`, the shared World Model Service, and AMS already implement:
 
-- Long‑term storage and retrieval of facts, segments, and graph structure.  
+- Long‑term storage and retrieval of facts, segments, and graph structure (libSQL-backed KG + embeddings).  
 - Background consolidation (sleep‑like phases) orchestrated by the scheduler.  
 - Behavioral learning scaffolding (skill store, Thompson Sampling, preference manager) for skill‑based interaction.
 
-**Agency’s role** over memory is to:
+**Agency’s role** over memory and world model is to:
 
-- Treat AMS as the **source of long‑term context and open loops** when forming goals.  
+- Treat AMS/WM as the **source of long‑term context, facts, hypotheses, and open loops** when forming goals.  
 - Use behavioral learning outputs (skill success rates, user preferences) to select **which skills to apply** for a given goal.  
 - Schedule consolidation and reflective tasks as part of AICO’s **sleep routine**, rather than as purely technical jobs.
 
-### 3.3 Over Emotion and Personality
+### 3.3 Over Emotion, Personality, and Social
 
 The emotion engine and personality simulation (see `personality-sim-architecture.md`) already provide:
 
@@ -111,9 +111,9 @@ The emotion engine and personality simulation (see `personality-sim-architecture
 
 **Agency’s role** over these systems is to:
 
-- Query emotion and personality to ensure goals and plans are **emotionally and personally coherent** (e.g., no hyper‑aggressive initiatives for a caring, calm persona).  
+- Query emotion, personality, and relationship vectors to ensure goals and plans are **emotionally and socially coherent** (e.g., no hyper‑aggressive initiatives for a caring, calm persona, respect relationship roles).  
 - Use emotional state to modulate **initiative timing** (e.g., avoid starting heavy topics during user distress unless explicitly requested).  
-- Ensure long‑term goals respect the character’s **values and narrative arc**.
+- Ensure long‑term goals respect the character’s **values and narrative arc** and feed the right signals into Values & Ethics and Curiosity gating.
 
 ### 3.4 Over Scheduler and Background Tasks
 
