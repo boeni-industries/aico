@@ -68,7 +68,7 @@ Each table uses these columns:
 | ---- | ---- | ----- | ------- |
 | reflection_runs | yes/no + last timestamp | per-user | Indicate that AICO has recently reflected on behaviour ("I recently reflected on our week"). |
 | behaviour_adjustments | short list of changes | per-user | Summarise what AICO is trying to do differently (high-level strategy changes). |
-| lifecycle_phase | enum (active / idle / sleep-like) | per-user, per-agent | Describe current lifecycle state and drive room/posture in the 3D flat. |
+| lifecycle_phase | enum (ACTIVE / FOCUSED_WORK / IDLE_LIGHT / SLEEP_LIKE / MAINTENANCE) | per-user, per-agent | Expose the current `LifecycleState` (from the Lifecycle component) and drive room/posture in the 3D flat. |
 | embodiment_state | enum (room, posture, activity label) | per-user | Map internal state to visual representation in the avatar and flat. |
 
 ## 2. Engineering & Debug Metrics
@@ -121,13 +121,16 @@ The following metrics are primarily intended for developers, operators, and eval
 | goal_source_mix_over_time | time-series breakdown | per-user | Analyse balance of user vs agent-self vs maintenance goals over time. |
 | actions_blocked_by_policy | count/time-series | per-user, per-agent | Monitor impact of value/ethics policies. |
 
-### 2.5 Self-Reflection, Scheduler, Resources & Embodiment
+### 2.5 Self-Reflection, Scheduler, Resources, Lifecycle & Embodiment
 
 | Name | Type | Scope | Purpose |
 | ---- | ---- | ----- | ------- |
 | lessons_generated | count/time-series + list | per-user | Inspect how many lessons AICO is extracting and their content. |
 | scheduled_agency_tasks | list + states | per-agent, per-user | See what background work is queued and its status. |
 | agency_resource_usage | gauge (CPU/mem/battery share) | per-agent | Monitor resource cost of agency-related work. |
+| lifecycle_state_time_distribution | breakdown (time spent per LifecycleState) | per-agent, time-series | Analyse how much time AICO spends in ACTIVE / FOCUSED_WORK / IDLE_LIGHT / SLEEP_LIKE / MAINTENANCE to tune daily rhythm and background work policies. |
+| lifecycle_transitions | event log | per-agent | Debug when and why LifecycleState changed (including `reason` such as quiet_hours, manual_override, low_battery). |
+| tasks_run_vs_deferred_by_lifecycle | breakdown (counts per state and task class) | per-agent | Inspect how often tasks (user_facing, background_light, background_heavy, maintenance) run or are deferred due to LifecycleState flags, to validate Scheduler/Lifecycle integration. |
 | embodiment_state_changes | event log | per-user | Debug mapping between agency state transitions and visual updates. |
 
 ### 2.6 Conversation & Embodiment
