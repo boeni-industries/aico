@@ -114,7 +114,7 @@ Goal: Introduce a clear **decision layer** that balances user goals, curiosity, 
   - [ ] Surface the active intention set and value/ethics decisions in explanations/tooltips/logs.
   - [ ] Allow users to inspect and adjust agency behaviour (e.g., tune curiosity strength, hobby intensity, initiative level).
 
-> **Exit condition:** AICOs behaviour is governed by an explicit meta-control layer, and users can understand and influence why some goals are pursued and others are not.
+> **Exit condition:** AICO's behaviour is governed by an explicit meta-control layer, and users can understand and influence why some goals are pursued and others are not.
 
 ## Phase 5 – Self-Reflection, Self-Model & Behavioural Learning
 
