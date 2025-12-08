@@ -91,7 +91,7 @@ api_gateway:
     encryption:
       enabled: true
     agency:
-      enabled: false  # Phase 0: agency plugin wiring present but disabled by default
+      enabled: true  # Phase 0: agency plugin wiring present but disabled by default
 
 # Modelservice configuration
 modelservice:
