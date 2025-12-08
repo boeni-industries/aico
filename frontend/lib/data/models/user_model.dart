@@ -7,6 +7,7 @@ class UserModel extends User {
     required super.username,
     required super.email,
     required super.role,
+    super.primaryLanguage,
     required super.createdAt,
     super.lastLoginAt,
     super.isActive,
@@ -28,6 +29,7 @@ class UserModel extends User {
       email: json['email']?.toString() ?? 
              '${json['uuid'] ?? json['id']}@aico.local',
       role: role,
+      primaryLanguage: json['primary_language']?.toString(),
       createdAt: json['created_at'] != null 
           ? DateTime.parse(json['created_at'] as String)
           : DateTime.now(),
@@ -61,6 +63,7 @@ class UserModel extends User {
       'username': username,
       'email': email,
       'role': role.name,
+      'primary_language': primaryLanguage,
       'created_at': createdAt.toIso8601String(),
       'last_login_at': lastLoginAt?.toIso8601String(),
       'is_active': isActive,
@@ -73,6 +76,7 @@ class UserModel extends User {
       username: user.username,
       email: user.email,
       role: user.role,
+      primaryLanguage: user.primaryLanguage,
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
       isActive: user.isActive,
@@ -85,6 +89,7 @@ class UserModel extends User {
       username: username,
       email: email,
       role: role,
+      primaryLanguage: primaryLanguage,
       createdAt: createdAt,
       lastLoginAt: lastLoginAt,
       isActive: isActive,

@@ -39,6 +39,7 @@ class Node:
     source_text: str
     created_at: str
     updated_at: str
+    language: Optional[str] = None  # ISO/BCP-47 language code
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     is_current: int = 1
@@ -54,6 +55,7 @@ class Node:
         properties: Dict[str, Any],
         confidence: float,
         source_text: str,
+        language: Optional[str] = "en",
         valid_from: Optional[str] = None,
         canonical_id: Optional[str] = None,
         aliases: Optional[List[str]] = None
@@ -71,6 +73,7 @@ class Node:
             source_text=source_text,
             created_at=now,
             updated_at=now,
+            language=language,
             valid_from=valid_from or now,
             valid_until=None,
             is_current=1,
@@ -111,6 +114,7 @@ class Node:
             self.source_text,
             self.created_at,
             self.updated_at,
+            self.language,
             self.valid_from,
             self.valid_until,
             self.is_current,

@@ -138,7 +138,8 @@ class SemanticMemoryStore:
         user_id: str,
         conversation_id: str,
         role: str,
-        content: str
+        content: str,
+        language: str = "en"
     ) -> bool:
         """
         Store a conversation segment with embedding.
@@ -148,6 +149,7 @@ class SemanticMemoryStore:
             conversation_id: Conversation identifier
             role: 'user' or 'assistant'
             content: Message content
+            language: ISO/BCP-47 language code (defaults to 'en')
             
         Returns:
             True if stored successfully
@@ -201,6 +203,7 @@ class SemanticMemoryStore:
                 'user_id': user_id,
                 'conversation_id': conversation_id,
                 'role': role,
+                'language': language,
                 'timestamp': segment.timestamp.isoformat()
             }
             
