@@ -28,8 +28,8 @@
 
 ## 2. Non-Agency Localisation Gaps
 
-- [ ] **Conversation & prompts (core, non-agency)**
-  - [ ] Ensure ConversationEngine tracks per-user primary language and per-conversation active language.
+- [x] **Conversation & prompts (core, non-agency)**
+  - [x] Ensure ConversationEngine tracks per-user primary language and per-conversation active language.
   - [ ] Audit core system prompts and templates so user-facing text is generated in the active language (English-only internals allowed).
 
 - [ ] **Memory UI / Memory Album**
@@ -47,3 +47,18 @@
 - [ ] **Errors, Validations, and Status Messages**
   - [ ] Introduce a minimal localisation mechanism for user-visible error/validation messages returned by backend APIs.
   - [ ] Keep internal log messages and exception details in English; translate only the surfaced, user-facing summaries.
+
+## 3. Implemented Localisation Prep (Current State)
+
+- **Core schema migration (SchemaVersion 19)**
+  - Added `users.primary_language`, `user_memories.language`, `kg_nodes.language`, and `skills.supported_languages` (all ISO/BCP-47 codes).
+- **Conversation language signal**
+  - `UserProfile.primary_language` populated via API and CLI (`user-create --language`).
+  - `ConversationEngine.UserContext.conversation_language` initialized from `primary_language` and passed through to:
+    - `MemoryManager.store_message(..., language=...)` (working + semantic memory)
+    - Knowledge graph node creation (`kg_nodes.language`)
+    - Skill metadata (`skills.supported_languages`) for future language-aware selection.
+- **Frontend integration**
+  - User networking models and domain entity now include `primaryLanguage`.
+  - JSON (de)serialization maps `primaryLanguage` ↔ `primary_language` correctly.
+

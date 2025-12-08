@@ -15,6 +15,10 @@ This roadmap translates the conceptual agency design into an incremental impleme
 
 Goal: Ensure the existing platform can host an always-on agency loop with clear extension points.
 
+- [x] **Localisation Prep & Conversation Language Signal**
+  - [x] Add core language metadata columns to users, memories, KG nodes, and skills (see `SchemaVersion 19` in `shared/aico/data/schemas/core.py`).
+  - [x] Implement unified per-user `primary_language` and per-conversation `conversation_language` signal, wired through ConversationEngine → MemoryManager → KG → Skills (see `WIP_full_localization.md`).
+
 - [ ] **Conversation & Config Wiring**
   - [ ] Expose `enable_agency` feature flag and configuration options in `core.conversation` and related configs.
   - [ ] Define a minimal `AgencyEngine`/service interface and register it via `LifecycleManager` / `ai_registry`.

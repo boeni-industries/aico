@@ -39,7 +39,10 @@ The simplified loop for a user turn is:
 5. `_generate_llm_response()` builds LLM messages (optional system prompt, recent context, current user message) and sends a chat request via the message bus to modelservice.  
 6. Streaming responses from modelservice are forwarded back to the API Gateway for the frontend.
 
-Emotion and personality integration are scaffolded but largely optional today; memory and modelservice are the primary active integrations.
+Emotion and personality integration are scaffolded but largely optional today; memory and modelservice are the primary active integrations. The conversation engine now also tracks a unified **conversation language signal**:
+
+- `users.primary_language` (per-user preference, ISO/BCP-47) is loaded into `UserContext.conversation_language`.
+- This `conversation_language` is propagated to memory (`MemoryManager.store_message(..., language=...)`), KG nodes (`kg_nodes.language`), and skill metadata (`skills.supported_languages`) so that future agency components can select prompts, skills, and content in the correct language.
 
 ### 2.2 Memory and AMS Integration
 
@@ -56,8 +59,8 @@ Key integration surfaces:
 
 - `MemoryManager.assemble_context(user_id, current_message, conversation_id)`  
   - Returns `memory_context` (recent history, user facts, metadata) to the conversation engine.  
-- `MemoryManager.store_message(user_id, conversation_id, text, role)`  
-  - Called by the conversation engine for ongoing storage.
+- `MemoryManager.store_message(user_id, conversation_id, text, role, language)`  
+  - Called by the conversation engine for ongoing storage, and now records the **language** of each message across working and semantic memory tiers.
 
 AMS consolidation is driven by the **Task Scheduler** via `backend/scheduler/tasks/ams_consolidation.py`, which pulls `memory_manager` from the AI registry and runs consolidation when enabled and idle.
 
@@ -216,7 +219,15 @@ Future work should refine these contracts into concrete protobuf schemas and RES
 
 ## 6. Persistence & Migrations for Agency
 
-Agency reuses all existing libSQL/Chroma/LMDB schemas; the **only new schema required** is for the Values & Ethics policy tables. Implement this as a new `SchemaVersion` in `aico.data.schemas.core.CORE_SCHEMA` using the existing migration system:
+Agency reuses all existing libSQL/Chroma/LMDB schemas; the **only new schema required for agency-specific logic** is for the Values & Ethics policy tables. In addition, a **separate core localisation prep migration** has already been implemented to support multilingual agency:
+
+- `SchemaVersion 19` in `shared/aico/data/schemas/core.py` adds:
+  - `users.primary_language` – per-user language preference (ISO/BCP-47).
+  - `user_memories.language` – language of stored memory content.
+  - `kg_nodes.language` – language of node labels/source text.
+  - `skills.supported_languages` – JSON array of supported languages per skill.
+
+The following migration block defines the **agency-specific** Values & Ethics policy tables and should live alongside the localisation prep schema in `CORE_SCHEMA`:
 
 ```python
 N: SchemaVersion(
