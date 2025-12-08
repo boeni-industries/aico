@@ -652,7 +652,7 @@ class ConversationEngine(BaseService):
                 print(f"🔍 [MEMORY_DEBUG] recent_context sample: {recent_context[:2] if recent_context else 'empty'}")
                 self.logger.info(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
             
-            system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id)
+            system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id, user_message)
             if system_prompt:
                 self.logger.debug(f"System prompt: {len(system_prompt)} chars")
             
@@ -886,7 +886,7 @@ class ConversationEngine(BaseService):
             print(f"💬 [CONVERSATION_ENGINE] ❌ Error finalizing streaming response: {e}")
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
     
-    def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None) -> str:
+    def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None, user_message: Optional[ConversationMessage] = None) -> str:
         """Build system prompt with memory context and optional skill template
         
         NOTE: Character personality is defined in the Modelfile (e.g., Modelfile.eve).
@@ -898,6 +898,22 @@ class ConversationEngine(BaseService):
         # DO NOT define character here - that's in the Modelfile
         # Only add contextual information that helps with the current conversation
         prompt_parts = []
+
+        # Language policy: default to the user's preferred language unless they explicitly ask otherwise
+        effective_language = None
+        if user_context and getattr(user_context, "conversation_language", None):
+            effective_language = user_context.conversation_language
+            self.logger.debug(
+                f"🗣️ [LANG_POLICY] conversation_language from user_context: {effective_language}",
+            )
+        else:
+            self.logger.debug("🗣️ [LANG_POLICY] No conversation_language found on user_context; language will follow model defaults")
+
+        if effective_language:
+            prompt_parts.append(
+                f"The user's preferred language is {effective_language}. You must respond in this language unless the user explicitly asks you in their CURRENT message to reply in a different language. Do not switch languages just because past memories or content are in another language."
+            )
+            self.logger.debug(f"🗣️ [LANG_POLICY] Added language directive to system prompt for language={effective_language}")
         
         # Phase 3: Add skill template if selected
         if skill_id:
