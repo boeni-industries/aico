@@ -104,26 +104,62 @@ For **reflection lessons**, we adopt the following conventions:
 - Each lesson is stored as a logical `MemoryItem` backed by a `user_memories` row:
   - `fact_id`: reflection ID (UUID).
   - `user_id`: owner of the lesson.
-  - `fact_type`: set to e.g. `"reflection"`.
-  - `category`: e.g. `"agency_behavior"` or `"policy"` (implementation can refine enums).
+  - `fact_type`: set to `"reflection"`.
+  - `category`: `"agency_behavior"` or `"policy"`.
   - `confidence`: numeric confidence in the lesson.
   - `valid_from` / `valid_until`: when this lesson is considered applicable.
-  - `content`: human-readable `summary_text` (e.g., "tone too blunt in conflict conversations; soften default style").
-  - `tags_json`: JSON array of tags (e.g., `["self_reflection","policy_suggestion","skill_tuning"]`).
-  - `memory_type`: set to e.g. `"reflection"` to distinguish from other memories.
-  - `content_type`: e.g. `"lesson"`.
+  - `content`: human-readable `summary_text`.
+  - `tags_json`: JSON array of tags.
+  - `memory_type`: set to `"reflection"` to distinguish from other memories.
+  - `content_type`: `"lesson"`.
   - `temporal_metadata`: JSON blob that encodes the **slots** we describe conceptually:
-    - `lesson_type`: `skill_tuning | planner_heuristic | curiosity_focus | persona_style | policy_suggestion`.
-    - `target_kind`: `skill | planner_template | arbiter_weight | curiosity_policy | persona_trait | policy_rule`.
-    - `target_id`: identifier of the Skill/plan template/Goal Arbiter weight/Curiosity policy/PersonaTrait/PolicyRule being discussed.
+    - `lesson_type`: one of `"skill_tuning"`, `"planner_heuristic"`, `"curiosity_focus"`, `"persona_style"`, `"policy_suggestion"`.
+    - `target_kind`: one of `"skill"`, `"planner_template"`, `"arbiter_weight"`, `"curiosity_policy"`, `"persona_trait"`, `"policy_rule"`.
     - `proposed_change`: structured diff with a stable mini-schema:
-      - `change_type`: e.g. `"threshold_tweak" | "weight_tweak" | "exception_add" | "exception_remove" | "template_update"`.
-      - `field`: the concrete config/parameter field being changed (e.g. `"risk_threshold"`, `"priority_weight"`).
+      - `change_type`: one of `"threshold_tweak"`, `"weight_tweak"`, `"exception_add"`, `"exception_remove"`, `"template_update"`.
+      - `field`: the concrete config/parameter field being changed (for example `"risk_threshold"` or `"priority_weight"`).
       - `old`: previous value (typed as JSON).
       - `new`: new value (typed as JSON).
       - optional `notes`: short NL explanation for humans/tools.
-    - `confidence`, `scope` (`this_user | global_default`), `status` (`active | superseded | rejected`).
+    - `confidence`: numeric confidence in the lesson.
+    - `scope`: one of `"this_user"`, `"global_default"`.
+    - `status`: one of `"active"`, `"superseded"`, `"rejected"`.
     - `metrics_basis`: optional summary of the evidence window (time span, sample size, outcome counts).
+
+### 5.1.1 Enumerated fields (canonical values)
+
+The following fields in `temporal_metadata` and related structures MUST use these exact string values:
+
+- `lesson_type`
+  - `"skill_tuning"`
+  - `"planner_heuristic"`
+  - `"curiosity_focus"`
+  - `"persona_style"`
+  - `"policy_suggestion"`
+
+- `target_kind`
+  - `"skill"`
+  - `"planner_template"`
+  - `"arbiter_weight"`
+  - `"curiosity_policy"`
+  - `"persona_trait"`
+  - `"policy_rule"`
+
+- `proposed_change.change_type`
+  - `"threshold_tweak"`
+  - `"weight_tweak"`
+  - `"exception_add"`
+  - `"exception_remove"`
+  - `"template_update"`
+
+- `scope`
+  - `"this_user"`
+  - `"global_default"`
+
+- `status`
+  - `"active"`
+  - `"superseded"`
+  - `"rejected"`
 
 AMS/MemoryManager and the World Model can then project these rows into the KG as `MemoryItem` nodes with:
 

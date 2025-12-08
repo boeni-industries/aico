@@ -199,4 +199,6 @@ This keeps Values & Ethics as the **single source of truth and execution surface
 - **Serves**: Goal System & Arbiter, Planning, Curiosity Engine, World Model Service, Conversation Engine, UI layers.
 
 **Persistence pattern (recommended)**  
-Global rails and deployment defaults are stored as versioned config files (e.g., YAML/JSON under `config/policy/`). Per-user `ValueProfile`s, effective `PolicyRule`s, and `consents` are persisted in the shared libSQL store (tables such as `value_profiles`, `policy_rules`, `consents`) alongside AMS and the World Model, so policy decisions can join directly on ontology IDs and be audited like other structured state.
+- Global rails and deployment defaults are stored as versioned config files (YAML/JSON under `config/policy/`).  
+- Per-user `ValueProfile`s, effective `PolicyRule`s, and `consents` are **intended** to be persisted in the shared libSQL store alongside AMS and the World Model, so policy decisions can join directly on ontology IDs and be audited like other structured state.  
+- In the current database snapshot, only `access_policies` exists; tables named `value_profiles`, `policy_rules`, and `consents` **do not yet exist** and will need to be introduced via explicit migrations. This document defines their **logical role and relationships only**; concrete table schemas and DDL are to be specified in the migrations/implementation docs that add them.
