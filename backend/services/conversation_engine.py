@@ -26,6 +26,7 @@ from aico.proto.aico_core_envelope_pb2 import AicoMessage
 from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
 from aico.proto.aico_modelservice_pb2 import CompletionsResponse, CompletionsRequest, ConversationMessage as ModelConversationMessage
 from aico.ai import ProcessingContext, ai_registry
+from backend.core.ai_plugin_base import ProcessingRequest
 from backend.core.service_container import BaseService
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -82,6 +83,9 @@ class ConversationEngine(BaseService):
         
         # Message bus client
         self.bus_client: Optional[MessageBusClient] = None
+
+        # Optional agency plugin (wired via feature flag and service container)
+        self.agency_plugin = None
         
         # AI Processing uses global registry
         # Processors registered via: ai_registry.register("emotion", processor_instance)
@@ -95,13 +99,17 @@ class ConversationEngine(BaseService):
         # Configuration - access via core.conversation path (like other services)
         engine_config = self.container.config.get("core.conversation", {})
         features_config = engine_config.get("features", {})
+        plugins_config = self.container.config.get("core.api_gateway.plugins", {})
         
         # Feature flags for gradual implementation
         self.enable_emotion_integration = features_config.get("enable_emotion_integration", False)
         self.enable_personality_integration = features_config.get("enable_personality_integration", False)
         self.enable_memory_integration = features_config.get("enable_memory_integration", True)  # RE-ENABLED - was disabled for test
         self.enable_embodiment = features_config.get("enable_embodiment", False)
-        self.enable_agency = features_config.get("enable_agency", False)
+
+        # Agency is controlled solely by the agency plugin being enabled
+        agency_plugin_config = plugins_config.get("agency", {})
+        self.enable_agency = bool(agency_plugin_config.get("enabled", False))
         
         
         self.max_context_messages = engine_config.get("max_context_messages", 10)
@@ -157,6 +165,17 @@ class ConversationEngine(BaseService):
             
             # AI processors will be registered here when implemented
             # No initialization needed for empty registry
+
+            # Optional: resolve agency plugin from service container when enabled
+            if self.enable_agency:
+                try:
+                    self.agency_plugin = self.container.get_service("agency_plugin")
+                    if self.agency_plugin:
+                        self.logger.info("[AGENCY] Agency plugin resolved and ready for Phase 0 wiring")
+                    else:
+                        self.logger.warning("[AGENCY] enable_agency=True but agency_plugin service not found")
+                except Exception as e:
+                    self.logger.warning(f"[AGENCY] Failed to resolve agency_plugin service: {e}")
             
             # Subscribe to conversation topics
             await self._setup_subscriptions()
@@ -388,6 +407,42 @@ class ConversationEngine(BaseService):
             else:
                 print(f"💬 [CONVERSATION_ENGINE] ⚠️  Memory integration DISABLED")
                 self.logger.warning(f"🚨 [CONTEXT_TRACE] Memory integration DISABLED - no context will be retrieved")
+
+            # Phase 0: Minimal agency wiring (no behavioural changes yet)
+            if self.enable_agency and self.agency_plugin:
+                try:
+                    self.logger.info(f"[AGENCY] Phase 0: invoking agency plugin for request {request_id}")
+                    agency_context: Dict[str, Any] = {
+                        "memory_context": memory_context,
+                        "user_context": {
+                            "user_id": user_context.user_id,
+                            "conversation_language": user_context.conversation_language,
+                        },
+                    }
+                    agency_request = ProcessingRequest(
+                        request_id=request_id,
+                        user_id=user_context.user_id,
+                        conversation_id=user_message.message.conversation_id,
+                        text=user_message.message.text,
+                        context=agency_context,
+                        timestamp=datetime.utcnow(),
+                    )
+                    agency_response = await self.agency_plugin.process(agency_request)
+                    self.logger.info(
+                        f"[AGENCY] Phase 0: agency plugin completed for {request_id} (success={agency_response.success}, "
+                        f"confidence={agency_response.confidence}, keys={list(agency_response.data.keys())})"
+                    )
+                    # Store agency response in components_ready for future phases
+                    self.pending_responses[request_id]["components_ready"]["agency"] = {
+                        "request_id": agency_response.request_id,
+                        "data": agency_response.data,
+                        "confidence": agency_response.confidence,
+                        "processing_time_ms": agency_response.processing_time_ms,
+                        "success": agency_response.success,
+                        "error": agency_response.error,
+                    }
+                except Exception as e:
+                    self.logger.error(f"[AGENCY] Phase 0: error while invoking agency plugin for {request_id}: {e}")
             
             # Generate LLM response with memory context
             await self._generate_llm_response(request_id, user_context, user_message, memory_context)

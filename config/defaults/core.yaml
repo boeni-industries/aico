@@ -90,6 +90,8 @@ api_gateway:
       enabled: true
     encryption:
       enabled: true
+    agency:
+      enabled: false  # Phase 0: agency plugin wiring present but disabled by default
 
 # Modelservice configuration
 modelservice:
@@ -323,7 +325,6 @@ conversation:
     enable_personality_integration: false
     enable_memory_integration: true
     enable_embodiment: false
-    enable_agency: false
 
 # These features will be implemented in future versions
 # For now, we keep the configuration lean and focused on what's actually used

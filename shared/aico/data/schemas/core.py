@@ -57,6 +57,7 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
                 nickname TEXT,
                 user_type TEXT DEFAULT 'person',
                 is_active BOOLEAN DEFAULT TRUE,
+                primary_language TEXT,  -- ISO/BCP-47 language code
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""",
@@ -301,7 +302,8 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
                 
                 -- Content and extraction
                 content TEXT NOT NULL,
-                entities_json TEXT,  -- JSON array of extracted entities
+                language TEXT,        -- Optional language tag for content (ISO/BCP-47)
+                entities_json TEXT,   -- JSON array of extracted entities
                 extraction_method TEXT NOT NULL,
                 
                 -- Provenance
@@ -513,6 +515,7 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
                 properties JSON NOT NULL,
                 confidence REAL NOT NULL,
                 source_text TEXT NOT NULL,
+                language TEXT,            -- Optional language of source_text / label
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
@@ -811,6 +814,7 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
                 trigger_context TEXT NOT NULL,
                 procedure_template TEXT NOT NULL,
                 dimension_vector TEXT NOT NULL,
+                supported_languages TEXT,  -- JSON array of supported language codes
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""",
@@ -1062,6 +1066,102 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_ams_behavioral_feedback_user",
             "DROP TABLE IF EXISTS ams_behavioral_feedback",
             "ALTER TABLE temp_memory_album_feedback RENAME TO ams_feedback_events",
+        ]
+    )
+    ,
+    19: SchemaVersion(
+        version=19,
+        name="Historical Placeholder - Pre-agency schema",
+        description="Placeholder for existing dev schema state prior to agency tables. No-op for fresh installs.",
+        sql_statements=[],
+        rollback_statements=[]
+    ),
+
+    20: SchemaVersion(
+        version=20,
+        name="Agency Phase 0 - Goals & Telemetry Prereqs",
+        description="Add foundational tables for agency goals, plans, events, and self-reflection notes.",
+        sql_statements=[
+            # Core goals table - generic across future agency phases
+            """CREATE TABLE IF NOT EXISTS agency_goals (
+                goal_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                origin TEXT NOT NULL,              -- user, curiosity, hobby, maintenance, system
+                goal_type TEXT NOT NULL,          -- high-level type label (e.g. project, habit, maintenance)
+                title TEXT NOT NULL,
+                description TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending, active, paused, completed, retired
+                priority TEXT DEFAULT 'normal',          -- low, normal, high
+                metadata_json TEXT,                      -- JSON blob for future extensions
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_agency_goals_user_status ON agency_goals(user_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_agency_goals_origin ON agency_goals(origin)",
+
+            # Plans table - per-goal plan skeleton with JSON steps
+            """CREATE TABLE IF NOT EXISTS agency_plans (
+                plan_id TEXT PRIMARY KEY,
+                goal_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',    -- draft, active, completed, abandoned
+                steps_json TEXT NOT NULL,                -- JSON array of steps for early phases
+                metadata_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_agency_plans_goal_status ON agency_plans(goal_id, status)",
+
+            # Agency events / logs - telemetry for agency decisions and actions
+            """CREATE TABLE IF NOT EXISTS agency_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                goal_id TEXT,
+                plan_id TEXT,
+                event_type TEXT NOT NULL,              -- decision, plan_update, trigger, error, metric
+                source TEXT NOT NULL,                  -- which component emitted this event (engine, planner, arbiter, etc.)
+                payload_json TEXT NOT NULL,            -- JSON payload with structured details
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL,
+                FOREIGN KEY (plan_id) REFERENCES agency_plans(plan_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_agency_events_user_time ON agency_events(user_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_agency_events_goal ON agency_events(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_agency_events_type ON agency_events(event_type)",
+
+            # Self-reflection and lessons learned - for later phases but safe to log against now
+            """CREATE TABLE IF NOT EXISTS agency_reflection_notes (
+                note_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                related_goal_id TEXT,
+                related_plan_id TEXT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                tags_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (related_goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL,
+                FOREIGN KEY (related_plan_id) REFERENCES agency_plans(plan_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_agency_reflection_user_time ON agency_reflection_notes(user_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_agency_reflection_goal ON agency_reflection_notes(related_goal_id)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_agency_reflection_goal",
+            "DROP INDEX IF EXISTS idx_agency_reflection_user_time",
+            "DROP TABLE IF EXISTS agency_reflection_notes",
+            "DROP INDEX IF EXISTS idx_agency_events_type",
+            "DROP INDEX IF EXISTS idx_agency_events_goal",
+            "DROP INDEX IF EXISTS idx_agency_events_user_time",
+            "DROP TABLE IF EXISTS agency_events",
+            "DROP INDEX IF EXISTS idx_agency_plans_goal_status",
+            "DROP TABLE IF EXISTS agency_plans",
+            "DROP INDEX IF EXISTS idx_agency_goals_origin",
+            "DROP INDEX IF EXISTS idx_agency_goals_user_status",
+            "DROP TABLE IF EXISTS agency_goals",
         ]
     )
 })

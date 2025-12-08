@@ -19,16 +19,16 @@ Goal: Ensure the existing platform can host an always-on agency loop with clear 
   - [x] Add core language metadata columns to users, memories, KG nodes, and skills (see `SchemaVersion 19` in `shared/aico/data/schemas/core.py`).
   - [x] Implement unified per-user `primary_language` and per-conversation `conversation_language` signal, wired through ConversationEngine → MemoryManager → KG → Skills (see `WIP_full_localization.md`).
 
-- [ ] **Conversation & Config Wiring**
-  - [ ] Expose `enable_agency` feature flag and configuration options in `core.conversation` and related configs.
-  - [ ] Define a minimal `AgencyEngine`/service interface and register it via `LifecycleManager` / `ai_registry`.
-  - [ ] Integrate basic agency context hooks into `ConversationEngine` (e.g. pass active goals, agency state into prompts).
-  - [ ] Implement `backend.services.agency_engine.AgencyPlugin.process` to call the shared agency orchestrator and return structured suggestions/goals.
-  - [ ] Wire `AgencyPlugin` into conversation flows where proactive/autonomous behaviour is allowed by policy.
+- [x] **Conversation & Config Wiring**
+  - [x] Expose `enable_agency` feature flag and configuration options in `core.conversation` and related configs.
+  - [x] Define a minimal `AgencyEngine`/service interface and register it via `LifecycleManager` / plugin registry.
+  - [x] Integrate basic agency context hooks into `ConversationEngine` (Phase 0: call AgencyPlugin and log contract-shaped responses without changing behaviour).
+  - [x] Implement `backend.services.agency_engine.AgencyPlugin.process` as a contract-compliant stub that returns structured, empty suggestions/goals.
+  - [x] Wire `AgencyPlugin` into conversation flows behind `enable_agency` so it can be enabled safely when ready.
 
-- [ ] **Persistence & Telemetry Prereqs**
-  - [ ] Define core tables/collections (if needed) for goals, plans, agency logs, self-reflection notes.
-  - [ ] Ensure logging and telemetry are rich enough to support evaluation and self-reflection (IDs, timestamps, outcomes).
+- [x] **Persistence & Telemetry Prereqs**
+  - [x] Define core tables/collections for goals, plans, agency logs, self-reflection notes (`agency_goals`, `agency_plans`, `agency_events`, `agency_reflection_notes` in `SchemaVersion 19`).
+  - [x] Ensure logging and telemetry are rich enough to support evaluation and self-reflection (agency_events captures IDs, timestamps, and structured payloads for future analysis).
 
 ## Phase 1 – Goal System & Planning Skeleton (First Testable Agent)
 
