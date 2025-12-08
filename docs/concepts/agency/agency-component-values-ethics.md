@@ -160,6 +160,31 @@ The layer exposes a small set of operations that other components call synchrono
   - Conversation Engine and UIs can surface simple explanations and consent prompts without re-implementing ethics logic.
 
 
+### 5.1 Interaction with Self-Reflection
+
+The **Self-Reflection & Self-Model** component can influence Values & Ethics in two config-controlled modes (see `agency-component-self-reflection.md`):
+
+- **Observe-only (default)**  
+  - Config: `core.agency.self_reflection.policy_mode = "observe_only"`.  
+  - Behaviour:
+    - Self-Reflection analyses behaviour and policy outcomes.  
+    - It writes `MemoryItem(type="reflection")` records with `lesson_type = "policy_suggestion"` and `target_kind = "policy_rule"`, linked via ontology to specific `PolicyRule`/ValueProfile entries.  
+    - Values & Ethics does **not** automatically change any rules based on these memories; a separate policy-authoring process (human or tool) may review and apply them.
+
+- **Allow-amend (advanced, opt-in)**  
+  - Config: `core.agency.self_reflection.policy_mode = "allow_amend"`.  
+  - Behaviour:
+    - Self-Reflection is allowed to propose and apply **small, local amendments** to policy **only through the Values & Ethics service APIs** (no direct DB writes).  
+    - Typical allowed changes: tuning thresholds/weights, adjusting rule priorities/soft caps, adding/removing narrowly-scoped exceptions.  
+    - Structural changes (new value dimensions, whole policy families) remain out of scope and must go through explicit policy-authoring flows.
+    - For every applied amendment, Values & Ethics must:
+      - ensure there is a corresponding `MemoryItem(type="reflection", lesson_type="policy_suggestion", target_kind="policy_rule")` describing the change and its rationale,  
+      - **emit an audit log entry** (via Safety & Control / logging) capturing `policy_rule_id`, old/new values, `initiator = "self_reflection"`, and a pointer to `memory_id`,  
+      - persist the new configuration into the existing `policy_rules` / ValueProfile tables as described in the Persistence pattern below.
+
+This keeps Values & Ethics as the **single source of truth and execution surface** for policy, while allowing Self-Reflection to either suggest or (if explicitly enabled) carefully amend policy in a fully logged and explainable way.
+
+
 ## 6. Examples (Placeholder)
 
 - CuriositySignal about intimate relationships is downgraded to "only ask if user explicitly opts in".  

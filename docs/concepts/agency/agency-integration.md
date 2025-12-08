@@ -115,6 +115,20 @@ The emotion engine and personality simulation (see `personality-sim-architecture
 - Use emotional state to modulate **initiative timing** (e.g., avoid starting heavy topics during user distress unless explicitly requested).  
 - Ensure long‑term goals respect the character’s **values and narrative arc** and feed the right signals into Values & Ethics and Curiosity gating.
 
+### 3.3.1 Self-Reflection, Values & Ethics, and Policy Adaptation
+
+At integration level, **Self-Reflection** and **Values & Ethics** form a closed loop:
+
+- Self-Reflection periodically analyses behaviour, outcomes, and metrics (see `agency-component-self-reflection.md`).
+- It records lessons as `MemoryItem(type="reflection")` in AMS/World Model, including `lesson_type`, `target_kind`, `target_id`, and a structured `proposed_change` diff.
+- For policy-related lessons (`lesson_type = "policy_suggestion"`, `target_kind = "policy_rule"`), Values & Ethics consumes these memories in two modes:
+  - `observe_only` (default): suggestions are **read-only** input for a human or dedicated policy-authoring flow.
+  - `allow_amend` (opt-in): small, local amendments may be applied **via Values & Ethics APIs only**, which:
+    - update the existing `policy_rules` / ValueProfile tables,
+    - emit audit logs tied back to the originating reflection MemoryItem.
+
+This keeps Values & Ethics as the single execution surface and store for policy, while allowing agency to gradually adapt within clear, audit-backed boundaries.
+
 ### 3.4 Over Scheduler and Background Tasks
 
 The scheduler and AMS tasks already run:
@@ -124,8 +138,11 @@ The scheduler and AMS tasks already run:
 
 **Agency’s role** is to:
 
-- Declare **high‑level intentions** that become scheduled tasks (e.g., “summarize this week’s conversations and revisit tomorrow”).  
-- Use scheduler and resource monitor as the enforcement layer for **bounded autonomy**, ensuring that background work follows user policies and system limits.
+- Align scheduler tasks with explicit goals and plans, rather than opaque jobs.  
+- Introduce lifecycle-aware windows (sleep-like phases) where heavier jobs (AMS, World Model consolidation, curiosity exploration) can safely run.  
+- Ensure that resource governance respects both technical constraints and user-configured autonomy levels.
+
+Implementation-wise, this is realized by **extending the existing `backend.scheduler` service** (`TaskScheduler`, `TaskExecutor`, `TaskStore`) with agency-specific task metadata and readiness checks; there is a **single scheduler path** for all tasks in the system.
 
 ### 3.5 Over Embodiment
 
