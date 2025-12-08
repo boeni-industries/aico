@@ -213,3 +213,85 @@ Putting it together:
 - **Embodiment** turns agency state into a visible, spatial life simulation, so users can see AICO “living her life” even when not typing.
 
 Future work should refine these contracts into concrete protobuf schemas and REST endpoints, but the integration structure above can already be implemented incrementally on top of the existing code.
+
+## 6. Persistence & Migrations for Agency
+
+Agency reuses all existing libSQL/Chroma/LMDB schemas; the **only new schema required** is for the Values & Ethics policy tables. Implement this as a new `SchemaVersion` in `aico.data.schemas.core.CORE_SCHEMA` using the existing migration system:
+
+```python
+N: SchemaVersion(
+    version=N,
+    name="Values & Ethics Policy Tables",
+    description="Add value_profiles, policy_rules, and consents tables for the Values & Ethics subsystem",
+    sql_statements=[
+        # Per-user value / trait / priority profiles
+        """CREATE TABLE IF NOT EXISTS value_profiles (
+            uuid TEXT PRIMARY KEY,
+            user_uuid TEXT NOT NULL,
+            profile_type TEXT NOT NULL,              -- e.g. 'default', 'experimental'
+            traits_json TEXT NOT NULL,               -- JSON blob with value/trait weights
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_active BOOLEAN DEFAULT TRUE,
+            FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+        )""",
+
+        # Canonical policy rules
+        """CREATE TABLE IF NOT EXISTS policy_rules (
+            uuid TEXT PRIMARY KEY,
+            user_uuid TEXT NOT NULL,                 -- owner / subject of the rule
+            rule_type TEXT NOT NULL,                 -- classifier / hard_rule / consent_gate / rate_limit / etc.
+            scope TEXT NOT NULL,                     -- goal / plan / skill / message / system
+            target TEXT,                             -- optional target identifier (skill_id, goal_label, etc.)
+            condition_json TEXT NOT NULL,            -- JSON condition structure
+            action_json TEXT NOT NULL,               -- JSON action/effect structure
+            status TEXT NOT NULL,                    -- draft / active / disabled / deprecated
+            source TEXT NOT NULL,                    -- human / self_reflection / system_default
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+        )""",
+
+        # Consents / preferences / revocations
+        """CREATE TABLE IF NOT EXISTS consents (
+            uuid TEXT PRIMARY KEY,
+            user_uuid TEXT NOT NULL,
+            subject TEXT NOT NULL,                   -- what the consent is about (feature, data_use, autonomy_level)
+            scope TEXT NOT NULL,                     -- global / per_contact / per_context
+            value TEXT NOT NULL,                     -- granted / denied / limited / pending
+            metadata_json TEXT,                      -- extra structured info (limits, notes, etc.)
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+        )""",
+
+        # Indexes
+        "CREATE INDEX IF NOT EXISTS idx_value_profiles_user_active "
+        "ON value_profiles(user_uuid, is_active)",
+
+        "CREATE INDEX IF NOT EXISTS idx_policy_rules_user_status "
+        "ON policy_rules(user_uuid, status)",
+
+        "CREATE INDEX IF NOT EXISTS idx_policy_rules_scope_target "
+        "ON policy_rules(scope, target)",
+
+        "CREATE INDEX IF NOT EXISTS idx_consents_user_subject "
+        "ON consents(user_uuid, subject)",
+
+        "CREATE INDEX IF NOT EXISTS idx_consents_scope_value "
+        "ON consents(scope, value)"
+    ],
+    rollback_statements=[
+        "DROP INDEX IF EXISTS idx_consents_scope_value",
+        "DROP INDEX IF EXISTS idx_consents_user_subject",
+        "DROP INDEX IF EXISTS idx_policy_rules_scope_target",
+        "DROP INDEX IF EXISTS idx_policy_rules_user_status",
+        "DROP INDEX IF EXISTS idx_value_profiles_user_active",
+        "DROP TABLE IF EXISTS consents",
+        "DROP TABLE IF EXISTS policy_rules",
+        "DROP TABLE IF EXISTS value_profiles"
+    ]
+),
+```
+
+Replace `N` with the next free schema version in `CORE_SCHEMA`. No other migrations are required for agency.
