@@ -9,6 +9,7 @@ This roadmap translates the conceptual agency design into an incremental impleme
 - Each phase should yield a **testable, usable system**.
 - Phases are cumulative: later work **extends** existing modules instead of replacing them.
 - Items are written as checkable bullets (`[ ]`) so progress can be tracked.
+ - Implementation should follow the integration contracts defined in `agency-integration.md` for Conversation, Memory/AMS, Emotion, Scheduler, and Embodiment.
 
 ## Phase 0 – Foundations & Enablement
 
@@ -18,6 +19,8 @@ Goal: Ensure the existing platform can host an always-on agency loop with clear 
   - [ ] Expose `enable_agency` feature flag and configuration options in `core.conversation` and related configs.
   - [ ] Define a minimal `AgencyEngine`/service interface and register it via `LifecycleManager` / `ai_registry`.
   - [ ] Integrate basic agency context hooks into `ConversationEngine` (e.g. pass active goals, agency state into prompts).
+  - [ ] Implement `backend.services.agency_engine.AgencyPlugin.process` to call the shared agency orchestrator and return structured suggestions/goals.
+  - [ ] Wire `AgencyPlugin` into conversation flows where proactive/autonomous behaviour is allowed by policy.
 
 - [ ] **Persistence & Telemetry Prereqs**
   - [ ] Define core tables/collections (if needed) for goals, plans, agency logs, self-reflection notes.
@@ -40,6 +43,7 @@ Goal: Move from stateless chatbot to a **goal- and plan-aware companion** with p
 - [ ] **Scheduler Integration (v1)**
   - [ ] Integrate plans with the existing Task Scheduler (schedule follow-ups, reminders, background tasks).
   - [ ] Respect quiet hours and basic user preferences.
+  - [ ] Implement basic resource constraint checks in the scheduler (e.g., fill in `TaskExecutor._check_resource_constraints` for CPU/memory/battery/idle state).
 
 - [ ] **Basic Proactive Behaviour**
   - [ ] Introduce simple proactive behaviours: follow-up messages, reminders based on open goals.
@@ -54,6 +58,7 @@ Goal: Ground goals and plans in **rich memory and world understanding**, not jus
 - [ ] **AMS Integration (v1)**
   - [ ] Connect Goal System and Planning to AMS for retrieving context, preferences, and open loops.
   - [ ] Use AMS summaries and open-loop lists when (re)formulating goals and plans.
+  - [ ] Track and implement AMS unified indexing and cross-tier lifecycle automation as described in `WIP_ams_future_improvements.md` (as a Phase 4+ optimisation).
 
 - [ ] **World Model & Knowledge/Property Graph (v1)**
   - [ ] Implement a `WorldModelService` API that wraps the existing KG + semantic memory.
@@ -83,6 +88,8 @@ Goal: Give AICO **her own intrinsic drives** and hobbies that generate agent-sel
 - [ ] **Lifecycle Integration**
   - [ ] Use Lifecycle & Daily Rhythm to allocate time for curiosity/hobbies (idle spans, specific windows).
   - [ ] Represent curiosity/hobby work in the 3D flat (e.g., AICO at the desk reading, on the couch studying, reorganizing her room).
+  - [ ] Add lifecycle and agency-readiness flags into `scheduled_tasks.config` for agency-related tasks.
+  - [ ] Implement lifecycle-aware deferral logic inside agency tasks (and later, centrally in the scheduler if needed).
 
 > **Exit condition:** AICO regularly pursues self-generated curiosity and hobby goals, visibly distinct from direct user requests, within user-configurable bounds.
 
@@ -99,6 +106,9 @@ Goal: Introduce a clear **decision layer** that balances user goals, curiosity, 
   - [ ] Implement the Values & Ethics module with a configurable rule set plus optional LLM-based classifiers.
   - [ ] Integrate it as a gate in front of goals/plans/skills (block, require consent, annotate as risky).
   - [ ] Make values/ethics constraints fully configurable (tighten, relax, or disable where permissible).
+  - [ ] Design and migrate concrete schemas for `value_profiles`, `policy_rules`, and `consents` tables.
+  - [ ] Implement a Values & Ethics service API used by agency, Self-Reflection, and Safety & Control for all policy decisions.
+  - [ ] Integrate Safety & Control configuration (autonomy levels, consent requirements, quiet hours) into the Values & Ethics gate and `AgencyPlugin`, so user controls are consistently enforced.
 
 - [ ] **Conversation & UX Integration**
   - [ ] Surface the active intention set and value/ethics decisions in explanations/tooltips/logs.
@@ -114,6 +124,7 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [ ] Implement scheduled reflection jobs (often during AMS "sleep" phases).
   - [ ] Define `Lesson` / self-reflection record structures based on logs, outcomes, and user feedback.
   - [ ] Use LLM prompts to derive simple behavioural lessons (what to do more/less of, timing, tone).
+  - [ ] Wire `policy_suggestion` lessons (`target_kind = "policy_rule"`) into the Values & Ethics API, respecting `observe_only` / `allow_amend` modes with full audit logging (see `agency-component-self-reflection.md`).
 
 - [ ] **Self-Model (v1)**
   - [ ] Maintain a lightweight self-model summarizing recent performance per skill and per user.
@@ -122,6 +133,7 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 - [ ] **Behavioural Learning Hooks**
   - [ ] Integrate lessons into existing or planned behavioural learning stores (e.g., skill metadata, preference weights).
   - [ ] Log changes in strategy so they can be audited and rolled back if needed.
+  - [ ] Standardise skill usage on `SkillStore` and the bandit selector for all agency-driven tools, extending skill metadata instead of adding new tables.
 
 > **Exit condition:** AICO periodically updates how she behaves based on her own experience, in a traceable way, without changing the overall architecture.
 
