@@ -13,6 +13,24 @@ from .models import (
 from .store import GoalStore, PlanStore, AgencyEventStore, ReflectionStore
 from .planner import Planner
 from .engine import AgencyEngine
+from .values_ethics import (
+    ValuesEthicsService,
+    PolicyEffect,
+    PolicyRule,
+    PolicyTargetType,
+    ValueProfile,
+    Consent,
+    ConsentDecision,
+    EvaluationResult,
+)
+from .arbiter import (
+    GoalArbiter,
+    IntentionSet,
+    Intention,
+    IntentionStatus,
+    PriorityBand,
+    ScoredGoal,
+)
 
 __all__ = [
     "Goal",
@@ -31,4 +49,18 @@ __all__ = [
     "ReflectionStore",
     "Planner",
     "AgencyEngine",
+    "ValuesEthicsService",
+    "PolicyEffect",
+    "PolicyRule",
+    "PolicyTargetType",
+    "ValueProfile",
+    "Consent",
+    "ConsentDecision",
+    "EvaluationResult",
+    "GoalArbiter",
+    "IntentionSet",
+    "Intention",
+    "IntentionStatus",
+    "PriorityBand",
+    "ScoredGoal",
 ]

@@ -20,6 +20,8 @@ from .models import (
 )
 from .store import GoalStore, PlanStore, AgencyEventStore, ReflectionStore
 from .planner import Planner
+from .values_ethics import ValuesEthicsService, PolicyEffect
+from .arbiter import GoalArbiter, IntentionSet
 
 # Phase 2: World Model integration
 try:
@@ -57,6 +59,7 @@ class AgencyEngine(BaseAIProcessor):
         llm_plan_refiner: Optional[Callable] = None,
         world_model: Optional["WorldModelService"] = None,
         personality_service: Optional["PersonalityService"] = None,
+        message_bus: Optional[Any] = None,
     ):
         """Initialize the agency engine.
 
@@ -66,6 +69,7 @@ class AgencyEngine(BaseAIProcessor):
             llm_plan_refiner: Optional callback for LLM-based plan refinement
             world_model: Optional world model service for Phase 2+ context (Phase 2)
             personality_service: Optional personality service for Phase 2+ (Phase 2)
+            message_bus: Optional message bus for intention set publishing (Phase 4)
         """
         super().__init__(component_name="agency_engine", version="v1")
         self.config = config
@@ -76,6 +80,25 @@ class AgencyEngine(BaseAIProcessor):
         self.event_store = AgencyEventStore(db_connection)
         self.reflection_store = ReflectionStore(db_connection)
         self.planner = Planner()
+        
+        # Phase 4: Values & Ethics service
+        print("🔧 [PHASE 4 DEBUG] Initializing ValuesEthicsService...")
+        self.values_ethics = ValuesEthicsService(db_connection, logger=logger)
+        print("✅ [PHASE 4 DEBUG] ValuesEthicsService initialized!")
+        logger.info("[AGENCY_ENGINE] Values & Ethics service initialized (Phase 4)")
+        
+        # Phase 4: Goal Arbiter with configuration
+        print("🔧 [PHASE 4 DEBUG] Initializing GoalArbiter with config...")
+        print(f"🔧 [PHASE 4 DEBUG] Config object: {config}")
+        print(f"🔧 [PHASE 4 DEBUG] Message bus: {message_bus}")
+        self.arbiter = GoalArbiter(
+            db_connection, 
+            config=config,
+            message_bus=message_bus, 
+            logger=logger
+        )
+        print("✅ [PHASE 4 DEBUG] GoalArbiter initialized!")
+        logger.info("[AGENCY_ENGINE] Goal Arbiter initialized (Phase 4)")
         
         # Optional backend hook for LLM-based plan refinement (injected by backend)
         self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner
@@ -136,6 +159,34 @@ class AgencyEngine(BaseAIProcessor):
             priority=priority,
             metadata=metadata or {},
         )
+        
+        # Phase 4: Values & Ethics evaluation before storing
+        ethics_result = self.values_ethics.evaluate_goal(goal, user_id)
+        
+        if ethics_result.decision == PolicyEffect.BLOCK:
+            logger.warning(f"[AGENCY_ENGINE] Goal blocked by ethics policy: {title}")
+            await self.log_event(
+                user_id=user_id,
+                event_type="goal_blocked",
+                source="values_ethics",
+                payload={
+                    "title": title,
+                    "reason_codes": ethics_result.reason_codes,
+                    "message": ethics_result.user_message
+                }
+            )
+            raise ValueError(f"Goal blocked by ethics policy: {ethics_result.user_message}")
+        
+        # Store ethics evaluation in metadata
+        goal.metadata["ethics_evaluation"] = {
+            "decision": ethics_result.decision.value,
+            "reason_codes": ethics_result.reason_codes,
+            "evaluated_at": datetime.utcnow().isoformat()
+        }
+        
+        if ethics_result.decision == PolicyEffect.ALLOW_WITH_WARNING:
+            goal.metadata["ethics_warning"] = ethics_result.user_message
+            logger.info(f"[AGENCY_ENGINE] Goal allowed with warning: {title}")
 
         goal = await self.goal_store.create_goal(goal)
 
@@ -466,6 +517,63 @@ class AgencyEngine(BaseAIProcessor):
         try:
             logger.info(f"[AGENCY_ENGINE] Creating goal from curiosity signal: {signal.topic}")
             
+            # Phase 4: Values & Ethics gate - evaluate curiosity signal
+            ethics_result = self.values_ethics.evaluate_curiosity_signal(signal, user_id)
+            
+            if ethics_result.decision == PolicyEffect.BLOCK:
+                logger.warning(
+                    f"[AGENCY_ENGINE] Curiosity signal blocked by ethics policy: {signal.topic}"
+                )
+                # Log the blocked signal as an event
+                await self.log_event(
+                    user_id=user_id,
+                    event_type="curiosity_signal_blocked",
+                    source="values_ethics",
+                    payload={
+                        "signal_id": signal.signal_id,
+                        "topic": signal.topic,
+                        "reason_codes": ethics_result.reason_codes,
+                        "message": ethics_result.user_message
+                    }
+                )
+                raise ValueError(f"Curiosity signal blocked by ethics policy: {ethics_result.user_message}")
+            
+            if ethics_result.decision == PolicyEffect.NEEDS_CONSENT:
+                logger.info(
+                    f"[AGENCY_ENGINE] Curiosity signal requires consent: {signal.topic}"
+                )
+                # Log consent requirement - actual consent flow handled by UX
+                await self.log_event(
+                    user_id=user_id,
+                    event_type="curiosity_signal_needs_consent",
+                    source="values_ethics",
+                    payload={
+                        "signal_id": signal.signal_id,
+                        "topic": signal.topic,
+                        "consent_scope": ethics_result.consent_scope,
+                        "message": ethics_result.user_message
+                    }
+                )
+                # For now, don't create the goal - wait for explicit consent
+                raise ValueError(f"Curiosity signal requires consent: {ethics_result.user_message}")
+            
+            if ethics_result.decision == PolicyEffect.ALLOW_WITH_WARNING:
+                logger.info(
+                    f"[AGENCY_ENGINE] Curiosity signal allowed with warning: {signal.topic}"
+                )
+                # Log the warning
+                await self.log_event(
+                    user_id=user_id,
+                    event_type="curiosity_signal_warning",
+                    source="values_ethics",
+                    payload={
+                        "signal_id": signal.signal_id,
+                        "topic": signal.topic,
+                        "reason_codes": ethics_result.reason_codes,
+                        "message": ethics_result.user_message
+                    }
+                )
+            
             # Determine origin based on signal type
             if signal.signal_type.value == "hobby_play":
                 origin = GoalOrigin.HOBBY
@@ -648,6 +756,63 @@ class AgencyEngine(BaseAIProcessor):
             new_status=GoalStatus.RETIRED,
             event_type="goal_retired",
         )
+    
+    # ------------------------------------------------------------------
+    # Phase 4: Intention Set Management
+    # ------------------------------------------------------------------
+    
+    async def get_intention_set(self, user_id: str) -> IntentionSet:
+        """
+        Get the current intention set for a user.
+        
+        Args:
+            user_id: User ID
+            
+        Returns:
+            IntentionSet with active and proposed intentions
+        """
+        return await self.arbiter.get_intention_set(user_id)
+    
+    async def update_intention_set_for_user(
+        self,
+        user_id: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> IntentionSet:
+        """
+        Update the intention set by re-evaluating all pending goals.
+        
+        This is typically called:
+        - After new goals are created
+        - Periodically by a scheduler
+        - When user context changes significantly
+        
+        Args:
+            user_id: User ID
+            context: Optional context (personality, emotion, system load)
+            
+        Returns:
+            Updated IntentionSet
+        """
+        # Get all pending goals for this user
+        pending_goals = await self.goal_store.get_goals_by_status(
+            user_id=user_id,
+            status=GoalStatus.PENDING
+        )
+        
+        # Update intention set with arbiter
+        intention_set = await self.arbiter.update_intention_set(
+            user_id=user_id,
+            candidate_goals=pending_goals,
+            context=context
+        )
+        
+        logger.info(
+            f"[AGENCY_ENGINE] Updated intention set for {user_id}: "
+            f"{len(intention_set.active_intentions)} active, "
+            f"{len(intention_set.proposed_intentions)} proposed"
+        )
+        
+        return intention_set
 
     # ------------------------------------------------------------------
     # Contract-style entrypoint for AgencyPlugin (Phase 1 stub)

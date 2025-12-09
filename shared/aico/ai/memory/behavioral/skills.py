@@ -77,17 +77,38 @@ class SkillStore:
         if not row:
             return None
         
-        return Skill(
-            skill_id=row[0],
-            skill_name=row[1],
-            skill_type=row[2],
-            trigger_context=json.loads(row[3]),
-            procedure_template=row[4],
-            dimension_vector=json.loads(row[5]),
-            supported_languages=json.loads(row[6]) if row[6] else ["en"],
-            created_at=datetime.fromisoformat(row[7]),
-            updated_at=datetime.fromisoformat(row[8])
-        )
+        try:
+            # Debug: Print raw data before parsing
+            print(f"🔍 [SKILL_DEBUG] Parsing skill: {row[0]}")
+            print(f"🔍 [SKILL_DEBUG] Raw trigger_context: {repr(row[3])}")
+            print(f"🔍 [SKILL_DEBUG] Raw dimension_vector: {repr(row[5])}")
+            print(f"🔍 [SKILL_DEBUG] Raw supported_languages: {repr(row[6])}")
+            
+            trigger_context = json.loads(row[3])
+            print(f"✅ [SKILL_DEBUG] Parsed trigger_context successfully")
+            
+            dimension_vector = json.loads(row[5])
+            print(f"✅ [SKILL_DEBUG] Parsed dimension_vector successfully")
+            
+            supported_languages = json.loads(row[6]) if row[6] else ["en"]
+            print(f"✅ [SKILL_DEBUG] Parsed supported_languages successfully")
+            
+            return Skill(
+                skill_id=row[0],
+                skill_name=row[1],
+                skill_type=row[2],
+                trigger_context=trigger_context,
+                procedure_template=row[4],
+                dimension_vector=dimension_vector,
+                supported_languages=supported_languages,
+                created_at=datetime.fromisoformat(row[7]),
+                updated_at=datetime.fromisoformat(row[8])
+            )
+        except json.JSONDecodeError as e:
+            print(f"❌ [SKILL_DEBUG] JSON parsing failed for skill {row[0]}: {e}")
+            print(f"❌ [SKILL_DEBUG] Error at position {e.pos}: {e.msg}")
+            print(f"❌ [SKILL_DEBUG] Full row data: {row}")
+            raise
     
     async def list_skills(
         self,
@@ -115,20 +136,34 @@ class SkillStore:
                 (limit,)
             ).fetchall()
         
-        return [
-            Skill(
-                skill_id=row[0],
-                skill_name=row[1],
-                skill_type=row[2],
-                trigger_context=json.loads(row[3]),
-                procedure_template=row[4],
-                dimension_vector=json.loads(row[5]),
-                supported_languages=json.loads(row[6]) if row[6] else ["en"],
-                created_at=datetime.fromisoformat(row[7]),
-                updated_at=datetime.fromisoformat(row[8])
-            )
-            for row in rows
-        ]
+        print(f"🔍 [SKILL_DEBUG] list_skills found {len(rows)} rows")
+        
+        skills = []
+        for row in rows:
+            try:
+                print(f"🔍 [SKILL_DEBUG] Parsing skill in list: {row[0]}")
+                skill = Skill(
+                    skill_id=row[0],
+                    skill_name=row[1],
+                    skill_type=row[2],
+                    trigger_context=json.loads(row[3]),
+                    procedure_template=row[4],
+                    dimension_vector=json.loads(row[5]),
+                    supported_languages=json.loads(row[6]) if row[6] else ["en"],
+                    created_at=datetime.fromisoformat(row[7]),
+                    updated_at=datetime.fromisoformat(row[8])
+                )
+                skills.append(skill)
+                print(f"✅ [SKILL_DEBUG] Successfully parsed skill: {row[0]}")
+            except json.JSONDecodeError as e:
+                print(f"❌ [SKILL_DEBUG] JSON parsing failed for skill {row[0]}: {e}")
+                print(f"❌ [SKILL_DEBUG] Error at position {e.pos}: {e.msg}")
+                print(f"❌ [SKILL_DEBUG] Raw data - trigger_context: {repr(row[3])}")
+                print(f"❌ [SKILL_DEBUG] Raw data - dimension_vector: {repr(row[5])}")
+                print(f"❌ [SKILL_DEBUG] Raw data - supported_languages: {repr(row[6])}")
+                raise
+        
+        return skills
     
     async def get_user_confidence(
         self,

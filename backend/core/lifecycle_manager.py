@@ -392,19 +392,66 @@ class BackendLifecycleManager:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create CuriosityEngine: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] Curiosity-driven goals will not be generated")
             
-            # Create AgencyEngine with Phase 2 services
+            # Create message bus client for Phase 4 intention set publishing
+            # Note: Connection will be established later when message bus broker is ready
+            print("🔧 [PHASE 4 DEBUG] Creating message bus client for AgencyEngine...")
+            from aico.core.bus import MessageBusClient
+            message_bus = MessageBusClient("agency_engine", config_manager=self.config)
+            print(f"🔧 [PHASE 4 DEBUG] Message bus client created (will connect when broker is ready): {message_bus}")
+            
+            # Create AgencyEngine with Phase 2 services and Phase 4 message bus
+            print("🔧 [PHASE 4 DEBUG] Creating AgencyEngine with Phase 4 components...")
             agency_engine = AgencyEngine(
                 self.config,
                 db_connection=db_connection,
                 world_model=world_model,
                 personality_service=personality_service,
+                message_bus=message_bus,
             )
-            self.logger.info("✅ Created AgencyEngine with shared database connection")
+            print("✅ [PHASE 4 DEBUG] AgencyEngine created successfully!")
+            self.logger.info("✅ Created AgencyEngine with shared database connection and message bus")
 
             # Initialize AgencyEngine (placeholder hook for future behaviour)
             self.logger.info("🔧 [AI_PROCESSORS] Initializing AgencyEngine...")
             await agency_engine.initialize()
             self.logger.info("✅ [AI_PROCESSORS] AgencyEngine initialized during startup")
+            
+            # Phase 4: Install default policies if configured
+            try:
+                # Validate configuration exists
+                values_ethics_config = self.config.get("core.services.agency.values_ethics", None)
+                if values_ethics_config is None:
+                    raise RuntimeError(
+                        "CRITICAL: core.services.agency.values_ethics configuration not found in core.yaml. "
+                        "Phase 4 requires this configuration section."
+                    )
+                
+                install_policies = self.config.get("core.services.agency.values_ethics.install_default_policies", True)
+                policy_mode = self.config.get("core.services.agency.values_ethics.policy_mode", "enforce")
+                
+                self.logger.info(f"[AI_PROCESSORS] Values/Ethics policy mode: {policy_mode}")
+                
+                if install_policies:
+                    from aico.ai.agency.default_policies import install_default_policies
+                    self.logger.info("[AI_PROCESSORS] Installing default policy rules...")
+                    installed_count = install_default_policies(agency_engine.values_ethics)
+                    if installed_count > 0:
+                        self.logger.info(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules (Phase 4)")
+                        print(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules")
+                    else:
+                        self.logger.info("ℹ️ [AI_PROCESSORS] Default policies already installed (Phase 4)")
+                        print("ℹ️ [AI_PROCESSORS] Default policies already exist")
+                else:
+                    self.logger.warning("⚠️ [AI_PROCESSORS] Default policy installation disabled in configuration")
+                    print("⚠️ [AI_PROCESSORS] Default policy installation disabled")
+            except Exception as e:
+                error_msg = f"CRITICAL: Failed to initialize Phase 4 Values/Ethics policies: {e}"
+                self.logger.error(f"❌ [AI_PROCESSORS] {error_msg}")
+                print(f"❌ [AI_PROCESSORS] {error_msg}")
+                import traceback
+                self.logger.error(f"❌ [AI_PROCESSORS] Traceback: {traceback.format_exc()}")
+                # Re-raise to fail loudly
+                raise RuntimeError(error_msg)
 
             # Inject LLM planning helper (Phase 1: templated prompts + hand-authored patterns)
             try:
@@ -422,12 +469,16 @@ class BackendLifecycleManager:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject LLM planning helper: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will use deterministic planning only")
 
+            print("🔧 [PHASE 4 DEBUG] Registering AgencyEngine in ai_registry...")
             ai_registry.register("agency", agency_engine)
+            print("✅ [PHASE 4 DEBUG] AgencyEngine registered in ai_registry!")
             self.logger.info("Registered 'agency' processor with Phase 2 context services.")
             
         except Exception as e:
-            self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize AgencyEngine during startup: {e}")
+            print(f"❌❌❌ [PHASE 4 ERROR] AgencyEngine initialization FAILED: {e}")
             import traceback
+            print(f"❌❌❌ [PHASE 4 ERROR] Full traceback:\n{traceback.format_exc()}")
+            self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize AgencyEngine during startup: {e}")
             self.logger.error(f"❌ [AI_PROCESSORS] Full traceback: {traceback.format_exc()}")
         
         # Register CuriosityEngine (Phase 3) - outside try/except to ensure it runs
