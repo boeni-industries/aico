@@ -21,6 +21,24 @@ from .models import (
 from .store import GoalStore, PlanStore, AgencyEventStore, ReflectionStore
 from .planner import Planner
 
+# Phase 2: World Model integration
+try:
+    from aico.ai.world_model import WorldModelService, WorldContext
+    WORLD_MODEL_AVAILABLE = True
+except ImportError:
+    WORLD_MODEL_AVAILABLE = False
+    WorldModelService = None  # type: ignore
+    WorldContext = None  # type: ignore
+
+# Phase 2: Personality integration
+try:
+    from aico.ai.personality import PersonalityService, PersonalityContext
+    PERSONALITY_AVAILABLE = True
+except ImportError:
+    PERSONALITY_AVAILABLE = False
+    PersonalityService = None  # type: ignore
+    PersonalityContext = None  # type: ignore
+
 
 logger = get_logger("shared", "ai.agency.engine")
 
@@ -37,6 +55,8 @@ class AgencyEngine(BaseAIProcessor):
         config: ConfigurationManager,
         db_connection: Union[LibSQLConnection, EncryptedLibSQLConnection],
         llm_plan_refiner: Optional[Callable] = None,
+        world_model: Optional["WorldModelService"] = None,
+        personality_service: Optional["PersonalityService"] = None,
     ):
         """Initialize the agency engine.
 
@@ -44,6 +64,8 @@ class AgencyEngine(BaseAIProcessor):
             config: Configuration manager
             db_connection: Database connection (basic or encrypted)
             llm_plan_refiner: Optional callback for LLM-based plan refinement
+            world_model: Optional world model service for Phase 2+ context (Phase 2)
+            personality_service: Optional personality service for Phase 2+ (Phase 2)
         """
         super().__init__(component_name="agency_engine", version="v1")
         self.config = config
@@ -57,6 +79,20 @@ class AgencyEngine(BaseAIProcessor):
         
         # Optional backend hook for LLM-based plan refinement (injected by backend)
         self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner
+        
+        # Phase 2: World Model integration
+        self.world_model = world_model
+        if world_model and WORLD_MODEL_AVAILABLE:
+            logger.info("[AGENCY_ENGINE] World Model integration enabled (Phase 2)")
+        else:
+            logger.debug("[AGENCY_ENGINE] Running without World Model (Phase 1 mode)")
+        
+        # Phase 2: Personality integration
+        self.personality = personality_service
+        if personality_service and PERSONALITY_AVAILABLE:
+            logger.info("[AGENCY_ENGINE] Personality integration enabled (Phase 2)")
+        else:
+            logger.debug("[AGENCY_ENGINE] Running without Personality (Phase 1 mode)")
 
     async def initialize(self) -> None:  # type: ignore[override]
         """Placeholder for future initialization hooks."""
@@ -170,6 +206,244 @@ class AgencyEngine(BaseAIProcessor):
             metadata=metadata,
             auto_plan=auto_plan,
         )
+
+    async def create_goal_with_world_context(
+        self,
+        *,
+        user_id: str,
+        title: str,
+        description: Optional[str] = None,
+        origin: GoalOrigin = GoalOrigin.USER,
+        goal_type: str = "project",
+        priority: GoalPriority = GoalPriority.NORMAL,
+        metadata: Optional[Dict[str, Any]] = None,
+        auto_plan: bool = True,
+    ) -> Tuple[Goal, Optional[Plan]]:
+        """Create a goal enriched with world model context (Phase 2).
+        
+        This method retrieves user context from the world model and enriches
+        the goal metadata with relevant information about active projects,
+        open loops, and related entities.
+        
+        Args:
+            user_id: User identifier
+            title: Goal title
+            description: Optional goal description
+            origin: Goal origin (user, hobby, maintenance)
+            goal_type: Type of goal
+            priority: Goal priority
+            metadata: Additional metadata
+            auto_plan: Whether to generate an initial plan
+            
+        Returns:
+            Tuple of (created goal, optional plan)
+        """
+        # If world model not available, fall back to basic creation
+        if not self.world_model or not WORLD_MODEL_AVAILABLE:
+            logger.debug("[AGENCY_ENGINE] World model not available, using basic goal creation")
+            return await self.create_goal_with_optional_plan(
+                user_id=user_id,
+                title=title,
+                description=description,
+                origin=origin,
+                goal_type=goal_type,
+                priority=priority,
+                metadata=metadata,
+                auto_plan=auto_plan,
+            )
+        
+        try:
+            # Retrieve world context
+            logger.debug(f"[AGENCY_ENGINE] Retrieving world context for user {user_id}")
+            world_context = await self.world_model.get_world_context(
+                user_id=user_id,
+                include_entities=True,
+                include_projects=True,
+                include_open_loops=True,
+            )
+            
+            # Enrich metadata with world context
+            enriched_metadata = metadata or {}
+            enriched_metadata['world_context'] = {
+                'active_projects': [p.id for p in world_context.projects],
+                'related_entities': [e.id for e in world_context.entities[:5]],  # Top 5
+                'open_loops': [loop.id for loop in world_context.open_loops],
+                'retrieved_at': world_context.retrieved_at.isoformat(),
+            }
+            
+            logger.info(
+                f"[AGENCY_ENGINE] Enriched goal with world context: "
+                f"{len(world_context.projects)} projects, "
+                f"{len(world_context.entities)} entities, "
+                f"{len(world_context.open_loops)} open loops"
+            )
+            
+            # Create goal with enriched metadata
+            return await self.create_goal_with_optional_plan(
+                user_id=user_id,
+                title=title,
+                description=description,
+                origin=origin,
+                goal_type=goal_type,
+                priority=priority,
+                metadata=enriched_metadata,
+                auto_plan=auto_plan,
+            )
+            
+        except Exception as e:
+            logger.error(f"[AGENCY_ENGINE] Failed to retrieve world context: {e}, using basic creation")
+            # Fall back to basic creation on error
+            return await self.create_goal_with_optional_plan(
+                user_id=user_id,
+                title=title,
+                description=description,
+                origin=origin,
+                goal_type=goal_type,
+                priority=priority,
+                metadata=metadata,
+                auto_plan=auto_plan,
+            )
+
+    async def create_goal_with_full_context(
+        self,
+        *,
+        user_id: str,
+        title: str,
+        description: Optional[str] = None,
+        origin: GoalOrigin = GoalOrigin.USER,
+        goal_type: str = "project",
+        priority: GoalPriority = GoalPriority.NORMAL,
+        metadata: Optional[Dict[str, Any]] = None,
+        auto_plan: bool = True,
+    ) -> Tuple[Goal, Optional[Plan]]:
+        """Create a goal with full Phase 2 context (world model + personality).
+        
+        This is the recommended method for Phase 2+ goal creation. It:
+        1. Retrieves world model context (entities, projects, open loops)
+        2. Gets personality context (traits, relationship)
+        3. Adjusts priority based on personality
+        4. Enriches metadata with all context
+        
+        Args:
+            user_id: User identifier
+            title: Goal title
+            description: Optional goal description
+            origin: Goal origin (user, hobby, maintenance)
+            goal_type: Type of goal
+            priority: Base goal priority (will be adjusted by personality)
+            metadata: Additional metadata
+            auto_plan: Whether to generate an initial plan
+            
+        Returns:
+            Tuple of (created goal, optional plan)
+        """
+        # If neither world model nor personality available, fall back to basic
+        if not self.world_model and not self.personality:
+            logger.debug("[AGENCY_ENGINE] No Phase 2 services available, using basic goal creation")
+            return await self.create_goal_with_optional_plan(
+                user_id=user_id,
+                title=title,
+                description=description,
+                origin=origin,
+                goal_type=goal_type,
+                priority=priority,
+                metadata=metadata,
+                auto_plan=auto_plan,
+            )
+        
+        try:
+            enriched_metadata = metadata or {}
+            
+            # Step 1: Get personality context and adjust priority
+            if self.personality:
+                logger.debug(f"[AGENCY_ENGINE] Retrieving personality context for user {user_id}")
+                personality_context = await self.personality.get_personality_context(user_id)
+                
+                # Adjust priority based on personality traits
+                adjusted_priority_str = self.personality.adjust_priority_for_personality(
+                    base_priority=priority.value,
+                    personality=personality_context,
+                )
+                
+                # Convert back to enum
+                priority_map = {
+                    "low": GoalPriority.LOW,
+                    "normal": GoalPriority.NORMAL,
+                    "high": GoalPriority.HIGH,
+                }
+                adjusted_priority = priority_map.get(adjusted_priority_str, priority)
+                
+                # Calculate proactivity level
+                proactivity = self.personality.calculate_proactivity_level(personality_context)
+                
+                # Add personality context to metadata
+                enriched_metadata['personality_context'] = {
+                    'relationship_closeness': personality_context.relationship.closeness,
+                    'proactivity_level': proactivity,
+                    'priority_adjusted': adjusted_priority != priority,
+                    'original_priority': priority.value,
+                }
+                
+                logger.info(
+                    f"[AGENCY_ENGINE] Personality adjustment: "
+                    f"priority {priority.value} → {adjusted_priority.value}, "
+                    f"proactivity={proactivity:.2f}"
+                )
+                
+                # Use adjusted priority
+                priority = adjusted_priority
+            
+            # Step 2: Get world model context
+            if self.world_model:
+                logger.debug(f"[AGENCY_ENGINE] Retrieving world context for user {user_id}")
+                world_context = await self.world_model.get_world_context(
+                    user_id=user_id,
+                    include_entities=True,
+                    include_projects=True,
+                    include_open_loops=True,
+                )
+                
+                # Add world context to metadata
+                enriched_metadata['world_context'] = {
+                    'active_projects': [p.id for p in world_context.projects],
+                    'related_entities': [e.id for e in world_context.entities[:5]],
+                    'open_loops': [loop.id for loop in world_context.open_loops],
+                    'retrieved_at': world_context.retrieved_at.isoformat(),
+                }
+                
+                logger.info(
+                    f"[AGENCY_ENGINE] World context: "
+                    f"{len(world_context.projects)} projects, "
+                    f"{len(world_context.entities)} entities"
+                )
+            
+            # Step 3: Create goal with enriched metadata and adjusted priority
+            return await self.create_goal_with_optional_plan(
+                user_id=user_id,
+                title=title,
+                description=description,
+                origin=origin,
+                goal_type=goal_type,
+                priority=priority,
+                metadata=enriched_metadata,
+                auto_plan=auto_plan,
+            )
+            
+        except Exception as e:
+            logger.error(f"[AGENCY_ENGINE] Failed to create goal with full context: {e}, using basic creation")
+            import traceback
+            logger.error(f"[AGENCY_ENGINE] Traceback: {traceback.format_exc()}")
+            # Fall back to basic creation on error
+            return await self.create_goal_with_optional_plan(
+                user_id=user_id,
+                title=title,
+                description=description,
+                origin=origin,
+                goal_type=goal_type,
+                priority=priority,
+                metadata=metadata,
+                auto_plan=auto_plan,
+            )
 
     async def _generate_and_store_plan(self, goal: Goal) -> Plan:
         """Generate an initial plan for a goal and persist it.

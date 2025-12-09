@@ -342,10 +342,42 @@ class BackendLifecycleManager:
         self.logger.info("Registered 'memory' processor.")
 
         # ------------------------------------------------------------------
-        # AgencyEngine registration (Phase 1 goals & planning)
+        # AgencyEngine registration (Phase 1 goals & planning, Phase 2 context)
         # ------------------------------------------------------------------
         try:
-            agency_engine = AgencyEngine(self.config, db_connection=db_connection)
+            # Phase 2: Initialize WorldModelService
+            world_model = None
+            try:
+                from aico.ai.world_model import WorldModelService
+                
+                world_model = WorldModelService(
+                    kg_storage=kg_storage,
+                    semantic_memory=semantic_memory,
+                    memory_manager=memory_manager,
+                )
+                self.logger.info("✅ [AI_PROCESSORS] Created WorldModelService (Phase 2)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create WorldModelService: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will run without world model context")
+            
+            # Phase 2: Initialize PersonalityService
+            personality_service = None
+            try:
+                from aico.ai.personality import PersonalityService
+                
+                personality_service = PersonalityService(db_connection=db_connection)
+                self.logger.info("✅ [AI_PROCESSORS] Created PersonalityService (Phase 2)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create PersonalityService: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will run without personality context")
+            
+            # Create AgencyEngine with Phase 2 services
+            agency_engine = AgencyEngine(
+                self.config,
+                db_connection=db_connection,
+                world_model=world_model,
+                personality_service=personality_service,
+            )
             self.logger.info("✅ Created AgencyEngine with shared database connection")
 
             # Initialize AgencyEngine (placeholder hook for future behaviour)
@@ -370,7 +402,7 @@ class BackendLifecycleManager:
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will use deterministic planning only")
 
             ai_registry.register("agency", agency_engine)
-            self.logger.info("Registered 'agency' processor.")
+            self.logger.info("Registered 'agency' processor with Phase 2 context services.")
         except Exception as e:
             self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize AgencyEngine during startup: {e}")
             import traceback
