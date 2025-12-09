@@ -127,9 +127,7 @@ class CuriosityScanTask(BaseTask):
                     print(f"  ✨ Found {len(signals)} curiosity signals ({len(high_score_signals)} above {min_score} threshold)")
                     
                     # Create goals from high-scoring signals
-                    print(f"  🔍 DEBUG: Starting goal creation loop for {len(signals)} signals, min_score={min_score}")
                     for signal_idx, signal in enumerate(signals, 1):
-                        print(f"  🔍 DEBUG: Signal {signal_idx}: score={signal.total_score}, threshold={min_score}, pass={signal.total_score >= min_score}")
                         # Only create goals for signals with score >= min_score threshold
                         if signal.total_score < min_score:
                             logger.debug(
