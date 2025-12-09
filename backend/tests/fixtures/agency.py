@@ -257,3 +257,52 @@ async def seeded_goal_with_plan(test_db, sample_goal, sample_plan):
     await plan_store.create_plan(sample_plan)
     
     return sample_goal, sample_plan
+
+
+@pytest.fixture
+def permissive_value_profile(test_user, test_db):
+    """Create a permissive value profile for testing that allows all curiosity signals."""
+    from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorLevel
+    
+    service = ValuesEthicsService(test_db)
+    
+    # Get or create profile
+    profile = service._get_or_create_profile(test_user)
+    
+    # Make it permissive - no sensitive areas, high curiosity intensity
+    profile.sensitive_life_areas = []  # No sensitive areas
+    profile.curiosity_intensity = 1.0  # Allow all curiosity signals
+    profile.proactive_behavior_level = ProactiveBehaviorLevel.PROACTIVE
+    
+    # Update in database
+    test_db.execute(
+        """
+        UPDATE value_profiles 
+        SET sensitive_life_areas = ?, curiosity_intensity = ?, proactive_behavior_level = ?
+        WHERE profile_id = ?
+        """,
+        ("[]", 1.0, "proactive", profile.profile_id)
+    )
+    test_db.commit()
+    
+    return profile
+
+
+@pytest.fixture
+def mock_message_bus():
+    """Provide a mock message bus for testing."""
+    from unittest.mock import MagicMock
+    
+    mock = MagicMock()
+    mock.publish_called = False
+    mock.published_topics = []
+    
+    async def mock_publish(topic, message):
+        mock.publish_called = True
+        mock.published_topics.append(topic)
+    
+    mock.publish = mock_publish
+    mock.connect = MagicMock()
+    mock.disconnect = MagicMock()
+    
+    return mock

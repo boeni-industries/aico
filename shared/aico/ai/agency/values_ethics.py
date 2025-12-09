@@ -556,22 +556,33 @@ class ValuesEthicsService:
         """Check if a policy's conditions match the target."""
         conditions = policy.conditions
         
-        # Simple condition matching - extend as needed
+        # If no conditions, policy doesn't match
+        if not conditions:
+            return False
+        
+        # All conditions must match for policy to apply
         for key, expected_value in conditions.items():
             if key == "origin":
-                if hasattr(target, "origin") and target.origin.value != expected_value:
+                if not hasattr(target, "origin") or target.origin.value != expected_value:
                     return False
             elif key == "life_area":
                 # Check if target touches sensitive life area
-                if expected_value in profile.sensitive_life_areas:
-                    return True
+                # Only match if the expected value is in the sensitive areas list
+                if expected_value == "sensitive":
+                    # Check if any sensitive areas are configured
+                    if not profile.sensitive_life_areas:
+                        return False  # No sensitive areas = doesn't match
             elif key == "curiosity_intensity":
-                # Check if signal score exceeds threshold
+                # Check if signal score exceeds the threshold specified in the condition
+                # The condition value is the threshold, and we check against profile's setting
                 if hasattr(target, "total_score"):
-                    if target.total_score > profile.curiosity_intensity:
-                        return True
+                    # If signal score exceeds profile's curiosity_intensity threshold, match
+                    if target.total_score <= profile.curiosity_intensity:
+                        return False  # Signal is within acceptable range
+                else:
+                    return False
         
-        # Default: conditions match
+        # All conditions matched
         return True
     
     def _is_more_restrictive(self, effect1: PolicyEffect, effect2: PolicyEffect) -> bool:

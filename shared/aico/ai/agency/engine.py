@@ -165,15 +165,17 @@ class AgencyEngine(BaseAIProcessor):
         
         if ethics_result.decision == PolicyEffect.BLOCK:
             logger.warning(f"[AGENCY_ENGINE] Goal blocked by ethics policy: {title}")
-            await self.log_event(
-                user_id=user_id,
-                event_type="goal_blocked",
-                source="values_ethics",
-                payload={
-                    "title": title,
-                    "reason_codes": ethics_result.reason_codes,
-                    "message": ethics_result.user_message
-                }
+            await self.event_store.log_event(
+                AgencyEvent(
+                    user_id=user_id,
+                    event_type="goal_blocked",
+                    source="values_ethics",
+                    payload={
+                        "title": title,
+                        "reason_codes": ethics_result.reason_codes,
+                        "message": ethics_result.user_message
+                    }
+                )
             )
             raise ValueError(f"Goal blocked by ethics policy: {ethics_result.user_message}")
         
@@ -525,16 +527,18 @@ class AgencyEngine(BaseAIProcessor):
                     f"[AGENCY_ENGINE] Curiosity signal blocked by ethics policy: {signal.topic}"
                 )
                 # Log the blocked signal as an event
-                await self.log_event(
-                    user_id=user_id,
-                    event_type="curiosity_signal_blocked",
-                    source="values_ethics",
-                    payload={
-                        "signal_id": signal.signal_id,
-                        "topic": signal.topic,
-                        "reason_codes": ethics_result.reason_codes,
-                        "message": ethics_result.user_message
-                    }
+                await self.event_store.log_event(
+                    AgencyEvent(
+                        user_id=user_id,
+                        event_type="curiosity_signal_blocked",
+                        source="values_ethics",
+                        payload={
+                            "signal_id": signal.signal_id,
+                            "topic": signal.topic,
+                            "reason_codes": ethics_result.reason_codes,
+                            "message": ethics_result.user_message
+                        }
+                    )
                 )
                 raise ValueError(f"Curiosity signal blocked by ethics policy: {ethics_result.user_message}")
             
@@ -543,16 +547,18 @@ class AgencyEngine(BaseAIProcessor):
                     f"[AGENCY_ENGINE] Curiosity signal requires consent: {signal.topic}"
                 )
                 # Log consent requirement - actual consent flow handled by UX
-                await self.log_event(
-                    user_id=user_id,
-                    event_type="curiosity_signal_needs_consent",
-                    source="values_ethics",
-                    payload={
-                        "signal_id": signal.signal_id,
-                        "topic": signal.topic,
-                        "consent_scope": ethics_result.consent_scope,
-                        "message": ethics_result.user_message
-                    }
+                await self.event_store.log_event(
+                    AgencyEvent(
+                        user_id=user_id,
+                        event_type="curiosity_signal_needs_consent",
+                        source="values_ethics",
+                        payload={
+                            "signal_id": signal.signal_id,
+                            "topic": signal.topic,
+                            "consent_scope": ethics_result.consent_scope,
+                            "message": ethics_result.user_message
+                        }
+                    )
                 )
                 # For now, don't create the goal - wait for explicit consent
                 raise ValueError(f"Curiosity signal requires consent: {ethics_result.user_message}")
@@ -562,16 +568,18 @@ class AgencyEngine(BaseAIProcessor):
                     f"[AGENCY_ENGINE] Curiosity signal allowed with warning: {signal.topic}"
                 )
                 # Log the warning
-                await self.log_event(
-                    user_id=user_id,
-                    event_type="curiosity_signal_warning",
-                    source="values_ethics",
-                    payload={
-                        "signal_id": signal.signal_id,
-                        "topic": signal.topic,
-                        "reason_codes": ethics_result.reason_codes,
-                        "message": ethics_result.user_message
-                    }
+                await self.event_store.log_event(
+                    AgencyEvent(
+                        user_id=user_id,
+                        event_type="curiosity_signal_warning",
+                        source="values_ethics",
+                        payload={
+                            "signal_id": signal.signal_id,
+                            "topic": signal.topic,
+                            "reason_codes": ethics_result.reason_codes,
+                            "message": ethics_result.user_message
+                        }
+                    )
                 )
             
             # Determine origin based on signal type
