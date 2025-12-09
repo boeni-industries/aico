@@ -1163,5 +1163,217 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_agency_goals_user_status",
             "DROP TABLE IF EXISTS agency_goals",
         ]
+    ),
+    
+    # Phase 4: Values & Ethics, Goal Arbiter, and Intention Set
+    21: SchemaVersion(
+        version=21,
+        name="Agency Phase 4 - Values & Ethics and Goal Arbiter",
+        description="Add tables for values/ethics policies, goal arbiter scoring, and active intention set tracking.",
+        sql_statements=[
+            # Value profiles - per-user value preferences and boundaries
+            """CREATE TABLE IF NOT EXISTS value_profiles (
+                profile_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL UNIQUE,
+                sensitive_life_areas TEXT,         -- JSON array of LifeArea IDs
+                allowed_curiosity_domains TEXT,    -- JSON array of allowed domains
+                curiosity_intensity REAL DEFAULT 0.5,  -- 0.0-1.0 scale
+                proactive_behavior_level TEXT DEFAULT 'balanced',  -- quiet, balanced, proactive
+                storage_preferences TEXT,          -- JSON object with storage rules
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_value_profiles_user ON value_profiles(user_id)",
+            
+            # Policy rules - structured ethics/safety rules
+            """CREATE TABLE IF NOT EXISTS policy_rules (
+                rule_id TEXT PRIMARY KEY,
+                rule_name TEXT NOT NULL,
+                target_type TEXT NOT NULL,         -- goal, plan, skill, curiosity_signal, world_model_update
+                conditions_json TEXT NOT NULL,     -- JSON object with predicates
+                effect TEXT NOT NULL,              -- allow, allow_with_warning, needs_consent, block
+                user_message_template TEXT,        -- Optional NL explanation
+                priority INTEGER DEFAULT 100,      -- Lower = higher priority
+                enabled BOOLEAN DEFAULT 1,
+                scope TEXT DEFAULT 'global',       -- global, deployment, user
+                scope_id TEXT,                     -- NULL for global, user_id for user-specific
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_policy_rules_target ON policy_rules(target_type, enabled)",
+            "CREATE INDEX IF NOT EXISTS idx_policy_rules_scope ON policy_rules(scope, scope_id)",
+            
+            # Consents - explicit user consent records
+            """CREATE TABLE IF NOT EXISTS consents (
+                consent_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                consent_scope TEXT NOT NULL,       -- JSON object describing what was consented to
+                decision TEXT NOT NULL,            -- granted, denied
+                context_json TEXT,                 -- Optional context (goal_id, plan_id, etc.)
+                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,              -- NULL = permanent
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_consents_user_scope ON consents(user_id, consent_scope)",
+            "CREATE INDEX IF NOT EXISTS idx_consents_expires ON consents(expires_at)",
+            
+            # Intention set - active goals being pursued by arbiter
+            """CREATE TABLE IF NOT EXISTS intention_set (
+                intention_id TEXT PRIMARY KEY,
+                goal_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'proposed',  -- proposed, active, paused, dropped, completed
+                arbiter_score REAL NOT NULL,       -- Computed score from arbiter
+                priority_band TEXT NOT NULL,       -- urgent, normal, background
+                reasons_json TEXT,                 -- JSON array of reason codes/explanations
+                activated_at TIMESTAMP,
+                deactivated_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_intention_set_user_status ON intention_set(user_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_intention_set_goal ON intention_set(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_intention_set_priority ON intention_set(priority_band, status)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_intention_set_priority",
+            "DROP INDEX IF EXISTS idx_intention_set_goal",
+            "DROP INDEX IF EXISTS idx_intention_set_user_status",
+            "DROP TABLE IF EXISTS intention_set",
+            "DROP INDEX IF EXISTS idx_consents_expires",
+            "DROP INDEX IF EXISTS idx_consents_user_scope",
+            "DROP TABLE IF EXISTS consents",
+            "DROP INDEX IF EXISTS idx_policy_rules_scope",
+            "DROP INDEX IF EXISTS idx_policy_rules_target",
+            "DROP TABLE IF EXISTS policy_rules",
+            "DROP INDEX IF EXISTS idx_value_profiles_user",
+            "DROP TABLE IF EXISTS value_profiles",
+        ]
+    ),
+    
+    # Fix skills table column order
+    22: SchemaVersion(
+        version=22,
+        name="Fix skills table column order",
+        description="Recreate skills table with correct column order (supported_languages before timestamps)",
+        run_outside_transaction=True,  # Must run outside transaction to drop tables with foreign keys
+        sql_statements=[
+            # Disable foreign key checks temporarily
+            "PRAGMA foreign_keys = OFF",
+            
+            # Drop dependent tables (in correct order to avoid FK violations)
+            "DROP TABLE IF EXISTS context_skill_stats",
+            "DROP TABLE IF EXISTS trajectories", 
+            "DROP TABLE IF EXISTS feedback_events",
+            "DROP TABLE IF EXISTS user_skill_confidence",
+            "DROP TABLE IF EXISTS ams_behavioral_feedback",
+            
+            # Drop and recreate skills table with correct column order
+            "DROP TABLE IF EXISTS skills",
+            """CREATE TABLE skills (
+                skill_id TEXT PRIMARY KEY,
+                skill_name TEXT NOT NULL,
+                skill_type TEXT NOT NULL CHECK(skill_type IN ('base', 'user_created')),
+                trigger_context TEXT NOT NULL,
+                procedure_template TEXT NOT NULL,
+                dimension_vector TEXT NOT NULL,
+                supported_languages TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_skills_type ON skills(skill_type)",
+            
+            # Recreate dependent tables
+            """CREATE TABLE user_skill_confidence (
+                user_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                confidence_score REAL DEFAULT 0.5 CHECK(confidence_score BETWEEN 0.0 AND 1.0),
+                usage_count INTEGER DEFAULT 0,
+                positive_count INTEGER DEFAULT 0,
+                negative_count INTEGER DEFAULT 0,
+                last_used_at TIMESTAMP,
+                PRIMARY KEY (user_id, skill_id),
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX idx_user_skill_confidence ON user_skill_confidence(user_id, confidence_score DESC)",
+            
+            """CREATE TABLE feedback_events (
+                event_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                skill_id TEXT,
+                reward INTEGER NOT NULL CHECK(reward IN (-1, 0, 1)),
+                reason TEXT,
+                free_text TEXT,
+                classified_categories TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                processed BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX idx_feedback_user ON feedback_events(user_id)",
+            "CREATE INDEX idx_feedback_skill ON feedback_events(skill_id)",
+            "CREATE INDEX idx_feedback_processed ON feedback_events(processed, timestamp)",
+            
+            """CREATE TABLE trajectories (
+                trajectory_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                selected_skill_id TEXT,
+                context_bucket TEXT NOT NULL,
+                feedback_reward INTEGER CHECK(feedback_reward IN (-1, 0, 1)),
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                archived BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (selected_skill_id) REFERENCES skills(skill_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX idx_trajectories_user_feedback ON trajectories(user_id, feedback_reward)",
+            "CREATE INDEX idx_trajectories_timestamp ON trajectories(timestamp)",
+            
+            """CREATE TABLE context_skill_stats (
+                user_id TEXT NOT NULL,
+                context_bucket TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                alpha REAL DEFAULT 1.0,
+                beta REAL DEFAULT 1.0,
+                last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, context_bucket, skill_id),
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX idx_context_stats_user_context ON context_skill_stats(user_id, context_bucket)",
+            
+            """CREATE TABLE IF NOT EXISTS ams_behavioral_feedback (
+                feedback_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                skill_id TEXT,
+                reward INTEGER NOT NULL CHECK(reward IN (-1, 0, 1)),
+                reason TEXT,
+                timestamp TEXT NOT NULL,
+                processed INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_user ON ams_behavioral_feedback(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_skill ON ams_behavioral_feedback(skill_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_processed ON ams_behavioral_feedback(processed, timestamp)",
+            
+            # Re-enable foreign key checks
+            "PRAGMA foreign_keys = ON",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_skills_type",
+            "DROP TABLE IF EXISTS context_skill_stats",
+            "DROP TABLE IF EXISTS trajectories",
+            "DROP TABLE IF EXISTS feedback_events",
+            "DROP TABLE IF EXISTS user_skill_confidence",
+            "DROP TABLE IF EXISTS ams_behavioral_feedback",
+            "DROP TABLE IF EXISTS skills",
+        ]
     )
 })

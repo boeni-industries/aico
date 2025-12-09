@@ -376,11 +376,29 @@ def init(
                         continue
                     
                     try:
+                        # Special handling for migrations that run outside transaction
+                        schema_version = schema.definitions[version]
+                        if hasattr(schema_version, 'run_outside_transaction') and schema_version.run_outside_transaction:
+                            console.print(f"    🔓 Migration requires exclusive access - closing connection...")
+                            conn.close()
+                            
+                            # Reopen connection for the migration
+                            conn = _get_database_connection(str(db_file))
+                            manager = SchemaManager(conn, schema.definitions)
+                        
                         success = manager.apply_schema_version(version)
                         if success:
                             console.print(f"    ✅ Version {version} applied successfully")
                         else:
                             console.print(f"    ❌ Version {version} failed (returned False)")
+                            # Show the actual error if available
+                            if hasattr(manager, '_last_error') and manager._last_error:
+                                console.print(f"    💥 Error: {manager._last_error}", style="red")
+                                if hasattr(manager, '_last_error_traceback') and manager._last_error_traceback:
+                                    console.print(f"    📋 Traceback:", style="yellow")
+                                    for line in manager._last_error_traceback.split('\n'):
+                                        if line.strip():
+                                            console.print(f"       {line}", style="dim")
                             
                             # Special case: Version 11 renames facts_metadata to user_memories
                             # If user_memories already exists, the migration was already applied manually
