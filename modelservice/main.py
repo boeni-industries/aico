@@ -27,7 +27,13 @@ if sys.platform == "win32":
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 config_manager = ConfigurationManager()
-config_manager.initialize()
+# Use lightweight initialization in modelservice to avoid starting file watchers.
+# IMPORTANT: This means modelservice no longer hot-reloads configuration files.
+# Any changes under /config that should affect modelservice now require a
+# modelservice restart to take effect. This avoids macOS FSEvents
+# "already scheduled" errors when multiple processes watch the same
+# config directory.
+config_manager.initialize(lightweight=True)
 # Logging will be initialized service-specifically in initialize_modelservice()
 from aico.core.version import get_modelservice_version
 from .core.zmq_service import ModelserviceZMQService
