@@ -34,24 +34,24 @@ Goal: Ensure the existing platform can host an always-on agency loop with clear 
 
 Goal: Move from stateless chatbot to a **goal- and plan-aware companion** with persistent intentions.
 
-- [ ] **Goal & Intention System (core data structures)**
-  - [ ] Implement `Goal` / `Intention` models (including origin: user, curiosity, hobby, system-maintenance).
-  - [ ] Implement storage, retrieval, and lifecycle operations (create, activate, pause, complete, retire).
-  - [ ] Add support for **agent-self goals and hobbies** as first-class objects.
+- [x] **Goal & Intention System (core data structures)**
+  - [x] Implement `Goal` / `Intention` models (including origin: user, curiosity, hobby, system-maintenance).
+  - [x] Implement storage, retrieval, and lifecycle operations (create, activate, pause, complete, retire).
+  - [x] Add support for **agent-self goals and hobbies** as first-class objects.
 
-- [ ] **Planning & Decomposition (v1)**
-  - [ ] Implement a Planning component that converts goals into simple plans (linear or shallow branches).
-  - [ ] Use templated LLM prompts plus hand-authored patterns for common plan shapes.
-  - [ ] Store plans and steps with links back to goals and tools/skills.
+- [x] **Planning & Decomposition (v1)**
+  - [x] Implement a Planning component that converts goals into simple plans (linear or shallow branches).
+  - [x] Use templated LLM prompts plus hand-authored patterns for common plan shapes.
+  - [x] Store plans and steps with links back to goals and tools/skills.
 
-- [ ] **Scheduler Integration (v1)**
-  - [ ] Integrate plans with the existing Task Scheduler (schedule follow-ups, reminders, background tasks).
-  - [ ] Respect quiet hours and basic user preferences.
-  - [ ] Implement basic resource constraint checks in the scheduler (e.g., fill in `TaskExecutor._check_resource_constraints` for CPU/memory/battery/idle state).
+- [x] **Scheduler Integration (v1)**
+  - [x] Integrate plans with the existing Task Scheduler (schedule follow-ups, reminders, background tasks).
+  - [x] Respect quiet hours and basic user preferences.
+  - [x] Implement basic resource constraint checks in the scheduler (e.g., fill in `TaskExecutor._check_resource_constraints` for CPU/memory/battery/idle state).
 
-- [ ] **Basic Proactive Behaviour**
-  - [ ] Introduce simple proactive behaviours: follow-up messages, reminders based on open goals.
-  - [ ] Make agency activity visible in conversation logs and, optionally, the 3D avatar (basic room/posture mapping).
+- [x] **Basic Proactive Behaviour**
+  - [x] Introduce simple proactive behaviours: follow-up messages, reminders based on open goals.
+  - [x] Make agency activity visible in conversation logs and, optionally, the 3D avatar (basic room/posture mapping).
 
 > **Exit condition:** AICO keeps track of goals across sessions, can form simple multi-step plans, and can proactively act on them in a controlled way.
 
@@ -176,3 +176,13 @@ Goal: Use the 3D flat and embodiment not just for presentation, but as a **cogni
   - [ ] Iterate on prompts, policies, and UX based on real usage data.
 
 > **Exit condition:** AICO behaves as a coherent, self-motivated, relationship-centric companion whose inner life (goals, curiosities, hobbies, reflections) is legible through conversation and embodiment, with the full conceptual architecture implemented in practice.
+
+## Implementation Completion Checklist (Cross-Phase)
+
+These items ensure that early "basic" or placeholder implementations are fully evolved into the intended system by the time all phases are complete:
+
+- [ ] **Planner maturity**: LLM-backed planning with robust templates and pattern selection, with fallbacks documented and tested.
+- [ ] **Scheduler & resource management**: `_check_resource_constraints` and quiet-hours logic enforce real system limits and user preferences for all agency tasks.
+- [ ] **Proactive behaviours**: Follow-ups/reminders move from simple checks to policy-aware, relationship- and values-informed behaviours.
+- [ ] **Agency visibility & UX**: All internal agency components (goals, plans, intentions, curiosity, hobbies, reflections) are surfaced through consistent explanations, logs, and embodiment cues.
+- [ ] **Mock/stub cleanup**: All temporary stubs, mocks, and "Phase 1 skeleton" code paths are either removed or clearly marked as legacy paths with replacement implementations in place.

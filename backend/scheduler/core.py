@@ -55,7 +55,8 @@ class TaskRegistry:
             "backend.scheduler.tasks.lmdb_cleanup",  # LMDB cleanup
             "backend.scheduler.tasks.ams_feedback_classification",  # AMS Phase 3
             "backend.scheduler.tasks.ams_thompson_sampling",  # AMS Phase 3
-            "backend.scheduler.tasks.ams_trajectory_cleanup"  # AMS Phase 3
+            "backend.scheduler.tasks.ams_trajectory_cleanup",  # AMS Phase 3
+            "backend.scheduler.tasks.agency_followups"  # Agency Phase 1
         ]
         
         for module_name in builtin_modules:
@@ -332,12 +333,55 @@ class TaskExecutor:
     async def _check_resource_constraints(self, context: TaskContext) -> bool:
         """Check if system resources allow task execution"""
         try:
+            import psutil
+            from datetime import datetime, time
+            
             scheduler_config = self.get_config("scheduler", {})
             max_cpu = scheduler_config.get("max_cpu_percent", 80)
             max_memory = scheduler_config.get("max_memory_percent", 80)
             
-            # TODO: Implement actual resource checking
-            # For now, always allow execution
+            # Check CPU usage
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            if cpu_percent > max_cpu:
+                self.logger.info(
+                    f"Task {context.task_id} skipped: CPU usage {cpu_percent}% exceeds limit {max_cpu}%"
+                )
+                return False
+            
+            # Check memory usage
+            memory = psutil.virtual_memory()
+            if memory.percent > max_memory:
+                self.logger.info(
+                    f"Task {context.task_id} skipped: Memory usage {memory.percent}% exceeds limit {max_memory}%"
+                )
+                return False
+            
+            # Check quiet hours for agency tasks
+            if context.task_id.startswith("agency."):
+                quiet_hours_config = scheduler_config.get("quiet_hours", {})
+                if quiet_hours_config.get("enabled", False):
+                    now = datetime.now().time()
+                    start_str = quiet_hours_config.get("start", "22:00")
+                    end_str = quiet_hours_config.get("end", "08:00")
+                    
+                    try:
+                        start_time = time.fromisoformat(start_str)
+                        end_time = time.fromisoformat(end_str)
+                        
+                        # Handle quiet hours that span midnight
+                        if start_time <= end_time:
+                            in_quiet_hours = start_time <= now <= end_time
+                        else:
+                            in_quiet_hours = now >= start_time or now <= end_time
+                        
+                        if in_quiet_hours:
+                            self.logger.info(
+                                f"Agency task {context.task_id} skipped: currently in quiet hours ({start_str}-{end_str})"
+                            )
+                            return False
+                    except ValueError as e:
+                        self.logger.warning(f"Invalid quiet hours config: {e}")
+            
             return True
             
         except Exception as e:

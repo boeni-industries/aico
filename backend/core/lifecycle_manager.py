@@ -295,10 +295,14 @@ class BackendLifecycleManager:
         from aico.ai import ai_registry
         from aico.ai.memory.manager import MemoryManager
         from backend.services.modelservice_client import get_modelservice_client
+        from aico.ai.agency import AgencyEngine
 
-        # Create and register the MemoryManager
-        # It requires the global config manager and database connection
+        # Shared encrypted database connection for AI processors
         db_connection = self.container.get_service("database")
+
+        # ------------------------------------------------------------------
+        # MemoryManager registration (existing behaviour)
+        # ------------------------------------------------------------------
         memory_manager = MemoryManager(self.config, db_connection=db_connection)
         self.logger.info("✅ Created MemoryManager with shared database connection")
         
@@ -336,6 +340,41 @@ class BackendLifecycleManager:
         
         ai_registry.register("memory", memory_manager)
         self.logger.info("Registered 'memory' processor.")
+
+        # ------------------------------------------------------------------
+        # AgencyEngine registration (Phase 1 goals & planning)
+        # ------------------------------------------------------------------
+        try:
+            agency_engine = AgencyEngine(self.config, db_connection=db_connection)
+            self.logger.info("✅ Created AgencyEngine with shared database connection")
+
+            # Initialize AgencyEngine (placeholder hook for future behaviour)
+            self.logger.info("🔧 [AI_PROCESSORS] Initializing AgencyEngine...")
+            await agency_engine.initialize()
+            self.logger.info("✅ [AI_PROCESSORS] AgencyEngine initialized during startup")
+
+            # Inject LLM planning helper (Phase 1: templated prompts + hand-authored patterns)
+            try:
+                from backend.services.agency_planner import LLMPlanningHelper
+                
+                llm_helper = LLMPlanningHelper(self.config, modelservice_client)
+                
+                # Create refiner callback that wraps the helper
+                async def llm_refiner_callback(goal, base_plan):
+                    return await llm_helper.refine_plan_with_llm(goal, base_plan)
+                
+                agency_engine.set_llm_plan_refiner(llm_refiner_callback)
+                self.logger.info("✅ [AI_PROCESSORS] Injected LLM planning helper into AgencyEngine")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject LLM planning helper: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will use deterministic planning only")
+
+            ai_registry.register("agency", agency_engine)
+            self.logger.info("Registered 'agency' processor.")
+        except Exception as e:
+            self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize AgencyEngine during startup: {e}")
+            import traceback
+            self.logger.error(f"❌ [AI_PROCESSORS] Full traceback: {traceback.format_exc()}")
 
         # EmotionEngine is already registered in _register_core_services() (lines 266-275)
         # and will be started automatically by the service container
