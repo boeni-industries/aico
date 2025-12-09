@@ -328,19 +328,8 @@ class MessageBusClient:
         if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
             self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
         
-        # Log potential authentication failures for encrypted connections
-        if self.encryption_enabled:
-            self.logger.debug(f"[SECURITY] Client {self.client_id} published encrypted message {metadata.message_id} to topic '{topic}'")
-            
-            # Add a mechanism to detect if messages are being silently dropped
-            # Store message info for potential timeout detection
-            if not hasattr(self, '_published_messages'):
-                self._published_messages = {}
-            self._published_messages[metadata.message_id] = {
-                'topic': topic,
-                'timestamp': asyncio.get_event_loop().time(),
-                'client_id': self.client_id
-            }
+        # Encrypted message logging disabled to prevent log spam
+        # Messages are encrypted and working - no need to log every single one at DEBUG level
         
         # Persist message if enabled
         if self.persistence_enabled:
@@ -383,9 +372,7 @@ class MessageBusClient:
                 if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
                     self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} received plaintext message on topic '{topic}'")
                 
-                # Log successful encrypted message reception
-                if self.encryption_enabled:
-                    self.logger.debug(f"[SECURITY] Client {self.client_id} received encrypted message on topic '{topic}'")
+                # Encrypted message reception - logging disabled to prevent spam
                 
                 # Deserialize protobuf message
                 from ..proto.aico_core_envelope_pb2 import AicoMessage

@@ -374,14 +374,21 @@ class BackendLifecycleManager:
             # Phase 3: Initialize CuriosityEngine
             curiosity_engine = None
             try:
+                print("[DEBUG] Attempting to import CuriosityEngine...")
                 from aico.ai.curiosity import CuriosityEngine
+                print("[DEBUG] CuriosityEngine imported successfully")
                 
+                print(f"[DEBUG] Creating CuriosityEngine with world_model={world_model}, personality={personality_service}")
                 curiosity_engine = CuriosityEngine(
                     world_model=world_model,
                     personality_service=personality_service,
                 )
+                print("✅ [AI_PROCESSORS] Created CuriosityEngine (Phase 3)")
                 self.logger.info("✅ [AI_PROCESSORS] Created CuriosityEngine (Phase 3)")
             except Exception as e:
+                print(f"❌ [AI_PROCESSORS] Failed to create CuriosityEngine: {e}")
+                import traceback
+                print(f"❌ [AI_PROCESSORS] Traceback: {traceback.format_exc()}")
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create CuriosityEngine: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] Curiosity-driven goals will not be generated")
             
@@ -418,14 +425,24 @@ class BackendLifecycleManager:
             ai_registry.register("agency", agency_engine)
             self.logger.info("Registered 'agency' processor with Phase 2 context services.")
             
-            # Register CuriosityEngine (Phase 3)
-            if curiosity_engine:
-                ai_registry.register("curiosity", curiosity_engine)
-                self.logger.info("Registered 'curiosity' processor (Phase 3).")
         except Exception as e:
             self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize AgencyEngine during startup: {e}")
             import traceback
             self.logger.error(f"❌ [AI_PROCESSORS] Full traceback: {traceback.format_exc()}")
+        
+        # Register CuriosityEngine (Phase 3) - outside try/except to ensure it runs
+        try:
+            print(f"[DEBUG] About to register CuriosityEngine: {curiosity_engine}")
+            if curiosity_engine:
+                ai_registry.register("curiosity", curiosity_engine)
+                print("✅ [AI_PROCESSORS] Registered 'curiosity' processor (Phase 3).")
+                self.logger.info("✅ Registered 'curiosity' processor (Phase 3).")
+            else:
+                print("⚠️ [AI_PROCESSORS] CuriosityEngine was not created, skipping registration")
+                self.logger.warning("⚠️ CuriosityEngine was not created, skipping registration")
+        except Exception as e:
+            print(f"❌ [AI_PROCESSORS] Failed to register CuriosityEngine: {e}")
+            self.logger.error(f"❌ Failed to register CuriosityEngine: {e}")
 
         # EmotionEngine is already registered in _register_core_services() (lines 266-275)
         # and will be started automatically by the service container

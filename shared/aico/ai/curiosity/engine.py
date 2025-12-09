@@ -50,7 +50,7 @@ class CuriosityEngine:
         self.personality = personality_service
         self.hobby_templates = hobby_templates or DEFAULT_HOBBY_TEMPLATES
         
-        logger.info("[CURIOSITY] Engine initialized with %d hobby templates", len(self.hobby_templates))
+        logger.info(f"[CURIOSITY] Engine initialized with {len(self.hobby_templates)} hobby templates")
     
     async def scan_for_opportunities(
         self,
@@ -204,8 +204,10 @@ class CuriosityEngine:
             # TODO: Integrate with AMS to detect actual user interests
             # TODO: Track topic frequency and engagement
             
-            # For now, generate one signal per hobby template
-            # In production, this would be based on actual user behavior
+            # For Phase 3 v1, generate hobby templates for all users
+            # Phase 4+ will use AMS to detect actual user interests from behavior
+            # This is a known limitation documented in agency-roadmap.md
+            
             for template in self.hobby_templates:
                 # Check personality fit
                 if self.personality:

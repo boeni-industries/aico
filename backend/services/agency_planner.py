@@ -41,9 +41,11 @@ class LLMPlanningHelper:
         conversation_model_config = config.get("core.modelservice.ollama.default_models.conversation", {})
         self.model_name = conversation_model_config.get("name", "huihui_ai/qwen3-abliterated:8b-v2")
         
-        # Check if agency plugin is enabled (planning is always available when plugin is enabled)
-        agency_config = config.get("core.api_gateway.plugins.agency", {})
-        self.llm_enabled = agency_config.get("enabled", False)
+        # Get agency planning configuration
+        agency_config = config.get("core.services.agency.planning", {})
+        self.llm_enabled = agency_config.get("enable_llm_refinement", True)
+        self.llm_temperature = agency_config.get("llm_temperature", 0.7)
+        self.llm_max_tokens = agency_config.get("llm_max_tokens", 1000)
     
     async def refine_plan_with_llm(
         self,
@@ -96,8 +98,8 @@ class LLMPlanningHelper:
                 model=self.model_name,
                 messages=messages,
                 options={
-                    "temperature": 0.7,
-                    "max_tokens": 1000
+                    "temperature": self.llm_temperature,
+                    "max_tokens": self.llm_max_tokens
                 }
             )
             

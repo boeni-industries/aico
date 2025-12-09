@@ -256,8 +256,8 @@ class ModelServiceClient:
                             req_event.set()
                         else:
                             self.logger.error("Failed to unpack EmbeddingsResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     # Handle NER responses
                     elif "ner" in response_topic:
                         from aico.proto.aico_modelservice_pb2 import NerResponse
@@ -265,10 +265,10 @@ class ModelServiceClient:
                         if message.any_payload.Unpack(ner_response):
                             # Commented out to reduce log volume
                             # self.logger.debug(f"Successfully unpacked NerResponse: success={ner_response.success}")
-                            response_data = {
+                            req_data.update({
                                 'success': ner_response.success,
                                 'error': ner_response.error if ner_response.HasField('error') else None
-                            }
+                            })
                             if ner_response.success:
                                 # Convert protobuf map to Python dict with confidence scores
                                 entities = {}
@@ -280,30 +280,30 @@ class ModelServiceClient:
                                             'text': entity_with_conf.text,
                                             'confidence': entity_with_conf.confidence
                                         })
-                                response_data['data'] = {'entities': entities}
+                                req_data['data'] = {'entities': entities}
                                 self.logger.debug(f"Extracted {len(entities)} entity types with confidence scores")
-                            response_received.set()
+                            req_event.set()
                         else:
                             self.logger.error("Failed to unpack NerResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     # Handle Intent Classification responses
                     elif "intent" in response_topic:
                         from aico.proto.aico_modelservice_pb2 import IntentClassificationResponse
                         intent_response = IntentClassificationResponse()
                         if message.any_payload.Unpack(intent_response):
                             self.logger.debug(f"Successfully unpacked IntentClassificationResponse: success={intent_response.success}")
-                            response_data = {
+                            req_data.update({
                                 'success': intent_response.success,
                                 'error': intent_response.error if intent_response.HasField('error') else None
-                            }
+                            })
                             if intent_response.success:
                                 # Extract intent classification data
                                 alternatives = []
                                 for alt in intent_response.alternative_predictions:
                                     alternatives.append((alt.intent, alt.confidence))
                                 
-                                response_data['data'] = {
+                                req_data['data'] = {
                                     'predicted_intent': intent_response.predicted_intent,
                                     'confidence': intent_response.confidence,
                                     'detected_language': intent_response.detected_language,
@@ -312,11 +312,11 @@ class ModelServiceClient:
                                     'metadata': dict(intent_response.metadata)
                                 }
                                 self.logger.debug(f"Intent classified as: {intent_response.predicted_intent} (confidence={intent_response.confidence:.2f})")
-                            response_received.set()
+                            req_event.set()
                         else:
                             self.logger.error("Failed to unpack IntentClassificationResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     # Handle Sentiment responses
                     elif "sentiment" in response_topic:
                         self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Received sentiment response!")
@@ -324,62 +324,69 @@ class ModelServiceClient:
                         sentiment_response = SentimentResponse()
                         if message.any_payload.Unpack(sentiment_response):
                             self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Successfully unpacked SentimentResponse: success={sentiment_response.success}")
-                            response_data = {
+                            req_data.update({
                                 'success': sentiment_response.success,
                                 'error': sentiment_response.error if sentiment_response.HasField('error') else None
-                            }
+                            })
                             if sentiment_response.success:
-                                response_data['data'] = {
+                                req_data['data'] = {
                                     'sentiment': sentiment_response.sentiment,
                                     'confidence': sentiment_response.confidence
                                 }
                                 self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Extracted sentiment: {sentiment_response.sentiment} (confidence: {sentiment_response.confidence:.3f})")
                             else:
                                 self.logger.error(f"🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Sentiment response failed: {sentiment_response.error}")
-                            response_received.set()
+                            req_event.set()
                         else:
                             self.logger.error("🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Failed to unpack SentimentResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     else:
                         # Handle completions/chat responses
                         from aico.proto.aico_modelservice_pb2 import CompletionsResponse
                         completions_response = CompletionsResponse()
                         if message.any_payload.Unpack(completions_response):
                             self.logger.debug(f"Successfully unpacked CompletionsResponse: success={completions_response.success}")
-                            response_data = {
+                            req_data.update({
                                 'success': completions_response.success,
                                 'error': completions_response.error if completions_response.HasField('error') else None
-                            }
+                            })
                             if completions_response.HasField('result'):
                                 # Check if result has message field (actual field name from logs)
                                 if hasattr(completions_response.result, 'message'):
-                                    response_data['data'] = {'content': completions_response.result.message.content}
+                                    req_data['data'] = {'content': completions_response.result.message.content}
                                     self.logger.debug(f"Extracted message content: {completions_response.result.message.content[:100]}...")
                                 elif hasattr(completions_response.result, 'content'):
-                                    response_data['data'] = {'content': completions_response.result.content}
+                                    req_data['data'] = {'content': completions_response.result.content}
                                     self.logger.debug(f"Extracted content: {completions_response.result.content[:100]}...")
                                 else:
                                     # Log available fields for debugging
                                     fields = [field.name for field in completions_response.result.DESCRIPTOR.fields]
                                     self.logger.debug(f"Available result fields: {fields}")
-                                    response_data['data'] = {'content': str(completions_response.result)}
+                                    req_data['data'] = {'content': str(completions_response.result)}
                             else:
                                 self.logger.debug("No result field in response")
-                            response_received.set()
+                            req_event.set()
                         else:
                             self.logger.error("Failed to unpack CompletionsResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                 else:
                     # Handle case where message doesn't have any_payload
                     self.logger.debug(f"Message structure: {type(message)}, fields: {dir(message)}")
-                    response_data = {'success': False, 'error': 'Invalid message format'}
-                    response_received.set()
+                    req_data.update({'success': False, 'error': 'Invalid message format'})
+                    req_event.set()
             except Exception as e:
                 self.logger.error(f"Error parsing response: {e}")
-                response_data = {'success': False, 'error': str(e)}
-                response_received.set()
+                # Try to update the correct request's data if we can find it
+                if message_correlation_id and message_correlation_id in self.pending_requests:
+                    req_event, req_data, _, _ = self.pending_requests[message_correlation_id]
+                    req_data.update({'success': False, 'error': str(e)})
+                    req_event.set()
+                else:
+                    # Fallback for unknown correlation_id
+                    response_data = {'success': False, 'error': str(e)}
+                    response_received.set()
         
         # Subscribe to response topic (only once per topic)
         subscription_start = time.time()

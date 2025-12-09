@@ -380,6 +380,20 @@ services:
   encryption:
     enabled: true
     algorithm: "AES-256-GCM"
+  
+  # Agency service configuration
+  # Note: enabled flag is in api_gateway.plugins.agency.enabled (line 93)
+  agency:
+    # Curiosity Engine settings
+    curiosity:
+      max_signals_per_scan: 10
+      min_signal_score: 0.3  # Minimum score for goal creation
+    
+    # LLM Planning settings
+    planning:
+      llm_temperature: 0.7
+      llm_max_tokens: 1000
+      enable_llm_refinement: true  # Can disable LLM planning globally
 
 # Memory System Configuration
 memory:
