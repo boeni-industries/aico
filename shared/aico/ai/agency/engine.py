@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Dict, Optional, Tuple, Awaitable
+from typing import Any, Callable, Dict, Optional, Tuple, Awaitable, Union
 from datetime import datetime
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.ai.base import BaseAIProcessor
+from aico.data.libsql.connection import LibSQLConnection
+from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 
 from .models import (
     Goal,
@@ -30,8 +32,20 @@ class AgencyEngine(BaseAIProcessor):
     This is the primary entrypoint that the AgencyPlugin should use.
     """
 
-    def __init__(self, config: ConfigurationManager, db_connection) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        config: ConfigurationManager,
+        db_connection: Union[LibSQLConnection, EncryptedLibSQLConnection],
+        llm_plan_refiner: Optional[Callable] = None,
+    ):
+        """Initialize the agency engine.
+
+        Args:
+            config: Configuration manager
+            db_connection: Database connection (basic or encrypted)
+            llm_plan_refiner: Optional callback for LLM-based plan refinement
+        """
+        super().__init__(component_name="agency_engine", version="v1")
         self.config = config
         self._db_connection = db_connection
 
@@ -42,7 +56,7 @@ class AgencyEngine(BaseAIProcessor):
         self.planner = Planner()
         
         # Optional backend hook for LLM-based plan refinement (injected by backend)
-        self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = None
+        self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner
 
     async def initialize(self) -> None:  # type: ignore[override]
         """Placeholder for future initialization hooks."""
@@ -292,34 +306,62 @@ class AgencyEngine(BaseAIProcessor):
         self,
         *,
         user_id: str,
-        text: str,
+        conversation_id: str,
+        message: str,
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Minimal contract-compatible analysis stub.
+        """Analyze a conversation turn for agency opportunities.
 
-        Returns a structure compatible with AgencyPlugin's CapabilityContract.
-        Later phases can hook goal detection and proactive triggers here.
+        This is the contract-compliant entrypoint that AgencyPlugin calls.
+        Phase 1: Returns empty suggestions (no autonomous behaviour yet).
+        Later phases: Will return goal suggestions, plan updates, proactive actions.
         """
 
-        analysis_timestamp = datetime.utcnow().isoformat()
-
-        await self.event_store.log_event(
-            AgencyEvent(
-                user_id=user_id,
-                goal_id=None,
-                plan_id=None,
-                event_type="turn_analyzed",
-                source="agency_engine",
-                payload={"text_length": len(text)},
-            )
-        )
-
-        result: Dict[str, Any] = {
-            "proactive_suggestions": [],
-            "autonomous_goals": [],
-            "behavioral_triggers": {},
-            "confidence": 0.0,
-            "analysis_timestamp": analysis_timestamp,
+        # Phase 1: Return empty contract-compliant response
+        return {
+            "goal_suggestions": [],
+            "plan_updates": [],
+            "proactive_actions": [],
+            "metadata": {
+                "phase": "1",
+                "analyzed_at": datetime.utcnow().isoformat(),
+            },
         }
-
-        return result
+    
+    # ------------------------------------------------------------------
+    # BaseAIProcessor abstract method implementations
+    # ------------------------------------------------------------------
+    
+    async def process(self, context) -> Any:
+        """Process AI request (BaseAIProcessor interface).
+        
+        For AgencyEngine, this delegates to analyze_conversation_turn.
+        """
+        return await self.analyze_conversation_turn(
+            user_id=context.user_id,
+            conversation_id=context.conversation_id,
+            message=context.message_content,
+            context=context.shared_state,
+        )
+    
+    async def health_check(self) -> bool:
+        """Check if agency engine is healthy and operational."""
+        try:
+            # Check if stores are accessible
+            test_goals = await self.goal_store.list_goals("health_check_user", status=None)
+            return True
+        except Exception as e:
+            logger.error(f"[AGENCY_ENGINE] Health check failed: {e}")
+            return False
+    
+    def get_supported_operations(self) -> list[str]:
+        """Get list of operations supported by agency engine."""
+        return [
+            "analyze_conversation_turn",
+            "create_goal",
+            "activate_goal",
+            "pause_goal",
+            "complete_goal",
+            "retire_goal",
+            "list_goals",
+        ]

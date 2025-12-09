@@ -1,11 +1,8 @@
 """
-Test Fixtures for AICO Backend
+Test fixtures for AICO backend tests.
 
-Test fixtures provide reusable test data and utilities.
-These include:
-- Mock objects
-- Test data sets
-- Database fixtures
-- Configuration overrides
-- Helper functions
+This package provides reusable test data, mock objects, and test utilities.
+
+Fixtures are automatically discovered by pytest via conftest.py.
+Do not import fixtures here - it causes circular import issues.
 """
