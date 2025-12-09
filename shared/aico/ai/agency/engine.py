@@ -444,6 +444,83 @@ class AgencyEngine(BaseAIProcessor):
                 metadata=metadata,
                 auto_plan=auto_plan,
             )
+    
+    async def create_goal_from_curiosity_signal(
+        self,
+        user_id: str,
+        signal,  # IntrinsicSignal
+        auto_plan: bool = True,
+    ) -> tuple[Goal, Optional[Plan]]:
+        """Create a goal from a curiosity signal.
+        
+        Converts an IntrinsicSignal from the Curiosity Engine into a hobby goal.
+        
+        Args:
+            user_id: User identifier
+            signal: IntrinsicSignal from Curiosity Engine
+            auto_plan: Whether to generate an initial plan
+            
+        Returns:
+            Tuple of (created goal, optional plan)
+        """
+        try:
+            logger.info(f"[AGENCY_ENGINE] Creating goal from curiosity signal: {signal.topic}")
+            
+            # Determine origin based on signal type
+            if signal.signal_type.value == "hobby_play":
+                origin = GoalOrigin.HOBBY
+            else:
+                origin = GoalOrigin.CURIOSITY
+            
+            # Map signal priority to GoalPriority
+            priority_map = {
+                "low": GoalPriority.LOW,
+                "normal": GoalPriority.NORMAL,
+                "high": GoalPriority.HIGH,
+            }
+            priority = priority_map.get(signal.priority, GoalPriority.NORMAL)
+            
+            # Build metadata with curiosity context
+            metadata = {
+                "curiosity_signal_id": signal.signal_id,
+                "curiosity_type": signal.signal_type.value,
+                "curiosity_score": signal.total_score,
+                "novelty_score": signal.novelty_score,
+                "user_relevance_score": signal.user_relevance_score,
+                "source_component": signal.source_component,
+                "topic_tags": signal.topic_tags,
+            }
+            
+            # Add template info if available
+            if "template_id" in signal.context:
+                metadata["hobby_template_id"] = signal.context["template_id"]
+                metadata["hobby_category"] = signal.context.get("category")
+            
+            # Create goal with appropriate origin
+            goal, plan = await self.create_goal_with_optional_plan(
+                user_id=user_id,
+                title=signal.topic,
+                description=signal.description,
+                origin=origin,
+                goal_type="curiosity" if origin == GoalOrigin.CURIOSITY else "hobby",
+                priority=priority,
+                metadata=metadata,
+                auto_plan=auto_plan,
+            )
+            
+            # Update signal status
+            signal.status = "converted"
+            
+            logger.info(
+                f"[AGENCY_ENGINE] Created {origin.value} goal {goal.goal_id} "
+                f"from signal {signal.signal_id}"
+            )
+            
+            return goal, plan
+            
+        except Exception as e:
+            logger.error(f"[AGENCY_ENGINE] Failed to create goal from curiosity signal: {e}")
+            raise
 
     async def _generate_and_store_plan(self, goal: Goal) -> Plan:
         """Generate an initial plan for a goal and persist it.

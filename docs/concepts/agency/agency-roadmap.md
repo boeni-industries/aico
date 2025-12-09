@@ -101,23 +101,38 @@ Goal: Ground goals and plans in **rich memory and world understanding**, not jus
 
 Goal: Give AICO **her own intrinsic drives** and hobbies that generate agent-self goals.
 
-- [ ] **Curiosity Engine (v1)**
-  - [ ] Implement a Curiosity Engine that scans AMS, world model, and interaction history for gaps, anomalies, or under-explored topics.
-  - [ ] Define an `IntrinsicSignal`/"curiosity opportunity" data structure with basic scoring (heuristics + LLM prompts).
-  - [ ] Feed curiosity-derived goal candidates into the Goal System.
+- [x] **Curiosity Engine (v1)** ✅ **Phase 3 v1 Complete**
+  - [x] Implement a Curiosity Engine that scans AMS, world model, and interaction history for gaps, anomalies, or under-explored topics.
+  - [x] Define an `IntrinsicSignal`/"curiosity opportunity" data structure with basic scoring (heuristics + LLM prompts).
+  - [x] Feed curiosity-derived goal candidates into the Goal System.
 
-- [ ] **Hobbies & Agent-Self Goals**
-  - [ ] Define a small, curated set of hobby templates (e.g. learning domains, conversational styles, organizing the 3D flat, internal research notebooks).
-  - [ ] Allow Curiosity Engine and Self-Reflection to instantiate and update these hobby goals.
-  - [ ] Ensure hobbies appear in AICOs visible behaviour (comments, embodiment, occasional sharing with the user).
+- [x] **Hobbies & Agent-Self Goals** ✅ **Phase 3 Complete**
+  - [x] Define a small, curated set of hobby templates (e.g. learning domains, conversational styles, organizing the 3D flat, internal research notebooks).
+  - [x] Allow Curiosity Engine and Self-Reflection to instantiate and update these hobby goals.
 
-- [ ] **Lifecycle Integration**
-  - [ ] Use Lifecycle & Daily Rhythm to allocate time for curiosity/hobbies (idle spans, specific windows).
-  - [ ] Represent curiosity/hobby work in the 3D flat (e.g., AICO at the desk reading, on the couch studying, reorganizing her room).
-  - [ ] Add lifecycle and agency-readiness flags into `scheduled_tasks.config` for agency-related tasks.
-  - [ ] Implement lifecycle-aware deferral logic inside agency tasks (and later, centrally in the scheduler if needed).
+- [x] **Lifecycle Integration** ✅ **Phase 3 Complete**
+  - [x] Use Lifecycle & Daily Rhythm to allocate time for curiosity/hobbies (idle spans, specific windows).
+  - [x] Add lifecycle and agency-readiness flags into `scheduled_tasks.config` for agency-related tasks.
+  - [x] Implement lifecycle-aware deferral logic inside agency tasks (and later, centrally in the scheduler if needed).
 
 > **Exit condition:** AICO regularly pursues self-generated curiosity and hobby goals, visibly distinct from direct user requests, within user-configurable bounds.
+
+### ✅ Phase 3 Status: **COMPLETE** (December 9, 2025)
+
+**Implemented:**
+- ✅ CuriosityEngine with 3 detectors (`shared/aico/ai/curiosity/`)
+- ✅ IntrinsicSignal model with 4 curiosity types (knowledge_gap, novelty, self_performance, hobby_play)
+- ✅ 6 default hobby templates (learning, organizing, research categories)
+- ✅ Three-gate filtering system (Values/Ethics placeholder, Emotion/relationship, Resource)
+- ✅ Personality-based scoring (openness, conscientiousness modifiers)
+- ✅ Goal System integration via `create_goal_from_curiosity_signal()`
+- ✅ Scheduled task: `curiosity_scan` (every 6 hours)
+- ✅ Lifecycle-aware deferral (respects idle/active state, quiet hours)
+- ✅ Backend wiring in `lifecycle_manager.py`
+
+**Documentation:**
+- See `agency-component-curiosity-engine.md` for full specification
+- See `agency-ontology-schemas.md` for data models
 
 ## Phase 4 – Goal Arbiter, Values/Ethics & Meta-Control
 
@@ -189,6 +204,10 @@ Goal: Use the 3D flat and embodiment not just for presentation, but as a **cogni
 - [ ] **Embodied Cognition Patterns**
   - [ ] Define internal tasks and routines that are always represented through spatial metaphors (desk work, reading on couch, organizing room).
   - [ ] Use environment layout and artefacts as memory cues and anchors for long-term projects and hobbies.
+  - [ ] Represent curiosity/hobby work in the 3D flat (e.g., AICO at the desk reading, on the couch studying, reorganizing her room). *(Deferred from Phase 3)*
+
+- [ ] **Conversation & UX Integration**
+  - [ ] Ensure hobbies appear in AICO's visible behaviour (comments, embodiment, occasional sharing with the user). *(Deferred from Phase 3)*
 
 - [ ] **Integration with Real-World Context (optional)**
   - [ ] Optionally connect agency state and embodiment with real devices/context (e.g., phone, calendar, home automation) under strict user control.

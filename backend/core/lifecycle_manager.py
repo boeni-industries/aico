@@ -371,6 +371,20 @@ class BackendLifecycleManager:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create PersonalityService: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will run without personality context")
             
+            # Phase 3: Initialize CuriosityEngine
+            curiosity_engine = None
+            try:
+                from aico.ai.curiosity import CuriosityEngine
+                
+                curiosity_engine = CuriosityEngine(
+                    world_model=world_model,
+                    personality_service=personality_service,
+                )
+                self.logger.info("✅ [AI_PROCESSORS] Created CuriosityEngine (Phase 3)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create CuriosityEngine: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] Curiosity-driven goals will not be generated")
+            
             # Create AgencyEngine with Phase 2 services
             agency_engine = AgencyEngine(
                 self.config,
@@ -403,6 +417,11 @@ class BackendLifecycleManager:
 
             ai_registry.register("agency", agency_engine)
             self.logger.info("Registered 'agency' processor with Phase 2 context services.")
+            
+            # Register CuriosityEngine (Phase 3)
+            if curiosity_engine:
+                ai_registry.register("curiosity", curiosity_engine)
+                self.logger.info("Registered 'curiosity' processor (Phase 3).")
         except Exception as e:
             self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize AgencyEngine during startup: {e}")
             import traceback
