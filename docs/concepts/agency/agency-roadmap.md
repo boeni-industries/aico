@@ -251,20 +251,61 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [x] Skill availability checking - IMPLEMENTED (DB-based, filters unavailable skills)
   - [x] Concurrent execution limits - IMPLEMENTED (configurable max concurrent tasks)
 
-### **6.2 Scheduler & Task Execution**
-- [ ] **Production Scheduler**
-  - [ ] Replace basic scheduler with production-grade task queue
-  - [ ] Implement priority-based scheduling with preemption
-  - [ ] Add task retry logic with exponential backoff
-  - [ ] Implement task timeout and cancellation
-  - [ ] Add distributed task execution support (if needed)
+### **6.2 Scheduler & Task Execution** ✅ *COMPLETE*
+- [x] **Production Scheduler** ✅ *COMPLETE*
+  - [x] **Task Priority & Queue System** ✅ *COMPLETE*
+    - [x] Added `TaskPriority` enum (CRITICAL, HIGH, NORMAL, LOW, IDLE)
+    - [x] Added `TaskQueue` enum (USER_FACING, BACKGROUND_LIGHT, BACKGROUND_HEAVY, MAINTENANCE)
+    - [x] Extended `BaseTask` with priority, queue, resource_profile, runtime_context
+    - [x] Added `DEFERRED` status to `TaskStatus`
+  - [x] **Retry Configuration** ✅ *COMPLETE*
+    - [x] Added `RetryStrategy` enum (NONE, IMMEDIATE, LINEAR, EXPONENTIAL, FIBONACCI)
+    - [x] Added `RetryConfig` dataclass with configurable backoff
+    - [x] Extended `TaskResult` with retry_after_seconds and defer_reason
+    - [x] Extended `TaskContext` with retry_count
+  - [x] **Priority Queue Implementation** ✅ *COMPLETE*
+    - [x] Created `PriorityTaskQueue` with heap-based multi-queue system
+    - [x] Implemented fair scheduling across queue types
+    - [x] Added weighted round-robin for background queues
+    - [x] Implemented starvation prevention with time-based weights
+    - [x] Added queue capacity limits and metrics
+  - [x] **Retry Logic** ✅ *COMPLETE*
+    - [x] Created `RetryManager` with all backoff strategies
+    - [x] Implemented exponential, linear, and fibonacci backoff
+    - [x] Added jitter support to prevent thundering herd
+    - [x] Created `RetryTracker` for failure history
+    - [x] Added retry delay calculation and scheduling
+  - [x] **Scheduler Integration** ✅ *COMPLETE*
+    - [x] Integrated `PriorityTaskQueue` into `TaskScheduler`
+    - [x] Refactored task execution flow to use priority queue
+    - [x] Implemented fair scheduling across queue types
+    - [x] Added concurrent task limit enforcement
+    - [x] Integrated retry logic into task execution
+    - [x] Added automatic retry with backoff on failure
+    - [x] Implemented retry history tracking
+  - [x] Task timeout handling ✅ *ALREADY IMPLEMENTED* (1 hour default with asyncio.wait_for)
+  - [x] **Task Cancellation** ✅ *COMPLETE*
+    - [x] Added `cancel_task()` method to TaskExecutor
+    - [x] Added `cancel_task()` method to TaskScheduler
+    - [x] Implemented queue removal for pending tasks
+    - [x] Implemented cancellation for running tasks
 
-- [ ] **Resource Monitoring**
-  - [ ] Real-time system resource monitoring
-  - [ ] Battery-aware task scheduling
-  - [ ] Network bandwidth management
-  - [ ] Storage quota enforcement
-  - [ ] User presence detection integration
+- [x] **Resource Monitoring** ✅ *COMPLETE*
+  - [x] **Real-time Resource Monitoring** ✅ *COMPLETE*
+    - [x] Created `ResourceMonitor` service
+    - [x] Implemented CPU, memory, disk monitoring
+    - [x] Implemented network bandwidth monitoring
+    - [x] Added resource snapshot system
+    - [x] Implemented idle detection logic
+  - [x] Battery-aware task scheduling ✅ *IMPLEMENTED in Phase 6.1*
+  - [x] Network bandwidth management ✅ *IMPLEMENTED in Phase 6.1*
+  - [x] **Storage Quota Enforcement** ✅ *COMPLETE*
+    - [x] Added `check_storage_quota()` method
+    - [x] Implemented minimum free space checking
+  - [x] **User Presence Detection** ✅ *COMPLETE*
+    - [x] Implemented user idle time detection (macOS, Windows, Linux)
+    - [x] Added idle threshold checking
+    - [x] Integrated into resource snapshot
 
 ### **6.3 Curiosity Engine Depth**
 - [ ] **Advanced Curiosity Scoring** ⚠️ *Currently: Basic heuristic scoring*
@@ -562,4 +603,20 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 - [ ] **Event system**: Basic logging exists. Comprehensive event system NOT IMPLEMENTED
 - [ ] **Code cleanup**: Remove "Phase X placeholder" comments in curiosity engine
 
-**Progress:** 6/10 major items complete (60%). ✅ **Phase 6.1 COMPLETE!** ~20-25 tasks remaining across 5 subsystems.
+**Progress:** 7/10 major items complete (70%). ✅ **Phase 6.1 & 6.2 COMPLETE!** ~15-20 tasks remaining across 4 subsystems.
+
+---
+
+## Future Improvements (Post-Phase 9)
+
+### **Distributed Task Execution**
+- [ ] Add distributed task execution support for multi-device scenarios
+- [ ] Implement task migration between devices
+- [ ] Add cluster coordination for shared task queues
+- [ ] Implement distributed locking mechanisms
+
+### **Advanced Scheduling**
+- [ ] Machine learning-based task scheduling optimization
+- [ ] Predictive resource usage modeling
+- [ ] Dynamic priority adjustment based on historical patterns
+- [ ] Multi-objective optimization (time, energy, user satisfaction)

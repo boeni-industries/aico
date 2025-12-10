@@ -16,9 +16,11 @@ from pathlib import Path
 
 from aico.core.logging import get_logger
 from backend.core.service_container import BaseService
-from .tasks.base import BaseTask, TaskContext, TaskResult, TaskStatus
+from .tasks.base import BaseTask, TaskContext, TaskResult, TaskStatus, TaskPriority, TaskQueue
 from .storage import TaskStore
 from .cron import CronParser
+from .priority_queue import PriorityTaskQueue
+from .retry_manager import RetryManager, RetryTracker
 
 
 class TaskRegistry:
@@ -208,7 +210,7 @@ class TaskExecutor:
         self.task_store = TaskStore(db_connection)
         self.running_tasks: Dict[str, asyncio.Task] = {}
     
-    async def execute_task(self, task_class: Type[BaseTask], task_config: Dict[str, Any]) -> TaskResult:
+    async def execute_task(self, task_class: Type[BaseTask], task_config: Dict[str, Any], retry_count: int = 0) -> TaskResult:
         """Execute a single task with full lifecycle management"""
         task_id = task_config['task_id']
         execution_id = str(uuid.uuid4())
@@ -265,7 +267,8 @@ class TaskExecutor:
                 db_connection=self.db_connection,
                 instance_config=task_config.get('config', {}),
                 execution_id=execution_id,
-                service_container=self.container
+                service_container=self.container,
+                retry_count=retry_count  # Phase 6.2: Pass retry count to context
             )
             
             if os.getenv('AICO_DETACH_MODE') == 'false':
@@ -438,6 +441,25 @@ class TaskExecutor:
     def get_running_tasks(self) -> List[str]:
         """Get list of currently running task IDs"""
         return list(self.running_tasks.keys())
+    
+    async def cancel_task(self, task_id: str) -> bool:
+        """Cancel a running task (Phase 6.2)
+        
+        Args:
+            task_id: Task to cancel
+            
+        Returns:
+            True if task was cancelled, False if not running
+        """
+        if task_id not in self.running_tasks:
+            self.logger.warning(f"Cannot cancel {task_id} - not running")
+            return False
+        
+        task = self.running_tasks[task_id]
+        task.cancel()
+        
+        self.logger.info(f"Cancelled task {task_id}")
+        return True
 
 
 class TaskScheduler(BaseService):
@@ -451,6 +473,11 @@ class TaskScheduler(BaseService):
         self.task_executor = None
         self.task_store = None
         self.cron_parser = CronParser()
+        
+        # Phase 6.2: Priority queue and retry management
+        self.priority_queue = None
+        self.retry_manager = RetryManager()
+        self.retry_tracker = RetryTracker()
         
         # Runtime state
         self.running = False
@@ -467,6 +494,11 @@ class TaskScheduler(BaseService):
         self.task_executor = TaskExecutor(config_manager, database, self.container)
         self.task_store = TaskStore(database)
         
+        # Phase 6.2: Initialize priority queue
+        scheduler_config = config_manager.get("scheduler", {})
+        max_queue_size = scheduler_config.get("max_queue_size", 1000)
+        self.priority_queue = PriorityTaskQueue(max_queue_size=max_queue_size)
+        
         # Verify database tables exist
         self.task_store.verify_tables_exist()
         
@@ -476,7 +508,7 @@ class TaskScheduler(BaseService):
         database.commit()
         self.logger.info("Stale task locks cleared")
         
-        self.logger.info("Task scheduler initialized")
+        self.logger.info("Task scheduler initialized with priority queue")
     
     async def start(self) -> None:
         """Start the scheduler"""
@@ -569,56 +601,173 @@ class TaskScheduler(BaseService):
         return triggered_tasks
 
     async def _check_and_execute_tasks(self):
-        """Check for tasks that need to run and execute them"""
+        """Check for tasks that need to run and execute them (Phase 6.2: Priority Queue)"""
         try:
             now = datetime.now()
-            tasks_to_run: Set[str] = set()
-
-            # 1. Check for scheduled tasks
-            for task_id, next_run in self.next_run_times.items():
+            
+            # 1. Enqueue scheduled tasks that are due
+            for task_id, next_run in list(self.next_run_times.items()):
                 if next_run <= now:
-                    tasks_to_run.add(task_id)
+                    await self._enqueue_task(task_id, is_scheduled=True)
 
-            # 2. Check for manually triggered tasks
+            # 2. Enqueue manually triggered tasks
             triggered_tasks = await self._check_for_triggers()
             for task_id in triggered_tasks:
-                tasks_to_run.add(task_id)
+                await self._enqueue_task(task_id, is_scheduled=False)
             
-            if not tasks_to_run:
+            # 3. Execute tasks from priority queue
+            await self._execute_from_priority_queue()
+                    
+        except Exception as e:
+            self.logger.error(f"Error in task check and execute: {e}")
+    
+    async def _enqueue_task(self, task_id: str, is_scheduled: bool = True):
+        """Enqueue task to priority queue
+        
+        Args:
+            task_id: Task identifier
+            is_scheduled: Whether this is a scheduled task (vs triggered)
+        """
+        try:
+            task_config = self.task_store.get_task(task_id)
+            
+            # For scheduled tasks, check if enabled. For triggered tasks, run regardless.
+            if not task_config or (is_scheduled and not task_config.get('enabled', True)):
                 return
             
-            # Get task configurations from database
-            for task_id in list(tasks_to_run):  # Iterate over a copy
-                try:
-                    task_config = self.task_store.get_task(task_id)
-                    # For scheduled tasks, check if enabled. For triggered tasks, run regardless of enabled status.
-                    is_scheduled = task_id in self.next_run_times
-                    if not task_config or (is_scheduled and not task_config.get('enabled', True)):
-                        continue
-                    
-                    task_class = self.task_registry.get_task_class(task_id)
-                    if not task_class:
-                        self.logger.error(f"Task class not found for {task_id}")
-                        continue
-                    
-                    # Execute task asynchronously
-                    asyncio.create_task(self.task_executor.execute_task(task_class, task_config))
-                    
-                    # For scheduled tasks, calculate next run time
-                    if is_scheduled:
-                        next_run = self.cron_parser.next_run_time(task_config['schedule'], now)
+            task_class = self.task_registry.get_task_class(task_id)
+            if not task_class:
+                self.logger.error(f"Task class not found for {task_id}")
+                return
+            
+            # Get task instance to access priority and queue
+            task_instance = task_class()
+            
+            # Get retry count for this task
+            retry_count = self.retry_tracker.get_retry_count(task_id)
+            
+            # Enqueue to priority queue
+            success = self.priority_queue.enqueue(
+                task_id=task_id,
+                task_class=task_class.__name__,
+                priority=task_instance.priority,
+                queue=task_instance.queue,
+                config=task_config,
+                retry_count=retry_count
+            )
+            
+            if success:
+                self.logger.debug(
+                    f"Enqueued {task_id} to {task_instance.queue.value} queue "
+                    f"(priority={task_instance.priority.name})"
+                )
+            else:
+                self.logger.warning(f"Failed to enqueue {task_id} - queue full")
+                
+        except Exception as e:
+            self.logger.error(f"Error enqueuing task {task_id}: {e}")
+    
+    async def _execute_from_priority_queue(self):
+        """Execute tasks from priority queue based on fair scheduling"""
+        # Get scheduler config for concurrent task limits
+        scheduler_config = self.get_config("scheduler", {})
+        max_concurrent = scheduler_config.get("max_concurrent_tasks", 5)
+        
+        # Check how many tasks are currently running
+        running_count = len(self.task_executor.running_tasks)
+        
+        # Execute tasks up to concurrent limit
+        while running_count < max_concurrent:
+            # Dequeue next task (fair scheduling across queues)
+            prioritized_task = self.priority_queue.dequeue()
+            
+            if not prioritized_task:
+                break  # No more tasks in queue
+            
+            # Get task class
+            task_class = self.task_registry.get_task_class(prioritized_task.task_id)
+            if not task_class:
+                self.logger.error(f"Task class not found for {prioritized_task.task_id}")
+                continue
+            
+            # Execute task asynchronously with retry support
+            asyncio.create_task(
+                self._execute_task_with_retry(task_class, prioritized_task)
+            )
+            
+            running_count += 1
+    
+    async def _execute_task_with_retry(self, task_class: Type[BaseTask], prioritized_task):
+        """Execute task with retry logic
+        
+        Args:
+            task_class: Task class to execute
+            prioritized_task: PrioritizedTask from queue
+        """
+        task_id = prioritized_task.task_id
+        retry_count = prioritized_task.retry_count
+        
+        try:
+            # Execute task
+            result = await self.task_executor.execute_task(
+                task_class, 
+                prioritized_task.config,
+                retry_count=retry_count
+            )
+            
+            # Handle result
+            if result.success:
+                # Success - clear retry history
+                self.retry_tracker.record_success(task_id)
+                
+                # For scheduled tasks, calculate next run time
+                if task_id in self.next_run_times:
+                    schedule = prioritized_task.config.get('schedule')
+                    if schedule:
+                        next_run = self.cron_parser.next_run_time(schedule, datetime.now())
                         if next_run:
                             self.next_run_times[task_id] = next_run
                             self.logger.debug(f"Next run for {task_id}: {next_run}")
-                        else:
-                            # This can happen if the cron is a one-off that has passed
-                            self.logger.warning(f"Could not calculate next run time for {task_id}")
-                
-                except Exception as e:
-                    self.logger.error(f"Error processing task {task_id}: {e}")
             
+            elif not result.skipped:
+                # Failure - check if should retry
+                task_instance = task_class()
+                retry_config = task_instance.retry_config
+                
+                if self.retry_manager.should_retry(retry_count, retry_config):
+                    # Record failure
+                    failure_reason = result.error or result.message
+                    self.retry_tracker.record_failure(task_id, failure_reason)
+                    
+                    # Calculate retry delay
+                    delay_seconds = self.retry_manager.calculate_delay(retry_count, retry_config)
+                    
+                    # Re-enqueue for retry after delay
+                    await asyncio.sleep(delay_seconds)
+                    
+                    success = self.priority_queue.enqueue(
+                        task_id=task_id,
+                        task_class=task_class.__name__,
+                        priority=task_instance.priority,
+                        queue=task_instance.queue,
+                        config=prioritized_task.config,
+                        retry_count=retry_count + 1
+                    )
+                    
+                    if success:
+                        self.logger.info(
+                            f"Re-enqueued {task_id} for retry {retry_count + 1}/"
+                            f"{retry_config.max_retries} after {delay_seconds}s"
+                        )
+                else:
+                    # Max retries exceeded
+                    self.logger.error(
+                        f"Task {task_id} failed after {retry_count} retries, giving up"
+                    )
+                    self.retry_tracker.clear(task_id)
+                    
         except Exception as e:
-            self.logger.error(f"Error in task check cycle: {e}")
+            self.logger.error(f"Error executing task {task_id}: {e}")
     
     async def _calculate_next_run_times(self):
         """Calculate next run times for all enabled tasks"""
@@ -641,6 +790,31 @@ class TaskScheduler(BaseService):
             
         except Exception as e:
             self.logger.error(f"Failed to calculate next run times: {e}")
+    
+    async def cancel_task(self, task_id: str) -> bool:
+        """Cancel a task (Phase 6.2)
+        
+        Cancels task if running, or removes from queue if pending.
+        
+        Args:
+            task_id: Task to cancel
+            
+        Returns:
+            True if task was cancelled/removed
+        """
+        # Try to cancel if running
+        cancelled = await self.task_executor.cancel_task(task_id)
+        if cancelled:
+            return True
+        
+        # Try to remove from priority queue
+        removed = self.priority_queue.remove(task_id)
+        if removed:
+            self.logger.info(f"Removed task {task_id} from priority queue")
+            return True
+        
+        self.logger.warning(f"Task {task_id} not found (not running or queued)")
+        return False
     
     async def trigger_task(self, task_id: str) -> TaskResult:
         """Manually trigger a task execution"""
