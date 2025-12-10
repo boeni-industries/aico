@@ -142,11 +142,6 @@ Goal: Introduce a clear **decision layer** that balances user goals, curiosity, 
   - [x] Implement a Goal Arbiter that collects goal candidates from user, Curiosity Engine, and system tasks.
   - [x] Define a scoring/ranking function based on: priority, user configuration, personality, emotion, relationship vectors, and values.
   - [x] Maintain an explicit "active intention set" and publish it to other components.
-  - **Implementation:** `shared/aico/ai/agency/arbiter.py`
-  - **Configuration:** `config/defaults/core.yaml` (`core.services.agency.arbiter.scoring_weights`)
-  - **Database:** Schema v21 - `intention_set` table with status tracking
-  - **Message Bus:** Publishes intention set updates to `agency/intention_set/updated` topic
-
 - [x] **Values & Ethics Layer (v1)** ✅
   - [x] Implement the Values & Ethics module with a configurable rule set plus optional LLM-based classifiers.
   - [x] Integrate it as a gate in front of goals/plans/skills (block, require consent, annotate as risky).
@@ -154,23 +149,15 @@ Goal: Introduce a clear **decision layer** that balances user goals, curiosity, 
   - [x] Design and migrate concrete schemas for `value_profiles`, `policy_rules`, and `consents` tables.
   - [x] Implement a Values & Ethics service API used by agency, Self-Reflection, and Safety & Control for all policy decisions.
   - [x] Integrate Safety & Control configuration (autonomy levels, consent requirements, quiet hours) into the Values & Ethics gate and `AgencyPlugin`, so user controls are consistently enforced.
-  - **Implementation:** `shared/aico/ai/agency/values_ethics.py`
-  - **Default Policies:** `shared/aico/ai/agency/default_policies.py`
-  - **Configuration:** `config/defaults/core.yaml` (`core.services.agency.values_ethics`)
-  - **Database:** Schema v21 - `value_profiles`, `policy_rules`, `consents` tables
-  - **Policy Modes:** enforce, warn, log
-
-- [x] **Conversation & UX Integration** 
+- [x] **Backend Integration** 
   - [x] Surface agency decisions in conversation logging
     - Agency context (intentions, ethics decisions) logged to `trajectories` table
     - Structured logging of agency decisions with conversation turns
     - Schema v23: Added `agency_context` column to trajectories
-  - [x] API endpoints for Flutter integration
-  - [ ] Surface the active intention set in UI explanations/tooltips
-  - [ ] Allow users to inspect and adjust agency behaviour in Flutter UI
-  - [x] CLI commands for policy management
+  - [x] REST API endpoints for Flutter integration
 
 **Status Update (Dec 10, 2025):**
+- ✅ **Phase 4 Backend Complete!**
 - ✅ Core Phase 4 components fully implemented and operational
 - ✅ AgencyEngine integrates ValuesEthicsService and GoalArbiter
 - ✅ Message bus integration working
@@ -178,17 +165,15 @@ Goal: Introduce a clear **decision layer** that balances user goals, curiosity, 
 - ✅ Database schemas migrated (v23: added agency_context to trajectories)
 - ✅ Default policies installed and enforced
 - ✅ Backend fully operational with all Phase 4 services running
-- ✅ Comprehensive test suite: 108 tests passing (99 original + 9 ethics gate tests)
+- ✅ Comprehensive test suite: **120 tests passing** (including 12 new API endpoint tests)
 - ✅ CLI commands implemented and tested (`aico agency`)
 - ✅ Agency decisions logged to conversation trajectories
-- ✅ REST API endpoints implemented (`/api/v1/agency/*`)
-  - Intentions, curiosity, profile, policies, consents
+- ✅ REST API endpoints implemented and tested (`/api/v1/agency/*`)
   - Based on agency-metrics.md user-facing metrics
   - Encrypted database access with session support
-- 🚧 Flutter UI integration pending
-- 🚧 Surface intention set in conversation UI pending
+  - Full test coverage with real database
 
-> **Exit condition:** AICO's behaviour is governed by an explicit meta-control layer, and users can understand and influence why some goals are pursued and others are not.
+> **Exit condition:** AICO's behaviour is governed by an explicit meta-control layer backend. ✅ **COMPLETE**
 
 ## Phase 5 – Self-Reflection, Self-Model & Behavioural Learning
 
@@ -211,7 +196,43 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 
 > **Exit condition:** AICO periodically updates how she behaves based on her own experience, in a traceable way, without changing the overall architecture.
 
-## Phase 6 – Advanced Policies & World Model Sophistication
+## Phase 6 – Flutter UI & User-Facing Agency Controls
+
+Goal: Enable users to **understand and influence** AICO's agency through the Flutter UI.
+
+- [ ] **Agency Dashboard Screen**
+  - [ ] Create dedicated agency screen in Flutter app
+  - [ ] Display active intention set with visual priority indicators
+  - [ ] Show current curiosity status and opportunities
+  - [ ] Display agency state overview (goals, hobbies, focus)
+
+- [ ] **Intention Set Visibility**
+  - [ ] Surface active intentions in conversation UI (tooltips, status bar)
+  - [ ] Show why AICO is pursuing specific goals (reasons, scores)
+  - [ ] Display priority bands and arbiter scores visually
+  - [ ] Allow users to see hobby goals vs user-requested goals
+
+- [ ] **Value Profile Management**
+  - [ ] UI for adjusting curiosity intensity slider
+  - [ ] Proactive behavior level selector (quiet/balanced/proactive)
+  - [ ] Manage sensitive life areas (add/remove)
+  - [ ] Configure allowed curiosity domains
+
+- [ ] **Policy & Consent Management**
+  - [ ] View active policy rules with filtering
+  - [ ] Grant/revoke consents for specific actions
+  - [ ] See pending consent requests
+  - [ ] Review policy decisions and their effects
+
+- [ ] **Conversation Integration**
+  - [ ] Show agency context in conversation tooltips
+  - [ ] Display when AICO is acting on curiosity vs user request
+  - [ ] Surface ethics decisions in conversation flow
+  - [ ] Explain goal selection and prioritization
+
+> **Exit condition:** Users can see what AICO is working on, why, and adjust her agency behavior through the Flutter UI.
+
+## Phase 7 – Advanced Policies & World Model Sophistication
 
 Goal: Upgrade internal decision-making and world modelling while keeping interfaces stable.
 
@@ -230,7 +251,7 @@ Goal: Upgrade internal decision-making and world modelling while keeping interfa
 
 > **Exit condition:** Internals of curiosity, world modelling, and goal selection are more principled and data-driven, while the external behaviour remains backward compatible and explainable.
 
-## Phase 7 – Embodiment as Cognitive Substrate & Polishing
+## Phase 8 – Embodiment as Cognitive Substrate & Polishing
 
 Goal: Use the 3D flat and embodiment not just for presentation, but as a **cognitive scaffold** and final polish.
 
