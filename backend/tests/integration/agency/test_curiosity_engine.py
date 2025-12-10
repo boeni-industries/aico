@@ -206,23 +206,46 @@ class TestCuriosityEngine:
         assert 0.0 <= score <= 1.0
         assert score > 0.0
     
-    async def test_three_gate_system_values_ethics(self, curiosity_engine):
-        """Test Values/Ethics gate (Phase 4 placeholder - always passes)."""
-        # Arrange
+    async def test_three_gate_system_values_ethics(self):
+        """Test Values/Ethics gate (Phase 6.3 - sensitive topic filtering)."""
+        # Arrange - Engine without personality to test values gate only
+        engine = CuriosityEngine(world_model=None, personality_service=None)
+        
         signal = IntrinsicSignal(
             signal_id="test-signal",
             user_id="test-user",
             signal_type=CuriosityType.KNOWLEDGE_GAP,
-            topic="Sensitive Topic",
-            description="Test",
+            topic="Python programming",
+            description="Learn Python",
+            user_relevance_score=0.8,
             total_score=0.8,
+            intrinsic_reward=0.8,  # Above 0.3 threshold
+        )
+        
+        # Act
+        passes = await engine._passes_gates(signal, "test-user")
+        
+        # Assert - Should pass (non-sensitive topic with good reward)
+        assert passes is True
+    
+    async def test_three_gate_system_values_ethics_sensitive(self, curiosity_engine):
+        """Test Values/Ethics gate blocks sensitive topics with low relevance."""
+        # Arrange - Sensitive topic with low relevance
+        signal = IntrinsicSignal(
+            signal_id="test-signal",
+            user_id="test-user",
+            signal_type=CuriosityType.KNOWLEDGE_GAP,
+            topic="Personal health issues",
+            description="Explore health data",
+            user_relevance_score=0.3,  # Too low for sensitive topic
+            intrinsic_reward=0.5,
         )
         
         # Act
         passes = await curiosity_engine._passes_gates(signal, "test-user")
         
-        # Assert - Should pass (Phase 4 placeholder)
-        assert passes is True
+        # Assert - Should fail (sensitive topic with low relevance)
+        assert passes is False
     
     async def test_three_gate_system_emotion_relationship(self, curiosity_engine, mock_personality_service):
         """Test Emotion/relationship gate filters by closeness."""
