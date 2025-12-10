@@ -307,21 +307,32 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
     - [x] Added idle threshold checking
     - [x] Integrated into resource snapshot
 
-### **6.3 Curiosity Engine Depth**
-- [ ] **Advanced Curiosity Scoring** ⚠️ *Currently: Basic heuristic scoring*
-  - [ ] Move from heuristic scoring to principled intrinsic reward model
-  - [ ] Implement prediction error-based curiosity
-  - [ ] Add information gain calculations
-  - [ ] Implement empowerment-based exploration
-  - [ ] Track long-term returns from curiosity projects
+### **6.3 Curiosity Engine Depth** ✅ *COMPLETE*
+- [x] **Advanced Curiosity Scoring** ✅ *COMPLETE*
+  - [x] Created `IntrinsicRewardCalculator` with principled algorithms
+  - [x] Implemented prediction error-based curiosity (surprise measurement)
+  - [x] Added information gain calculations (epistemic uncertainty reduction)
+  - [x] Implemented empowerment-based exploration (state influence)
+  - [x] Added long-term value estimation (temporal discounting, 5-step horizon)
+  - [x] Extended `IntrinsicSignal` model with reward component fields
+  - [x] Weighted combination of all components (configurable)
 
-- [ ] **Opportunity Discovery** ⚠️ *Placeholder detectors with TODOs*
-  - [ ] `_detect_knowledge_gaps` - Has TODO: "Integrate with World Model uncertain areas"
-  - [ ] `_detect_anomalies` - Placeholder with TODO: "Implement anomaly detection"
-  - [ ] `_track_interests` - Has TODO: "Integrate with AMS to detect actual user interests"
-  - [ ] Remove all "Phase 3 v1: Placeholder" comments from `curiosity/engine.py`
-  - [ ] Implement actual multi-source detection (not template-based)
-  - [ ] Add opportunity clustering and deduplication
+- [x] **Opportunity Discovery** ✅ *COMPLETE*
+  - [x] `_detect_knowledge_gaps` - Full World Model integration (uncertain areas query)
+  - [x] `_detect_anomalies` - Full World Model integration (anomaly detection)
+  - [x] `_track_interests` - Full AMS integration (user interests, engagement, mentions)
+  - [x] Removed all "Phase 3 v1: Placeholder" comments
+  - [x] Removed all TODOs from curiosity engine
+  - [x] Implemented multi-source detection (World Model + AMS + personality)
+  - [x] Added opportunity clustering and deduplication (`OpportunityClusterer`)
+  - [x] Implemented similarity-based clustering (Jaccard, 0.7 threshold)
+  - [x] Added signal merging and deduplication
+
+- [x] **Three-Gate Filtering** ✅ *COMPLETE*
+  - [x] Gate 1 (Values/Ethics): Sensitive topic detection, relevance requirements
+  - [x] Gate 2 (Emotion/Relationship): Closeness check, distress detection
+  - [x] Gate 3 (Resource): Intrinsic reward threshold (0.3 minimum)
+  - [x] Removed placeholder TODOs, full implementation
 
 ### **6.4 World Model Service**
 - [ ] **Schema Learning**
@@ -595,15 +606,14 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 - [x] **Scheduler battery monitoring**: ✅ DONE - psutil-based, smart logic (skips only on <50%)
 - [x] **Scheduler network constraints**: ✅ DONE - Bandwidth monitoring (configurable Mbps limit)
 - [x] **Scheduler concurrent limits**: ✅ DONE - Max concurrent tasks enforcement
+- [x] **Curiosity engine**: ✅ DONE - Full intrinsic reward system, World Model/AMS integration, clustering
 - [ ] **Proactive behaviors**: Follow-ups/reminders NOT IMPLEMENTED
-- [ ] **Curiosity engine**: Uses placeholder detectors with TODOs. Needs real World Model/AMS integration
 - [ ] **World model**: Schema learning, hypothesis testing, drift detection NOT IMPLEMENTED
 - [ ] **Behavioral feedback**: CRITICAL - `ams_behavioral_feedback` table missing `outcome` column. Reflection engine queries fail
 - [ ] **Policy system**: Uses hardcoded `DEFAULT_POLICY_RULES`. No user-specific loading. 0% test coverage
 - [ ] **Event system**: Basic logging exists. Comprehensive event system NOT IMPLEMENTED
-- [ ] **Code cleanup**: Remove "Phase X placeholder" comments in curiosity engine
 
-**Progress:** 7/10 major items complete (70%). ✅ **Phase 6.1 & 6.2 COMPLETE!** ~15-20 tasks remaining across 4 subsystems.
+**Progress:** 8/10 major items complete (80%). ✅ **Phase 6.1, 6.2 & 6.3 COMPLETE!** ~12-15 tasks remaining across 3 subsystems.
 
 ---
 

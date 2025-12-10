@@ -78,15 +78,22 @@ class IntrinsicSignal:
     description: str
     context: Dict[str, Any] = field(default_factory=dict)
     
-    # Scoring
+    # Scoring (0.0-1.0)
     novelty_score: float = 0.0
     uncertainty_score: float = 0.0
     user_relevance_score: float = 0.0
     feasibility_score: float = 0.0
     cost_estimate: float = 0.0
     
+    # Phase 6.3: Advanced intrinsic reward components
+    prediction_error: float = 0.0  # Surprise in World Model predictions
+    information_gain: float = 0.0  # Expected entropy reduction
+    empowerment: float = 0.0  # Ability to influence future states
+    long_term_value: float = 0.0  # Expected long-term return
+    
     # Computed
     total_score: float = 0.0
+    intrinsic_reward: float = 0.0  # Combined intrinsic motivation score
     priority: str = "normal"
     
     # Metadata
