@@ -1394,5 +1394,192 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # Note: SQLite doesn't support DROP COLUMN easily
             # In production, would need to recreate table without agency_context
         ]
+    ),
+    
+    # Phase 5: Self-Reflection & Behavioral Learning
+    24: SchemaVersion(
+        version=24,
+        name="Agency Phase 5 - Self-Reflection Lessons",
+        description="Add agency_lessons table for structured self-reflection and behavioral learning (Phase 5)",
+        sql_statements=[
+            """CREATE TABLE IF NOT EXISTS agency_lessons (
+                lesson_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                
+                -- Lesson classification
+                lesson_type TEXT NOT NULL,  -- skill_tuning, planner_heuristic, curiosity_focus, persona_style, policy_suggestion
+                target_kind TEXT NOT NULL,  -- skill, planner_template, arbiter_weight, curiosity_policy, persona_trait, policy_rule
+                target_id TEXT,             -- ID of the target entity (skill_id, policy_rule_id, etc.)
+                
+                -- Human-readable summary
+                summary_text TEXT NOT NULL,
+                
+                -- Structured change proposal (JSON)
+                proposed_change TEXT NOT NULL,  -- JSON: {change_type, field, old, new, notes}
+                
+                -- Evidence and confidence
+                confidence REAL NOT NULL,       -- 0.0 to 1.0
+                metrics_basis TEXT,             -- JSON: {time_span, sample_size, outcome_counts, etc.}
+                
+                -- Scope and status
+                scope TEXT NOT NULL,            -- this_user, global_default
+                status TEXT NOT NULL,           -- active, superseded, rejected
+                superseded_by TEXT,             -- lesson_id that replaced this one
+                
+                -- Application tracking
+                applied_at TIMESTAMP,           -- When the lesson was applied
+                applied_by TEXT,                -- Component that applied it (e.g., "self_reflection_engine")
+                
+                -- Provenance (what led to this lesson)
+                source_reflection_run_id TEXT, -- ID of the reflection job that created this
+                evidence_window_start TIMESTAMP,
+                evidence_window_end TIMESTAMP,
+                
+                -- Links to related entities
+                related_goal_ids TEXT,         -- JSON array of goal_ids
+                related_trajectory_ids TEXT,   -- JSON array of trajectory_ids
+                related_event_ids TEXT,        -- JSON array of agency_event_ids
+                
+                -- Audit trail
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                -- Foreign keys
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (superseded_by) REFERENCES agency_lessons(lesson_id) ON DELETE SET NULL
+            )""",
+            
+            # Indexes for efficient querying
+            "CREATE INDEX IF NOT EXISTS idx_agency_lessons_user_type ON agency_lessons(user_id, lesson_type)",
+            "CREATE INDEX IF NOT EXISTS idx_agency_lessons_target ON agency_lessons(target_kind, target_id)",
+            "CREATE INDEX IF NOT EXISTS idx_agency_lessons_status ON agency_lessons(user_id, status) WHERE status = 'active'",
+            "CREATE INDEX IF NOT EXISTS idx_agency_lessons_applied ON agency_lessons(applied_at) WHERE applied_at IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_agency_lessons_superseded ON agency_lessons(superseded_by)",
+            "CREATE INDEX IF NOT EXISTS idx_agency_lessons_time ON agency_lessons(user_id, created_at DESC)",
+            
+            # Self-model performance tracking table
+            """CREATE TABLE IF NOT EXISTS agency_self_model (
+                model_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                
+                -- What this tracks
+                entity_type TEXT NOT NULL,     -- skill, goal_type, interaction_pattern
+                entity_id TEXT NOT NULL,       -- Specific skill_id, goal type name, etc.
+                
+                -- Performance metrics (JSON)
+                performance_summary TEXT NOT NULL,  -- JSON: {success_rate, avg_duration, user_satisfaction, etc.}
+                
+                -- Temporal scope
+                window_start TIMESTAMP NOT NULL,
+                window_end TIMESTAMP NOT NULL,
+                sample_size INTEGER NOT NULL,
+                
+                -- Confidence and freshness
+                confidence REAL NOT NULL,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                -- Metadata
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                -- Foreign keys
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                UNIQUE(user_id, entity_type, entity_id, window_start)
+            )""",
+            
+            # Indexes for self-model queries
+            "CREATE INDEX IF NOT EXISTS idx_self_model_user_entity ON agency_self_model(user_id, entity_type, entity_id)",
+            "CREATE INDEX IF NOT EXISTS idx_self_model_freshness ON agency_self_model(last_updated DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_self_model_window ON agency_self_model(window_start, window_end)",
+            
+            # Reflection run tracking (for audit and scheduling)
+            """CREATE TABLE IF NOT EXISTS agency_reflection_runs (
+                run_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                
+                -- Run metadata
+                run_type TEXT NOT NULL,        -- scheduled, triggered, manual
+                trigger_reason TEXT,           -- sleep_phase, goal_completion, user_request, etc.
+                
+                -- Analysis scope
+                analysis_window_start TIMESTAMP NOT NULL,
+                analysis_window_end TIMESTAMP NOT NULL,
+                
+                -- Results
+                lessons_generated INTEGER DEFAULT 0,
+                lessons_applied INTEGER DEFAULT 0,
+                
+                -- Timing
+                started_at TIMESTAMP NOT NULL,
+                completed_at TIMESTAMP,
+                duration_seconds REAL,
+                
+                -- Status
+                status TEXT NOT NULL,          -- running, completed, failed
+                error_message TEXT,
+                
+                -- Metadata
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                -- Foreign keys
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Indexes for reflection run queries
+            "CREATE INDEX IF NOT EXISTS idx_reflection_runs_user_time ON agency_reflection_runs(user_id, started_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_reflection_runs_status ON agency_reflection_runs(status) WHERE status = 'running'",
+        ],
+        rollback_statements=[
+            # Drop indexes
+            "DROP INDEX IF EXISTS idx_reflection_runs_status",
+            "DROP INDEX IF EXISTS idx_reflection_runs_user_time",
+            "DROP INDEX IF EXISTS idx_self_model_window",
+            "DROP INDEX IF EXISTS idx_self_model_freshness",
+            "DROP INDEX IF EXISTS idx_self_model_user_entity",
+            "DROP INDEX IF EXISTS idx_agency_lessons_time",
+            "DROP INDEX IF EXISTS idx_agency_lessons_superseded",
+            "DROP INDEX IF EXISTS idx_agency_lessons_applied",
+            "DROP INDEX IF EXISTS idx_agency_lessons_status",
+            "DROP INDEX IF EXISTS idx_agency_lessons_target",
+            "DROP INDEX IF EXISTS idx_agency_lessons_user_type",
+            
+            # Drop tables
+            "DROP TABLE IF EXISTS agency_reflection_runs",
+            "DROP TABLE IF EXISTS agency_self_model",
+            "DROP TABLE IF EXISTS agency_lessons",
+        ]
+    ),
+    
+    # Schema Version 25: Goal Arbiter Adjustments
+    25: SchemaVersion(
+        version=25,
+        name="Agency Phase 5 - Arbiter Adjustments",
+        description="Add agency_arbiter_adjustments table for runtime lesson application",
+        sql_statements=[
+            # Goal Arbiter adjustments table
+            """CREATE TABLE IF NOT EXISTS agency_arbiter_adjustments (
+                adjustment_key TEXT PRIMARY KEY,     -- e.g., "goal_type_learning", "priority_weight"
+                adjustment_value REAL NOT NULL,      -- The adjusted value
+                lesson_id TEXT NOT NULL,             -- Which lesson caused this adjustment
+                user_id TEXT,                        -- NULL for global adjustments
+                applied_at TIMESTAMP NOT NULL,       -- When adjustment was applied
+                confidence REAL NOT NULL,            -- Lesson confidence score
+                active INTEGER DEFAULT 1,            -- 1=active, 0=disabled
+                notes TEXT,                          -- Optional explanation
+                
+                FOREIGN KEY (lesson_id) REFERENCES agency_lessons(lesson_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Indexes for efficient querying
+            "CREATE INDEX IF NOT EXISTS idx_arbiter_adjustments_active ON agency_arbiter_adjustments(active) WHERE active = 1",
+            "CREATE INDEX IF NOT EXISTS idx_arbiter_adjustments_user ON agency_arbiter_adjustments(user_id, active)",
+            "CREATE INDEX IF NOT EXISTS idx_arbiter_adjustments_lesson ON agency_arbiter_adjustments(lesson_id)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_arbiter_adjustments_lesson",
+            "DROP INDEX IF EXISTS idx_arbiter_adjustments_user",
+            "DROP INDEX IF EXISTS idx_arbiter_adjustments_active",
+            "DROP TABLE IF EXISTS agency_arbiter_adjustments",
+        ]
     )
 })

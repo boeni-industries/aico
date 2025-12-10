@@ -69,6 +69,7 @@ from backend.tests.fixtures.agency import (
     seeded_goal_with_plan,
     permissive_value_profile,
     mock_message_bus,
+    agency_engine,
 )
 
 # Make fixtures available to all tests
@@ -90,4 +91,5 @@ __all__ = [
     "seeded_goal_with_plan",
     "permissive_value_profile",
     "mock_message_bus",
+    "agency_engine",
 ]

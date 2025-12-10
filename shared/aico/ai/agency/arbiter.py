@@ -168,8 +168,14 @@ class GoalArbiter:
                 "personality_fit": 0.10,
                 "emotion_boost": 0.10,
             }
-            if logger:
-                logger.warning("[ARBITER] No config provided, using default scoring weights")
+        
+        # Cache for lesson-based adjustments
+        self._adjustments_cache: Dict[str, float] = {}
+        self._adjustments_cache_time: Optional[datetime] = None
+        self._adjustments_cache_ttl = 300  # 5 minutes
+        
+        if logger:
+            logger.warning("[ARBITER] No config provided, using default scoring weights")
         
         # Origin priority scores (fixed, not configurable)
         self.origin_scores = {
@@ -179,6 +185,91 @@ class GoalArbiter:
             GoalOrigin.MAINTENANCE: 0.5,
             GoalOrigin.SYSTEM: 0.4,
         }
+    
+    # ========================================================================
+    # Lesson-Based Adjustments
+    # ========================================================================
+    
+    def _load_adjustments(self, user_id: Optional[str] = None) -> Dict[str, float]:
+        """
+        Load active lesson-based adjustments from database.
+        
+        Args:
+            user_id: Optional user ID for user-specific adjustments
+            
+        Returns:
+            Dictionary of adjustment_key -> adjustment_value
+        """
+        # Check cache
+        if self._adjustments_cache_time:
+            age = (datetime.utcnow() - self._adjustments_cache_time).total_seconds()
+            if age < self._adjustments_cache_ttl:
+                return self._adjustments_cache.copy()
+        
+        # Load from database
+        adjustments = {}
+        try:
+            # Query active adjustments (global + user-specific)
+            if user_id:
+                rows = self.db.execute(
+                    """SELECT adjustment_key, adjustment_value, confidence
+                       FROM agency_arbiter_adjustments
+                       WHERE active = 1 AND (user_id IS NULL OR user_id = ?)
+                       ORDER BY confidence DESC""",
+                    (user_id,)
+                ).fetchall()
+            else:
+                rows = self.db.execute(
+                    """SELECT adjustment_key, adjustment_value, confidence
+                       FROM agency_arbiter_adjustments
+                       WHERE active = 1 AND user_id IS NULL
+                       ORDER BY confidence DESC"""
+                ).fetchall()
+            
+            for row in rows:
+                key = row["adjustment_key"]
+                value = row["adjustment_value"]
+                # Use highest confidence adjustment if multiple exist
+                if key not in adjustments:
+                    adjustments[key] = value
+            
+            # Update cache
+            self._adjustments_cache = adjustments
+            self._adjustments_cache_time = datetime.utcnow()
+            
+            if adjustments and self.logger:
+                self.logger.debug(
+                    f"[ARBITER] Loaded {len(adjustments)} lesson-based adjustments"
+                )
+                
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"[ARBITER] Failed to load adjustments: {e}")
+        
+        return adjustments
+    
+    def _get_adjusted_weight(self, weight_key: str, base_value: float, user_id: Optional[str] = None) -> float:
+        """
+        Get weight value with lesson-based adjustments applied.
+        
+        Args:
+            weight_key: Weight key (e.g., "priority", "origin")
+            base_value: Base weight value from config
+            user_id: Optional user ID for user-specific adjustments
+            
+        Returns:
+            Adjusted weight value
+        """
+        adjustments = self._load_adjustments(user_id)
+        
+        # Check for direct weight adjustment
+        if weight_key in adjustments:
+            return adjustments[weight_key]
+        
+        # Check for goal_type-specific adjustments
+        # (handled in score_goal method)
+        
+        return base_value
     
     # ========================================================================
     # Scoring & Ranking
@@ -202,6 +293,35 @@ class GoalArbiter:
         context = context or {}
         breakdown = {}
         
+        # Load lesson-based adjustments for this user
+        user_id = goal.user_id
+        adjustments = self._load_adjustments(user_id)
+        
+        # Check for goal_type-specific adjustment from lessons
+        goal_type_key = f"goal_type_{goal.goal_type}"
+        goal_type_multiplier = adjustments.get(goal_type_key, 1.0)
+        
+        # Check for goal_type performance data from self-model
+        # This can further adjust scoring based on historical success
+        goal_type_performance = context.get("goal_type_performance", {})
+        if goal.goal_type in goal_type_performance:
+            perf_data = goal_type_performance[goal.goal_type]
+            success_rate = perf_data.get("success_rate", 0.5)
+            confidence = perf_data.get("confidence", 0.0)
+            
+            # Apply performance-based adjustment if we have confident data
+            if confidence >= 0.5:
+                # Boost or penalize based on success rate
+                # success_rate 0.8+ = 1.1x boost, 0.2- = 0.9x penalty
+                perf_multiplier = 0.9 + (success_rate * 0.2)
+                goal_type_multiplier *= perf_multiplier
+                
+                if self.logger:
+                    self.logger.debug(
+                        f"[ARBITER] Applied performance multiplier {perf_multiplier:.2f} "
+                        f"for {goal.goal_type} (success_rate={success_rate:.2f})"
+                    )
+        
         # 1. Priority score (0.0-1.0)
         priority_map = {
             GoalPriority.HIGH: 1.0,
@@ -209,33 +329,48 @@ class GoalArbiter:
             GoalPriority.LOW: 0.3,
         }
         priority_score = priority_map.get(goal.priority, 0.6)
-        breakdown["priority"] = priority_score * self.weights["priority"]
+        priority_weight = self._get_adjusted_weight("priority", self.weights["priority"], user_id)
+        breakdown["priority"] = priority_score * priority_weight
         
         # 2. Origin score
         origin_score = self.origin_scores.get(goal.origin, 0.5)
-        breakdown["origin"] = origin_score * self.weights["origin"]
+        origin_weight = self._get_adjusted_weight("origin", self.weights["origin"], user_id)
+        breakdown["origin"] = origin_score * origin_weight
         
         # 3. Freshness score (newer goals score higher)
         age_hours = (datetime.utcnow() - goal.created_at).total_seconds() / 3600
         freshness_score = max(0.0, 1.0 - (age_hours / 168))  # Decay over 1 week
-        breakdown["freshness"] = freshness_score * self.weights["freshness"]
+        freshness_weight = self._get_adjusted_weight("freshness", self.weights["freshness"], user_id)
+        breakdown["freshness"] = freshness_score * freshness_weight
         
         # 4. Curiosity score (if from curiosity engine)
         curiosity_score = 0.0
         if goal.origin in [GoalOrigin.CURIOSITY, GoalOrigin.HOBBY]:
             curiosity_score = goal.metadata.get("curiosity_score", 0.5)
-        breakdown["curiosity_score"] = curiosity_score * self.weights["curiosity_score"]
+        curiosity_weight = self._get_adjusted_weight("curiosity_score", self.weights["curiosity_score"], user_id)
+        breakdown["curiosity_score"] = curiosity_score * curiosity_weight
         
         # 5. Personality fit (Phase 2+)
         personality_fit = context.get("personality_fit", 0.5)
-        breakdown["personality_fit"] = personality_fit * self.weights["personality_fit"]
+        personality_weight = self._get_adjusted_weight("personality_fit", self.weights["personality_fit"], user_id)
+        breakdown["personality_fit"] = personality_fit * personality_weight
         
         # 6. Emotion boost (Phase 2+)
         emotion_boost = context.get("emotion_boost", 0.5)
-        breakdown["emotion_boost"] = emotion_boost * self.weights["emotion_boost"]
+        emotion_weight = self._get_adjusted_weight("emotion_boost", self.weights["emotion_boost"], user_id)
+        breakdown["emotion_boost"] = emotion_boost * emotion_weight
         
         # Calculate total score
         total_score = sum(breakdown.values())
+        
+        # Apply goal_type-specific multiplier from lessons
+        if goal_type_multiplier != 1.0:
+            total_score *= goal_type_multiplier
+            if self.logger:
+                self.logger.debug(
+                    f"[ARBITER] Applied goal_type multiplier {goal_type_multiplier} "
+                    f"to {goal.goal_type} (lesson-based adjustment)"
+                )
         
         # Determine priority band
         if total_score >= 0.7:

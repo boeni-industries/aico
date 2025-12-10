@@ -151,9 +151,6 @@ Goal: Introduce a clear **decision layer** that balances user goals, curiosity, 
   - [x] Integrate Safety & Control configuration (autonomy levels, consent requirements, quiet hours) into the Values & Ethics gate and `AgencyPlugin`, so user controls are consistently enforced.
 - [x] **Backend Integration** 
   - [x] Surface agency decisions in conversation logging
-    - Agency context (intentions, ethics decisions) logged to `trajectories` table
-    - Structured logging of agency decisions with conversation turns
-    - Schema v23: Added `agency_context` column to trajectories
   - [x] REST API endpoints for Flutter integration
 
 **Status Update (Dec 10, 2025):**
@@ -175,26 +172,49 @@ Goal: Introduce a clear **decision layer** that balances user goals, curiosity, 
 
 > **Exit condition:** AICO's behaviour is governed by an explicit meta-control layer backend. ✅ **COMPLETE**
 
-## Phase 5 – Self-Reflection, Self-Model & Behavioural Learning
+## Phase 5 – Self-Reflection, Self-Model & Behavioural Learning ✅
 
 Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skills over time.
 
-- [ ] **Self-Reflection Engine (v1)**
-  - [ ] Implement scheduled reflection jobs (often during AMS "sleep" phases).
-  - [ ] Define `Lesson` / self-reflection record structures based on logs, outcomes, and user feedback.
-  - [ ] Use LLM prompts to derive simple behavioural lessons (what to do more/less of, timing, tone).
-  - [ ] Wire `policy_suggestion` lessons (`target_kind = "policy_rule"`) into the Values & Ethics API, respecting `observe_only` / `allow_amend` modes with full audit logging (see `agency-component-self-reflection.md`).
+- [x] **Self-Reflection Engine (v1)** ✅
+  - [x] Database schema v24 with `agency_lessons`, `agency_self_model`, `agency_reflection_runs` tables
+  - [x] Pydantic models for `Lesson`, `SelfModelEntry`, `ReflectionRun` with full type safety
+  - [x] Persistence stores (`LessonStore`, `SelfModelStore`, `ReflectionRunStore`) with CRUD operations
+  - [x] Core reflection engine (`SelfReflectionEngine`) analyzing skill performance, goal patterns, and user feedback
+  - [x] Lesson generation with confidence scoring and metrics basis
+  - [x] Policy mode support (`observe_only` / `allow_amend`) with full audit logging
+  - [x] Integration with `AgencyEngine` via convenience methods
+  - [x] Comprehensive test suite (8 tests, all passing)
+  - [x] Scheduled reflection jobs via `AgencyReflectionTask` (runs during idle periods)
+  - [x] LLM-based lesson generation with fallback to statistical summaries
+  - [x] Contextual prompts for skill, goal, and persona lessons
+  - [x] Graceful degradation when LLM unavailable
 
-- [ ] **Self-Model (v1)**
-  - [ ] Maintain a lightweight self-model summarizing recent performance per skill and per user.
-  - [ ] Expose self-model information to Planner, Goal Arbiter, and Curiosity Engine.
+- [x] **Self-Model (v1)** ✅
+  - [x] Performance tracking per skill/goal_type/entity with success rates and metrics
+  - [x] Time-windowed analysis with confidence scores based on sample size
+  - [x] Upsert operations for continuous performance updates
+  - [x] Query methods for retrieving latest performance data
+  - [x] Exposed to Planner via `get_skill_performance()` for skill selection
+  - [x] Exposed to Goal Arbiter via `get_goal_type_performance_context()` for scoring adjustments
+  - [x] Exposed to Curiosity Engine via `get_all_skill_performances()` for exploration decisions
+  - [x] Performance-based multipliers applied in arbiter scoring (0.9x-1.1x based on success rate)
 
-- [ ] **Behavioural Learning Hooks**
-  - [ ] Integrate lessons into existing or planned behavioural learning stores (e.g., skill metadata, preference weights).
-  - [ ] Log changes in strategy so they can be audited and rolled back if needed.
-  - [ ] Standardise skill usage on `SkillStore` and the bandit selector for all agency-driven tools, extending skill metadata instead of adding new tables.
+- [x] **Behavioural Learning Hooks** ✅
+  - [x] `LessonApplicationService` for applying lessons to operational systems
+  - [x] Skill selection weight adjustments via dimension_vector metadata
+  - [x] Goal Arbiter weight adjustments via `agency_arbiter_adjustments` table
+  - [x] Goal Arbiter runtime integration with cached adjustments (5min TTL)
+  - [x] Persona/style adjustments via PersonalityService automatic loading
+  - [x] PersonalityService queries active persona lessons and applies to context
+  - [x] Policy rule suggestions (logged for user approval)
+  - [x] Full audit logging of all applied changes
+  - [x] Dry-run mode for testing
+  - [x] Confidence threshold enforcement
 
-> **Exit condition:** AICO periodically updates how she behaves based on her own experience, in a traceable way, without changing the overall architecture.
+> **Status:** ✅ **Phase 5 COMPLETE!** Self-reflection engine generates lessons with LLM enhancement, scheduler runs automatic jobs, lesson applicator integrates with all systems (Skills, Arbiter, Personality), and self-model data informs decision-making across Planner, Arbiter, and Curiosity Engine.
+
+> **Exit condition:** ✅ **MET** - AICO periodically updates how she behaves based on her own experience, in a traceable way, without changing the overall architecture.
 
 ## Phase 6 – Flutter UI & User-Facing Agency Controls
 

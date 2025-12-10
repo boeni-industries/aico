@@ -306,3 +306,17 @@ def mock_message_bus():
     mock.disconnect = MagicMock()
     
     return mock
+
+
+@pytest.fixture
+def agency_engine(test_db, test_config, mock_message_bus):
+    """Provide an initialized AgencyEngine for testing."""
+    from aico.ai.agency.engine import AgencyEngine
+    
+    engine = AgencyEngine(
+        config=test_config,
+        db_connection=test_db,
+        message_bus=mock_message_bus,
+    )
+    
+    return engine

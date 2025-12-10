@@ -72,8 +72,19 @@ class PersonalityService:
                 preferences={},
             )
             
-            if self.logger:
-                self.logger.debug(f"[PERSONALITY] Retrieved context for user {user_id} (Phase 2 defaults)")
+            # Apply lesson-based persona adjustments
+            adjustments = self.get_persona_adjustments(user_id)
+            if adjustments:
+                context = self.apply_persona_adjustments(context, adjustments)
+                if self.logger:
+                    self.logger.debug(
+                        f"[PERSONALITY] Retrieved context for user {user_id} "
+                        f"with {len(adjustments)} lesson-based adjustments"
+                    )
+            else:
+                if self.logger:
+                    self.logger.debug(f"[PERSONALITY] Retrieved context for user {user_id} (Phase 2 defaults)")
+            
             return context
             
         except Exception as e:
@@ -171,3 +182,91 @@ class PersonalityService:
             if self.logger:
                 self.logger.error(f"[PERSONALITY] Failed to calculate proactivity: {e}")
             return 0.5  # Default to moderate
+    
+    def get_persona_adjustments(self, user_id: str) -> dict:
+        """
+        Get active persona adjustments from behavioral learning lessons.
+        
+        Args:
+            user_id: User identifier
+            
+        Returns:
+            Dictionary of trait_key -> adjustment_value
+        """
+        if not self.db:
+            return {}
+        
+        try:
+            # Query active persona lessons from agency_lessons
+            rows = self.db.execute(
+                """SELECT target_id, proposed_change
+                   FROM agency_lessons
+                   WHERE user_id = ? 
+                   AND target_kind = 'persona_trait'
+                   AND status = 'active'
+                   AND applied_at IS NOT NULL""",
+                (user_id,)
+            ).fetchall()
+            
+            adjustments = {}
+            for row in rows:
+                trait_key = row["target_id"]  # e.g., "response_tone", "empathy_level"
+                
+                # Parse proposed change
+                import json
+                try:
+                    change_data = json.loads(row["proposed_change"])
+                    new_value = change_data.get("new")
+                    if new_value is not None:
+                        adjustments[trait_key] = new_value
+                except (json.JSONDecodeError, KeyError):
+                    continue
+            
+            if adjustments and self.logger:
+                self.logger.debug(
+                    f"[PERSONALITY] Loaded {len(adjustments)} persona adjustments for user {user_id}"
+                )
+            
+            return adjustments
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"[PERSONALITY] Failed to load persona adjustments: {e}")
+            return {}
+    
+    def apply_persona_adjustments(
+        self,
+        base_context: PersonalityContext,
+        adjustments: dict
+    ) -> PersonalityContext:
+        """
+        Apply lesson-based adjustments to personality context.
+        
+        Args:
+            base_context: Base personality context
+            adjustments: Dictionary of adjustments from lessons
+            
+        Returns:
+            Adjusted personality context
+        """
+        if not adjustments:
+            return base_context
+        
+        # Create a copy to avoid mutating the original
+        adjusted_context = PersonalityContext(
+            user_id=base_context.user_id,
+            traits=base_context.traits,
+            relationship=base_context.relationship,
+            preferences=base_context.preferences.copy() if base_context.preferences else {}
+        )
+        
+        # Apply adjustments to preferences
+        for key, value in adjustments.items():
+            adjusted_context.preferences[key] = value
+            
+            if self.logger:
+                self.logger.debug(
+                    f"[PERSONALITY] Applied adjustment: {key} = {value}"
+                )
+        
+        return adjusted_context

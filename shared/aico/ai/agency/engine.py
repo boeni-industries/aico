@@ -100,6 +100,15 @@ class AgencyEngine(BaseAIProcessor):
         print("✅ [PHASE 4 DEBUG] GoalArbiter initialized!")
         logger.info("[AGENCY_ENGINE] Goal Arbiter initialized (Phase 4)")
         
+        # Phase 5: Self-Reflection Engine
+        from .reflection import SelfReflectionEngine
+        self.self_reflection = SelfReflectionEngine(
+            config=config,
+            db_connection=db_connection,
+            llm_client=None  # Will be set later if available
+        )
+        logger.info("[AGENCY_ENGINE] Self-Reflection Engine initialized (Phase 5)")
+        
         # Optional backend hook for LLM-based plan refinement (injected by backend)
         self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner
         
@@ -851,6 +860,122 @@ class AgencyEngine(BaseAIProcessor):
                 "analyzed_at": datetime.utcnow().isoformat(),
             },
         }
+    
+    # ------------------------------------------------------------------
+    # Phase 5: Self-Reflection Methods
+    # ------------------------------------------------------------------
+    
+    async def run_self_reflection(
+        self,
+        user_id: str,
+        run_type: Optional["RunType"] = None,
+        trigger_reason: Optional[str] = None,
+        analysis_window_days: int = 7,
+    ) -> "ReflectionRun":
+        """
+        Run a self-reflection job for a user.
+        
+        Args:
+            user_id: User to reflect on
+            run_type: Type of reflection run (defaults to SCHEDULED)
+            trigger_reason: Why this run was triggered
+            analysis_window_days: How many days back to analyze
+            
+        Returns:
+            ReflectionRun with results
+        """
+        from .models import RunType
+        
+        if run_type is None:
+            run_type = RunType.SCHEDULED
+        
+        return await self.self_reflection.run_reflection(
+            user_id=user_id,
+            run_type=run_type,
+            trigger_reason=trigger_reason,
+            analysis_window_days=analysis_window_days,
+        )
+    
+    async def get_active_lessons(
+        self,
+        user_id: str,
+        lesson_type: Optional["LessonType"] = None,
+    ) -> List["Lesson"]:
+        """
+        Get active behavioral lessons for a user.
+        
+        Args:
+            user_id: User ID
+            lesson_type: Optional filter by lesson type
+            
+        Returns:
+            List of active lessons
+        """
+        return await self.self_reflection.get_active_lessons(
+            user_id=user_id,
+            lesson_type=lesson_type
+        )
+    
+    async def get_self_model_entry(
+        self,
+        user_id: str,
+        entity_type: "EntityType",
+        entity_id: str,
+    ) -> Optional["SelfModelEntry"]:
+        """
+        Get self-model performance data for an entity.
+        
+        Args:
+            user_id: User ID
+            entity_type: Type of entity (skill, goal_type, etc.)
+            entity_id: Entity ID
+            
+        Returns:
+            Latest self-model entry or None
+        """
+        return await self.self_reflection.get_self_model(
+            user_id=user_id,
+            entity_type=entity_type,
+            entity_id=entity_id
+        )
+    
+    async def get_skill_performance(self, user_id: str, skill_id: str) -> Optional[float]:
+        """
+        Get skill success rate for planning decisions.
+        
+        Args:
+            user_id: User ID
+            skill_id: Skill ID
+            
+        Returns:
+            Success rate (0.0-1.0) or None
+        """
+        return await self.self_reflection.get_skill_performance(user_id, skill_id)
+    
+    async def get_goal_type_performance_context(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get goal type performance data for arbiter context.
+        
+        Args:
+            user_id: User ID
+            
+        Returns:
+            Dictionary of goal_type -> performance metrics
+        """
+        # Get all goal types that have been used
+        rows = self.goal_store.db.execute(
+            """SELECT DISTINCT goal_type FROM agency_goals WHERE user_id = ?""",
+            (user_id,)
+        ).fetchall()
+        
+        performance_context = {}
+        for row in rows:
+            goal_type = row["goal_type"]
+            perf_data = await self.self_reflection.get_goal_type_performance(user_id, goal_type)
+            if perf_data:
+                performance_context[goal_type] = perf_data
+        
+        return performance_context
     
     # ------------------------------------------------------------------
     # BaseAIProcessor abstract method implementations
