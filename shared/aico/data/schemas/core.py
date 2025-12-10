@@ -1375,5 +1375,24 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP TABLE IF EXISTS ams_behavioral_feedback",
             "DROP TABLE IF EXISTS skills",
         ]
+    ),
+    
+    # Add agency_context to trajectories
+    23: SchemaVersion(
+        version=23,
+        name="Add agency context to trajectories",
+        description="Add agency_context column to trajectories table for storing agency decisions (intentions, ethics evaluations, etc.)",
+        sql_statements=[
+            # Add agency_context column to trajectories
+            "ALTER TABLE trajectories ADD COLUMN agency_context TEXT",
+            
+            # Create index for agency context queries
+            "CREATE INDEX IF NOT EXISTS idx_trajectories_agency ON trajectories(user_id, agency_context) WHERE agency_context IS NOT NULL",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_trajectories_agency",
+            # Note: SQLite doesn't support DROP COLUMN easily
+            # In production, would need to recreate table without agency_context
+        ]
     )
 })

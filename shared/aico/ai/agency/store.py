@@ -144,6 +144,68 @@ class GoalStore:
         except Exception as e:
             logger.error(f"[AGENCY_GOALS] Failed to update goal status: {e}", extra={"goal_id": goal_id})
             raise
+    
+    async def get_goals_by_status(self, user_id: str, statuses: List[GoalStatus]) -> List[Goal]:
+        """
+        Retrieve goals for a user filtered by multiple statuses.
+        
+        This is an alias/extension of list_goals() to support the intention set workflow
+        which needs to query multiple statuses at once (e.g., PENDING and ACTIVE).
+        
+        Args:
+            user_id: User ID
+            statuses: List of goal statuses to filter by
+            
+        Returns:
+            List of goals matching any of the specified statuses
+        """
+        try:
+            if not statuses:
+                return []
+            
+            # Build query with IN clause for multiple statuses
+            placeholders = ','.join('?' * len(statuses))
+            query = f"""
+                SELECT goal_id, user_id, origin, goal_type, title, description,
+                       status, priority, metadata_json, created_at, updated_at
+                FROM agency_goals 
+                WHERE user_id = ? AND status IN ({placeholders})
+                ORDER BY priority DESC, created_at DESC
+            """
+            
+            params = [user_id] + [s.value for s in statuses]
+            rows = self.db.execute(query, tuple(params)).fetchall()
+            
+            goals: List[Goal] = []
+            for row in rows:
+                goals.append(
+                    Goal(
+                        goal_id=row[0],
+                        user_id=row[1],
+                        origin=GoalOrigin(row[2]),
+                        goal_type=row[3],
+                        title=row[4],
+                        description=row[5],
+                        status=GoalStatus(row[6]),
+                        priority=GoalPriority(row[7]),
+                        metadata=json.loads(row[8]) if row[8] else {},
+                        created_at=datetime.fromisoformat(row[9]) if row[9] else datetime.utcnow(),
+                        updated_at=datetime.fromisoformat(row[10]) if row[10] else datetime.utcnow(),
+                    )
+                )
+            
+            logger.info(
+                "[AGENCY_GOALS] Retrieved goals by status",
+                extra={"user_id": user_id, "statuses": [s.value for s in statuses], "count": len(goals)}
+            )
+            return goals
+            
+        except Exception as e:
+            logger.error(
+                f"[AGENCY_GOALS] Failed to retrieve goals by status: {e}",
+                extra={"user_id": user_id, "statuses": [s.value for s in statuses]}
+            )
+            raise
 
 
 class PlanStore:

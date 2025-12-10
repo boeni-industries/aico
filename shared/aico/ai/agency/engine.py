@@ -801,10 +801,10 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             Updated IntentionSet
         """
-        # Get all pending goals for this user
+        # Get all pending and active goals for this user
         pending_goals = await self.goal_store.get_goals_by_status(
             user_id=user_id,
-            status=GoalStatus.PENDING
+            statuses=[GoalStatus.PENDING, GoalStatus.ACTIVE]
         )
         
         # Update intention set with arbiter

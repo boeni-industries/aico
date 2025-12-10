@@ -98,6 +98,14 @@ except ImportError as e:
     # Gateway commands not available
     pass  # Expected when gateway dependencies not installed - CLI continues without gateway commands
 
+# Import and register agency commands
+try:
+    from cli.commands import agency
+    app.add_typer(agency.app, name="agency", help="🎯 Agency system control (intentions, values, policies)")
+except ImportError as e:
+    # Agency commands not available
+    pass
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
     """
@@ -129,6 +137,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             ("🌐", "gateway", "API Gateway management and protocol control"),
             ("🤖", "modelservice", "Model service management and control"),
             ("🦙", "ollama", "Ollama model management and operations"),
+            ("🎯", "agency", "Agency system control (intentions, values, policies)"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")
         ]
         

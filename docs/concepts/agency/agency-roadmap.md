@@ -160,23 +160,33 @@ Goal: Introduce a clear **decision layer** that balances user goals, curiosity, 
   - **Database:** Schema v21 - `value_profiles`, `policy_rules`, `consents` tables
   - **Policy Modes:** enforce, warn, log
 
-- [ ] **Conversation & UX Integration** 🚧 **IN PROGRESS**
-  - [ ] Surface the active intention set and value/ethics decisions in explanations/tooltips/logs.
-  - [ ] Allow users to inspect and adjust agency behaviour (e.g., tune curiosity strength, hobby intensity, initiative level).
-  - [ ] CLI commands for policy management
-  - [ ] API endpoints for intention set visibility
+- [x] **Conversation & UX Integration** 
+  - [x] Surface agency decisions in conversation logging
+    - Agency context (intentions, ethics decisions) logged to `trajectories` table
+    - Structured logging of agency decisions with conversation turns
+    - Schema v23: Added `agency_context` column to trajectories
+  - [x] API endpoints for Flutter integration
+  - [ ] Surface the active intention set in UI explanations/tooltips
+  - [ ] Allow users to inspect and adjust agency behaviour in Flutter UI
+  - [x] CLI commands for policy management
 
-**Status Update (Dec 9, 2025):**
+**Status Update (Dec 10, 2025):**
 - ✅ Core Phase 4 components fully implemented and operational
 - ✅ AgencyEngine integrates ValuesEthicsService and GoalArbiter
 - ✅ Message bus integration working
 - ✅ Configuration system complete with validation
-- ✅ Database schemas migrated (v21)
+- ✅ Database schemas migrated (v23: added agency_context to trajectories)
 - ✅ Default policies installed and enforced
 - ✅ Backend fully operational with all Phase 4 services running
-- ✅ Comprehensive test suite created (40 test methods)
-- 🚧 Tests need API alignment with actual implementation
-- 🚧 UX/CLI integration pending
+- ✅ Comprehensive test suite: 108 tests passing (99 original + 9 ethics gate tests)
+- ✅ CLI commands implemented and tested (`aico agency`)
+- ✅ Agency decisions logged to conversation trajectories
+- ✅ REST API endpoints implemented (`/api/v1/agency/*`)
+  - Intentions, curiosity, profile, policies, consents
+  - Based on agency-metrics.md user-facing metrics
+  - Encrypted database access with session support
+- 🚧 Flutter UI integration pending
+- 🚧 Surface intention set in conversation UI pending
 
 > **Exit condition:** AICO's behaviour is governed by an explicit meta-control layer, and users can understand and influence why some goals are pursued and others are not.
 

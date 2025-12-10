@@ -870,13 +870,15 @@ class ConversationEngine(BaseService):
                 user_context = pending_data.get("user_context")
                 user_message = pending_data.get("user_message")
                 selected_skill_id = pending_data.get("selected_skill_id")
+                agency_data = pending_data.get("components_ready", {}).get("agency")
                 
                 if user_context and user_message:
                     await self._log_trajectory(
                         user_context,
                         user_message,
                         final_content,  # Fixed: use final_content parameter
-                        selected_skill_id
+                        selected_skill_id,
+                        agency_data  # Pass agency context
                     )
             
             # Don't clean up here - let the LLM response handler clean up
@@ -1277,7 +1279,7 @@ class ConversationEngine(BaseService):
             self.logger.error(f"🎯 [SKILL] Failed to select skill: {e}")
             return None
     
-    async def _log_trajectory(self, user_context: UserContext, user_message: ConversationMessage, ai_response: str, selected_skill_id: Optional[str]) -> None:
+    async def _log_trajectory(self, user_context: UserContext, user_message: ConversationMessage, ai_response: str, selected_skill_id: Optional[str], agency_data: Optional[Dict[str, Any]] = None) -> None:
         """
         Log conversation trajectory for behavioral learning.
         
@@ -1286,6 +1288,7 @@ class ConversationEngine(BaseService):
             user_message: User message
             ai_response: AI response text
             selected_skill_id: ID of skill that was applied
+            agency_data: Agency plugin response data (intentions, ethics decisions, etc.)
         """
         try:
             # Check if behavioral learning is enabled
@@ -1307,6 +1310,7 @@ class ConversationEngine(BaseService):
             
             # Generate trajectory ID
             import uuid
+            import json
             trajectory_id = str(uuid.uuid4())
             
             # Get turn number (count messages in conversation)
@@ -1316,12 +1320,40 @@ class ConversationEngine(BaseService):
                 (user_context.user_id, conversation_id)
             ).fetchone()[0] + 1
             
+            # Extract agency context for logging
+            agency_context_json = None
+            if agency_data and agency_data.get("success"):
+                agency_context = {
+                    "intention_set": agency_data.get("data", {}).get("intention_set"),
+                    "active_goals": agency_data.get("data", {}).get("active_goals"),
+                    "ethics_decisions": agency_data.get("data", {}).get("ethics_decisions"),
+                    "confidence": agency_data.get("confidence"),
+                    "processing_time_ms": agency_data.get("processing_time_ms")
+                }
+                # Remove None values
+                agency_context = {k: v for k, v in agency_context.items() if v is not None}
+                if agency_context:
+                    agency_context_json = json.dumps(agency_context)
+                    
+                    # Log agency decisions as structured log entry
+                    self.logger.info(
+                        f"🎯 [AGENCY] Turn {turn_number} - Agency context",
+                        extra={
+                            "conversation_id": conversation_id,
+                            "turn_number": turn_number,
+                            "agency_context": agency_context,
+                            "subsystem": "agency",
+                            "module": "conversation_engine"
+                        }
+                    )
+            
             # Insert trajectory with message_id for feedback linking
             db.execute(
                 """INSERT INTO trajectories (
                     trajectory_id, user_id, conversation_id, turn_number,
-                    user_input, selected_skill_id, ai_response, message_id, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    user_input, selected_skill_id, ai_response, message_id, 
+                    agency_context, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     trajectory_id,
                     user_context.user_id,
@@ -1331,6 +1363,7 @@ class ConversationEngine(BaseService):
                     selected_skill_id,
                     ai_response,
                     user_message.message_id,  # Use message_id from ConversationMessage (not message.id)
+                    agency_context_json,  # Store agency context as JSON
                     datetime.utcnow().isoformat()
                 )
             )
