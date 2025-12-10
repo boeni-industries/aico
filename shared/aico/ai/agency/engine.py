@@ -79,7 +79,14 @@ class AgencyEngine(BaseAIProcessor):
         self.plan_store = PlanStore(db_connection)
         self.event_store = AgencyEventStore(db_connection)
         self.reflection_store = ReflectionStore(db_connection)
-        self.planner = Planner()
+        
+        # Initialize planner with optional LLM client (will be set later if available)
+        self.planner = Planner(
+            llm_client=None,  # Set via set_llm_client() if available
+            enable_caching=True,
+            cache_ttl_seconds=3600,
+            db_connection=db_connection,  # For skill availability checks
+        )
         
         # Phase 4: Values & Ethics service
         print("🔧 [PHASE 4 DEBUG] Initializing ValuesEthicsService...")

@@ -216,88 +216,350 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 
 > **Exit condition:** ✅ **MET** - AICO periodically updates how she behaves based on her own experience, in a traceable way, without changing the overall architecture.
 
-## Phase 6 – Flutter UI & User-Facing Agency Controls
+---
 
-Goal: Enable users to **understand and influence** AICO's agency through the Flutter UI.
+## Phase 6 – Full Implementation & Production Hardening
 
-- [ ] **Agency Dashboard Screen**
-  - [ ] Create dedicated agency screen in Flutter app
-  - [ ] Display active intention set with visual priority indicators
-  - [ ] Show current curiosity status and opportunities
-  - [ ] Display agency state overview (goals, hobbies, focus)
+**Goal:** Remove ALL placeholders, stubs, hardcoded values, and shortcuts. Implement full-depth production-grade agency system with no compromises.
 
-- [ ] **Intention Set Visibility**
-  - [ ] Surface active intentions in conversation UI (tooltips, status bar)
-  - [ ] Show why AICO is pursuing specific goals (reasons, scores)
-  - [ ] Display priority bands and arbiter scores visually
-  - [ ] Allow users to see hobby goals vs user-requested goals
+**Current State:** ✅ **Phase 6.1 (Planner) COMPLETE!** LLM planning, pattern learning, skill availability, resource constraints all done.
 
-- [ ] **Value Profile Management**
-  - [ ] UI for adjusting curiosity intensity slider
-  - [ ] Proactive behavior level selector (quiet/balanced/proactive)
-  - [ ] Manage sensitive life areas (add/remove)
-  - [ ] Configure allowed curiosity domains
+### **6.1 Planner Full Implementation**
+- [x] **LLM-Backed Planning** ✅ *COMPLETE*
+  - [x] LLM-generated plans with flexible client interface
+  - [x] Robust prompt engineering for plan generation
+  - [x] Plan validation and quality checks (EXCELLENT/GOOD/ACCEPTABLE/POOR)
+  - [x] Three-tier fallback strategy (LLM → template → simple)
+  - [x] Plan caching with TTL (1 hour default, 100 plan limit)
+  - [x] Removed "Phase 1 planning skeleton" comments
+  - [x] Added `PlanStrategy` and `PlanQuality` enums
+  - [x] JSON parsing with error handling for LLM responses
+  
+- [x] **Pattern Recognition & Learning** ✅ *COMPLETE*
+  - [x] Plan pattern detection from historical data (90-day lookback, min 3 occurrences)
+  - [x] Pattern library with confidence scoring and quality metrics
+  - [x] Pattern-based plan suggestions (auto-suggests if confidence ≥ 0.5)
+  - [x] Plan adaptation from successful patterns
+  - [x] Plan outcome tracking for continuous learning
+  - [x] Integrated into main planning flow (pattern → LLM → template → simple)
 
-- [ ] **Policy & Consent Management**
-  - [ ] View active policy rules with filtering
-  - [ ] Grant/revoke consents for specific actions
-  - [ ] See pending consent requests
-  - [ ] Review policy decisions and their effects
+- [x] **Resource & Constraint Management** ✅ *COMPLETE*
+  - [x] Basic `_check_resource_constraints` (CPU, memory) - EXISTS in scheduler
+  - [x] Quiet-hours enforcement - EXISTS with config loading
+  - [x] Battery monitoring - IMPLEMENTED (psutil-based, skips on <50% battery)
+  - [x] Network bandwidth management - IMPLEMENTED (configurable Mbps limit)
+  - [x] Skill availability checking - IMPLEMENTED (DB-based, filters unavailable skills)
+  - [x] Concurrent execution limits - IMPLEMENTED (configurable max concurrent tasks)
 
-- [ ] **Conversation Integration**
-  - [ ] Show agency context in conversation tooltips
-  - [ ] Display when AICO is acting on curiosity vs user request
-  - [ ] Surface ethics decisions in conversation flow
-  - [ ] Explain goal selection and prioritization
+### **6.2 Scheduler & Task Execution**
+- [ ] **Production Scheduler**
+  - [ ] Replace basic scheduler with production-grade task queue
+  - [ ] Implement priority-based scheduling with preemption
+  - [ ] Add task retry logic with exponential backoff
+  - [ ] Implement task timeout and cancellation
+  - [ ] Add distributed task execution support (if needed)
 
-> **Exit condition:** Users can see what AICO is working on, why, and adjust her agency behavior through the Flutter UI.
+- [ ] **Resource Monitoring**
+  - [ ] Real-time system resource monitoring
+  - [ ] Battery-aware task scheduling
+  - [ ] Network bandwidth management
+  - [ ] Storage quota enforcement
+  - [ ] User presence detection integration
 
-## Phase 7 – Advanced Policies & World Model Sophistication
+### **6.3 Curiosity Engine Depth**
+- [ ] **Advanced Curiosity Scoring** ⚠️ *Currently: Basic heuristic scoring*
+  - [ ] Move from heuristic scoring to principled intrinsic reward model
+  - [ ] Implement prediction error-based curiosity
+  - [ ] Add information gain calculations
+  - [ ] Implement empowerment-based exploration
+  - [ ] Track long-term returns from curiosity projects
 
-Goal: Upgrade internal decision-making and world modelling while keeping interfaces stable.
+- [ ] **Opportunity Discovery** ⚠️ *Placeholder detectors with TODOs*
+  - [ ] `_detect_knowledge_gaps` - Has TODO: "Integrate with World Model uncertain areas"
+  - [ ] `_detect_anomalies` - Placeholder with TODO: "Implement anomaly detection"
+  - [ ] `_track_interests` - Has TODO: "Integrate with AMS to detect actual user interests"
+  - [ ] Remove all "Phase 3 v1: Placeholder" comments from `curiosity/engine.py`
+  - [ ] Implement actual multi-source detection (not template-based)
+  - [ ] Add opportunity clustering and deduplication
 
-- [ ] **Curiosity & Intrinsic Motivation (advanced)**
-  - [ ] Move from heuristic curiosity scoring to a more principled intrinsic reward model (e.g., prediction error, information gain, empowerment).
-  - [ ] Track long-term returns from curiosity and hobby projects to refine what is worth exploring.
+### **6.4 World Model Service**
+- [ ] **Schema Learning**
+  - [ ] Implement automatic schema extraction from user data
+  - [ ] Add schema evolution and versioning
+  - [ ] Implement schema validation and consistency checking
+  - [ ] Add schema-based query optimization
 
-- [ ] **World Model Service (advanced)**
-  - [ ] Enhance schema learning for user life situations, projects, and phases.
-  - [ ] Add hypothesis generation and testing APIs (softly check possible changes or assumptions about the user).
-  - [ ] Implement drift and contradiction detection with corresponding agency responses.
+- [ ] **Hypothesis Generation & Testing**
+  - [ ] Implement hypothesis generation from patterns
+  - [ ] Add hypothesis testing framework
+  - [ ] Implement soft validation (non-intrusive checking)
+  - [ ] Add hypothesis tracking and refinement
 
-- [ ] **Goal Arbiter & Self-Reflection (advanced)**
-  - [ ] Evolve from fixed scoring to adaptive/learned goal selection policies (e.g., bandits or RL on top of logged outcomes).
-  - [ ] Allow Self-Reflection to adjust Arbiter and Planner parameters in a controlled, logged way.
+- [ ] **Drift & Contradiction Detection**
+  - [ ] Implement drift detection algorithms
+  - [ ] Add contradiction resolution strategies
+  - [ ] Implement confidence decay over time
+  - [ ] Add proactive update mechanisms
 
-> **Exit condition:** Internals of curiosity, world modelling, and goal selection are more principled and data-driven, while the external behaviour remains backward compatible and explainable.
+### **6.5 Goal Arbiter Advanced**
+- [ ] **Adaptive Scoring**
+  - [ ] Move from fixed weights to learned scoring policies
+  - [ ] Implement multi-armed bandit for weight optimization
+  - [ ] Add reinforcement learning for goal selection
+  - [ ] Implement A/B testing framework for scoring strategies
 
-## Phase 8 – Embodiment as Cognitive Substrate & Polishing
+- [ ] **Context-Aware Prioritization**
+  - [ ] Add time-of-day aware scoring
+  - [ ] Implement user state-based adjustments (busy, relaxed, focused)
+  - [ ] Add deadline-aware urgency calculations
+  - [ ] Implement dependency-aware scheduling
 
-Goal: Use the 3D flat and embodiment not just for presentation, but as a **cognitive scaffold** and final polish.
+### **6.6 Behavioral Feedback Integration**
+- [ ] **Outcome Tracking Schema** ⚠️ *CRITICAL: Missing columns*
+  - [ ] Add `outcome` column to `ams_behavioral_feedback` table (currently missing!)
+  - [ ] Implement skill execution tracking
+  - [ ] Add goal outcome recording  
+  - [ ] Implement user satisfaction tracking
+  - [ ] Fix reflection engine queries that expect `outcome` column
 
-- [ ] **Embodied Cognition Patterns**
-  - [ ] Define internal tasks and routines that are always represented through spatial metaphors (desk work, reading on couch, organizing room).
-  - [ ] Use environment layout and artefacts as memory cues and anchors for long-term projects and hobbies.
-  - [ ] Represent curiosity/hobby work in the 3D flat (e.g., AICO at the desk reading, on the couch studying, reorganizing her room). *(Deferred from Phase 3)*
+- [ ] **Feedback Loop Completion** ⚠️ *Data pipeline incomplete*
+  - [ ] Connect skill executions to behavioral feedback
+  - [ ] Implement automatic outcome detection
+  - [ ] Add user feedback collection mechanisms
+  - [ ] Complete reflection engine data pipeline (currently fails on missing schema)
 
-- [ ] **Conversation & UX Integration**
-  - [ ] Ensure hobbies appear in AICO's visible behaviour (comments, embodiment, occasional sharing with the user). *(Deferred from Phase 3)*
+### **6.7 Proactive Behaviors**
+- [ ] **Follow-up System**
+  - [ ] Implement policy-aware follow-up generation
+  - [ ] Add relationship-informed timing
+  - [ ] Implement values-based follow-up filtering
+  - [ ] Add context-aware follow-up content
 
-- [ ] **Integration with Real-World Context (optional)**
-  - [ ] Optionally connect agency state and embodiment with real devices/context (e.g., phone, calendar, home automation) under strict user control.
+- [ ] **Reminder System**
+  - [ ] Implement smart reminder scheduling
+  - [ ] Add reminder clustering and batching
+  - [ ] Implement reminder priority and urgency
+  - [ ] Add reminder adaptation based on user response
 
-- [ ] **Refinement & Evaluation**
-  - [ ] Define evaluation metrics and test scenarios for agency quality (usefulness, coherence, autonomy, user comfort).
-  - [ ] Iterate on prompts, policies, and UX based on real usage data.
+### **6.8 Policy & Ethics Depth**
+- [ ] **Dynamic Policy Loading** ⚠️ *Currently: Hardcoded defaults*
+  - [ ] Remove hardcoded `DEFAULT_POLICY_RULES` from `default_policies.py`
+  - [ ] Implement user-specific policy loading from database
+  - [ ] Add policy versioning and migration
+  - [ ] Implement policy conflict resolution
+  - [ ] Note: `default_policies.py` has 0% test coverage
+
+- [ ] **Consent Management** ⚠️ *Not implemented*
+  - [ ] Implement granular consent tracking
+  - [ ] Add consent expiration and renewal
+  - [ ] Implement consent inheritance and delegation
+  - [ ] Add consent audit logging
+
+- [ ] **Ethics Gate Enhancement** ⚠️ *Basic implementation*
+  - [ ] Add multi-level ethics checking (currently single-pass)
+  - [ ] Implement ethics explanation generation
+  - [ ] Add ethics decision caching
+  - [ ] Implement ethics policy learning from decisions
+  - [ ] Remove "Phase 4 placeholder" comments from curiosity gates
+
+### **6.9 Integration & Data Flow**
+- [ ] **End-to-End Workflows**
+  - [ ] Implement complete goal → plan → execution → feedback loop
+  - [ ] Add curiosity → opportunity → goal → hobby workflow
+  - [ ] Implement reflection → lesson → adjustment → validation cycle
+  - [ ] Add world model → hypothesis → validation → update flow
+
+- [ ] **Event System**
+  - [ ] Implement comprehensive event logging
+  - [ ] Add event-driven triggers for agency components
+  - [ ] Implement event replay for debugging
+  - [ ] Add event-based metrics and monitoring
+
+> **Exit condition:** Agency system is fully implemented with production-grade depth. NO placeholders, stubs, hardcoded values, or shortcuts remain. All components are fully functional, integrated, and production-ready.
+
+---
+
+## Phase 7 – Comprehensive Testing & Quality Assurance
+
+**Goal:** Achieve 90%+ test coverage across all agency components with comprehensive integration, performance, and edge case testing.
+
+### **7.1 Unit Test Coverage**
+- [ ] **Core Components (Target: 95%+)**
+  - [ ] Planner: 100% coverage of all planning strategies
+  - [ ] Arbiter: 100% coverage of all scoring paths
+  - [ ] Curiosity Engine: 95%+ coverage
+  - [ ] Reflection Engine: 90%+ coverage (up from 47%)
+  - [ ] Lesson Applicator: 90%+ coverage (up from 52%)
+  - [ ] Values & Ethics: 95%+ coverage
+
+- [ ] **Support Systems (Target: 90%+)**
+  - [ ] Stores: 95%+ coverage
+  - [ ] Models: 100% coverage (maintain)
+  - [ ] Templates: 100% coverage (maintain)
+  - [ ] Default Policies: 90%+ coverage (up from 0%)
+
+### **7.2 Integration Testing**
+- [ ] **Cross-Component Workflows**
+  - [ ] Goal lifecycle end-to-end tests
+  - [ ] Curiosity → hobby → reflection workflow tests
+  - [ ] Behavioral learning → adjustment → validation tests
+  - [ ] Policy enforcement across all components
+
+- [ ] **Data Flow Testing**
+  - [ ] Event propagation tests
+  - [ ] State consistency tests
+  - [ ] Transaction integrity tests
+  - [ ] Concurrent operation tests
+
+### **7.3 Performance Testing**
+- [ ] **Load Testing**
+  - [ ] High-volume goal processing
+  - [ ] Concurrent user simulation
+  - [ ] Long-running reflection jobs
+  - [ ] Memory leak detection
+
+- [ ] **Optimization Testing**
+  - [ ] Query performance benchmarks
+  - [ ] Cache effectiveness tests
+  - [ ] Resource usage profiling
+  - [ ] Bottleneck identification
+
+### **7.4 Edge Case & Error Testing**
+- [ ] **Failure Scenarios**
+  - [ ] Database connection failures
+  - [ ] LLM API failures and timeouts
+  - [ ] Resource exhaustion scenarios
+  - [ ] Concurrent modification conflicts
+
+- [ ] **Boundary Conditions**
+  - [ ] Empty data sets
+  - [ ] Maximum data volumes
+  - [ ] Invalid input handling
+  - [ ] Schema migration edge cases
+
+### **7.5 Regression Testing**
+- [ ] **Automated Regression Suite**
+  - [ ] All Phase 1-5 functionality preserved
+  - [ ] Backward compatibility tests
+  - [ ] API contract tests
+  - [ ] Data migration tests
+
+### **7.6 Test Infrastructure**
+- [ ] **Test Utilities**
+  - [ ] Comprehensive test fixtures
+  - [ ] Mock factories for all components
+  - [ ] Test data generators
+  - [ ] Assertion helpers
+
+- [ ] **CI/CD Integration**
+  - [ ] Automated test runs on commit
+  - [ ] Coverage reporting and tracking
+  - [ ] Performance regression detection
+  - [ ] Test result dashboards
+
+> **Exit condition:** 90%+ test coverage across all agency components. Comprehensive test suite covering unit, integration, performance, and edge cases. All tests passing with fast execution times.
+
+---
+
+## Phase 8 – Flutter UI & User-Facing Agency Controls
+
+**Goal:** Enable users to **understand and influence** AICO's agency through the Flutter UI.
+
+### **8.1 Agency Dashboard Screen**
+- [ ] Create dedicated agency screen in Flutter app
+- [ ] Display active intention set with visual priority indicators
+- [ ] Show current curiosity status and opportunities
+- [ ] Display agency state overview (goals, hobbies, focus)
+
+### **8.2 Intention Set Visibility**
+- [ ] Surface active intentions in conversation UI (tooltips, status bar)
+- [ ] Show why AICO is pursuing specific goals (reasons, scores)
+- [ ] Display priority bands and arbiter scores visually
+- [ ] Allow users to see hobby goals vs user-requested goals
+
+### **8.3 Value Profile Management**
+- [ ] UI for adjusting curiosity intensity slider
+- [ ] Proactive behavior level selector (quiet/balanced/proactive)
+- [ ] Manage sensitive life areas (add/remove)
+- [ ] Configure allowed curiosity domains
+
+### **8.4 Policy & Consent Management**
+- [ ] View active policy rules with filtering
+- [ ] Grant/revoke consents for specific actions
+- [ ] See pending consent requests
+- [ ] Review policy decisions and their effects
+
+### **8.5 Conversation Integration**
+- [ ] Show agency context in conversation tooltips
+- [ ] Display when AICO is acting on curiosity vs user request
+- [ ] Surface ethics decisions in conversation flow
+- [ ] Explain goal selection and prioritization
+
+### **8.6 Behavioral Learning Visibility**
+- [ ] Display active lessons and their effects
+- [ ] Show self-model performance metrics
+- [ ] Visualize skill success rates and trends
+- [ ] Allow users to approve/reject lesson applications
+
+> **Exit condition:** Users can see what AICO is working on, why, and adjust her agency behavior through the Flutter UI. Full transparency and control over agency system.
+
+---
+
+## Phase 9 – Embodiment as Cognitive Substrate & Polishing
+
+**Goal:** Use the 3D flat and embodiment not just for presentation, but as a **cognitive scaffold** and final polish.
+
+### **9.1 Embodied Cognition Patterns**
+- [ ] Define internal tasks and routines represented through spatial metaphors
+- [ ] Use environment layout and artefacts as memory cues
+- [ ] Represent curiosity/hobby work in the 3D flat *(Deferred from Phase 3)*
+
+### **9.2 Conversation & UX Integration**
+- [ ] Ensure hobbies appear in AICO's visible behaviour *(Deferred from Phase 3)*
+- [ ] Integrate agency state with embodiment animations
+- [ ] Add spatial context to goal and task representation
+
+### **9.3 Integration with Real-World Context (optional)**
+- [ ] Connect agency state with real devices/context under user control
+- [ ] Add calendar and schedule integration
+- [ ] Implement home automation hooks (optional)
+
+### **9.4 Refinement & Evaluation**
+- [ ] Define evaluation metrics for agency quality
+- [ ] Create test scenarios for usefulness, coherence, autonomy
+- [ ] Iterate on prompts, policies, and UX based on usage data
+- [ ] Conduct user studies and gather feedback
 
 > **Exit condition:** AICO behaves as a coherent, self-motivated, relationship-centric companion whose inner life (goals, curiosities, hobbies, reflections) is legible through conversation and embodiment, with the full conceptual architecture implemented in practice.
 
-## Implementation Completion Checklist (Cross-Phase)
+---
 
-These items ensure that early "basic" or placeholder implementations are fully evolved into the intended system by the time all phases are complete:
+## Roadmap Summary
 
-- [ ] **Planner maturity**: LLM-backed planning with robust templates and pattern selection, with fallbacks documented and tested.
-- [ ] **Scheduler & resource management**: `_check_resource_constraints` and quiet-hours logic enforce real system limits and user preferences for all agency tasks.
-- [ ] **Proactive behaviours**: Follow-ups/reminders move from simple checks to policy-aware, relationship- and values-informed behaviours.
-- [ ] **Agency visibility & UX**: All internal agency components (goals, plans, intentions, curiosity, hobbies, reflections) are surfaced through consistent explanations, logs, and embodiment cues.
-- [ ] **Mock/stub cleanup**: All temporary stubs, mocks, and "Phase 1 skeleton" code paths are either removed or clearly marked as legacy paths with replacement implementations in place.
+**Phase 1-5:** ✅ **COMPLETE** - Core agency architecture implemented  
+**Phase 6:** 🔨 **Full Implementation** - Remove all placeholders, stubs, and shortcuts  
+**Phase 7:** 🧪 **Comprehensive Testing** - Achieve 90%+ test coverage  
+**Phase 8:** 🎨 **Flutter UI** - User-facing agency controls and visibility  
+**Phase 9:** 🏠 **Embodiment & Polish** - Cognitive substrate and final refinement  
+
+---
+
+## Implementation Completion Checklist
+
+**ACTUAL STATUS - Items requiring work in Phase 6:**
+
+- [x] **Planner LLM-backed**: ✅ DONE - 905 lines, LLM generation, validation, caching, fallback strategies
+- [x] **Planner pattern learning**: ✅ DONE - Historical detection, confidence scoring, auto-adaptation
+- [x] **Planner skill availability**: ✅ DONE - DB-based checking, plan filtering by available skills
+- [x] **Scheduler battery monitoring**: ✅ DONE - psutil-based, smart logic (skips only on <50%)
+- [x] **Scheduler network constraints**: ✅ DONE - Bandwidth monitoring (configurable Mbps limit)
+- [x] **Scheduler concurrent limits**: ✅ DONE - Max concurrent tasks enforcement
+- [ ] **Proactive behaviors**: Follow-ups/reminders NOT IMPLEMENTED
+- [ ] **Curiosity engine**: Uses placeholder detectors with TODOs. Needs real World Model/AMS integration
+- [ ] **World model**: Schema learning, hypothesis testing, drift detection NOT IMPLEMENTED
+- [ ] **Behavioral feedback**: CRITICAL - `ams_behavioral_feedback` table missing `outcome` column. Reflection engine queries fail
+- [ ] **Policy system**: Uses hardcoded `DEFAULT_POLICY_RULES`. No user-specific loading. 0% test coverage
+- [ ] **Event system**: Basic logging exists. Comprehensive event system NOT IMPLEMENTED
+- [ ] **Code cleanup**: Remove "Phase X placeholder" comments in curiosity engine
+
+**Progress:** 6/10 major items complete (60%). ✅ **Phase 6.1 COMPLETE!** ~20-25 tasks remaining across 5 subsystems.

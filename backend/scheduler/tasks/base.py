@@ -94,10 +94,41 @@ class TaskContext:
             return False
     
     def should_skip_on_battery(self) -> bool:
-        """Check if task should be skipped when on battery power"""
+        """Check if task should be skipped when on battery power.
+        
+        Returns:
+            True if on battery and should skip, False if on AC power or check fails
+        """
         try:
-            # TODO: Implement battery status checking
-            # For now, assume AC power
+            import psutil
+            
+            # Get battery status
+            battery = psutil.sensors_battery()
+            
+            if battery is None:
+                # No battery (desktop) - never skip
+                return False
+            
+            # On battery if not plugged in
+            on_battery = not battery.power_plugged
+            
+            if on_battery:
+                # Also check battery percentage - don't skip if battery is high
+                if battery.percent > 50:
+                    # Battery is healthy, OK to run
+                    return False
+                else:
+                    # Low battery, skip task
+                    self.logger.info(
+                        f"Skipping task on battery power (battery: {battery.percent}%)"
+                    )
+                    return True
+            
+            return False
+            
+        except ImportError:
+            # psutil not available - assume AC power
+            self.logger.debug("psutil not available for battery check, assuming AC power")
             return False
         except Exception as e:
             self.logger.warning(f"Failed to check battery status: {e}")

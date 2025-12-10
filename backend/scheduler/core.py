@@ -383,6 +383,40 @@ class TaskExecutor:
                     except ValueError as e:
                         self.logger.warning(f"Invalid quiet hours config: {e}")
             
+            # Check network bandwidth (if configured)
+            network_config = scheduler_config.get("network", {})
+            if network_config.get("check_bandwidth", False):
+                max_bandwidth_mbps = network_config.get("max_bandwidth_mbps", 10)
+                
+                # Get network I/O stats
+                net_io = psutil.net_io_counters()
+                if hasattr(context, '_last_net_io'):
+                    # Calculate bandwidth usage
+                    bytes_sent = net_io.bytes_sent - context._last_net_io.bytes_sent
+                    bytes_recv = net_io.bytes_recv - context._last_net_io.bytes_recv
+                    total_bytes = bytes_sent + bytes_recv
+                    
+                    # Convert to Mbps (assuming 1 second interval)
+                    mbps = (total_bytes * 8) / (1024 * 1024)
+                    
+                    if mbps > max_bandwidth_mbps:
+                        self.logger.info(
+                            f"Task {context.task_id} skipped: Network usage {mbps:.2f} Mbps exceeds limit {max_bandwidth_mbps} Mbps"
+                        )
+                        return False
+                
+                # Store for next check
+                context._last_net_io = net_io
+            
+            # Check concurrent execution limits
+            max_concurrent = scheduler_config.get("max_concurrent_tasks", 5)
+            if hasattr(self, '_running_tasks'):
+                if len(self._running_tasks) >= max_concurrent:
+                    self.logger.info(
+                        f"Task {context.task_id} skipped: {len(self._running_tasks)} tasks running (limit: {max_concurrent})"
+                    )
+                    return False
+            
             return True
             
         except Exception as e:
