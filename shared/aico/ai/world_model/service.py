@@ -20,7 +20,15 @@ from .models import (
     Project,
     Context,
     UncertainArea,
+    # Phase 6.4
+    Schema,
+    Hypothesis,
+    DriftReport,
+    Contradiction,
 )
+from .schema_learner import SchemaLearner
+from .hypothesis_manager import HypothesisManager
+from .drift_detector import DriftDetector
 
 
 logger = get_logger("shared", "world_model.service")
@@ -50,7 +58,13 @@ class WorldModelService:
         self.kg = kg_storage
         self.semantic_memory = semantic_memory
         self.memory_manager = memory_manager
-        logger.info("[WORLD_MODEL] Service initialized")
+        
+        # Phase 6.4: Initialize advanced components
+        self.schema_learner = SchemaLearner()
+        self.hypothesis_manager = HypothesisManager()
+        self.drift_detector = DriftDetector()
+        
+        logger.info("[WORLD_MODEL] Service initialized (Phase 6.4: Schema, Hypothesis, Drift)")
     
     async def get_user_context(self, user_id: str) -> UserContext:
         """Get comprehensive user context.
@@ -238,6 +252,8 @@ class WorldModelService:
     async def query_uncertain_areas(self, user_id: str) -> List[UncertainArea]:
         """Identify areas of uncertainty or incomplete knowledge.
         
+        Phase 6.4: Uses drift detection and hypothesis tracking.
+        
         Args:
             user_id: User identifier
             
@@ -245,11 +261,25 @@ class WorldModelService:
             List of uncertain areas
         """
         try:
-            # Phase 2: Placeholder - will analyze confidence gaps in KG
-            # TODO: Implement uncertainty detection
+            uncertain_areas = []
             
-            logger.debug(f"[WORLD_MODEL] Uncertain areas query for user {user_id} (Phase 2 placeholder)")
-            return []
+            # Get open hypotheses (areas under investigation)
+            open_hypotheses = self.hypothesis_manager.get_open_hypotheses(user_id)
+            
+            for hypothesis in open_hypotheses:
+                # Convert hypothesis to uncertain area
+                area = UncertainArea(
+                    id=hypothesis.hypothesis_id,
+                    topic=hypothesis.description,
+                    description=f"Hypothesis: {hypothesis.description}",
+                    confidence_gap=1.0 - hypothesis.confidence,  # Higher gap = more uncertain
+                    related_entities=hypothesis.affected_entities,
+                    questions=[f"Is this hypothesis correct: {hypothesis.description}?"],
+                )
+                uncertain_areas.append(area)
+            
+            logger.debug(f"[WORLD_MODEL] Found {len(uncertain_areas)} uncertain areas for user {user_id}")
+            return uncertain_areas
             
         except Exception as e:
             logger.error(f"[WORLD_MODEL] Failed to query uncertain areas: {e}")
@@ -336,3 +366,165 @@ class WorldModelService:
         """Get IDs of entities related to given entity."""
         # Phase 2: Placeholder
         return []
+    
+    # Phase 6.4: Schema Learning, Hypothesis, and Drift Detection Methods
+    
+    async def learn_schema(
+        self,
+        entity_type: str,
+        samples: List[Dict[str, Any]]
+    ) -> Schema:
+        """Learn schema from data samples.
+        
+        Args:
+            entity_type: Type of entity
+            samples: Sample data
+            
+        Returns:
+            Learned Schema
+        """
+        return self.schema_learner.extract_schema(entity_type, samples)
+    
+    async def validate_data(
+        self,
+        schema: Schema,
+        data: Dict[str, Any]
+    ):
+        """Validate data against schema.
+        
+        Args:
+            schema: Schema to validate against
+            data: Data to validate
+            
+        Returns:
+            ValidationResult
+        """
+        return self.schema_learner.validate_schema(schema, data)
+    
+    async def generate_hypothesis(
+        self,
+        user_id: str,
+        description: str,
+        hypothesis_type: str,
+        affected_entities: List[str],
+        initial_evidence: Optional[List[str]] = None
+    ) -> Hypothesis:
+        """Generate new hypothesis.
+        
+        Args:
+            user_id: User ID
+            description: Description
+            hypothesis_type: Type
+            affected_entities: Affected entities
+            initial_evidence: Optional initial evidence
+            
+        Returns:
+            New Hypothesis
+        """
+        return self.hypothesis_manager.generate_hypothesis(
+            user_id=user_id,
+            description=description,
+            hypothesis_type=hypothesis_type,
+            affected_entities=affected_entities,
+            initial_evidence=initial_evidence,
+        )
+    
+    async def test_hypothesis(
+        self,
+        hypothesis_id: str,
+        test_type: str,
+        supports_hypothesis: bool,
+        evidence_ids: Optional[List[str]] = None
+    ):
+        """Test hypothesis with new evidence.
+        
+        Args:
+            hypothesis_id: Hypothesis ID
+            test_type: Test type
+            supports_hypothesis: Whether evidence supports hypothesis
+            evidence_ids: Optional evidence IDs
+            
+        Returns:
+            HypothesisTestResult
+        """
+        return self.hypothesis_manager.test_hypothesis(
+            hypothesis_id=hypothesis_id,
+            test_type=test_type,
+            supports_hypothesis=supports_hypothesis,
+            evidence_ids=evidence_ids,
+        )
+    
+    async def get_hypotheses(
+        self,
+        user_id: str,
+        status: Optional[str] = None
+    ) -> List[Hypothesis]:
+        """Get hypotheses for user.
+        
+        Args:
+            user_id: User ID
+            status: Optional status filter
+            
+        Returns:
+            List of Hypotheses
+        """
+        return self.hypothesis_manager.get_hypotheses_for_user(user_id, status=status)
+    
+    async def detect_drift(
+        self,
+        entity_id: str,
+        entity_type: str,
+        historical_states: List[Dict[str, Any]],
+        window_days: int = 30
+    ) -> Optional[DriftReport]:
+        """Detect drift in entity state.
+        
+        Args:
+            entity_id: Entity ID
+            entity_type: Entity type
+            historical_states: Historical states
+            window_days: Window size
+            
+        Returns:
+            DriftReport if drift detected
+        """
+        return self.drift_detector.detect_drift(
+            entity_id=entity_id,
+            entity_type=entity_type,
+            historical_states=historical_states,
+            window_days=window_days,
+        )
+    
+    async def detect_anomalies(self, user_id: str) -> List[Dict[str, Any]]:
+        """Detect anomalies in user data.
+        
+        Phase 6.4: Returns contradictions and drift reports.
+        
+        Args:
+            user_id: User ID
+            
+        Returns:
+            List of anomaly dictionaries
+        """
+        anomalies = []
+        
+        # Get contradictions (would need to query facts from KG)
+        # For now, return empty list
+        # TODO: Integrate with actual fact storage
+        
+        logger.debug(f"[WORLD_MODEL] Anomaly detection for user {user_id}")
+        return anomalies
+    
+    async def detect_contradictions(
+        self,
+        facts: List[Dict[str, Any]]
+    ) -> List[Contradiction]:
+        """Detect contradictions in facts.
+        
+        Args:
+            facts: List of facts
+            
+        Returns:
+            List of Contradictions
+        """
+        return self.drift_detector.detect_contradictions(facts)

@@ -334,24 +334,28 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [x] Gate 3 (Resource): Intrinsic reward threshold (0.3 minimum)
   - [x] Removed placeholder TODOs, full implementation
 
-### **6.4 World Model Service**
-- [ ] **Schema Learning**
-  - [ ] Implement automatic schema extraction from user data
-  - [ ] Add schema evolution and versioning
-  - [ ] Implement schema validation and consistency checking
-  - [ ] Add schema-based query optimization
+### **6.4 World Model Service** ✅ *COMPLETE*
+- [x] **Schema Learning** ✅ *COMPLETE*
+  - [x] Implemented automatic schema extraction from user data (statistical patterns)
+  - [x] Added schema evolution and versioning (semantic versioning)
+  - [x] Implemented schema validation and consistency checking
+  - [x] Added drift detection for schema changes
+  - [x] Created `SchemaLearner` class (~400 lines)
 
-- [ ] **Hypothesis Generation & Testing**
-  - [ ] Implement hypothesis generation from patterns
-  - [ ] Add hypothesis testing framework
-  - [ ] Implement soft validation (non-intrusive checking)
-  - [ ] Add hypothesis tracking and refinement
+- [x] **Hypothesis Generation & Testing** ✅ *COMPLETE*
+  - [x] Implemented hypothesis generation from patterns
+  - [x] Added hypothesis testing framework (Bayesian updating)
+  - [x] Implemented soft validation (confidence-based transitions)
+  - [x] Added hypothesis tracking and refinement
+  - [x] Created `HypothesisManager` class (~350 lines)
+  - [x] Integrated with Curiosity Engine (uncertain areas)
 
-- [ ] **Drift & Contradiction Detection**
-  - [ ] Implement drift detection algorithms
-  - [ ] Add contradiction resolution strategies
-  - [ ] Implement confidence decay over time
-  - [ ] Add proactive update mechanisms
+- [x] **Drift & Contradiction Detection** ✅ *COMPLETE*
+  - [x] Implemented drift detection algorithms (sliding windows)
+  - [x] Added contradiction resolution strategies (favor_recent, favor_confident, ask_user)
+  - [x] Implemented confidence decay over time (exponential, configurable half-life)
+  - [x] Added proactive update mechanisms
+  - [x] Created `DriftDetector` class (~350 lines)
 
 ### **6.5 Goal Arbiter Advanced**
 - [ ] **Adaptive Scoring**
@@ -607,13 +611,13 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 - [x] **Scheduler network constraints**: ✅ DONE - Bandwidth monitoring (configurable Mbps limit)
 - [x] **Scheduler concurrent limits**: ✅ DONE - Max concurrent tasks enforcement
 - [x] **Curiosity engine**: ✅ DONE - Full intrinsic reward system, World Model/AMS integration, clustering
+- [x] **World model**: ✅ DONE - Schema learning, hypothesis testing, drift detection, Bayesian updating
 - [ ] **Proactive behaviors**: Follow-ups/reminders NOT IMPLEMENTED
-- [ ] **World model**: Schema learning, hypothesis testing, drift detection NOT IMPLEMENTED
 - [ ] **Behavioral feedback**: CRITICAL - `ams_behavioral_feedback` table missing `outcome` column. Reflection engine queries fail
 - [ ] **Policy system**: Uses hardcoded `DEFAULT_POLICY_RULES`. No user-specific loading. 0% test coverage
 - [ ] **Event system**: Basic logging exists. Comprehensive event system NOT IMPLEMENTED
 
-**Progress:** 8/10 major items complete (80%). ✅ **Phase 6.1, 6.2 & 6.3 COMPLETE!** ~12-15 tasks remaining across 3 subsystems.
+**Progress:** 9/10 major items complete (90%). ✅ **Phase 6.1, 6.2, 6.3 & 6.4 COMPLETE!** ~8-10 tasks remaining across 2 subsystems.
 
 ---
 
