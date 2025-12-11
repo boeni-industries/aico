@@ -138,6 +138,15 @@ class ContextAssembler:
                 except Exception as e:
                     logger.warning(f"Behavioral memory context retrieval failed: {e}")
             
+            # 4.3 Get agency lessons (self-reflection insights)
+            if self.db_connection:
+                try:
+                    lesson_items = await self._get_agency_lessons(user_id, current_message)
+                    all_items.extend(lesson_items or [])
+                    logger.debug(f"Retrieved {len(lesson_items or [])} agency lessons")
+                except Exception as e:
+                    logger.warning(f"Agency lesson retrieval failed: {e}")
+            
             # 4.5 Get knowledge graph context (entities and relationships)
             # Uses libSQL for structured queries (no embeddings needed)
             kg_context = {}
@@ -416,3 +425,69 @@ class ContextAssembler:
         except Exception as e:
             logger.error(f"Failed to get user context: {e}")
             return {"user_id": user_id, "context_strength": 0.0}
+    
+    async def _get_agency_lessons(self, user_id: str, current_message: str) -> List[ContextItem]:
+        """
+        Retrieve relevant agency lessons for conversation context.
+        
+        Queries active lessons from the agency_lessons table and returns them
+        as ContextItems so they can be included in conversation context.
+        
+        Args:
+            user_id: User ID
+            current_message: Current message text for relevance filtering
+            
+        Returns:
+            List of ContextItems containing lesson information
+        """
+        items = []
+        
+        try:
+            # Query active lessons from database
+            def _query_lessons():
+                with self.db_connection:
+                    return self.db_connection.execute(
+                        """SELECT lesson_id, lesson_type, target_kind, target_id, 
+                                  description, confidence, created_at
+                           FROM agency_lessons
+                           WHERE user_id = ? 
+                             AND status = 'active'
+                             AND confidence >= 0.7
+                           ORDER BY created_at DESC
+                           LIMIT 5""",
+                        (user_id,)
+                    ).fetchall()
+            
+            rows = await asyncio.to_thread(_query_lessons)
+            
+            # Convert to ContextItems
+            for row in rows:
+                lesson_type = row[1]
+                target_kind = row[2]
+                target_id = row[3]
+                description = row[4]
+                confidence = row[5]
+                created_at = row[6]
+                
+                # Create context item
+                item = ContextItem(
+                    content=f"[Lesson: {lesson_type}] {description}",
+                    source="agency_lessons",
+                    timestamp=datetime.fromisoformat(created_at) if created_at else datetime.utcnow(),
+                    relevance_score=confidence,  # Use lesson confidence as relevance
+                    metadata={
+                        "lesson_id": row[0],
+                        "lesson_type": lesson_type,
+                        "target_kind": target_kind,
+                        "target_id": target_id,
+                        "confidence": confidence,
+                    }
+                )
+                items.append(item)
+            
+            logger.info(f"Retrieved {len(items)} agency lessons for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve agency lessons: {e}", exc_info=True)
+        
+        return items

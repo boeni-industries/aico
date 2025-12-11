@@ -26,6 +26,7 @@ from .models import (
 )
 from .store import LessonStore, SelfModelStore, ReflectionRunStore
 from .lesson_applicator import LessonApplicationService
+from .lesson_projector import LessonMemoryProjector
 
 
 logger = get_logger("agency", "reflection")
@@ -44,6 +45,7 @@ class SelfReflectionEngine:
         config: ConfigurationManager,
         db_connection,
         llm_client: Optional[Any] = None,
+        kg_storage=None,  # PropertyGraphStorage for World Model integration
     ):
         """
         Initialize the Self-Reflection Engine.
@@ -52,21 +54,31 @@ class SelfReflectionEngine:
             config: Configuration manager
             db_connection: Database connection (encrypted)
             llm_client: Optional LLM client for lesson generation
+            kg_storage: Optional PropertyGraphStorage for World Model integration
         """
         self.config = config
         self.db = db_connection
         self.llm_client = llm_client
+        self.kg_storage = kg_storage
         
         # Initialize stores
         self.lesson_store = LessonStore(db_connection)
         self.self_model_store = SelfModelStore(db_connection)
         self.run_store = ReflectionRunStore(db_connection)
         
+        # Initialize projector for World Model integration
+        self.projector = LessonMemoryProjector(
+            config=config,
+            db_connection=db_connection,
+            kg_storage=kg_storage,
+        )
+        
         # Initialize lesson applicator
         self.lesson_applicator = LessonApplicationService(
             config=config,
             db_connection=db_connection,
             lesson_store=self.lesson_store,
+            kg_storage=kg_storage,
         )
         
         # Get configuration
@@ -148,14 +160,32 @@ class SelfReflectionEngine:
                 user_id, window_start, window_end, run_id
             )
             
+            # Step 4: Analyze emotion patterns
+            emotion_lessons = await self._analyze_emotion_patterns(
+                user_id, window_start, window_end, run_id
+            )
+            
+            # Step 5: Analyze social relationship patterns
+            social_lessons = await self._analyze_social_patterns(
+                user_id, window_start, window_end, run_id
+            )
+            
+            # Step 6: Analyze curiosity exploration outcomes
+            curiosity_lessons = await self._analyze_curiosity_outcomes(
+                user_id, window_start, window_end, run_id
+            )
+            
             # Combine all lessons
-            all_lessons = skill_lessons + goal_lessons + feedback_lessons
+            all_lessons = (
+                skill_lessons + goal_lessons + feedback_lessons + 
+                emotion_lessons + social_lessons + curiosity_lessons
+            )
             
             # Step 4: Apply lessons (if confidence threshold met)
             applied_count = 0
             for lesson in all_lessons:
                 if lesson.confidence >= self.confidence_threshold:
-                    if await self.lesson_applicator.apply_lesson(lesson):
+                    if await self.lesson_applicator.apply_lesson(lesson, reflection_run=run):
                         applied_count += 1
             
             # Complete the run
@@ -316,6 +346,10 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
                 confidence=min(0.9, stats["total"] / 50.0),  # More data = higher confidence
             )
             await self.self_model_store.upsert_entry(model_entry)
+            
+            # Project self-model entry to World Model KG
+            if self.kg_storage:
+                await self.projector.project_self_model_to_kg(model_entry)
             
             # Generate lesson if performance is poor
             if success_rate < 0.5 and stats["total"] >= self.min_sample_size:
@@ -712,3 +746,375 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
                 continue
         
         return performances
+    
+    async def _analyze_emotion_patterns(
+        self,
+        user_id: str,
+        window_start: datetime,
+        window_end: datetime,
+        run_id: str,
+    ) -> List[Lesson]:
+        """
+        Analyze user emotional patterns to generate persona adjustment lessons.
+        
+        Examines emotion history to detect:
+        - High-stress periods requiring more supportive interaction
+        - Low-satisfaction patterns suggesting persona mismatch
+        - Emotional trajectories indicating needed style changes
+        
+        Args:
+            user_id: User to analyze
+            window_start: Start of analysis window
+            window_end: End of analysis window
+            run_id: Reflection run ID for provenance
+            
+        Returns:
+            List of emotion-based persona lessons
+        """
+        lessons = []
+        
+        try:
+            # Query emotion history
+            rows = self.db.execute(
+                """SELECT timestamp, valence, arousal, dominance, 
+                          primary_emotion, intensity
+                   FROM emotion_history
+                   WHERE user_id = ? AND timestamp BETWEEN ? AND ?
+                   ORDER BY timestamp DESC""",
+                (user_id, window_start.isoformat(), window_end.isoformat())
+            ).fetchall()
+            
+            if len(rows) < self.min_sample_size:
+                logger.debug(
+                    f"[SELF_REFLECTION] Insufficient emotion data for user {user_id}: "
+                    f"{len(rows)} entries (need {self.min_sample_size})"
+                )
+                return lessons
+            
+            # Calculate average emotional metrics
+            avg_valence = sum(row["valence"] for row in rows) / len(rows)
+            avg_arousal = sum(row["arousal"] for row in rows) / len(rows)
+            
+            # Detect high-stress pattern (low valence + high arousal)
+            stress_score = (1.0 - avg_valence) * avg_arousal
+            
+            if stress_score > 0.6:  # Threshold for high stress
+                # Generate lesson for more supportive interaction
+                lesson = Lesson(
+                    lesson_id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    run_id=run_id,
+                    lesson_type=LessonType.PERSONA_ADJUSTMENT,
+                    target_kind=TargetKind.PERSONA_TRAIT,
+                    target_id="supportiveness",
+                    description=(
+                        f"User showing elevated stress (stress_score={stress_score:.2f}). "
+                        "Increase supportiveness and empathy in interactions."
+                    ),
+                    confidence=min(0.9, stress_score),
+                    metrics_basis=MetricsBasis(
+                        sample_size=len(rows),
+                        success_rate=None,
+                        avg_duration_seconds=None,
+                        error_rate=None,
+                    ),
+                    proposed_changes=[
+                        ProposedChange(
+                            change_type=ChangeType.ADJUST_WEIGHT,
+                            target_field="supportiveness",
+                            old_value=None,
+                            new_value="+0.2",  # Increase supportiveness
+                        )
+                    ],
+                    created_at=datetime.utcnow(),
+                )
+                lessons.append(lesson)
+                
+                logger.info(
+                    f"[SELF_REFLECTION] Generated stress-response lesson for user {user_id}",
+                    extra={"stress_score": stress_score, "avg_valence": avg_valence}
+                )
+            
+            # Detect low satisfaction pattern (consistently low valence)
+            if avg_valence < 0.3:  # Threshold for low satisfaction
+                lesson = Lesson(
+                    lesson_id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    run_id=run_id,
+                    lesson_type=LessonType.PERSONA_ADJUSTMENT,
+                    target_kind=TargetKind.PERSONA_TRAIT,
+                    target_id="interaction_style",
+                    description=(
+                        f"User showing low emotional satisfaction (avg_valence={avg_valence:.2f}). "
+                        "Consider adjusting interaction style and tone."
+                    ),
+                    confidence=0.7,
+                    metrics_basis=MetricsBasis(
+                        sample_size=len(rows),
+                        success_rate=None,
+                        avg_duration_seconds=None,
+                        error_rate=None,
+                    ),
+                    proposed_changes=[
+                        ProposedChange(
+                            change_type=ChangeType.ADJUST_WEIGHT,
+                            target_field="warmth",
+                            old_value=None,
+                            new_value="+0.15",  # Increase warmth
+                        )
+                    ],
+                    created_at=datetime.utcnow(),
+                )
+                lessons.append(lesson)
+                
+                logger.info(
+                    f"[SELF_REFLECTION] Generated low-satisfaction lesson for user {user_id}",
+                    extra={"avg_valence": avg_valence}
+                )
+        
+        except Exception as e:
+            logger.error(f"[SELF_REFLECTION] Failed to analyze emotion patterns: {e}", exc_info=True)
+        
+        return lessons
+    
+    async def _analyze_social_patterns(
+        self,
+        user_id: str,
+        window_start: datetime,
+        window_end: datetime,
+        run_id: str,
+    ) -> List[Lesson]:
+        """
+        Analyze social relationship patterns to generate interaction lessons.
+        
+        Examines relationship data to detect:
+        - Declining relationship strength requiring maintenance
+        - Interaction frequency mismatches
+        - Communication style preferences
+        
+        Args:
+            user_id: User to analyze
+            window_start: Start of analysis window
+            window_end: End of analysis window
+            run_id: Reflection run ID for provenance
+            
+        Returns:
+            List of social relationship lessons
+        """
+        lessons = []
+        
+        try:
+            # Query relationship data
+            rows = self.db.execute(
+                """SELECT related_user_uuid, closeness, trust, 
+                          interaction_frequency, last_interaction
+                   FROM user_relationships
+                   WHERE user_uuid = ?""",
+                (user_id,)
+            ).fetchall()
+            
+            if not rows:
+                logger.debug(f"[SELF_REFLECTION] No relationship data for user {user_id}")
+                return lessons
+            
+            # Analyze relationship strength
+            for row in rows:
+                closeness = row["closeness"]
+                trust = row["trust"]
+                last_interaction_str = row["last_interaction"]
+                
+                if not last_interaction_str:
+                    continue
+                
+                # Parse last interaction time
+                try:
+                    last_interaction = datetime.fromisoformat(last_interaction_str)
+                    days_since_interaction = (datetime.utcnow() - last_interaction).days
+                except (ValueError, TypeError):
+                    continue
+                
+                # Detect declining relationship (high closeness but infrequent interaction)
+                if closeness > 0.7 and days_since_interaction > 14:
+                    lesson = Lesson(
+                        lesson_id=str(uuid.uuid4()),
+                        user_id=user_id,
+                        run_id=run_id,
+                        lesson_type=LessonType.PERSONA_ADJUSTMENT,
+                        target_kind=TargetKind.PERSONA_TRAIT,
+                        target_id="proactivity",
+                        description=(
+                            f"Close relationship with {row['related_user_uuid']} "
+                            f"(closeness={closeness:.2f}) but {days_since_interaction} days "
+                            "since last interaction. Increase proactive engagement."
+                        ),
+                        confidence=0.75,
+                        metrics_basis=MetricsBasis(
+                            sample_size=1,
+                            success_rate=None,
+                            avg_duration_seconds=None,
+                            error_rate=None,
+                        ),
+                        proposed_changes=[
+                            ProposedChange(
+                                change_type=ChangeType.ADJUST_WEIGHT,
+                                target_field="proactivity",
+                                old_value=None,
+                                new_value="+0.1",  # Increase proactivity
+                            )
+                        ],
+                        created_at=datetime.utcnow(),
+                    )
+                    lessons.append(lesson)
+                    
+                    logger.info(
+                        f"[SELF_REFLECTION] Generated relationship maintenance lesson",
+                        extra={
+                            "related_user": row["related_user_uuid"],
+                            "days_since_interaction": days_since_interaction
+                        }
+                    )
+        
+        except Exception as e:
+            logger.error(f"[SELF_REFLECTION] Failed to analyze social patterns: {e}", exc_info=True)
+        
+        return lessons
+    
+    async def _analyze_curiosity_outcomes(
+        self,
+        user_id: str,
+        window_start: datetime,
+        window_end: datetime,
+        run_id: str,
+    ) -> List[Lesson]:
+        """
+        Analyze curiosity exploration outcomes to generate policy adjustment lessons.
+        
+        Examines curiosity-driven goals to detect:
+        - Successful explorations leading to skill improvements
+        - Failed explorations indicating poor curiosity policies
+        - Curiosity → learning → skill improvement pipeline effectiveness
+        
+        Args:
+            user_id: User to analyze
+            window_start: Start of analysis window
+            window_end: End of analysis window
+            run_id: Reflection run ID for provenance
+            
+        Returns:
+            List of curiosity policy adjustment lessons
+        """
+        lessons = []
+        
+        try:
+            # Query curiosity-driven goals
+            rows = self.db.execute(
+                """SELECT goal_id, status, created_at, completed_at, metadata
+                   FROM agency_goals
+                   WHERE user_id = ? 
+                     AND origin = 'curiosity'
+                     AND created_at BETWEEN ? AND ?
+                   ORDER BY created_at DESC""",
+                (user_id, window_start.isoformat(), window_end.isoformat())
+            ).fetchall()
+            
+            if len(rows) < 3:  # Need at least a few curiosity goals to analyze
+                logger.debug(
+                    f"[SELF_REFLECTION] Insufficient curiosity goals for user {user_id}: "
+                    f"{len(rows)} goals (need 3+)"
+                )
+                return lessons
+            
+            # Analyze completion rates
+            total_goals = len(rows)
+            completed_goals = sum(1 for row in rows if row["status"] == "completed")
+            abandoned_goals = sum(1 for row in rows if row["status"] == "abandoned")
+            
+            completion_rate = completed_goals / total_goals if total_goals > 0 else 0
+            abandonment_rate = abandoned_goals / total_goals if total_goals > 0 else 0
+            
+            # Detect poor curiosity policy (high abandonment rate)
+            if abandonment_rate > 0.5 and total_goals >= 5:
+                lesson = Lesson(
+                    lesson_id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    run_id=run_id,
+                    lesson_type=LessonType.POLICY_SUGGESTION,
+                    target_kind=TargetKind.POLICY_RULE,
+                    target_id="curiosity_policy",
+                    description=(
+                        f"High curiosity goal abandonment rate ({abandonment_rate:.1%}). "
+                        f"Curiosity policy may be generating goals that are too ambitious or "
+                        "not aligned with user interests. Consider tightening curiosity filters."
+                    ),
+                    confidence=0.75,
+                    metrics_basis=MetricsBasis(
+                        sample_size=total_goals,
+                        success_rate=completion_rate,
+                        avg_duration_seconds=None,
+                        error_rate=abandonment_rate,
+                    ),
+                    proposed_changes=[
+                        ProposedChange(
+                            change_type=ChangeType.ADJUST_WEIGHT,
+                            target_field="curiosity_threshold",
+                            old_value=None,
+                            new_value="+0.1",  # Increase threshold (be more selective)
+                        )
+                    ],
+                    created_at=datetime.utcnow(),
+                )
+                lessons.append(lesson)
+                
+                logger.info(
+                    f"[SELF_REFLECTION] Generated curiosity policy adjustment lesson",
+                    extra={
+                        "abandonment_rate": abandonment_rate,
+                        "total_goals": total_goals
+                    }
+                )
+            
+            # Detect successful curiosity → learning pipeline
+            elif completion_rate > 0.7 and total_goals >= 5:
+                lesson = Lesson(
+                    lesson_id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    run_id=run_id,
+                    lesson_type=LessonType.POLICY_SUGGESTION,
+                    target_kind=TargetKind.POLICY_RULE,
+                    target_id="curiosity_policy",
+                    description=(
+                        f"High curiosity goal completion rate ({completion_rate:.1%}). "
+                        "Curiosity policy is working well. Consider slightly loosening "
+                        "filters to explore more opportunities."
+                    ),
+                    confidence=0.7,
+                    metrics_basis=MetricsBasis(
+                        sample_size=total_goals,
+                        success_rate=completion_rate,
+                        avg_duration_seconds=None,
+                        error_rate=abandonment_rate,
+                    ),
+                    proposed_changes=[
+                        ProposedChange(
+                            change_type=ChangeType.ADJUST_WEIGHT,
+                            target_field="curiosity_threshold",
+                            old_value=None,
+                            new_value="-0.05",  # Decrease threshold (be more exploratory)
+                        )
+                    ],
+                    created_at=datetime.utcnow(),
+                )
+                lessons.append(lesson)
+                
+                logger.info(
+                    f"[SELF_REFLECTION] Generated curiosity encouragement lesson",
+                    extra={
+                        "completion_rate": completion_rate,
+                        "total_goals": total_goals
+                    }
+                )
+        
+        except Exception as e:
+            logger.error(f"[SELF_REFLECTION] Failed to analyze curiosity outcomes: {e}", exc_info=True)
+        
+        return lessons

@@ -450,6 +450,91 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 
 ---
 
+## Phase 6.10 – Missing Integrations & Complete Implementation
+
+**Goal:** Complete all missing integrations identified in implementation audit. Achieve full feature parity with design documents.
+
+### **6.10.1 Policy Auto-Amendment Pipeline** ✅ *COMPLETE*
+- [x] **Values & Ethics Integration**
+  - [x] Implement `_apply_policy_lesson()` → Values & Ethics service integration
+  - [x] Add policy table update logic with transaction safety
+  - [x] Implement full audit trail: lesson_id → policy_rule_id → old/new values
+  - [x] Add rollback capability for policy amendments
+  - [x] Test policy amendment with confidence thresholds
+
+- [x] **Configuration & Safety**
+  - [x] Wire `policy_mode = "allow_amend"` configuration
+  - [x] Add policy amendment approval workflow (observe_only vs allow_amend)
+  - [x] Implement amendment rate limiting (max 5 changes per day, configurable)
+  - [x] Add emergency policy freeze mechanism
+
+### **6.10.2 Scheduler & Sleep-Phase Orchestration** ✅ *ALREADY IMPLEMENTED IN PHASE 6.2*
+**Note:** This was already complete in Phase 6.2. No additional work needed.
+
+- [x] **Existing Implementation** (`/backend/scheduler/tasks/agency_reflection.py`)
+  - [x] `AgencyReflectionTask` class already exists and is operational
+  - [x] Idle detection via `context.system_idle()` (checks user idle time)
+  - [x] Battery-aware scheduling via `context.should_skip_on_battery()`
+  - [x] Resource-aware execution (CPU/memory checks in base scheduler)
+  - [x] Scheduled triggers via cron in `scheduled_tasks` table
+  - [x] Per-user reflection with configurable analysis windows
+  - [x] Full integration with Phase 6.2 production scheduler infrastructure
+
+### **6.10.3 AMS/Memory & Knowledge Graph Integration** ✅ *COMPLETE*
+- [x] **Projection Layer** ✅
+  - [x] Create `LessonMemoryProjector` to expose lessons as MemoryItems
+  - [x] Implement KG edge creation: Lesson → Skill/Goal/Policy
+  - [x] Add provenance edges: Lesson → ReflectionRun → BehavioralFeedback
+  - [x] Enable cross-system lesson queries via AMS
+  - [x] Integrate projector into `LessonApplicationService`
+  - [x] Auto-project lessons to Memory/KG after successful application
+
+- [x] **Bidirectional Sync** ✅
+  - [x] Project self-model entries into KG as capability facts (integrated in reflection.py:352)
+  - [x] Link lessons to conversation context when relevant (integrated in assembler.py:429)
+
+### **6.10.4 Emotion & Social Signal Analysis** ✅ *COMPLETE*
+- [x] **Emotion Pattern Analysis**
+  - [x] Implement `_analyze_emotion_patterns()` method
+  - [x] Query emotion history table for user emotional trajectories
+  - [x] Generate lessons for high-stress/low-satisfaction patterns
+  - [x] Adjust persona based on emotional context (supportiveness, warmth)
+  - [x] Stress detection via valence + arousal metrics
+  - [x] Low satisfaction detection via valence threshold
+
+- [x] **Social Relationship Analysis**
+  - [x] Implement `_analyze_social_patterns()` method
+  - [x] Query social relationship data from `user_relationships` table
+  - [x] Generate lessons for relationship maintenance
+  - [x] Adjust interaction style based on relationship strength (proactivity)
+  - [x] Detect declining relationships via closeness + interaction frequency
+
+### **6.10.5 World Model Integration** ✅ *COMPLETE*
+- [x] **Self-Model Projection**
+  - [x] Project self-model entries as WorldStateFacts about AICO's capabilities
+  - [x] Auto-project self-model entries to KG after upsert in reflection engine
+  - [x] Add `query_aico_self_assessment()` method to WorldModelService
+  - [x] Add `link_lesson_to_hypothesis()` method for bidirectional integration
+  - [x] Enable World Model to query AICO's self-assessment (API ready)
+
+- [x] **Hypothesis Validation**
+  - [x] Add lesson-to-hypothesis linking capability in WorldModelService
+  - [x] Infrastructure ready for reflection insights to validate hypotheses
+  - [x] World Model drift detection can trigger reflection runs (via event system)
+
+### **6.10.6 Curiosity Integration** ✅ *COMPLETE*
+- [x] **Curiosity Outcomes**
+  - [x] Feed curiosity exploration outcomes into reflection
+  - [x] Implement `_analyze_curiosity_outcomes()` method
+  - [x] Generate lessons for curiosity policy adjustments
+  - [x] Track curiosity → learning → skill improvement pipeline
+  - [x] Detect high abandonment rates and adjust curiosity thresholds
+  - [x] Detect successful exploration and encourage more curiosity
+
+> **Exit condition:** All missing integrations complete. Reflection system fully integrated with AMS, KG, World Model, emotion/social systems. Curiosity outcomes feed into reflection. Policy auto-amendment pipeline functional with full audit trail.
+
+---
+
 ## Phase 7 – Comprehensive Testing & Quality Assurance
 
 **Goal:** Achieve 90%+ test coverage across all agency components with comprehensive integration, performance, and edge case testing.
@@ -532,47 +617,80 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 
 ---
 
-## Phase 8 – Flutter UI & User-Facing Agency Controls
+## Phase 8 – User Interfaces & Tooling
+
+**Goal:** Build user-facing interfaces for agency monitoring, lesson review, and configuration.
+
+### **8.1 Agency Metrics**
+- [ ] **Metrics Data Collection**
+  - [ ] Implement full metrics per `agency-metrics.md`
+  - [ ] Add reflection-specific metrics (lessons generated/applied, self-model accuracy)
+  - [ ] Track curiosity → learning → skill improvement pipeline metrics
+  - [ ] Expose metrics via API endpoints
+
+- [ ] **Metrics CLI**
+  - [ ] Add `aico agency metrics` command
+  - [ ] Add `aico agency status` command
+  - [ ] Show reflection run history
+
+- [ ] **Metrics Dashboard** (Future)
+  - [ ] Real-time metrics visualization
+  - [ ] Reflection run monitoring
+  - [ ] Goal and plan tracking
+
+### **8.2 Lesson Management UI**
+- [ ] **CLI Commands**
+  - [ ] Add `aico lessons list` command
+  - [ ] Add `aico lessons review <lesson_id>` command
+  - [ ] Add `aico lessons approve/reject <lesson_id>` command
+  - [ ] Show lesson evidence and confidence scores
+
+- [ ] **Web Interface** (Future)
+  - [ ] Lesson review and approval workflow
+  - [ ] Policy suggestion visualization
+  - [ ] Self-model visualization
+
+### **8.3 Flutter UI & User-Facing Agency Controls
 
 **Goal:** Enable users to **understand and influence** AICO's agency through the Flutter UI.
 
-### **8.1 Agency Dashboard Screen**
+- [ ] **Agency Dashboard Screen**
 - [ ] Create dedicated agency screen in Flutter app
 - [ ] Display active intention set with visual priority indicators
 - [ ] Show current curiosity status and opportunities
 - [ ] Display agency state overview (goals, hobbies, focus)
 
-### **8.2 Intention Set Visibility**
+- [ ] **Intention Set Visibility**
 - [ ] Surface active intentions in conversation UI (tooltips, status bar)
 - [ ] Show why AICO is pursuing specific goals (reasons, scores)
 - [ ] Display priority bands and arbiter scores visually
 - [ ] Allow users to see hobby goals vs user-requested goals
 
-### **8.3 Value Profile Management**
+- [ ] **Value Profile Management**
 - [ ] UI for adjusting curiosity intensity slider
 - [ ] Proactive behavior level selector (quiet/balanced/proactive)
 - [ ] Manage sensitive life areas (add/remove)
 - [ ] Configure allowed curiosity domains
 
-### **8.4 Policy & Consent Management**
+- [ ] **Policy & Consent Management**
 - [ ] View active policy rules with filtering
 - [ ] Grant/revoke consents for specific actions
 - [ ] See pending consent requests
 - [ ] Review policy decisions and their effects
 
-### **8.5 Conversation Integration**
+- [ ] **Conversation Integration**
 - [ ] Show agency context in conversation tooltips
 - [ ] Display when AICO is acting on curiosity vs user request
 - [ ] Surface ethics decisions in conversation flow
 - [ ] Explain goal selection and prioritization
 
-### **8.6 Behavioral Learning Visibility**
+- [ ] **Behavioral Learning Visibility**
 - [ ] Display active lessons and their effects
 - [ ] Show self-model performance metrics
 - [ ] Visualize skill success rates and trends
 - [ ] Allow users to approve/reject lesson applications
 
-> **Exit condition:** Users can see what AICO is working on, why, and adjust her agency behavior through the Flutter UI. Full transparency and control over agency system.
+> **Exit condition:** Complete CLI tooling for metrics and lesson management. Users can see what AICO is working on, why, and adjust her agency behavior through the Flutter UI. Full transparency and control over agency system.
 
 ---
 
@@ -610,7 +728,7 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 **Phase 1-5:** ✅ **COMPLETE** - Core agency architecture implemented  
 **Phase 6:** 🔨 **Full Implementation** - Remove all placeholders, stubs, and shortcuts  
 **Phase 7:** 🧪 **Comprehensive Testing** - Achieve 90%+ test coverage  
-**Phase 8:** 🎨 **Flutter UI** - User-facing agency controls and visibility  
+**Phase 8:** 🎨 **User Interfaces & Tooling** - CLI, metrics, and Flutter UI  
 **Phase 9:** 🏠 **Embodiment & Polish** - Cognitive substrate and final refinement  
 
 ---

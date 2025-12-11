@@ -477,6 +477,10 @@ class ConfigurationManager:
         
     def _persist_configuration(self) -> None:
         """Persist current configuration to encrypted store."""
+        # Skip persistence in test mode to prevent polluting user config
+        if os.environ.get('AICO_TEST_MODE') == '1':
+            return
+        
         runtime_file = self.user_config_dir / "runtime.yaml"  # Use platform-specific user config dir
         
         # Extract runtime changes (priority 5 source)

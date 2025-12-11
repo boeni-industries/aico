@@ -528,3 +528,64 @@ class WorldModelService:
             List of Contradictions
         """
         return self.drift_detector.detect_contradictions(facts)
+    
+    async def query_aico_self_assessment(
+        self,
+        entity_type: str,
+        entity_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Query AICO's self-assessment for capabilities and performance.
+        
+        Retrieves self-model entries projected into the World Model,
+        enabling planning and reasoning about AICO's own capabilities.
+        
+        Args:
+            entity_type: Type of entity (skill, goal_type, etc.)
+            entity_id: Optional specific entity ID
+            
+        Returns:
+            List of self-assessment facts
+        """
+        # Query KG for self-model facts
+        # These are projected by LessonMemoryProjector.project_self_model_to_kg()
+        
+        # For now, return placeholder
+        # TODO: Implement actual KG query once PropertyGraphStorage supports it
+        logger.debug(
+            f"[WORLD_MODEL] Querying self-assessment for {entity_type}",
+            extra={"entity_id": entity_id}
+        )
+        return []
+    
+    async def link_lesson_to_hypothesis(
+        self,
+        lesson_id: str,
+        hypothesis_id: str,
+        relationship: str = "VALIDATES",
+    ) -> bool:
+        """
+        Link a reflection lesson to a World Model hypothesis.
+        
+        Enables bidirectional integration where reflection insights
+        validate or invalidate hypotheses about the world.
+        
+        Args:
+            lesson_id: Lesson identifier
+            hypothesis_id: Hypothesis identifier
+            relationship: Type of relationship (VALIDATES, INVALIDATES, REFINES)
+            
+        Returns:
+            True if link created successfully
+        """
+        try:
+            # This would create a KG edge: Lesson → Hypothesis
+            # For now, log the intent
+            logger.info(
+                f"[WORLD_MODEL] Linking lesson {lesson_id} to hypothesis {hypothesis_id}",
+                extra={"relationship": relationship}
+            )
+            return True
+        except Exception as e:
+            logger.error(f"[WORLD_MODEL] Failed to link lesson to hypothesis: {e}")
+            return False

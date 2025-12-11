@@ -30,13 +30,16 @@ class TestEncryptedFile:
     
     @pytest.fixture
     def key_manager(self):
-        """Create test key manager."""
-        # Use test configuration
-        config = ConfigurationManager()
-        # In a real app, config would be initialized properly
-        # For this test, we ensure the required value is present
-        if not config.get("security.keyring_service_name"):
-            config.set("security.keyring_service_name", "AICO_Test")
+        """Create test key manager with isolated configuration."""
+        # Create a NEW config instance for tests (not the singleton)
+        # This prevents polluting the global config state
+        from unittest.mock import Mock
+        
+        # Create a mock config that returns test service name
+        config = Mock()
+        config.get = Mock(side_effect=lambda key, default=None: {
+            "security.keyring_service_name": "AICO_Test"
+        }.get(key, default))
         
         km = AICOKeyManager(config)
         
