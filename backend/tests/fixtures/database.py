@@ -76,6 +76,14 @@ async def test_user(test_db):
     # Temporarily disable foreign keys for cleanup
     test_db.execute("PRAGMA foreign_keys = OFF")
     
+    # Delete Phase 6.9 data (workflows & events)
+    test_db.execute("DELETE FROM event_metrics WHERE metric_name LIKE 'test%'", ())
+    test_db.execute("DELETE FROM event_replay_sessions WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM event_triggers", ())
+    test_db.execute("DELETE FROM agency_events_log WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM workflow_stages WHERE execution_id IN (SELECT execution_id FROM workflow_executions WHERE user_id = ?)", (user_uuid,))
+    test_db.execute("DELETE FROM workflow_executions WHERE user_id = ?", (user_uuid,))
+    
     # Delete Phase 6.8 data (policy & ethics)
     test_db.execute("DELETE FROM policy_conflicts WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM ethics_gate_audit WHERE user_id = ?", (user_uuid,))

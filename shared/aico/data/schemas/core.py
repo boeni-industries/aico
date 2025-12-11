@@ -2140,5 +2140,157 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_policy_rules_user",
             "DROP TABLE IF EXISTS agency_policy_rules",
         ]
+    ),
+    
+    # Schema Version 30: Phase 6.9 - Integration & Data Flow
+    30: SchemaVersion(
+        version=30,
+        name="Agency Phase 6.9 - Integration & Data Flow (Workflows & Events)",
+        description="Add tables for end-to-end workflow tracking, comprehensive event logging, and event-driven triggers",
+        sql_statements=[
+            # Workflow executions table
+            """CREATE TABLE IF NOT EXISTS workflow_executions (
+                execution_id TEXT PRIMARY KEY,
+                workflow_type TEXT NOT NULL,  -- goal_lifecycle, curiosity_to_goal, reflection_cycle, world_model_update
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',  -- running, completed, failed, paused
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                current_stage TEXT,
+                total_stages INTEGER,
+                metadata TEXT,  -- JSON: workflow-specific data
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_executions_user ON workflow_executions(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_executions_type ON workflow_executions(workflow_type, status)",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_executions_status ON workflow_executions(status)",
+            
+            # Workflow stages table
+            """CREATE TABLE IF NOT EXISTS workflow_stages (
+                stage_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                stage_name TEXT NOT NULL,
+                stage_order INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed, skipped
+                started_at TEXT,
+                completed_at TEXT,
+                input_data TEXT,  -- JSON
+                output_data TEXT,  -- JSON
+                error_message TEXT,
+                retry_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (execution_id) REFERENCES workflow_executions(execution_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_stages_execution ON workflow_stages(execution_id, stage_order)",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_stages_status ON workflow_stages(status)",
+            
+            # Agency events table (comprehensive event log)
+            """CREATE TABLE IF NOT EXISTS agency_events_log (
+                event_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,  -- goal_created, plan_generated, skill_executed, feedback_received, etc.
+                event_category TEXT NOT NULL,  -- goal, plan, execution, feedback, curiosity, reflection, policy
+                source_component TEXT NOT NULL,  -- planner, arbiter, curiosity_engine, reflection_engine, etc.
+                entity_type TEXT,  -- goal, plan, skill, lesson, policy, etc.
+                entity_id TEXT,
+                event_data TEXT NOT NULL,  -- JSON: event-specific data
+                correlation_id TEXT,  -- For tracking related events
+                parent_event_id TEXT,  -- For event hierarchies
+                severity TEXT DEFAULT 'info',  -- debug, info, warning, error, critical
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (parent_event_id) REFERENCES agency_events_log(event_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_events_log_user ON agency_events_log(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_events_log_type ON agency_events_log(event_type, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_events_log_category ON agency_events_log(event_category)",
+            "CREATE INDEX IF NOT EXISTS idx_events_log_entity ON agency_events_log(entity_type, entity_id)",
+            "CREATE INDEX IF NOT EXISTS idx_events_log_correlation ON agency_events_log(correlation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_events_log_created ON agency_events_log(created_at)",
+            
+            # Event triggers table
+            """CREATE TABLE IF NOT EXISTS event_triggers (
+                trigger_id TEXT PRIMARY KEY,
+                trigger_name TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                event_category TEXT,
+                conditions TEXT,  -- JSON: conditions to match
+                action_type TEXT NOT NULL,  -- execute_workflow, send_notification, update_state, etc.
+                action_config TEXT NOT NULL,  -- JSON: action configuration
+                priority INTEGER DEFAULT 50,
+                active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_event_triggers_type ON event_triggers(event_type, active)",
+            "CREATE INDEX IF NOT EXISTS idx_event_triggers_category ON event_triggers(event_category, active)",
+            
+            # Event replay sessions table
+            """CREATE TABLE IF NOT EXISTS event_replay_sessions (
+                session_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                replay_name TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                event_filters TEXT,  -- JSON: filters applied
+                replay_speed REAL DEFAULT 1.0,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed
+                events_replayed INTEGER DEFAULT 0,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_replay_sessions_user ON event_replay_sessions(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_replay_sessions_status ON event_replay_sessions(status)",
+            
+            # Event metrics table
+            """CREATE TABLE IF NOT EXISTS event_metrics (
+                metric_id TEXT PRIMARY KEY,
+                metric_name TEXT NOT NULL,
+                metric_type TEXT NOT NULL,  -- counter, gauge, histogram, summary
+                event_type TEXT,
+                event_category TEXT,
+                time_bucket TEXT NOT NULL,  -- hourly, daily, weekly
+                bucket_start TEXT NOT NULL,
+                value REAL NOT NULL,
+                count INTEGER DEFAULT 1,
+                metadata TEXT,  -- JSON
+                created_at TEXT NOT NULL,
+                UNIQUE(metric_name, event_type, time_bucket, bucket_start)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_event_metrics_name ON event_metrics(metric_name, bucket_start)",
+            "CREATE INDEX IF NOT EXISTS idx_event_metrics_type ON event_metrics(event_type, bucket_start)",
+            "CREATE INDEX IF NOT EXISTS idx_event_metrics_bucket ON event_metrics(time_bucket, bucket_start)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_event_metrics_bucket",
+            "DROP INDEX IF EXISTS idx_event_metrics_type",
+            "DROP INDEX IF EXISTS idx_event_metrics_name",
+            "DROP TABLE IF EXISTS event_metrics",
+            "DROP INDEX IF EXISTS idx_replay_sessions_status",
+            "DROP INDEX IF EXISTS idx_replay_sessions_user",
+            "DROP TABLE IF EXISTS event_replay_sessions",
+            "DROP INDEX IF EXISTS idx_event_triggers_category",
+            "DROP INDEX IF EXISTS idx_event_triggers_type",
+            "DROP TABLE IF EXISTS event_triggers",
+            "DROP INDEX IF EXISTS idx_events_log_created",
+            "DROP INDEX IF EXISTS idx_events_log_correlation",
+            "DROP INDEX IF EXISTS idx_events_log_entity",
+            "DROP INDEX IF EXISTS idx_events_log_category",
+            "DROP INDEX IF EXISTS idx_events_log_type",
+            "DROP INDEX IF EXISTS idx_events_log_user",
+            "DROP TABLE IF EXISTS agency_events_log",
+            "DROP INDEX IF EXISTS idx_workflow_stages_status",
+            "DROP INDEX IF EXISTS idx_workflow_stages_execution",
+            "DROP TABLE IF EXISTS workflow_stages",
+            "DROP INDEX IF EXISTS idx_workflow_executions_status",
+            "DROP INDEX IF EXISTS idx_workflow_executions_type",
+            "DROP INDEX IF EXISTS idx_workflow_executions_user",
+            "DROP TABLE IF EXISTS workflow_executions",
+        ]
     )
 })

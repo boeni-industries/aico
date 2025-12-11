@@ -428,18 +428,23 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [x] Implemented ethics audit trail (`ethics_gate_audit` table) with processing time metrics
   - [x] Created `EnhancedEthicsGate` class integrating with PolicyManager
 
-### **6.9 Integration & Data Flow**
-- [ ] **End-to-End Workflows**
-  - [ ] Implement complete goal → plan → execution → feedback loop
-  - [ ] Add curiosity → opportunity → goal → hobby workflow
-  - [ ] Implement reflection → lesson → adjustment → validation cycle
-  - [ ] Add world model → hypothesis → validation → update flow
+### **6.9 Integration & Data Flow** ✅ *COMPLETE*
+- [x] **End-to-End Workflows** ✅ *COMPLETE*
+  - [x] Implemented complete goal → plan → execution → feedback loop (5 stages)
+  - [x] Added curiosity → opportunity → goal → hobby workflow (4 stages)
+  - [x] Implemented reflection → lesson → adjustment → validation cycle (4 stages)
+  - [x] Added world model → hypothesis → validation → update flow (4 stages)
+  - [x] Created `CompleteWorkflowExecutor` class with all 4 workflows fully implemented
+  - [x] All workflows include event logging with correlation IDs
 
-- [ ] **Event System**
-  - [ ] Implement comprehensive event logging
-  - [ ] Add event-driven triggers for agency components
-  - [ ] Implement event replay for debugging
-  - [ ] Add event-based metrics and monitoring
+- [x] **Event System** ✅ *COMPLETE*
+  - [x] Implemented comprehensive event logging (`agency_events_log` table)
+  - [x] Added event-driven triggers with callback system
+  - [x] Implemented event replay for debugging (`event_replay_sessions` table)
+  - [x] Added event-based metrics and monitoring (`event_metrics` table)
+  - [x] Created `EventSystem`, `EventReplaySystem`, and `EventMetricsCollector` classes
+  - [x] Support for event correlation, hierarchies, and filtering
+  - [x] Time-bucketed metric aggregations (hourly, daily, weekly)
 
 > **Exit condition:** Agency system is fully implemented with production-grade depth. NO placeholders, stubs, hardcoded values, or shortcuts remain. All components are fully functional, integrated, and production-ready.
 
