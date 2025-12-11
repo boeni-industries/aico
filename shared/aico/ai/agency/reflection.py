@@ -492,14 +492,17 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
         """
         lessons = []
         
-        # Query feedback events
-        rows = self.db.execute(
-            """SELECT event_category, payload
-               FROM feedback_events
-               WHERE user_uuid = ? AND timestamp BETWEEN ? AND ?
-               AND event_type = 'rating'""",
-            (user_id, window_start.isoformat(), window_end.isoformat())
-        ).fetchall()
+        # Query feedback events (reward is the rating in this table)
+        try:
+            rows = self.db.fetch_all(
+                """SELECT reward, reason, classified_categories
+                   FROM feedback_events
+                   WHERE user_id = ? AND timestamp BETWEEN ? AND ?""",
+                (user_id, window_start.isoformat(), window_end.isoformat())
+            )
+        except Exception as e:
+            logger.debug(f"[SELF_REFLECTION] Could not query feedback_events: {e}")
+            return lessons
         
         if len(rows) < self.min_sample_size:
             logger.debug(
@@ -508,15 +511,12 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
             )
             return lessons
         
-        # Analyze ratings
+        # Analyze ratings (reward column contains the rating)
         ratings = []
         for row in rows:
-            try:
-                payload = json.loads(row["payload"])
-                if "rating" in payload:
-                    ratings.append(payload["rating"])
-            except (json.JSONDecodeError, KeyError):
-                continue
+            if row["reward"] is not None:
+                # Reward is stored as integer, convert to rating scale
+                ratings.append(row["reward"])
         
         if ratings:
             avg_rating = sum(ratings) / len(ratings)

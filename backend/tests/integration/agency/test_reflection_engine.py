@@ -974,3 +974,226 @@ async def test_batch_lesson_application(agency_engine, test_user):
     for lesson in lessons:
         updated = await agency_engine.self_reflection.lesson_store.get_lesson(lesson.lesson_id)
         assert updated.applied_at is not None
+
+
+# ============================================================================
+# Additional Coverage Tests - Edge Cases & Error Handling
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_run_reflection_with_no_data(agency_engine, test_user):
+    """Test reflection run when no data exists."""
+    # Run reflection on fresh user with no history
+    result = await agency_engine.self_reflection.run_reflection(
+        user_id=test_user,
+        run_type=RunType.MANUAL
+    )
+    
+    # Should complete without errors
+    assert result is not None
+    assert result.status == RunStatus.COMPLETED
+    assert result.lessons_generated == 0  # No data = no lessons
+
+
+@pytest.mark.asyncio
+async def test_analyze_skill_performance_empty_window(agency_engine, test_user):
+    """Test skill performance analysis with empty time window."""
+    window_start = datetime.utcnow() - timedelta(days=7)
+    window_end = datetime.utcnow()
+    run_id = str(uuid.uuid4())
+    
+    lessons = await agency_engine.self_reflection._analyze_skill_performance(
+        user_id=test_user,
+        window_start=window_start,
+        window_end=window_end,
+        run_id=run_id
+    )
+    
+    # Should return empty list, not crash
+    assert isinstance(lessons, list)
+    assert len(lessons) == 0
+
+
+@pytest.mark.asyncio
+async def test_analyze_goal_patterns_no_goals(agency_engine, test_user):
+    """Test goal pattern analysis when user has no goals."""
+    window_start = datetime.utcnow() - timedelta(days=30)
+    window_end = datetime.utcnow()
+    run_id = str(uuid.uuid4())
+    
+    lessons = await agency_engine.self_reflection._analyze_goal_patterns(
+        user_id=test_user,
+        window_start=window_start,
+        window_end=window_end,
+        run_id=run_id
+    )
+    
+    assert isinstance(lessons, list)
+    assert len(lessons) == 0
+
+
+@pytest.mark.asyncio
+async def test_analyze_user_feedback_no_feedback(agency_engine, test_user):
+    """Test user feedback analysis with no feedback data."""
+    window_start = datetime.utcnow() - timedelta(days=7)
+    window_end = datetime.utcnow()
+    run_id = str(uuid.uuid4())
+    
+    lessons = await agency_engine.self_reflection._analyze_user_feedback(
+        user_id=test_user,
+        window_start=window_start,
+        window_end=window_end,
+        run_id=run_id
+    )
+    
+    assert isinstance(lessons, list)
+    assert len(lessons) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_active_lessons_with_type_filter(agency_engine, test_user):
+    """Test filtering active lessons by type."""
+    from aico.ai.agency.models import Lesson, ProposedChange, ChangeType
+    
+    # Create lessons of different types
+    skill_lesson = Lesson(
+        lesson_id=str(uuid.uuid4()),
+        user_id=test_user,
+        lesson_type=LessonType.SKILL_TUNING,
+        target_kind=TargetKind.SKILL,
+        target_id="skill1",
+        summary_text="Skill adjustment",
+        proposed_change=ProposedChange(
+            change_type=ChangeType.WEIGHT_TWEAK,
+            field="weight",
+            old=1.0,
+            new=0.8
+        ),
+        confidence=0.9,
+        scope=LessonScope.THIS_USER,
+        status=LessonStatus.ACTIVE,
+        created_at=datetime.utcnow()
+    )
+    
+    goal_lesson = Lesson(
+        lesson_id=str(uuid.uuid4()),
+        user_id=test_user,
+        lesson_type=LessonType.PLANNER_HEURISTIC,
+        target_kind=TargetKind.PLANNER_TEMPLATE,
+        target_id="learning",
+        summary_text="Goal pattern",
+        proposed_change=ProposedChange(
+            change_type=ChangeType.WEIGHT_TWEAK,
+            field="priority",
+            old=1.0,
+            new=1.2
+        ),
+        confidence=0.85,
+        scope=LessonScope.THIS_USER,
+        status=LessonStatus.ACTIVE,
+        created_at=datetime.utcnow()
+    )
+    
+    # Store both lessons
+    await agency_engine.self_reflection.lesson_store.create_lesson(skill_lesson)
+    await agency_engine.self_reflection.lesson_store.create_lesson(goal_lesson)
+    
+    # Get only skill lessons
+    skill_lessons = await agency_engine.self_reflection.get_active_lessons(
+        user_id=test_user,
+        lesson_type=LessonType.SKILL_TUNING
+    )
+    
+    assert len(skill_lessons) >= 1
+    assert all(l.lesson_type == LessonType.SKILL_TUNING for l in skill_lessons)
+
+
+@pytest.mark.asyncio
+async def test_get_self_model_with_filters(agency_engine, test_user):
+    """Test retrieving self-model entries with filters."""
+    from aico.ai.agency.models import SelfModelEntry, PerformanceSummary
+    
+    # Create self-model entries
+    now = datetime.utcnow()
+    entry1 = SelfModelEntry(
+        model_id=str(uuid.uuid4()),
+        user_id=test_user,
+        entity_type=EntityType.SKILL,
+        entity_id="skill1",
+        performance_summary=PerformanceSummary(
+            success_rate=0.8,
+            sample_size=10,
+            last_updated=now
+        ),
+        window_start=now - timedelta(days=7),
+        window_end=now,
+        sample_size=10,
+        confidence=0.85,
+        last_updated=now,
+        created_at=now
+    )
+    
+    entry2 = SelfModelEntry(
+        model_id=str(uuid.uuid4()),
+        user_id=test_user,
+        entity_type=EntityType.GOAL_TYPE,
+        entity_id="learning",
+        performance_summary=PerformanceSummary(
+            success_rate=0.9,
+            sample_size=5,
+            last_updated=now
+        ),
+        window_start=now - timedelta(days=7),
+        window_end=now,
+        sample_size=5,
+        confidence=0.90,
+        last_updated=now,
+        created_at=now
+    )
+    
+    await agency_engine.self_reflection.self_model_store.upsert_entry(entry1)
+    await agency_engine.self_reflection.self_model_store.upsert_entry(entry2)
+    
+    # Get specific skill entry
+    skill_entry = await agency_engine.self_reflection.get_self_model(
+        user_id=test_user,
+        entity_type=EntityType.SKILL,
+        entity_id="skill1"
+    )
+    
+    assert skill_entry is not None
+    assert skill_entry.entity_type == EntityType.SKILL
+    assert skill_entry.entity_id == "skill1"
+
+
+@pytest.mark.asyncio
+async def test_get_skill_performance_nonexistent(agency_engine, test_user):
+    """Test getting performance for non-existent skill."""
+    perf = await agency_engine.self_reflection.get_skill_performance(
+        user_id=test_user,
+        skill_id="nonexistent_skill"
+    )
+    
+    assert perf is None
+
+
+@pytest.mark.asyncio
+async def test_get_goal_type_performance_nonexistent(agency_engine, test_user):
+    """Test getting performance for non-existent goal type."""
+    perf = await agency_engine.self_reflection.get_goal_type_performance(
+        user_id=test_user,
+        goal_type="nonexistent_type"
+    )
+    
+    assert perf is None
+
+
+@pytest.mark.asyncio
+async def test_get_all_skill_performances_empty(agency_engine, test_user):
+    """Test getting all skill performances when none exist."""
+    perfs = await agency_engine.self_reflection.get_all_skill_performances(
+        user_id=test_user
+    )
+    
+    assert isinstance(perfs, dict)
+    assert len(perfs) == 0
