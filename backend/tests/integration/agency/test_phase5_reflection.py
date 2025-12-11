@@ -348,6 +348,14 @@ async def test_arbiter_loads_adjustments(agency_engine, test_user):
     """Test that Goal Arbiter loads and applies lesson-based adjustments."""
     from aico.ai.agency.models import Goal, GoalOrigin, GoalPriority, Lesson, ProposedChange, ChangeType
     
+    # Clean up any existing adjustments for this test
+    # Note: adjustment_key is PRIMARY KEY, so only one "priority" can exist globally
+    agency_engine.arbiter.db.execute(
+        "DELETE FROM agency_arbiter_adjustments WHERE adjustment_key = ?",
+        ("priority",)
+    )
+    agency_engine.arbiter.db.commit()
+    
     # Create a lesson first (FK constraint requirement)
     lesson = Lesson(
         lesson_id=str(uuid.uuid4()),

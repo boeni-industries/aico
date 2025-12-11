@@ -1746,5 +1746,94 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_bandit_arms_active",
             "DROP TABLE IF EXISTS arbiter_bandit_arms",
         ]
+    ),
+    
+    # Schema Version 27: Phase 6.6 - Behavioral Feedback Integration
+    27: SchemaVersion(
+        version=27,
+        name="Agency Phase 6.6 - Behavioral Feedback Integration",
+        description="Add outcome tracking, skill execution tracking, and complete feedback loop for behavioral learning",
+        sql_statements=[
+            # Add outcome column to ams_behavioral_feedback
+            """ALTER TABLE ams_behavioral_feedback ADD COLUMN outcome TEXT""",
+            
+            # Add execution metadata columns
+            """ALTER TABLE ams_behavioral_feedback ADD COLUMN execution_time_ms INTEGER""",
+            """ALTER TABLE ams_behavioral_feedback ADD COLUMN context_json TEXT""",
+            """ALTER TABLE ams_behavioral_feedback ADD COLUMN user_satisfaction REAL""",
+            
+            # Create skill execution tracking table
+            """CREATE TABLE IF NOT EXISTS skill_executions (
+                execution_id TEXT PRIMARY KEY,
+                skill_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                message_id TEXT,
+                goal_id TEXT,
+                execution_time_ms INTEGER,
+                outcome TEXT NOT NULL,  -- success, failure, timeout, error
+                error_message TEXT,
+                context_json TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_skill_executions_skill ON skill_executions(skill_id)",
+            "CREATE INDEX IF NOT EXISTS idx_skill_executions_user ON skill_executions(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_skill_executions_outcome ON skill_executions(outcome)",
+            "CREATE INDEX IF NOT EXISTS idx_skill_executions_created ON skill_executions(created_at)",
+            
+            # Create goal-skill linkage table
+            """CREATE TABLE IF NOT EXISTS goal_skill_executions (
+                link_id TEXT PRIMARY KEY,
+                goal_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                execution_id TEXT NOT NULL,
+                execution_order INTEGER,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE CASCADE,
+                FOREIGN KEY (execution_id) REFERENCES skill_executions(execution_id) ON DELETE CASCADE,
+                UNIQUE(goal_id, execution_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_goal_skill_exec_goal ON goal_skill_executions(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_goal_skill_exec_skill ON goal_skill_executions(skill_id)",
+            
+            # Create user feedback collection table
+            """CREATE TABLE IF NOT EXISTS user_feedback_requests (
+                request_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                goal_id TEXT,
+                skill_id TEXT,
+                execution_id TEXT,
+                feedback_type TEXT NOT NULL,  -- satisfaction, quality, helpfulness
+                question TEXT NOT NULL,
+                response TEXT,
+                rating REAL,
+                responded_at TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE SET NULL,
+                FOREIGN KEY (execution_id) REFERENCES skill_executions(execution_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_requests_user ON user_feedback_requests(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_requests_responded ON user_feedback_requests(responded_at)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_feedback_requests_responded",
+            "DROP INDEX IF EXISTS idx_feedback_requests_user",
+            "DROP TABLE IF EXISTS user_feedback_requests",
+            "DROP INDEX IF EXISTS idx_goal_skill_exec_skill",
+            "DROP INDEX IF EXISTS idx_goal_skill_exec_goal",
+            "DROP TABLE IF EXISTS goal_skill_executions",
+            "DROP INDEX IF EXISTS idx_skill_executions_created",
+            "DROP INDEX IF EXISTS idx_skill_executions_outcome",
+            "DROP INDEX IF EXISTS idx_skill_executions_user",
+            "DROP INDEX IF EXISTS idx_skill_executions_skill",
+            "DROP TABLE IF EXISTS skill_executions",
+            # Note: Cannot rollback ALTER TABLE ADD COLUMN in SQLite
+            # New columns will remain but be unused if rolled back
+        ]
     )
 })

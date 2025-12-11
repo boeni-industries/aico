@@ -374,19 +374,21 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [x] Added `ContextAwarePrioritization` engine with multiplier system
   - [x] Integrated context adjustments into main arbiter scoring flow
 
-### **6.6 Behavioral Feedback Integration**
-- [ ] **Outcome Tracking Schema** ⚠️ *CRITICAL: Missing columns*
-  - [ ] Add `outcome` column to `ams_behavioral_feedback` table (currently missing!)
-  - [ ] Implement skill execution tracking
-  - [ ] Add goal outcome recording  
-  - [ ] Implement user satisfaction tracking
-  - [ ] Fix reflection engine queries that expect `outcome` column
+### **6.6 Behavioral Feedback Integration** ✅ *COMPLETE*
+- [x] **Outcome Tracking Schema** ✅ *COMPLETE*
+  - [x] Added `outcome` column to `ams_behavioral_feedback` table (Schema v27)
+  - [x] Implemented skill execution tracking (`skill_executions` table)
+  - [x] Added goal outcome recording integration (`goal_skill_executions` table)
+  - [x] Implemented user satisfaction tracking (added `user_satisfaction` column)
+  - [x] Fixed reflection engine queries - `outcome` column now available
+  - [x] Added `execution_time_ms` and `context_json` columns for rich tracking
 
-- [ ] **Feedback Loop Completion** ⚠️ *Data pipeline incomplete*
-  - [ ] Connect skill executions to behavioral feedback
-  - [ ] Implement automatic outcome detection
-  - [ ] Add user feedback collection mechanisms
-  - [ ] Complete reflection engine data pipeline (currently fails on missing schema)
+- [x] **Feedback Loop Completion** ✅ *COMPLETE*
+  - [x] Connected skill executions to behavioral feedback via `BehavioralFeedbackService`
+  - [x] Implemented automatic outcome detection from execution records
+  - [x] Added user feedback collection mechanisms (`user_feedback_requests` table)
+  - [x] Completed reflection engine data pipeline - schema now supports all queries
+  - [x] Created `BehavioralFeedbackService` class (~630 lines) with full integration
 
 ### **6.7 Proactive Behaviors**
 - [ ] **Follow-up System**

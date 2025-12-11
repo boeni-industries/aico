@@ -76,9 +76,24 @@ async def test_user(test_db):
     # Temporarily disable foreign keys for cleanup
     test_db.execute("PRAGMA foreign_keys = OFF")
     
-    # Delete agency data first (foreign key constraints)
+    # Delete Phase 6.6 data (behavioral feedback)
+    test_db.execute("DELETE FROM user_feedback_requests WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM goal_skill_executions WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
+    test_db.execute("DELETE FROM skill_executions WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM ams_behavioral_feedback WHERE user_id = ?", (user_uuid,))
+    
+    # Delete Phase 6.5 data (arbiter advanced)
     test_db.execute("DELETE FROM goal_outcomes WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM arbiter_scoring_history WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM arbiter_context_snapshots WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM goal_dependencies WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
+    test_db.execute("DELETE FROM user_time_preferences WHERE user_id = ?", (user_uuid,))
+    
+    # Delete Phase 5 data (reflection)
+    test_db.execute("DELETE FROM agency_arbiter_adjustments WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM agency_lessons WHERE user_id = ?", (user_uuid,))
+    
+    # Delete Phase 1-4 data
     test_db.execute("DELETE FROM agency_events WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM agency_plans WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
     test_db.execute("DELETE FROM agency_goals WHERE user_id = ?", (user_uuid,))
