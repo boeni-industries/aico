@@ -1970,5 +1970,175 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_followups_user",
             "DROP TABLE IF EXISTS agency_followups",
         ]
+    ),
+    
+    # Schema Version 29: Phase 6.8 - Policy & Ethics Depth
+    29: SchemaVersion(
+        version=29,
+        name="Agency Phase 6.8 - Policy & Ethics Depth (Dynamic Policies & Consent)",
+        description="Add tables for database-driven policy management, consent tracking, and enhanced ethics gates",
+        sql_statements=[
+            # Policy rules table (replaces hardcoded DEFAULT_POLICIES)
+            """CREATE TABLE IF NOT EXISTS agency_policy_rules (
+                rule_id TEXT PRIMARY KEY,
+                rule_name TEXT NOT NULL,
+                user_id TEXT,  -- NULL for global policies
+                target_type TEXT NOT NULL,  -- goal, curiosity_signal, plan, world_model_update
+                conditions TEXT NOT NULL,  -- JSON: conditions to match
+                effect TEXT NOT NULL,  -- allow, block, needs_consent, allow_with_warning
+                user_message_template TEXT,
+                priority INTEGER DEFAULT 50,
+                scope TEXT NOT NULL,  -- global, user, deployment
+                version INTEGER DEFAULT 1,
+                active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_policy_rules_user ON agency_policy_rules(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_policy_rules_target ON agency_policy_rules(target_type, active)",
+            "CREATE INDEX IF NOT EXISTS idx_policy_rules_scope ON agency_policy_rules(scope, active)",
+            
+            # Policy versions table (for migration and rollback)
+            """CREATE TABLE IF NOT EXISTS policy_versions (
+                version_id TEXT PRIMARY KEY,
+                rule_id TEXT NOT NULL,
+                version_number INTEGER NOT NULL,
+                conditions TEXT NOT NULL,
+                effect TEXT NOT NULL,
+                user_message_template TEXT,
+                priority INTEGER,
+                created_at TEXT NOT NULL,
+                created_by TEXT,
+                FOREIGN KEY (rule_id) REFERENCES agency_policy_rules(rule_id) ON DELETE CASCADE,
+                UNIQUE(rule_id, version_number)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_policy_versions_rule ON policy_versions(rule_id)",
+            
+            # Consent tracking table
+            """CREATE TABLE IF NOT EXISTS user_consents (
+                consent_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                consent_type TEXT NOT NULL,  -- curiosity_exploration, data_collection, proactive_contact, etc.
+                scope TEXT NOT NULL,  -- specific_goal, life_area, feature, global
+                scope_identifier TEXT,  -- goal_id, life_area name, feature name, etc.
+                granted INTEGER NOT NULL,  -- 1 = granted, 0 = denied
+                expires_at TEXT,  -- NULL for permanent consent
+                inherited_from TEXT,  -- consent_id if inherited
+                granted_at TEXT NOT NULL,
+                revoked_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (inherited_from) REFERENCES user_consents(consent_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_consents_user ON user_consents(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_consents_type ON user_consents(consent_type, granted)",
+            "CREATE INDEX IF NOT EXISTS idx_consents_scope ON user_consents(scope, scope_identifier)",
+            "CREATE INDEX IF NOT EXISTS idx_consents_expires ON user_consents(expires_at)",
+            
+            # Consent audit log
+            """CREATE TABLE IF NOT EXISTS consent_audit_log (
+                audit_id TEXT PRIMARY KEY,
+                consent_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                action TEXT NOT NULL,  -- granted, revoked, expired, inherited
+                reason TEXT,
+                metadata TEXT,  -- JSON: additional context
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (consent_id) REFERENCES user_consents(consent_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_consent_audit_consent ON consent_audit_log(consent_id)",
+            "CREATE INDEX IF NOT EXISTS idx_consent_audit_user ON consent_audit_log(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_consent_audit_created ON consent_audit_log(created_at)",
+            
+            # Ethics gate decisions cache
+            """CREATE TABLE IF NOT EXISTS ethics_decisions_cache (
+                cache_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                decision TEXT NOT NULL,  -- approved, blocked, needs_review
+                reasoning TEXT,
+                policy_rules_applied TEXT,  -- JSON: list of rule_ids applied
+                confidence REAL DEFAULT 1.0,
+                cached_at TEXT NOT NULL,
+                expires_at TEXT,
+                hit_count INTEGER DEFAULT 0,
+                last_hit_at TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_ethics_cache_user ON ethics_decisions_cache(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ethics_cache_target ON ethics_decisions_cache(target_type, target_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ethics_cache_expires ON ethics_decisions_cache(expires_at)",
+            
+            # Ethics gate audit trail
+            """CREATE TABLE IF NOT EXISTS ethics_gate_audit (
+                audit_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                reasoning TEXT,
+                policy_rules_applied TEXT,  -- JSON
+                check_level INTEGER DEFAULT 1,  -- 1 = basic, 2 = detailed, 3 = comprehensive
+                cached INTEGER DEFAULT 0,
+                processing_time_ms INTEGER,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_ethics_audit_user ON ethics_gate_audit(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ethics_audit_target ON ethics_gate_audit(target_type)",
+            "CREATE INDEX IF NOT EXISTS idx_ethics_audit_decision ON ethics_gate_audit(decision)",
+            "CREATE INDEX IF NOT EXISTS idx_ethics_audit_created ON ethics_gate_audit(created_at)",
+            
+            # Policy conflict resolution log
+            """CREATE TABLE IF NOT EXISTS policy_conflicts (
+                conflict_id TEXT PRIMARY KEY,
+                user_id TEXT,
+                rule_id_a TEXT NOT NULL,
+                rule_id_b TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                resolution TEXT NOT NULL,  -- priority_based, user_choice, most_restrictive
+                resolved_by TEXT,  -- system, user, admin
+                resolution_metadata TEXT,  -- JSON
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (rule_id_a) REFERENCES agency_policy_rules(rule_id) ON DELETE CASCADE,
+                FOREIGN KEY (rule_id_b) REFERENCES agency_policy_rules(rule_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_policy_conflicts_user ON policy_conflicts(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_policy_conflicts_rules ON policy_conflicts(rule_id_a, rule_id_b)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_policy_conflicts_rules",
+            "DROP INDEX IF EXISTS idx_policy_conflicts_user",
+            "DROP TABLE IF EXISTS policy_conflicts",
+            "DROP INDEX IF EXISTS idx_ethics_audit_created",
+            "DROP INDEX IF EXISTS idx_ethics_audit_decision",
+            "DROP INDEX IF EXISTS idx_ethics_audit_target",
+            "DROP INDEX IF EXISTS idx_ethics_audit_user",
+            "DROP TABLE IF EXISTS ethics_gate_audit",
+            "DROP INDEX IF EXISTS idx_ethics_cache_expires",
+            "DROP INDEX IF EXISTS idx_ethics_cache_target",
+            "DROP INDEX IF EXISTS idx_ethics_cache_user",
+            "DROP TABLE IF EXISTS ethics_decisions_cache",
+            "DROP INDEX IF EXISTS idx_consent_audit_created",
+            "DROP INDEX IF EXISTS idx_consent_audit_user",
+            "DROP INDEX IF EXISTS idx_consent_audit_consent",
+            "DROP TABLE IF EXISTS consent_audit_log",
+            "DROP INDEX IF EXISTS idx_consents_expires",
+            "DROP INDEX IF EXISTS idx_consents_scope",
+            "DROP INDEX IF EXISTS idx_consents_type",
+            "DROP INDEX IF EXISTS idx_consents_user",
+            "DROP TABLE IF EXISTS user_consents",
+            "DROP INDEX IF EXISTS idx_policy_versions_rule",
+            "DROP TABLE IF EXISTS policy_versions",
+            "DROP INDEX IF EXISTS idx_policy_rules_scope",
+            "DROP INDEX IF EXISTS idx_policy_rules_target",
+            "DROP INDEX IF EXISTS idx_policy_rules_user",
+            "DROP TABLE IF EXISTS agency_policy_rules",
+        ]
     )
 })

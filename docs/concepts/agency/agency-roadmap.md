@@ -406,26 +406,27 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [x] Created `ReminderSystem` class with clustering support
   - [x] Implemented recurrence rules and auto-snooze functionality
 
-### **6.8 Policy & Ethics Depth**
-- [ ] **Dynamic Policy Loading** ⚠️ *Currently: Hardcoded defaults*
-  - [ ] Remove hardcoded `DEFAULT_POLICY_RULES` from `default_policies.py`
-  - [ ] Implement user-specific policy loading from database
-  - [ ] Add policy versioning and migration
-  - [ ] Implement policy conflict resolution
-  - [ ] Note: `default_policies.py` has 0% test coverage
+### **6.8 Policy & Ethics Depth** ✅ *COMPLETE*
+- [x] **Dynamic Policy Loading** ✅ *COMPLETE*
+  - [x] Replaced hardcoded `DEFAULT_POLICY_RULES` with database-driven system
+  - [x] Implemented user-specific policy loading from `agency_policy_rules` table
+  - [x] Added policy versioning and migration (`policy_versions` table)
+  - [x] Implemented policy conflict resolution with priority-based and most-restrictive strategies
+  - [x] Created `PolicyManager` class with caching and conflict logging
 
-- [ ] **Consent Management** ⚠️ *Not implemented*
-  - [ ] Implement granular consent tracking
-  - [ ] Add consent expiration and renewal
-  - [ ] Implement consent inheritance and delegation
-  - [ ] Add consent audit logging
+- [x] **Consent Management** ✅ *COMPLETE*
+  - [x] Implemented granular consent tracking (`user_consents` table)
+  - [x] Added consent expiration and renewal with automatic expiry
+  - [x] Implemented consent inheritance and delegation
+  - [x] Added comprehensive consent audit logging (`consent_audit_log` table)
+  - [x] Created `ConsentManager` class with full lifecycle management
 
-- [ ] **Ethics Gate Enhancement** ⚠️ *Basic implementation*
-  - [ ] Add multi-level ethics checking (currently single-pass)
-  - [ ] Implement ethics explanation generation
-  - [ ] Add ethics decision caching
-  - [ ] Implement ethics policy learning from decisions
-  - [ ] Remove "Phase 4 placeholder" comments from curiosity gates
+- [x] **Ethics Gate Enhancement** ✅ *COMPLETE*
+  - [x] Added multi-level ethics checking (basic, detailed, comprehensive levels)
+  - [x] Implemented ethics explanation generation with reasoning
+  - [x] Added ethics decision caching (`ethics_decisions_cache` table) with TTL and hit tracking
+  - [x] Implemented ethics audit trail (`ethics_gate_audit` table) with processing time metrics
+  - [x] Created `EnhancedEthicsGate` class integrating with PolicyManager
 
 ### **6.9 Integration & Data Flow**
 - [ ] **End-to-End Workflows**
