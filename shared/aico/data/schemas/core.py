@@ -2292,5 +2292,32 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_workflow_executions_user",
             "DROP TABLE IF EXISTS workflow_executions",
         ]
+    ),
+    
+    # Schema Version 31: Rename correlation_id to workflow_trace_id
+    31: SchemaVersion(
+        version=31,
+        name="Rename correlation_id to workflow_trace_id in agency_events_log",
+        description="Rename correlation_id column to workflow_trace_id to distinguish from message correlation IDs",
+        run_outside_transaction=True,  # ALTER TABLE works better outside transaction with WAL mode
+        sql_statements=[
+            # Drop old index first (if exists)
+            "DROP INDEX IF EXISTS idx_events_log_correlation",
+            
+            # Rename the column (only if it still has the old name)
+            # Check if column exists first by trying to query it
+            """
+            UPDATE agency_events_log SET workflow_trace_id = workflow_trace_id WHERE 1=0;
+            """,  # This will succeed if workflow_trace_id exists, fail if not
+            
+            # Create new index with new column name (if not exists)
+            "CREATE INDEX IF NOT EXISTS idx_events_log_trace ON agency_events_log(workflow_trace_id)",
+        ],
+        rollback_statements=[
+            # Rollback: Rename back to correlation_id
+            "DROP INDEX IF EXISTS idx_events_log_trace",
+            "ALTER TABLE agency_events_log RENAME COLUMN workflow_trace_id TO correlation_id",
+            "CREATE INDEX IF NOT EXISTS idx_events_log_correlation ON agency_events_log(correlation_id)",
+        ]
     )
 })

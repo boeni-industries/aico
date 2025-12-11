@@ -3,6 +3,21 @@ Workflow Orchestrator & Event System - Phase 6.9
 
 End-to-end workflow execution and comprehensive event logging system.
 Implements complete data flow integration across all agency components.
+
+IMPORTANT: Workflow Trace ID vs Message Correlation ID
+-------------------------------------------------------
+This module uses "workflow_trace_id" to link events within a WORKFLOW.
+This is DIFFERENT from "correlation_id" used in the conversation/messaging system.
+
+- **workflow_trace_id** (this module): Links all events in a multi-stage workflow
+  (e.g., "goal-lifecycle-exec-123" links goal_created → plan_generated → executed)
+  Stored in: agency_events_log.workflow_trace_id
+  
+- **correlation_id** (conversation system): Links user message ↔ AICO reply
+  (e.g., "conv-456" links a user question to AICO's answer)
+  Stored in: messages.correlation_id (or similar conversation tables)
+
+These are completely separate concepts in different layers with different purposes.
 """
 
 from __future__ import annotations
@@ -135,7 +150,7 @@ class EventSystem:
         event_data: Dict[str, Any],
         entity_type: Optional[str] = None,
         entity_id: Optional[str] = None,
-        correlation_id: Optional[str] = None,
+        workflow_trace_id: Optional[str] = None,
         parent_event_id: Optional[str] = None,
         severity: EventSeverity = EventSeverity.INFO
     ) -> str:
@@ -150,7 +165,7 @@ class EventSystem:
             event_data: Event-specific data
             entity_type: Optional entity type
             entity_id: Optional entity ID
-            correlation_id: Optional correlation ID for related events
+            workflow_trace_id: Optional correlation ID for related events
             parent_event_id: Optional parent event ID
             severity: Event severity
             
@@ -164,7 +179,7 @@ class EventSystem:
                 """
                 INSERT INTO agency_events_log (
                     event_id, user_id, event_type, event_category, source_component,
-                    entity_type, entity_id, event_data, correlation_id, parent_event_id,
+                    entity_type, entity_id, event_data, workflow_trace_id, parent_event_id,
                     severity, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -177,7 +192,7 @@ class EventSystem:
                     entity_type,
                     entity_id,
                     json.dumps(event_data),
-                    correlation_id,
+                    workflow_trace_id,
                     parent_event_id,
                     severity.value,
                     datetime.utcnow().isoformat()
@@ -209,7 +224,7 @@ class EventSystem:
         event_type: Optional[str] = None,
         event_category: Optional[EventCategory] = None,
         entity_id: Optional[str] = None,
-        correlation_id: Optional[str] = None,
+        workflow_trace_id: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
         limit: int = 100
@@ -230,9 +245,9 @@ class EventSystem:
             query += " AND entity_id = ?"
             params.append(entity_id)
         
-        if correlation_id:
-            query += " AND correlation_id = ?"
-            params.append(correlation_id)
+        if workflow_trace_id:
+            query += " AND workflow_trace_id = ?"
+            params.append(workflow_trace_id)
         
         if start_time:
             query += " AND created_at >= ?"
@@ -1070,7 +1085,7 @@ class CompleteWorkflowExecutor:
             metadata=goal_data
         )
         
-        correlation_id = f"goal-lifecycle-{execution_id}"
+        workflow_trace_id = f"goal-lifecycle-{execution_id}"
         
         try:
             # Stage 1: Create goal
@@ -1080,7 +1095,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.GOAL,
                 source_component="workflow_executor",
                 event_data=goal_data,
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "create_goal", {"goal_id": goal_data.get("goal_id")})
             
@@ -1091,7 +1106,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.PLAN,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "generate_plan", {"plan_generated": True})
             
@@ -1102,7 +1117,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.EXECUTION,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "execute_plan", {"executed": True})
             
@@ -1113,7 +1128,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.FEEDBACK,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "collect_feedback", {"feedback_collected": True})
             
@@ -1124,7 +1139,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.GOAL,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "update_goal", {"updated": True})
             
@@ -1160,7 +1175,7 @@ class CompleteWorkflowExecutor:
             metadata=curiosity_data
         )
         
-        correlation_id = f"curiosity-to-goal-{execution_id}"
+        workflow_trace_id = f"curiosity-to-goal-{execution_id}"
         
         try:
             # Stage 1: Detect curiosity signal
@@ -1170,7 +1185,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.CURIOSITY,
                 source_component="workflow_executor",
                 event_data=curiosity_data,
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "detect_curiosity_signal", {"detected": True})
             
@@ -1181,7 +1196,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.CURIOSITY,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "scan_opportunities", {"opportunities_found": 3})
             
@@ -1192,7 +1207,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.GOAL,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "generate_goal", {"goal_created": True})
             
@@ -1203,7 +1218,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.GOAL,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "convert_to_hobby", {"hobby_created": True})
             
@@ -1236,7 +1251,7 @@ class CompleteWorkflowExecutor:
             metadata=reflection_data
         )
         
-        correlation_id = f"reflection-cycle-{execution_id}"
+        workflow_trace_id = f"reflection-cycle-{execution_id}"
         
         try:
             # Stage 1: Analyze outcomes
@@ -1246,7 +1261,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.REFLECTION,
                 source_component="workflow_executor",
                 event_data=reflection_data,
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "analyze_outcomes", {"outcomes_analyzed": 5})
             
@@ -1257,7 +1272,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.REFLECTION,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "generate_lessons", {"lessons_created": 2})
             
@@ -1268,7 +1283,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.REFLECTION,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "apply_adjustments", {"adjustments_applied": 2})
             
@@ -1279,7 +1294,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.REFLECTION,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "validate_changes", {"validated": True})
             
@@ -1312,7 +1327,7 @@ class CompleteWorkflowExecutor:
             metadata=hypothesis_data
         )
         
-        correlation_id = f"world-model-update-{execution_id}"
+        workflow_trace_id = f"world-model-update-{execution_id}"
         
         try:
             # Stage 1: Generate hypothesis
@@ -1322,7 +1337,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.REFLECTION,
                 source_component="workflow_executor",
                 event_data=hypothesis_data,
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "generate_hypothesis", {"hypothesis_id": "hyp-1"})
             
@@ -1333,7 +1348,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.REFLECTION,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "collect_evidence", {"evidence_count": 5})
             
@@ -1344,7 +1359,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.REFLECTION,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "validate_hypothesis", {"validated": True})
             
@@ -1355,7 +1370,7 @@ class CompleteWorkflowExecutor:
                 event_category=EventCategory.REFLECTION,
                 source_component="workflow_executor",
                 event_data={},
-                correlation_id=correlation_id
+                workflow_trace_id=workflow_trace_id
             )
             self.orchestrator.complete_stage(execution_id, "update_world_model", {"updated": True})
             

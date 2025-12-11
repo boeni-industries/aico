@@ -60,7 +60,7 @@ class TestEventSystem:
     
     def test_log_event_with_correlation(self, event_system, test_user):
         """Test logging events with correlation ID."""
-        correlation_id = "corr-123"
+        workflow_trace_id = "corr-123"
         
         # Log parent event
         parent_id = event_system.log_event(
@@ -69,7 +69,7 @@ class TestEventSystem:
             event_category=EventCategory.WORKFLOW,
             source_component="orchestrator",
             event_data={"workflow_type": "goal_lifecycle"},
-            correlation_id=correlation_id
+            workflow_trace_id=workflow_trace_id
         )
         
         # Log child event
@@ -79,14 +79,14 @@ class TestEventSystem:
             event_category=EventCategory.WORKFLOW,
             source_component="orchestrator",
             event_data={"stage": "create_goal"},
-            correlation_id=correlation_id,
+            workflow_trace_id=workflow_trace_id,
             parent_event_id=parent_id
         )
         
         # Verify correlation
         events = event_system.get_events(
             user_id=test_user,
-            correlation_id=correlation_id
+            workflow_trace_id=workflow_trace_id
         )
         
         assert len(events) == 2
@@ -368,7 +368,7 @@ class TestWorkflowEventIntegration:
         )
         
         # Log events for each stage
-        correlation_id = f"workflow-{execution_id}"
+        workflow_trace_id = f"workflow-{execution_id}"
         
         stages = ["analyze_outcomes", "generate_lessons", "apply_adjustments", "validate_changes"]
         for stage in stages:
@@ -379,7 +379,7 @@ class TestWorkflowEventIntegration:
                 event_category=EventCategory.WORKFLOW,
                 source_component="orchestrator",
                 event_data={"stage": stage},
-                correlation_id=correlation_id,
+                workflow_trace_id=workflow_trace_id,
                 entity_type="workflow",
                 entity_id=execution_id
             )
@@ -394,7 +394,7 @@ class TestWorkflowEventIntegration:
                 event_category=EventCategory.WORKFLOW,
                 source_component="orchestrator",
                 event_data={"stage": stage},
-                correlation_id=correlation_id,
+                workflow_trace_id=workflow_trace_id,
                 entity_type="workflow",
                 entity_id=execution_id
             )
@@ -406,7 +406,7 @@ class TestWorkflowEventIntegration:
         # Verify events logged
         events = event_system.get_events(
             user_id=test_user,
-            correlation_id=correlation_id
+            workflow_trace_id=workflow_trace_id
         )
         
         assert len(events) >= 8  # 2 events per stage (start + complete)
@@ -748,12 +748,12 @@ class TestCompleteWorkflowExecutor:
         )
         
         # Get events with correlation ID
-        correlation_id = f"goal-lifecycle-{execution_id}"
+        workflow_trace_id = f"goal-lifecycle-{execution_id}"
         events = event_system.get_events(
             user_id=test_user,
-            correlation_id=correlation_id
+            workflow_trace_id=workflow_trace_id
         )
         
         # Should have events for all 5 stages
         assert len(events) >= 5
-        assert all(e["correlation_id"] == correlation_id for e in events)
+        assert all(e["workflow_trace_id"] == workflow_trace_id for e in events)
