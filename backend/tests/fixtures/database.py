@@ -73,7 +73,12 @@ async def test_user(test_db):
     yield user_uuid
     
     # Cleanup: Delete all data for this test user
+    # Temporarily disable foreign keys for cleanup
+    test_db.execute("PRAGMA foreign_keys = OFF")
+    
     # Delete agency data first (foreign key constraints)
+    test_db.execute("DELETE FROM goal_outcomes WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM goal_dependencies WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
     test_db.execute("DELETE FROM agency_events WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM agency_plans WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
     test_db.execute("DELETE FROM agency_goals WHERE user_id = ?", (user_uuid,))
@@ -82,6 +87,9 @@ async def test_user(test_db):
     test_db.execute("DELETE FROM user_authentication WHERE user_uuid = ?", (user_uuid,))
     test_db.execute("DELETE FROM users WHERE uuid = ?", (user_uuid,))
     test_db.commit()
+    
+    # Re-enable foreign keys
+    test_db.execute("PRAGMA foreign_keys = ON")
 
 
 @pytest.fixture

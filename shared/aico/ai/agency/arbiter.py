@@ -19,6 +19,8 @@ from aico.data.libsql import EncryptedLibSQLConnection
 from aico.core.bus import MessageBusClient
 
 from .models import Goal, GoalStatus, GoalOrigin, GoalPriority
+from .arbiter_adaptive import AdaptiveScoringEngine, AdaptiveConfig
+from .arbiter_context import ContextAwarePrioritization
 
 
 # ============================================================================
@@ -112,12 +114,33 @@ class GoalArbiter:
         db: EncryptedLibSQLConnection,
         config=None,
         message_bus: Optional[MessageBusClient] = None,
-        logger=None
+        logger=None,
+        enable_adaptive: bool = True,
+        enable_context_aware: bool = True
     ):
         self.db = db
         self.message_bus = message_bus
         self.logger = logger
         self.config = config
+        
+        # Phase 6.5: Adaptive scoring and context-aware prioritization
+        self.enable_adaptive = enable_adaptive
+        self.enable_context_aware = enable_context_aware
+        
+        if enable_adaptive:
+            adaptive_config = AdaptiveConfig()
+            self.adaptive_engine = AdaptiveScoringEngine(db, adaptive_config, logger)
+            if logger:
+                logger.info("[ARBITER] Phase 6.5: Adaptive scoring enabled")
+        else:
+            self.adaptive_engine = None
+        
+        if enable_context_aware:
+            self.context_engine = ContextAwarePrioritization(db, logger)
+            if logger:
+                logger.info("[ARBITER] Phase 6.5: Context-aware prioritization enabled")
+        else:
+            self.context_engine = None
         
         # Load scoring weights from config with validation
         if config:
@@ -283,6 +306,8 @@ class GoalArbiter:
         """
         Score a goal candidate using weighted factors.
         
+        Phase 6.5: Now supports adaptive weights and context-aware adjustments.
+        
         Args:
             goal: Goal to score
             context: Optional context (personality, emotion, system load)
@@ -292,6 +317,18 @@ class GoalArbiter:
         """
         context = context or {}
         breakdown = {}
+        
+        # Phase 6.5: Use adaptive weights if enabled
+        if self.enable_adaptive and self.adaptive_engine:
+            arm_id, adaptive_weights = self.adaptive_engine.select_arm(goal.user_id)
+            # Store arm_id for later reward feedback
+            context["selected_arm_id"] = arm_id
+            # Use adaptive weights instead of fixed weights
+            weights = adaptive_weights
+            if self.logger:
+                self.logger.debug(f"[ARBITER] Using adaptive weights from arm: {arm_id}")
+        else:
+            weights = self.weights
         
         # Load lesson-based adjustments for this user
         user_id = goal.user_id
@@ -371,6 +408,15 @@ class GoalArbiter:
                     f"[ARBITER] Applied goal_type multiplier {goal_type_multiplier} "
                     f"to {goal.goal_type} (lesson-based adjustment)"
                 )
+        
+        # Phase 6.5: Apply context-aware adjustments
+        if self.enable_context_aware and self.context_engine:
+            total_score, context_adjustments = self.context_engine.apply_contextual_adjustments(
+                goal, total_score, user_id, context
+            )
+            # Store context adjustments as metadata (not in breakdown which expects floats)
+            if self.logger:
+                self.logger.debug(f"[ARBITER] Context adjustments: {context_adjustments}")
         
         # Determine priority band
         if total_score >= 0.7:
@@ -707,3 +753,90 @@ class GoalArbiter:
             self.logger.debug(
                 f"[ARBITER] Published intention set update for {intention_set.user_id}"
             )
+    
+    # ========================================================================
+    # Phase 6.5: Adaptive Learning
+    # ========================================================================
+    
+    async def record_goal_outcome(
+        self,
+        goal_id: str,
+        outcome: str,
+        success: bool,
+        user_satisfaction: Optional[float] = None,
+        completion_time_minutes: Optional[int] = None,
+        metadata: Optional[Dict] = None
+    ) -> None:
+        """
+        Record goal outcome for adaptive learning.
+        
+        Args:
+            goal_id: Goal ID
+            outcome: Outcome type (completed, abandoned, failed, timeout)
+            success: Whether the goal succeeded
+            user_satisfaction: Optional user satisfaction score (0.0-1.0)
+            completion_time_minutes: Time taken to complete
+            metadata: Additional outcome metadata
+        """
+        if not self.enable_adaptive or not self.adaptive_engine:
+            return
+        
+        try:
+            import uuid
+            
+            # Calculate reward based on outcome
+            reward = 0.0
+            if outcome == "completed":
+                reward = 0.8
+                if user_satisfaction is not None:
+                    reward = 0.5 + (user_satisfaction * 0.5)  # 0.5-1.0 range
+            elif outcome == "abandoned":
+                reward = 0.2
+            elif outcome == "failed":
+                reward = 0.1
+            elif outcome == "timeout":
+                reward = 0.3
+            
+            # Get the arm that was used for this goal
+            arm_id = None
+            if metadata and "selected_arm_id" in metadata:
+                arm_id = metadata["selected_arm_id"]
+            
+            # Record outcome in database
+            outcome_id = str(uuid.uuid4())
+            self.db.execute(
+                """
+                INSERT INTO goal_outcomes (
+                    outcome_id, goal_id, user_id, arm_id, outcome,
+                    success, reward, completion_time_minutes,
+                    user_satisfaction, metadata_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    outcome_id,
+                    goal_id,
+                    metadata.get("user_id") if metadata else None,
+                    arm_id,
+                    outcome,
+                    1 if success else 0,
+                    reward,
+                    completion_time_minutes,
+                    user_satisfaction,
+                    json.dumps(metadata or {}),
+                    datetime.utcnow().isoformat()
+                )
+            )
+            
+            # Update adaptive engine
+            if arm_id:
+                self.adaptive_engine.update_arm(arm_id, reward, success, goal_id)
+                
+                if self.logger:
+                    self.logger.info(
+                        f"[ARBITER] Recorded outcome for goal {goal_id}: "
+                        f"{outcome} (reward: {reward:.2f}, arm: {arm_id})"
+                    )
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"[ARBITER] Failed to record goal outcome: {e}")

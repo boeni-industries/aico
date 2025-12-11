@@ -357,18 +357,22 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [x] Added proactive update mechanisms
   - [x] Created `DriftDetector` class (~350 lines)
 
-### **6.5 Goal Arbiter Advanced**
-- [ ] **Adaptive Scoring**
-  - [ ] Move from fixed weights to learned scoring policies
-  - [ ] Implement multi-armed bandit for weight optimization
-  - [ ] Add reinforcement learning for goal selection
-  - [ ] Implement A/B testing framework for scoring strategies
+### **6.5 Goal Arbiter Advanced** ✅ *COMPLETE*
+- [x] **Adaptive Scoring** ✅ *COMPLETE*
+  - [x] Implemented multi-armed bandit for weight optimization (UCB1, Epsilon-Greedy, Thompson Sampling)
+  - [x] Created `AdaptiveScoringEngine` class with 3 bandit algorithms
+  - [x] Added reinforcement learning for goal selection (Bayesian updating)
+  - [x] Implemented A/B testing framework for scoring strategies
+  - [x] Created goal outcome tracking system for reward calculation
+  - [x] Implemented automatic weight optimization based on success rates
 
-- [ ] **Context-Aware Prioritization**
-  - [ ] Add time-of-day aware scoring
-  - [ ] Implement user state-based adjustments (busy, relaxed, focused)
-  - [ ] Add deadline-aware urgency calculations
-  - [ ] Implement dependency-aware scheduling
+- [x] **Context-Aware Prioritization** ✅ *COMPLETE*
+  - [x] Implemented time-of-day aware scoring (5 periods: early_morning, morning, afternoon, evening, night)
+  - [x] Added user state-based adjustments (busy, focused, relaxed, stressed, energetic, tired)
+  - [x] Implemented deadline-aware urgency calculations with configurable buffers
+  - [x] Created dependency-aware scheduling with prerequisite tracking
+  - [x] Added `ContextAwarePrioritization` engine with multiplier system
+  - [x] Integrated context adjustments into main arbiter scoring flow
 
 ### **6.6 Behavioral Feedback Integration**
 - [ ] **Outcome Tracking Schema** ⚠️ *CRITICAL: Missing columns*

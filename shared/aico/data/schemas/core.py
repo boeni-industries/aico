@@ -1581,5 +1581,170 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_arbiter_adjustments_active",
             "DROP TABLE IF EXISTS agency_arbiter_adjustments",
         ]
+    ),
+    
+    # Schema Version 26: Phase 6.5 - Goal Arbiter Advanced
+    26: SchemaVersion(
+        version=26,
+        name="Agency Phase 6.5 - Arbiter Advanced (Adaptive Scoring & Context-Aware)",
+        description="Add tables for multi-armed bandit adaptive scoring, A/B testing, context-aware prioritization, and goal outcomes tracking",
+        sql_statements=[
+            # Multi-Armed Bandit arms (weight configurations)
+            """CREATE TABLE IF NOT EXISTS arbiter_bandit_arms (
+                arm_id TEXT PRIMARY KEY,
+                weights_json TEXT NOT NULL,          -- JSON of weight configuration
+                pulls INTEGER DEFAULT 0,             -- Number of times this arm was selected
+                total_reward REAL DEFAULT 0.0,       -- Cumulative reward
+                success_count INTEGER DEFAULT 0,     -- Number of successful outcomes
+                failure_count INTEGER DEFAULT 0,     -- Number of failed outcomes
+                last_pulled TEXT,                    -- ISO timestamp of last use
+                active INTEGER DEFAULT 1,            -- 1=active, 0=disabled
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_bandit_arms_active ON arbiter_bandit_arms(active)",
+            "CREATE INDEX IF NOT EXISTS idx_bandit_arms_pulls ON arbiter_bandit_arms(pulls)",
+            
+            # A/B Testing framework
+            """CREATE TABLE IF NOT EXISTS arbiter_ab_tests (
+                test_id TEXT PRIMARY KEY,
+                test_name TEXT NOT NULL,
+                arm_a_id TEXT NOT NULL,
+                arm_b_id TEXT NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                status TEXT DEFAULT 'active',        -- active, completed, cancelled
+                winner_arm_id TEXT,
+                confidence_score REAL,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                FOREIGN KEY (arm_a_id) REFERENCES arbiter_bandit_arms(arm_id),
+                FOREIGN KEY (arm_b_id) REFERENCES arbiter_bandit_arms(arm_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_ab_tests_status ON arbiter_ab_tests(status)",
+            "CREATE INDEX IF NOT EXISTS idx_ab_tests_dates ON arbiter_ab_tests(start_date, end_date)",
+            
+            # Goal outcomes (for reward calculation and learning)
+            """CREATE TABLE IF NOT EXISTS goal_outcomes (
+                outcome_id TEXT PRIMARY KEY,
+                goal_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                arm_id TEXT,                         -- Which bandit arm was used
+                outcome TEXT NOT NULL,               -- completed, abandoned, failed, timeout
+                success INTEGER DEFAULT 0,           -- 1=success, 0=failure
+                reward REAL,                         -- Calculated reward (0.0-1.0)
+                completion_time_minutes INTEGER,
+                user_satisfaction REAL,              -- Optional user feedback (0.0-1.0)
+                metadata_json TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id),
+                FOREIGN KEY (arm_id) REFERENCES arbiter_bandit_arms(arm_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_goal_outcomes_goal ON goal_outcomes(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_goal_outcomes_user ON goal_outcomes(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_goal_outcomes_arm ON goal_outcomes(arm_id)",
+            "CREATE INDEX IF NOT EXISTS idx_goal_outcomes_success ON goal_outcomes(success)",
+            "CREATE INDEX IF NOT EXISTS idx_goal_outcomes_created ON goal_outcomes(created_at)",
+            
+            # Time-of-day preferences (learned from outcomes)
+            """CREATE TABLE IF NOT EXISTS user_time_preferences (
+                preference_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                time_period TEXT NOT NULL,           -- early_morning, morning, afternoon, evening, night
+                productivity_score REAL DEFAULT 1.0, -- 0.0-2.0, learned multiplier
+                sample_count INTEGER DEFAULT 0,      -- Number of observations
+                last_updated TEXT NOT NULL,
+                active INTEGER DEFAULT 1,
+                UNIQUE(user_id, time_period)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_time_prefs_user ON user_time_preferences(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_time_prefs_active ON user_time_preferences(active)",
+            
+            # Goal dependencies (for dependency-aware scheduling)
+            """CREATE TABLE IF NOT EXISTS goal_dependencies (
+                dependency_id TEXT PRIMARY KEY,
+                goal_id TEXT NOT NULL,               -- Goal that has the dependency
+                prerequisite_goal_id TEXT NOT NULL,  -- Goal that must be completed first
+                dependency_type TEXT DEFAULT 'hard', -- hard, soft, suggested
+                active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id),
+                FOREIGN KEY (prerequisite_goal_id) REFERENCES agency_goals(goal_id),
+                UNIQUE(goal_id, prerequisite_goal_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_goal_deps_goal ON goal_dependencies(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_goal_deps_prereq ON goal_dependencies(prerequisite_goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_goal_deps_active ON goal_dependencies(active)",
+            
+            # Context snapshots (for analysis and debugging)
+            """CREATE TABLE IF NOT EXISTS arbiter_context_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                goal_id TEXT,
+                time_of_day TEXT,                    -- early_morning, morning, etc.
+                user_state TEXT,                     -- busy, focused, relaxed, etc.
+                day_of_week TEXT,
+                is_weekend INTEGER,
+                current_load REAL,
+                emotion_valence REAL,
+                emotion_arousal REAL,
+                emotion_stress REAL,
+                location TEXT,
+                context_json TEXT,                   -- Full context as JSON
+                created_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_context_snapshots_user ON arbiter_context_snapshots(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_context_snapshots_goal ON arbiter_context_snapshots(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_context_snapshots_created ON arbiter_context_snapshots(created_at)",
+            
+            # Scoring history (for analysis and debugging)
+            """CREATE TABLE IF NOT EXISTS arbiter_scoring_history (
+                history_id TEXT PRIMARY KEY,
+                goal_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                arm_id TEXT,
+                base_score REAL NOT NULL,
+                final_score REAL NOT NULL,
+                adjustments_json TEXT,               -- JSON of all adjustments applied
+                context_snapshot_id TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id),
+                FOREIGN KEY (arm_id) REFERENCES arbiter_bandit_arms(arm_id),
+                FOREIGN KEY (context_snapshot_id) REFERENCES arbiter_context_snapshots(snapshot_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_scoring_history_goal ON arbiter_scoring_history(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_scoring_history_user ON arbiter_scoring_history(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_scoring_history_created ON arbiter_scoring_history(created_at)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_scoring_history_created",
+            "DROP INDEX IF EXISTS idx_scoring_history_user",
+            "DROP INDEX IF EXISTS idx_scoring_history_goal",
+            "DROP TABLE IF EXISTS arbiter_scoring_history",
+            "DROP INDEX IF EXISTS idx_context_snapshots_created",
+            "DROP INDEX IF EXISTS idx_context_snapshots_goal",
+            "DROP INDEX IF EXISTS idx_context_snapshots_user",
+            "DROP TABLE IF EXISTS arbiter_context_snapshots",
+            "DROP INDEX IF EXISTS idx_goal_deps_active",
+            "DROP INDEX IF EXISTS idx_goal_deps_prereq",
+            "DROP INDEX IF EXISTS idx_goal_deps_goal",
+            "DROP TABLE IF EXISTS goal_dependencies",
+            "DROP INDEX IF EXISTS idx_time_prefs_active",
+            "DROP INDEX IF EXISTS idx_time_prefs_user",
+            "DROP TABLE IF EXISTS user_time_preferences",
+            "DROP INDEX IF EXISTS idx_goal_outcomes_created",
+            "DROP INDEX IF EXISTS idx_goal_outcomes_success",
+            "DROP INDEX IF EXISTS idx_goal_outcomes_arm",
+            "DROP INDEX IF EXISTS idx_goal_outcomes_user",
+            "DROP INDEX IF EXISTS idx_goal_outcomes_goal",
+            "DROP TABLE IF EXISTS goal_outcomes",
+            "DROP INDEX IF EXISTS idx_ab_tests_dates",
+            "DROP INDEX IF EXISTS idx_ab_tests_status",
+            "DROP TABLE IF EXISTS arbiter_ab_tests",
+            "DROP INDEX IF EXISTS idx_bandit_arms_pulls",
+            "DROP INDEX IF EXISTS idx_bandit_arms_active",
+            "DROP TABLE IF EXISTS arbiter_bandit_arms",
+        ]
     )
 })
