@@ -76,6 +76,13 @@ async def test_user(test_db):
     # Temporarily disable foreign keys for cleanup
     test_db.execute("PRAGMA foreign_keys = OFF")
     
+    # Delete Phase 6.7 data (proactive behaviors)
+    test_db.execute("DELETE FROM proactive_analytics WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM user_proactive_preferences WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM reminder_clusters WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM agency_reminders WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM agency_followups WHERE user_id = ?", (user_uuid,))
+    
     # Delete Phase 6.6 data (behavioral feedback)
     test_db.execute("DELETE FROM user_feedback_requests WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM goal_skill_executions WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))

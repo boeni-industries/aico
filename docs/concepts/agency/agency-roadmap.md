@@ -390,18 +390,21 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [x] Completed reflection engine data pipeline - schema now supports all queries
   - [x] Created `BehavioralFeedbackService` class (~630 lines) with full integration
 
-### **6.7 Proactive Behaviors**
-- [ ] **Follow-up System**
-  - [ ] Implement policy-aware follow-up generation
-  - [ ] Add relationship-informed timing
-  - [ ] Implement values-based follow-up filtering
-  - [ ] Add context-aware follow-up content
+### **6.7 Proactive Behaviors** ✅ *COMPLETE*
+- [x] **Follow-up System** ✅ *COMPLETE*
+  - [x] Implemented policy-aware follow-up generation with daily limits and timing checks
+  - [x] Added relationship-informed timing based on user interaction patterns
+  - [x] Implemented values-based follow-up filtering with alignment scoring
+  - [x] Added context-aware follow-up content with goal and message linking
+  - [x] Created `FollowupSystem` class with full policy integration
 
-- [ ] **Reminder System**
-  - [ ] Implement smart reminder scheduling
-  - [ ] Add reminder clustering and batching
-  - [ ] Implement reminder priority and urgency
-  - [ ] Add reminder adaptation based on user response
+- [x] **Reminder System** ✅ *COMPLETE*
+  - [x] Implemented smart reminder scheduling with urgency calculation
+  - [x] Added reminder clustering and batching (30-minute windows)
+  - [x] Implemented reminder priority (low, normal, high, urgent) and dynamic urgency scoring
+  - [x] Added reminder adaptation based on user response (snooze tracking, analytics)
+  - [x] Created `ReminderSystem` class with clustering support
+  - [x] Implemented recurrence rules and auto-snooze functionality
 
 ### **6.8 Policy & Ethics Depth**
 - [ ] **Dynamic Policy Loading** ⚠️ *Currently: Hardcoded defaults*

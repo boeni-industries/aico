@@ -1835,5 +1835,140 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # Note: Cannot rollback ALTER TABLE ADD COLUMN in SQLite
             # New columns will remain but be unused if rolled back
         ]
+    ),
+    
+    # Schema Version 28: Phase 6.7 - Proactive Behaviors
+    28: SchemaVersion(
+        version=28,
+        name="Agency Phase 6.7 - Proactive Behaviors (Follow-ups & Reminders)",
+        description="Add tables for policy-aware follow-ups and smart reminder scheduling",
+        sql_statements=[
+            # Follow-ups table
+            """CREATE TABLE IF NOT EXISTS agency_followups (
+                followup_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                goal_id TEXT,
+                related_message_id TEXT,
+                followup_type TEXT NOT NULL,  -- check_in, progress_update, completion_prompt, clarification
+                content TEXT NOT NULL,
+                scheduled_at TEXT NOT NULL,
+                delivered_at TEXT,
+                user_response TEXT,
+                response_sentiment REAL,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending, delivered, responded, dismissed, expired
+                priority INTEGER DEFAULT 50,
+                policy_approved INTEGER DEFAULT 1,
+                relationship_context TEXT,  -- JSON: relationship strength, interaction history
+                values_alignment REAL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_followups_user ON agency_followups(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_followups_scheduled ON agency_followups(scheduled_at, status)",
+            "CREATE INDEX IF NOT EXISTS idx_followups_goal ON agency_followups(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_followups_status ON agency_followups(status)",
+            
+            # Reminders table
+            """CREATE TABLE IF NOT EXISTS agency_reminders (
+                reminder_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                goal_id TEXT,
+                title TEXT NOT NULL,
+                description TEXT,
+                scheduled_at TEXT NOT NULL,
+                delivered_at TEXT,
+                snoozed_until TEXT,
+                snooze_count INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending, delivered, snoozed, completed, dismissed
+                priority TEXT NOT NULL DEFAULT 'normal',  -- low, normal, high, urgent
+                urgency_score REAL DEFAULT 0.5,
+                recurrence_rule TEXT,  -- JSON: frequency, interval, end_date
+                cluster_id TEXT,  -- For grouping related reminders
+                adaptation_data TEXT,  -- JSON: user response patterns, optimal timing
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_reminders_user ON agency_reminders(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON agency_reminders(scheduled_at, status)",
+            "CREATE INDEX IF NOT EXISTS idx_reminders_goal ON agency_reminders(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_reminders_cluster ON agency_reminders(cluster_id)",
+            "CREATE INDEX IF NOT EXISTS idx_reminders_status ON agency_reminders(status)",
+            "CREATE INDEX IF NOT EXISTS idx_reminders_priority ON agency_reminders(priority, urgency_score)",
+            
+            # Reminder clusters table (for batching)
+            """CREATE TABLE IF NOT EXISTS reminder_clusters (
+                cluster_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                cluster_name TEXT,
+                scheduled_delivery TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending, delivered, dismissed
+                reminder_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_reminder_clusters_user ON reminder_clusters(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_reminder_clusters_delivery ON reminder_clusters(scheduled_delivery, status)",
+            
+            # User proactive preferences table
+            """CREATE TABLE IF NOT EXISTS user_proactive_preferences (
+                user_id TEXT PRIMARY KEY,
+                followup_enabled INTEGER DEFAULT 1,
+                reminder_enabled INTEGER DEFAULT 1,
+                preferred_followup_times TEXT,  -- JSON: array of preferred hours
+                preferred_reminder_times TEXT,  -- JSON: array of preferred hours
+                max_followups_per_day INTEGER DEFAULT 3,
+                max_reminders_per_day INTEGER DEFAULT 5,
+                min_hours_between_followups INTEGER DEFAULT 4,
+                min_hours_between_reminders INTEGER DEFAULT 2,
+                cluster_reminders INTEGER DEFAULT 1,
+                auto_snooze_duration_minutes INTEGER DEFAULT 60,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Proactive behavior analytics table
+            """CREATE TABLE IF NOT EXISTS proactive_analytics (
+                analytics_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                behavior_type TEXT NOT NULL,  -- followup, reminder
+                item_id TEXT NOT NULL,
+                delivered_at TEXT NOT NULL,
+                user_action TEXT,  -- responded, dismissed, snoozed, ignored
+                response_time_minutes INTEGER,
+                sentiment_score REAL,
+                effectiveness_score REAL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_proactive_analytics_user ON proactive_analytics(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_proactive_analytics_type ON proactive_analytics(behavior_type)",
+            "CREATE INDEX IF NOT EXISTS idx_proactive_analytics_delivered ON proactive_analytics(delivered_at)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_proactive_analytics_delivered",
+            "DROP INDEX IF EXISTS idx_proactive_analytics_type",
+            "DROP INDEX IF EXISTS idx_proactive_analytics_user",
+            "DROP TABLE IF EXISTS proactive_analytics",
+            "DROP TABLE IF EXISTS user_proactive_preferences",
+            "DROP INDEX IF EXISTS idx_reminder_clusters_delivery",
+            "DROP INDEX IF EXISTS idx_reminder_clusters_user",
+            "DROP TABLE IF EXISTS reminder_clusters",
+            "DROP INDEX IF EXISTS idx_reminders_priority",
+            "DROP INDEX IF EXISTS idx_reminders_status",
+            "DROP INDEX IF EXISTS idx_reminders_cluster",
+            "DROP INDEX IF EXISTS idx_reminders_goal",
+            "DROP INDEX IF EXISTS idx_reminders_scheduled",
+            "DROP INDEX IF EXISTS idx_reminders_user",
+            "DROP TABLE IF EXISTS agency_reminders",
+            "DROP INDEX IF EXISTS idx_followups_status",
+            "DROP INDEX IF EXISTS idx_followups_goal",
+            "DROP INDEX IF EXISTS idx_followups_scheduled",
+            "DROP INDEX IF EXISTS idx_followups_user",
+            "DROP TABLE IF EXISTS agency_followups",
+        ]
     )
 })
