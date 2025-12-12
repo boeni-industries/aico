@@ -37,12 +37,13 @@ class TestAdaptiveScoringEngine:
     @pytest.fixture
     def adaptive_engine(self, db):
         """Create adaptive scoring engine with fresh state."""
-        # Clean up any existing arms from previous tests
+        # Clean up test data (but preserve arbiter_bandit_arms for FK constraints)
         # Temporarily disable foreign key constraints for cleanup
         db.execute("PRAGMA foreign_keys = OFF")
         db.execute("DELETE FROM goal_outcomes")
         db.execute("DELETE FROM arbiter_ab_tests")
-        db.execute("DELETE FROM arbiter_bandit_arms")
+        # Don't delete arbiter_bandit_arms - it will be repopulated by engine initialization
+        # and deleting it breaks the table structure
         db.commit()
         db.execute("PRAGMA foreign_keys = ON")
         
@@ -107,6 +108,8 @@ class TestAdaptiveScoringEngine:
         arm_id = "balanced"
         initial_pulls = adaptive_engine.arms[arm_id].pulls
         initial_reward = adaptive_engine.arms[arm_id].total_reward
+        initial_success = adaptive_engine.arms[arm_id].success_count
+        initial_failure = adaptive_engine.arms[arm_id].failure_count
         
         # Update with positive reward
         adaptive_engine.update_arm(arm_id, reward=0.8, success=True)
@@ -114,8 +117,8 @@ class TestAdaptiveScoringEngine:
         arm = adaptive_engine.arms[arm_id]
         assert arm.pulls == initial_pulls + 1
         assert arm.total_reward == initial_reward + 0.8
-        assert arm.success_count == 1
-        assert arm.failure_count == 0
+        assert arm.success_count == initial_success + 1
+        assert arm.failure_count == initial_failure
     
     def test_update_arm_with_failure(self, adaptive_engine):
         """Test updating arm with failure feedback."""

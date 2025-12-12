@@ -2197,7 +2197,7 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
                 entity_type TEXT,  -- goal, plan, skill, lesson, policy, etc.
                 entity_id TEXT,
                 event_data TEXT NOT NULL,  -- JSON: event-specific data
-                correlation_id TEXT,  -- For tracking related events
+                workflow_trace_id TEXT,  -- For tracking related events in a workflow (distinct from conversation correlation_id)
                 parent_event_id TEXT,  -- For event hierarchies
                 severity TEXT DEFAULT 'info',  -- debug, info, warning, error, critical
                 created_at TEXT NOT NULL,
@@ -2208,7 +2208,7 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "CREATE INDEX IF NOT EXISTS idx_events_log_type ON agency_events_log(event_type, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_events_log_category ON agency_events_log(event_category)",
             "CREATE INDEX IF NOT EXISTS idx_events_log_entity ON agency_events_log(entity_type, entity_id)",
-            "CREATE INDEX IF NOT EXISTS idx_events_log_correlation ON agency_events_log(correlation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_events_log_trace ON agency_events_log(workflow_trace_id)",
             "CREATE INDEX IF NOT EXISTS idx_events_log_created ON agency_events_log(created_at)",
             
             # Event triggers table
@@ -2278,7 +2278,7 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_event_triggers_type",
             "DROP TABLE IF EXISTS event_triggers",
             "DROP INDEX IF EXISTS idx_events_log_created",
-            "DROP INDEX IF EXISTS idx_events_log_correlation",
+            "DROP INDEX IF EXISTS idx_events_log_trace",
             "DROP INDEX IF EXISTS idx_events_log_entity",
             "DROP INDEX IF EXISTS idx_events_log_category",
             "DROP INDEX IF EXISTS idx_events_log_type",
@@ -2290,34 +2290,35 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_workflow_executions_status",
             "DROP INDEX IF EXISTS idx_workflow_executions_type",
             "DROP INDEX IF EXISTS idx_workflow_executions_user",
-            "DROP TABLE IF EXISTS workflow_executions",
+            "DROP TABLE IF EXISTS workflow_executions"
         ]
     ),
     
-    # Schema Version 31: Rename correlation_id to workflow_trace_id
+    # Schema Version 31: Fix Missing arbiter_bandit_arms Table
     31: SchemaVersion(
         version=31,
-        name="Rename correlation_id to workflow_trace_id in agency_events_log",
-        description="Rename correlation_id column to workflow_trace_id to distinguish from message correlation IDs",
-        run_outside_transaction=True,  # ALTER TABLE works better outside transaction with WAL mode
+        name="Fix Missing arbiter_bandit_arms Table",
+        description="Recreate arbiter_bandit_arms table that was missing from Schema v26 migration. Required for adaptive scoring in Goal Arbiter (multi-armed bandit algorithms).",
         sql_statements=[
-            # Drop old index first (if exists)
-            "DROP INDEX IF EXISTS idx_events_log_correlation",
-            
-            # Rename the column (only if it still has the old name)
-            # Check if column exists first by trying to query it
-            """
-            UPDATE agency_events_log SET workflow_trace_id = workflow_trace_id WHERE 1=0;
-            """,  # This will succeed if workflow_trace_id exists, fail if not
-            
-            # Create new index with new column name (if not exists)
-            "CREATE INDEX IF NOT EXISTS idx_events_log_trace ON agency_events_log(workflow_trace_id)",
+            """CREATE TABLE IF NOT EXISTS arbiter_bandit_arms (
+                arm_id TEXT PRIMARY KEY,
+                weights_json TEXT NOT NULL,
+                pulls INTEGER DEFAULT 0,
+                total_reward REAL DEFAULT 0.0,
+                success_count INTEGER DEFAULT 0,
+                failure_count INTEGER DEFAULT 0,
+                last_pulled TEXT,
+                active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_bandit_arms_active ON arbiter_bandit_arms(active)",
+            "CREATE INDEX IF NOT EXISTS idx_bandit_arms_pulls ON arbiter_bandit_arms(pulls)",
         ],
         rollback_statements=[
-            # Rollback: Rename back to correlation_id
-            "DROP INDEX IF EXISTS idx_events_log_trace",
-            "ALTER TABLE agency_events_log RENAME COLUMN workflow_trace_id TO correlation_id",
-            "CREATE INDEX IF NOT EXISTS idx_events_log_correlation ON agency_events_log(correlation_id)",
+            "DROP INDEX IF EXISTS idx_bandit_arms_pulls",
+            "DROP INDEX IF EXISTS idx_bandit_arms_active",
+            "DROP TABLE IF EXISTS arbiter_bandit_arms",
         ]
     )
 })

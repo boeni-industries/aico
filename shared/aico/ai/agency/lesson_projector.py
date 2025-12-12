@@ -82,7 +82,7 @@ class LessonMemoryProjector:
                 "id": f"lesson_{lesson.lesson_id}",
                 "type": "agency_lesson",
                 "user_id": lesson.user_id,
-                "content": lesson.description,
+                "content": lesson.summary_text,
                 "metadata": {
                     "lesson_id": lesson.lesson_id,
                     "lesson_type": lesson.lesson_type.value,
