@@ -35,14 +35,32 @@ class ContextRouter:
         message_analysis = await self.analyze_message(message)
         
         # 2. Retrieve context from each tier
-        working_ctx = await self.memory_manager.working_memory.get_context(user_id)
-        episodic_ctx = await self.retrieve_episodic_context(user_id, message_analysis)
-        semantic_ctx = await self.retrieve_semantic_context(user_id, message_analysis)
-        procedural_ctx = await self.retrieve_procedural_context(user_id)
+        # Current implementation uses ContextAssembler + ContextRetrievers.
+        # Episodic and behavioral stores are optional (often None depending on configuration).
+        working_ctx = await self.memory_manager.context_retrievers.get_working_context(
+            user_id=user_id,
+            conversation_id=message_analysis.conversation_id
+        )
+        semantic_ctx = await self.memory_manager.context_retrievers.get_semantic_context(
+            user_id=user_id,
+            query=message_analysis.text,
+            limit=10
+        )
+        episodic_ctx = []
+        if self.memory_manager.context_retrievers.episodic_store:
+            episodic_ctx = await self.memory_manager.context_retrievers.get_episodic_context(
+                user_id=user_id,
+                query=message_analysis.text,
+                limit=5
+            )
+
+        behavioral_ctx = []
+        if self.memory_manager.context_retrievers.behavioral_store:
+            behavioral_ctx = await self.memory_manager.context_retrievers.get_behavioral_context(user_id=user_id)
         
         # 3. Score and filter for relevance
         relevant_context = self.relevance_scorer.score_and_filter(
-            working_ctx, episodic_ctx, semantic_ctx, procedural_ctx,
+            working_ctx, episodic_ctx, semantic_ctx, behavioral_ctx,
             current_message=message_analysis
         )
         
@@ -179,7 +197,7 @@ class ThreadResolver:
 ### Semantic Analysis Components
 
 **Vector Similarity Matching**:
-- Generate embeddings using sentence transformers (`all-MiniLM-L6-v2`)
+- Generate embeddings using the configured embedding model (see `modelservice.transformers.models.embeddings` in `config/defaults/core.yaml`)
 - Calculate cosine similarity with thread context
 - Apply dynamic thresholds based on conversation patterns
 

@@ -18,10 +18,12 @@ The memory system consists of three tiers (two implemented, one planned):
 ### 1. Working Memory (LMDB) ✅ IMPLEMENTED
 Conversation history and immediate context management.
 - All conversation messages scoped by `conversation_id`
-- 24-hour TTL with automatic expiration
+- Configurable TTL with automatic expiration
 - Fast key-value storage (memory-mapped)
 - Sub-millisecond retrieval performance
 - **Dual Role**: Serves both immediate context AND conversation history (no separate episodic tier needed)
+
+**Current default:** `ttl_seconds: 2592000` (30 days) in `config/defaults/core.yaml`.
 
 ### 2. Semantic Memory + Knowledge Graph ✅ IMPLEMENTED
 Long-term knowledge storage with semantic search and graph relationships.
@@ -90,10 +92,12 @@ The memory system is implemented as a shared AI module at `shared/aico/ai/memory
 - Graph fusion with conflict resolution
 - Production deployment: 204 nodes, 27 edges
 
-### ❌ Phase 3: Behavioral Learning (NOT IMPLEMENTED)
-- User pattern recognition
-- Adaptive personalization
-- Procedural memory store
+### ✅ Phase 3: Behavioral Learning (IMPLEMENTED, CONFIGURABLE)
+- Skill library management
+- Contextual bandit learning (Thompson Sampling)
+- User preference vectors
+
+Behavioral learning is enabled by default in `config/defaults/core.yaml` under `memory.behavioral.enabled`.
 
 ### ❌ Phase 4: Proactive Engagement (NOT IMPLEMENTED)
 - Predictive triggers

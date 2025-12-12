@@ -517,15 +517,29 @@ shared/aico/ai/memory/
 ├── manager.py           # MemoryManager - central coordinator extending BaseAIProcessor
 ├── working.py           # WorkingMemoryStore - LMDB conversation history + context
 ├── semantic.py          # SemanticMemoryStore - ChromaDB segments with hybrid search
-├── procedural.py        # ProceduralMemoryStore - libSQL user patterns (planned)
+├── bm25.py              # BM25 keyword ranking
+├── fusion.py            # Hybrid search fusion (RRF, weighted)
+├── memory_album.py      # Memory consolidation and browsing
 ├── context/             # Context assembly module
 │   ├── assembler.py     # ContextAssembler - cross-tier coordination
 │   ├── retrievers.py    # Memory tier retrievers
 │   ├── scorers.py       # Relevance scoring
 │   └── graph_ranking.py # KG-based context ranking
-├── fusion.py            # Hybrid search fusion (RRF, weighted)
-├── bm25.py              # BM25 keyword ranking
-└── memory_album.py      # Memory consolidation and browsing (planned)
+├── temporal/            # Temporal metadata + evolution tracking
+│   ├── metadata.py
+│   ├── evolution.py
+│   └── queries.py
+├── consolidation/       # Memory consolidation engine
+│   ├── scheduler.py
+│   ├── replay.py
+│   ├── reconsolidation.py
+│   └── state.py
+├── behavioral/          # Skill-based interaction learning
+│   ├── skills.py
+│   ├── thompson_sampling.py
+│   ├── preferences.py
+│   └── models.py
+└── unified/             # Placeholder for unified indexing (Phase 4)
 ```
 
 ### Architecture Integration Patterns
@@ -563,5 +577,4 @@ This architecture provides the foundation for AICO's sophisticated memory capabi
 - [Hybrid Search Guide](hybrid-search.md) - **NEW**: Detailed hybrid search implementation (V3)
 - [Context Management](context-management.md) - Context assembly and thread resolution
 - [Implementation Concepts](implementation.md) - Conceptual implementation approach
-- [Thread Resolution](thread-resolution.md) - Integrated thread resolution system
-- [Memory Roadmap](memory_roadmap.md) - Detailed implementation timeline
+

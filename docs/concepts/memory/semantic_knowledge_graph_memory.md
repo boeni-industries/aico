@@ -1,6 +1,6 @@
 # Knowledge Graph Module
 
-**Status:** Proposal  
+**Status:** Implemented  
 **Module:** `aico.ai.knowledge_graph` (core AI module)  
 **First Consumer:** Semantic Memory  
 **Research-Validated:** 2025 industry best practices (GraphRAG, Graphusion, LlamaIndex, Semantic ER)
@@ -9,7 +9,7 @@
 
 ## Overview
 
-This document proposes a **core knowledge graph module** for AICO that provides property graph construction, entity resolution, and graph fusion capabilities. The module is domain-agnostic and reusable across multiple AI features.
+This document describes AICO's **core knowledge graph module** implementation. It provides property graph construction, entity resolution, and graph fusion capabilities. The module is domain-agnostic and reusable across multiple AI features.
 
 **First Application:** Semantic memory deduplication (critical bug fix)  
 **Future Applications:** Relationship intelligence, autonomous agency, conversation context, emotional memory
@@ -46,10 +46,13 @@ aico/
       entity_resolution.py         # Semantic blocking, LLM matching/merging
       fusion.py                    # Graph fusion, conflict resolution
       storage.py                   # ChromaDB + libSQL backend
-      query.py                     # Graph traversal, filtering
+      graph_traversal.py           # Traversal/path finding
+      analytics.py                 # Graph analytics
+      query/                       # GQL query execution and helpers
     
     memory/
-      semantic.py                  # Uses knowledge_graph module
+      manager.py                   # Coordinates background KG extraction and persistence
+      semantic.py                  # Conversation segments store (hybrid search)
 ```
 
 ### Pipeline Architecture
@@ -169,15 +172,19 @@ Properties are stored both as JSON (source of truth) and as flattened key/value 
 
 ---
 
-## Module Integration: Semantic Memory
+## Module Integration: Memory System
 
-At a high level, semantic memory uses the knowledge graph module by:
+At a high level, the memory system uses the knowledge graph module by:
 
-1. Running multi-pass extraction on new conversation text.
+1. Running multi-pass extraction on conversation text.
 2. Resolving entities against the user-specific graph.
-3. Fusing the results into the existing graph.
-4. Persisting to the hybrid ChromaDB + libSQL backend.
-5. Querying facts via semantic search and graph traversal.
+3. Persisting to the hybrid ChromaDB + libSQL backend.
+4. Retrieving structured context (entities + relationships) during context assembly.
+
+Current implementation details:
+- Background extraction is coordinated by `shared/aico/ai/memory/manager.py`.
+- Storage is implemented by `shared/aico/ai/knowledge_graph/storage.py`.
+- Context assembly may include recent KG entities and relationships via `shared/aico/ai/memory/context/assembler.py`.
 
 ---
 
