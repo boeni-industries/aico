@@ -17,6 +17,8 @@ import sys
 import json
 from datetime import datetime
 from typing import Optional
+import contextlib
+import io
 
 # Standard Rich console
 from rich.console import Console
@@ -38,12 +40,26 @@ from aico.ai.agency.values_ethics import ValuesEthicsService, PolicyEffect, Proa
 
 console = Console()
 
+
+@contextlib.contextmanager
+def _suppress_debug_output():
+    """Temporarily suppress stdout/stderr noise from underlying components.
+
+    Used by CLI commands that want a clean, UX-friendly output while still
+    initializing complex subsystems that may print debug information.
+    """
+    new_stdout = io.StringIO()
+    new_stderr = io.StringIO()
+    with contextlib.redirect_stdout(new_stdout), contextlib.redirect_stderr(new_stderr):
+        yield
+
 def agency_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
         from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
+            ("status", "View high-level agency status for a user"),
             ("intentions", "View active intention set for a user"),
             ("profile", "View or edit user value profile"),
             ("policies", "List, add, or remove policy rules"),
@@ -128,10 +144,208 @@ def get_user_id(user: Optional[str] = None) -> str:
     user_id = config.get("core.user.id")
     
     if not user_id:
-        console.print("[red]✗[/red] No user ID specified. Use --user or set core.user.id in config.")
-        raise typer.Exit(1)
+        # Defer user-facing messaging to the calling command for better UX
+        raise ValueError("NO_USER_CONFIGURED")
     
     return user_id
+
+
+@app.command()
+def status(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    limit: int = typer.Option(5, "--limit", "-n", help="Maximum number of intentions to sample"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """View high-level agency status for a user.
+
+    Shows a concise snapshot of the agency state:
+    - User and profile highlights (curiosity, proactive level)
+    - Number of active intentions
+    - Top intention summary (if any)
+    """
+    try:
+        try:
+            user_id = get_user_id(user)
+        except ValueError as e:
+            if str(e) == "NO_USER_CONFIGURED":
+                console.print("[red]✗[/red] No user configured.")
+                console.print("[yellow]-[/yellow] Use [bold]--user[/bold] to specify a user explicitly, e.g. [cyan]aico agency status --user <user-id>[/cyan]")
+                console.print("[yellow]-[/yellow] Or set a default with [cyan]aico config set core.user.id <user-id>[/cyan]")
+                raise typer.Exit(1)
+            # Re-raise unexpected ValueError
+            raise
+
+        # Wrap initialization in debug suppression to keep CLI output clean
+        with _suppress_debug_output():
+            db = get_db_connection()
+            config = ConfigurationManager()
+
+            # Initialize core services
+            engine = AgencyEngine(config, db)
+            values_service = ValuesEthicsService(db)
+
+            # Fetch value profile
+            profile = values_service._get_or_create_profile(user_id)
+
+            # Fetch intention set (reusing existing async pattern)
+            import asyncio
+
+            intention_set = asyncio.run(engine.get_intention_set(user_id))
+
+            # Optional: fetch goal summary for this user
+            goals_summary = None
+            try:
+                cursor = db.execute(
+                    "SELECT status, COUNT(*) FROM agency_goals WHERE user_id = ? GROUP BY status",
+                    (user_id,),
+                )
+                rows = cursor.fetchall()
+                by_status = {row[0] or "unknown": row[1] for row in rows}
+
+                total_goals = sum(by_status.values())
+                completed = by_status.get("completed", 0)
+                retired = by_status.get("retired", 0)
+                active = by_status.get("active", 0) + by_status.get("pending", 0)
+                paused = by_status.get("paused", 0)
+
+                goals_summary = {
+                    "total": int(total_goals),
+                    "active": int(active),
+                    "completed": int(completed),
+                    "retired": int(retired),
+                    "paused": int(paused),
+                    "by_status": {k: int(v) for k, v in by_status.items()},
+                }
+            except Exception:
+                # If schema or query fails, silently skip goals section
+                goals_summary = None
+        intentions = intention_set.intentions or []
+
+        if len(intentions) > limit:
+            intentions = intentions[:limit]
+
+        top_intention = intentions[0] if intentions else None
+
+        if json_output:
+            # JSON-friendly representation
+            output = {
+                "user_id": user_id,
+                "timestamp": datetime.utcnow().isoformat(),
+                "profile": {
+                    "curiosity_intensity": profile.curiosity_intensity,
+                    "proactive_behavior_level": profile.proactive_behavior_level.value,
+                    "sensitive_life_areas": profile.sensitive_life_areas,
+                },
+                "goals": goals_summary,
+                "intentions": {
+                    "total": len(intention_set.intentions),
+                    "sampled": len(intentions),
+                    "top": {
+                        "goal_id": top_intention.goal.goal_id,
+                        "title": top_intention.goal.title,
+                        "origin": top_intention.goal.origin.value,
+                        "priority": top_intention.goal.priority.value,
+                        "status": top_intention.goal.status.value,
+                        "score": top_intention.score,
+                        "priority_band": top_intention.priority_band,
+                        "score_breakdown": getattr(top_intention, "score_breakdown", None),
+                    } if top_intention else None,
+                },
+            }
+            console.print_json(data=output)
+            return
+
+        # Rich table output
+        table = Table(
+            title=f"Agency Status for {user_id}",
+            box=box.SIMPLE_HEAD,
+            title_justify="left",
+            header_style="bold cyan",
+        )
+        table.add_column("Metric", style="yellow", no_wrap=True)
+        table.add_column("Value", style="white")
+
+        # Profile summary
+        table.add_row("User", user_id)
+        table.add_row("Curiosity Intensity", f"{profile.curiosity_intensity:.2f}")
+        table.add_row("Proactive Level", profile.proactive_behavior_level.value)
+
+        sensitive = ", ".join(profile.sensitive_life_areas) if profile.sensitive_life_areas else "[dim]None configured[/dim]"
+        table.add_row("Sensitive Areas", sensitive)
+
+        # Intention summary
+        total_intentions = len(intention_set.intentions)
+        table.add_row("Active Intentions", str(total_intentions))
+
+        if top_intention:
+            goal = top_intention.goal
+            band_color = {
+                "critical": "red",
+                "high": "yellow",
+                "normal": "green",
+                "low": "blue",
+            }.get(top_intention.priority_band, "white")
+
+            band_str = f"[{band_color}]{top_intention.priority_band}[/{band_color}]"
+            table.add_row("Top Intention", goal.title)
+            table.add_row("Top Origin", goal.origin.value)
+            table.add_row("Top Priority", goal.priority.value)
+            table.add_row("Top Score", f"{top_intention.score:.3f}")
+            table.add_row("Top Band", band_str)
+            table.add_row("Top Status", goal.status.value)
+        else:
+            table.add_row("Top Intention", "[dim]None[/dim]")
+
+        console.print()
+        console.print(table)
+
+        # Goals & activity summary (even if there are no intentions)
+        if goals_summary is not None:
+            goals_table = Table(
+                title="Goals & Activity",
+                box=box.SIMPLE_HEAD,
+                title_justify="left",
+                header_style="bold green",
+            )
+            goals_table.add_column("Metric", style="yellow", no_wrap=True)
+            goals_table.add_column("Value", style="white")
+
+            goals_table.add_row("Total Goals", str(goals_summary.get("total", 0)))
+            goals_table.add_row("Active/Pending", str(goals_summary.get("active", 0)))
+            goals_table.add_row("Paused", str(goals_summary.get("paused", 0)))
+            goals_table.add_row("Completed", str(goals_summary.get("completed", 0)))
+            goals_table.add_row("Retired", str(goals_summary.get("retired", 0)))
+
+            console.print()
+            console.print(goals_table)
+        # If we have a top intention with a score breakdown, show contributing factors
+        if top_intention and getattr(top_intention, "score_breakdown", None):
+            factors = top_intention.score_breakdown
+            factors_table = Table(
+                title="Top Intention – Scoring Breakdown",
+                box=box.SIMPLE_HEAD,
+                title_justify="left",
+                header_style="bold magenta",
+            )
+            factors_table.add_column("Factor", style="yellow", no_wrap=True)
+            factors_table.add_column("Value", style="white")
+
+            for name, value in factors.items():
+                # Format numeric values nicely, keep others as-is
+                if isinstance(value, float):
+                    value_str = f"{value:.3f}"
+                else:
+                    value_str = str(value)
+                factors_table.add_row(name, value_str)
+
+            console.print()
+            console.print(factors_table)
+
+        console.print(f"\n[dim]Sampled up to {limit} intentions for summary[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error retrieving status: {e}")
+        raise typer.Exit(1)
 
 
 @app.command()
