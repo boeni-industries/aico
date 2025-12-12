@@ -152,7 +152,7 @@ class LessonMemoryProjector:
                 "properties": {
                     "lesson_id": lesson.lesson_id,
                     "lesson_type": lesson.lesson_type.value,
-                    "description": lesson.description,
+                    "summary_text": lesson.summary_text,  # Fixed: was 'description'
                     "confidence": lesson.confidence,
                     "status": lesson.status.value,
                     "created_at": lesson.created_at.isoformat(),
