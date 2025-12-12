@@ -19,6 +19,17 @@ class PersonalityTraits:
 
 
 @dataclass
+class EmotionState:
+    """Simplified emotional state for a user.
+
+    Provides valence/arousal signals for components like CuriosityEngine
+    that apply emotion/relationship gates.
+    """
+    valence: float = 0.0  # -1.0 = very negative, 0.0 = neutral, 1.0 = very positive
+    arousal: float = 0.0  # 0.0 = calm, 1.0 = highly activated
+
+
+@dataclass
 class RelationshipVector:
     """Relationship context for a user."""
     user_id: str
@@ -36,6 +47,7 @@ class PersonalityContext:
     user_id: str
     traits: PersonalityTraits = field(default_factory=PersonalityTraits)
     relationship: RelationshipVector = field(default_factory=lambda: RelationshipVector(user_id=""))
+    emotion: EmotionState = field(default_factory=EmotionState)
     preferences: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):

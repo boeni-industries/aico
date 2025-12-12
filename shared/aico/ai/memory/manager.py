@@ -663,6 +663,44 @@ class MemoryManager(BaseAIProcessor):
                 total_found=0,
                 processing_time_ms=0.0
             )
+
+    async def get_user_interests(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Return AMS-tracked user interests for curiosity engine.
+
+        Phase 6.3 integration point: CuriosityEngine expects an `ams_service`
+        exposing `get_user_interests(user_id, limit=...)`. When behavioral
+        components are not enabled yet, this should degrade gracefully and
+        simply return an empty list instead of raising.
+        """
+        if not getattr(self, "_behavioral_enabled", False):
+            logger.warning(
+                f"[AMS] get_user_interests called for user {user_id} but behavioral components are disabled; "
+                "returning empty list."
+            )
+            return []
+
+        preference_manager = getattr(self, "_preference_manager", None)
+        if preference_manager is None:
+            logger.warning(
+                f"[AMS] get_user_interests called for user {user_id} but PreferenceManager is not available; "
+                "returning empty list."
+            )
+            return []
+
+        try:
+            # Delegate to PreferenceManager if it implements interest retrieval.
+            if hasattr(preference_manager, "get_user_interests"):
+                result = await preference_manager.get_user_interests(user_id=user_id, limit=limit)
+                return result or []
+
+            logger.warning(
+                f"[AMS] PreferenceManager for user {user_id} does not support get_user_interests; "
+                "returning empty list."
+            )
+            return []
+        except Exception as e:
+            logger.error(f"[AMS] get_user_interests failed for user {user_id}: {e}")
+            return []
     
     async def store_message(self, user_id: str, conversation_id: str, content: str, role: str, language: str = "en") -> bool:
         """V3 API: Store conversation segments (simplified)

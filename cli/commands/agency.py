@@ -362,15 +362,18 @@ def intentions(
     """
     try:
         user_id = get_user_id(user)
-        db = get_db_connection()
-        config = ConfigurationManager()
-        
-        # Initialize engine
-        engine = AgencyEngine(config, db)
-        
-        # Get intention set
-        import asyncio
-        intention_set = asyncio.run(engine.get_intention_set(user_id))
+
+        # Suppress noisy debug output from underlying components
+        with _suppress_debug_output():
+            db = get_db_connection()
+            config = ConfigurationManager()
+            
+            # Initialize engine
+            engine = AgencyEngine(config, db)
+            
+            # Get intention set
+            import asyncio
+            intention_set = asyncio.run(engine.get_intention_set(user_id))
         
         # Limit results if needed
         if len(intention_set.intentions) > limit:

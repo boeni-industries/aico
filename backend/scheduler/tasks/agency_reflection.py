@@ -29,9 +29,12 @@ class AgencyReflectionTask(BaseTask):
     minimize impact on active user interactions.
     """
     
-    task_id = "agency_reflection"
+    task_id = "agency.reflection"
     
     default_config = {
+        # Enable by default and run during typical sleep-like window
+        "enabled": True,
+        "schedule": "0 3 * * *",  # Daily at 03:00 (can be overridden via config)
         "analysis_window_days": 7,  # How many days back to analyze
         "min_idle_minutes": 30,     # Minimum idle time before running
         "per_user": True,           # Run reflection per user

@@ -443,6 +443,9 @@ def trigger_task(
 
         console.print(f"[green]Successfully sent trigger request for task '{task_id}'[/green]")
         console.print("[dim]Note: The task will run on the next scheduler check.[/dim]")
+        console.print(
+            f"[dim]Tip: To see what happened, run [cyan]aico scheduler history {task_id}[/cyan] after it executes.[/dim]"
+        )
 
     except Exception as e:
         console.print(f"[red]Error triggering task: {e}[/red]")

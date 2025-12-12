@@ -7,8 +7,8 @@ Part of AICO's behavioral learning system.
 
 import json
 import numpy as np
-from typing import List, Optional, Dict
-from datetime import datetime
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timezone
 
 from aico.core.logging import get_logger
 from .models import PreferenceVector, Skill
@@ -174,3 +174,102 @@ class PreferenceManager:
             )
         )
         self.db.commit()
+
+    async def get_user_interests(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Derive user interests from behavioral data for CuriosityEngine.
+
+        This implementation uses the existing behavioral tables instead of a
+        dedicated interests table:
+
+        - "user_skill_confidence" provides usage counts and last_used_at
+        - "skills" provides human-readable names we can treat as topics
+
+        It returns a list of dictionaries compatible with CuriosityEngine
+        expectations:
+
+        {
+            "topic": str,
+            "engagement_score": float,
+            "mention_count": int,
+            "recency_score": float,
+        }
+        """
+        try:
+            # Join user_skill_confidence with skills to get names/topics
+            rows = self.db.execute(
+                """
+                SELECT
+                    s.skill_name,
+                    usc.usage_count,
+                    usc.confidence_score,
+                    usc.last_used_at
+                FROM user_skill_confidence usc
+                JOIN skills s ON usc.skill_id = s.skill_id
+                WHERE usc.user_id = ?
+                ORDER BY usc.usage_count DESC
+                LIMIT ?
+                """,
+                (user_id, limit),
+            ).fetchall()
+
+            if not rows:
+                logger.info(
+                    "[PREF] get_user_interests: no behavioral data for user, returning empty list",
+                    extra={"user_id": user_id},
+                )
+                return []
+
+            now = datetime.now(timezone.utc)
+            interests: List[Dict[str, Any]] = []
+
+            for row in rows:
+                topic = row[0]
+                usage_count = int(row[1] or 0)
+                confidence = float(row[2] or 0.5)
+                last_used_raw = row[3]
+
+                recency_score = 0.5
+                if last_used_raw:
+                    try:
+                        # last_used_at is stored as ISO string without timezone
+                        last_used = datetime.fromisoformat(last_used_raw)
+                        if last_used.tzinfo is None:
+                            last_used = last_used.replace(tzinfo=timezone.utc)
+                        age_days = max(0.0, (now - last_used).total_seconds() / 86400.0)
+                        # Map 0 days -> 1.0, 30+ days -> ~0.0
+                        recency_score = max(0.0, min(1.0, 1.0 - age_days / 30.0))
+                    except Exception as e:
+                        logger.warning(
+                            "[PREF] Failed to parse last_used_at for user interest; using default recency",
+                            extra={"user_id": user_id, "error": str(e)},
+                        )
+
+                # Engagement is primarily confidence, lightly scaled by usage
+                engagement_score = confidence
+                if usage_count > 0:
+                    # Cap log factor to keep value in [0, 1]
+                    import math
+
+                    engagement_boost = min(0.3, math.log1p(usage_count) / 10.0)
+                    engagement_score = max(0.0, min(1.0, confidence + engagement_boost))
+
+                interests.append(
+                    {
+                        "topic": topic,
+                        "engagement_score": engagement_score,
+                        "mention_count": usage_count,
+                        "recency_score": recency_score,
+                    }
+                )
+
+            logger.info(
+                "[PREF] get_user_interests: derived interests from behavioral data",
+                extra={"user_id": user_id, "interest_count": len(interests)},
+            )
+            return interests
+
+        except Exception as e:
+            logger.error(
+                f"[PREF] get_user_interests failed for user {user_id}: {e}",
+            )
+            return []

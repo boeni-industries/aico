@@ -570,24 +570,6 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
   - [x] Goal lifecycle end-to-end tests ✓
   - [x] Curiosity → hobby → reflection workflow tests ✓
   - [x] Behavioral learning → adjustment → validation tests ✓
-  - [x] Policy enforcement across all components ✓
-  - [x] Proactive behaviors integration tests ✓
-  - [x] Ethics gates integration tests ✓
-
-- [x] **Data Flow Testing** - **COMPLETED**
-  - [x] Event propagation tests ✓
-  - [x] State consistency tests ✓
-  - [x] Transaction integrity tests ✓
-
-### **7.3 Edge Case & Error Testing** ✅ *COMPLETE*
-- [x] **Failure Scenarios** - **COMPLETED**
-  - [x] Database connection failures ✓
-  - [x] LLM API failures and timeouts ✓
-  - [x] Resource exhaustion scenarios ✓
-  - [x] Concurrent modification conflicts ✓
-  - [x] All components have comprehensive error handling tests ✓
-
-- [x] **Boundary Conditions** - **COMPLETED**
   - [x] Empty data sets ✓
   - [x] Maximum data volumes ✓
   - [x] Invalid input handling ✓
@@ -682,6 +664,63 @@ This phase turns the CLI into the primary **analysis and diagnostics tool** for:
 > - Inspect reflection effectiveness, goal outcomes, skill performance, and curiosity pipelines via CLI.
 > - Compare real-world behaviour against conceptual expectations and configs.
 > - Export JSON metrics for external analysis tools and dashboards.
+
+---
+
+## Appendix – Rich AMS Interest Modelling (Curiosity Integration)
+
+The following tasks describe the **full / rich** implementation of AMS-backed
+user interests used by the Curiosity Engine's `_track_interests` detector.
+
+- [ ] **Canonical Interest Model & Storage**
+  - [ ] Define a canonical interest schema (in code + DB), e.g. `ams_user_interests`:
+    - `user_id`, `topic`, `source` (behavioral|conversation|world_model|open_loop),
+    - `mention_count`, `engagement_score`, `recency_score`, `trend_score`,
+    - `first_seen_at`, `last_seen_at`, `time_window_days`, `metadata_json`.
+  - [ ] Implement migration(s) for new tables / columns in the libSQL schema.
+
+- [ ] **Multi-Source Signal Extraction (AMS)**
+  - [ ] Implement AMS helpers to extract raw interest signals from:
+    - Behavioral data: `skills`, `user_skill_confidence`, `skill_executions`.
+    - Conversation history: trajectories / working memory / semantic memory
+      (e.g. per-topic or per-entity aggregates over a time window).
+    - Open loops: AMS / agency "open-loop" or unresolved items, grouped by topic.
+    - World Model: high-activity or high-uncertainty domains around the user.
+  - [ ] Normalize raw signals into a common in-memory form:
+    `[{user_id, topic, source, mentions, engagement, recency, window_days}]`.
+
+- [ ] **Interest Aggregation & Trend Calculation**
+  - [ ] Implement an `InterestAggregator` (or equivalent AMS component) that:
+    - Merges multi-source signals per `(user_id, topic)` using configurable
+      per-source weights.
+    - Computes `mention_count`, `engagement_score`, `recency_score` and
+      `trend_score` (rising / stable / declining) from historical snapshots.
+  - [ ] Persist aggregated interests into `ams_user_interests` with periodic
+    updates (scheduler task or AMS maintenance job).
+
+- [ ] **Scheduler & Maintenance Task**
+  - [ ] Add a dedicated backend scheduler task (e.g. `ams.interests_refresh`)
+    that periodically recomputes user interests for active users:
+    - Runs on an idle-aware, resource-aware schedule (e.g. nightly batch).
+    - Processes users in small batches with sharding over multiple days.
+
+- [ ] **MemoryManager / AMS Service Interface**
+  - [ ] Update `MemoryManager.get_user_interests(user_id, limit)` to:
+    - Prefer reading from `ams_user_interests` (persisted aggregates).
+    - Fallback to on-the-fly aggregation if persisted data is missing.
+  - [ ] Expose any additional AMS helper methods needed for other components
+    (e.g. reflection or metrics) to query interests and trends.
+
+- [ ] **CuriosityEngine & Tests**
+  - [ ] Verify that `CuriosityEngine._track_interests` correctly:
+    - Consumes the rich interest model (topic, engagement, mentions, recency,
+      trend) via `ams.get_user_interests`.
+    - Adjusts novelty / relevance heuristics based on trend (e.g. favor rising
+      or under-explored topics).
+  - [ ] Add / extend unit and integration tests to cover:
+    - Multi-source aggregation into `ams_user_interests`.
+    - Curiosity scans that react differently to high/low engagement,
+      recency, and trend values.
 
 ---
 

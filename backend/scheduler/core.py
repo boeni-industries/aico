@@ -59,7 +59,8 @@ class TaskRegistry:
             "backend.scheduler.tasks.ams_thompson_sampling",  # AMS Phase 3
             "backend.scheduler.tasks.ams_trajectory_cleanup",  # AMS Phase 3
             "backend.scheduler.tasks.agency_followups",  # Agency Phase 1
-            "backend.scheduler.tasks.curiosity_scan"  # Agency Phase 3
+            "backend.scheduler.tasks.curiosity_scan",  # Agency Phase 3
+            "backend.scheduler.tasks.agency_reflection",  # Agency reflection / behavioral learning
         ]
         
         for module_name in builtin_modules:

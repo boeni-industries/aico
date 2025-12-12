@@ -345,11 +345,27 @@ class BackendLifecycleManager:
         # AgencyEngine registration (Phase 1 goals & planning, Phase 2 context)
         # ------------------------------------------------------------------
         try:
-            # Phase 2: Initialize WorldModelService
+            # Phase 2: Initialize WorldModelService using initialized MemoryManager
             world_model = None
             try:
                 from aico.ai.world_model import WorldModelService
-                
+
+                # Reuse KG storage and semantic memory from MemoryManager when available.
+                kg_storage = None
+                semantic_memory = None
+
+                # Knowledge graph components are initialized lazily inside MemoryManager
+                if getattr(memory_manager, "_kg_initialized", False):
+                    kg_storage = getattr(memory_manager, "_kg_storage", None)
+
+                # Semantic memory store (may be disabled via config)
+                semantic_memory = getattr(memory_manager, "_semantic_store", None)
+
+                if not kg_storage or not semantic_memory:
+                    raise RuntimeError(
+                        "Knowledge graph storage or semantic memory not available from MemoryManager"
+                    )
+
                 world_model = WorldModelService(
                     kg_storage=kg_storage,
                     semantic_memory=semantic_memory,
