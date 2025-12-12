@@ -33,11 +33,11 @@
 - [x] **Emotion Expressions**: 12 canonical emotions via ARKit blend shapes with smooth transitions
 - [x] **Emotion Integration**: Auto-syncs with EmotionProvider (2s polling)
 - [x] **Eye Gaze**: Natural downward gaze for warm eye contact
-- [ ] **Speaking Animation**: Switch to talking.glb during AICO responses (planned)
-- [ ] **Lip-sync**: TalkingHead.js integration (Phase 2)
+- [x] **Speaking Animation**: Switch to talking.glb during AICO responses, driven by TTS speaking state
+- [x] **Lip-sync**: Real-time Web Audio API frequency-based lip-sync with ARKit visemes (Phase 1); Rhubarb-based phoneme timing planned for Phase 2
 - [ ] **Avatar Controls**: Mute/unmute, avatar on/off toggle (planned)
 
-### User Experience ✅ *Mostly Complete*
+### User Experience 
 - [x] **Offline Mode**: Cache-first loading with graceful degradation
 - [x] **Responsive Design**: Works on macOS, iOS, Android, Linux, Windows
 - [x] **Connection Management**: Automatic reconnection with exponential backoff
@@ -47,7 +47,7 @@
 
 ## Backend MVP
 
-### LLM Integration ✅ *Complete*
+### LLM Integration 
 - [x] **Model Configuration**: Qwen3 Abliterated 8B with Ollama auto-management
 - [x] **Character Personalities**: Modelfile system with Eve as default character
 - [x] **Prompt Engineering**: System prompts with memory context integration
@@ -55,7 +55,7 @@
 - [x] **Fallback Handling**: Graceful degradation with health monitoring
 - [x] **Auto-Management**: Automatic Ollama installation and model pulling
 
-### Memory System ✅ *Complete*
+### Memory System 
 - [x] **Three-Tier Architecture**: Working (LMDB) + Semantic (ChromaDB) + Knowledge Graph (DuckDB)
 - [x] **Conversation Memory**: 24-hour working memory with sub-millisecond access
 - [x] **User Facts**: Knowledge graph with 204 nodes, 27 edges, 552 properties
@@ -66,7 +66,7 @@
 - [x] **Entity Extraction**: GLiNER zero-shot NER + LLM relationship extraction
 - [x] **Entity Resolution**: 3-step deduplication with semantic blocking
 
-### Personality Engine ✅ *Via Modelfiles*
+### Personality Engine 
 - [x] **Character System**: Ollama Modelfiles for custom personalities
 - [x] **Eve Character**: Warm, curious, contemplative default personality
 - [x] **Expression Mapping**: System prompts define communication style
@@ -75,7 +75,7 @@
 - [ ] **Trait System**: Formal Big Five/HEXACO implementation (future)
 - [ ] **Personality Configuration**: User-adjustable personality sliders (future)
 
-### Emotion Recognition ✅ *Partial*
+### Emotion Recognition 
 - [x] **Text Sentiment**: BERT Multilingual sentiment classification
 - [x] **Emotion Analysis**: RoBERTa 6-emotion classification
 - [x] **Intent Classification**: XLM-RoBERTa multilingual intent understanding
@@ -84,7 +84,7 @@
 - [ ] **Behavioral Patterns**: User mood learning over time (planned)
 - [ ] **Emotion History**: Track emotional patterns (planned)
 
-### Emotion Simulation ✅ *Partial*
+### Emotion Simulation 
 - [x] **Canonical Emotion Labels**: 12 emotions (neutral, calm, curious, playful, warm_concern, protective, focused, encouraging, reassuring, apologetic, tired, reflective)
 - [x] **Avatar Expression**: Emotion-driven facial expressions via ARKit blend shapes
 - [x] **Smooth Transitions**: 5% interpolation per frame for natural emotion changes
@@ -93,7 +93,7 @@
 - [ ] **Voice Coordination**: Sync emotions across avatar and voice (planned)
 - [ ] **Empathetic Responses**: Generate emotionally appropriate reactions (planned)
 
-### Basic Agency ✅ *Task Automation Complete, Proactive Behavior Planned*
+### Basic Agency 
 - [x] **Task Scheduler**: Cron-based scheduler with resource awareness
 - [x] **Background Tasks**: Log cleanup, key rotation, health checks, database vacuum
 - [x] **AMS Tasks**: Memory consolidation, feedback classification, Thompson sampling
@@ -104,7 +104,7 @@
 - [ ] **Suggestion Engine**: Context-based suggestions (planned)
 - [ ] **Proactive Timing**: Intelligent initiative timing (planned)
 
-### Core Services ✅ *Complete*
+### Core Services 
 - [x] **Conversation API**: REST + WebSocket endpoints with streaming
 - [x] **Memory API**: Store and retrieve memories (Memory Album)
 - [x] **Knowledge Graph API**: GQL/Cypher queries via CLI
@@ -113,20 +113,20 @@
 
 ## AI Feature Integration
 
-### Module Coordination ✅ *Partial*
+### Module Coordination 
 - [x] **LLM-Memory Integration**: Context assembly from three-tier memory system
 - [x] **Personality-LLM Integration**: Modelfile system defines character behavior
 - [x] **Emotion Recognition Integration**: Sentiment analysis for Memory Album
 - [x] **Agency-Memory Integration**: Task scheduler uses memory for consolidation
 - [x] **Knowledge Graph Integration**: Entity extraction and relationship modeling
 - [x] **Emotion-Avatar Integration**: Real-time facial expressions sync with emotion state
-- [ ] **Voice-Avatar Sync**: Lip-sync and speaking animations (planned)
+- [x] **Voice-Avatar Sync**: Basic voice-activated talking animation and Web Audio API lip-sync implemented; higher-accuracy phoneme timing via Rhubarb planned
 
 ## Validation Criteria
 
 ### Core Functionality
 - [x] Remembers user preferences across sessions (three-tier memory)
-- [x] Shows consistent personality responses (Modelfile system)
+- [x] Shows consistent personality responses (Eve character via Modelfile)
 - [x] Recognizes user emotions (sentiment analysis)
 - [x] Works completely offline (local-first architecture)
 - [x] Responds within 3-5 seconds (streaming with <500ms first token)
@@ -158,35 +158,35 @@
 *Note: Core infrastructure provided by Foundation I (complete)*
 
 **Implemented:**
-- ✅ **LLM**: Qwen3 Abliterated 8B via Ollama with Modelfile system
-- ✅ **Memory**: Three-tier (LMDB + ChromaDB + DuckDB) with Hybrid Search V3
-- ✅ **Knowledge Graph**: NetworkX + DuckDB with GQL/Cypher queries
-- ✅ **Entity Extraction**: GLiNER Medium v2.1 + sentence-transformers
-- ✅ **Sentiment**: BERT Multilingual + RoBERTa emotion + XLM-RoBERTa intent
-- ✅ **Personality**: Modelfile-based character system (Eve)
+- **LLM**: Qwen3 Abliterated 8B via Ollama with Modelfile system
+- **Memory**: Three-tier (LMDB + ChromaDB + DuckDB) with Hybrid Search V3
+- **Knowledge Graph**: NetworkX + DuckDB with GQL/Cypher queries
+- **Entity Extraction**: GLiNER Medium v2.1 + sentence-transformers
+- **Sentiment**: BERT Multilingual + RoBERTa emotion + XLM-RoBERTa intent
+- **Personality**: Modelfile-based character system (Eve)
 
 **Implemented:**
-- ✅ **Avatar**: InAppWebView + Three.js + Ready Player Me with emotion expressions
-- ✅ **Facial Expressions**: 12 canonical emotions via ARKit blend shapes (52 morph targets)
-- ✅ **Natural Behaviors**: Realistic blinking (180ms asymmetric), eye gaze, idle variations
+- **Avatar**: InAppWebView + Three.js + Ready Player Me with emotion expressions
+- **Facial Expressions**: 12 canonical emotions via ARKit blend shapes (52 morph targets)
+- **Natural Behaviors**: Realistic blinking (180ms asymmetric), eye gaze, idle variations
+- **Lip-sync (Phase 1)**: Web Audio API frequency-based viseme detection and ARKit blend shape mapping for real-time avatar lip-sync; Rhubarb Lip Sync integration planned for Phase 2
 
 **Planned:**
-- 🚧 **Voice**: Whisper.cpp (STT) + Coqui/Piper (TTS) integration
-- 🚧 **Lip-sync**: TalkingHead.js integration (Phase 2)
-- 🚧 **Emotion Simulation**: AppraisalCloudPCT implementation
-- 🚧 **Formal Personality**: Big Five/HEXACO trait system
+- **Voice**: Whisper.cpp (STT) + Coqui/Piper (TTS) integration
+- **Emotion Simulation**: AppraisalCloudPCT implementation
+- **Formal Personality**: Big Five/HEXACO trait system
 
 ## Success Definition
 
 User can have a 10-minute conversation where AICO:
-1. ✅ **Memory**: Remembers something from earlier (three-tier memory system)
-2. ✅ **Personality**: Shows consistent personality traits (Eve character via Modelfile)
-3. ✅ **Emotion Recognition**: Detects user mood from text (BERT, RoBERTa)
-4. ✅ **Contextual Intelligence**: Uses memory context for relevant responses
-5. ✅ **Knowledge Graph**: Builds relationship understanding from conversations
-6. ✅ **Emotion Expression**: Displays 12 canonical emotions via avatar facial expressions
-7. 🚧 **Agency**: Asks follow-up questions unprompted (planned)
-8. 🚧 **Voice Interaction**: Handles text and voice input/output (planned)
+1. **Memory**: Remembers something from earlier (three-tier memory system)
+2. **Personality**: Shows consistent personality traits (Eve character via Modelfile)
+3. **Emotion Recognition**: Detects user mood from text (BERT, RoBERTa)
+4. **Contextual Intelligence**: Uses memory context for relevant responses
+5. **Knowledge Graph**: Builds relationship understanding from conversations
+6. **Emotion Expression**: Displays 12 canonical emotions via avatar facial expressions
+7. **Agency**: Asks follow-up questions unprompted (planned)
+8. **Voice Interaction**: Handles text and voice input/output (planned)
 
 **Current Status**: Items 1-6 complete and operational. Items 7-8 pending voice integration and proactive behavior.
 

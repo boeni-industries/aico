@@ -925,6 +925,7 @@ def user_create(
     nickname: str = typer.Option(None, "--nickname", "-n", help="Optional nickname"),
     user_type: str = typer.Option("person", "--type", "-t", help="User type (person)"),
     pin: str = typer.Option(None, "--pin", "-p", help="Optional PIN for authentication"),
+    primary_language: str = typer.Option("en", "--language", "-l", help="Primary language (ISO/BCP-47 code, e.g. 'en', 'de', 'fr')"),
     ctx: typer.Context = typer.Context
 ):
     """Create a new user with optional PIN authentication"""
@@ -938,10 +939,12 @@ def user_create(
         console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type person')
         console.print('  aico security user-create "Bob Wilson" --pin 1234 --type person')
         console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin 5678')
+        console.print('  aico security user-create "Hans Müller" --language de --pin 1234')
         console.print("\n[bold yellow]Options:[/bold yellow]")
         console.print("  --nickname, -n    Optional nickname for the user")
         console.print("  --type, -t        User type: person (default: person)")
         console.print("  --pin, -p         Optional PIN for authentication")
+        console.print("  --language, -l    Primary language (ISO/BCP-47 code, default: en)")
         console.print("\n[dim]Use 'aico security user-list' to see existing users[/dim]")
         raise typer.Exit(1)
     import asyncio
@@ -978,7 +981,8 @@ def user_create(
                 full_name=full_name,
                 nickname=nickname,
                 user_type=user_type,
-                pin=pin
+                pin=pin,
+                primary_language=primary_language
             )
             return user
         
@@ -991,6 +995,7 @@ def user_create(
         if user.nickname:
             console.print(f"Nickname: {user.nickname}")
         console.print(f"Type: {user.user_type}")
+        console.print(f"Language: {user.primary_language or 'en'}")
         if pin:
             console.print("PIN: [dim]Configured[/dim]")
         
@@ -1504,6 +1509,7 @@ def user_list(
                 table.add_row("Full Name", user.full_name)
                 table.add_row("Nickname", user.nickname or "-")
                 table.add_row("User Type", user.user_type)
+                table.add_row("Language", user.primary_language or "en")
                 table.add_row("Active", "[green]Yes[/green]" if user.is_active else "[red]No[/red]")
                 table.add_row("Created", str(user.created_at)[:19] if user.created_at else "-")
                 table.add_row("Updated", str(user.updated_at)[:19] if user.updated_at else "-")
@@ -1568,9 +1574,11 @@ def user_list(
                     box=box.SIMPLE_HEAD,
                     padding=(0, 1)
                 )
-                table.add_column("UUID", style="bold white", justify="left", no_wrap=True, min_width=36)
-                table.add_column("Name", style="bold white", justify="left")
+                table.add_column("UUID", style="bold white", justify="left", no_wrap=True)
+                table.add_column("Name", style="bold white", justify="left", no_wrap=True)
+                table.add_column("Nickname", style="bold white", justify="left")
                 table.add_column("Type", style="green", justify="left")
+                table.add_column("Language", style="cyan", justify="left")
                 table.add_column("Active", style="bold white", justify="left")
                 table.add_column("PIN", style="bold white", justify="left")
                 table.add_column("Locked", style="bold white", justify="left")
@@ -1591,7 +1599,9 @@ def user_list(
                     table.add_row(
                         user.uuid,
                         user.full_name,
+                        user.nickname or "-",
                         user.user_type,
+                        user.primary_language or "en",
                         active_status,
                         pin_status,
                         locked_status,
@@ -1614,39 +1624,21 @@ def user_list(
                 console.print("No users found.")
                 return
             
-            # Create table following CLI style guide
-            table = Table(
-                title="✨ [bold cyan]AICO Users[/bold cyan]",
-                title_style="bold cyan",
-                title_justify="left",
-                border_style="bright_blue",
-                header_style="bold yellow",
-                show_lines=False,
-                box=box.SIMPLE_HEAD,
-                padding=(0, 1)
-            )
-            table.add_column("UUID", style="bold white", justify="left", no_wrap=True, min_width=36)
-            table.add_column("Name", style="bold white", justify="left")
-            table.add_column("Nickname", style="bold white", justify="left")
-            table.add_column("Type", style="green", justify="left")
-            table.add_column("Active", style="bold white", justify="left")
-            table.add_column("Created", style="dim", justify="left")
+            # Display users in a compact list format to avoid truncation
+            console.print()
+            console.print("✨ [bold cyan]AICO Users[/bold cyan]")
+            console.print()
             
             for user in users:
-                # Format active status with color coding
-                active_status = "[green]Yes[/green]" if user.is_active else "[red]No[/red]"
+                active_status = "[green]●[/green]" if user.is_active else "[red]○[/red]"
+                lang = user.primary_language or "en"
                 
-                table.add_row(
-                    user.uuid,  # Full UUID - no truncation
-                    user.full_name,
-                    user.nickname or "-",
-                    user.user_type,
-                    active_status,
-                    str(user.created_at)[:19] if user.created_at else "-"
-                )
+                console.print(f"{active_status} [bold white]{user.full_name}[/bold white] [dim]({user.nickname or 'no nickname'})[/dim]")
+                console.print(f"  UUID: [cyan]{user.uuid}[/cyan]")
+                console.print(f"  Type: [green]{user.user_type}[/green]  Language: [cyan]{lang}[/cyan]  Created: [dim]{str(user.created_at)[:19] if user.created_at else '-'}[/dim]")
+                console.print()
             
-            console.print()
-            console.print(table)
+            console.print(f"[dim]Total: {len(users)} user(s)[/dim]")
             console.print()
         
     except Exception as e:

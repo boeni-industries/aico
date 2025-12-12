@@ -44,8 +44,8 @@ class SkillStore:
         self.db.execute(
             """INSERT INTO skills (
                 skill_id, skill_name, skill_type, trigger_context,
-                procedure_template, dimension_vector, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                procedure_template, dimension_vector, supported_languages, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 skill.skill_id,
                 skill.skill_name,
@@ -53,6 +53,7 @@ class SkillStore:
                 json.dumps(skill.trigger_context),
                 skill.procedure_template,
                 json.dumps(skill.dimension_vector),
+                json.dumps(skill.supported_languages),
                 skill.created_at.isoformat(),
                 skill.updated_at.isoformat()
             )
@@ -83,8 +84,9 @@ class SkillStore:
             trigger_context=json.loads(row[3]),
             procedure_template=row[4],
             dimension_vector=json.loads(row[5]),
-            created_at=datetime.fromisoformat(row[6]),
-            updated_at=datetime.fromisoformat(row[7])
+            supported_languages=json.loads(row[6]) if row[6] else ["en"],
+            created_at=datetime.fromisoformat(row[7]),
+            updated_at=datetime.fromisoformat(row[8])
         )
     
     async def list_skills(
@@ -121,8 +123,9 @@ class SkillStore:
                 trigger_context=json.loads(row[3]),
                 procedure_template=row[4],
                 dimension_vector=json.loads(row[5]),
-                created_at=datetime.fromisoformat(row[6]),
-                updated_at=datetime.fromisoformat(row[7])
+                supported_languages=json.loads(row[6]) if row[6] else ["en"],
+                created_at=datetime.fromisoformat(row[7]),
+                updated_at=datetime.fromisoformat(row[8])
             )
             for row in rows
         ]

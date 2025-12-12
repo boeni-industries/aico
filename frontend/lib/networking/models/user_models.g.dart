@@ -13,6 +13,7 @@ User _$UserFromJson(Map<String, dynamic> json) => User(
   userType: json['user_type'] as String,
   pin: json['pin'] as String?,
   isActive: json['is_active'] as bool?,
+  primaryLanguage: json['primary_language'] as String?,
   createdAt: DateTime.parse(json['created_at'] as String),
   updatedAt: DateTime.parse(json['updated_at'] as String),
 );
@@ -24,40 +25,45 @@ Map<String, dynamic> _$UserToJson(User instance) => <String, dynamic>{
   'user_type': instance.userType,
   'pin': instance.pin,
   'is_active': instance.isActive,
+  'primary_language': instance.primaryLanguage,
   'created_at': instance.createdAt.toIso8601String(),
   'updated_at': instance.updatedAt.toIso8601String(),
 };
 
 CreateUserRequest _$CreateUserRequestFromJson(Map<String, dynamic> json) =>
     CreateUserRequest(
-      fullName: json['fullName'] as String,
+      fullName: json['full_name'] as String,
       nickname: json['nickname'] as String,
-      userType: json['userType'] as String,
+      userType: json['user_type'] as String,
       pin: json['pin'] as String,
+      primaryLanguage: json['primary_language'] as String?,
     );
 
 Map<String, dynamic> _$CreateUserRequestToJson(CreateUserRequest instance) =>
     <String, dynamic>{
-      'fullName': instance.fullName,
+      'full_name': instance.fullName,
       'nickname': instance.nickname,
-      'userType': instance.userType,
+      'user_type': instance.userType,
       'pin': instance.pin,
+      'primary_language': instance.primaryLanguage,
     };
 
 UpdateUserRequest _$UpdateUserRequestFromJson(Map<String, dynamic> json) =>
     UpdateUserRequest(
-      fullName: json['fullName'] as String?,
+      fullName: json['full_name'] as String?,
       nickname: json['nickname'] as String?,
-      userType: json['userType'] as String?,
+      userType: json['user_type'] as String?,
       pin: json['pin'] as String?,
+      primaryLanguage: json['primary_language'] as String?,
     );
 
 Map<String, dynamic> _$UpdateUserRequestToJson(UpdateUserRequest instance) =>
     <String, dynamic>{
-      'fullName': instance.fullName,
+      'full_name': instance.fullName,
       'nickname': instance.nickname,
-      'userType': instance.userType,
+      'user_type': instance.userType,
       'pin': instance.pin,
+      'primary_language': instance.primaryLanguage,
     };
 
 AuthenticateRequest _$AuthenticateRequestFromJson(Map<String, dynamic> json) =>

@@ -187,7 +187,8 @@ modelservice:
     # Options:
     #   - "xtts": Coqui XTTS v2 - High-quality voice cloning, slower (~20s for 700 chars)
     #   - "piper": Piper TTS - Ultra-fast synthesis (<300ms), no voice cloning
-    engine: "piper"  # Testing Piper for speed
+    #   - "kokoro": Kokoro TTS - Fast, high-quality synthesis (~1-3s), no voice cloning
+    engine: "kokoro"  # Testing Kokoro for quality and speed
     
     # XTTS Configuration (used when engine="xtts")
     xtts:
@@ -214,7 +215,23 @@ modelservice:
       # Options: x_low (fastest), low, medium (balanced), high (best quality)
       quality: "medium"  # Default quality level
     
-    # Common synthesis parameters (applies to both engines)
+    # Kokoro Configuration (used when engine="kokoro")
+    kokoro:
+      # Voice models per language
+      # Available voices: af_bella, af_sarah, af_nicole, af_sky, bf_emma, bf_isabella, etc.
+      # See: https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
+      voices:
+        en: "af_bella"  # Bella - warm, clear American female voice
+        de: "af_bella"  # Fallback to English voice for German (Kokoro has limited German support)
+      
+      # Model variant
+      # Options: "full" (~300MB), "quantized" (~80MB)
+      model_variant: "full"  # Use full model for best quality
+      
+      # GPU acceleration (requires CUDA)
+      use_gpu: false  # CPU-only on M2 Max (MPS not well supported)
+    
+    # Common synthesis parameters (applies to all engines)
     speed: 1.0  # Speech speed multiplier (0.5-2.0)
     
     # Language detection

@@ -12,6 +12,9 @@ import signal
 import warnings
 from pathlib import Path
 
+# Disable tokenizers parallelism to avoid fork issues
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Suppress harmless SyntaxWarnings from third-party dependencies (Python 3.13)
 # These are from jsonlines, pysbd (used by Coqui TTS) - not our code
 warnings.filterwarnings('ignore', category=SyntaxWarning)

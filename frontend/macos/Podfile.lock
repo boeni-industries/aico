@@ -25,7 +25,7 @@ PODS:
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
-  - "sodium_libs (3.4.6+4)":
+  - "sodium_libs (3.4.6+2)":
     - Flutter
     - FlutterMacOS
   - SQLCipher (4.10.0):
@@ -100,10 +100,10 @@ SPEC CHECKSUMS:
   just_audio: a42c63806f16995daf5b219ae1d679deb76e6a79
   OrderedSet: e539b66b644ff081c73a262d24ad552a69be3a94
   package_info_plus: 12f1c5c2cfe8727ca46cbd0b26677728972d9a5b
-  path_provider_foundation: 0b743cbb62d8e47eab856f09262bb8c1ddcfe6ba
+  path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
   screen_retriever_macos: 776e0fa5d42c6163d2bf772d22478df4b302b161
-  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
-  sodium_libs: 1f7bf838268f3e93d861748eac0380c8bdfcc937
+  shared_preferences_foundation: fcdcbc04712aee1108ac7fda236f363274528f78
+  sodium_libs: f5367f93a8477e7f88292da90f005891c21dcbe2
   SQLCipher: eb79c64049cb002b4e9fcb30edb7979bf4706dfc
   sqlcipher_flutter_libs: b2e241f8261d6fbda9bca91e9a14f64e47413a64
   window_manager: e25faf20d88283a0d46e7b1a759d07261ca27575

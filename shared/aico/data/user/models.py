@@ -18,6 +18,7 @@ class UserProfile:
     nickname: Optional[str] = None
     user_type: str = 'parent'
     is_active: bool = True
+    primary_language: Optional[str] = None  # ISO/BCP-47 language code
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

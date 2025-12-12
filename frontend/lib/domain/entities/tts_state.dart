@@ -22,6 +22,7 @@ class TtsState extends Equatable {
   final double progress;
   final bool isModelDownloaded;
   final String? errorMessage;
+  final Map<String, dynamic>? metadata;
 
   const TtsState({
     required this.status,
@@ -30,6 +31,7 @@ class TtsState extends Equatable {
     this.progress = 0.0,
     this.isModelDownloaded = false,
     this.errorMessage,
+    this.metadata,
   });
 
   factory TtsState.initial() => const TtsState(
@@ -39,6 +41,7 @@ class TtsState extends Equatable {
         progress: 0.0,
         isModelDownloaded: false,
         errorMessage: null,
+        metadata: null,
       );
 
   TtsState copyWith({
@@ -48,6 +51,7 @@ class TtsState extends Equatable {
     double? progress,
     bool? isModelDownloaded,
     String? errorMessage,
+    Map<String, dynamic>? metadata,
   }) {
     return TtsState(
       status: status ?? this.status,
@@ -56,6 +60,7 @@ class TtsState extends Equatable {
       progress: progress ?? this.progress,
       isModelDownloaded: isModelDownloaded ?? this.isModelDownloaded,
       errorMessage: errorMessage ?? this.errorMessage,
+      metadata: metadata ?? this.metadata,
     );
   }
 
@@ -70,5 +75,6 @@ class TtsState extends Equatable {
         progress,
         isModelDownloaded,
         errorMessage,
+        metadata,
       ];
 }

@@ -54,7 +54,7 @@ class UserService:
     # User CRUD Operations
     
     async def create_user(self, full_name: str, nickname: str = None, 
-                         user_type: str = 'parent', pin: str = None) -> UserProfile:
+                         user_type: str = 'parent', pin: str = None, primary_language: str = "en") -> UserProfile:
         """
         Create a new user with optional PIN authentication
         
@@ -63,6 +63,7 @@ class UserService:
             nickname: Optional nickname
             user_type: User type (person)
             pin: Optional PIN for authentication
+            primary_language: Primary language preference (ISO/BCP-47 code, defaults to 'en')
             
         Returns:
             Created user profile
@@ -73,9 +74,9 @@ class UserService:
             with self.db.transaction():
                 # Create user profile
                 self.db.execute("""
-                    INSERT INTO users (uuid, full_name, nickname, user_type, is_active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, (user_uuid, full_name, nickname, user_type, True))
+                    INSERT INTO users (uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (user_uuid, full_name, nickname, user_type, True, primary_language))
                 
                 # Create authentication record if PIN provided
                 if pin:
@@ -124,7 +125,7 @@ class UserService:
         """
         try:
             result = self.db.fetch_one("""
-                SELECT uuid, full_name, nickname, user_type, is_active, created_at, updated_at
+                SELECT uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at
                 FROM users WHERE uuid = ? AND is_active = TRUE
             """, (user_uuid,))
             
@@ -148,6 +149,7 @@ class UserService:
                 nickname=result['nickname'],
                 user_type=result['user_type'],
                 is_active=result['is_active'],
+                primary_language=result.get('primary_language'),
                 created_at=created_at,
                 updated_at=updated_at
             )
@@ -174,7 +176,7 @@ class UserService:
         Returns:
             Updated user profile or None if not found
         """
-        allowed_fields = {'full_name', 'nickname', 'user_type'}
+        allowed_fields = {'full_name', 'nickname', 'user_type', 'primary_language'}
         update_fields = {k: v for k, v in updates.items() if k in allowed_fields}
         
         if not update_fields:
@@ -413,7 +415,7 @@ class UserService:
             params.append(limit)
             
             results = self.db.fetch_all(f"""
-                SELECT uuid, full_name, nickname, user_type, is_active, created_at, updated_at
+                SELECT uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at
                 FROM users 
                 {where_clause}
                 ORDER BY created_at DESC
@@ -439,6 +441,7 @@ class UserService:
                     nickname=row['nickname'],
                     user_type=row['user_type'],
                     is_active=row['is_active'],
+                    primary_language=row.get('primary_language'),
                     created_at=created_at,
                     updated_at=updated_at
                 ))

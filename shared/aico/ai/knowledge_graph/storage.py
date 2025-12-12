@@ -74,13 +74,14 @@ class PropertyGraphStorage:
                         """
                         INSERT INTO kg_nodes (
                             id, user_id, label, properties, confidence, source_text,
-                            created_at, updated_at, valid_from, valid_until, is_current,
+                            created_at, updated_at, language, valid_from, valid_until, is_current,
                             canonical_id, aliases_json
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(id) DO UPDATE SET
                             properties = excluded.properties,
                             confidence = excluded.confidence,
                             updated_at = excluded.updated_at,
+                            language = excluded.language,
                             valid_until = excluded.valid_until,
                             is_current = excluded.is_current
                         """,

@@ -50,6 +50,7 @@ class UserContext:
     relationship_type: str = "user"  # user, family_member, admin, etc.
     preferences: Dict[str, Any] = field(default_factory=dict)
     conversation_style: str = "friendly"
+    conversation_language: str = "en"  # ISO/BCP-47 language code for this conversation
     last_seen: Optional[datetime] = None
     
     # Scaffolding for future features
@@ -308,6 +309,7 @@ class ConversationEngine(BaseService):
                     nickname=user_profile.nickname,
                     relationship_type="user",
                     conversation_style="friendly",
+                    conversation_language=user_profile.primary_language or "en",
                     last_seen=datetime.utcnow()
                 )
                 self.logger.info(f"Loaded user context from database", extra={
@@ -322,6 +324,7 @@ class ConversationEngine(BaseService):
                     username=f"User_{user_id[:8]}",
                     relationship_type="user",
                     conversation_style="friendly",
+                    conversation_language="en",
                     last_seen=datetime.utcnow()
                 )
                 self.logger.warning(f"Created placeholder user context (database load failed)", extra={
@@ -458,7 +461,7 @@ class ConversationEngine(BaseService):
             # Store user message for future context
             print(f"💬 [CONVERSATION_ENGINE] 💾 Storing user message (len: {len(message_text)})...")
             try:
-                await memory_manager.store_message(user_id, conversation_id, message_text, "user")
+                await memory_manager.store_message(user_id, conversation_id, message_text, "user", language=user_context.conversation_language)
                 print(f"💬 [CONVERSATION_ENGINE] ✅ User message stored successfully!")
                 self.logger.debug(f"🧠 [CONTEXT_TRACE] User message stored for future context")
             except Exception as e:
@@ -490,7 +493,7 @@ class ConversationEngine(BaseService):
             
             # Store user message for future context (let it take as long as needed - it's background)
             try:
-                await memory_manager.store_message(user_id, conversation_id, message_text, "user")
+                await memory_manager.store_message(user_id, conversation_id, message_text, "user", language=user_context.conversation_language)
                 total_duration = time.time() - start_time
                 self.logger.info(f"🔍 [MEMORY_BACKGROUND] ✅ User message stored in {total_duration:.3f}s for {request_id}")
             except Exception as e:
@@ -1084,14 +1087,17 @@ class ConversationEngine(BaseService):
                 
                 # Store AI response in semantic memory
                 user_message = self.pending_responses[request_id]["user_message"]
+                user_context = self.pending_responses[request_id].get("user_context")
                 memory_manager = ai_registry.get("memory")
                 if memory_manager:
                     try:
+                        language = user_context.conversation_language if user_context else "en"
                         await memory_manager.store_message(
                             user_message.user_id, 
                             user_message.message.conversation_id, 
                             response_text, 
-                            "assistant"
+                            "assistant",
+                            language=language
                         )
                         self.logger.debug(f"AI response stored in semantic memory")
                     except Exception as e:

@@ -15,6 +15,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
 from aico.ai.utils import detect_language
+from modelservice.handlers.tts_utils import clean_text_for_tts
 
 
 class PiperTtsHandler:
@@ -192,9 +193,9 @@ class PiperTtsHandler:
                 print(f"🔍 [DEBUG] Skipping detection - using provided language: {language}", flush=True)
                 self._logger.info(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
             
-            # Clean markdown and special formatting from text
+            # Clean markdown and special formatting from text (using shared utility)
             clean_start = time.time()
-            cleaned_text = self._clean_text_for_tts(text)
+            cleaned_text = clean_text_for_tts(text)
             clean_time = time.time() - clean_start
             self._logger.info(f"🎤 Original text: {len(text)} chars, cleaned: {len(cleaned_text)} chars")
             
@@ -375,60 +376,3 @@ class PiperTtsHandler:
         # Return audio unchanged - processing made pop/click worse
         # The artifact is likely from the audio player, not the audio data
         return audio_bytes
-    
-    def _clean_text_for_tts(self, text: str) -> str:
-        """
-        Clean text for TTS by removing markdown and special formatting.
-        
-        Args:
-            text: Raw text with markdown
-            
-        Returns:
-            Cleaned text suitable for TTS
-        """
-        import re
-        
-        # Convert em-dashes and double hyphens to period for pauses
-        # Piper doesn't respect commas, only periods create reliable pauses
-        text = re.sub(r'\s*—\s*', '. ', text)  # Em-dash → period with space
-        text = re.sub(r'\s*–\s*', '. ', text)  # En-dash → period with space
-        text = re.sub(r'\s+--\s+', '. ', text)  # Double hyphen → period with space
-        
-        # Expand common abbreviations for better pronunciation
-        text = re.sub(r'\bP\.S\.', 'Postscript', text, flags=re.IGNORECASE)
-        text = re.sub(r'\be\.g\.', 'for example', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bi\.e\.', 'that is', text, flags=re.IGNORECASE)
-        text = re.sub(r'\betc\.', 'etcetera', text, flags=re.IGNORECASE)
-        
-        # Remove markdown bold/italic
-        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold**
-        text = re.sub(r'\*([^*]+)\*', r'\1', text)      # *italic*
-        text = re.sub(r'__([^_]+)__', r'\1', text)      # __bold__
-        text = re.sub(r'_([^_]+)_', r'\1', text)        # _italic*_
-        
-        # Remove markdown links [text](url)
-        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-        
-        # Remove ALL emojis - comprehensive Unicode ranges
-        text = re.sub(r'[\U0001F600-\U0001F64F]', '', text)  # Emoticons
-        text = re.sub(r'[\U0001F300-\U0001F5FF]', '', text)  # Symbols & pictographs
-        text = re.sub(r'[\U0001F680-\U0001F6FF]', '', text)  # Transport & map
-        text = re.sub(r'[\U0001F1E0-\U0001F1FF]', '', text)  # Flags
-        text = re.sub(r'[\U00002702-\U000027B0]', '', text)  # Dingbats
-        text = re.sub(r'[\U000024C2-\U0001F251]', '', text)  # Enclosed characters
-        
-        # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        # Remove trailing punctuation artifacts (space before closing paren/bracket)
-        text = re.sub(r'\s+([)\]}])', r'\1', text)
-        
-        # Remove any remaining non-printable characters
-        text = ''.join(char for char in text if char.isprintable() or char.isspace())
-        
-        # CRITICAL: Ensure all periods and commas have EXACTLY ONE space after them
-        # This MUST be last, or Piper will pronounce the punctuation!
-        text = re.sub(r'\.\s*', '. ', text)  # Period followed by any whitespace → period + single space
-        text = re.sub(r',\s*', ', ', text)  # Comma followed by any whitespace → comma + single space
-        
-        return text

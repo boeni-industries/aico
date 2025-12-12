@@ -23,6 +23,7 @@ def _user_to_response(user) -> UserResponse:
         nickname=user.nickname,
         user_type=user.user_type,
         is_active=user.is_active,
+        primary_language=user.primary_language,
         created_at=user.created_at.isoformat() if user.created_at else None,
         updated_at=user.updated_at.isoformat() if user.updated_at else None
     )
@@ -76,7 +77,8 @@ async def create_user(
         full_name=request.full_name,
         nickname=request.nickname,
         user_type=request.user_type,
-        pin=request.pin
+        pin=request.pin,
+        primary_language=request.primary_language or "en"
     )
     
     logger.info("User created via API", extra={
@@ -91,6 +93,7 @@ async def create_user(
         nickname=user.nickname,
         user_type=user.user_type,
         is_active=user.is_active,
+        primary_language=user.primary_language,
         created_at=user.created_at.isoformat() if user.created_at else None,
         updated_at=user.updated_at.isoformat() if user.updated_at else None
     )
@@ -119,6 +122,7 @@ async def get_user(
         nickname=user.nickname,
         user_type=user.user_type,
         is_active=user.is_active,
+        primary_language=user.primary_language,
         created_at=user.created_at.isoformat() if user.created_at else None,
         updated_at=user.updated_at.isoformat() if user.updated_at else None
     )
@@ -167,6 +171,7 @@ async def update_user(
         nickname=user.nickname,
         user_type=user.user_type,
         is_active=user.is_active,
+        primary_language=user.primary_language,
         created_at=user.created_at.isoformat() if user.created_at else None,
         updated_at=user.updated_at.isoformat() if user.updated_at else None
     )

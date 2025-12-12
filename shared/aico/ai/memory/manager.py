@@ -664,8 +664,16 @@ class MemoryManager(BaseAIProcessor):
                 processing_time_ms=0.0
             )
     
-    async def store_message(self, user_id: str, conversation_id: str, content: str, role: str) -> bool:
-        """V3 API: Store conversation segments (simplified)"""
+    async def store_message(self, user_id: str, conversation_id: str, content: str, role: str, language: str = "en") -> bool:
+        """V3 API: Store conversation segments (simplified)
+        
+        Args:
+            user_id: User identifier
+            conversation_id: Conversation identifier
+            content: Message content
+            role: Message role (user/assistant)
+            language: ISO/BCP-47 language code for the message (defaults to 'en')
+        """
         if not self._initialized:
             await self.initialize()
             
@@ -680,6 +688,7 @@ class MemoryManager(BaseAIProcessor):
                     "conversation_id": conversation_id,
                     "content": content,
                     "role": role,
+                    "language": language,  # Store language for future retrieval
                     "timestamp": datetime.utcnow().isoformat(),
                     "message_type": f"{role}_input" if role == "user" else f"{role}_response"
                 }
@@ -694,7 +703,8 @@ class MemoryManager(BaseAIProcessor):
                             user_id=user_id,
                             conversation_id=conversation_id,
                             role=role,
-                            content=content
+                            content=content,
+                            language=language
                         )
                     except Exception as e:
                         logger.error(f"Background segment storage failed: {e}")

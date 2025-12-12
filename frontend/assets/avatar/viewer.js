@@ -22,6 +22,17 @@ let targetEmotionValues = {};
 let currentEmotionValues = {};
 const emotionTransitionSpeed = 0.05; // Smooth transition speed
 
+// Lip-sync system (pure Web Audio API frequency analysis)
+let audioContext;
+let audioAnalyser;
+let audioSource;
+let audioElement = null; // Reference to audio element
+let frequencyData; // Buffer for frequency analysis
+let lipSyncEnabled = false;
+let currentViseme = 'sil';
+let lipSyncFrameTime = 0;
+const MAX_LIPSYNC_TIME_MS = 2; // Performance budget: 2ms max per frame
+
 // Initialize the scene
 function init() {
     console.log('[AICO Avatar] Initializing...');
@@ -69,6 +80,9 @@ function init() {
     
     // Handle window resize
     window.addEventListener('resize', onWindowResize, false);
+    
+    // Initialize lip-sync system
+    initLipSync();
     
     // Start render loop
     animate();
@@ -602,6 +616,11 @@ function startTalking() {
     } else {
         console.warn('[AICO Avatar] Talking animation group not loaded');
     }
+    
+    // Enable lip-sync for this talking session
+    if (lipSyncEnabled) {
+        console.log('[AICO Avatar] 🎤 Lip-sync enabled for talking');
+    }
 }
 
 // Switch to idle state
@@ -621,6 +640,9 @@ function stopTalking() {
     
     // Stop talking animation group
     stopAnimationGroup('talking');
+    
+    // Reset lip-sync to neutral mouth position
+    resetLipSync();
     
     // IMMEDIATELY transition to idle (crossfade will handle smooth transition)
     if (animationGroups.idle) {
@@ -680,6 +702,11 @@ function animate() {
     applyEyeGaze();
     applyEmotionExpression();
     
+    // Update lip-sync if enabled (with performance monitoring)
+    if (lipSyncEnabled && currentAvatarState === 'talking') {
+        updateLipSync();
+    }
+    
     // Render scene
     renderer.render(scene, camera);
 }
@@ -697,9 +724,453 @@ function updateBackgroundColor(stateColor) {
     console.log(`[AICO Avatar] 🎨 updateBackgroundColor called (no-op - aura in Flutter): "${stateColor}"`);
 }
 
+// ============================================================================
+// LIP-SYNC SYSTEM
+// ============================================================================
+
+/**
+ * Initialize lip-sync system with Web Audio API
+ * Pure frequency analysis - TTS engine agnostic
+ */
+function initLipSync() {
+    try {
+        // Initialize Web Audio API
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioAnalyser = audioContext.createAnalyser();
+        audioAnalyser.fftSize = 2048; // Higher resolution for frequency analysis
+        audioAnalyser.smoothingTimeConstant = 0.8; // Smooth audio analysis
+        
+        // Initialize frequency data buffer
+        frequencyData = new Uint8Array(audioAnalyser.frequencyBinCount);
+        
+        lipSyncEnabled = true;
+        console.log('[AICO Avatar] 🎤 Lip-sync system initialized');
+        console.log('[AICO Avatar] ✅ Using Web Audio API frequency analysis');
+    } catch (error) {
+        console.error('[AICO Avatar] ❌ Lip-sync initialization failed:', error);
+        lipSyncEnabled = false;
+    }
+}
+
+/**
+ * Play audio in WebView and connect to lip-sync
+ * @param {string} base64Audio - Base64-encoded WAV audio data
+ */
+window.playAudioForLipSync = function(base64Audio) {
+    try {
+        console.log('[AICO Avatar] 🎵 Setting up audio for lip-sync');
+        
+        // Clean up previous audio
+        if (audioElement) {
+            audioElement.pause();
+            audioElement.src = '';
+        }
+        if (audioSource) {
+            try {
+                audioSource.disconnect();
+            } catch (e) {
+                // Ignore disconnect errors
+            }
+            audioSource = null;
+        }
+        
+        // Create new audio element
+        audioElement = new Audio();
+        audioElement.id = 'tts-audio';
+        
+        // Set audio source FIRST (before connecting to Web Audio API)
+        audioElement.src = `data:audio/wav;base64,${base64Audio}`;
+        
+        // Connect to Web Audio API for frequency analysis
+        // MUST be done after setting src but before play
+        if (audioContext && audioAnalyser) {
+            try {
+                audioSource = audioContext.createMediaElementSource(audioElement);
+                audioSource.connect(audioAnalyser);
+                audioAnalyser.connect(audioContext.destination);
+                console.log('[AICO Avatar] 🔊 Audio connected to analyser');
+            } catch (error) {
+                console.error('[AICO Avatar] Failed to connect audio to analyser:', error);
+            }
+        }
+        
+        // Handle playback end
+        audioElement.addEventListener('ended', () => {
+            console.log('[AICO Avatar] 🎵 Audio playback ended');
+            // Notify Flutter that audio ended
+            if (window.flutter_inappwebview) {
+                window.flutter_inappwebview.callHandler('audioEnded');
+            }
+        });
+        
+        // Play audio
+        audioElement.play().then(() => {
+            console.log('[AICO Avatar] 🎵 Audio playback started');
+        }).catch(error => {
+            console.error('[AICO Avatar] Failed to play audio:', error);
+        });
+        
+    } catch (error) {
+        console.error('[AICO Avatar] Failed to setup audio:', error);
+    }
+};
+
+/**
+ * Enhanced viseme to ARKit blend shapes mapping
+ * Natural movement with lateral stretch, jaw, and lip detail
+ * Based on professional animation principles
+ */
+const visemeMap = {
+    // Silence - neutral mouth
+    'sil': {},
+    
+    // aa - open vowel (ah) - wide open, slight stretch
+    'aa': { 
+        jawOpen: 0.45,
+        mouthStretchLeft: 0.1,
+        mouthStretchRight: 0.1
+    },
+    
+    // E - mid vowel (eh) - smile + stretch (wide vowel)
+    'E': { 
+        jawOpen: 0.28,
+        mouthSmileLeft: 0.2,
+        mouthSmileRight: 0.2,
+        mouthStretchLeft: 0.15,
+        mouthStretchRight: 0.15
+    },
+    
+    // I - closed vowel (ih) - wider smile, stretched (Ee shape)
+    'I': { 
+        jawOpen: 0.18,
+        mouthSmileLeft: 0.35,
+        mouthSmileRight: 0.35,
+        mouthStretchLeft: 0.25,
+        mouthStretchRight: 0.25
+    },
+    
+    // O - rounded vowel (oh) - pucker + jaw + slight funnel
+    'O': { 
+        jawOpen: 0.25,
+        mouthPucker: 0.35,
+        mouthFunnel: 0.18,
+        jawForward: 0.15
+    },
+    
+    // U - rounded vowel (oo) - more funnel, forward jaw
+    'U': { 
+        jawOpen: 0.12,
+        mouthFunnel: 0.4,
+        mouthPucker: 0.25,
+        jawForward: 0.2
+    },
+    
+    // PP - bilabial (p, b, m) - lips pressed, slight upper lip up
+    'PP': { 
+        jawOpen: 0.03,
+        mouthUpperUpLeft: 0.1,
+        mouthUpperUpRight: 0.1
+    },
+    
+    // FF - labiodental (f, v) - teeth on lower lip
+    'FF': {
+        jawOpen: 0.08,
+        mouthLowerDownLeft: 0.15,
+        mouthLowerDownRight: 0.15,
+        mouthStretchLeft: 0.1,
+        mouthStretchRight: 0.1
+    },
+    
+    // TH - dental (th) - tongue visible, slight jaw
+    'TH': {
+        jawOpen: 0.15,
+        tongueOut: 0.2
+    },
+    
+    // DD - alveolar (d, t, n) - tongue behind teeth
+    'DD': {
+        jawOpen: 0.2,
+        tongueOut: 0.15,
+        mouthSmileLeft: 0.1,
+        mouthSmileRight: 0.1
+    },
+    
+    // kk - velar (k, g) - back of tongue, slight jaw
+    'kk': {
+        jawOpen: 0.22,
+        mouthStretchLeft: 0.12,
+        mouthStretchRight: 0.12
+    },
+    
+    // SS - sibilant (s, z) - teeth together, stretched
+    'SS': {
+        jawOpen: 0.08,
+        mouthStretchLeft: 0.2,
+        mouthStretchRight: 0.2,
+        mouthSmileLeft: 0.15,
+        mouthSmileRight: 0.15
+    },
+    
+    // CH - postalveolar (ch, j, sh) - lips forward, rounded
+    'CH': {
+        jawOpen: 0.15,
+        mouthPucker: 0.25,
+        mouthFunnel: 0.2,
+        jawForward: 0.1
+    },
+};
+
+// Smooth interpolation state
+let targetVisemeWeights = {};
+let currentVisemeWeights = {};
+const LERP_SPEED = 0.5; // Interpolation speed (0-1, higher = faster)
+let lastVisemeChangeTime = 0;
+const MIN_VISEME_DURATION_MS = 50; // Minimum time to hold a viseme
+
+/**
+ * Detect current viseme from audio amplitude AND frequency
+ * Uses both volume and spectral content for better variety
+ * Returns viseme code based on audio characteristics
+ */
+function detectViseme() {
+    if (!audioAnalyser || !lipSyncEnabled) {
+        return 'sil';
+    }
+    
+    try {
+        // Get frequency data
+        audioAnalyser.getByteFrequencyData(frequencyData);
+        
+        // Calculate RMS (root mean square) for volume
+        let sum = 0;
+        for (let i = 0; i < frequencyData.length; i++) {
+            const normalized = frequencyData[i] / 255.0;
+            sum += normalized * normalized;
+        }
+        const rms = Math.sqrt(sum / frequencyData.length);
+        
+        // Analyze frequency bands for better viseme detection
+        const lowFreq = frequencyData.slice(0, 85).reduce((a, b) => a + b, 0) / 85 / 255;
+        const midFreq = frequencyData.slice(85, 170).reduce((a, b) => a + b, 0) / 85 / 255;
+        const highFreq = frequencyData.slice(170, 255).reduce((a, b) => a + b, 0) / 85 / 255;
+        
+        // Add time-based variation to prevent sticking
+        const now = performance.now();
+        const timeSinceLastChange = now - lastVisemeChangeTime;
+        
+        // Silence threshold
+        if (rms < 0.015) {
+            return 'sil';
+        }
+        
+        // Use frequency content + amplitude to distinguish phonemes
+        // More sensitive thresholds for better variety
+        
+        // Enhanced detection with 12 visemes across 9 volume levels
+        if (rms > 0.18) {
+            // Very loud - wide open vowels
+            return lowFreq > midFreq * 1.2 ? 'aa' : 'O';
+        } else if (rms > 0.14) {
+            // Loud - open vowels with variation
+            if (highFreq > midFreq * 1.15) {
+                return 'E'; // Mid vowel
+            } else if (lowFreq > highFreq * 1.1) {
+                return 'aa'; // Wide open
+            } else {
+                return 'O'; // Rounded
+            }
+        } else if (rms > 0.10) {
+            // Medium-high - mix of vowels and some consonants
+            if (highFreq > lowFreq * 1.3) {
+                return 'I'; // Closed vowel
+            } else if (midFreq > highFreq * 1.15) {
+                return 'kk'; // Velar (k, g)
+            } else if (midFreq > lowFreq * 1.2) {
+                return 'E'; // Mid vowel
+            } else {
+                return 'aa'; // Open
+            }
+        } else if (rms > 0.07) {
+            // Medium - varied vowels and consonants
+            if (highFreq > midFreq * 1.35) {
+                return 'SS'; // Sibilant (s, z)
+            } else if (highFreq > midFreq * 1.2) {
+                return 'I'; // Closed vowel
+            } else if (lowFreq > highFreq * 1.15) {
+                return 'DD'; // Alveolar (d, t, n)
+            } else {
+                return 'U'; // Rounded quiet
+            }
+        } else if (rms > 0.05) {
+            // Medium-low - consonants and quiet vowels
+            if (highFreq > midFreq * 1.4) {
+                return 'SS'; // Sibilant
+            } else if (highFreq > midFreq * 1.25) {
+                return 'CH'; // Postalveolar (ch, sh)
+            } else if (midFreq > lowFreq * 1.2) {
+                return 'DD'; // Alveolar
+            } else {
+                return 'U'; // Rounded
+            }
+        } else if (rms > 0.035) {
+            // Low - consonants
+            if (highFreq > midFreq * 1.5) {
+                return 'SS'; // Sibilant
+            } else if (highFreq > midFreq * 1.3) {
+                return 'FF'; // Labiodental
+            } else if (midFreq > lowFreq * 1.15) {
+                return 'DD'; // Alveolar
+            } else {
+                return 'kk'; // Velar
+            }
+        } else if (rms > 0.025) {
+            // Very low - subtle consonants
+            if (highFreq > midFreq * 1.4) {
+                return 'PP'; // Bilabial
+            } else if (lowFreq > highFreq) {
+                return 'TH'; // Dental
+            } else {
+                return 'CH'; // Postalveolar
+            }
+        } else if (rms > 0.018) {
+            // Extremely low
+            return highFreq > midFreq ? 'PP' : 'TH';
+        } else {
+            return 'sil'; // Silence
+        }
+        
+    } catch (error) {
+        console.error('[AICO Avatar] Viseme detection error:', error);
+        return 'sil';
+    }
+}
+
+/**
+ * Apply viseme blend shapes to avatar face with smooth interpolation
+ * Blends with current emotion expression
+ */
+function applyViseme(visemeCode, intensity = 1.0) {
+    const viseme = visemeMap[visemeCode] || visemeMap['sil'];
+    
+    // Set target weights for this viseme
+    targetVisemeWeights = {};
+    for (const [target, weight] of Object.entries(viseme)) {
+        targetVisemeWeights[target] = weight * intensity;
+    }
+    
+    // Smooth interpolation toward target
+    eyeMeshes.forEach(mesh => {
+        const dict = mesh.morphTargetDictionary;
+        const influences = mesh.morphTargetInfluences;
+        
+        // List of all mouth targets we control
+        const mouthTargets = ['jawOpen', 'jawForward', 'mouthPucker', 'mouthFunnel', 
+                             'mouthSmileLeft', 'mouthSmileRight', 'mouthStretchLeft', 'mouthStretchRight',
+                             'mouthUpperUpLeft', 'mouthUpperUpRight', 'mouthLowerDownLeft', 'mouthLowerDownRight',
+                             'tongueOut'];
+        
+        mouthTargets.forEach(target => {
+            if (dict[target] !== undefined) {
+                const targetIndex = dict[target];
+                
+                // Initialize current weight if not set
+                if (currentVisemeWeights[target] === undefined) {
+                    currentVisemeWeights[target] = 0;
+                }
+                
+                // Get target weight (0 if not in current viseme)
+                const targetWeight = targetVisemeWeights[target] || 0;
+                
+                // Smooth interpolation (lerp)
+                currentVisemeWeights[target] += (targetWeight - currentVisemeWeights[target]) * LERP_SPEED;
+                
+                // Blend with emotion
+                const emotionWeight = currentEmotionValues[target] || 0;
+                const blendedWeight = Math.min(emotionWeight + currentVisemeWeights[target], 1.0);
+                
+                influences[targetIndex] = blendedWeight;
+            }
+        });
+    });
+}
+
+/**
+ * Update lip-sync in animation loop
+ * Called every frame when talking - updates blend shapes smoothly
+ */
+function updateLipSync() {
+    const startTime = performance.now();
+    
+    try {
+        // Detect viseme from audio frequency
+        const viseme = detectViseme();
+        
+        // Log only when viseme changes
+        if (viseme !== currentViseme) {
+            const now = performance.now();
+            lastVisemeChangeTime = now;
+            currentViseme = viseme;
+            console.log('[AICO Avatar] 👄 Viseme:', viseme);
+        }
+        
+        // ALWAYS update blend shapes for smooth interpolation
+        applyViseme(viseme, 1.0);
+        
+        // Performance monitoring
+        lipSyncFrameTime = performance.now() - startTime;
+        
+        // Auto-disable if too slow (fail loudly)
+        if (lipSyncFrameTime > MAX_LIPSYNC_TIME_MS) {
+            console.error(`[AICO Avatar] ⚠️ Lip-sync too slow (${lipSyncFrameTime.toFixed(2)}ms > ${MAX_LIPSYNC_TIME_MS}ms), disabling`);
+            lipSyncEnabled = false;
+        }
+        
+    } catch (error) {
+        console.error('[AICO Avatar] Lip-sync update error:', error);
+        lipSyncEnabled = false; // Fail loudly and disable
+    }
+}
+
+/**
+ * Reset lip-sync state when stopping speech
+ */
+function resetLipSync() {
+    currentViseme = 'sil';
+    
+    // Clear all lip-sync blend shapes (reset mouth to neutral)
+    eyeMeshes.forEach(mesh => {
+        const dict = mesh.morphTargetDictionary;
+        const influences = mesh.morphTargetInfluences;
+        
+        // Reset all mouth-related blend shapes to emotion-only values
+        const mouthTargets = ['jawOpen', 'mouthPucker', 'mouthFunnel', 'mouthPressLeft', 'mouthPressRight',
+                             'mouthDimpleLeft', 'mouthDimpleRight', 'mouthRollLower', 'mouthRollUpper',
+                             'mouthUpperUpLeft', 'mouthUpperUpRight', 'jawForward'];
+        
+        mouthTargets.forEach(target => {
+            if (dict[target] !== undefined) {
+                const targetIndex = dict[target];
+                // Reset to emotion value only (no lip-sync)
+                influences[targetIndex] = currentEmotionValues[target] || 0;
+            }
+        });
+    });
+    
+    if (audioElement) {
+        audioElement.pause();
+        audioElement = null;
+    }
+    audioSource = null;
+    console.log('[AICO Avatar] 🤫 Lip-sync reset');
+}
+
 // Expose functions to Flutter
 window.playAnimation = playAnimation;
 window.updateBackgroundColor = updateBackgroundColor;
+window.startTalking = startTalking;
+window.stopTalking = stopTalking;
+window.setAvatarEmotion = setEmotion;
+// window.playAudioForLipSync is already exposed above
 
 // Initialize on load
 init();

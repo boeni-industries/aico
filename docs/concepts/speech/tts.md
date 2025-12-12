@@ -8,6 +8,13 @@ title: Text-to-Speech Architecture
 
 **Current implementation:** AICO uses a backend TTS service in the modelservice (Piper TTS and Coqui XTTS v2) and streams ready-to-play audio to the Flutter frontend, which plays it via `just_audio`.
 
+### Avatar Lip-Sync Integration
+
+- TTS audio is also passed as base64 WAV data into the avatar WebView.
+- The WebView uses the Web Audio API (AnalyserNode) to perform frequency-based analysis and estimate visemes in real time.
+- Estimated visemes drive ARKit blend shapes on the Ready Player Me avatar (Phase 1 lip-sync).
+- A future **Phase 2** enhancement will evaluate [Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync) in the backend to generate phoneme-accurate viseme timings, which can be streamed to the avatar for higher-accuracy lip-sync.
+
 ## Design Principles
 
 ### Local-First Operation
