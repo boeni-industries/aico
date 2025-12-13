@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13"
 
 [manifest]
@@ -37,6 +37,9 @@ dependencies = [
     { name = "pynacl" },
     { name = "pyyaml" },
     { name = "pyzmq" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "typer" },
     { name = "uvicorn" },
     { name = "watchdog" },
 ]
@@ -50,12 +53,6 @@ backend = [
     { name = "pydantic" },
     { name = "pyjwt" },
     { name = "uvicorn" },
-]
-cli = [
-    { name = "cron-descriptor" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "typer" },
 ]
 modelservice = [
     { name = "coqui-tts" },
@@ -81,7 +78,6 @@ requires-dist = [
     { name = "bcrypt", specifier = ">=4.0.1" },
     { name = "chromadb", specifier = ">=1.0.16" },
     { name = "coqui-tts", marker = "extra == 'modelservice'", git = "https://github.com/idiap/coqui-ai-TTS.git?branch=dev" },
-    { name = "cron-descriptor", marker = "extra == 'cli'", specifier = ">=1.4.3" },
     { name = "cryptography" },
     { name = "duckdb", marker = "extra == 'backend'", specifier = ">=1.3.2" },
     { name = "fast-langdetect", specifier = ">=0.2.1" },
@@ -108,13 +104,13 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4.1" },
     { name = "pyyaml" },
     { name = "pyzmq", specifier = ">=27.0.1" },
-    { name = "requests", marker = "extra == 'cli'", specifier = ">=2.31.0,<3.0.0" },
-    { name = "rich", marker = "extra == 'cli'", specifier = ">=13.7.0,<14.0.0" },
+    { name = "requests", specifier = ">=2.31.0,<3.0.0" },
+    { name = "rich", specifier = ">=13.7.0,<14.0.0" },
     { name = "sentence-transformers", marker = "extra == 'modelservice'", specifier = ">=5.1.1" },
     { name = "soundfile", marker = "extra == 'modelservice'", specifier = ">=0.12.1" },
     { name = "torch", marker = "extra == 'modelservice'", specifier = ">=1.12.0" },
     { name = "transformers", marker = "extra == 'modelservice'", specifier = "==4.50.3" },
-    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.12.3,<1.0.0" },
+    { name = "typer", specifier = ">=0.12.3,<1.0.0" },
     { name = "uvicorn", specifier = ">=0.35.0" },
     { name = "uvicorn", marker = "extra == 'backend'", specifier = ">=0.35.0" },
     { name = "watchdog" },
@@ -653,18 +649,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e9/f8/68315f71c420382873a8b2bd47b0c3113213f51bf4e932d56c9aed659b80/coqui_tts_trainer-0.3.1.tar.gz", hash = "sha256:ca32abaf43febb4012a6a0c61e265b1635f91455acbce17fd34a2b5eae3af28c", size = 50264, upload-time = "2025-06-30T12:47:48.676Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/15/79/d08e2b3974448bbfede88d7d3c81b67896ccaf8ed77ef10d4ddb8e7d194f/coqui_tts_trainer-0.3.1-py3-none-any.whl", hash = "sha256:eba2449b1c7e6a1fb7454608595949dbe4c1a409bd0d23e1fe93163637600392", size = 57198, upload-time = "2025-06-30T12:47:47.097Z" },
-]
-
-[[package]]
-name = "cron-descriptor"
-version = "2.0.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/30/ec/997bf9ca9392fce1cec2e25241fdd538c50bb405efd103cb1e6119296709/cron_descriptor-2.0.5.tar.gz", hash = "sha256:443ccd21a36a7fc9464a42472199cbdbc0d86b09021af1a8dd1595e4c391d85e", size = 48545, upload-time = "2025-08-26T11:10:24.907Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/d6/7ebad906dbe4092af6c63f85f30d15544698eb524db53bddfc6a5e010f2b/cron_descriptor-2.0.5-py3-none-any.whl", hash = "sha256:386a1d75c57410cf5cb719e08eefbea2c0c076c4a798aa6d7bf51816112fbbd1", size = 73957, upload-time = "2025-08-26T11:10:23.559Z" },
 ]
 
 [[package]]

@@ -112,7 +112,7 @@ class LessonMemoryProjector:
             }
             
         except Exception as e:
-            logger.error(f"[LESSON_PROJECTOR] Failed to project lesson to memory: {e}", exc_info=True)
+            logger.exception(f"[LESSON_PROJECTOR] Failed to project lesson to memory: {e}")
             return {
                 "success": False,
                 "error": str(e),
@@ -203,7 +203,7 @@ class LessonMemoryProjector:
             }
             
         except Exception as e:
-            logger.error(f"[LESSON_PROJECTOR] Failed to project lesson to KG: {e}", exc_info=True)
+            logger.exception(f"[LESSON_PROJECTOR] Failed to project lesson to KG: {e}")
             return {
                 "success": False,
                 "error": str(e),
@@ -277,7 +277,7 @@ class LessonMemoryProjector:
             }
             
         except Exception as e:
-            logger.error(f"[LESSON_PROJECTOR] Failed to project self-model to KG: {e}", exc_info=True)
+            logger.exception(f"[LESSON_PROJECTOR] Failed to project self-model to KG: {e}")
             return {
                 "success": False,
                 "error": str(e),

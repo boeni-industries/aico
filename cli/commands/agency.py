@@ -61,6 +61,7 @@ def agency_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
         subcommands = [
             ("status", "View high-level agency status for a user"),
             ("intentions", "View active intention set for a user"),
+            ("goals", "List all goals for a user"),
             ("profile", "View or edit user value profile"),
             ("policies", "List, add, or remove policy rules"),
             ("consent", "Grant or revoke consent for specific actions"),
@@ -134,6 +135,141 @@ def get_db_connection():
         raise typer.Exit(1)
 
 
+@app.command()
+def goals(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    compact: bool = typer.Option(False, "--compact", "-c", help="Show a compact horizontal table view"),
+):
+    """List all goals for a user.
+
+    Shows each goal's status, origin, priority, type, and timestamps so you can
+    inspect what the Agency is currently tracking (including curiosity goals).
+    """
+    try:
+        try:
+            user_id = get_user_id(user)
+        except ValueError as e:
+            if str(e) == "NO_USER_CONFIGURED":
+                console.print("[red]✗[/red] No user configured.")
+                console.print("[yellow]-[/yellow] Use [bold]--user[/bold] to specify a user explicitly, e.g. [cyan]aico agency goals --user <user-id>[/cyan]")
+                console.print("[yellow]-[/yellow] Or set a default with [cyan]aico config set core.user.id <user-id>[/cyan]")
+                raise typer.Exit(1)
+            raise
+
+        db = get_db_connection()
+
+        # Load all goals for the user
+        rows = db.execute(
+            """
+            SELECT goal_id, origin, goal_type, title, description,
+                   status, priority, metadata_json, created_at, updated_at
+            FROM agency_goals
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+        if json_output:
+            goals_json = []
+            for row in rows:
+                goals_json.append(
+                    {
+                        "goal_id": row[0],
+                        "origin": row[1],
+                        "goal_type": row[2],
+                        "title": row[3],
+                        "description": row[4],
+                        "status": row[5],
+                        "priority": row[6],
+                        "metadata": json.loads(row[7]) if row[7] else {},
+                        "created_at": row[8],
+                        "updated_at": row[9],
+                    }
+                )
+
+            console.print_json(data={"user_id": user_id, "goals": goals_json})
+            return
+
+        if not rows:
+            console.print(f"[yellow]No goals found for user {user_id}[/yellow]")
+            return
+
+        if compact:
+            # Original horizontal table layout (compact overview)
+            table = Table(
+                title=f"Goals for {user_id}",
+                box=box.SIMPLE_HEAD,
+                title_justify="left",
+                header_style="bold cyan",
+            )
+            table.add_column("ID", style="dim", max_width=10, no_wrap=True)
+            table.add_column("Title", style="white", max_width=40)
+            table.add_column("Status", style="cyan")
+            table.add_column("Priority", style="magenta")
+            table.add_column("Origin", style="blue")
+            table.add_column("Type", style="yellow")
+            table.add_column("Created", style="green")
+
+            for row in rows:
+                goal_id, origin, goal_type, title, description, status, priority, metadata_json, created_at, updated_at = row
+                short_id = goal_id.split("-")[0] if goal_id else ""
+                created_str = created_at[:19] if created_at else ""
+
+                table.add_row(
+                    short_id,
+                    title or "[dim]<no title>[/dim]",
+                    status or "",
+                    priority or "",
+                    origin or "",
+                    goal_type or "",
+                    created_str,
+                )
+
+            console.print(table)
+            console.print(f"\n[dim]Total: {len(rows)} goal(s)[/dim]")
+        else:
+            console.print(f"[bold cyan]Goals for {user_id}[/bold cyan]\n")
+
+            # Vertical field/value layout to avoid truncation
+            for idx, row in enumerate(rows, start=1):
+                goal_id, origin, goal_type, title, description, status, priority, metadata_json, created_at, updated_at = row
+                short_id = goal_id.split("-")[0] if goal_id else ""
+                created_str = created_at[:19] if created_at else ""
+                updated_str = updated_at[:19] if updated_at else ""
+
+                table = Table(
+                    box=box.SIMPLE_HEAD,
+                    show_header=False,
+                )
+                table.add_column("Field", style="yellow", no_wrap=True)
+                table.add_column("Value", style="white")
+
+                table.add_row("Goal #", str(idx))
+                table.add_row("ID", goal_id or "")
+                table.add_row("Short ID", short_id)
+                table.add_row("Title", title or "[dim]<no title>[/dim]")
+                if description:
+                    table.add_row("Description", description)
+                table.add_row("Status", status or "")
+                table.add_row("Priority", priority or "")
+                table.add_row("Origin", origin or "")
+                table.add_row("Type", goal_type or "")
+                table.add_row("Created", created_str)
+                if updated_str:
+                    table.add_row("Updated", updated_str)
+
+                console.print(table)
+                console.print()  # Blank line between goals
+
+            console.print(f"[dim]Total: {len(rows)} goal(s)[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error listing goals: {e}")
+        raise typer.Exit(1)
+
+
 def get_user_id(user: Optional[str] = None) -> str:
     """Get user ID from argument or config."""
     if user:
@@ -192,6 +328,32 @@ def status(
 
             intention_set = asyncio.run(engine.get_intention_set(user_id))
 
+            # Fetch Goal objects for all intentions
+            goal_map = {}
+            if intention_set.intentions:
+                goal_ids = [i.goal_id for i in intention_set.intentions]
+                placeholders = ','.join(['?'] * len(goal_ids))
+                cursor = db.execute(
+                    f"SELECT * FROM agency_goals WHERE goal_id IN ({placeholders})",
+                    tuple(goal_ids)
+                )
+                from aico.ai.agency.models import Goal, GoalOrigin, GoalStatus, GoalPriority
+                for row in cursor.fetchall():
+                    goal = Goal(
+                        goal_id=row["goal_id"],
+                        user_id=row["user_id"],
+                        origin=GoalOrigin(row["origin"]),
+                        goal_type=row["goal_type"],
+                        title=row["title"],
+                        description=row["description"],
+                        status=GoalStatus(row["status"]),
+                        priority=GoalPriority(row["priority"]),
+                        metadata=json.loads(row["metadata_json"] or "{}"),
+                        created_at=datetime.fromisoformat(row["created_at"]),
+                        updated_at=datetime.fromisoformat(row["updated_at"])
+                    )
+                    goal_map[goal.goal_id] = goal
+
             # Optional: fetch goal summary for this user
             goals_summary = None
             try:
@@ -225,6 +387,7 @@ def status(
             intentions = intentions[:limit]
 
         top_intention = intentions[0] if intentions else None
+        top_goal = goal_map.get(top_intention.goal_id) if top_intention else None
 
         if json_output:
             # JSON-friendly representation
@@ -241,15 +404,16 @@ def status(
                     "total": len(intention_set.intentions),
                     "sampled": len(intentions),
                     "top": {
-                        "goal_id": top_intention.goal.goal_id,
-                        "title": top_intention.goal.title,
-                        "origin": top_intention.goal.origin.value,
-                        "priority": top_intention.goal.priority.value,
-                        "status": top_intention.goal.status.value,
-                        "score": top_intention.score,
-                        "priority_band": top_intention.priority_band,
-                        "score_breakdown": getattr(top_intention, "score_breakdown", None),
-                    } if top_intention else None,
+                        "goal_id": top_goal.goal_id,
+                        "title": top_goal.title,
+                        "origin": top_goal.origin.value,
+                        "priority": top_goal.priority.value,
+                        "status": top_goal.status.value,
+                        "intention_status": top_intention.status.value,
+                        "arbiter_score": top_intention.arbiter_score,
+                        "priority_band": top_intention.priority_band.value,
+                        "reasons": top_intention.reasons,
+                    } if (top_intention and top_goal) else None,
                 },
             }
             console.print_json(data=output)
@@ -277,22 +441,21 @@ def status(
         total_intentions = len(intention_set.intentions)
         table.add_row("Active Intentions", str(total_intentions))
 
-        if top_intention:
-            goal = top_intention.goal
+        if top_intention and top_goal:
             band_color = {
-                "critical": "red",
-                "high": "yellow",
-                "normal": "green",
-                "low": "blue",
-            }.get(top_intention.priority_band, "white")
+                "urgent": "red",
+                "normal": "yellow",
+                "background": "blue",
+            }.get(top_intention.priority_band.value, "white")
 
-            band_str = f"[{band_color}]{top_intention.priority_band}[/{band_color}]"
-            table.add_row("Top Intention", goal.title)
-            table.add_row("Top Origin", goal.origin.value)
-            table.add_row("Top Priority", goal.priority.value)
-            table.add_row("Top Score", f"{top_intention.score:.3f}")
+            band_str = f"[{band_color}]{top_intention.priority_band.value}[/{band_color}]"
+            table.add_row("Top Intention", top_goal.title)
+            table.add_row("Top Origin", top_goal.origin.value)
+            table.add_row("Top Priority", top_goal.priority.value)
+            table.add_row("Top Score", f"{top_intention.arbiter_score:.3f}")
             table.add_row("Top Band", band_str)
-            table.add_row("Top Status", goal.status.value)
+            table.add_row("Intention Status", top_intention.status.value)
+            table.add_row("Goal Status", top_goal.status.value)
         else:
             table.add_row("Top Intention", "[dim]None[/dim]")
 

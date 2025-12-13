@@ -17,7 +17,7 @@ from rich.panel import Panel
 from rich import box
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from cron_descriptor import CasingTypeEnum, ExpressionDescriptor
+# Removed cron_descriptor - using backend cron parser instead
 
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
@@ -33,11 +33,104 @@ from cli.utils.timezone import format_timestamp_local
 shared_path = Path(__file__).parent.parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
+# Add backend path for cron parser
+backend_path = Path(__file__).parent.parent.parent / "backend"
+sys.path.insert(0, str(backend_path))
+
 from aico.core.config import ConfigurationManager
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
+from scheduler.cron import CronParser
 
 console = Console()
+
+def _describe_cron(cron_expr: str) -> str:
+    """Generate natural, human-readable description of cron expression.
+    
+    Examples:
+        */5 * * * *    -> "Every 5 minutes"
+        0 */6 * * *    -> "Every 6 hours"
+        0 3 * * *      -> "Daily at 3:00 AM"
+        30 14 * * 1    -> "Weekly on Monday at 2:30 PM"
+        0 0 1 * *      -> "Monthly on the 1st at midnight"
+    """
+    try:
+        parser = CronParser()
+        if not parser.validate(cron_expr):
+            return cron_expr
+        
+        fields = cron_expr.split()
+        if len(fields) != 5:
+            return cron_expr
+            
+        minute, hour, day, month, weekday = fields
+        
+        # Helper to format time (24-hour format)
+        def format_time(h: str, m: str) -> str:
+            h_int = int(h)
+            m_int = int(m)
+            return f"{h_int:02d}:{m_int:02d}"
+        
+        # Pattern: Every N minutes/hours (most common for tasks)
+        if minute.startswith('*/') and hour == '*' and day == '*' and month == '*' and weekday == '*':
+            interval = minute[2:]
+            return f"Every {interval} minute{'s' if int(interval) > 1 else ''}"
+        
+        if minute.isdigit() and hour.startswith('*/') and day == '*' and month == '*' and weekday == '*':
+            interval = hour[2:]
+            return f"Every {interval} hour{'s' if int(interval) > 1 else ''}"
+        
+        # Pattern: Daily at specific time
+        if day == '*' and month == '*' and weekday == '*' and hour.isdigit() and minute.isdigit():
+            return f"Daily at {format_time(hour, minute)}"
+        
+        # Pattern: Weekly on specific day
+        if day == '*' and month == '*' and weekday.isdigit() and hour.isdigit() and minute.isdigit():
+            days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+            day_name = days[int(weekday)]
+            return f"Weekly on {day_name} at {format_time(hour, minute)}"
+        
+        # Pattern: Monthly on specific day
+        if day.isdigit() and month == '*' and weekday == '*' and hour.isdigit() and minute.isdigit():
+            day_suffix = 'st' if day == '1' else 'nd' if day == '2' else 'rd' if day == '3' else 'th'
+            return f"Monthly on the {day}{day_suffix} at {format_time(hour, minute)}"
+        
+        # Pattern: Yearly on specific month and day
+        if day.isdigit() and month.isdigit() and weekday == '*' and hour.isdigit() and minute.isdigit():
+            months = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                     'July', 'August', 'September', 'October', 'November', 'December']
+            month_name = months[int(month)]
+            day_suffix = 'st' if day == '1' else 'nd' if day == '2' else 'rd' if day == '3' else 'th'
+            return f"Yearly on {month_name} {day}{day_suffix} at {format_time(hour, minute)}"
+        
+        # Fallback: Build generic description
+        parts = []
+        
+        if minute == '*' and hour == '*':
+            parts.append("Every minute")
+        elif minute.startswith('*/'):
+            parts.append(f"Every {minute[2:]} minutes")
+        elif hour.startswith('*/'):
+            parts.append(f"Every {hour[2:]} hours")
+        elif hour.isdigit() and minute.isdigit():
+            parts.append(f"At {format_time(hour, minute)}")
+        
+        if weekday != '*':
+            days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+            if weekday.isdigit():
+                parts.append(f"on {days[int(weekday)]}")
+        elif day != '*':
+            parts.append(f"on day {day}")
+        
+        if month != '*':
+            months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            parts.append(f"in {months[int(month)]}")
+        
+        return ' '.join(parts) if parts else cron_expr
+        
+    except Exception:
+        return cron_expr
 
 def scheduler_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
@@ -140,11 +233,8 @@ def list_tasks(
                     status = "Enabled" if task[3] else "[dim]Disabled[/dim]"
                     created_at = format_timestamp_local(task[4]) if task[4] else "Unknown"
                     
-                    try:
-                        descriptor = ExpressionDescriptor(task[2], casing_type=CasingTypeEnum.Sentence)
-                        description = descriptor.get_description()
-                    except:
-                        description = "[dim]Invalid cron[/dim]"
+                    # Generate human-readable description using backend cron parser
+                    description = _describe_cron(task[2])
                     
                     table.add_row(
                         task[0],  # task_id

@@ -211,7 +211,7 @@ class SelfReflectionEngine:
             return await self.run_store.get_run(run_id)
             
         except Exception as e:
-            logger.error(f"[SELF_REFLECTION] Run {run_id} failed: {e}", exc_info=True)
+            logger.exception(f"[SELF_REFLECTION] Run {run_id} failed: {e}")
             
             await self.run_store.update_run(
                 run_id=run_id,
@@ -775,25 +775,38 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
         
         try:
             # Query emotion history
+            # Note: Some deployments only have valence/arousal columns. We
+            # don't require richer fields for current analysis, so we select
+            # only the stable subset.
+            #
+            # Emotion Simulation persists AICO's own emotional trajectory under
+            # user_id = 'system' (single-agent emotion model).
+            emotion_history_user_id = "system"
             rows = self.db.execute(
-                """SELECT timestamp, valence, arousal, dominance, 
-                          primary_emotion, intensity
+                """SELECT timestamp, valence, arousal
                    FROM emotion_history
                    WHERE user_id = ? AND timestamp BETWEEN ? AND ?
                    ORDER BY timestamp DESC""",
-                (user_id, window_start.isoformat(), window_end.isoformat())
+                (
+                    emotion_history_user_id,
+                    window_start.isoformat(),
+                    window_end.isoformat(),
+                )
             ).fetchall()
             
             if len(rows) < self.min_sample_size:
-                logger.debug(
-                    f"[SELF_REFLECTION] Insufficient emotion data for user {user_id}: "
-                    f"{len(rows)} entries (need {self.min_sample_size})"
+                # Degradation: not enough data to analyze emotion patterns
+                logger.warning(
+                    f"[SELF_REFLECTION] Emotion analysis degraded for user {user_id}: "
+                    f"{len(rows)} entries (need {self.min_sample_size}) "
+                    f"from emotion_history user_id='{emotion_history_user_id}'"
                 )
                 return lessons
             
             # Calculate average emotional metrics
-            avg_valence = sum(row["valence"] for row in rows) / len(rows)
-            avg_arousal = sum(row["arousal"] for row in rows) / len(rows)
+            # Rows are tuples: (timestamp, valence, arousal)
+            avg_valence = sum(row[1] for row in rows) / len(rows)
+            avg_arousal = sum(row[2] for row in rows) / len(rows)
             
             # Detect high-stress pattern (low valence + high arousal)
             stress_score = (1.0 - avg_valence) * avg_arousal
@@ -803,32 +816,39 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
                 lesson = Lesson(
                     lesson_id=str(uuid.uuid4()),
                     user_id=user_id,
-                    run_id=run_id,
-                    lesson_type=LessonType.PERSONA_ADJUSTMENT,
+                    lesson_type=LessonType.PERSONA_STYLE,
                     target_kind=TargetKind.PERSONA_TRAIT,
                     target_id="supportiveness",
-                    description=(
-                        f"User showing elevated stress (stress_score={stress_score:.2f}). "
+                    summary_text=(
+                        f"Elevated stress detected in AICO emotion history (stress_score={stress_score:.2f}). "
                         "Increase supportiveness and empathy in interactions."
+                    ),
+                    proposed_change=ProposedChange(
+                        change_type=ChangeType.WEIGHT_TWEAK,
+                        field="supportiveness",
+                        old=None,
+                        new="+0.2",
+                        notes="Increase supportiveness under sustained high-stress patterns.",
                     ),
                     confidence=min(0.9, stress_score),
                     metrics_basis=MetricsBasis(
+                        time_span=f"{(window_end - window_start).days} days",
                         sample_size=len(rows),
-                        success_rate=None,
-                        avg_duration_seconds=None,
-                        error_rate=None,
+                        outcome_counts={},
+                        additional_metrics={
+                            "stress_score": stress_score,
+                            "avg_valence": avg_valence,
+                            "avg_arousal": avg_arousal,
+                        },
                     ),
-                    proposed_changes=[
-                        ProposedChange(
-                            change_type=ChangeType.ADJUST_WEIGHT,
-                            target_field="supportiveness",
-                            old_value=None,
-                            new_value="+0.2",  # Increase supportiveness
-                        )
-                    ],
-                    created_at=datetime.utcnow(),
+                    scope=LessonScope.THIS_USER,
+                    status=LessonStatus.ACTIVE,
+                    source_reflection_run_id=run_id,
+                    evidence_window_start=window_start,
+                    evidence_window_end=window_end,
                 )
                 lessons.append(lesson)
+                await self.lesson_store.create_lesson(lesson)
                 
                 logger.info(
                     f"[SELF_REFLECTION] Generated stress-response lesson for user {user_id}",
@@ -840,32 +860,38 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
                 lesson = Lesson(
                     lesson_id=str(uuid.uuid4()),
                     user_id=user_id,
-                    run_id=run_id,
-                    lesson_type=LessonType.PERSONA_ADJUSTMENT,
+                    lesson_type=LessonType.PERSONA_STYLE,
                     target_kind=TargetKind.PERSONA_TRAIT,
                     target_id="interaction_style",
-                    description=(
-                        f"User showing low emotional satisfaction (avg_valence={avg_valence:.2f}). "
+                    summary_text=(
+                        f"Low average valence in AICO emotion history (avg_valence={avg_valence:.2f}). "
                         "Consider adjusting interaction style and tone."
+                    ),
+                    proposed_change=ProposedChange(
+                        change_type=ChangeType.WEIGHT_TWEAK,
+                        field="warmth",
+                        old=None,
+                        new="+0.15",
+                        notes="Increase warmth when sustained low-valence patterns are observed.",
                     ),
                     confidence=0.7,
                     metrics_basis=MetricsBasis(
+                        time_span=f"{(window_end - window_start).days} days",
                         sample_size=len(rows),
-                        success_rate=None,
-                        avg_duration_seconds=None,
-                        error_rate=None,
+                        outcome_counts={},
+                        additional_metrics={
+                            "avg_valence": avg_valence,
+                            "avg_arousal": avg_arousal,
+                        },
                     ),
-                    proposed_changes=[
-                        ProposedChange(
-                            change_type=ChangeType.ADJUST_WEIGHT,
-                            target_field="warmth",
-                            old_value=None,
-                            new_value="+0.15",  # Increase warmth
-                        )
-                    ],
-                    created_at=datetime.utcnow(),
+                    scope=LessonScope.THIS_USER,
+                    status=LessonStatus.ACTIVE,
+                    source_reflection_run_id=run_id,
+                    evidence_window_start=window_start,
+                    evidence_window_end=window_end,
                 )
                 lessons.append(lesson)
+                await self.lesson_store.create_lesson(lesson)
                 
                 logger.info(
                     f"[SELF_REFLECTION] Generated low-satisfaction lesson for user {user_id}",
@@ -873,7 +899,8 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
                 )
         
         except Exception as e:
-            logger.error(f"[SELF_REFLECTION] Failed to analyze emotion patterns: {e}", exc_info=True)
+            # Hard failure analyzing emotion patterns
+            logger.exception(f"[SELF_REFLECTION] Failed to analyze emotion patterns: {e}")
         
         return lessons
     
@@ -904,78 +931,36 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
         lessons = []
         
         try:
-            # Query relationship data
+            # Query relationship data using actual schema columns
+            # Current schema: uuid, user_uuid, related_user_uuid, relationship_type,
+            # is_active, created_at, updated_at
+            # 
+            # NOTE: The full social analysis design requires richer metrics like
+            # closeness, trust, interaction_frequency, last_interaction. Until those
+            # are added to the schema, we degrade gracefully with a WARNING.
             rows = self.db.execute(
-                """SELECT related_user_uuid, closeness, trust, 
-                          interaction_frequency, last_interaction
-                   FROM user_relationships
-                   WHERE user_uuid = ?""",
-                (user_id,)
+                """SELECT uuid, related_user_uuid, relationship_type, 
+                          is_active, created_at, updated_at
+                       FROM user_relationships
+                       WHERE user_uuid = ?""",
+                (user_id,),
             ).fetchall()
             
             if not rows:
                 logger.debug(f"[SELF_REFLECTION] No relationship data for user {user_id}")
                 return lessons
             
-            # Analyze relationship strength
-            for row in rows:
-                closeness = row["closeness"]
-                trust = row["trust"]
-                last_interaction_str = row["last_interaction"]
-                
-                if not last_interaction_str:
-                    continue
-                
-                # Parse last interaction time
-                try:
-                    last_interaction = datetime.fromisoformat(last_interaction_str)
-                    days_since_interaction = (datetime.utcnow() - last_interaction).days
-                except (ValueError, TypeError):
-                    continue
-                
-                # Detect declining relationship (high closeness but infrequent interaction)
-                if closeness > 0.7 and days_since_interaction > 14:
-                    lesson = Lesson(
-                        lesson_id=str(uuid.uuid4()),
-                        user_id=user_id,
-                        run_id=run_id,
-                        lesson_type=LessonType.PERSONA_ADJUSTMENT,
-                        target_kind=TargetKind.PERSONA_TRAIT,
-                        target_id="proactivity",
-                        description=(
-                            f"Close relationship with {row['related_user_uuid']} "
-                            f"(closeness={closeness:.2f}) but {days_since_interaction} days "
-                            "since last interaction. Increase proactive engagement."
-                        ),
-                        confidence=0.75,
-                        metrics_basis=MetricsBasis(
-                            sample_size=1,
-                            success_rate=None,
-                            avg_duration_seconds=None,
-                            error_rate=None,
-                        ),
-                        proposed_changes=[
-                            ProposedChange(
-                                change_type=ChangeType.ADJUST_WEIGHT,
-                                target_field="proactivity",
-                                old_value=None,
-                                new_value="+0.1",  # Increase proactivity
-                            )
-                        ],
-                        created_at=datetime.utcnow(),
-                    )
-                    lessons.append(lesson)
-                    
-                    logger.info(
-                        f"[SELF_REFLECTION] Generated relationship maintenance lesson",
-                        extra={
-                            "related_user": row["related_user_uuid"],
-                            "days_since_interaction": days_since_interaction
-                        }
-                    )
+            # Degradation: current schema lacks closeness/trust/interaction metrics.
+            # We log this once per run and skip rich social analysis until schema is extended.
+            logger.warning(
+                f"[SELF_REFLECTION] Social analysis degraded for user {user_id}: "
+                f"relationship metrics (closeness, trust, interaction_frequency) not yet "
+                f"in schema. Found {len(rows)} relationships but cannot analyze interaction patterns."
+            )
+            return lessons
         
         except Exception as e:
-            logger.error(f"[SELF_REFLECTION] Failed to analyze social patterns: {e}", exc_info=True)
+            logger.exception(f"[SELF_REFLECTION] Failed to analyze social patterns: {e}")
         
         return lessons
     
@@ -1007,8 +992,11 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
         
         try:
             # Query curiosity-driven goals
+            # Use the actual agency_goals schema: metadata is stored as metadata_json.
+            # We include it in the SELECT even if current analysis only uses status
+            # and counts, to keep this query schema-accurate and future-safe.
             rows = self.db.execute(
-                """SELECT goal_id, status, created_at, completed_at, metadata
+                """SELECT goal_id, status, created_at, metadata_json
                    FROM agency_goals
                    WHERE user_id = ? 
                      AND origin = 'curiosity'
@@ -1115,6 +1103,6 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
                 )
         
         except Exception as e:
-            logger.error(f"[SELF_REFLECTION] Failed to analyze curiosity outcomes: {e}", exc_info=True)
+            logger.exception(f"[SELF_REFLECTION] Failed to analyze curiosity outcomes: {e}")
         
         return lessons

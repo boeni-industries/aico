@@ -64,6 +64,9 @@ class PriorityTaskQueue:
         
         # Track queue sizes for metrics
         self.queue_sizes: Dict[str, int] = {q: 0 for q in self.queues.keys()}
+
+        # Track which task_ids are currently enqueued to prevent duplicates
+        self._enqueued_task_ids: set[str] = set()
         
         # Track last execution time per queue for fairness
         self.last_execution: Dict[str, datetime] = {}
@@ -91,6 +94,11 @@ class PriorityTaskQueue:
             True if enqueued successfully, False if queue is full
         """
         queue_name = queue.value
+
+        # Prevent duplicate enqueues of the same task_id
+        if task_id in self._enqueued_task_ids:
+            logger.debug(f"Task {task_id} is already enqueued, skipping duplicate enqueue")
+            return False
         
         # Check queue capacity
         if self.queue_sizes[queue_name] >= self.max_queue_size:
@@ -114,6 +122,7 @@ class PriorityTaskQueue:
         # Add to appropriate heap
         heapq.heappush(self.queues[queue_name], task)
         self.queue_sizes[queue_name] += 1
+        self._enqueued_task_ids.add(task_id)
         
         logger.debug(
             f"Enqueued task {task_id} to {queue_name} queue "
@@ -121,6 +130,10 @@ class PriorityTaskQueue:
         )
         
         return True
+
+    def has_task(self, task_id: str) -> bool:
+        """Return True if the task_id is currently enqueued in any queue."""
+        return task_id in self._enqueued_task_ids
     
     def dequeue(self, queue: Optional[TaskQueue] = None) -> Optional[PrioritizedTask]:
         """Remove and return highest priority task
@@ -146,6 +159,7 @@ class PriorityTaskQueue:
         task = heapq.heappop(self.queues[queue_name])
         self.queue_sizes[queue_name] -= 1
         self.last_execution[queue_name] = datetime.now()
+        self._enqueued_task_ids.discard(task.task_id)
         
         logger.debug(
             f"Dequeued task {task.task_id} from {queue_name} "
@@ -246,6 +260,7 @@ class PriorityTaskQueue:
                         heapq.heapify(heap)
                     
                     self.queue_sizes[queue_name] -= 1
+                    self._enqueued_task_ids.discard(task_id)
                     logger.info(f"Removed task {task_id} from {queue_name} queue")
                     return True
         
@@ -269,9 +284,16 @@ class PriorityTaskQueue:
             queue_name = queue.value
             self.queues[queue_name] = []
             self.queue_sizes[queue_name] = 0
+            # Recompute enqueued ids from remaining queues
+            remaining: set[str] = set()
+            for heap in self.queues.values():
+                for task in heap:
+                    remaining.add(task.task_id)
+            self._enqueued_task_ids = remaining
             logger.info(f"Cleared {queue_name} queue")
         else:
             for queue_name in self.queues.keys():
                 self.queues[queue_name] = []
                 self.queue_sizes[queue_name] = 0
+            self._enqueued_task_ids.clear()
             logger.info("Cleared all queues")

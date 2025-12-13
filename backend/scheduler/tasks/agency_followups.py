@@ -149,11 +149,22 @@ class AgencyFollowUpTask(BaseTask):
                 )
             else:
                 self.logger.info("[AGENCY_FOLLOWUP] No follow-up candidates found")
-            
+
+            # Print a concise foreground summary (useful for `aico scheduler trigger --wait`)
+            print("\n================================================================================")
+            print(" AGENCY FOLLOW-UP SCAN COMPLETE")
+            print("================================================================================")
+            print(f"  Goals scanned (candidates): {len(candidates)}")
+            print(f"  Follow-ups sent:            {followup_sent_count if candidates else 0}")
+            print("================================================================================\n")
+
             return TaskResult(
                 success=True,
                 message=f"Scanned for follow-ups, found {len(candidates)} candidates",
-                data={"candidate_count": len(candidates)}
+                data={
+                    "candidate_count": len(candidates),
+                    "followups_sent": followup_sent_count if candidates else 0,
+                }
             )
             
         except Exception as e:

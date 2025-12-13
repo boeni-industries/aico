@@ -739,7 +739,7 @@ Format your response as a JSON array of steps:
             return detected_patterns
             
         except Exception as e:
-            logger.error(f"[PLANNER] Failed to detect patterns: {e}", exc_info=True)
+            logger.exception(f"[PLANNER] Failed to detect patterns: {e}")
             return []
     
     def get_pattern_suggestion(
@@ -849,7 +849,7 @@ Format your response as a JSON array of steps:
             return plan
             
         except Exception as e:
-            logger.error(f"[PLANNER] Failed to generate plan from pattern: {e}", exc_info=True)
+            logger.exception(f"[PLANNER] Failed to generate plan from pattern: {e}")
             return None
     
     def record_plan_outcome(

@@ -121,7 +121,7 @@ class AgencyReflectionTask(BaseTask):
                     )
                     
                 except Exception as e:
-                    logger.error(f"[REFLECTION] Failed for user {user_id}: {e}", exc_info=True)
+                    logger.exception(f"[REFLECTION] Failed for user {user_id}: {e}")
                     results.append({
                         "user_id": user_id,
                         "error": str(e),
@@ -156,7 +156,7 @@ class AgencyReflectionTask(BaseTask):
             
         except Exception as e:
             duration = (datetime.utcnow() - start_time).total_seconds()
-            logger.error(f"[REFLECTION] Task failed: {e}", exc_info=True)
+            logger.exception(f"[REFLECTION] Task failed: {e}")
             
             return TaskResult(
                 success=False,

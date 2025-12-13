@@ -1333,16 +1333,26 @@ def exec(
                     print(val if val is not None else "")
         else:
             # Table format - use plain print to avoid Rich truncation
-            if result and len(result[0]) > 0:
+            if result:
                 # Get column names
                 try:
                     cursor = conn.execute(query)
                     if hasattr(cursor, 'description') and cursor.description:
                         columns = [desc[0] for desc in cursor.description]
                     else:
-                        columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                        # DictRow objects have keys() method
+                        first_row = result[0]
+                        if hasattr(first_row, 'keys'):
+                            columns = list(first_row.keys())
+                        else:
+                            columns = [f"col_{i+1}" for i in range(len(first_row))]
                 except Exception:
-                    columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                    # Fallback: try to get keys from first row
+                    first_row = result[0]
+                    if hasattr(first_row, 'keys'):
+                        columns = list(first_row.keys())
+                    else:
+                        columns = [f"col_{i+1}" for i in range(len(first_row))]
                 
                 # Print header
                 print()

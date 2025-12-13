@@ -93,15 +93,16 @@ class LMDBCleanupTask(BaseTask):
             )
     
     async def _get_memory_manager(self, context: TaskContext):
-        """Get memory manager from service container."""
+        """Get memory manager from AI registry."""
         try:
-            from backend.services import get_memory_manager
+            from aico.ai import ai_registry
             
-            # Get memory manager (will initialize if needed)
-            memory_manager = get_memory_manager(
-                context.config,
-                context.db_connection
-            )
+            # Get memory manager from AI registry (registered during backend startup)
+            memory_manager = ai_registry.get("memory")
+            
+            if not memory_manager:
+                logger.error("Memory manager not found in AI registry")
+                return None
             
             # Ensure it's initialized
             if not memory_manager._initialized:

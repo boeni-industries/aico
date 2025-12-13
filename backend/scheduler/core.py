@@ -61,6 +61,7 @@ class TaskRegistry:
             "backend.scheduler.tasks.agency_followups",  # Agency Phase 1
             "backend.scheduler.tasks.curiosity_scan",  # Agency Phase 3
             "backend.scheduler.tasks.agency_reflection",  # Agency reflection / behavioral learning
+            "backend.scheduler.tasks.agency_arbiter",  # Agency Phase 4 - Goal Arbiter
         ]
         
         for module_name in builtin_modules:
@@ -640,6 +641,12 @@ class TaskScheduler(BaseService):
             if not task_class:
                 self.logger.error(f"Task class not found for {task_id}")
                 return
+
+            # Prevent enqueue storms: if already running or already queued, don't enqueue again
+            if task_id in self.task_executor.running_tasks:
+                return
+            if hasattr(self, "priority_queue") and self.priority_queue and self.priority_queue.has_task(task_id):
+                return
             
             # Get task instance to access priority and queue
             task_instance = task_class()
@@ -658,6 +665,14 @@ class TaskScheduler(BaseService):
             )
             
             if success:
+                # For scheduled tasks, advance next_run immediately on enqueue.
+                # This prevents re-enqueueing every scheduler tick while the task is pending/running.
+                if is_scheduled and task_id in self.next_run_times:
+                    schedule = task_config.get('schedule')
+                    if schedule:
+                        next_run = self.cron_parser.next_run_time(schedule, datetime.now())
+                        if next_run:
+                            self.next_run_times[task_id] = next_run
                 self.logger.debug(
                     f"Enqueued {task_id} to {task_instance.queue.value} queue "
                     f"(priority={task_instance.priority.name})"

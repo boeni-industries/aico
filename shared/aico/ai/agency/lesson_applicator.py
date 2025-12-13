@@ -128,10 +128,7 @@ class LessonApplicationService:
             return applied
                 
         except Exception as e:
-            logger.error(
-                f"[LESSON_APPLICATOR] Failed to apply lesson {lesson.lesson_id}: {e}",
-                exc_info=True
-            )
+            logger.exception(f"[LESSON_APPLICATOR] Failed to apply lesson {lesson.lesson_id}: {e}")
             return False
     
     async def _apply_skill_lesson(self, lesson: Lesson) -> bool:
@@ -207,10 +204,7 @@ class LessonApplicationService:
             return True
             
         except Exception as e:
-            logger.error(
-                f"[LESSON_APPLICATOR] Failed to apply skill lesson: {e}",
-                exc_info=True
-            )
+            logger.exception(f"[LESSON_APPLICATOR] Failed to apply skill performance lesson: {e}")
             return False
     
     async def _apply_arbiter_weight_lesson(self, lesson: Lesson) -> bool:
