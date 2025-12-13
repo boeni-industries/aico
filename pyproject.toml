@@ -31,6 +31,9 @@ dependencies = [
     "grand-cypher", # GQL/Cypher query language support for knowledge graph
     "hnswlib", # HNSW approximate nearest neighbor search for entity resolution
     "fast-langdetect>=0.2.1", # Ultra-fast language detection (80x faster, 95% accuracy, 217 languages)
+    "typer>=0.12.3,<1.0.0", # CLI framework
+    "rich>=13.7.0,<14.0.0", # Rich terminal output
+    "requests>=2.31.0,<3.0.0", # HTTP client for CLI
 ]
 
 [project.optional-dependencies]
@@ -44,12 +47,7 @@ backend = [
     "uvicorn>=0.35.0",
 ]
 
-cli = [
-    "typer>=0.12.3,<1.0.0",
-    "rich>=13.7.0,<14.0.0",
-    "requests>=2.31.0,<3.0.0",
-    "cron-descriptor>=1.4.3",
-]
+cli = []
 
 modelservice = [
     "transformers==4.50.3", # Fixed version compatible with GLiNER 0.2.22
