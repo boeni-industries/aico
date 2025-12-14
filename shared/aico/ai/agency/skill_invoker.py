@@ -263,16 +263,14 @@ class SkillInvoker:
         
         self.db.execute(
             """INSERT INTO skill_executions (
-                execution_id, skill_id, user_id, status,
-                input_data, context_json, started_at, created_at
-            ) VALUES (?, ?, ?, 'running', ?, ?, ?, ?)""",
+                execution_id, skill_id, user_id, outcome,
+                context_json, created_at
+            ) VALUES (?, ?, ?, 'running', ?, ?)""",
             (
                 invocation_id,
                 skill_id,
                 user_id,
-                json.dumps(input_data),
                 json.dumps(context),
-                now,
                 now,
             )
         )
@@ -297,15 +295,12 @@ class SkillInvoker:
         
         self.db.execute(
             """UPDATE skill_executions
-               SET status = ?, output_data = ?, error_message = ?,
-                   execution_time_ms = ?, completed_at = ?
+               SET outcome = ?, error_message = ?, execution_time_ms = ?
                WHERE execution_id = ?""",
             (
                 "completed" if success else "failed",
-                json.dumps(output_data) if output_data else None,
                 error_message,
                 duration_ms,
-                now,
                 invocation_id,
             )
         )

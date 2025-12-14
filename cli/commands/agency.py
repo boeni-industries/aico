@@ -67,6 +67,7 @@ def agency_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ("profile", "View or edit user value profile"),
             ("policies", "List, add, or remove policy rules"),
             ("consent", "Grant or revoke consent for specific actions"),
+            ("proactive", "Manage proactive conversation initiations"),
         ]
         
         format_subcommand_help(
@@ -1056,6 +1057,12 @@ def executions(
     except Exception as e:
         console.print(f"[red]✗[/red] Error listing executions: {e}")
         raise typer.Exit(1)
+
+
+
+# Register proactive conversation subcommand
+from .agency_proactive import app as proactive_app
+app.add_typer(proactive_app, name="proactive")
 
 
 if __name__ == "__main__":

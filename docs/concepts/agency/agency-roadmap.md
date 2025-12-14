@@ -937,6 +937,94 @@ user interests used by the Curiosity Engine's `_track_interests` detector.
 
 **Implementation:** Single consolidated `learning.py` module (481 lines) with all advanced learning components integrated.
 
+**Backend Integration:** ✅ *COMPLETE*
+- [x] Scheduler task: `ProactiveConversationTask` (every 30 minutes)
+- [x] Message bus publishing to `conversation/aico/initiate/v1`
+- [x] ConversationEngine subscription and handler
+- [x] API endpoints: `/api/v1/conversation/proactive/{pending,respond,history}`
+- [x] User response tracking with automatic learning updates
+- [x] User preferences manager with caching
+- [x] Comprehensive logging and error handling
+- [x] Offline user resilience (initiations persist in DB)
+
+**Frontend Integration:** ⏳ *PENDING*
+- [ ] **Notification Polling**
+  - [ ] Poll `/api/v1/conversation/proactive/pending` on app startup
+  - [ ] Poll periodically when app is active (every 30-60 seconds)
+  - [ ] Display badge/indicator for pending initiations
+  
+- [ ] **Proactive Message UI**
+  - [ ] Distinct visual design for AICO-initiated messages
+  - [ ] Show initiation context (topic, urgency)
+  - [ ] Display timestamp and strategy information
+  - [ ] Differentiate from user-initiated conversations
+  
+- [ ] **User Response Handling**
+  - [ ] "Respond" button → Opens conversation with pre-filled context
+  - [ ] "Dismiss" button → Calls `/respond` with `response_type: dismissed`
+  - [ ] "Defer" button → Calls `/respond` with `response_type: deferred`
+  - [ ] Track engagement score based on response quality/length
+  - [ ] Automatic response time calculation
+  
+- [ ] **Preferences Management**
+  - [ ] Settings screen for proactive conversations
+  - [ ] Toggle to enable/disable proactive initiations
+  - [ ] Quiet hours configuration (time picker)
+  - [ ] Max initiations per day slider
+  - [ ] Preferred times selection
+  - [ ] Save preferences via API (to be implemented)
+  
+- [ ] **History View**
+  - [ ] Display past initiations via `/proactive/history`
+  - [ ] Filter by status (pending/answered/dismissed)
+  - [ ] Show response times and engagement scores
+  - [ ] Visual analytics of learning progress
+
+**CLI Commands:** ⏳ *PENDING*
+- [ ] **`aico agency proactive list`**
+  - [ ] List all proactive initiations for user
+  - [ ] Filter by status: `--status pending|answered|dismissed`
+  - [ ] Filter by date range: `--since <date>`, `--until <date>`
+  - [ ] Show learning statistics: `--stats`
+  
+- [ ] **`aico agency proactive show <initiation_id>`**
+  - [ ] Display detailed initiation information
+  - [ ] Show context, scores, strategy used
+  - [ ] Display user response if answered
+  - [ ] Show learning impact (before/after α, β values)
+  
+- [ ] **`aico agency proactive respond <initiation_id>`**
+  - [ ] Interactive response recording
+  - [ ] Prompt for response type (answered/dismissed/deferred)
+  - [ ] Optional engagement score input
+  - [ ] Confirm learning system update
+  
+- [ ] **`aico agency proactive stats`**
+  - [ ] Display bandit arm statistics
+  - [ ] Show expected rewards per strategy
+  - [ ] Display convergence metrics (trials, confidence)
+  - [ ] Visualize learning progress over time
+  
+- [ ] **`aico agency proactive preferences`**
+  - [ ] View current user preferences
+  - [ ] Set quiet hours: `--quiet-hours 22-7`
+  - [ ] Set max per day: `--max-per-day 5`
+  - [ ] Enable/disable: `--enable|--disable`
+  
+- [ ] **`aico agency proactive test`**
+  - [ ] Trigger test initiation for current user
+  - [ ] Specify strategy: `--strategy time_morning`
+  - [ ] Override thresholds for testing
+  - [ ] Dry-run mode to see decision without creating initiation
+
+**Testing Requirements:**
+- [ ] Unit tests for API endpoints
+- [ ] Integration test: scheduler → message bus → conversation engine → API
+- [ ] Frontend E2E test: notification → response → learning update
+- [ ] CLI command tests for all operations
+- [ ] Load testing: multiple concurrent users
+- [ ] Offline resilience test: user offline for 24h, then comes online
+
 ---
 
 ## Future Improvements (Post-Phase 9)

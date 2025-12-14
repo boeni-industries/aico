@@ -62,6 +62,8 @@ modelservice = [
 
 test = [
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=6.0.0",
 ]
 
 [project.scripts]
@@ -86,7 +88,3 @@ override-dependencies = [
 # Specify git source for coqui-tts
 coqui-tts = { git = "https://github.com/idiap/coqui-ai-TTS.git", branch = "dev" }
 
-[dependency-groups]
-test = [
-    "pytest-asyncio>=1.1.0",
-]

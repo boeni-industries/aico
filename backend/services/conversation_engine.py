@@ -237,10 +237,11 @@ class ConversationEngine(BaseService):
         
         # V2: Direct memory integration - no message bus subscriptions needed
         
-        # Future: Agency proactive triggers
-        if self.enable_agency:
-            # await self.bus_client.subscribe(AICOTopics.AGENCY_PROACTIVE_TRIGGER, ...)
-            pass
+        # Proactive conversation initiations
+        await self.bus_client.subscribe(
+            'conversation/aico/initiate/v1',
+            self._handle_proactive_initiation
+        )
         
         self.logger.info("Message bus subscriptions established")
     
@@ -1420,4 +1421,101 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error during conversation engine stop: {e}")
+    
+    # ============================================================================
+    # PROACTIVE CONVERSATION HANDLER
+    # ============================================================================
+    
+    async def _handle_proactive_initiation(self, message) -> None:
+        """Handle proactive conversation initiation from scheduler.
+        
+        Message format:
+        {
+            'initiation_id': str,
+            'user_id': str,
+            'conversation_id': str,
+            'topic': str,
+            'message': str,
+            'context': str,
+            'urgency': str,
+            'expected_answer_type': str,
+            'initiated_at': str (ISO timestamp),
+            'strategy_id': str,
+            'scores': {...}
+        }
+        """
+        try:
+            print(f"💬 [PROACTIVE] 📨 Received proactive initiation message")
+            self.logger.info("💬 [PROACTIVE] Received proactive initiation message")
+            
+            # Extract message data
+            initiation_id = message.get('initiation_id')
+            user_id = message.get('user_id')
+            conversation_id = message.get('conversation_id')
+            proactive_message = message.get('message')
+            topic = message.get('topic')
+            
+            if not all([initiation_id, user_id, conversation_id, proactive_message]):
+                print(f"💬 [PROACTIVE] ⚠️ Missing required fields in initiation message")
+                self.logger.warning("💬 [PROACTIVE] Missing required fields in initiation message")
+                return
+            
+            print(f"💬 [PROACTIVE] 📋 Initiation {initiation_id[:8]} for user {user_id[:8]}")
+            self.logger.info(
+                f"💬 [PROACTIVE] Processing initiation {initiation_id} for user {user_id}"
+            )
+            
+            # Check if user is online/active
+            # For now, we'll store the initiation and let the frontend poll for it
+            # In future: WebSocket push notification
+            
+            # Store initiation in a way the frontend can retrieve it
+            # Option 1: Store in a pending_initiations table/cache
+            # Option 2: Publish to user-specific topic
+            # Option 3: Send via WebSocket if user is connected
+            
+            # For resilience: Store in database (already done by scheduler)
+            # Publish to user-specific notification topic
+            try:
+                notification_topic = f'user/{user_id}/notifications/v1'
+                notification_message = {
+                    'type': 'proactive_conversation',
+                    'initiation_id': initiation_id,
+                    'conversation_id': conversation_id,
+                    'message': proactive_message,
+                    'topic': topic,
+                    'urgency': message.get('urgency', 'medium'),
+                    'timestamp': message.get('initiated_at'),
+                    'requires_response': True
+                }
+                
+                await self.bus_client.publish(
+                    topic=notification_topic,
+                    message=notification_message
+                )
+                
+                print(f"💬 [PROACTIVE] ✅ Published notification to {notification_topic}")
+                self.logger.info(
+                    f"💬 [PROACTIVE] Published notification to user topic {notification_topic}"
+                )
+                
+            except Exception as pub_error:
+                # Don't fail if notification publish fails - user can still see it via polling
+                print(f"💬 [PROACTIVE] ⚠️ Failed to publish notification: {pub_error}")
+                self.logger.warning(
+                    f"💬 [PROACTIVE] Failed to publish notification: {pub_error}"
+                )
+            
+            # Log successful handling
+            print(f"💬 [PROACTIVE] ✅ Initiation {initiation_id[:8]} handled successfully")
+            self.logger.info(
+                f"💬 [PROACTIVE] Successfully handled initiation {initiation_id}"
+            )
+            
+        except Exception as e:
+            print(f"💬 [PROACTIVE] ❌ Error handling proactive initiation: {e}")
+            self.logger.error(
+                f"💬 [PROACTIVE] Error handling proactive initiation: {e}",
+                exc_info=True
+            )
             raise

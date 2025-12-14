@@ -63,6 +63,7 @@ class TaskRegistry:
             "backend.scheduler.tasks.agency_reflection",  # Agency reflection / behavioral learning
             "backend.scheduler.tasks.agency_arbiter",  # Agency Phase 4 - Goal Arbiter
             "backend.scheduler.tasks.agency_plan_executor",  # Agency Phase 6.10 - Plan Execution
+            "backend.scheduler.tasks.proactive_conversation",  # Agency Phase 6.11 - Proactive Conversations
         ]
         
         for module_name in builtin_modules:
