@@ -62,6 +62,8 @@ def agency_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ("status", "View high-level agency status for a user"),
             ("intentions", "View active intention set for a user"),
             ("goals", "List all goals for a user"),
+            ("plans", "List and manage plans"),
+            ("executions", "View plan execution status"),
             ("profile", "View or edit user value profile"),
             ("policies", "List, add, or remove policy rules"),
             ("consent", "Grant or revoke consent for specific actions"),
@@ -910,6 +912,149 @@ def consent(
         
     except Exception as e:
         console.print(f"[red]✗[/red] Error managing consent: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("plans")
+def plans(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID"),
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status"),
+    goal: Optional[str] = typer.Option(None, "--goal", "-g", help="Filter by goal ID"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Maximum number of plans to show"),
+):
+    """List plans for a user."""
+    try:
+        user_id = get_user_id(user)
+        
+        with _suppress_debug_output():
+            db = get_db_connection()
+        
+        # Build query - join with goals to get user_id
+        query = """
+            SELECT p.plan_id, p.goal_id, p.status, p.created_at 
+            FROM agency_plans p
+            JOIN agency_goals g ON p.goal_id = g.goal_id
+            WHERE g.user_id = ?
+        """
+        params = [user_id]
+        
+        if status:
+            query += " AND p.status = ?"
+            params.append(status)
+        
+        if goal:
+            query += " AND p.goal_id = ?"
+            params.append(goal)
+        
+        query += " ORDER BY p.created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        rows = db.execute(query, tuple(params)).fetchall()
+        
+        if not rows:
+            console.print("[yellow]No plans found[/yellow]")
+            return
+        
+        table = Table(title=f"Plans for {user_id}", box=box.SIMPLE_HEAD)
+        table.add_column("Plan ID", style="cyan")
+        table.add_column("Goal ID", style="blue")
+        table.add_column("Status", style="green")
+        table.add_column("Created", style="dim")
+        
+        for row in rows:
+            status_color = {
+                "draft": "yellow",
+                "active": "green",
+                "completed": "blue",
+                "abandoned": "red"
+            }.get(row["status"], "white")
+            
+            table.add_row(
+                row["plan_id"][:8],
+                row["goal_id"][:8],
+                f"[{status_color}]{row['status']}[/{status_color}]",
+                row["created_at"][:19] if row["created_at"] else ""
+            )
+        
+        console.print(table)
+        console.print(f"\n[dim]Total: {len(rows)} plans[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error listing plans: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("executions")
+def executions(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID"),
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Maximum number to show"),
+):
+    """View plan execution status."""
+    try:
+        user_id = get_user_id(user)
+        
+        with _suppress_debug_output():
+            db = get_db_connection()
+        
+        # Build query
+        query = """
+            SELECT execution_id, plan_id, goal_id, status, 
+                   progress_percentage, steps_completed, steps_total,
+                   started_at, completed_at
+            FROM plan_executions 
+            WHERE user_id = ?
+        """
+        params = [user_id]
+        
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        rows = db.execute(query, tuple(params)).fetchall()
+        
+        if not rows:
+            console.print("[yellow]No executions found[/yellow]")
+            return
+        
+        table = Table(title=f"Plan Executions for {user_id}", box=box.SIMPLE_HEAD)
+        table.add_column("Execution ID", style="cyan")
+        table.add_column("Plan", style="blue")
+        table.add_column("Status", style="green")
+        table.add_column("Progress", style="yellow")
+        table.add_column("Steps", style="white")
+        table.add_column("Started", style="dim")
+        
+        for row in rows:
+            status_color = {
+                "pending": "yellow",
+                "running": "blue",
+                "completed": "green",
+                "failed": "red",
+                "paused": "yellow",
+                "cancelled": "red"
+            }.get(row["status"], "white")
+            
+            progress = f"{row['progress_percentage']:.0f}%"
+            steps = f"{row['steps_completed']}/{row['steps_total']}"
+            
+            table.add_row(
+                row["execution_id"][:8],
+                row["plan_id"][:8],
+                f"[{status_color}]{row['status']}[/{status_color}]",
+                progress,
+                steps,
+                row["started_at"][:19] if row["started_at"] else "Not started"
+            )
+        
+        console.print(table)
+        console.print(f"\n[dim]Total: {len(rows)} executions[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error listing executions: {e}")
         raise typer.Exit(1)
 
 

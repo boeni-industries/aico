@@ -8,6 +8,7 @@ from .base import BaseTask, TaskContext, TaskResult, TaskStatus
 from .curiosity_scan import CuriosityScanTask
 from .agency_reflection import AgencyReflectionTask
 from .agency_arbiter import AgencyArbiterTask
+from .agency_plan_executor import AgencyPlanExecutorTask
 
 __all__ = [
     "BaseTask",
@@ -17,4 +18,5 @@ __all__ = [
     "CuriosityScanTask",
     "AgencyReflectionTask",
     "AgencyArbiterTask",
+    "AgencyPlanExecutorTask",
 ]

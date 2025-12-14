@@ -2320,5 +2320,183 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP INDEX IF EXISTS idx_bandit_arms_active",
             "DROP TABLE IF EXISTS arbiter_bandit_arms",
         ]
+    ),
+    
+    # Schema Version 32: Plan Execution System
+    32: SchemaVersion(
+        version=32,
+        name="Agency Phase 6.10 - Plan Execution System",
+        description="Add tables for plan execution tracking, skill invocation, action results, and execution state management",
+        sql_statements=[
+            # Plan executions table - tracks execution instances of plans
+            """CREATE TABLE IF NOT EXISTS plan_executions (
+                execution_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL,
+                goal_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, paused, completed, failed, cancelled
+                started_at TEXT,
+                completed_at TEXT,
+                paused_at TEXT,
+                cancelled_at TEXT,
+                current_step_id TEXT,
+                steps_completed INTEGER DEFAULT 0,
+                steps_total INTEGER NOT NULL,
+                progress_percentage REAL DEFAULT 0.0,
+                execution_context TEXT,  -- JSON: personality, emotion, resources at execution time
+                error_message TEXT,
+                cancellation_reason TEXT,
+                retry_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (plan_id) REFERENCES agency_plans(plan_id) ON DELETE CASCADE,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_plan ON plan_executions(plan_id)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_goal ON plan_executions(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_user ON plan_executions(user_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_status ON plan_executions(status, created_at)",
+            
+            # Step executions table - tracks execution of individual plan steps
+            """CREATE TABLE IF NOT EXISTS step_executions (
+                step_execution_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                step_id TEXT NOT NULL,
+                step_order INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed, skipped, blocked
+                started_at TEXT,
+                completed_at TEXT,
+                duration_ms INTEGER,
+                skill_id TEXT,  -- Skill invoked for this step
+                skill_invocation_id TEXT,  -- Reference to skill_executions table
+                input_data TEXT,  -- JSON: input parameters for step
+                output_data TEXT,  -- JSON: results from step execution
+                error_message TEXT,
+                retry_count INTEGER DEFAULT 0,
+                blocked_reason TEXT,  -- Why step is blocked (missing dependencies, resources, etc.)
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (execution_id) REFERENCES plan_executions(execution_id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_invocation_id) REFERENCES skill_executions(execution_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_step_executions_execution ON step_executions(execution_id, step_order)",
+            "CREATE INDEX IF NOT EXISTS idx_step_executions_status ON step_executions(status)",
+            "CREATE INDEX IF NOT EXISTS idx_step_executions_skill ON step_executions(skill_id)",
+            
+            # Action results table - captures outcomes of executed actions
+            """CREATE TABLE IF NOT EXISTS action_results (
+                result_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                step_execution_id TEXT NOT NULL,
+                action_type TEXT NOT NULL,  -- skill_invocation, message_send, state_update, etc.
+                action_target TEXT,  -- What was acted upon
+                success INTEGER NOT NULL,  -- 1 = success, 0 = failure
+                result_data TEXT,  -- JSON: detailed results
+                error_details TEXT,
+                confidence REAL,  -- Confidence in result (0.0-1.0)
+                feedback_collected INTEGER DEFAULT 0,
+                user_satisfaction INTEGER,  -- 1-5 rating if user provided feedback
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (execution_id) REFERENCES plan_executions(execution_id) ON DELETE CASCADE,
+                FOREIGN KEY (step_execution_id) REFERENCES step_executions(step_execution_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_action_results_execution ON action_results(execution_id)",
+            "CREATE INDEX IF NOT EXISTS idx_action_results_step ON action_results(step_execution_id)",
+            "CREATE INDEX IF NOT EXISTS idx_action_results_success ON action_results(success, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_action_results_type ON action_results(action_type)",
+            
+            # Execution dependencies table - tracks dependencies between steps
+            """CREATE TABLE IF NOT EXISTS execution_dependencies (
+                dependency_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                step_execution_id TEXT NOT NULL,
+                depends_on_step_id TEXT NOT NULL,
+                dependency_type TEXT NOT NULL,  -- sequential, parallel, conditional
+                condition_met INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (execution_id) REFERENCES plan_executions(execution_id) ON DELETE CASCADE,
+                FOREIGN KEY (step_execution_id) REFERENCES step_executions(step_execution_id) ON DELETE CASCADE,
+                FOREIGN KEY (depends_on_step_id) REFERENCES step_executions(step_execution_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_execution_deps_execution ON execution_dependencies(execution_id)",
+            "CREATE INDEX IF NOT EXISTS idx_execution_deps_step ON execution_dependencies(step_execution_id)",
+            
+            # Execution state snapshots - for pause/resume functionality
+            """CREATE TABLE IF NOT EXISTS execution_state_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                snapshot_type TEXT NOT NULL,  -- pause, checkpoint, error
+                state_data TEXT NOT NULL,  -- JSON: complete execution state
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (execution_id) REFERENCES plan_executions(execution_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_execution_snapshots_execution ON execution_state_snapshots(execution_id, created_at)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_execution_snapshots_execution",
+            "DROP TABLE IF EXISTS execution_state_snapshots",
+            "DROP INDEX IF EXISTS idx_execution_deps_step",
+            "DROP INDEX IF EXISTS idx_execution_deps_execution",
+            "DROP TABLE IF EXISTS execution_dependencies",
+            "DROP INDEX IF EXISTS idx_action_results_type",
+            "DROP INDEX IF EXISTS idx_action_results_success",
+            "DROP INDEX IF EXISTS idx_action_results_step",
+            "DROP INDEX IF EXISTS idx_action_results_execution",
+            "DROP TABLE IF EXISTS action_results",
+            "DROP INDEX IF EXISTS idx_step_executions_skill",
+            "DROP INDEX IF EXISTS idx_step_executions_status",
+            "DROP INDEX IF EXISTS idx_step_executions_execution",
+            "DROP TABLE IF EXISTS step_executions",
+            "DROP INDEX IF EXISTS idx_plan_executions_status",
+            "DROP INDEX IF EXISTS idx_plan_executions_user",
+            "DROP INDEX IF EXISTS idx_plan_executions_goal",
+            "DROP INDEX IF EXISTS idx_plan_executions_plan",
+            "DROP TABLE IF EXISTS plan_executions",
+        ]
+    ),
+    
+    33: SchemaVersion(
+        version=33,
+        name="AICO-Initiated Conversations",
+        description="Add table for tracking AICO-initiated conversations for learning and optimization",
+        sql_statements=[
+            # AICO conversation initiations table
+            """CREATE TABLE IF NOT EXISTS aico_conversation_initiations (
+                initiation_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                trigger_source TEXT NOT NULL,
+                trigger_reason TEXT,
+                question TEXT,
+                context TEXT,
+                urgency TEXT DEFAULT 'medium',
+                expected_answer_type TEXT DEFAULT 'text',
+                initiated_at TIMESTAMP NOT NULL,
+                resolved_at TIMESTAMP,
+                resolution_status TEXT DEFAULT 'pending',
+                user_response_time INTEGER,
+                engagement_score REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Indexes for conversation initiations
+            "CREATE INDEX IF NOT EXISTS idx_initiations_user_id ON aico_conversation_initiations(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_initiations_conversation_id ON aico_conversation_initiations(conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_initiations_status ON aico_conversation_initiations(resolution_status)",
+            "CREATE INDEX IF NOT EXISTS idx_initiations_initiated_at ON aico_conversation_initiations(initiated_at)",
+        ],
+        rollback_statements=[
+            # Drop indexes
+            "DROP INDEX IF EXISTS idx_initiations_initiated_at",
+            "DROP INDEX IF EXISTS idx_initiations_status",
+            "DROP INDEX IF EXISTS idx_initiations_conversation_id",
+            "DROP INDEX IF EXISTS idx_initiations_user_id",
+            
+            # Drop table
+            "DROP TABLE IF EXISTS aico_conversation_initiations",
+        ]
     )
 })

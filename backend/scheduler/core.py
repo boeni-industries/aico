@@ -62,6 +62,7 @@ class TaskRegistry:
             "backend.scheduler.tasks.curiosity_scan",  # Agency Phase 3
             "backend.scheduler.tasks.agency_reflection",  # Agency reflection / behavioral learning
             "backend.scheduler.tasks.agency_arbiter",  # Agency Phase 4 - Goal Arbiter
+            "backend.scheduler.tasks.agency_plan_executor",  # Agency Phase 6.10 - Plan Execution
         ]
         
         for module_name in builtin_modules:

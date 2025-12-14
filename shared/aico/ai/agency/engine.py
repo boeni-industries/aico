@@ -116,6 +116,57 @@ class AgencyEngine(BaseAIProcessor):
         )
         logger.info("[AGENCY_ENGINE] Self-Reflection Engine initialized (Phase 5)")
         
+        # Phase 6.10: Plan Execution Engine
+        from .executor import PlanExecutor
+        from .skill_invoker import SkillInvoker
+        from .skills import (
+            SkillRegistry,
+            AnalyzeConversationSkill,
+            SearchMemorySkill,
+            UpdateKnowledgeGraphSkill,
+            ReflectOnGoalSkill,
+        )
+        
+        # Initialize skill registry and register all skills with database connection
+        self.skill_registry = SkillRegistry()
+        
+        # Analysis skills
+        self.skill_registry.register(AnalyzeConversationSkill(db=db_connection))
+        
+        # Memory skills
+        self.skill_registry.register(SearchMemorySkill(db=db_connection))
+        
+        # Knowledge skills
+        self.skill_registry.register(UpdateKnowledgeGraphSkill(db=db_connection))
+        
+        # Reflection skills
+        self.skill_registry.register(ReflectOnGoalSkill(db=db_connection))
+        
+        # Communication skills (AICO-initiated conversations)
+        from .skills import AskUserSkill, InitiateConversationSkill
+        self.skill_registry.register(AskUserSkill(db=db_connection))
+        self.skill_registry.register(InitiateConversationSkill(db=db_connection))
+        
+        logger.info(
+            f"[AGENCY_ENGINE] Skill Registry initialized with {len(self.skill_registry)} skills"
+        )
+        
+        self.skill_invoker = SkillInvoker(
+            db=db_connection,
+            skill_registry=self.skill_registry,
+            default_timeout=30,
+            max_retries=2,
+            logger=logger
+        )
+        
+        self.executor = PlanExecutor(
+            db=db_connection,
+            plan_store=self.plan_store,
+            skill_invoker=self.skill_invoker,
+            logger=logger
+        )
+        logger.info("[AGENCY_ENGINE] Plan Executor initialized (Phase 6.10)")
+        
         # Optional backend hook for LLM-based plan refinement (injected by backend)
         self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner
         

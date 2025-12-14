@@ -222,7 +222,7 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 
 **Goal:** Remove ALL placeholders, stubs, hardcoded values, and shortcuts. Implement full-depth production-grade agency system with no compromises.
 
-**Current State:** ✅ **Phase 6.1 (Planner) COMPLETE!** LLM planning, pattern learning, skill availability, resource constraints all done.
+**Current State:** ✅ **Phase 6.1 (Planner) COMPLETE!** ✅ **Phase 6.11 (Communication Skills) COMPLETE!** LLM planning, pattern learning, skill availability, resource constraints, and state-of-the-art conversation initiation learning all done.
 
 ### **6.1 Planner Full Implementation**
 - [x] **LLM-Backed Planning** ✅ *COMPLETE*
@@ -497,6 +497,40 @@ Goal: Enable AICO to **evaluate her own behaviour** and adapt policies and skill
 - [x] **Emotion Pattern Analysis**
   - [x] Implement `_analyze_emotion_patterns()` method
   - [x] Query emotion history table for user emotional trajectories
+
+### **6.10.5 Plan Execution System** ✅ *COMPLETE*
+- [x] **Database Schema** ✅
+  - [x] Schema v32: plan_executions, step_executions, action_results tables
+  - [x] Execution state snapshots for pause/resume
+  - [x] Execution dependencies tracking
+  - [x] Full state management and progress tracking
+
+- [x] **Core Services** ✅
+  - [x] PlanExecutor service (`shared/aico/ai/agency/executor.py`)
+  - [x] SkillInvoker service (`shared/aico/ai/agency/skill_invoker.py`)
+  - [x] Execution lifecycle: start, execute, pause, resume, cancel
+  - [x] Progress tracking and state management
+  - [x] Error handling and retry logic
+
+- [x] **Scheduled Task** ✅
+  - [x] AgencyPlanExecutorTask (runs every 2 minutes)
+  - [x] Automatic execution discovery and step execution
+  - [x] Registered in scheduler builtin_modules
+  - [x] Integrated with AgencyEngine
+
+- [x] **CLI Commands** ✅
+  - [x] `aico agency plans` - List and filter plans
+  - [x] `aico agency executions` - View execution status and progress
+  - [x] Following existing CLI patterns (simple, bash-style)
+
+- [x] **AgencyEngine Integration** ✅
+  - [x] PlanExecutor and SkillInvoker wired into engine
+  - [x] Accessible via `agency_engine.executor`
+  - [x] Full lifecycle management support
+
+> **Exit condition:** ✅ **COMPLETE** - Plan execution system fully implemented. Plans for active intentions are automatically executed via scheduled task. Progress tracked in database. CLI commands provide monitoring. Ready for skill invocation implementation and production testing.
+>
+> **Documentation:** See `docs/concepts/agency/IMPLEMENTATION_PLAN_EXECUTION.md` for complete implementation details.
   - [x] Generate lessons for high-stress/low-satisfaction patterns
   - [x] Adjust persona based on emotional context (supportiveness, warmth)
   - [x] Stress detection via valence + arousal metrics
@@ -857,7 +891,51 @@ user interests used by the Curiosity Engine's `_track_interests` detector.
 - [ ] **Policy system**: Uses hardcoded `DEFAULT_POLICY_RULES`. No user-specific loading. 0% test coverage
 - [ ] **Event system**: Basic logging exists. Comprehensive event system NOT IMPLEMENTED
 
-**Progress:** 9/10 major items complete (90%). ✅ **Phase 6.1, 6.2, 6.3 & 6.4 COMPLETE!** ~8-10 tasks remaining across 2 subsystems.
+**Progress:** 10/11 major items complete (91%). ✅ **Phase 6.1, 6.2, 6.3, 6.4 & 6.11 COMPLETE!** ~7-9 tasks remaining across 2 subsystems.
+
+### **6.11 Communication Skills - State-of-the-Art Learning** ✅ *COMPLETE*
+- [x] **Contextual Multi-Armed Bandit** ✅ *COMPLETE*
+  - [x] Thompson Sampling with Beta distributions for exploration-exploitation
+  - [x] 11 bandit arms (time/topic/urgency strategies)
+  - [x] Bayesian reward updating from user responses
+  - [x] Uncertainty quantification and confidence tracking
+  - [x] Strategy selection with expected reward calculation
+
+- [x] **Human-Centered PCA Dimensions** ✅ *COMPLETE*
+  - [x] Adaptivity scoring: Patience, Timing Sensitivity, Self-awareness (ECE)
+  - [x] Civility scoring: Boundary respect, Emotional intelligence
+  - [x] Multi-dimensional decision making (Adaptivity 60% + Civility 40%)
+  - [x] Real-time context-aware evaluation
+
+- [x] **Contextual Feature Extraction** ✅ *COMPLETE*
+  - [x] 11-dimensional feature vector (temporal, user state, conversation context, engagement)
+  - [x] Automatic feature extraction from last 7 days of interactions
+  - [x] Normalized features for bandit algorithms
+  - [x] Activity level classification (low/medium/high)
+
+- [x] **Learning Loop Integration** ✅ *COMPLETE*
+  - [x] Automatic updates from user responses (answered/dismissed)
+  - [x] Response time tracking and reward calculation
+  - [x] Continuous improvement via Beta distribution updates
+  - [x] Fast convergence (20-50 trials for reliable estimates)
+
+- [x] **Database Schema** ✅ *COMPLETE*
+  - [x] Schema v33: `aico_conversation_initiations` table
+  - [x] Indexes for user_id, conversation_id, status, initiated_at
+  - [x] Full migration applied and tested
+
+- [x] **Documentation** ✅ *COMPLETE*
+  - [x] Comprehensive technical specification (COMMUNICATION_SKILLS_LEARNING.md)
+  - [x] Updated communication skills README
+  - [x] Research foundation documented (2024 papers)
+  - [x] Usage examples and best practices
+
+**Research Foundation:**
+- "Towards Human-centered Proactive Conversational Agents" (2024)
+- Thompson Sampling for Multi-Armed Bandits (Stanford)
+- Contextual Bandits for Personalization
+
+**Implementation:** Single consolidated `learning.py` module (481 lines) with all advanced learning components integrated.
 
 ---
 
