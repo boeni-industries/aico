@@ -50,11 +50,6 @@ title: Phase 2 - Memory, World Model & Relationships
 - ✅ 54 comprehensive tests, 73% coverage
 - ✅ Full backward compatibility with Phase 1
 
-**Deferred to Phase 4+:**
-- AMS summaries and open-loop lists (infrastructure in place)
-- Temporal pattern detection
-- Uncertainty area identification
-
 ---
 
 ## Exit Condition ✅
@@ -75,3 +70,4 @@ Goals and plans are meaningfully influenced by long-term memory, social context,
 - [Phase 1: Goals & Planning](agency-phase-1-goals-planning.md)
 - [Phase 3: Curiosity & Hobbies](agency-phase-3-curiosity-hobbies.md)
 - [Roadmap Overview](agency-roadmap-overview.md)
+- [Future Enhancements](agency-roadmap-overview.md#future-enhancements) - See Memory & AMS Integration section

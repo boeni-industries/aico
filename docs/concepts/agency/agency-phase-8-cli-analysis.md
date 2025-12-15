@@ -145,10 +145,6 @@ title: Phase 8 - Agency CLI & Analysis
 - [x] Database schema & storage
 - [x] Reflection effectiveness analysis
 - [x] Skill performance correlation
-- [ ] Expected vs actual behavior reports (future)
-- [ ] Arbiter decisions vs goal outcomes correlation (future)
-- [ ] Curiosity-driven goals analysis (future)
-- [ ] CI/CD integration for behavioral regression detection (future)
 
 ---
 
@@ -182,11 +178,6 @@ title: Phase 8 - Agency CLI & Analysis
 - ✅ Automated health checks and anomaly detection
 - ✅ Time-based filtering for all analytics commands
 
-**Future Enhancements:**
-- Expected vs actual behavior reports
-- Arbiter decision correlation analysis
-- CI/CD integration for regression detection
-
 ---
 
 ## Related Documentation
@@ -195,3 +186,4 @@ title: Phase 8 - Agency CLI & Analysis
 - [Phase 9: UI & Tooling](agency-phase-9-ui-tooling.md)
 - [Current Status](agency-roadmap-status.md)
 - [Roadmap Overview](agency-roadmap-overview.md)
+- [Future Enhancements](agency-roadmap-overview.md#future-enhancements) - See Analytics & Observability section

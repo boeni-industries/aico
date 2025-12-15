@@ -178,6 +178,32 @@ This document provides a high-level overview of AICO's agency system implementat
 
 ---
 
+## Future Enhancements
+
+These items were deferred from completed phases and represent potential improvements for future development.
+
+### Memory & AMS Integration
+**From Phase 2:**
+- [ ] Use AMS summaries and open-loop lists when (re)formulating goals and plans
+- [ ] Temporal pattern detection
+- [ ] Uncertainty area identification
+- [ ] AMS unified indexing and cross-tier lifecycle automation
+
+### Analytics & Observability
+**From Phase 8:**
+- [ ] Expected vs actual behavior reports
+- [ ] Arbiter decisions vs goal outcomes correlation analysis
+- [ ] Curiosity-driven goals analysis (creation vs completion vs rejection rates)
+- [ ] CI/CD integration for behavioral regression detection
+
+### Performance & Optimization
+**Future Considerations:**
+- [ ] Batch processing for plan executions
+- [ ] Caching strategies for frequently accessed metrics
+- [ ] Query optimization for large-scale deployments
+
+---
+
 ## Related Documentation
 
 - [Agency Architecture](agency-architecture.md)
