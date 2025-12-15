@@ -6,7 +6,7 @@ frequency limits, and boundary settings.
 """
 
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
 from aico.data.libsql import EncryptedLibSQLConnection
@@ -45,7 +45,7 @@ class UserPreferencesManager:
         """
         # Check cache
         if user_id in self._cache:
-            cache_age = (datetime.utcnow() - self._cache_timestamps[user_id]).total_seconds()
+            cache_age = (datetime.now(UTC) - self._cache_timestamps[user_id]).total_seconds()
             if cache_age < self._cache_ttl_seconds:
                 logger.debug(f"Using cached preferences for user {user_id[:8]}")
                 return self._cache[user_id]
@@ -74,7 +74,7 @@ class UserPreferencesManager:
             
             # Cache the result
             self._cache[user_id] = preferences
-            self._cache_timestamps[user_id] = datetime.utcnow()
+            self._cache_timestamps[user_id] = datetime.now(UTC)
             
             logger.debug(f"Loaded preferences for user {user_id[:8]}")
             return preferences

@@ -5,7 +5,7 @@ Focuses on error handling, edge cases, and conditional branches in workflows.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, patch
 import json
 
@@ -200,8 +200,8 @@ class TestEventSystemErrorHandling:
             event_data={}
         )
         
-        start_time = datetime.utcnow() - timedelta(hours=1)
-        end_time = datetime.utcnow() + timedelta(hours=1)
+        start_time = datetime.now(UTC) - timedelta(hours=1)
+        end_time = datetime.now(UTC) + timedelta(hours=1)
         
         events = event_system.get_events(
             user_id=test_user,

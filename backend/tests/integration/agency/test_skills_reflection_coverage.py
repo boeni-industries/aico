@@ -6,7 +6,7 @@ Follows patterns from existing agency tests.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 
 from aico.ai.agency import AgencyEngine
@@ -57,8 +57,8 @@ class TestReflectOnGoalSkill:
             description="Test",
             status=GoalStatus.PENDING,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -93,8 +93,8 @@ class TestReflectOnGoalSkill:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan = Plan(
@@ -115,8 +115,8 @@ class TestReflectOnGoalSkill:
                 )
             ],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -150,8 +150,8 @@ class TestReflectOnGoalSkill:
             description="Test",
             status=GoalStatus.PAUSED,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -173,7 +173,7 @@ class TestReflectOnGoalSkill:
         # Arrange
         skill = ReflectOnGoalSkill(db=test_db)
         
-        old_date = datetime.utcnow() - timedelta(days=35)
+        old_date = datetime.now(UTC) - timedelta(days=35)
         goal_id = str(uuid.uuid4())
         
         # Insert goal directly into database with old timestamp
@@ -230,8 +230,8 @@ class TestReflectOnGoalSkill:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -294,8 +294,8 @@ class TestReflectOnGoalSkill:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan1 = Plan(
@@ -307,8 +307,8 @@ class TestReflectOnGoalSkill:
             status=PlanStatus.DRAFT,
             steps=[],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan2 = Plan(
@@ -320,8 +320,8 @@ class TestReflectOnGoalSkill:
             status=PlanStatus.DRAFT,
             steps=[],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -355,8 +355,8 @@ class TestReflectOnGoalSkill:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)

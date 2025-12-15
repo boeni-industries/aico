@@ -5,7 +5,7 @@ Provides reusable test data and fixtures for agency system testing.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Dict, Any
 
 from aico.ai.agency.models import (
@@ -34,8 +34,8 @@ def sample_goal(test_user) -> Goal:
         status=GoalStatus.PENDING,
         priority=GoalPriority.NORMAL,
         metadata={"source": "test_fixture"},
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -52,15 +52,15 @@ def sample_hobby_goal(test_user) -> Goal:
         status=GoalStatus.PENDING,
         priority=GoalPriority.LOW,
         metadata={"hobby_category": "science"},
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 
 @pytest.fixture
 def sample_goals(test_user) -> list[Goal]:
     """Provide multiple test goals with different states."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     return [
         Goal(
             goal_id="g1",
@@ -128,9 +128,9 @@ def sample_plan() -> Plan:
                 metadata={"phase": "verification"},
             ),
         ],
-        metadata={"generated_at": datetime.utcnow().isoformat()},
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        metadata={"generated_at": datetime.now(UTC).isoformat()},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -188,11 +188,11 @@ def sample_plan_with_shape() -> Plan:
             ),
         ],
         metadata={
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "shape_id": "research_then_act",
         },
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -206,7 +206,7 @@ def sample_agency_event(test_user) -> AgencyEvent:
         event_type="goal_created",
         source="test_fixture",
         payload={"title": "Test Goal", "goal_type": "project"},
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
 

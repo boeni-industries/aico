@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any, Dict, List, Optional, Tuple
 
 from aico.core.logging import get_logger
@@ -120,7 +120,7 @@ class SelfReflectionEngine:
             ReflectionRun with results
         """
         run_id = str(uuid.uuid4())
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
         
         # Define analysis window
         window_end = started_at
@@ -189,7 +189,7 @@ class SelfReflectionEngine:
                         applied_count += 1
             
             # Complete the run
-            completed_at = datetime.utcnow()
+            completed_at = datetime.now(UTC)
             duration = (completed_at - started_at).total_seconds()
             
             await self.run_store.update_run(
@@ -1049,7 +1049,7 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
                             new_value="+0.1",  # Increase threshold (be more selective)
                         )
                     ],
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC),
                 )
                 lessons.append(lesson)
                 
@@ -1090,7 +1090,7 @@ Provide a concise, actionable lesson (1-2 sentences) about how to adjust communi
                             new_value="-0.05",  # Decrease threshold (be more exploratory)
                         )
                     ],
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC),
                 )
                 lessons.append(lesson)
                 

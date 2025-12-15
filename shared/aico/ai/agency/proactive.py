@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass
 from enum import Enum
 
@@ -201,8 +201,8 @@ class FollowupSystem:
                     1 if policy_approved else 0,
                     json.dumps(relationship_context),
                     values_alignment,
-                    datetime.utcnow().isoformat(),
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -283,7 +283,7 @@ class FollowupSystem:
     def _count_todays_followups(self, user_id: str) -> int:
         """Count follow-ups delivered today."""
         try:
-            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
             
             row = self.db.fetch_one(
                 """
@@ -311,7 +311,7 @@ class FollowupSystem:
             )
             
             if row and row["delivered_at"]:
-                return datetime.fromisoformat(row["delivered_at"])
+                return datetime.fromisoformat(row["delivered_at"]).replace(tzinfo=UTC)
             
             return None
             
@@ -324,7 +324,7 @@ class FollowupSystem:
         before: Optional[datetime] = None
     ) -> List[Followup]:
         """Get pending follow-ups ready for delivery."""
-        before = before or datetime.utcnow()
+        before = before or datetime.now(UTC)
         
         try:
             rows = self.db.fetch_all(
@@ -350,7 +350,7 @@ class FollowupSystem:
         delivered_at: Optional[datetime] = None
     ) -> None:
         """Mark follow-up as delivered."""
-        delivered_at = delivered_at or datetime.utcnow()
+        delivered_at = delivered_at or datetime.now(UTC)
         
         try:
             self.db.execute(
@@ -362,7 +362,7 @@ class FollowupSystem:
                 (
                     FollowupStatus.DELIVERED.value,
                     delivered_at.isoformat(),
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     followup_id
                 )
             )
@@ -391,7 +391,7 @@ class FollowupSystem:
                     FollowupStatus.RESPONDED.value,
                     response,
                     sentiment,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     followup_id
                 )
             )
@@ -414,8 +414,8 @@ class FollowupSystem:
             related_message_id=row["related_message_id"],
             followup_type=FollowupType(row["followup_type"]),
             content=row["content"],
-            scheduled_at=datetime.fromisoformat(row["scheduled_at"]),
-            delivered_at=datetime.fromisoformat(row["delivered_at"]) if row["delivered_at"] else None,
+            scheduled_at=datetime.fromisoformat(row["scheduled_at"]).replace(tzinfo=UTC),
+            delivered_at=datetime.fromisoformat(row["delivered_at"]).replace(tzinfo=UTC) if row["delivered_at"] else None,
             user_response=row["user_response"],
             response_sentiment=row["response_sentiment"],
             status=FollowupStatus(row["status"]),
@@ -423,8 +423,8 @@ class FollowupSystem:
             policy_approved=bool(row["policy_approved"]),
             relationship_context=json.loads(row["relationship_context"]) if row["relationship_context"] else {},
             values_alignment=row["values_alignment"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"])
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
         )
     
     def _record_analytics(
@@ -458,10 +458,10 @@ class FollowupSystem:
                     row["user_id"],
                     "followup",
                     followup_id,
-                    row["delivered_at"] or datetime.utcnow().isoformat(),
+                    row["delivered_at"] or datetime.now(UTC).isoformat(),
                     action,
                     sentiment,
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -551,8 +551,8 @@ class ReminderSystem:
                     json.dumps(recurrence_rule) if recurrence_rule else None,
                     cluster_id,
                     json.dumps({}),
-                    datetime.utcnow().isoformat(),
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -590,7 +590,7 @@ class ReminderSystem:
         base_score = priority_scores.get(priority, 0.5)
         
         # Adjust based on time until delivery
-        time_until = (scheduled_at - datetime.utcnow()).total_seconds() / 3600  # hours
+        time_until = (scheduled_at - datetime.now(UTC)).total_seconds() / 3600  # hours
         
         if time_until < 1:  # Less than 1 hour
             time_multiplier = 1.5
@@ -647,7 +647,7 @@ class ReminderSystem:
                     user_id,
                     scheduled_at.isoformat(),
                     "pending",
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -704,7 +704,7 @@ class ReminderSystem:
         before: Optional[datetime] = None
     ) -> List[Reminder]:
         """Get pending reminders ready for delivery."""
-        before = before or datetime.utcnow()
+        before = before or datetime.now(UTC)
         
         try:
             rows = self.db.fetch_all(
@@ -765,7 +765,7 @@ class ReminderSystem:
             prefs = self._get_user_preferences(row["user_id"])
             snooze_minutes = snooze_minutes or prefs.get("auto_snooze_duration_minutes", 60)
             
-            snoozed_until = datetime.utcnow() + timedelta(minutes=snooze_minutes)
+            snoozed_until = datetime.now(UTC) + timedelta(minutes=snooze_minutes)
             
             self.db.execute(
                 """
@@ -777,7 +777,7 @@ class ReminderSystem:
                 (
                     ReminderStatus.SNOOZED.value,
                     snoozed_until.isoformat(),
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     reminder_id
                 )
             )
@@ -802,7 +802,7 @@ class ReminderSystem:
                 """,
                 (
                     ReminderStatus.COMPLETED.value,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     reminder_id
                 )
             )
@@ -824,9 +824,9 @@ class ReminderSystem:
             goal_id=row["goal_id"],
             title=row["title"],
             description=row["description"],
-            scheduled_at=datetime.fromisoformat(row["scheduled_at"]),
-            delivered_at=datetime.fromisoformat(row["delivered_at"]) if row["delivered_at"] else None,
-            snoozed_until=datetime.fromisoformat(row["snoozed_until"]) if row["snoozed_until"] else None,
+            scheduled_at=datetime.fromisoformat(row["scheduled_at"]).replace(tzinfo=UTC),
+            delivered_at=datetime.fromisoformat(row["delivered_at"]).replace(tzinfo=UTC) if row["delivered_at"] else None,
+            snoozed_until=datetime.fromisoformat(row["snoozed_until"]).replace(tzinfo=UTC) if row["snoozed_until"] else None,
             snooze_count=row["snooze_count"],
             status=ReminderStatus(row["status"]),
             priority=ReminderPriority(row["priority"]),
@@ -834,8 +834,8 @@ class ReminderSystem:
             recurrence_rule=json.loads(row["recurrence_rule"]) if row["recurrence_rule"] else None,
             cluster_id=row["cluster_id"],
             adaptation_data=json.loads(row["adaptation_data"]) if row["adaptation_data"] else {},
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"])
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
         )
     
     def _record_analytics(self, reminder_id: str, action: str) -> None:
@@ -863,9 +863,9 @@ class ReminderSystem:
                     row["user_id"],
                     "reminder",
                     reminder_id,
-                    row["delivered_at"] or datetime.utcnow().isoformat(),
+                    row["delivered_at"] or datetime.now(UTC).isoformat(),
                     action,
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()

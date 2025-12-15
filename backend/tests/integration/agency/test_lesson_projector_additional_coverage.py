@@ -6,7 +6,7 @@ Focuses on error handling, edge cases, and all conditional branches.
 
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime
+from datetime import datetime, UTC
 import uuid
 
 from aico.ai.agency.models import (
@@ -156,11 +156,11 @@ class TestLessonProjectorErrorHandling:
             user_id=test_user,
             run_type=RunType.SCHEDULED,
             trigger_reason="test",
-            analysis_window_start=datetime.utcnow(),
-            analysis_window_end=datetime.utcnow(),
+            analysis_window_start=datetime.now(UTC),
+            analysis_window_end=datetime.now(UTC),
             lessons_generated=1,
             lessons_applied=0,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
             status=RunStatus.COMPLETED,
         )
         
@@ -248,11 +248,11 @@ class TestLessonProjectorErrorHandling:
                 total_attempts=25,
                 recent_trend="improving"
             ),
-            window_start=datetime.utcnow(),
-            window_end=datetime.utcnow(),
+            window_start=datetime.now(UTC),
+            window_end=datetime.now(UTC),
             sample_size=25,
             confidence=0.85,
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(UTC),
         )
         
         result = await projector.project_self_model_to_kg(entry)
@@ -278,11 +278,11 @@ class TestLessonProjectorErrorHandling:
                 total_attempts=40,
                 recent_trend="stable"
             ),
-            window_start=datetime.utcnow(),
-            window_end=datetime.utcnow(),
+            window_start=datetime.now(UTC),
+            window_end=datetime.now(UTC),
             sample_size=40,
             confidence=0.9,
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(UTC),
         )
         
         result = await projector.project_self_model_to_kg(entry)

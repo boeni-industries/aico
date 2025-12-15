@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
 from collections import defaultdict
@@ -180,7 +180,7 @@ class Planner:
                 status=PlanStatus.DRAFT,
                 steps=steps,
                 metadata={
-                    "generated_at": datetime.utcnow().isoformat(),
+                    "generated_at": datetime.now(UTC).isoformat(),
                     "strategy": PlanStrategy.LLM_GENERATED.value,
                     "llm_model": getattr(self.llm_client, 'model_name', 'unknown'),
                 },
@@ -236,7 +236,7 @@ class Planner:
             status=PlanStatus.DRAFT,
             steps=steps,
             metadata={
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
                 "strategy": PlanStrategy.TEMPLATE_BASED.value,
                 "template_id": selected_shape["id"],
             },
@@ -276,7 +276,7 @@ class Planner:
             status=PlanStatus.DRAFT,
             steps=steps,
             metadata={
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
                 "strategy": PlanStrategy.SIMPLE_FALLBACK.value,
             },
         )
@@ -479,8 +479,8 @@ Format your response as a JSON array of steps:
             return None
         
         # Check if cache is still valid
-        cached_time = datetime.fromisoformat(cached['timestamp'])
-        age_seconds = (datetime.utcnow() - cached_time).total_seconds()
+        cached_time = datetime.fromisoformat(cached['timestamp']).replace(tzinfo=UTC)
+        age_seconds = (datetime.now(UTC) - cached_time).total_seconds()
         
         if age_seconds > self.cache_ttl_seconds:
             # Cache expired
@@ -506,7 +506,7 @@ Format your response as a JSON array of steps:
             metadata={
                 **cached_plan.metadata,
                 'cached_from': cache_key,
-                'generated_at': datetime.utcnow().isoformat(),
+                'generated_at': datetime.now(UTC).isoformat(),
             },
         )
         
@@ -526,7 +526,7 @@ Format your response as a JSON array of steps:
         
         self._plan_cache[cache_key] = {
             'plan': plan,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
         }
         
         # Limit cache size
@@ -661,7 +661,7 @@ Format your response as a JSON array of steps:
         
         try:
             # Query completed plans from the lookback period
-            cutoff_date = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
+            cutoff_date = (datetime.now(UTC) - timedelta(days=lookback_days)).isoformat()
             
             rows = self.db.execute(
                 """SELECT p.plan_id, p.goal_id, p.metadata_json, g.goal_type, g.title
@@ -832,7 +832,7 @@ Format your response as a JSON array of steps:
                 status=PlanStatus.DRAFT,
                 steps=adapted_steps,
                 metadata={
-                    'generated_at': datetime.utcnow().isoformat(),
+                    'generated_at': datetime.now(UTC).isoformat(),
                     'strategy': PlanStrategy.TEMPLATE_BASED.value,  # Pattern-based is a form of template
                     'pattern_based': True,
                     'pattern_confidence': pattern['confidence'],
@@ -886,7 +886,7 @@ Format your response as a JSON array of steps:
                 (
                     'success' if success else 'failure',
                     execution_time_seconds,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     'completed' if success else 'failed',
                     plan_id
                 )

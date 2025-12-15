@@ -6,7 +6,7 @@ Follows patterns from existing agency tests.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, patch, MagicMock
 import uuid
 
@@ -44,8 +44,8 @@ class TestPlanExecutor:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan = Plan(
@@ -66,8 +66,8 @@ class TestPlanExecutor:
                 )
             ],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -108,8 +108,8 @@ class TestPlanExecutor:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan = Plan(
@@ -130,8 +130,8 @@ class TestPlanExecutor:
                 )
             ],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -188,8 +188,8 @@ class TestPlanExecutor:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan = Plan(
@@ -210,8 +210,8 @@ class TestPlanExecutor:
                 )
             ],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -254,8 +254,8 @@ class TestPlanExecutor:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan = Plan(
@@ -276,8 +276,8 @@ class TestPlanExecutor:
                 )
             ],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -321,8 +321,8 @@ class TestPlanExecutor:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan = Plan(
@@ -343,8 +343,8 @@ class TestPlanExecutor:
                 )
             ],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)
@@ -387,8 +387,8 @@ class TestPlanExecutor:
             description="Test",
             status=GoalStatus.ACTIVE,
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         plan = Plan(
@@ -409,8 +409,8 @@ class TestPlanExecutor:
                 )
             ],
             metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         await engine.goal_store.create_goal(goal)

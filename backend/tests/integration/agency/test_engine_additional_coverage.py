@@ -5,7 +5,7 @@ Focuses on error handling, edge cases, and conditional branches in AgencyEngine.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 from unittest.mock import Mock, AsyncMock, patch
 import uuid
 
@@ -557,11 +557,11 @@ class TestEngineSelfReflection:
                 user_id=test_user,
                 run_type=RunType.SCHEDULED,
                 trigger_reason="test",
-                analysis_window_start=datetime.utcnow(),
-                analysis_window_end=datetime.utcnow(),
+                analysis_window_start=datetime.now(UTC),
+                analysis_window_end=datetime.now(UTC),
                 lessons_generated=0,
                 lessons_applied=0,
-                started_at=datetime.utcnow(),
+                started_at=datetime.now(UTC),
                 status=RunStatus.COMPLETED,
             )
             

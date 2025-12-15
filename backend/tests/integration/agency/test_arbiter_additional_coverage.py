@@ -5,7 +5,7 @@ Focuses on error handling, edge cases, and conditional branches in GoalArbiter.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, AsyncMock, patch
 import json
 
@@ -204,7 +204,7 @@ class TestArbiterErrorHandling:
             title="Fresh Goal",
             description="Just created",
             priority=GoalPriority.NORMAL,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
         
         scored = arbiter.score_goal(goal)
@@ -285,7 +285,7 @@ class TestIntentionSetManagement:
                 description="Test",
                 priority=GoalPriority.NORMAL,
                 status=GoalStatus.PENDING,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
             )
             await goal_store.create_goal(goal)
             goals.append(goal)
@@ -349,7 +349,7 @@ class TestIntentionSetManagement:
             description="Low priority",
             priority=GoalPriority.LOW,
             status=GoalStatus.PENDING,
-            created_at=datetime.utcnow() - timedelta(days=7),
+            created_at=datetime.now(UTC) - timedelta(days=7),
         )
         await goal_store.create_goal(goal)
         
@@ -504,7 +504,7 @@ class TestAdaptiveLearning:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             ("outcome-test-1", test_user, "user", "work", "Test", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -535,7 +535,7 @@ class TestAdaptiveLearning:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             ("outcome-test-2", test_user, "user", "work", "Test", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -565,7 +565,7 @@ class TestAdaptiveLearning:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             ("outcome-test-3", test_user, "user", "work", "Test", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         

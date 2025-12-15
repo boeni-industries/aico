@@ -5,7 +5,7 @@ Tests curiosity signal generation, scoring, and hobby goal creation.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock
 
 from aico.ai.curiosity import (
@@ -399,12 +399,12 @@ class TestCuriosityEngine:
             signal_type=CuriosityType.KNOWLEDGE_GAP,
             topic="Expiring Opportunity",
             description="Test",
-            expires_at=datetime.utcnow() + timedelta(hours=24),
+            expires_at=datetime.now(UTC) + timedelta(hours=24),
         )
         
         # Assert
         assert signal.expires_at is not None
-        assert signal.expires_at > datetime.utcnow()
+        assert signal.expires_at > datetime.now(UTC)
     
     async def test_signal_status_tracking(self, curiosity_engine):
         """Test signal status can be tracked."""

@@ -18,7 +18,7 @@ Design Principles:
 import asyncio
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -938,7 +938,7 @@ class EmotionEngine(BaseService):
         
         # Create emotional state
         state = EmotionalState(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             cognitive_component=appraisal,
             physiological_arousal=arousal,
             motivational_tendency="approach" if valence > 0 else "neutral",
@@ -968,7 +968,7 @@ class EmotionEngine(BaseService):
         )
         
         return EmotionalState(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             cognitive_component=neutral_appraisal,
             physiological_arousal=0.3,
             motivational_tendency="neutral",
@@ -1069,7 +1069,7 @@ class EmotionEngine(BaseService):
             if row:
                 # Reconstruct emotional state from database
                 self.current_state = EmotionalState(
-                    timestamp=datetime.fromisoformat(row[0]),
+                    timestamp=datetime.fromisoformat(row[0]).replace(tzinfo=UTC),
                     subjective_feeling=EmotionLabel(row[1]),
                     mood_valence=row[2],
                     mood_arousal=row[3],

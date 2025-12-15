@@ -6,7 +6,7 @@ Based on agency-component-curiosity-engine.md and agency-ontology-schemas.md.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import Dict, List, Any, Optional
 

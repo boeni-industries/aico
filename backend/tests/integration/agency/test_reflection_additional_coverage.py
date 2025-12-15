@@ -6,7 +6,7 @@ Focuses on error handling, edge cases, and all analysis methods.
 
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 
 from aico.ai.agency.models import (
@@ -284,8 +284,8 @@ class TestAnalyzeSkillPerformance:
         """Test skill analysis with no data."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_skill_performance(
             user_id=test_user,
@@ -302,8 +302,8 @@ class TestAnalyzeSkillPerformance:
         """Test skill analysis with insufficient sample size."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         # Insert minimal feedback data (below min_sample_size)
         for i in range(5):  # Below default min_sample_size of 10
@@ -312,7 +312,7 @@ class TestAnalyzeSkillPerformance:
                    (feedback_id, user_id, message_id, skill_id, reward, outcome, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, str(uuid.uuid4()), "test_skill", 
-                 1, "success", datetime.utcnow().isoformat())
+                 1, "success", datetime.now(UTC).isoformat())
             )
         test_db.commit()
         
@@ -331,8 +331,8 @@ class TestAnalyzeSkillPerformance:
         """Test skill analysis with sufficient sample size."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         # Insert sufficient feedback data
         for i in range(15):  # Above min_sample_size
@@ -343,7 +343,7 @@ class TestAnalyzeSkillPerformance:
                    (feedback_id, user_id, message_id, skill_id, reward, outcome, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, str(uuid.uuid4()), "test_skill", 
-                 reward, outcome, datetime.utcnow().isoformat())
+                 reward, outcome, datetime.now(UTC).isoformat())
             )
         test_db.commit()
         
@@ -367,8 +367,8 @@ class TestAnalyzeGoalPatterns:
         """Test goal pattern analysis with no data."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_goal_patterns(
             user_id=test_user,
@@ -388,8 +388,8 @@ class TestAnalyzeUserFeedback:
         """Test user feedback analysis with no data."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_user_feedback(
             user_id=test_user,
@@ -409,8 +409,8 @@ class TestAnalyzeEmotionPatterns:
         """Test emotion pattern analysis with no data."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_emotion_patterns(
             user_id=test_user,
@@ -430,8 +430,8 @@ class TestAnalyzeSocialPatterns:
         """Test social pattern analysis with no data."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_social_patterns(
             user_id=test_user,
@@ -451,8 +451,8 @@ class TestAnalyzeCuriosityOutcomes:
         """Test curiosity outcomes analysis with no data."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_curiosity_outcomes(
             user_id=test_user,

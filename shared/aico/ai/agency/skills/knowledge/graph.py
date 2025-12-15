@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from ..registry import (
     Skill,
@@ -94,7 +94,7 @@ class UpdateKnowledgeGraphSkill(Skill):
             if not self.db:
                 raise RuntimeError("Database connection not available")
             
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             entities_added = 0
             relationships_added = 0
             
@@ -177,7 +177,7 @@ class UpdateKnowledgeGraphSkill(Skill):
                 output=result,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                 },
             )
             

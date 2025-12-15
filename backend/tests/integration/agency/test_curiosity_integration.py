@@ -5,7 +5,7 @@ Tests goal creation from curiosity signals and end-to-end curiosity flow.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.ai.agency import AgencyEngine, GoalOrigin, GoalPriority
 from aico.ai.curiosity import IntrinsicSignal, CuriosityType

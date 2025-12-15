@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Dict, List, Optional, Any, Callable
-from datetime import datetime
+from datetime import datetime, UTC
 from dataclasses import dataclass
 from enum import Enum
 
@@ -195,7 +195,7 @@ class EventSystem:
                     workflow_trace_id,
                     parent_event_id,
                     severity.value,
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -299,7 +299,7 @@ class EventSystem:
     ) -> None:
         """Update event metrics."""
         try:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             bucket_start = now.replace(minute=0, second=0, microsecond=0).isoformat()
             
             # Try to increment existing metric
@@ -377,7 +377,7 @@ class WorkflowOrchestrator:
         stages = self._get_workflow_stages(workflow_type)
         
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             
             # Create workflow execution
             self.db.execute(
@@ -460,7 +460,7 @@ class WorkflowOrchestrator:
         output_data = output_data or {}
         
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             
             self.db.execute(
                 """
@@ -517,7 +517,7 @@ class WorkflowOrchestrator:
     ) -> None:
         """Mark workflow as failed."""
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             
             self.db.execute(
                 """
@@ -656,7 +656,7 @@ class EventReplaySystem:
         event_filters = event_filters or {}
         
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             
             self.db.execute(
                 """
@@ -767,7 +767,7 @@ class EventReplaySystem:
                 SET status = 'completed', completed_at = ?
                 WHERE session_id = ?
                 """,
-                (datetime.utcnow().isoformat(), session_id)
+                (datetime.now(UTC).isoformat(), session_id)
             )
             self.db.commit()
             
@@ -851,7 +851,7 @@ class EventMetricsCollector:
             metadata: Optional metadata
         """
         try:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             
             # Calculate bucket start based on time_bucket
             if time_bucket == "hourly":
@@ -994,7 +994,7 @@ class EventMetricsCollector:
             Summary statistics (min, max, avg, total)
         """
         try:
-            start_time = datetime.utcnow() - timedelta(days=days)
+            start_time = datetime.now(UTC) - timedelta(days=days)
             
             row = self.db.fetch_one(
                 """

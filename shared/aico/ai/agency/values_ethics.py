@@ -12,7 +12,7 @@ import json
 import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from pydantic import BaseModel, Field
 
@@ -291,7 +291,7 @@ class ValuesEthicsService:
         """
         expires_at = None
         if expires_in_days:
-            expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
+            expires_at = datetime.now(UTC) + timedelta(days=expires_in_days)
         
         consent = Consent(
             user_id=user_id,
@@ -386,8 +386,8 @@ class ValuesEthicsService:
             enabled=bool(row["enabled"]),
             scope=PolicyScope(row["scope"]),
             scope_id=row["scope_id"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"])
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
         )
     
     # ========================================================================
@@ -415,8 +415,8 @@ class ValuesEthicsService:
                 curiosity_intensity=row["curiosity_intensity"],
                 proactive_behavior_level=ProactiveBehaviorLevel(row["proactive_behavior_level"]),
                 storage_preferences=json.loads(row["storage_preferences"] or "{}"),
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"])
+                created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+                updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
             )
         else:
             # Create default profile
@@ -487,8 +487,8 @@ class ValuesEthicsService:
                 enabled=bool(row["enabled"]),
                 scope=PolicyScope(row["scope"]),
                 scope_id=row["scope_id"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"])
+                created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+                updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
             ))
         
         self._policy_cache[cache_key] = policies

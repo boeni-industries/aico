@@ -6,7 +6,7 @@ Follows patterns from existing agency tests.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 

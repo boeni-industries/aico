@@ -11,7 +11,7 @@ This service bridges the self-reflection engine with operational systems.
 """
 
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
@@ -179,7 +179,7 @@ class LessonApplicationService:
             dimension_vector["lesson_adjustments"][change.field] = {
                 "value": change.new,
                 "lesson_id": lesson.lesson_id,
-                "applied_at": datetime.utcnow().isoformat(),
+                "applied_at": datetime.now(UTC).isoformat(),
                 "confidence": lesson.confidence,
             }
             
@@ -188,7 +188,7 @@ class LessonApplicationService:
                 """UPDATE skills 
                    SET dimension_vector = ?, updated_at = ?
                    WHERE skill_id = ?""",
-                (json.dumps(dimension_vector), datetime.utcnow().isoformat(), skill_id)
+                (json.dumps(dimension_vector), datetime.now(UTC).isoformat(), skill_id)
             )
             self.db.commit()
             
@@ -244,7 +244,7 @@ class LessonApplicationService:
                     change.new,
                     lesson.lesson_id,
                     user_id,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     lesson.confidence,
                     change.notes,
                 )
@@ -433,7 +433,7 @@ class LessonApplicationService:
                 # Update policy rule
                 self.db.execute(
                     f"UPDATE agency_policy_rules SET {field} = ?, updated_at = ? WHERE rule_id = ?",
-                    (new_value, datetime.utcnow().isoformat(), policy_key)
+                    (new_value, datetime.now(UTC).isoformat(), policy_key)
                 )
                 
             elif change.change_type == ChangeType.THRESHOLD_TWEAK:
@@ -443,7 +443,7 @@ class LessonApplicationService:
                 
                 self.db.execute(
                     "UPDATE agency_policy_rules SET conditions = ?, updated_at = ? WHERE rule_id = ?",
-                    (json.dumps(conditions), datetime.utcnow().isoformat(), policy_key)
+                    (json.dumps(conditions), datetime.now(UTC).isoformat(), policy_key)
                 )
                 
             else:
@@ -456,7 +456,7 @@ class LessonApplicationService:
             
             # Create audit trail entry
             audit_entry = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "lesson_id": lesson.lesson_id,
                 "policy_rule_id": policy_key,
                 "change_type": change.change_type.value,
@@ -505,7 +505,7 @@ class LessonApplicationService:
         from datetime import datetime, timedelta
         
         # Count policy amendments in last 24 hours
-        yesterday = datetime.utcnow() - timedelta(days=1)
+        yesterday = datetime.now(UTC) - timedelta(days=1)
         
         count = self.db.execute(
             """SELECT COUNT(*) as count FROM agency_lessons

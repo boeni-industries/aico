@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
 
@@ -85,8 +85,8 @@ class PlanExecution:
         self.error_message = error_message
         self.cancellation_reason = cancellation_reason
         self.retry_count = retry_count
-        self.created_at = created_at or datetime.utcnow()
-        self.updated_at = updated_at or datetime.utcnow()
+        self.created_at = created_at or datetime.now(UTC)
+        self.updated_at = updated_at or datetime.now(UTC)
 
 
 class StepExecution:
@@ -127,8 +127,8 @@ class StepExecution:
         self.error_message = error_message
         self.retry_count = retry_count
         self.blocked_reason = blocked_reason
-        self.created_at = created_at or datetime.utcnow()
-        self.updated_at = updated_at or datetime.utcnow()
+        self.created_at = created_at or datetime.now(UTC)
+        self.updated_at = updated_at or datetime.now(UTC)
 
 
 class PlanExecutor:
@@ -247,7 +247,7 @@ class PlanExecutor:
         # Update execution status to running
         if execution.status == ExecutionStatus.PENDING:
             execution.status = ExecutionStatus.RUNNING
-            execution.started_at = datetime.utcnow()
+            execution.started_at = datetime.now(UTC)
             await self._save_execution(execution)
         
         # Execute the step
@@ -277,13 +277,13 @@ class PlanExecutor:
             # Mark step as failed
             step_exec.status = StepExecutionStatus.FAILED
             step_exec.error_message = str(e)
-            step_exec.completed_at = datetime.utcnow()
+            step_exec.completed_at = datetime.now(UTC)
             await self._save_step_execution(step_exec)
             
             # Mark execution as failed
             execution.status = ExecutionStatus.FAILED
             execution.error_message = f"Step {step_exec.step_order} failed: {e}"
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(UTC)
             await self._save_execution(execution)
             
             return False, step_exec
@@ -306,7 +306,7 @@ class PlanExecutor:
         await self._save_state_snapshot(execution, "pause")
         
         execution.status = ExecutionStatus.PAUSED
-        execution.paused_at = datetime.utcnow()
+        execution.paused_at = datetime.now(UTC)
         await self._save_execution(execution)
         
         self.logger.info(f"[EXECUTOR] Paused execution {execution_id}")
@@ -351,7 +351,7 @@ class PlanExecutor:
             )
         
         execution.status = ExecutionStatus.CANCELLED
-        execution.cancelled_at = datetime.utcnow()
+        execution.cancelled_at = datetime.now(UTC)
         execution.cancellation_reason = reason
         await self._save_execution(execution)
         
@@ -406,7 +406,7 @@ class PlanExecutor:
         step_exec: StepExecution,
     ) -> StepExecution:
         """Execute a single step."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         # Update step status to running
         step_exec.status = StepExecutionStatus.RUNNING
@@ -479,7 +479,7 @@ class PlanExecutor:
             
             # Mark step as completed
             step_exec.status = StepExecutionStatus.COMPLETED
-            step_exec.completed_at = datetime.utcnow()
+            step_exec.completed_at = datetime.now(UTC)
             step_exec.duration_ms = int(
                 (step_exec.completed_at - start_time).total_seconds() * 1000
             )
@@ -498,7 +498,7 @@ class PlanExecutor:
             # Mark step as failed
             step_exec.status = StepExecutionStatus.FAILED
             step_exec.error_message = str(e)
-            step_exec.completed_at = datetime.utcnow()
+            step_exec.completed_at = datetime.now(UTC)
             step_exec.duration_ms = int(
                 (step_exec.completed_at - start_time).total_seconds() * 1000
             )
@@ -519,7 +519,7 @@ class PlanExecutor:
             return
         
         execution.status = ExecutionStatus.COMPLETED
-        execution.completed_at = datetime.utcnow()
+        execution.completed_at = datetime.now(UTC)
         execution.progress_percentage = 100.0
         
         await self._save_execution(execution)
@@ -559,7 +559,7 @@ class PlanExecutor:
     
     async def _save_execution(self, execution: PlanExecution) -> None:
         """Save execution to database."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         
         self.db.execute(
             """INSERT OR REPLACE INTO plan_executions (
@@ -595,7 +595,7 @@ class PlanExecutor:
     
     async def _save_step_execution(self, step_exec: StepExecution) -> None:
         """Save step execution to database."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         
         self.db.execute(
             """INSERT OR REPLACE INTO step_executions (
@@ -642,10 +642,10 @@ class PlanExecutor:
             goal_id=row["goal_id"],
             user_id=row["user_id"],
             status=ExecutionStatus(row["status"]),
-            started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
-            paused_at=datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None,
-            cancelled_at=datetime.fromisoformat(row["cancelled_at"]) if row["cancelled_at"] else None,
+            started_at=datetime.fromisoformat(row["started_at"]).replace(tzinfo=UTC) if row["started_at"] else None,
+            completed_at=datetime.fromisoformat(row["completed_at"]).replace(tzinfo=UTC) if row["completed_at"] else None,
+            paused_at=datetime.fromisoformat(row["paused_at"]).replace(tzinfo=UTC) if row["paused_at"] else None,
+            cancelled_at=datetime.fromisoformat(row["cancelled_at"]).replace(tzinfo=UTC) if row["cancelled_at"] else None,
             current_step_id=row["current_step_id"],
             steps_completed=row["steps_completed"],
             steps_total=row["steps_total"],
@@ -654,8 +654,8 @@ class PlanExecutor:
             error_message=row["error_message"],
             cancellation_reason=row["cancellation_reason"],
             retry_count=row["retry_count"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC),
         )
     
     async def _get_step_executions(
@@ -680,8 +680,8 @@ class PlanExecutor:
             step_id=row["step_id"],
             step_order=row["step_order"],
             status=StepExecutionStatus(row["status"]),
-            started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            started_at=datetime.fromisoformat(row["started_at"]).replace(tzinfo=UTC) if row["started_at"] else None,
+            completed_at=datetime.fromisoformat(row["completed_at"]).replace(tzinfo=UTC) if row["completed_at"] else None,
             duration_ms=row["duration_ms"],
             skill_id=row["skill_id"],
             skill_invocation_id=row["skill_invocation_id"],
@@ -690,8 +690,8 @@ class PlanExecutor:
             error_message=row["error_message"],
             retry_count=row["retry_count"],
             blocked_reason=row["blocked_reason"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC),
         )
     
     async def _save_state_snapshot(
@@ -721,7 +721,7 @@ class PlanExecutor:
                 execution.execution_id,
                 snapshot_type,
                 json.dumps(state_data),
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
             )
         )
         self.db.commit()

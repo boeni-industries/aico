@@ -6,7 +6,7 @@ information gain, empowerment, and long-term value estimation.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.ai.curiosity.intrinsic_reward import IntrinsicRewardCalculator
 
@@ -292,7 +292,7 @@ class TestIntrinsicRewardCalculator:
         world_model_data = {
             "uncertainty": 0.9,
             "fact_count": 2,
-            "last_updated": datetime.utcnow() - timedelta(days=30),
+            "last_updated": datetime.now(UTC) - timedelta(days=30),
             "contradictions": 3,
             "related_topics": ["topic1", "topic2", "topic3"],
         }
@@ -316,7 +316,7 @@ class TestIntrinsicRewardCalculator:
         world_model_data = {
             "uncertainty": 0.1,
             "fact_count": 50,
-            "last_updated": datetime.utcnow(),
+            "last_updated": datetime.now(UTC),
             "contradictions": 0,
             "related_topics": ["topic1"],
         }
@@ -346,7 +346,7 @@ class TestIntrinsicRewardCalculator:
         """Test staleness calculation for fresh data"""
         calc = IntrinsicRewardCalculator()
         
-        fresh = datetime.utcnow()
+        fresh = datetime.now(UTC)
         staleness = calc._calculate_staleness(fresh)
         
         # Fresh data should have low staleness
@@ -356,7 +356,7 @@ class TestIntrinsicRewardCalculator:
         """Test staleness calculation for old data"""
         calc = IntrinsicRewardCalculator()
         
-        old = datetime.utcnow() - timedelta(days=60)
+        old = datetime.now(UTC) - timedelta(days=60)
         staleness = calc._calculate_staleness(old)
         
         # Old data should have high staleness

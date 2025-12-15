@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from ..registry import (
     Skill,
@@ -110,7 +110,7 @@ class AnalyzeConversationSkill(Skill):
                 "insights": insights,
                 "patterns": [],
                 "topics": [],
-                "analyzed_at": datetime.utcnow().isoformat(),
+                "analyzed_at": datetime.now(UTC).isoformat(),
                 "note": "Conversation analysis requires additional implementation to track user conversations"
             }
             
@@ -121,7 +121,7 @@ class AnalyzeConversationSkill(Skill):
                 output=result,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                     "implementation_status": "partial",
                 },
             )

@@ -6,7 +6,7 @@ Uses real database with test fixtures and proper cleanup.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from aico.ai.agency import AgencyEngine
@@ -209,7 +209,7 @@ class TestAgencyAPIEndpoints:
         """Test granting consent for an action."""
         # Arrange
         import json
-        consent_id = f"test-consent-{test_user}-{datetime.utcnow().timestamp()}"
+        consent_id = f"test-consent-{test_user}-{datetime.now(UTC).timestamp()}"
         scope = {"target_type": "curiosity_signal", "rule_id": "test-rule"}
         
         # Act
@@ -218,7 +218,7 @@ class TestAgencyAPIEndpoints:
             INSERT INTO consents (consent_id, user_id, consent_scope, decision, granted_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (consent_id, test_user, json.dumps(scope), "granted", datetime.utcnow().isoformat())
+            (consent_id, test_user, json.dumps(scope), "granted", datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -250,7 +250,7 @@ class TestAgencyAPIEndpoints:
             INSERT INTO consents (consent_id, user_id, consent_scope, decision, granted_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (consent_id, test_user, json.dumps(scope), "granted", datetime.utcnow().isoformat())
+            (consent_id, test_user, json.dumps(scope), "granted", datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -282,7 +282,7 @@ class TestAgencyAPIEndpoints:
             INSERT INTO consents (consent_id, user_id, consent_scope, decision, granted_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (consent_id, test_user, json.dumps(scope), "granted", datetime.utcnow().isoformat())
+            (consent_id, test_user, json.dumps(scope), "granted", datetime.now(UTC).isoformat())
         )
         test_db.commit()
         

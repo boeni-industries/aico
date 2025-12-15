@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass
 from enum import Enum
 
@@ -145,7 +145,7 @@ class BehavioralFeedbackService:
                     outcome.value,
                     error_message,
                     json.dumps(context),
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -194,7 +194,7 @@ class BehavioralFeedbackService:
                     skill_id,
                     execution_id,
                     execution_order,
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -233,7 +233,7 @@ class BehavioralFeedbackService:
                     outcome=SkillOutcome(row["outcome"]),
                     error_message=row["error_message"],
                     context=json.loads(row["context_json"]) if row["context_json"] else {},
-                    created_at=datetime.fromisoformat(row["created_at"])
+                    created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC)
                 )
                 for row in rows
             ]
@@ -296,7 +296,7 @@ class BehavioralFeedbackService:
                     skill_id,
                     reward,
                     reason,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     outcome.value if outcome else None,
                     execution_time_ms,
                     json.dumps(context) if context else None,
@@ -446,7 +446,7 @@ class BehavioralFeedbackService:
                     execution_id,
                     feedback_type.value,
                     question,
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -484,7 +484,7 @@ class BehavioralFeedbackService:
                 SET response = ?, rating = ?, responded_at = ?
                 WHERE request_id = ?
                 """,
-                (response, rating, datetime.utcnow().isoformat(), request_id)
+                (response, rating, datetime.now(UTC).isoformat(), request_id)
             )
             self.db.commit()
             
@@ -522,8 +522,8 @@ class BehavioralFeedbackService:
                     question=row["question"],
                     response=row["response"],
                     rating=row["rating"],
-                    responded_at=datetime.fromisoformat(row["responded_at"]) if row["responded_at"] else None,
-                    created_at=datetime.fromisoformat(row["created_at"])
+                    responded_at=datetime.fromisoformat(row["responded_at"]).replace(tzinfo=UTC) if row["responded_at"] else None,
+                    created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC)
                 )
                 for row in rows
             ]
@@ -555,7 +555,7 @@ class BehavioralFeedbackService:
             Success rate (0.0-1.0)
         """
         try:
-            from_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            from_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
             
             if user_id:
                 row = self.db.fetch_one(
@@ -606,7 +606,7 @@ class BehavioralFeedbackService:
             List of satisfaction data points
         """
         try:
-            from_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            from_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
             
             rows = self.db.fetch_all(
                 """

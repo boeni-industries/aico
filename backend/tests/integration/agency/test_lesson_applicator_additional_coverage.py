@@ -6,7 +6,7 @@ Focuses on error handling, edge cases, and conditional branches.
 
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime
+from datetime import datetime, UTC
 import uuid
 import json
 
@@ -102,7 +102,7 @@ class TestApplyLessonConfidenceThreshold:
                procedure_template, dimension_vector, created_at, updated_at) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test", "test", "{}", 
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -206,7 +206,7 @@ class TestApplySkillLesson:
                procedure_template, dimension_vector, created_at, updated_at) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill 2", "base", "test", "test",
-             json.dumps(existing_vector), datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             json.dumps(existing_vector), datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         

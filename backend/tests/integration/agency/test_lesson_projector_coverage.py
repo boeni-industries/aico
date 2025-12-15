@@ -4,7 +4,7 @@ Integration tests for LessonMemoryProjector - improving coverage
 
 import pytest
 from unittest.mock import Mock
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.ai.agency.models import (
     LessonType,
@@ -40,7 +40,7 @@ async def test_project_lesson_to_memory(agency_engine, test_user):
     lesson.summary_text = "Test lesson description"
     lesson.confidence = 0.85
     lesson.status = LessonStatus.ACTIVE
-    lesson.created_at = datetime.utcnow()
+    lesson.created_at = datetime.now(UTC)
     lesson.metrics_basis = None
     
     result = await projector.project_lesson_to_memory(lesson)
@@ -65,7 +65,7 @@ async def test_project_lesson_to_kg(agency_engine, test_user):
     lesson.summary_text = "Test lesson description"
     lesson.confidence = 0.85
     lesson.status = LessonStatus.ACTIVE
-    lesson.created_at = datetime.utcnow()
+    lesson.created_at = datetime.now(UTC)
     lesson.metrics_basis = None
     
     result = await projector.project_lesson_to_kg(lesson)
@@ -201,11 +201,11 @@ async def test_project_self_model_entry(agency_engine, test_user):
             total_attempts=25,
             recent_trend="improving"
         ),
-        window_start=datetime.utcnow(),
-        window_end=datetime.utcnow(),
+        window_start=datetime.now(UTC),
+        window_end=datetime.now(UTC),
         sample_size=25,
         confidence=0.85,
-        last_updated=datetime.utcnow(),
+        last_updated=datetime.now(UTC),
     )
     
     # Store the entry first
@@ -275,7 +275,7 @@ async def test_project_lesson_to_kg_without_kg_storage(agency_engine, test_user)
     lesson.summary_text = "Test lesson"
     lesson.confidence = 0.85
     lesson.status = LessonStatus.ACTIVE
-    lesson.created_at = datetime.utcnow()
+    lesson.created_at = datetime.now(UTC)
     lesson.metrics_basis = None
     
     # Should handle gracefully when KG storage is None

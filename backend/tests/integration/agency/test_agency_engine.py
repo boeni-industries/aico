@@ -5,7 +5,7 @@ Tests the basic functionality of Phase 4 components with minimal complexity.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.ai.agency import AgencyEngine
 from aico.ai.agency.models import GoalStatus, GoalOrigin, GoalPriority

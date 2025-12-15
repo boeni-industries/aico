@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from pydantic import BaseModel, Field
 
@@ -55,8 +55,8 @@ class Goal(BaseModel):
     status: GoalStatus = GoalStatus.PENDING
     priority: GoalPriority = GoalPriority.NORMAL
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PlanStep(BaseModel):
@@ -81,8 +81,8 @@ class Plan(BaseModel):
     status: PlanStatus = PlanStatus.DRAFT
     steps: List[PlanStep] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class AgencyEvent(BaseModel):
@@ -95,7 +95,7 @@ class AgencyEvent(BaseModel):
     event_type: str
     source: str
     payload: Dict[str, Any]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ReflectionNote(BaseModel):
@@ -108,8 +108,8 @@ class ReflectionNote(BaseModel):
     title: str
     content: str
     tags: List[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # Phase 5: Self-Reflection & Behavioral Learning Models
@@ -213,8 +213,8 @@ class Lesson(BaseModel):
     related_event_ids: List[str] = Field(default_factory=list)
     
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class EntityType(str, Enum):
@@ -254,10 +254,10 @@ class SelfModelEntry(BaseModel):
     
     # Confidence and freshness
     confidence: float  # 0.0 to 1.0
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(UTC))
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class RunType(str, Enum):
@@ -304,4 +304,4 @@ class ReflectionRun(BaseModel):
     error_message: Optional[str] = None
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

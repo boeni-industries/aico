@@ -6,7 +6,7 @@ Focuses on error handling, edge cases, and conditional branches in all store cla
 
 import pytest
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, patch
 
 from aico.ai.agency.models import (
@@ -323,8 +323,8 @@ class TestPlanStoreErrorHandling:
                 PlanStatus.DRAFT.value,
                 "[]",  # Empty JSON array instead of null
                 None,
-                datetime.utcnow().isoformat(),
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
+                datetime.now(UTC).isoformat(),
             ),
         )
         test_db.commit()

@@ -8,7 +8,7 @@ coupling by keeping the shared agency layer pure and deterministic.
 
 import json
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
@@ -127,7 +127,7 @@ class LLMPlanningHelper:
                     **base_plan.metadata,
                     "llm_refined": True,
                     "llm_model": self.model_name,
-                    "refined_at": datetime.utcnow().isoformat(),
+                    "refined_at": datetime.now(UTC).isoformat(),
                     "original_step_count": len(base_plan.steps),
                 }
             )

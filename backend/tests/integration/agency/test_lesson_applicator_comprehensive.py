@@ -10,7 +10,7 @@ Focuses on:
 
 import pytest
 from unittest.mock import Mock, patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 import json
 
@@ -95,7 +95,7 @@ class TestPolicyAmendmentLogic:
             # Mark as applied by values_ethics_service
             test_db.execute(
                 "UPDATE agency_lessons SET applied_at = ?, applied_by = ? WHERE lesson_id = ?",
-                (datetime.utcnow().isoformat(), "values_ethics_service", past_lesson.lesson_id)
+                (datetime.now(UTC).isoformat(), "values_ethics_service", past_lesson.lesson_id)
             )
             test_db.commit()
         
@@ -141,7 +141,7 @@ class TestPolicyAmendmentLogic:
                (rule_id, rule_name, target_type, conditions, effect, scope, priority, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (policy_id, "Test Policy", "goal", "{}", "allow", "global", 50,
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -194,7 +194,7 @@ class TestPolicyAmendmentLogic:
                (rule_id, rule_name, target_type, conditions, effect, scope, priority, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (policy_id, "Test Policy", "goal", json.dumps(initial_conditions), "allow", "global", 50,
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -280,7 +280,7 @@ class TestPolicyAmendmentLogic:
                (rule_id, rule_name, target_type, conditions, effect, scope, priority, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (policy_id, "Test Policy", "goal", "{}", "allow", "global", 50,
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -325,7 +325,7 @@ class TestPolicyAmendmentLogic:
                (rule_id, rule_name, target_type, conditions, effect, scope, priority, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (policy_id, "Test Policy", "goal", "{}", "allow", "global", 50,
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -369,7 +369,7 @@ class TestPolicyAmendmentLogic:
                (rule_id, rule_name, target_type, conditions, effect, scope, priority, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (policy_id, "Test Policy", "goal", "{}", "allow", "global", 50,
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -449,7 +449,7 @@ class TestBatchLessonApplication:
         # Mark as already applied
         test_db.execute(
             "UPDATE agency_lessons SET applied_at = ?, applied_by = ? WHERE lesson_id = ?",
-            (datetime.utcnow().isoformat(), "test", lesson.lesson_id)
+            (datetime.now(UTC).isoformat(), "test", lesson.lesson_id)
         )
         test_db.commit()
         
@@ -564,7 +564,7 @@ class TestRateLimitChecking:
             await service.lesson_store.create_lesson(lesson)
             test_db.execute(
                 "UPDATE agency_lessons SET applied_at = ?, applied_by = ? WHERE lesson_id = ?",
-                (datetime.utcnow().isoformat(), "values_ethics_service", lesson.lesson_id)
+                (datetime.now(UTC).isoformat(), "values_ethics_service", lesson.lesson_id)
             )
             test_db.commit()
         
@@ -601,7 +601,7 @@ class TestRateLimitChecking:
             await service.lesson_store.create_lesson(lesson)
             test_db.execute(
                 "UPDATE agency_lessons SET applied_at = ?, applied_by = ? WHERE lesson_id = ?",
-                (datetime.utcnow().isoformat(), "values_ethics_service", lesson.lesson_id)
+                (datetime.now(UTC).isoformat(), "values_ethics_service", lesson.lesson_id)
             )
             test_db.commit()
         
@@ -635,7 +635,7 @@ class TestRateLimitChecking:
             scope=LessonScope.THIS_USER,
         )
         await service.lesson_store.create_lesson(old_lesson)
-        old_time = (datetime.utcnow() - timedelta(days=2)).isoformat()
+        old_time = (datetime.now(UTC) - timedelta(days=2)).isoformat()
         test_db.execute(
             "UPDATE agency_lessons SET applied_at = ?, applied_by = ? WHERE lesson_id = ?",
             (old_time, "values_ethics_service", old_lesson.lesson_id)

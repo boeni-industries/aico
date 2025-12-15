@@ -5,7 +5,7 @@ Data models for world model queries and context representation.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional
 
 

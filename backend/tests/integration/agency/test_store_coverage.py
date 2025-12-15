@@ -6,7 +6,7 @@ Focuses on error handling, edge cases, and less-used code paths.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.ai.agency import AgencyEngine
 from aico.ai.agency.models import (

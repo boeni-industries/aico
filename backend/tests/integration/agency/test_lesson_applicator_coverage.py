@@ -101,12 +101,12 @@ async def test_apply_skill_lesson_with_real_data(agency_engine, test_user, test_
     applicator = agency_engine.self_reflection.lesson_applicator
     
     # First create a skill in the database
-    from datetime import datetime
+    from datetime import datetime, UTC
     skill_id = f"test_skill_for_lesson_{uuid.uuid4().hex[:8]}"
     test_db.execute(
         """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, status, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (skill_id, "Test Skill", "base", "test", "test template", '{}', "active", datetime.utcnow().isoformat())
+        (skill_id, "Test Skill", "base", "test", "test template", '{}', "active", datetime.now(UTC).isoformat())
     )
     test_db.commit()
     

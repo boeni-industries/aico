@@ -9,7 +9,7 @@ Focuses on specific uncovered lines:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 
 from aico.ai.agency.workflows import (
@@ -37,7 +37,7 @@ class TestEventSystemTimeFiltering:
         )
         
         # Test that start_time parameter is accepted
-        start_time = datetime.utcnow() - timedelta(hours=1)
+        start_time = datetime.now(UTC) - timedelta(hours=1)
         events = event_system.get_events(
             user_id=test_user,
             start_time=start_time
@@ -60,7 +60,7 @@ class TestEventSystemTimeFiltering:
         )
         
         # Filter with end time in the past (should get no results)
-        end_time = datetime.utcnow() - timedelta(hours=1)
+        end_time = datetime.now(UTC) - timedelta(hours=1)
         events = event_system.get_events(
             user_id=test_user,
             end_time=end_time

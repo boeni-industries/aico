@@ -6,7 +6,7 @@ Focuses on error handling, edge cases, and conditional branches.
 
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.ai.curiosity import (
     CuriosityEngine,

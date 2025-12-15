@@ -6,7 +6,7 @@ automatic outcome detection, user feedback collection, and analytics.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock
 import json
 
@@ -45,7 +45,7 @@ class TestSkillExecutionTracking:
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return skill_id
@@ -104,7 +104,7 @@ class TestSkillExecutionTracking:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         
@@ -131,7 +131,7 @@ class TestSkillExecutionTracking:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         
@@ -176,7 +176,7 @@ class TestSkillExecutionTracking:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         
@@ -231,7 +231,7 @@ class TestBehavioralFeedback:
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return skill_id
@@ -347,7 +347,7 @@ class TestOutcomeDetection:
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return skill_id
@@ -460,7 +460,7 @@ class TestUserFeedbackCollection:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         
@@ -571,7 +571,7 @@ class TestAnalytics:
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return skill_id
@@ -666,7 +666,7 @@ class TestBehavioralFeedbackIntegration:
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return skill_id
@@ -688,7 +688,7 @@ class TestBehavioralFeedbackIntegration:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         

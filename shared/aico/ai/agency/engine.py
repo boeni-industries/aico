@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Any, Callable, Dict, Optional, Tuple, Awaitable, Union
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
@@ -250,7 +250,7 @@ class AgencyEngine(BaseAIProcessor):
         goal.metadata["ethics_evaluation"] = {
             "decision": ethics_result.decision.value,
             "reason_codes": ethics_result.reason_codes,
-            "evaluated_at": datetime.utcnow().isoformat()
+            "evaluated_at": datetime.now(UTC).isoformat()
         }
         
         if ethics_result.decision == PolicyEffect.ALLOW_WITH_WARNING:
@@ -915,7 +915,7 @@ class AgencyEngine(BaseAIProcessor):
             "proactive_actions": [],
             "metadata": {
                 "phase": "1",
-                "analyzed_at": datetime.utcnow().isoformat(),
+                "analyzed_at": datetime.now(UTC).isoformat(),
             },
         }
     

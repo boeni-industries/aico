@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from ..registry import (
     Skill,
@@ -156,7 +156,7 @@ class SearchMemorySkill(Skill):
                 "query": query,
                 "results_found": len(memories),
                 "memories": memories,
-                "searched_at": datetime.utcnow().isoformat(),
+                "searched_at": datetime.now(UTC).isoformat(),
             }
             
             logger.info(
@@ -168,7 +168,7 @@ class SearchMemorySkill(Skill):
                 output=result,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                 },
             )
             

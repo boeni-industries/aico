@@ -5,7 +5,7 @@ Focuses on error handling, edge cases, and conditional branches.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, patch
 import json
 
@@ -42,7 +42,7 @@ class TestFollowupSystemCoverage:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return goal_id
@@ -53,7 +53,7 @@ class TestFollowupSystemCoverage:
     
     def test_create_followup_without_goal(self, followup_system, test_user):
         """Test creating followup without goal_id (covers optional parameter)."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         followup_id = followup_system.create_followup(
             user_id=test_user,
@@ -72,7 +72,7 @@ class TestFollowupSystemCoverage:
     
     def test_create_followup_with_relationship_context(self, followup_system, test_user):
         """Test creating followup with relationship context."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         relationship_context = {"context": "test", "source": "automated"}
         
         followup_id = followup_system.create_followup(
@@ -99,14 +99,14 @@ class TestFollowupSystemCoverage:
                     user_id=test_user,
                     followup_type=FollowupType.CHECK_IN,
                     content="Test",
-                    scheduled_at=datetime.utcnow()
+                    scheduled_at=datetime.now(UTC)
                 )
             
             assert followup_system.logger.error.called
     
     def test_create_followup_logging(self, followup_system, test_user):
         """Test that followup creation logs info message."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         followup_system.create_followup(
             user_id=test_user,
@@ -123,7 +123,7 @@ class TestFollowupSystemCoverage:
     
     def test_get_pending_followups_before_time(self, followup_system, test_user):
         """Test getting pending followups before specific time."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         # Create followups at different times
         for i in range(3):
@@ -157,7 +157,7 @@ class TestFollowupSystemCoverage:
             user_id=test_user,
             followup_type=FollowupType.CHECK_IN,
             content="Test",
-            scheduled_at=datetime.utcnow()
+            scheduled_at=datetime.now(UTC)
         )
         
         with patch.object(db, 'execute', side_effect=Exception("DB error")):
@@ -176,7 +176,7 @@ class TestFollowupSystemCoverage:
             user_id=test_user,
             followup_type=FollowupType.CLARIFICATION,
             content="Clarify please",
-            scheduled_at=datetime.utcnow()
+            scheduled_at=datetime.now(UTC)
         )
         
         followup_system.mark_delivered(followup_id)
@@ -200,7 +200,7 @@ class TestFollowupSystemCoverage:
             user_id=test_user,
             followup_type=FollowupType.CHECK_IN,
             content="Test",
-            scheduled_at=datetime.utcnow()
+            scheduled_at=datetime.now(UTC)
         )
         
         followup_system.mark_delivered(followup_id)
@@ -222,7 +222,7 @@ class TestFollowupSystemCoverage:
             """INSERT OR REPLACE INTO user_proactive_preferences 
                (user_id, followup_enabled, updated_at)
                VALUES (?, 0, ?)""",
-            (test_user, datetime.utcnow().isoformat())
+            (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
         
@@ -230,7 +230,7 @@ class TestFollowupSystemCoverage:
             user_id=test_user,
             followup_type=FollowupType.CHECK_IN,
             content="Test",
-            scheduled_at=datetime.utcnow()
+            scheduled_at=datetime.now(UTC)
         )
         
         row = followup_system.db.fetch_one(
@@ -254,7 +254,7 @@ class TestFollowupSystemCoverage:
             user_id=test_user,
             followup_type=FollowupType.CHECK_IN,
             content="Test",
-            scheduled_at=datetime.utcnow(),
+            scheduled_at=datetime.now(UTC),
             goal_id=test_goal_id
         )
         
@@ -290,7 +290,7 @@ class TestReminderSystemCoverage:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return goal_id
@@ -301,7 +301,7 @@ class TestReminderSystemCoverage:
     
     def test_create_reminder_without_description(self, reminder_system, test_user):
         """Test creating reminder without description (covers optional parameter)."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
@@ -319,7 +319,7 @@ class TestReminderSystemCoverage:
     
     def test_create_reminder_without_goal(self, reminder_system, test_user):
         """Test creating reminder without goal_id."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
@@ -337,7 +337,7 @@ class TestReminderSystemCoverage:
     
     def test_create_reminder_with_priority(self, reminder_system, test_user):
         """Test creating reminder with explicit priority."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
@@ -355,7 +355,7 @@ class TestReminderSystemCoverage:
     
     def test_create_reminder_with_recurrence_rule(self, reminder_system, test_user):
         """Test creating reminder with recurrence rule."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         recurrence_rule = {"frequency": "daily", "interval": 1}
         
         reminder_id = reminder_system.create_reminder(
@@ -380,14 +380,14 @@ class TestReminderSystemCoverage:
                 reminder_system.create_reminder(
                     user_id=test_user,
                     title="Test",
-                    scheduled_at=datetime.utcnow()
+                    scheduled_at=datetime.now(UTC)
                 )
             
             assert reminder_system.logger.error.called
     
     def test_create_reminder_logging(self, reminder_system, test_user):
         """Test that reminder creation logs info message."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         reminder_system.create_reminder(
             user_id=test_user,
@@ -403,7 +403,7 @@ class TestReminderSystemCoverage:
     
     def test_calculate_urgency_overdue(self, reminder_system):
         """Test urgency calculation for overdue reminder."""
-        scheduled_at = datetime.utcnow() - timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) - timedelta(hours=2)
         
         urgency = reminder_system._calculate_urgency(
             scheduled_at=scheduled_at,
@@ -415,7 +415,7 @@ class TestReminderSystemCoverage:
     
     def test_calculate_urgency_far_future(self, reminder_system):
         """Test urgency calculation for far future reminder."""
-        scheduled_at = datetime.utcnow() + timedelta(days=30)
+        scheduled_at = datetime.now(UTC) + timedelta(days=30)
         
         urgency = reminder_system._calculate_urgency(
             scheduled_at=scheduled_at,
@@ -431,7 +431,7 @@ class TestReminderSystemCoverage:
     
     def test_get_pending_reminders_before_time(self, reminder_system, test_user):
         """Test getting pending reminders before specific time."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         # Create reminders at different times
         for i in range(3):
@@ -448,7 +448,7 @@ class TestReminderSystemCoverage:
     
     def test_get_pending_reminders_excludes_snoozed(self, reminder_system, test_user):
         """Test that snoozed reminders are excluded from pending."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         # Create and snooze a reminder
         reminder_id = reminder_system.create_reminder(
@@ -482,7 +482,7 @@ class TestReminderSystemCoverage:
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
             title="Multi-snooze",
-            scheduled_at=datetime.utcnow()
+            scheduled_at=datetime.now(UTC)
         )
         
         # Snooze twice
@@ -501,7 +501,7 @@ class TestReminderSystemCoverage:
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
             title="Test",
-            scheduled_at=datetime.utcnow()
+            scheduled_at=datetime.now(UTC)
         )
         
         with patch.object(db, 'execute', side_effect=Exception("DB error")):
@@ -519,7 +519,7 @@ class TestReminderSystemCoverage:
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
             title="Test",
-            scheduled_at=datetime.utcnow()
+            scheduled_at=datetime.now(UTC)
         )
         
         with patch.object(db, 'execute', side_effect=Exception("DB error")):
@@ -539,7 +539,7 @@ class TestReminderSystemCoverage:
             """INSERT OR REPLACE INTO user_proactive_preferences 
                (user_id, cluster_reminders, updated_at)
                VALUES (?, 0, ?)""",
-            (test_user, datetime.utcnow().isoformat())
+            (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
         
@@ -547,7 +547,7 @@ class TestReminderSystemCoverage:
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
             title="No cluster",
-            scheduled_at=datetime.utcnow() + timedelta(hours=2)
+            scheduled_at=datetime.now(UTC) + timedelta(hours=2)
         )
         
         row = reminder_system.db.fetch_one(
@@ -572,7 +572,7 @@ class TestReminderSystemCoverage:
     
     def test_create_reminder_with_adaptation_data(self, reminder_system, test_user):
         """Test that reminders are created with adaptation data."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,

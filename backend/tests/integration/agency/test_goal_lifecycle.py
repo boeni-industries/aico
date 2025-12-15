@@ -10,7 +10,7 @@ Validates:
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.config import ConfigurationManager
 from aico.ai.agency import AgencyEngine

@@ -5,7 +5,7 @@ Tests workflow orchestration, event logging, event triggers, and end-to-end work
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.ai.agency.workflows import (
     WorkflowOrchestrator,
@@ -438,8 +438,8 @@ class TestEventReplaySystem:
     
     def test_create_replay_session(self, replay_system, test_user):
         """Test creating a replay session."""
-        start_time = datetime.utcnow() - timedelta(hours=1)
-        end_time = datetime.utcnow()
+        start_time = datetime.now(UTC) - timedelta(hours=1)
+        end_time = datetime.now(UTC)
         
         session_id = replay_system.create_replay_session(
             user_id=test_user,
@@ -463,7 +463,7 @@ class TestEventReplaySystem:
     def test_replay_events(self, replay_system, event_system, test_user):
         """Test replaying events."""
         # Log some events
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         for i in range(3):
             event_system.log_event(
@@ -474,7 +474,7 @@ class TestEventReplaySystem:
                 event_data={"index": i}
             )
         
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         
         # Create replay session
         session_id = replay_system.create_replay_session(
@@ -495,7 +495,7 @@ class TestEventReplaySystem:
     
     def test_replay_with_filters(self, replay_system, event_system, test_user):
         """Test replaying with event filters."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         # Log different event types
         event_system.log_event(
@@ -514,7 +514,7 @@ class TestEventReplaySystem:
             event_data={}
         )
         
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         
         # Create replay session with filter
         session_id = replay_system.create_replay_session(

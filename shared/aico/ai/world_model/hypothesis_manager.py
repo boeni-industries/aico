@@ -10,7 +10,7 @@ Uses Bayesian updating for confidence calculation.
 import uuid
 import math
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
 
@@ -130,7 +130,7 @@ class HypothesisManager:
         
         # Update hypothesis
         hypothesis.confidence = new_confidence
-        hypothesis.updated_at = datetime.utcnow()
+        hypothesis.updated_at = datetime.now(UTC)
         
         if evidence_ids:
             if supports_hypothesis:
@@ -224,8 +224,8 @@ class HypothesisManager:
         hypothesis = self.hypotheses[hypothesis_id]
         hypothesis.status = "confirmed"
         hypothesis.confidence = 1.0
-        hypothesis.confirmed_at = datetime.utcnow()
-        hypothesis.updated_at = datetime.utcnow()
+        hypothesis.confirmed_at = datetime.now(UTC)
+        hypothesis.updated_at = datetime.now(UTC)
         hypothesis.metadata["confirmation_source"] = confirmation_source
         
         logger.info(
@@ -255,7 +255,7 @@ class HypothesisManager:
         hypothesis = self.hypotheses[hypothesis_id]
         hypothesis.status = "rejected"
         hypothesis.confidence = 0.0
-        hypothesis.updated_at = datetime.utcnow()
+        hypothesis.updated_at = datetime.now(UTC)
         
         if rejection_reason:
             hypothesis.metadata["rejection_reason"] = rejection_reason
@@ -368,7 +368,7 @@ class HypothesisManager:
         
         if hypothesis.confidence >= self.confirmation_threshold:
             hypothesis.status = "confirmed"
-            hypothesis.confirmed_at = datetime.utcnow()
+            hypothesis.confirmed_at = datetime.now(UTC)
             logger.info(
                 f"[HYPOTHESIS_MGR] Auto-confirmed hypothesis {hypothesis.hypothesis_id} "
                 f"(confidence={hypothesis.confidence:.2f})"

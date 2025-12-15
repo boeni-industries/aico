@@ -11,7 +11,7 @@ Tests all Phase 6.1 features:
 
 import pytest
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from aico.ai.agency.planner import Planner, PlanStrategy, PlanQuality
@@ -173,7 +173,7 @@ class TestPatternRecognitionLearning:
                    (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (goal_id, test_user, f"Test Goal {i}", "project", "normal", "user", "active",
-                 datetime.utcnow().isoformat())
+                 datetime.now(UTC).isoformat())
             )
             
             # Insert completed plan
@@ -187,7 +187,7 @@ class TestPatternRecognitionLearning:
                      'quality': 'good',
                      'step_count': 4
                  }),
-                 datetime.utcnow().isoformat())
+                 datetime.now(UTC).isoformat())
             )
         
         test_db.commit()
@@ -224,7 +224,7 @@ class TestPatternRecognitionLearning:
                    (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (goal_id, test_user, f"Test Goal {i}", sample_goal.goal_type, "normal", "user", "active",
-                 datetime.utcnow().isoformat())
+                 datetime.now(UTC).isoformat())
             )
             
             test_db.execute(
@@ -233,7 +233,7 @@ class TestPatternRecognitionLearning:
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (plan_id, goal_id, "completed", "[]",
                  json.dumps({'strategy': 'template_based', 'quality': 'good'}),
-                 datetime.utcnow().isoformat())
+                 datetime.now(UTC).isoformat())
             )
         
         test_db.commit()
@@ -266,7 +266,7 @@ class TestPatternRecognitionLearning:
                (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "Source Goal", sample_goal.goal_type, "normal", "user", "active",
-             datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat())
         )
         
         steps_data = [
@@ -292,7 +292,7 @@ class TestPatternRecognitionLearning:
                VALUES (?, ?, ?, ?, ?, ?)""",
             (plan_id, goal_id, "completed", json.dumps(steps_data),
              json.dumps({'strategy': 'template_based'}),
-             datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat())
         )
         
         test_db.commit()
@@ -333,7 +333,7 @@ class TestPatternRecognitionLearning:
                (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (sample_goal.goal_id, test_user, sample_goal.title, sample_goal.goal_type,
-             "normal", "user", "active", datetime.utcnow().isoformat())
+             "normal", "user", "active", datetime.now(UTC).isoformat())
         )
         
         test_db.execute(
@@ -341,7 +341,7 @@ class TestPatternRecognitionLearning:
                    (plan_id, goal_id, status, steps_json, metadata_json, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (plan_id, sample_goal.goal_id, "active", "[]", "{}",
-             datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat())
         )
         
         test_db.commit()
@@ -391,12 +391,12 @@ class TestSkillAvailability:
         test_db.execute(
             """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, status, created_at) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("skill-test-1", "Test Skill 1", "base", "test", "test template", "{}", "active", datetime.utcnow().isoformat())
+            ("skill-test-1", "Test Skill 1", "base", "test", "test template", "{}", "active", datetime.now(UTC).isoformat())
         )
         test_db.execute(
             """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, status, created_at) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("skill-test-2", "Test Skill 2", "base", "test", "test template", "{}", "inactive", datetime.utcnow().isoformat())
+            ("skill-test-2", "Test Skill 2", "base", "test", "test template", "{}", "inactive", datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -429,7 +429,7 @@ class TestSkillAvailability:
         test_db.execute(
             """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, status, created_at) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("available-skill-test", "Available Test Skill", "base", "test", "test template", "{}", "active", datetime.utcnow().isoformat())
+            ("available-skill-test", "Available Test Skill", "base", "test", "test template", "{}", "active", datetime.now(UTC).isoformat())
         )
         test_db.commit()
         
@@ -607,7 +607,7 @@ class TestPlanningFlowIntegration:
                    (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (goal_id, test_user, f"Historical Goal {i}", test_goal_type,
-                 "normal", "user", "active", datetime.utcnow().isoformat())
+                 "normal", "user", "active", datetime.now(UTC).isoformat())
             )
             
             test_db.execute(
@@ -620,7 +620,7 @@ class TestPlanningFlowIntegration:
                      {'step_id': 's2', 'order': 2, 'description': 'Pattern step 2', 'status': 'completed', 'metadata': {}}
                  ]),
                  json.dumps({'strategy': 'llm_generated', 'quality': 'good'}),  # Use llm_generated for consistency
-                 datetime.utcnow().isoformat())
+                 datetime.now(UTC).isoformat())
             )
         
         test_db.commit()

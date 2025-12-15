@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from ..registry import (
     Skill,
@@ -186,8 +186,8 @@ class ReflectOnGoalSkill(Skill):
                 recommendations.append("Review failed executions and adjust plan if needed")
             
             # Check goal age
-            created_at = datetime.fromisoformat(goal["created_at"])
-            age_days = (datetime.utcnow() - created_at).days
+            created_at = datetime.fromisoformat(goal["created_at"]).replace(tzinfo=UTC)
+            age_days = (datetime.now(UTC) - created_at).days
             if age_days > 30 and goal["status"] == "pending":
                 insights.append(f"Goal has been pending for {age_days} days")
                 recommendations.append("Consider prioritizing or retiring this goal")
@@ -202,7 +202,7 @@ class ReflectOnGoalSkill(Skill):
                 "recommendations": recommendations,
                 "plans_count": len(plans),
                 "executions_analyzed": len(executions),
-                "reflected_at": datetime.utcnow().isoformat(),
+                "reflected_at": datetime.now(UTC).isoformat(),
             }
             
             logger.info(
@@ -217,7 +217,7 @@ class ReflectOnGoalSkill(Skill):
                 output=reflection,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                 },
             )
             

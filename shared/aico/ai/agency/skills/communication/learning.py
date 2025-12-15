@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import numpy as np
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, UTC, timedelta
 from dataclasses import dataclass
 from collections import defaultdict
 
@@ -397,7 +397,7 @@ def extract_contextual_features(
 ) -> ContextualFeatures:
     """Extract contextual features for bandit decision-making."""
     
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     
     # Temporal context
     hour_of_day = now.hour
@@ -443,7 +443,7 @@ def extract_contextual_features(
     
     # Time since last interaction
     if recent_initiations:
-        last_time = datetime.fromisoformat(recent_initiations[0]['initiated_at'])
+        last_time = datetime.fromisoformat(recent_initiations[0]['initiated_at']).replace(tzinfo=UTC)
         time_since_last = (now - last_time).total_seconds() / 3600.0  # hours
     else:
         time_since_last = 24.0
@@ -451,7 +451,7 @@ def extract_contextual_features(
     # Recent dismissals (last 3 days)
     recent_dismissals_count = len([
         i for i in dismissed
-        if (now - datetime.fromisoformat(i['initiated_at'])).days < 3
+        if (now - datetime.fromisoformat(i['initiated_at']).replace(tzinfo=UTC)).days < 3
     ])
     
     # Engagement score (based on response rate and speed)

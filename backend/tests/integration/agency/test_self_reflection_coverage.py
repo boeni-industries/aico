@@ -3,7 +3,7 @@ Integration tests for SelfReflectionEngine - improving coverage
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.ai.agency.models import (
     RunType,
@@ -138,11 +138,11 @@ async def test_get_skill_performance_with_data(agency_engine, test_user, test_db
             total_attempts=20,
             recent_trend="stable"
         ),
-        window_start=datetime.utcnow() - timedelta(days=7),
-        window_end=datetime.utcnow(),
+        window_start=datetime.now(UTC) - timedelta(days=7),
+        window_end=datetime.now(UTC),
         sample_size=20,
         confidence=0.9,
-        last_updated=datetime.utcnow(),
+        last_updated=datetime.now(UTC),
     )
     
     # Store the entry
@@ -177,11 +177,11 @@ async def test_get_goal_type_performance_with_data(agency_engine, test_user):
             total_attempts=15,
             recent_trend="improving"
         ),
-        window_start=datetime.utcnow() - timedelta(days=14),
-        window_end=datetime.utcnow(),
+        window_start=datetime.now(UTC) - timedelta(days=14),
+        window_end=datetime.now(UTC),
         sample_size=15,
         confidence=0.8,
-        last_updated=datetime.utcnow(),
+        last_updated=datetime.now(UTC),
     )
     
     # Store the entry
@@ -261,11 +261,11 @@ async def test_get_all_skill_performances_with_data(agency_engine, test_user):
                 total_attempts=10,
                 recent_trend="stable"
             ),
-            window_start=datetime.utcnow() - timedelta(days=7),
-            window_end=datetime.utcnow(),
+            window_start=datetime.now(UTC) - timedelta(days=7),
+            window_end=datetime.now(UTC),
             sample_size=10,
             confidence=0.8,
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(UTC),
         )
         await reflection.self_model_store.upsert_entry(entry)
     

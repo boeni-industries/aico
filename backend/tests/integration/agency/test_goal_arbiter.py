@@ -5,7 +5,7 @@ Tests goal scoring, ranking, and intention set management.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.ai.agency import AgencyEngine
 from aico.ai.agency.models import GoalStatus, GoalOrigin, GoalPriority
@@ -218,7 +218,7 @@ class TestPhase4GoalArbiter:
         )
         
         # Simulate old goal by modifying created_at
-        old_goal.created_at = datetime.utcnow() - timedelta(days=7)
+        old_goal.created_at = datetime.now(UTC) - timedelta(days=7)
         
         # Act
         fresh_scored = engine.arbiter.score_goal(fresh_goal)

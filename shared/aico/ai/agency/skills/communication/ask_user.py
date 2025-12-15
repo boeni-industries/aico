@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 from ..registry import (
     Skill,
@@ -109,8 +109,8 @@ class AskUserSkill(Skill):
             
             # Create conversation initiation record
             initiation_id = str(uuid.uuid4())
-            conversation_id = f"{user_id}_{int(datetime.utcnow().timestamp())}"
-            now = datetime.utcnow().isoformat()
+            conversation_id = f"{user_id}_{int(datetime.now(UTC).timestamp())}"
+            now = datetime.now(UTC).isoformat()
             
             # Store initiation in database
             self.db.execute(
@@ -148,7 +148,7 @@ class AskUserSkill(Skill):
                 
                 # Create conversation message
                 proto_timestamp = Timestamp()
-                proto_timestamp.FromDatetime(datetime.utcnow())
+                proto_timestamp.FromDatetime(datetime.now(UTC))
                 
                 conv_message = ConversationMessage(
                     timestamp=proto_timestamp,
@@ -198,7 +198,7 @@ class AskUserSkill(Skill):
                 output=result,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                     "initiation_id": initiation_id,
                 },
             )

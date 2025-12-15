@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -226,7 +226,7 @@ class GoalArbiter:
         """
         # Check cache
         if self._adjustments_cache_time:
-            age = (datetime.utcnow() - self._adjustments_cache_time).total_seconds()
+            age = (datetime.now(UTC) - self._adjustments_cache_time).total_seconds()
             if age < self._adjustments_cache_ttl:
                 return self._adjustments_cache.copy()
         
@@ -259,7 +259,7 @@ class GoalArbiter:
             
             # Update cache
             self._adjustments_cache = adjustments
-            self._adjustments_cache_time = datetime.utcnow()
+            self._adjustments_cache_time = datetime.now(UTC)
             
             if adjustments and self.logger:
                 self.logger.debug(
@@ -376,7 +376,7 @@ class GoalArbiter:
         breakdown["origin"] = origin_score * origin_weight
         
         # 3. Freshness score (newer goals score higher)
-        age_hours = (datetime.utcnow() - goal.created_at).total_seconds() / 3600
+        age_hours = (datetime.now(UTC) - goal.created_at).total_seconds() / 3600
         freshness_score = max(0.0, 1.0 - (age_hours / 168))  # Decay over 1 week
         freshness_weight = self._get_adjusted_weight("freshness", self.weights["freshness"], user_id)
         breakdown["freshness"] = freshness_score * freshness_weight
@@ -511,10 +511,10 @@ class GoalArbiter:
                 arbiter_score=row["arbiter_score"],
                 priority_band=PriorityBand(row["priority_band"]),
                 reasons=json.loads(row["reasons_json"] or "[]"),
-                activated_at=datetime.fromisoformat(row["activated_at"]) if row["activated_at"] else None,
-                deactivated_at=datetime.fromisoformat(row["deactivated_at"]) if row["deactivated_at"] else None,
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"])
+                activated_at=datetime.fromisoformat(row["activated_at"]).replace(tzinfo=UTC) if row["activated_at"] else None,
+                deactivated_at=datetime.fromisoformat(row["deactivated_at"]).replace(tzinfo=UTC) if row["deactivated_at"] else None,
+                created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+                updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
             ))
         
         return IntentionSet(user_id=user_id, intentions=intentions)
@@ -564,7 +564,7 @@ class GoalArbiter:
                 if abs(existing.arbiter_score - scored_goal.arbiter_score) > 0.1:
                     existing.arbiter_score = scored_goal.arbiter_score
                     existing.priority_band = scored_goal.priority_band
-                    existing.updated_at = datetime.utcnow()
+                    existing.updated_at = datetime.now(UTC)
                     await self._update_intention(existing)
                 continue
             
@@ -605,8 +605,8 @@ class GoalArbiter:
             raise ValueError(f"Intention {intention_id} not found")
         
         intention.status = IntentionStatus.ACTIVE
-        intention.activated_at = datetime.utcnow()
-        intention.updated_at = datetime.utcnow()
+        intention.activated_at = datetime.now(UTC)
+        intention.updated_at = datetime.now(UTC)
         
         await self._update_intention(intention)
         
@@ -622,8 +622,8 @@ class GoalArbiter:
             raise ValueError(f"Intention {intention_id} not found")
         
         intention.status = IntentionStatus.DROPPED if reason == "dropped" else IntentionStatus.PAUSED
-        intention.deactivated_at = datetime.utcnow()
-        intention.updated_at = datetime.utcnow()
+        intention.deactivated_at = datetime.now(UTC)
+        intention.updated_at = datetime.now(UTC)
         
         await self._update_intention(intention)
         
@@ -650,7 +650,7 @@ class GoalArbiter:
             arbiter_score=scored_goal.arbiter_score,
             priority_band=scored_goal.priority_band,
             reasons=scored_goal.reasons,
-            activated_at=datetime.utcnow() if activate else None
+            activated_at=datetime.now(UTC) if activate else None
         )
         
         self.db.execute(
@@ -716,10 +716,10 @@ class GoalArbiter:
             arbiter_score=row["arbiter_score"],
             priority_band=PriorityBand(row["priority_band"]),
             reasons=json.loads(row["reasons_json"] or "[]"),
-            activated_at=datetime.fromisoformat(row["activated_at"]) if row["activated_at"] else None,
-            deactivated_at=datetime.fromisoformat(row["deactivated_at"]) if row["deactivated_at"] else None,
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"])
+            activated_at=datetime.fromisoformat(row["activated_at"]).replace(tzinfo=UTC) if row["activated_at"] else None,
+            deactivated_at=datetime.fromisoformat(row["deactivated_at"]).replace(tzinfo=UTC) if row["deactivated_at"] else None,
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
         )
     
     async def _publish_intention_set_update(self, intention_set: IntentionSet) -> None:
@@ -806,7 +806,7 @@ class GoalArbiter:
                     completion_time_minutes,
                     user_satisfaction,
                     json.dumps(metadata or {}),
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             

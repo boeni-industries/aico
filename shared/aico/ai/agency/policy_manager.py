@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass
 from enum import Enum
 
@@ -155,7 +155,7 @@ class PolicyManager:
             
             # Update cache
             self._policy_cache[cache_key] = policies
-            self._cache_time = datetime.utcnow()
+            self._cache_time = datetime.now(UTC)
             
             if self.logger:
                 self.logger.debug(
@@ -200,7 +200,7 @@ class PolicyManager:
             rule_id
         """
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             
             self.db.execute(
                 """
@@ -274,7 +274,7 @@ class PolicyManager:
                     row["conditions"],
                     row["effect"],
                     row["priority"],
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             
@@ -300,7 +300,7 @@ class PolicyManager:
             
             updates.append("version = version + 1")
             updates.append("updated_at = ?")
-            params.append(datetime.utcnow().isoformat())
+            params.append(datetime.now(UTC).isoformat())
             params.append(rule_id)
             
             self.db.execute(
@@ -390,7 +390,7 @@ class PolicyManager:
                     rule_id_b,
                     target_type,
                     resolution,
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -407,7 +407,7 @@ class PolicyManager:
         if not self._cache_time:
             return False
         
-        age = (datetime.utcnow() - self._cache_time).total_seconds()
+        age = (datetime.now(UTC) - self._cache_time).total_seconds()
         return age < self._cache_ttl_seconds
     
     def _row_to_policy(self, row: Dict[str, Any]) -> PolicyRule:
@@ -424,8 +424,8 @@ class PolicyManager:
             scope=row["scope"],
             version=row["version"],
             active=bool(row["active"]),
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"])
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
         )
 
 
@@ -475,7 +475,7 @@ class ConsentManager:
             consent_id
         """
         consent_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         expires_at = (now + timedelta(days=expires_in_days)).isoformat() if expires_in_days else None
         
         try:
@@ -543,8 +543,8 @@ class ConsentManager:
                 WHERE consent_id = ?
                 """,
                 (
-                    datetime.utcnow().isoformat(),
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
                     consent_id
                 )
             )
@@ -583,7 +583,7 @@ class ConsentManager:
             True if consent is granted and valid
         """
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             
             query = """
                 SELECT consent_id FROM user_consents
@@ -611,7 +611,7 @@ class ConsentManager:
     def expire_old_consents(self) -> int:
         """Expire consents that have passed their expiration date."""
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             
             # Get expired consents
             rows = self.db.fetch_all(
@@ -672,7 +672,7 @@ class ConsentManager:
                     user_id,
                     action,
                     reason,
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()
@@ -722,7 +722,7 @@ class EnhancedEthicsGate:
         Returns:
             (decision, reasoning, policy_rules_applied)
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         # Check cache
         if use_cache:
@@ -742,7 +742,7 @@ class EnhancedEthicsGate:
             )
         
         # Log audit
-        processing_time = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        processing_time = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
         self._log_audit(
             user_id, target_type, target_id, decision, reasoning,
             rules_applied, check_level, use_cache, processing_time
@@ -792,7 +792,7 @@ class EnhancedEthicsGate:
     ) -> Optional[Tuple[EthicsDecision, str, List[str]]]:
         """Get cached ethics decision."""
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             
             row = self.db.fetch_one(
                 """
@@ -843,7 +843,7 @@ class EnhancedEthicsGate:
         """Cache an ethics decision."""
         try:
             cache_id = str(uuid.uuid4())
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             expires_at = (now + timedelta(hours=ttl_hours)).isoformat()
             
             self.db.execute(
@@ -906,7 +906,7 @@ class EnhancedEthicsGate:
                     check_level,
                     1 if cached else 0,
                     processing_time_ms,
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             self.db.commit()

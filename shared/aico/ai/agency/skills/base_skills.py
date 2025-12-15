@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, UTC, timedelta
 
 from .registry import (
     Skill,
@@ -133,7 +133,7 @@ class AnalyzeConversationSkill(Skill):
                 
                 # Extract patterns from message timing
                 if messages:
-                    first_msg_time = datetime.fromisoformat(messages[0]["created_at"])
+                    first_msg_time = datetime.fromisoformat(messages[0]["created_at"]).replace(tzinfo=UTC)
                     hour = first_msg_time.hour
                     
                     if hour >= 6 and hour < 12:
@@ -187,7 +187,7 @@ class AnalyzeConversationSkill(Skill):
                 "insights": insights,
                 "patterns": patterns,
                 "topics": list(topics),
-                "analyzed_at": datetime.utcnow().isoformat(),
+                "analyzed_at": datetime.now(UTC).isoformat(),
             }
             
             logger.info(
@@ -202,7 +202,7 @@ class AnalyzeConversationSkill(Skill):
                 output=result,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                     "conversations_analyzed": len(conversations),
                 },
             )
@@ -351,7 +351,7 @@ class SearchMemorySkill(Skill):
                 "query": query,
                 "results_found": len(memories),
                 "memories": memories,
-                "searched_at": datetime.utcnow().isoformat(),
+                "searched_at": datetime.now(UTC).isoformat(),
             }
             
             logger.info(
@@ -363,7 +363,7 @@ class SearchMemorySkill(Skill):
                 output=result,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                 },
             )
             
@@ -449,7 +449,7 @@ class UpdateKnowledgeGraphSkill(Skill):
             if not self.db:
                 raise RuntimeError("Database connection not available")
             
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             entities_added = 0
             relationships_added = 0
             
@@ -532,7 +532,7 @@ class UpdateKnowledgeGraphSkill(Skill):
                 output=result,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                 },
             )
             
@@ -709,8 +709,8 @@ class ReflectOnGoalSkill(Skill):
                 recommendations.append("Review failed executions and adjust plan if needed")
             
             # Check goal age
-            created_at = datetime.fromisoformat(goal["created_at"])
-            age_days = (datetime.utcnow() - created_at).days
+            created_at = datetime.fromisoformat(goal["created_at"]).replace(tzinfo=UTC)
+            age_days = (datetime.now(UTC) - created_at).days
             if age_days > 30 and goal["status"] == "pending":
                 insights.append(f"Goal has been pending for {age_days} days")
                 recommendations.append("Consider prioritizing or retiring this goal")
@@ -725,7 +725,7 @@ class ReflectOnGoalSkill(Skill):
                 "recommendations": recommendations,
                 "plans_count": len(plans),
                 "executions_analyzed": len(executions),
-                "reflected_at": datetime.utcnow().isoformat(),
+                "reflected_at": datetime.now(UTC).isoformat(),
             }
             
             logger.info(
@@ -740,7 +740,7 @@ class ReflectOnGoalSkill(Skill):
                 output=reflection,
                 metadata={
                     "skill_id": self.skill_id,
-                    "execution_time": datetime.utcnow().isoformat(),
+                    "execution_time": datetime.now(UTC).isoformat(),
                 },
             )
             

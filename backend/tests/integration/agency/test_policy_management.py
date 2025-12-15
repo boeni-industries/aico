@@ -6,7 +6,7 @@ conflict resolution, and enhanced ethics gates with caching.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 
 from aico.ai.agency.policy_manager import (

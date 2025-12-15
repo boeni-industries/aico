@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -121,7 +121,7 @@ class AdaptiveScoringEngine:
                     total_reward=row["total_reward"],
                     success_count=row["success_count"],
                     failure_count=row["failure_count"],
-                    last_pulled=datetime.fromisoformat(row["last_pulled"]) if row["last_pulled"] else None
+                    last_pulled=datetime.fromisoformat(row["last_pulled"]).replace(tzinfo=UTC) if row["last_pulled"] else None
                 )
             
             if self.logger and self.arms:
@@ -163,7 +163,7 @@ class AdaptiveScoringEngine:
     def _save_arm(self, arm: WeightArm) -> None:
         """Save or update an arm in the database."""
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             self.db.execute(
                 """
                 INSERT OR REPLACE INTO arbiter_bandit_arms (
@@ -329,7 +329,7 @@ class AdaptiveScoringEngine:
         arm = self.arms[arm_id]
         arm.pulls += 1
         arm.total_reward += reward
-        arm.last_pulled = datetime.utcnow()
+        arm.last_pulled = datetime.now(UTC)
         
         if success:
             arm.success_count += 1
@@ -388,7 +388,7 @@ class AdaptiveScoringEngine:
         new_weights = {k: v / total for k, v in new_weights.items()}
         
         # Create new arm
-        arm_id = f"optimized_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        arm_id = f"optimized_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
         new_arm = WeightArm(arm_id=arm_id, weights=new_weights)
         self.arms[arm_id] = new_arm
         self._save_arm(new_arm)
@@ -422,7 +422,7 @@ class AdaptiveScoringEngine:
         import uuid
         
         test_id = str(uuid.uuid4())
-        end_date = datetime.utcnow() + timedelta(days=duration_days)
+        end_date = datetime.now(UTC) + timedelta(days=duration_days)
         
         try:
             self.db.execute(
@@ -437,9 +437,9 @@ class AdaptiveScoringEngine:
                     test_name,
                     arm_a_id,
                     arm_b_id,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     end_date.isoformat(),
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             

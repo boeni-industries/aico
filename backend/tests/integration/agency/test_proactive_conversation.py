@@ -11,7 +11,7 @@ Tests the complete proactive conversation flow:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, patch
 import uuid
 
@@ -48,7 +48,7 @@ class TestContextualFeatureExtraction:
         """Test feature extraction with conversation history."""
         # Insert some initiation history instead of conversations
         # (using the actual table that exists in the schema)
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         for i in range(5):
             test_db.execute("""
                 INSERT INTO aico_conversation_initiations (
@@ -423,7 +423,7 @@ class TestProactiveInitiationFlow:
     async def test_create_initiation(self, test_db, test_user):
         """Test creating a proactive initiation."""
         initiation_id = str(uuid.uuid4())
-        conversation_id = f"{test_user}_{int(datetime.utcnow().timestamp())}"
+        conversation_id = f"{test_user}_{int(datetime.now(UTC).timestamp())}"
         
         test_db.execute("""
             INSERT INTO aico_conversation_initiations (
@@ -442,9 +442,9 @@ class TestProactiveInitiationFlow:
             "Adaptivity: 0.75, Civility: 0.82",
             "low",
             "text",
-            datetime.utcnow().isoformat(),
+            datetime.now(UTC).isoformat(),
             "pending",
-            datetime.utcnow().isoformat()
+            datetime.now(UTC).isoformat()
         ))
         test_db.commit()
         
@@ -464,8 +464,8 @@ class TestProactiveInitiationFlow:
         """Test responding to an initiation."""
         # Create initiation
         initiation_id = str(uuid.uuid4())
-        conversation_id = f"{test_user}_{int(datetime.utcnow().timestamp())}"
-        initiated_at = datetime.utcnow()
+        conversation_id = f"{test_user}_{int(datetime.now(UTC).timestamp())}"
+        initiated_at = datetime.now(UTC)
         
         test_db.execute("""
             INSERT INTO aico_conversation_initiations (
@@ -487,7 +487,7 @@ class TestProactiveInitiationFlow:
         test_db.commit()
         
         # Respond to initiation
-        resolved_at = datetime.utcnow()
+        resolved_at = datetime.now(UTC)
         response_time = int((resolved_at - initiated_at).total_seconds())
         
         test_db.execute("""
@@ -538,9 +538,9 @@ class TestProactiveInitiationFlow:
             "scheduler",
             "test",
             "Test question",
-            datetime.utcnow().isoformat(),
+            datetime.now(UTC).isoformat(),
             "pending",
-            datetime.utcnow().isoformat()
+            datetime.now(UTC).isoformat()
         ))
         test_db.commit()
         

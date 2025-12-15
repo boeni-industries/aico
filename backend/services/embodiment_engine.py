@@ -6,7 +6,7 @@ Provides standardized interface for embodiment processing without implementation
 """
 
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 
 from backend.core.ai_plugin_base import AIProcessingPlugin, ProcessingRequest, ProcessingResponse, CapabilityContract
 

@@ -5,7 +5,7 @@ Tests the clustering and deduplication of curiosity signals.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.ai.curiosity.clustering import OpportunityClusterer
 from aico.ai.curiosity.models import IntrinsicSignal, CuriosityType

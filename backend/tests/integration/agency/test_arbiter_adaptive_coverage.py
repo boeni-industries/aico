@@ -10,7 +10,7 @@ Focuses on testing uncovered lines:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, patch
 import json
 

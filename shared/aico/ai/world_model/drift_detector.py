@@ -10,7 +10,7 @@ Uses sliding windows and exponential decay for temporal analysis.
 import uuid
 import math
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from collections import defaultdict
 
 from aico.core.logging import get_logger
@@ -71,7 +71,7 @@ class DriftDetector:
         )
         
         # Define windows
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         window_start = now - timedelta(days=window_days)
         
         # Split into old and new states

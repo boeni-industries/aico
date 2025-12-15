@@ -5,7 +5,7 @@ Tests for world model and personality integration in agency system.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.ai.agency.engine import AgencyEngine
 from aico.ai.agency.models import GoalOrigin, GoalPriority, GoalStatus

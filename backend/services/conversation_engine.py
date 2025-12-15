@@ -15,7 +15,7 @@ import asyncio
 import logging
 import uuid
 import time
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -330,7 +330,7 @@ class ConversationEngine(BaseService):
                     relationship_type="user",
                     conversation_style="friendly",
                     conversation_language=user_profile.primary_language or "en",
-                    last_seen=datetime.utcnow()
+                    last_seen=datetime.now(UTC)
                 )
                 self.logger.info(f"Loaded user context from database", extra={
                     "user_id": user_id,
@@ -345,14 +345,14 @@ class ConversationEngine(BaseService):
                     relationship_type="user",
                     conversation_style="friendly",
                     conversation_language="en",
-                    last_seen=datetime.utcnow()
+                    last_seen=datetime.now(UTC)
                 )
                 self.logger.warning(f"Created placeholder user context (database load failed)", extra={
                     "user_id": user_id
                 })
         else:
             # Update last seen
-            self.user_contexts[user_id].last_seen = datetime.utcnow()
+            self.user_contexts[user_id].last_seen = datetime.now(UTC)
         
         return self.user_contexts[user_id]
     
@@ -378,7 +378,7 @@ class ConversationEngine(BaseService):
                 "user_message": user_message,
                 "components_needed": [],
                 "components_ready": {},
-                "started_at": datetime.utcnow()
+                "started_at": datetime.now(UTC)
             }
             print(f"💬 [CONVERSATION_ENGINE] 📋 Total pending requests: {len(self.pending_responses)}")
             
@@ -426,7 +426,7 @@ class ConversationEngine(BaseService):
                         conversation_id=user_message.message.conversation_id,
                         text=user_message.message.text,
                         context=agency_context,
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(UTC),
                     )
                     agency_response = await self.agency_plugin.process(agency_request)
                     self.logger.info(
@@ -1365,7 +1365,7 @@ class ConversationEngine(BaseService):
                     ai_response,
                     user_message.message_id,  # Use message_id from ConversationMessage (not message.id)
                     agency_context_json,  # Store agency context as JSON
-                    datetime.utcnow().isoformat()
+                    datetime.now(UTC).isoformat()
                 )
             )
             db.commit()

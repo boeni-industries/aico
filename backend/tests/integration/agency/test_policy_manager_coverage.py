@@ -5,7 +5,7 @@ Focuses on error handling, edge cases, and conditional branches.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, patch
 import json
 import uuid
@@ -324,8 +324,8 @@ class TestPolicyManagerCoverage:
             scope="global",
             version=1,
             active=True,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         selected, conflict_id = policy_manager.resolve_conflicts(
@@ -352,7 +352,7 @@ class TestPolicyManagerCoverage:
         """Test conflict resolution with same priority and effect (covers lines 347-349)."""
         from aico.ai.agency.policy_manager import PolicyRule
         
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         policies = [
             PolicyRule(
                 rule_id="rule-1",
@@ -400,7 +400,7 @@ class TestPolicyManagerCoverage:
         """Test conflict resolution with different effects (covers lines 347-363)."""
         from aico.ai.agency.policy_manager import PolicyRule
         
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         policies = [
             PolicyRule(
                 rule_id="allow-rule",
@@ -472,7 +472,7 @@ class TestPolicyManagerCoverage:
     def test_is_cache_valid_expired(self, policy_manager):
         """Test cache validity check with expired cache (covers lines 410-411)."""
         # Set cache time to 10 minutes ago
-        policy_manager._cache_time = datetime.utcnow() - timedelta(minutes=10)
+        policy_manager._cache_time = datetime.now(UTC) - timedelta(minutes=10)
         policy_manager._cache_ttl_seconds = 300  # 5 minutes
         
         assert policy_manager._is_cache_valid() is False
@@ -480,7 +480,7 @@ class TestPolicyManagerCoverage:
     def test_is_cache_valid_fresh(self, policy_manager):
         """Test cache validity check with fresh cache (covers lines 410-411)."""
         # Set cache time to 1 minute ago
-        policy_manager._cache_time = datetime.utcnow() - timedelta(minutes=1)
+        policy_manager._cache_time = datetime.now(UTC) - timedelta(minutes=1)
         policy_manager._cache_ttl_seconds = 300  # 5 minutes
         
         assert policy_manager._is_cache_valid() is True
@@ -657,7 +657,7 @@ class TestEnhancedEthicsGateCoverage:
                 reasoning, policy_rules_applied, cached_at
             ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)""",
             (cache_id, test_user, "goal", "test-null-rules", "approved",
-             "Test", datetime.utcnow().isoformat())
+             "Test", datetime.now(UTC).isoformat())
         )
         db.commit()
         

@@ -9,7 +9,7 @@ Based on statistical pattern detection and frequency analysis.
 
 import uuid
 from typing import List, Dict, Any, Set, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 from collections import Counter, defaultdict
 
 from aico.core.logging import get_logger
@@ -182,7 +182,7 @@ class SchemaLearner:
             entity_type=old_schema.entity_type,
             fields=merged_fields,
             created_at=old_schema.created_at,
-            updated_at=datetime.utcnow(),
+            updated_at=datetime.now(UTC),
             sample_count=old_schema.sample_count + len(new_samples),
             confidence=min(old_schema.confidence + 0.1, 1.0),  # Increase confidence
         )

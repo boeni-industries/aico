@@ -6,7 +6,7 @@ according to design specifications in agency-component-world-model.md
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.ai.world_model.schema_learner import SchemaLearner
 from aico.ai.world_model.hypothesis_manager import HypothesisManager
@@ -722,9 +722,9 @@ class TestDriftDetector:
         detector = DriftDetector(drift_threshold=0.5)
         
         states = [
-            {"timestamp": datetime.utcnow() - timedelta(days=40), "state": {"value": 10}},
-            {"timestamp": datetime.utcnow() - timedelta(days=20), "state": {"value": 11}},
-            {"timestamp": datetime.utcnow() - timedelta(days=5), "state": {"value": 10}},
+            {"timestamp": datetime.now(UTC) - timedelta(days=40), "state": {"value": 10}},
+            {"timestamp": datetime.now(UTC) - timedelta(days=20), "state": {"value": 11}},
+            {"timestamp": datetime.now(UTC) - timedelta(days=5), "state": {"value": 10}},
         ]
         
         report = detector.detect_drift("entity-1", "TestEntity", states, window_days=30)
@@ -737,8 +737,8 @@ class TestDriftDetector:
         detector = DriftDetector(drift_threshold=0.3)
         
         states = [
-            {"timestamp": datetime.utcnow() - timedelta(days=40), "state": {"value": 10, "status": "active"}},
-            {"timestamp": datetime.utcnow() - timedelta(days=5), "state": {"value": 100, "status": "inactive"}},
+            {"timestamp": datetime.now(UTC) - timedelta(days=40), "state": {"value": 10, "status": "active"}},
+            {"timestamp": datetime.now(UTC) - timedelta(days=5), "state": {"value": 100, "status": "inactive"}},
         ]
         
         report = detector.detect_drift("entity-1", "TestEntity", states, window_days=30)
@@ -754,8 +754,8 @@ class TestDriftDetector:
         detector = DriftDetector()
         
         facts = [
-            {"id": "f1", "subject": "user-1", "predicate": "name", "object": "Alice", "confidence": 0.9, "timestamp": datetime.utcnow()},
-            {"id": "f2", "subject": "user-1", "predicate": "age", "object": 30, "confidence": 0.8, "timestamp": datetime.utcnow()},
+            {"id": "f1", "subject": "user-1", "predicate": "name", "object": "Alice", "confidence": 0.9, "timestamp": datetime.now(UTC)},
+            {"id": "f2", "subject": "user-1", "predicate": "age", "object": 30, "confidence": 0.8, "timestamp": datetime.now(UTC)},
         ]
         
         contradictions = detector.detect_contradictions(facts)
@@ -767,8 +767,8 @@ class TestDriftDetector:
         detector = DriftDetector()
         
         facts = [
-            {"id": "f1", "subject": "user-1", "predicate": "job", "object": "Engineer", "confidence": 0.9, "timestamp": datetime.utcnow() - timedelta(days=10)},
-            {"id": "f2", "subject": "user-1", "predicate": "job", "object": "Designer", "confidence": 0.8, "timestamp": datetime.utcnow()},
+            {"id": "f1", "subject": "user-1", "predicate": "job", "object": "Engineer", "confidence": 0.9, "timestamp": datetime.now(UTC) - timedelta(days=10)},
+            {"id": "f2", "subject": "user-1", "predicate": "job", "object": "Designer", "confidence": 0.8, "timestamp": datetime.now(UTC)},
         ]
         
         contradictions = detector.detect_contradictions(facts)
@@ -782,8 +782,8 @@ class TestDriftDetector:
         detector = DriftDetector()
         
         facts = [
-            {"id": "f1", "subject": "user-1", "predicate": "job", "object": "Engineer", "confidence": 0.8, "timestamp": datetime.utcnow() - timedelta(days=30)},
-            {"id": "f2", "subject": "user-1", "predicate": "job", "object": "Designer", "confidence": 0.8, "timestamp": datetime.utcnow()},
+            {"id": "f1", "subject": "user-1", "predicate": "job", "object": "Engineer", "confidence": 0.8, "timestamp": datetime.now(UTC) - timedelta(days=30)},
+            {"id": "f2", "subject": "user-1", "predicate": "job", "object": "Designer", "confidence": 0.8, "timestamp": datetime.now(UTC)},
         ]
         
         contradiction = Contradiction(
@@ -804,8 +804,8 @@ class TestDriftDetector:
         detector = DriftDetector()
         
         facts = [
-            {"id": "f1", "subject": "user-1", "predicate": "job", "object": "Engineer", "confidence": 0.9, "timestamp": datetime.utcnow()},
-            {"id": "f2", "subject": "user-1", "predicate": "job", "object": "Designer", "confidence": 0.5, "timestamp": datetime.utcnow()},
+            {"id": "f1", "subject": "user-1", "predicate": "job", "object": "Engineer", "confidence": 0.9, "timestamp": datetime.now(UTC)},
+            {"id": "f2", "subject": "user-1", "predicate": "job", "object": "Designer", "confidence": 0.5, "timestamp": datetime.now(UTC)},
         ]
         
         contradiction = Contradiction(
@@ -825,8 +825,8 @@ class TestDriftDetector:
         detector = DriftDetector()
         
         facts = [
-            {"id": "f1", "subject": "user-1", "predicate": "job", "object": "Engineer", "confidence": 0.8, "timestamp": datetime.utcnow()},
-            {"id": "f2", "subject": "user-1", "predicate": "job", "object": "Designer", "confidence": 0.8, "timestamp": datetime.utcnow()},
+            {"id": "f1", "subject": "user-1", "predicate": "job", "object": "Engineer", "confidence": 0.8, "timestamp": datetime.now(UTC)},
+            {"id": "f2", "subject": "user-1", "predicate": "job", "object": "Designer", "confidence": 0.8, "timestamp": datetime.now(UTC)},
         ]
         
         contradiction = Contradiction(

@@ -7,7 +7,7 @@ dependency-aware scheduling.
 """
 
 import pytest
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, UTC
 from unittest.mock import Mock, patch
 import json
 
@@ -400,7 +400,7 @@ class TestContextAwarePrioritization:
     def test_deadline_urgency_approaching(self, context_engine, sample_goal):
         """Test deadline urgency for approaching deadline."""
         # Deadline in 2 hours
-        deadline = datetime.utcnow() + timedelta(hours=2)
+        deadline = datetime.now(UTC) + timedelta(hours=2)
         sample_goal.metadata["deadline"] = deadline.isoformat()
         sample_goal.metadata["estimated_duration_minutes"] = 60
         
@@ -412,7 +412,7 @@ class TestContextAwarePrioritization:
     def test_deadline_urgency_plenty_of_time(self, context_engine, sample_goal):
         """Test deadline urgency with plenty of time."""
         # Deadline in 1 week
-        deadline = datetime.utcnow() + timedelta(days=7)
+        deadline = datetime.now(UTC) + timedelta(days=7)
         sample_goal.metadata["deadline"] = deadline.isoformat()
         sample_goal.metadata["estimated_duration_minutes"] = 60
         
@@ -424,7 +424,7 @@ class TestContextAwarePrioritization:
     def test_deadline_urgency_overdue(self, context_engine, sample_goal):
         """Test deadline urgency for overdue goal."""
         # Deadline 1 day ago
-        deadline = datetime.utcnow() - timedelta(days=1)
+        deadline = datetime.now(UTC) - timedelta(days=1)
         sample_goal.metadata["deadline"] = deadline.isoformat()
         
         urgency = context_engine.calculate_deadline_urgency(sample_goal)
@@ -448,7 +448,7 @@ class TestContextAwarePrioritization:
                    (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (goal_id, test_user, "user", "work", f"Test {goal_id}", "Test", "normal", "active",
-                 datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+                 datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
             )
         db.commit()
         
@@ -457,7 +457,7 @@ class TestContextAwarePrioritization:
             """INSERT INTO goal_dependencies 
                (dependency_id, goal_id, prerequisite_goal_id, active, created_at)
                VALUES (?, ?, ?, 1, ?)""",
-            ("dep-test-1", "goal-dep-2", "goal-dep-1", datetime.utcnow().isoformat())
+            ("dep-test-1", "goal-dep-2", "goal-dep-1", datetime.now(UTC).isoformat())
         )
         db.commit()
         
@@ -673,7 +673,7 @@ class TestGoalArbiterAdvanced:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             ("goal-outcome-test-1", test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         
         # Ensure arm exists
@@ -761,7 +761,7 @@ class TestGoalArbiterAdvanced:
             priority=GoalPriority.NORMAL,
             status="active",
             metadata={
-                "deadline": (datetime.utcnow() + timedelta(hours=2)).isoformat(),
+                "deadline": (datetime.now(UTC) + timedelta(hours=2)).isoformat(),
                 "estimated_duration_minutes": 60
             }
         )
@@ -777,7 +777,7 @@ class TestGoalArbiterAdvanced:
             priority=GoalPriority.NORMAL,
             status="active",
             metadata={
-                "deadline": (datetime.utcnow() + timedelta(days=7)).isoformat(),
+                "deadline": (datetime.now(UTC) + timedelta(days=7)).isoformat(),
                 "estimated_duration_minutes": 60
             }
         )

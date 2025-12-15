@@ -6,7 +6,7 @@ Provides contextual awareness for agency, planning, and curiosity systems.
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.core.logging import get_logger
 from aico.ai.knowledge_graph import PropertyGraphStorage
@@ -185,7 +185,7 @@ class WorldModelService:
                 # Check if project is still active (heuristic: mentioned recently)
                 is_active = (
                     node.updated_at and
-                    (datetime.utcnow() - node.updated_at).days < 30
+                    (datetime.now(UTC) - node.updated_at).days < 30
                 )
                 
                 if is_active and len(projects) < 10:

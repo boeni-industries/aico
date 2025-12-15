@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, UTC, time
 from dataclasses import dataclass
 from enum import Enum
 
@@ -350,13 +350,13 @@ class ContextAwarePrioritization:
                 estimated_duration = deadline_info.estimated_duration_minutes or 60
                 is_hard = deadline_info.is_hard_deadline
             else:
-                deadline = datetime.fromisoformat(deadline_str)
+                deadline = datetime.fromisoformat(deadline_str).replace(tzinfo=UTC)
                 buffer_hours = 2
                 estimated_duration = goal.metadata.get("estimated_duration_minutes", 60)
                 is_hard = goal.metadata.get("is_hard_deadline", True)
             
             # Calculate time until deadline
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             time_until_deadline = (deadline - now).total_seconds() / 3600  # hours
             
             # Calculate urgency based on time remaining vs estimated duration

@@ -14,7 +14,7 @@ Design:
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
 from aico.core.logging import get_logger

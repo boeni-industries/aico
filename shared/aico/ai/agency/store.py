@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
 from aico.core.logging import get_logger
@@ -31,7 +31,7 @@ class GoalStore:
     async def create_goal(self, goal: Goal) -> Goal:
         """Create a new goal."""
         try:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             goal.created_at = now
             goal.updated_at = now
 
@@ -81,8 +81,8 @@ class GoalStore:
                 status=GoalStatus(row[6]),
                 priority=GoalPriority(row[7]),
                 metadata=json.loads(row[8]) if row[8] else {},
-                created_at=datetime.fromisoformat(row[9]) if row[9] else datetime.utcnow(),
-                updated_at=datetime.fromisoformat(row[10]) if row[10] else datetime.utcnow(),
+                created_at=datetime.fromisoformat(row[9]).replace(tzinfo=UTC) if row[9] else datetime.now(UTC),
+                updated_at=datetime.fromisoformat(row[10]).replace(tzinfo=UTC) if row[10] else datetime.now(UTC),
             )
         except Exception as e:
             logger.error(f"[AGENCY_GOALS] Failed to retrieve goal: {e}", extra={"goal_id": goal_id})
@@ -119,8 +119,8 @@ class GoalStore:
                         status=GoalStatus(row[6]),
                         priority=GoalPriority(row[7]),
                         metadata=json.loads(row[8]) if row[8] else {},
-                        created_at=datetime.fromisoformat(row[9]) if row[9] else datetime.utcnow(),
-                        updated_at=datetime.fromisoformat(row[10]) if row[10] else datetime.utcnow(),
+                        created_at=datetime.fromisoformat(row[9]).replace(tzinfo=UTC) if row[9] else datetime.now(UTC),
+                        updated_at=datetime.fromisoformat(row[10]).replace(tzinfo=UTC) if row[10] else datetime.now(UTC),
                     )
                 )
             return goals
@@ -131,7 +131,7 @@ class GoalStore:
     async def update_goal_status(self, goal_id: str, new_status: GoalStatus) -> None:
         """Update goal status."""
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             self.db.execute(
                 "UPDATE agency_goals SET status = ?, updated_at = ? WHERE goal_id = ?",
                 (new_status.value, now, goal_id),
@@ -189,8 +189,8 @@ class GoalStore:
                         status=GoalStatus(row[6]),
                         priority=GoalPriority(row[7]),
                         metadata=json.loads(row[8]) if row[8] else {},
-                        created_at=datetime.fromisoformat(row[9]) if row[9] else datetime.utcnow(),
-                        updated_at=datetime.fromisoformat(row[10]) if row[10] else datetime.utcnow(),
+                        created_at=datetime.fromisoformat(row[9]).replace(tzinfo=UTC) if row[9] else datetime.now(UTC),
+                        updated_at=datetime.fromisoformat(row[10]).replace(tzinfo=UTC) if row[10] else datetime.now(UTC),
                     )
                 )
             
@@ -217,7 +217,7 @@ class PlanStore:
     async def create_plan(self, plan: Plan) -> Plan:
         """Create a new plan."""
         try:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             plan.created_at = now
             plan.updated_at = now
 
@@ -260,8 +260,8 @@ class PlanStore:
                 status=PlanStatus(row[2]),
                 steps=steps,
                 metadata=json.loads(row[4]) if row[4] else {},
-                created_at=datetime.fromisoformat(row[5]) if row[5] else datetime.utcnow(),
-                updated_at=datetime.fromisoformat(row[6]) if row[6] else datetime.utcnow(),
+                created_at=datetime.fromisoformat(row[5]).replace(tzinfo=UTC) if row[5] else datetime.now(UTC),
+                updated_at=datetime.fromisoformat(row[6]).replace(tzinfo=UTC) if row[6] else datetime.now(UTC),
             )
         except Exception as e:
             logger.error(f"[AGENCY_PLANS] Failed to retrieve plan: {e}", extra={"plan_id": plan_id})
@@ -285,8 +285,8 @@ class PlanStore:
                         status=PlanStatus(row[2]),
                         steps=steps,
                         metadata=json.loads(row[4]) if row[4] else {},
-                        created_at=datetime.fromisoformat(row[5]) if row[5] else datetime.utcnow(),
-                        updated_at=datetime.fromisoformat(row[6]) if row[6] else datetime.utcnow(),
+                        created_at=datetime.fromisoformat(row[5]).replace(tzinfo=UTC) if row[5] else datetime.now(UTC),
+                        updated_at=datetime.fromisoformat(row[6]).replace(tzinfo=UTC) if row[6] else datetime.now(UTC),
                     )
                 )
             return plans
@@ -297,7 +297,7 @@ class PlanStore:
     async def update_plan_status(self, plan_id: str, new_status: PlanStatus) -> None:
         """Update plan status."""
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             self.db.execute(
                 "UPDATE agency_plans SET status = ?, updated_at = ? WHERE plan_id = ?",
                 (new_status.value, now, plan_id),
@@ -314,7 +314,7 @@ class PlanStore:
     async def save_steps(self, plan_id: str, steps: List[PlanStep]) -> None:
         """Save plan steps."""
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             self.db.execute(
                 "UPDATE agency_plans SET steps_json = ?, updated_at = ? WHERE plan_id = ?",
                 (json.dumps([s.dict() for s in steps]), now, plan_id),
@@ -350,7 +350,7 @@ class AgencyEventStore:
                     event.event_type,
                     event.source,
                     json.dumps(event.payload),
-                    event.created_at.isoformat() if event.created_at else datetime.utcnow().isoformat(),
+                    event.created_at.isoformat() if event.created_at else datetime.now(UTC).isoformat(),
                 ),
             )
             self.db.commit()
@@ -370,7 +370,7 @@ class ReflectionStore:
         self.db = db_connection
 
     async def create_note(self, note: ReflectionNote) -> ReflectionNote:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         note.created_at = now
         note.updated_at = now
 
@@ -407,7 +407,7 @@ class LessonStore:
         """Create a new lesson."""
         from .models import Lesson
         
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         lesson.created_at = now
         lesson.updated_at = now
 
@@ -473,16 +473,16 @@ class LessonStore:
             scope=LessonScope(row["scope"]),
             status=LessonStatus(row["status"]),
             superseded_by=row["superseded_by"],
-            applied_at=datetime.fromisoformat(row["applied_at"]) if row["applied_at"] else None,
+            applied_at=datetime.fromisoformat(row["applied_at"]).replace(tzinfo=UTC) if row["applied_at"] else None,
             applied_by=row["applied_by"],
             source_reflection_run_id=row["source_reflection_run_id"],
-            evidence_window_start=datetime.fromisoformat(row["evidence_window_start"]) if row["evidence_window_start"] else None,
-            evidence_window_end=datetime.fromisoformat(row["evidence_window_end"]) if row["evidence_window_end"] else None,
+            evidence_window_start=datetime.fromisoformat(row["evidence_window_start"]).replace(tzinfo=UTC) if row["evidence_window_start"] else None,
+            evidence_window_end=datetime.fromisoformat(row["evidence_window_end"]).replace(tzinfo=UTC) if row["evidence_window_end"] else None,
             related_goal_ids=json.loads(row["related_goal_ids"]) if row["related_goal_ids"] else [],
             related_trajectory_ids=json.loads(row["related_trajectory_ids"]) if row["related_trajectory_ids"] else [],
             related_event_ids=json.loads(row["related_event_ids"]) if row["related_event_ids"] else [],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC),
         )
 
     async def get_active_lessons(
@@ -526,7 +526,7 @@ class LessonStore:
         """Update lesson status."""
         from .models import LessonStatus
         
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         self.db.execute(
             """UPDATE agency_lessons 
@@ -543,7 +543,7 @@ class LessonStore:
         applied_by: str
     ) -> bool:
         """Mark a lesson as applied."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         self.db.execute(
             """UPDATE agency_lessons 
@@ -565,7 +565,7 @@ class SelfModelStore:
         """Create or update a self-model entry."""
         from .models import SelfModelEntry
         
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         entry.last_updated = now
         
         # Check if entry exists
@@ -645,12 +645,12 @@ class SelfModelStore:
             entity_type=EntityType(row["entity_type"]),
             entity_id=row["entity_id"],
             performance_summary=PerformanceSummary(**json.loads(row["performance_summary"])),
-            window_start=datetime.fromisoformat(row["window_start"]),
-            window_end=datetime.fromisoformat(row["window_end"]),
+            window_start=datetime.fromisoformat(row["window_start"]).replace(tzinfo=UTC),
+            window_end=datetime.fromisoformat(row["window_end"]).replace(tzinfo=UTC),
             sample_size=row["sample_size"],
             confidence=row["confidence"],
-            last_updated=datetime.fromisoformat(row["last_updated"]),
-            created_at=datetime.fromisoformat(row["created_at"]),
+            last_updated=datetime.fromisoformat(row["last_updated"]).replace(tzinfo=UTC),
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
         )
 
 
@@ -664,7 +664,7 @@ class ReflectionRunStore:
         """Create a new reflection run."""
         from .models import ReflectionRun
         
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if not run.created_at:
             run.created_at = now
 
@@ -758,16 +758,16 @@ class ReflectionRunStore:
             user_id=row["user_id"],
             run_type=RunType(row["run_type"]),
             trigger_reason=row["trigger_reason"],
-            analysis_window_start=datetime.fromisoformat(row["analysis_window_start"]),
-            analysis_window_end=datetime.fromisoformat(row["analysis_window_end"]),
+            analysis_window_start=datetime.fromisoformat(row["analysis_window_start"]).replace(tzinfo=UTC),
+            analysis_window_end=datetime.fromisoformat(row["analysis_window_end"]).replace(tzinfo=UTC),
             lessons_generated=row["lessons_generated"],
             lessons_applied=row["lessons_applied"],
-            started_at=datetime.fromisoformat(row["started_at"]),
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            started_at=datetime.fromisoformat(row["started_at"]).replace(tzinfo=UTC),
+            completed_at=datetime.fromisoformat(row["completed_at"]).replace(tzinfo=UTC) if row["completed_at"] else None,
             duration_seconds=row["duration_seconds"],
             status=RunStatus(row["status"]),
             error_message=row["error_message"],
-            created_at=datetime.fromisoformat(row["created_at"]),
+            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
         )
 
     async def get_recent_runs(

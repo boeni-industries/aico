@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, Any, Optional
 
 from aico.core.logging import get_logger
@@ -72,7 +72,7 @@ class SkillInvoker:
             Dict with invocation_id, output, success, duration_ms
         """
         invocation_id = str(uuid.uuid4())
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         timeout = timeout or self.default_timeout
         context = context or {}
         
@@ -142,7 +142,7 @@ class SkillInvoker:
                 )
                 
                 # Record successful invocation
-                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
                 
                 await self._record_invocation_complete(
                     invocation_id=invocation_id,
@@ -190,7 +190,7 @@ class SkillInvoker:
                 await asyncio.sleep(2 ** retry_count)
         
         # All retries exhausted - record failure
-        duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
         
         await self._record_invocation_complete(
             invocation_id=invocation_id,
@@ -254,7 +254,7 @@ class SkillInvoker:
         context: Dict[str, Any],
     ) -> None:
         """Record skill invocation start in database."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         
         self.logger.debug(
             f"💾 [SKILL_INVOKER] Recording invocation start: {invocation_id[:8]}... "
@@ -285,7 +285,7 @@ class SkillInvoker:
         duration_ms: Optional[int] = None,
     ) -> None:
         """Record skill invocation completion."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         
         status = "completed" if success else "failed"
         self.logger.debug(

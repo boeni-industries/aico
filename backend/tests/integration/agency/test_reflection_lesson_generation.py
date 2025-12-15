@@ -11,7 +11,7 @@ Focuses on:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 
 from aico.ai.agency.models import (
@@ -31,8 +31,8 @@ class TestSkillPerformanceLessonGeneration:
         """Test that skill performance analysis runs without error."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         # Create skill first with unique ID
         skill_id = f"poor_skill_{str(uuid.uuid4())[:8]}"
@@ -41,7 +41,7 @@ class TestSkillPerformanceLessonGeneration:
                procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Poor Skill", "base", "test", "test", "{}",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         
         # Create behavioral feedback showing poor skill performance
@@ -53,7 +53,7 @@ class TestSkillPerformanceLessonGeneration:
                    (feedback_id, user_id, message_id, skill_id, reward, outcome, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, str(uuid.uuid4()), skill_id, 
-                 reward, outcome, datetime.utcnow().isoformat())
+                 reward, outcome, datetime.now(UTC).isoformat())
             )
         test_db.commit()
         
@@ -73,8 +73,8 @@ class TestSkillPerformanceLessonGeneration:
         """Test that no lessons are generated for skills with good performance."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         # Create skill first with unique ID
         skill_id = f"good_skill_{str(uuid.uuid4())[:8]}"
@@ -83,7 +83,7 @@ class TestSkillPerformanceLessonGeneration:
                procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Good Skill", "base", "test", "test", "{}",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         
         # Create behavioral feedback showing good skill performance
@@ -96,7 +96,7 @@ class TestSkillPerformanceLessonGeneration:
                    (feedback_id, user_id, message_id, skill_id, reward, outcome, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, str(uuid.uuid4()), skill_id, 
-                 reward, outcome, datetime.utcnow().isoformat())
+                 reward, outcome, datetime.now(UTC).isoformat())
             )
         test_db.commit()
         
@@ -119,8 +119,8 @@ class TestSkillPerformanceLessonGeneration:
         mock_kg = Mock()
         engine = SelfReflectionEngine(test_config, test_db, kg_storage=mock_kg)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         # Create skill first with unique ID
         skill_id = f"kg_skill_{str(uuid.uuid4())[:8]}"
@@ -129,7 +129,7 @@ class TestSkillPerformanceLessonGeneration:
                procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "KG Test Skill", "base", "test", "test", "{}",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         
         # Create poor performing skill with enough samples
@@ -141,7 +141,7 @@ class TestSkillPerformanceLessonGeneration:
                    (feedback_id, user_id, message_id, skill_id, reward, outcome, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, str(uuid.uuid4()), skill_id, 
-                 reward, outcome, datetime.utcnow().isoformat())
+                 reward, outcome, datetime.now(UTC).isoformat())
             )
         test_db.commit()
         
@@ -165,8 +165,8 @@ class TestGoalPatternLessonGeneration:
         """Test that goal pattern analysis runs without error."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         # Create goals with high retirement rate
         goal_type = "learning"
@@ -177,7 +177,7 @@ class TestGoalPatternLessonGeneration:
                    (goal_id, user_id, goal_type, title, description, status, priority, origin, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, goal_type, "Test goal", "Test description", status, 
-                 "normal", "user_request", datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+                 "normal", "user_request", datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
             )
         test_db.commit()
         
@@ -197,8 +197,8 @@ class TestGoalPatternLessonGeneration:
         """Test that no lessons are generated for goal types with low retirement rate."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         # Create goals with low retirement rate
         goal_type = "project"
@@ -209,7 +209,7 @@ class TestGoalPatternLessonGeneration:
                    (goal_id, user_id, goal_type, title, description, status, priority, origin, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, goal_type, "Test goal", "Test description", status, 
-                 "normal", "user_request", datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+                 "normal", "user_request", datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
             )
         test_db.commit()
         
@@ -229,8 +229,8 @@ class TestGoalPatternLessonGeneration:
         """Test that lessons are not generated when sample size is too small."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         # Create only 5 goals (below min_sample_size of 10)
         goal_type = "hobby"
@@ -240,7 +240,7 @@ class TestGoalPatternLessonGeneration:
                    (goal_id, user_id, goal_type, title, description, status, priority, origin, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, goal_type, "Test goal", "Test description", "retired", 
-                 "normal", "user_request", datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+                 "normal", "user_request", datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
             )
         test_db.commit()
         
@@ -264,8 +264,8 @@ class TestUserFeedbackAnalysis:
         """Test user feedback analysis when no feedback exists."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_user_feedback(
             user_id=test_user,
@@ -286,8 +286,8 @@ class TestEmotionPatternAnalysis:
         """Test emotion pattern analysis when no data exists."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_emotion_patterns(
             user_id=test_user,
@@ -310,8 +310,8 @@ class TestSocialPatternAnalysis:
         """Test social pattern analysis when no data exists."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_social_patterns(
             user_id=test_user,
@@ -332,8 +332,8 @@ class TestCuriosityOutcomeAnalysis:
         """Test curiosity outcome analysis when no data exists."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        window_start = datetime.utcnow() - timedelta(days=7)
-        window_end = datetime.utcnow()
+        window_start = datetime.now(UTC) - timedelta(days=7)
+        window_end = datetime.now(UTC)
         
         lessons = await engine._analyze_curiosity_outcomes(
             user_id=test_user,
@@ -361,7 +361,7 @@ class TestReflectionRunWithLessonGeneration:
                procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Integration Test Skill", "base", "test", "test", "{}",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         
         # Create poor performing skill with enough samples
@@ -373,7 +373,7 @@ class TestReflectionRunWithLessonGeneration:
                    (feedback_id, user_id, message_id, skill_id, reward, outcome, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, str(uuid.uuid4()), skill_id, 
-                 reward, outcome, (datetime.utcnow() - timedelta(days=3)).isoformat())
+                 reward, outcome, (datetime.now(UTC) - timedelta(days=3)).isoformat())
             )
         test_db.commit()
         
@@ -402,8 +402,8 @@ class TestReflectionRunWithLessonGeneration:
                    (goal_id, user_id, goal_type, title, description, status, priority, origin, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), test_user, goal_type, "Test goal", "Test description", status, 
-                 "normal", "user_request", (datetime.utcnow() - timedelta(days=3)).isoformat(), 
-                 datetime.utcnow().isoformat())
+                 "normal", "user_request", (datetime.now(UTC) - timedelta(days=3)).isoformat(), 
+                 datetime.now(UTC).isoformat())
             )
         test_db.commit()
         

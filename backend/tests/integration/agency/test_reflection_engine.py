@@ -6,7 +6,7 @@ Tests the self-reflection engine, lesson generation, and self-model tracking.
 
 import pytest
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.ai.agency.models import (
     LessonType, TargetKind, LessonScope, LessonStatus,
@@ -71,8 +71,8 @@ async def test_self_model_store_upsert(agency_engine, test_user):
     """Test creating and updating self-model entries."""
     from aico.ai.agency.models import SelfModelEntry, PerformanceSummary
     
-    window_start = datetime.utcnow() - timedelta(days=7)
-    window_end = datetime.utcnow()
+    window_start = datetime.now(UTC) - timedelta(days=7)
+    window_end = datetime.now(UTC)
     
     # Create a self-model entry
     entry = SelfModelEntry(
@@ -111,8 +111,8 @@ async def test_reflection_run_tracking(agency_engine, test_user):
     """Test reflection run creation and tracking."""
     from aico.ai.agency.models import ReflectionRun
     
-    window_start = datetime.utcnow() - timedelta(days=7)
-    window_end = datetime.utcnow()
+    window_start = datetime.now(UTC) - timedelta(days=7)
+    window_end = datetime.now(UTC)
     
     # Create a reflection run
     run = ReflectionRun(
@@ -122,7 +122,7 @@ async def test_reflection_run_tracking(agency_engine, test_user):
         trigger_reason="test",
         analysis_window_start=window_start,
         analysis_window_end=window_end,
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(UTC),
         status=RunStatus.RUNNING,
     )
     
@@ -135,7 +135,7 @@ async def test_reflection_run_tracking(agency_engine, test_user):
     await agency_engine.self_reflection.run_store.update_run(
         run_id=run.run_id,
         status=RunStatus.COMPLETED,
-        completed_at=datetime.utcnow(),
+        completed_at=datetime.now(UTC),
         duration_seconds=5.0,
         lessons_generated=3,
         lessons_applied=1,
@@ -386,7 +386,7 @@ async def test_arbiter_loads_adjustments(agency_engine, test_user):
         """INSERT INTO agency_arbiter_adjustments 
            (adjustment_key, adjustment_value, lesson_id, user_id, applied_at, confidence, active)
            VALUES (?, ?, ?, ?, ?, ?, 1)""",
-        ("priority", 0.5, lesson.lesson_id, test_user, datetime.utcnow().isoformat(), 0.9)
+        ("priority", 0.5, lesson.lesson_id, test_user, datetime.now(UTC).isoformat(), 0.9)
     )
     agency_engine.arbiter.db.commit()
     
@@ -429,8 +429,8 @@ async def test_skill_performance_exposure(agency_engine, test_user):
             success_rate=0.85,
             avg_duration_seconds=1.5,
         ),
-        window_start=datetime.utcnow() - timedelta(days=7),
-        window_end=datetime.utcnow(),
+        window_start=datetime.now(UTC) - timedelta(days=7),
+        window_end=datetime.now(UTC),
         sample_size=25,
         confidence=0.9,
     )
@@ -458,8 +458,8 @@ async def test_goal_type_performance_context(agency_engine, test_user):
             success_rate=0.65,
             additional_metrics={"completion_rate": 0.65, "retirement_rate": 0.35}
         ),
-        window_start=datetime.utcnow() - timedelta(days=7),
-        window_end=datetime.utcnow(),
+        window_start=datetime.now(UTC) - timedelta(days=7),
+        window_end=datetime.now(UTC),
         sample_size=20,
         confidence=0.8,
     )
@@ -508,8 +508,8 @@ async def test_all_skill_performances(agency_engine, test_user):
             performance_summary=PerformanceSummary(
                 success_rate=success_rate,
             ),
-            window_start=datetime.utcnow() - timedelta(days=7),
-            window_end=datetime.utcnow(),
+            window_start=datetime.now(UTC) - timedelta(days=7),
+            window_end=datetime.now(UTC),
             sample_size=sample_size,
             confidence=0.8,
         )
@@ -564,7 +564,7 @@ async def test_personality_service_persona_adjustments(agency_engine, test_user)
             lesson.target_kind.value, lesson.target_id, lesson.summary_text,
             lesson.proposed_change.model_dump_json(), lesson.confidence,
             lesson.scope.value, lesson.status.value,
-            datetime.utcnow().isoformat(), datetime.utcnow().isoformat(),
+            datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat(),
             "test_system"
         )
     )
@@ -615,8 +615,8 @@ async def test_arbiter_performance_multiplier(agency_engine, test_user):
         performance_summary=PerformanceSummary(
             success_rate=0.2,  # Low success rate
         ),
-        window_start=datetime.utcnow() - timedelta(days=7),
-        window_end=datetime.utcnow(),
+        window_start=datetime.now(UTC) - timedelta(days=7),
+        window_end=datetime.now(UTC),
         sample_size=20,
         confidence=0.8,  # High confidence
     )
@@ -751,14 +751,14 @@ async def test_analyze_goal_patterns_high_retirement(agency_engine, test_user):
             origin=GoalOrigin.CURIOSITY,
             priority=GoalPriority.LOW,
             status=GoalStatus.RETIRED if i < 18 else GoalStatus.COMPLETED,  # 72% retirement
-            created_at=datetime.utcnow() - timedelta(days=6),
-            completed_at=datetime.utcnow() - timedelta(days=1) if i >= 18 else None,
+            created_at=datetime.now(UTC) - timedelta(days=6),
+            completed_at=datetime.now(UTC) - timedelta(days=1) if i >= 18 else None,
         )
         await agency_engine.goal_store.create_goal(goal)
     
     # Run goal pattern analysis
-    window_start = datetime.utcnow() - timedelta(days=7)
-    window_end = datetime.utcnow()
+    window_start = datetime.now(UTC) - timedelta(days=7)
+    window_end = datetime.now(UTC)
     
     run_id = str(uuid.uuid4())
     lessons = await agency_engine.self_reflection._analyze_goal_patterns(
@@ -783,8 +783,8 @@ async def test_self_model_upsert_updates_existing(agency_engine, test_user):
     """Test that self-model upsert updates existing entries."""
     from aico.ai.agency.models import SelfModelEntry, PerformanceSummary
     
-    window_start = datetime.utcnow() - timedelta(days=7)
-    window_end = datetime.utcnow()
+    window_start = datetime.now(UTC) - timedelta(days=7)
+    window_end = datetime.now(UTC)
     
     # Create initial entry
     entry1 = SelfModelEntry(
@@ -1011,8 +1011,8 @@ async def test_run_reflection_with_no_data(agency_engine, test_user):
 @pytest.mark.asyncio
 async def test_analyze_skill_performance_empty_window(agency_engine, test_user):
     """Test skill performance analysis with empty time window."""
-    window_start = datetime.utcnow() - timedelta(days=7)
-    window_end = datetime.utcnow()
+    window_start = datetime.now(UTC) - timedelta(days=7)
+    window_end = datetime.now(UTC)
     run_id = str(uuid.uuid4())
     
     lessons = await agency_engine.self_reflection._analyze_skill_performance(
@@ -1030,8 +1030,8 @@ async def test_analyze_skill_performance_empty_window(agency_engine, test_user):
 @pytest.mark.asyncio
 async def test_analyze_goal_patterns_no_goals(agency_engine, test_user):
     """Test goal pattern analysis when user has no goals."""
-    window_start = datetime.utcnow() - timedelta(days=30)
-    window_end = datetime.utcnow()
+    window_start = datetime.now(UTC) - timedelta(days=30)
+    window_end = datetime.now(UTC)
     run_id = str(uuid.uuid4())
     
     lessons = await agency_engine.self_reflection._analyze_goal_patterns(
@@ -1048,8 +1048,8 @@ async def test_analyze_goal_patterns_no_goals(agency_engine, test_user):
 @pytest.mark.asyncio
 async def test_analyze_user_feedback_no_feedback(agency_engine, test_user):
     """Test user feedback analysis with no feedback data."""
-    window_start = datetime.utcnow() - timedelta(days=7)
-    window_end = datetime.utcnow()
+    window_start = datetime.now(UTC) - timedelta(days=7)
+    window_end = datetime.now(UTC)
     run_id = str(uuid.uuid4())
     
     lessons = await agency_engine.self_reflection._analyze_user_feedback(
@@ -1085,7 +1085,7 @@ async def test_get_active_lessons_with_type_filter(agency_engine, test_user):
         confidence=0.9,
         scope=LessonScope.THIS_USER,
         status=LessonStatus.ACTIVE,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(UTC)
     )
     
     goal_lesson = Lesson(
@@ -1104,7 +1104,7 @@ async def test_get_active_lessons_with_type_filter(agency_engine, test_user):
         confidence=0.85,
         scope=LessonScope.THIS_USER,
         status=LessonStatus.ACTIVE,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(UTC)
     )
     
     # Store both lessons
@@ -1127,7 +1127,7 @@ async def test_get_self_model_with_filters(agency_engine, test_user):
     from aico.ai.agency.models import SelfModelEntry, PerformanceSummary
     
     # Create self-model entries
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     entry1 = SelfModelEntry(
         model_id=str(uuid.uuid4()),
         user_id=test_user,

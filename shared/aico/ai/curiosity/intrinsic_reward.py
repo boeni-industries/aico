@@ -16,7 +16,7 @@ Based on research from:
 
 import math
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 
 class IntrinsicRewardCalculator:
@@ -286,7 +286,7 @@ class IntrinsicRewardCalculator:
         if not last_updated:
             return 1.0
         
-        days_old = (datetime.utcnow() - last_updated).days
+        days_old = (datetime.now(UTC) - last_updated).days
         
         # Sigmoid curve: fresh (0 days) = 0.0, very old (30+ days) = 1.0
         return self._sigmoid((days_old - 15) / 5)

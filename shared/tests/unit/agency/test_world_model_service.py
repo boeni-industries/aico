@@ -6,7 +6,7 @@ and drift detection for the world model.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
 
 from aico.ai.world_model.service import WorldModelService
@@ -76,8 +76,8 @@ class TestWorldModelService:
         mock_node.label = "Test Project"
         mock_node.entity_type = "project"
         mock_node.properties = {"description": "Test description"}
-        mock_node.created_at = datetime.utcnow()
-        mock_node.updated_at = datetime.utcnow()
+        mock_node.created_at = datetime.now(UTC)
+        mock_node.updated_at = datetime.now(UTC)
         
         mock_kg_storage.get_user_nodes.return_value = [mock_node]
         
@@ -191,8 +191,8 @@ class TestWorldModelService:
     async def test_detect_drift(self, service):
         """Test drift detection delegation."""
         historical_states = [
-            {"name": "Alice", "age": 30, "timestamp": datetime.utcnow()},
-            {"name": "Alice", "age": 31, "timestamp": datetime.utcnow()},
+            {"name": "Alice", "age": 30, "timestamp": datetime.now(UTC)},
+            {"name": "Alice", "age": 31, "timestamp": datetime.now(UTC)},
         ]
         
         drift = await service.detect_drift(
@@ -208,8 +208,8 @@ class TestWorldModelService:
     async def test_detect_contradictions(self, service):
         """Test contradiction detection delegation."""
         facts = [
-            {"content": "User lives in NYC", "confidence": 0.9, "timestamp": datetime.utcnow()},
-            {"content": "User lives in LA", "confidence": 0.8, "timestamp": datetime.utcnow()},
+            {"content": "User lives in NYC", "confidence": 0.9, "timestamp": datetime.now(UTC)},
+            {"content": "User lives in LA", "confidence": 0.8, "timestamp": datetime.now(UTC)},
         ]
         
         contradictions = await service.detect_contradictions(facts)
@@ -251,7 +251,7 @@ class TestWorldModelService:
         mock_node.entity_type = "person"
         mock_node.properties = {}
         mock_node.confidence = 0.9
-        mock_node.updated_at = datetime.utcnow()
+        mock_node.updated_at = datetime.now(UTC)
         
         mock_kg_storage.get_user_nodes.return_value = [mock_node]
         

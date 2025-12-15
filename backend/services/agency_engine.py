@@ -6,7 +6,7 @@ the shared/aico/ai/agency/AgencyEngine orchestrator registered in ai_registry.
 """
 
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
 from aico.ai import ai_registry

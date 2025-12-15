@@ -5,7 +5,7 @@ Tests follow-up generation, reminder scheduling, clustering, and adaptation.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.ai.agency.proactive import (
     FollowupSystem,
@@ -43,14 +43,14 @@ class TestFollowupSystem:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return goal_id
     
     def test_create_followup(self, followup_system, test_user, test_goal_id):
         """Test creating a follow-up."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         followup_id = followup_system.create_followup(
             user_id=test_user,
@@ -78,7 +78,7 @@ class TestFollowupSystem:
     def test_get_pending_followups(self, followup_system, test_user, test_goal_id):
         """Test retrieving pending follow-ups."""
         # Create multiple follow-ups
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         # Past - should be retrieved
         followup_system.create_followup(
@@ -105,7 +105,7 @@ class TestFollowupSystem:
     
     def test_mark_followup_delivered(self, followup_system, test_user):
         """Test marking follow-up as delivered."""
-        scheduled_at = datetime.utcnow() - timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) - timedelta(hours=1)
         
         followup_id = followup_system.create_followup(
             user_id=test_user,
@@ -126,7 +126,7 @@ class TestFollowupSystem:
     
     def test_record_followup_response(self, followup_system, test_user):
         """Test recording user response to follow-up."""
-        scheduled_at = datetime.utcnow() - timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) - timedelta(hours=1)
         
         followup_id = followup_system.create_followup(
             user_id=test_user,
@@ -158,11 +158,11 @@ class TestFollowupSystem:
             """INSERT OR REPLACE INTO user_proactive_preferences 
                (user_id, followup_enabled, max_followups_per_day, updated_at)
                VALUES (?, 1, 2, ?)""",
-            (test_user, datetime.utcnow().isoformat())
+            (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
         
-        scheduled_at = datetime.utcnow() + timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
         
         # Create and deliver 2 follow-ups (at limit)
         for i in range(2):
@@ -216,14 +216,14 @@ class TestReminderSystem:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return goal_id
     
     def test_create_reminder(self, reminder_system, test_user, test_goal_id):
         """Test creating a reminder."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=3)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=3)
         
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
@@ -252,7 +252,7 @@ class TestReminderSystem:
     def test_urgency_calculation(self, reminder_system, test_user):
         """Test urgency score calculation."""
         # Urgent priority + soon
-        scheduled_soon = datetime.utcnow() + timedelta(minutes=30)
+        scheduled_soon = datetime.now(UTC) + timedelta(minutes=30)
         reminder_id_urgent = reminder_system.create_reminder(
             user_id=test_user,
             title="Urgent soon",
@@ -261,7 +261,7 @@ class TestReminderSystem:
         )
         
         # Low priority + far
-        scheduled_far = datetime.utcnow() + timedelta(days=7)
+        scheduled_far = datetime.now(UTC) + timedelta(days=7)
         reminder_id_low = reminder_system.create_reminder(
             user_id=test_user,
             title="Low later",
@@ -283,7 +283,7 @@ class TestReminderSystem:
     
     def test_get_pending_reminders(self, reminder_system, test_user):
         """Test retrieving pending reminders."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         
         # Past - should be retrieved
         reminder_system.create_reminder(
@@ -306,7 +306,7 @@ class TestReminderSystem:
     
     def test_snooze_reminder(self, reminder_system, test_user):
         """Test snoozing a reminder."""
-        scheduled_at = datetime.utcnow() - timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) - timedelta(hours=1)
         
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
@@ -327,7 +327,7 @@ class TestReminderSystem:
     
     def test_complete_reminder(self, reminder_system, test_user):
         """Test completing a reminder."""
-        scheduled_at = datetime.utcnow() - timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) - timedelta(hours=1)
         
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
@@ -369,11 +369,11 @@ class TestReminderClustering:
             """INSERT OR REPLACE INTO user_proactive_preferences 
                (user_id, cluster_reminders, updated_at)
                VALUES (?, 1, ?)""",
-            (test_user, datetime.utcnow().isoformat())
+            (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
         
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         # Create multiple reminders at similar times
         reminder_ids = []
@@ -403,11 +403,11 @@ class TestReminderClustering:
             """INSERT OR REPLACE INTO user_proactive_preferences 
                (user_id, cluster_reminders, updated_at)
                VALUES (?, 1, ?)""",
-            (test_user, datetime.utcnow().isoformat())
+            (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
         
-        scheduled_at = datetime.utcnow() + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         
         # Create reminders that will cluster
         reminder_ids = []
@@ -465,7 +465,7 @@ class TestProactiveIntegration:
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
         return goal_id
@@ -478,7 +478,7 @@ class TestProactiveIntegration:
         test_goal_id
     ):
         """Test creating both follow-up and reminder for same goal."""
-        scheduled_at = datetime.utcnow() + timedelta(hours=4)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=4)
         
         # Create follow-up
         followup_id = followup_system.create_followup(
@@ -521,7 +521,7 @@ class TestProactiveIntegration:
             user_id=test_user,
             followup_type=FollowupType.CHECK_IN,
             content="Check in",
-            scheduled_at=datetime.utcnow() - timedelta(hours=1)
+            scheduled_at=datetime.now(UTC) - timedelta(hours=1)
         )
         followup_system.mark_delivered(followup_id)
         followup_system.record_response(followup_id, "All good!", 0.9)
@@ -530,7 +530,7 @@ class TestProactiveIntegration:
         reminder_id = reminder_system.create_reminder(
             user_id=test_user,
             title="Reminder",
-            scheduled_at=datetime.utcnow() - timedelta(hours=1)
+            scheduled_at=datetime.now(UTC) - timedelta(hours=1)
         )
         reminder_system.snooze_reminder(reminder_id)
         

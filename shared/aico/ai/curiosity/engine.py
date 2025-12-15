@@ -6,7 +6,7 @@ Based on agency-component-curiosity-engine.md.
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import List, Optional, Dict, Any
 
 from .models import (

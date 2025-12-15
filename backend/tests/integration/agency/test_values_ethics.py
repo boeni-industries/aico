@@ -5,7 +5,7 @@ Tests policy evaluation, goal/plan/signal assessment, and ethical gates.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.ai.agency import AgencyEngine
 from aico.ai.agency.models import GoalStatus, GoalOrigin, GoalPriority
