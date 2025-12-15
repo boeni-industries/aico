@@ -96,57 +96,71 @@ class SearchMemorySkill(Skill):
             
             memories = []
             
-            # Search semantic memory (facts stored in database)
+            # Search semantic memory (facts stored in user_memories table)
             if "semantic" in memory_types:
-                # Search in semantic_memory table if it exists
                 try:
+                    # Search user_memories table for relevant facts
+                    query_lower = query.lower()
                     semantic_results = self.db.execute(
-                        """SELECT content, metadata, created_at
-                           FROM semantic_memory
+                        """SELECT fact_id, fact_type, content, category, confidence, 
+                                  source_conversation_id, created_at
+                           FROM user_memories
                            WHERE user_id = ?
                            ORDER BY created_at DESC
                            LIMIT ?""",
-                        (user_id, limit)
+                        (user_id, limit * 2)
                     ).fetchall()
                     
+                    # Filter by query relevance
                     for result in semantic_results:
-                        memories.append({
-                            "type": "semantic",
-                            "content": result["content"],
-                            "metadata": json.loads(result["metadata"]) if result["metadata"] else {},
-                            "timestamp": result["created_at"],
-                            "relevance": 0.85,  # Placeholder relevance score
-                        })
+                        content = result["content"] or ""
+                        if query_lower in content.lower():
+                            memories.append({
+                                "type": "semantic",
+                                "content": content,
+                                "fact_type": result["fact_type"],
+                                "category": result["category"],
+                                "confidence": result["confidence"],
+                                "timestamp": result["created_at"],
+                                "relevance": 0.85,
+                            })
+                            if len(memories) >= limit:
+                                break
                 except Exception as e:
-                    logger.debug(f"🧠 [SEARCH_MEMORY] Semantic memory table not available: {e}")
+                    logger.debug(f"🧠 [SEARCH_MEMORY] User memories search failed: {e}")
             
-            # Search episodic memory (conversation history)
-            if "episodic" in memory_types or not memories:
-                # Search recent conversations for relevant content
-                conversations = self.db.execute(
-                    """SELECT c.conversation_id, c.created_at, cm.content
-                       FROM conversations c
-                       JOIN conversation_messages cm ON c.conversation_id = cm.conversation_id
-                       WHERE c.user_id = ? AND cm.role = 'user'
-                       ORDER BY c.created_at DESC
-                       LIMIT ?""",
-                    (user_id, limit * 2)
-                ).fetchall()
-                
-                # Simple keyword matching for relevance
-                query_lower = query.lower()
-                for conv in conversations:
-                    content = conv["content"]
-                    if query_lower in content.lower():
-                        memories.append({
-                            "type": "episodic",
-                            "content": content[:200],  # Truncate long content
-                            "conversation_id": conv["conversation_id"],
-                            "timestamp": conv["created_at"],
-                            "relevance": 0.75,
-                        })
-                        if len(memories) >= limit:
-                            break
+            # Search episodic memory (AICO-initiated conversations)
+            if "episodic" in memory_types and len(memories) < limit:
+                try:
+                    # Search AICO conversation initiations for relevant content
+                    query_lower = query.lower()
+                    conversations = self.db.execute(
+                        """SELECT initiation_id, conversation_id, question, context, 
+                                  initiated_at, resolution_status
+                           FROM aico_conversation_initiations
+                           WHERE user_id = ?
+                           ORDER BY initiated_at DESC
+                           LIMIT ?""",
+                        (user_id, limit * 2)
+                    ).fetchall()
+                    
+                    # Simple keyword matching for relevance
+                    for conv in conversations:
+                        question = conv["question"] or ""
+                        context = conv["context"] or ""
+                        combined = f"{question} {context}"
+                        if query_lower in combined.lower():
+                            memories.append({
+                                "type": "episodic",
+                                "content": question[:200],
+                                "conversation_id": conv["conversation_id"],
+                                "timestamp": conv["initiated_at"],
+                                "relevance": 0.75,
+                            })
+                            if len(memories) >= limit:
+                                break
+                except Exception as e:
+                    logger.debug(f"🧠 [SEARCH_MEMORY] Episodic memory search failed: {e}")
             
             # Sort by relevance and limit
             memories.sort(key=lambda x: x["relevance"], reverse=True)
