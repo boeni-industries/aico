@@ -183,7 +183,7 @@ title: Phase 8 - Agency CLI & Analysis
 ## Related Documentation
 
 - [Phase 7: Testing & QA](agency-phase-7-testing-qa.md)
-- [Phase 9: UI & Tooling](agency-phase-9-ui-tooling.md)
+- [Phase 9: Lesson Management](agency-phase-9-lesson-management.md)
 - [Current Status](agency-roadmap-status.md)
 - [Roadmap Overview](agency-roadmap-overview.md)
 - [Future Enhancements](agency-roadmap-overview.md#future-enhancements) - See Analytics & Observability section

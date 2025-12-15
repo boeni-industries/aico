@@ -137,7 +137,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             ("🌐", "gateway", "API Gateway management and protocol control"),
             ("🤖", "modelservice", "Model service management and control"),
             ("🦙", "ollama", "Ollama model management and operations"),
-            ("🎯", "agency", "Agency system control (intentions, values, policies)"),
+            ("🎯", "agency", "Agency system control (intentions, values, policies, lessons)"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")
         ]
         

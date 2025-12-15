@@ -160,21 +160,39 @@ This document provides a high-level overview of AICO's agency system implementat
 
 ---
 
-### Phase 9: User Interfaces & Tooling 🚧
-**Goal:** User-facing interfaces for monitoring and configuration
+### Phase 9: Lesson Management & User Tooling 🚧
+**Goal:** CLI tooling for lesson review and approval
 
 **Status:** In Progress
 
-**Completed:**
-- Metrics data collection
-- Core CLI commands
+**Prerequisites Completed (Phase 8):**
+- Metrics data collection (1,188+ events)
+- 13 CLI commands for agency monitoring
+- Advanced analytics commands
 
 **Pending:**
-- Advanced analytics CLI
-- Lesson management UI
-- Web dashboard
+- Lesson management CLI (5 commands)
+- Lesson approval/rejection workflow
+- Lesson statistics and reporting
 
-[→ Phase 9 Details](agency-phase-9-ui-tooling.md)
+[→ Phase 9 Details](agency-phase-9-lesson-management.md)
+
+---
+
+### Phase 10: UI & Frontend Integration 🔮
+**Goal:** User-facing interfaces for monitoring and control
+
+**Status:** Future
+
+**Scope:**
+- REST API endpoints for metrics and lessons
+- Web dashboard with real-time visualization
+- Flutter UI integration (agency dashboard, value profile management)
+- Policy and consent management UI
+- Embodiment integration
+- Real-world context awareness
+
+[→ Phase 10 Details](agency-phase-10-ui-frontend.md)
 
 ---
 
@@ -227,6 +245,7 @@ These items were deferred from completed phases and represent potential improvem
 | Phase 6 | ✅ Complete | [Advanced Integration](agency-phase-6-advanced-integration.md) |
 | Phase 7 | ✅ Complete | [Testing & QA](agency-phase-7-testing-qa.md) |
 | Phase 8 | ✅ Complete | [CLI & Analysis](agency-phase-8-cli-analysis.md) |
-| Phase 9 | 🚧 In Progress | [UI & Tooling](agency-phase-9-ui-tooling.md) |
+| Phase 9 | 🚧 In Progress | [Lesson Management](agency-phase-9-lesson-management.md) |
+| Phase 10 | 🔮 Future | [UI & Frontend](agency-phase-10-ui-frontend.md) |
 
 Last Updated: 2025-12-15

@@ -37,11 +37,11 @@ title: Agency System - Current Status
 - ✅ Health monitoring and diagnostics (`health`)
 - ✅ Time window filtering support (`--last`, `--since`)
 
-**Phase 9 - UI & Tooling:**
-- [ ] Lesson management UI (`aico lessons list/review/approve`)
-- [ ] REST API endpoints for metrics
-- [ ] Web dashboard framework selection
-- [ ] Flutter UI integration planning
+**Phase 9 - Lesson Management CLI:**
+- [ ] `aico lessons list` - List and filter lessons
+- [ ] `aico lessons review <id>` - Detailed lesson view
+- [ ] `aico lessons approve/reject <id>` - Approval workflow
+- [ ] `aico lessons stats` - Lesson analytics
 
 ---
 
@@ -127,27 +127,26 @@ title: Agency System - Current Status
 **Current Blockers:** None
 
 **Pending Dependencies:**
-- REST API endpoints for metrics (Phase 9)
-- Web dashboard framework selection (Phase 9)
+- None (Phase 9 scope is self-contained CLI work)
 
 ---
 
 ## Next Milestones
 
 ### Short Term (Next 2 Weeks)
-1. Complete Phase 9 CLI commands
-2. Implement lesson management UI
-3. Add health monitoring commands
+1. Implement lesson management CLI commands
+2. Add lesson approval/rejection workflow
+3. Create lesson statistics and reporting
 
 ### Medium Term (Next Month)
-1. REST API endpoints for metrics
-2. Web dashboard prototype
-3. Flutter UI integration
+1. Complete Phase 9
+2. Comprehensive testing of lesson management
+3. User acceptance testing
 
 ### Long Term (Next Quarter)
-1. Complete Phase 9
-2. Production deployment readiness
-3. User acceptance testing
+1. Production deployment readiness
+2. Performance optimization
+3. Advanced UI features (see Future Enhancements)
 
 ---
 
@@ -178,5 +177,6 @@ title: Agency System - Current Status
 
 - [Roadmap Overview](agency-roadmap-overview.md)
 - [Phase 8 Details](agency-phase-8-cli-analysis.md)
-- [Phase 9 Details](agency-phase-9-ui-tooling.md)
+- [Phase 9 Details](agency-phase-9-lesson-management.md)
+- [Phase 10 Details](agency-phase-10-ui-frontend.md)
 - [Testing & QA](agency-phase-7-testing-qa.md)

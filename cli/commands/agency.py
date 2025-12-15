@@ -72,6 +72,7 @@ def agency_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ("reflection-history", "Analyze reflection run history"),
             ("skill-performance", "Analyze skill execution success rates"),
             ("health", "Run diagnostic health checks"),
+            ("lessons", "Manage lessons (list, review, approve, reject)"),
         ]
         
         format_subcommand_help(
@@ -1629,6 +1630,560 @@ def _parse_duration(duration_str: str) -> "timedelta":
 # Register proactive conversation subcommand
 from .agency_proactive import app as proactive_app
 app.add_typer(proactive_app, name="proactive")
+
+
+# ============================================================================
+# LESSON MANAGEMENT COMMANDS
+# ============================================================================
+
+lessons_app = typer.Typer(
+    help="Manage lessons learned by AICO's reflection system",
+    invoke_without_command=True,
+    no_args_is_help=False
+)
+
+
+@lessons_app.callback(invoke_without_command=True)
+def lessons_callback(
+    ctx: typer.Context,
+    help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")
+):
+    """Lesson management commands."""
+    if ctx.invoked_subcommand is None or help:
+        from cli.utils.help_formatter import format_subcommand_help
+        
+        subcommands = [
+            ("ls", "List all lessons with filtering"),
+            ("show", "View detailed lesson information"),
+            ("approve", "Approve a lesson for application"),
+            ("reject", "Reject a lesson"),
+            ("stats", "Display lesson statistics"),
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="agency lessons",
+            description="Review and manage lessons learned by AICO's reflection system.",
+            subcommands=subcommands
+        )
+        raise typer.Exit()
+
+
+@lessons_app.command(name="ls")
+def ls(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status (active, superseded, rejected)"),
+    lesson_type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by lesson type"),
+    min_confidence: Optional[float] = typer.Option(None, "--min-confidence", help="Minimum confidence score (0.0-1.0)"),
+    last: Optional[str] = typer.Option(None, "--last", help="Time window (e.g., 7d, 24h, 30m)"),
+    since: Optional[str] = typer.Option(None, "--since", help="Since timestamp (ISO format)"),
+    limit: int = typer.Option(50, "--limit", "-l", help="Maximum number of lessons to show"),
+    sort: str = typer.Option("created", "--sort", help="Sort by: created, confidence, applied"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    List all lessons with optional filtering.
+    
+    Examples:
+        aico agency lessons list --status active
+        aico agency lessons list --type skill_tuning --min-confidence 0.7
+        aico agency lessons list --last 7d --limit 20
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        # Build query
+        query = """
+            SELECT 
+                lesson_id,
+                lesson_type,
+                target_kind,
+                target_id,
+                summary_text,
+                confidence,
+                status,
+                applied_at,
+                created_at,
+                source_reflection_run_id
+            FROM agency_lessons
+            WHERE user_id = ?
+        """
+        params = [user_id]
+        
+        # Add filters
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        
+        if lesson_type:
+            query += " AND lesson_type = ?"
+            params.append(lesson_type)
+        
+        if min_confidence is not None:
+            query += " AND confidence >= ?"
+            params.append(min_confidence)
+        
+        # Time filtering
+        if last:
+            since_dt = datetime.now() - _parse_duration(last)
+            query += " AND created_at >= ?"
+            params.append(since_dt.isoformat())
+        elif since:
+            query += " AND created_at >= ?"
+            params.append(since)
+        
+        # Sorting
+        if sort == "created":
+            query += " ORDER BY created_at DESC"
+        elif sort == "confidence":
+            query += " ORDER BY confidence DESC, created_at DESC"
+        elif sort == "applied":
+            query += " ORDER BY applied_at DESC NULLS LAST, created_at DESC"
+        else:
+            query += " ORDER BY created_at DESC"
+        
+        query += " LIMIT ?"
+        params.append(limit)
+        
+        lessons = db.execute(query, tuple(params)).fetchall()
+        
+        if not lessons:
+            console.print("[yellow]No lessons found matching criteria[/yellow]")
+            return
+        
+        if json_output:
+            output = [
+                {
+                    "lesson_id": l["lesson_id"],
+                    "lesson_type": l["lesson_type"],
+                    "target_kind": l["target_kind"],
+                    "target_id": l["target_id"],
+                    "summary": l["summary_text"],
+                    "confidence": l["confidence"],
+                    "status": l["status"],
+                    "applied_at": l["applied_at"],
+                    "created_at": l["created_at"],
+                    "reflection_run_id": l["source_reflection_run_id"]
+                }
+                for l in lessons
+            ]
+            console.print_json(data=output)
+        else:
+            table = Table(title=f"Lessons for {user_id}", box=box.ROUNDED)
+            table.add_column("ID", style="cyan", no_wrap=True)
+            table.add_column("Type", style="blue")
+            table.add_column("Target", style="magenta")
+            table.add_column("Summary", style="white")
+            table.add_column("Confidence", style="yellow")
+            table.add_column("Status", style="green")
+            table.add_column("Applied", style="dim")
+            
+            for l in lessons:
+                # Truncate summary
+                summary = l["summary_text"][:60] + "..." if len(l["summary_text"]) > 60 else l["summary_text"]
+                
+                # Color code confidence
+                conf = l["confidence"]
+                conf_color = "green" if conf >= 0.8 else "yellow" if conf >= 0.6 else "red"
+                
+                # Status color
+                status_color = "green" if l["status"] == "active" else "red" if l["status"] == "rejected" else "dim"
+                
+                # Applied status
+                applied = "✓" if l["applied_at"] else "-"
+                
+                table.add_row(
+                    l["lesson_id"][:8],
+                    l["lesson_type"],
+                    f"{l['target_kind']}",
+                    summary,
+                    f"[{conf_color}]{conf:.2f}[/{conf_color}]",
+                    f"[{status_color}]{l['status']}[/{status_color}]",
+                    applied
+                )
+            
+            console.print(table)
+            console.print(f"\n[dim]Total: {len(lessons)} lessons[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error listing lessons: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@lessons_app.command(name="show")
+def show(
+    lesson_id: str = typer.Argument(..., help="Lesson ID to review"),
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    Display detailed information about a specific lesson.
+    
+    Shows lesson content, evidence, confidence, application history, and related data.
+    
+    Example:
+        aico agency lessons review abc12345
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        # Get lesson details
+        lesson = db.execute(
+            """SELECT * FROM agency_lessons 
+               WHERE lesson_id = ? AND user_id = ?""",
+            (lesson_id, user_id)
+        ).fetchone()
+        
+        if not lesson:
+            console.print(f"[red]✗[/red] Lesson not found: {lesson_id}")
+            raise typer.Exit(1)
+        
+        if json_output:
+            output = {
+                "lesson_id": lesson["lesson_id"],
+                "lesson_type": lesson["lesson_type"],
+                "target_kind": lesson["target_kind"],
+                "target_id": lesson["target_id"],
+                "summary": lesson["summary_text"],
+                "proposed_change": json.loads(lesson["proposed_change"]) if lesson["proposed_change"] else None,
+                "confidence": lesson["confidence"],
+                "metrics_basis": json.loads(lesson["metrics_basis"]) if lesson["metrics_basis"] else None,
+                "scope": lesson["scope"],
+                "status": lesson["status"],
+                "superseded_by": lesson["superseded_by"],
+                "applied_at": lesson["applied_at"],
+                "applied_by": lesson["applied_by"],
+                "source_reflection_run_id": lesson["source_reflection_run_id"],
+                "evidence_window": {
+                    "start": lesson["evidence_window_start"],
+                    "end": lesson["evidence_window_end"]
+                },
+                "related_goal_ids": json.loads(lesson["related_goal_ids"]) if lesson["related_goal_ids"] else [],
+                "related_trajectory_ids": json.loads(lesson["related_trajectory_ids"]) if lesson["related_trajectory_ids"] else [],
+                "related_event_ids": json.loads(lesson["related_event_ids"]) if lesson["related_event_ids"] else [],
+                "created_at": lesson["created_at"],
+                "updated_at": lesson["updated_at"]
+            }
+            console.print_json(data=output)
+        else:
+            # Header panel
+            header = f"[bold cyan]Lesson {lesson['lesson_id'][:8]}[/bold cyan]\n"
+            header += f"Type: {lesson['lesson_type']} | Target: {lesson['target_kind']}"
+            if lesson["target_id"]:
+                header += f" ({lesson['target_id'][:20]})"
+            console.print(Panel(header, box=box.ROUNDED))
+            
+            # Summary
+            console.print(f"\n[bold]Summary:[/bold]")
+            console.print(lesson["summary_text"])
+            
+            # Proposed change
+            if lesson["proposed_change"]:
+                console.print(f"\n[bold]Proposed Change:[/bold]")
+                change = json.loads(lesson["proposed_change"])
+                console.print_json(data=change)
+            
+            # Confidence and metrics
+            conf = lesson["confidence"]
+            conf_color = "green" if conf >= 0.8 else "yellow" if conf >= 0.6 else "red"
+            console.print(f"\n[bold]Confidence:[/bold] [{conf_color}]{conf:.2f}[/{conf_color}]")
+            
+            if lesson["metrics_basis"]:
+                console.print(f"\n[bold]Evidence Metrics:[/bold]")
+                metrics = json.loads(lesson["metrics_basis"])
+                console.print_json(data=metrics)
+            
+            # Status and application
+            status_color = "green" if lesson["status"] == "active" else "red" if lesson["status"] == "rejected" else "dim"
+            console.print(f"\n[bold]Status:[/bold] [{status_color}]{lesson['status']}[/{status_color}]")
+            
+            if lesson["applied_at"]:
+                console.print(f"[bold]Applied:[/bold] {lesson['applied_at'][:19]} by {lesson['applied_by']}")
+            else:
+                console.print(f"[bold]Applied:[/bold] Not yet applied")
+            
+            if lesson["superseded_by"]:
+                console.print(f"[bold]Superseded by:[/bold] {lesson['superseded_by'][:8]}")
+            
+            # Provenance
+            console.print(f"\n[bold]Provenance:[/bold]")
+            console.print(f"  Reflection Run: {lesson['source_reflection_run_id'][:8] if lesson['source_reflection_run_id'] else 'N/A'}")
+            console.print(f"  Evidence Window: {lesson['evidence_window_start'][:10] if lesson['evidence_window_start'] else 'N/A'} to {lesson['evidence_window_end'][:10] if lesson['evidence_window_end'] else 'N/A'}")
+            console.print(f"  Scope: {lesson['scope']}")
+            
+            # Related entities
+            if lesson["related_goal_ids"]:
+                goals = json.loads(lesson["related_goal_ids"])
+                console.print(f"\n[bold]Related Goals:[/bold] {len(goals)} goal(s)")
+            
+            if lesson["related_trajectory_ids"]:
+                trajs = json.loads(lesson["related_trajectory_ids"])
+                console.print(f"[bold]Related Trajectories:[/bold] {len(trajs)} trajectory(ies)")
+            
+            # Timestamps
+            console.print(f"\n[dim]Created: {lesson['created_at'][:19]}[/dim]")
+            console.print(f"[dim]Updated: {lesson['updated_at'][:19]}[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error reviewing lesson: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@lessons_app.command(name="approve")
+def approve(
+    lesson_id: str = typer.Argument(..., help="Lesson ID to approve"),
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    reason: Optional[str] = typer.Option(None, "--reason", "-r", help="Approval reason"),
+):
+    """
+    Approve a lesson for application.
+    
+    Marks the lesson as approved and enables automatic application by the LessonApplicator.
+    
+    Example:
+        aico agency lessons approve abc12345 --reason "Good improvement"
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        # Check if lesson exists
+        lesson = db.execute(
+            """SELECT lesson_id, status, summary_text FROM agency_lessons 
+               WHERE lesson_id = ? AND user_id = ?""",
+            (lesson_id, user_id)
+        ).fetchone()
+        
+        if not lesson:
+            console.print(f"[red]✗[/red] Lesson not found: {lesson_id}")
+            raise typer.Exit(1)
+        
+        if lesson["status"] == "active":
+            console.print(f"[yellow]⚠[/yellow] Lesson is already active")
+            return
+        
+        # Update status to active
+        now = datetime.now().isoformat()
+        db.execute(
+            """UPDATE agency_lessons 
+               SET status = 'active', updated_at = ?
+               WHERE lesson_id = ?""",
+            (now, lesson_id)
+        )
+        db.commit()
+        
+        console.print(f"[green]✓[/green] Lesson approved: {lesson_id[:8]}")
+        console.print(f"  {lesson['summary_text'][:80]}")
+        if reason:
+            console.print(f"  Reason: {reason}")
+        console.print("\n[dim]The lesson will be automatically applied by the LessonApplicator[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error approving lesson: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@lessons_app.command(name="reject")
+def reject(
+    lesson_id: str = typer.Argument(..., help="Lesson ID to reject"),
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    reason: Optional[str] = typer.Option(None, "--reason", "-r", help="Rejection reason"),
+):
+    """
+    Reject a lesson to prevent its application.
+    
+    Marks the lesson as rejected and prevents future application.
+    
+    Example:
+        aico agency lessons reject abc12345 --reason "Not applicable"
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        # Check if lesson exists
+        lesson = db.execute(
+            """SELECT lesson_id, status, summary_text FROM agency_lessons 
+               WHERE lesson_id = ? AND user_id = ?""",
+            (lesson_id, user_id)
+        ).fetchone()
+        
+        if not lesson:
+            console.print(f"[red]✗[/red] Lesson not found: {lesson_id}")
+            raise typer.Exit(1)
+        
+        if lesson["status"] == "rejected":
+            console.print(f"[yellow]⚠[/yellow] Lesson is already rejected")
+            return
+        
+        # Update status to rejected
+        now = datetime.now().isoformat()
+        db.execute(
+            """UPDATE agency_lessons 
+               SET status = 'rejected', updated_at = ?
+               WHERE lesson_id = ?""",
+            (now, lesson_id)
+        )
+        db.commit()
+        
+        console.print(f"[red]✗[/red] Lesson rejected: {lesson_id[:8]}")
+        console.print(f"  {lesson['summary_text'][:80]}")
+        if reason:
+            console.print(f"  Reason: {reason}")
+        console.print("\n[dim]The lesson will not be applied[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error rejecting lesson: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@lessons_app.command(name="stats")
+def stats(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    Display lesson statistics and analytics.
+    
+    Shows total lessons by status, type, confidence distribution, and application rates.
+    
+    Example:
+        aico agency lessons stats
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        # Get status breakdown
+        status_stats = db.execute(
+            """SELECT status, COUNT(*) as count
+               FROM agency_lessons
+               WHERE user_id = ?
+               GROUP BY status""",
+            (user_id,)
+        ).fetchall()
+        
+        # Get type breakdown
+        type_stats = db.execute(
+            """SELECT lesson_type, COUNT(*) as count
+               FROM agency_lessons
+               WHERE user_id = ?
+               GROUP BY lesson_type""",
+            (user_id,)
+        ).fetchall()
+        
+        # Get confidence distribution
+        confidence_stats = db.execute(
+            """SELECT 
+                COUNT(*) as total,
+                AVG(confidence) as avg_confidence,
+                MIN(confidence) as min_confidence,
+                MAX(confidence) as max_confidence,
+                SUM(CASE WHEN confidence >= 0.8 THEN 1 ELSE 0 END) as high_confidence,
+                SUM(CASE WHEN confidence >= 0.6 AND confidence < 0.8 THEN 1 ELSE 0 END) as medium_confidence,
+                SUM(CASE WHEN confidence < 0.6 THEN 1 ELSE 0 END) as low_confidence
+               FROM agency_lessons
+               WHERE user_id = ?""",
+            (user_id,)
+        ).fetchone()
+        
+        # Get application stats
+        application_stats = db.execute(
+            """SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN applied_at IS NOT NULL THEN 1 ELSE 0 END) as applied,
+                SUM(CASE WHEN applied_at IS NULL AND status = 'active' THEN 1 ELSE 0 END) as pending_application
+               FROM agency_lessons
+               WHERE user_id = ?""",
+            (user_id,)
+        ).fetchone()
+        
+        if json_output:
+            output = {
+                "by_status": {row["status"]: row["count"] for row in status_stats},
+                "by_type": {row["lesson_type"]: row["count"] for row in type_stats},
+                "confidence": {
+                    "total": confidence_stats["total"],
+                    "average": confidence_stats["avg_confidence"],
+                    "min": confidence_stats["min_confidence"],
+                    "max": confidence_stats["max_confidence"],
+                    "high": confidence_stats["high_confidence"],
+                    "medium": confidence_stats["medium_confidence"],
+                    "low": confidence_stats["low_confidence"]
+                },
+                "application": {
+                    "total": application_stats["total"],
+                    "applied": application_stats["applied"],
+                    "pending": application_stats["pending_application"],
+                    "application_rate": (application_stats["applied"] / application_stats["total"] * 100) if application_stats["total"] > 0 else 0
+                }
+            }
+            console.print_json(data=output)
+        else:
+            console.print(Panel(f"[bold cyan]Lesson Statistics for {user_id}[/bold cyan]", box=box.ROUNDED))
+            
+            # Status breakdown
+            console.print("\n[bold]By Status:[/bold]")
+            status_table = Table(box=box.SIMPLE)
+            status_table.add_column("Status", style="cyan")
+            status_table.add_column("Count", style="white")
+            for row in status_stats:
+                status_color = "green" if row["status"] == "active" else "red" if row["status"] == "rejected" else "dim"
+                status_table.add_row(f"[{status_color}]{row['status']}[/{status_color}]", str(row["count"]))
+            console.print(status_table)
+            
+            # Type breakdown
+            console.print("\n[bold]By Type:[/bold]")
+            type_table = Table(box=box.SIMPLE)
+            type_table.add_column("Type", style="blue")
+            type_table.add_column("Count", style="white")
+            for row in type_stats:
+                type_table.add_row(row["lesson_type"], str(row["count"]))
+            console.print(type_table)
+            
+            # Confidence distribution
+            console.print("\n[bold]Confidence Distribution:[/bold]")
+            conf_table = Table(box=box.SIMPLE)
+            conf_table.add_column("Metric", style="yellow")
+            conf_table.add_column("Value", style="white")
+            conf_table.add_row("Average", f"{confidence_stats['avg_confidence']:.2f}" if confidence_stats['avg_confidence'] else "N/A")
+            conf_table.add_row("Range", f"{confidence_stats['min_confidence']:.2f} - {confidence_stats['max_confidence']:.2f}" if confidence_stats['min_confidence'] else "N/A")
+            conf_table.add_row("[green]High (≥0.8)[/green]", str(confidence_stats["high_confidence"]))
+            conf_table.add_row("[yellow]Medium (0.6-0.8)[/yellow]", str(confidence_stats["medium_confidence"]))
+            conf_table.add_row("[red]Low (<0.6)[/red]", str(confidence_stats["low_confidence"]))
+            console.print(conf_table)
+            
+            # Application stats
+            console.print("\n[bold]Application Status:[/bold]")
+            app_table = Table(box=box.SIMPLE)
+            app_table.add_column("Metric", style="magenta")
+            app_table.add_column("Value", style="white")
+            app_table.add_row("Total Lessons", str(application_stats["total"]))
+            app_table.add_row("Applied", str(application_stats["applied"]))
+            app_table.add_row("Pending Application", str(application_stats["pending_application"]))
+            app_rate = (application_stats["applied"] / application_stats["total"] * 100) if application_stats["total"] > 0 else 0
+            app_table.add_row("Application Rate", f"{app_rate:.1f}%")
+            console.print(app_table)
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error generating lesson statistics: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+# Register lessons subcommand
+app.add_typer(lessons_app, name="lessons")
 
 
 if __name__ == "__main__":
