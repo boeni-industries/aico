@@ -152,6 +152,7 @@ class ReflectOnGoalSkill(Skill):
                     insights.append(f"{len(active_plans)} active plan(s) in progress")
             
             # Analyze executions
+            failed = []
             if executions:
                 completed = [e for e in executions if e["status"] == "completed"]
                 failed = [e for e in executions if e["status"] == "failed"]

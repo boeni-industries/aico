@@ -18,6 +18,7 @@ from ..registry import (
 )
 from aico.core.logging import get_logger
 from aico.data.libsql import EncryptedLibSQLConnection
+from aico.ai.memory.manager import MemoryManager
 
 
 logger = get_logger("shared", "ai.agency.skills.analysis.conversation")
@@ -30,8 +31,9 @@ class AnalyzeConversationSkill(Skill):
     Used for: User Understanding, Pattern Analysis goals
     """
     
-    def __init__(self, db: Optional[EncryptedLibSQLConnection] = None):
+    def __init__(self, db: Optional[EncryptedLibSQLConnection] = None, memory_manager: Optional[MemoryManager] = None):
         self.db = db
+        self.memory_manager = memory_manager
     
     @property
     def skill_id(self) -> str:
@@ -74,128 +76,45 @@ class AnalyzeConversationSkill(Skill):
         input_data: Dict[str, Any],
         context: Dict[str, Any],
     ) -> SkillResult:
-        """Execute conversation analysis."""
+        """Execute conversation analysis using LMDB working memory."""
         conversation_limit = input_data.get("conversation_limit", 10)
         focus_areas = input_data.get("focus_areas", ["preferences", "patterns"])
         
         logger.info(
-            f"💬 [ANALYZE_CONVERSATION] Analyzing last {conversation_limit} conversations "
-            f"for user {user_id[:8]}... (focus: {', '.join(focus_areas)})"
+            f"💬 [ANALYZE_CONVERSATION] Analyzing recent conversations "
+            f"for user {user_id[:8]}... (limit: {conversation_limit}, focus: {', '.join(focus_areas)})"
         )
         
         try:
-            if not self.db:
-                raise RuntimeError("Database connection not available")
+            if not self.memory_manager:
+                raise RuntimeError("Memory manager not available")
             
-            # Query recent conversations
-            conversations = self.db.execute(
-                """SELECT conversation_id, created_at, message_count
-                   FROM conversations
-                   WHERE user_id = ?
-                   ORDER BY created_at DESC
-                   LIMIT ?""",
-                (user_id, conversation_limit)
-            ).fetchall()
+            # Get recent messages from working memory
+            # Note: Working memory stores messages by conversation_id, not user_id
+            # We'll analyze what we can from available conversation data
             
-            if not conversations:
-                logger.warning(f"💬 [ANALYZE_CONVERSATION] No conversations found for user {user_id[:8]}...")
-                return SkillResult(
-                    success=True,
-                    output={
-                        "conversation_count": 0,
-                        "insights": [],
-                        "patterns": [],
-                        "topics": [],
-                        "note": "No conversations found for analysis",
-                    },
-                )
+            # For now, return a basic analysis indicating the limitation
+            # A full implementation would need to track conversation_ids per user
+            logger.warning(f"💬 [ANALYZE_CONVERSATION] Working memory analysis not fully implemented - returning basic insights")
             
-            logger.info(f"💬 [ANALYZE_CONVERSATION] Found {len(conversations)} conversations to analyze")
-            
-            # Analyze conversations
-            insights = []
-            patterns = []
-            topics = set()
-            total_messages = 0
-            
-            for conv in conversations:
-                conv_id = conv["conversation_id"]
-                total_messages += conv["message_count"] or 0
-                
-                # Get messages from conversation
-                messages = self.db.execute(
-                    """SELECT role, content, created_at
-                       FROM conversation_messages
-                       WHERE conversation_id = ?
-                       ORDER BY created_at ASC""",
-                    (conv_id,)
-                ).fetchall()
-                
-                # Extract patterns from message timing
-                if messages:
-                    first_msg_time = datetime.fromisoformat(messages[0]["created_at"])
-                    hour = first_msg_time.hour
-                    
-                    if hour >= 6 and hour < 12:
-                        patterns.append("Morning activity")
-                    elif hour >= 12 and hour < 18:
-                        patterns.append("Afternoon activity")
-                    elif hour >= 18 and hour < 24:
-                        patterns.append("Evening activity")
-                    else:
-                        patterns.append("Night activity")
-                
-                # Analyze message content for insights
-                user_messages = [m for m in messages if m["role"] == "user"]
-                for msg in user_messages:
-                    content = msg["content"].lower()
-                    
-                    # Detect preferences
-                    if "prefer" in content or "like" in content:
-                        insights.append("User expressed preference in conversation")
-                    
-                    # Detect question patterns
-                    if "?" in content or "how" in content or "what" in content or "why" in content:
-                        insights.append("User asks clarifying questions")
-                    
-                    # Extract potential topics (simple keyword extraction)
-                    keywords = ["agency", "plan", "execution", "skill", "goal", "memory", "conversation"]
-                    for keyword in keywords:
-                        if keyword in content:
-                            topics.add(keyword)
-            
-            # Deduplicate patterns
-            patterns = list(set(patterns))
-            
-            # Generate summary insights
-            if total_messages > 0:
-                avg_messages = total_messages / len(conversations)
-                if avg_messages > 10:
-                    insights.append("User engages in detailed conversations")
-                elif avg_messages > 5:
-                    insights.append("User has moderate conversation depth")
-                else:
-                    insights.append("User prefers brief interactions")
-            
-            # Deduplicate insights
-            insights = list(set(insights))[:10]  # Limit to top 10
+            insights = [
+                "Conversation analysis requires conversation history tracking",
+                "Working memory stores messages by conversation_id",
+                "User-level conversation aggregation not yet implemented"
+            ]
             
             result = {
-                "conversation_count": len(conversations),
-                "total_messages_analyzed": total_messages,
+                "conversation_count": 0,
+                "total_messages_analyzed": 0,
                 "focus_areas_analyzed": focus_areas,
                 "insights": insights,
-                "patterns": patterns,
-                "topics": list(topics),
+                "patterns": [],
+                "topics": [],
                 "analyzed_at": datetime.utcnow().isoformat(),
+                "note": "Conversation analysis requires additional implementation to track user conversations"
             }
             
-            logger.info(
-                f"💬 [ANALYZE_CONVERSATION] Analysis complete: "
-                f"{len(insights)} insights, "
-                f"{len(patterns)} patterns, "
-                f"{len(topics)} topics from {total_messages} messages"
-            )
+            logger.info(f"💬 [ANALYZE_CONVERSATION] Analysis complete (limited implementation)")
             
             return SkillResult(
                 success=True,
@@ -203,7 +122,7 @@ class AnalyzeConversationSkill(Skill):
                 metadata={
                     "skill_id": self.skill_id,
                     "execution_time": datetime.utcnow().isoformat(),
-                    "conversations_analyzed": len(conversations),
+                    "implementation_status": "partial",
                 },
             )
             
