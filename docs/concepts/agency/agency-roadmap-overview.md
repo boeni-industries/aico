@@ -146,16 +146,15 @@ This document provides a high-level overview of AICO's agency system implementat
 ### Phase 8: Agency CLI & Analysis ✅
 **Goal:** CLI-first interface for observing and analyzing agency behavior
 
-**Status:** Core Complete
+**Status:** Complete
 
 **Key Achievements:**
-- 9 CLI commands implemented (814 lines)
+- 13 CLI commands implemented (1,633 lines)
 - Comprehensive event logging (1,188+ events)
-- Workflow execution tracking
-
-**Pending:**
-- Advanced analytics commands
-- Health monitoring and drift detection
+- Advanced analytics with time window filtering
+- Health monitoring and diagnostics
+- Reflection run analysis
+- Skill performance tracking
 
 [→ Phase 8 Details](agency-phase-8-cli-analysis.md)
 
@@ -201,7 +200,7 @@ This document provides a high-level overview of AICO's agency system implementat
 | Phase 5 | ✅ Complete | [Self-Reflection](agency-phase-5-self-reflection.md) |
 | Phase 6 | ✅ Complete | [Advanced Integration](agency-phase-6-advanced-integration.md) |
 | Phase 7 | ✅ Complete | [Testing & QA](agency-phase-7-testing-qa.md) |
-| Phase 8 | ✅ Core Complete | [CLI & Analysis](agency-phase-8-cli-analysis.md) |
+| Phase 8 | ✅ Complete | [CLI & Analysis](agency-phase-8-cli-analysis.md) |
 | Phase 9 | 🚧 In Progress | [UI & Tooling](agency-phase-9-ui-tooling.md) |
 
 Last Updated: 2025-12-15

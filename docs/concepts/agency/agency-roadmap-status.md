@@ -6,7 +6,7 @@ title: Agency System - Current Status
 
 **Last Updated:** 2025-12-15
 
-**Active Phase:** Phase 8 (Core Complete) → Phase 9 (In Progress)
+**Active Phase:** Phase 8 (Complete) → Phase 9 (In Progress)
 
 ---
 
@@ -32,20 +32,26 @@ title: Agency System - Current Status
 
 ### This Week (2025-12-15)
 
-**Phase 9 - UI & Tooling:**
-- [ ] Advanced analytics CLI commands (`metrics`, `reflection-history`, `skill-performance`)
-- [ ] Lesson management UI (`aico lessons list/review/approve`)
-- [ ] Health monitoring and drift detection
-- [ ] REST API endpoints for metrics
+**Phase 8 - Completed:**
+- ✅ Advanced analytics CLI commands (`metrics`, `reflection-history`, `skill-performance`)
+- ✅ Health monitoring and diagnostics (`health`)
+- ✅ Time window filtering support (`--last`, `--since`)
 
-**Phase 8 - Remaining Items:**
-- [ ] Expected vs actual behavior reports
-- [ ] Regression & drift monitoring CLI
-- [ ] `aico agency check-health` diagnostic command
+**Phase 9 - UI & Tooling:**
+- [ ] Lesson management UI (`aico lessons list/review/approve`)
+- [ ] REST API endpoints for metrics
+- [ ] Web dashboard framework selection
+- [ ] Flutter UI integration planning
 
 ---
 
 ## Recent Achievements
+
+### 2025-12-15 - Phase 8 Complete
+- ✅ 4 new CLI commands implemented (metrics, reflection-history, skill-performance, health)
+- ✅ Time window filtering for all analytics commands
+- ✅ Automated health monitoring and diagnostics
+- ✅ 1,633 lines of CLI code (+819 lines)
 
 ### 2025-12-15 - Documentation Restructure
 - ✅ Split 1,121-line roadmap into phase-specific documents
@@ -158,10 +164,10 @@ title: Agency System - Current Status
 | `aico agency policies` | ✅ | Policy rules |
 | `aico agency consent` | ✅ | Consent management |
 | `aico agency proactive` | ✅ | Proactive conversations |
-| `aico agency metrics` | ⏳ | Advanced analytics |
-| `aico agency reflection-history` | ⏳ | Reflection analysis |
-| `aico agency skill-performance` | ⏳ | Skill success rates |
-| `aico agency check-health` | ⏳ | System diagnostics |
+| `aico agency metrics` | ✅ | Advanced analytics |
+| `aico agency reflection-history` | ✅ | Reflection analysis |
+| `aico agency skill-performance` | ✅ | Skill success rates |
+| `aico agency health` | ✅ | System diagnostics |
 | `aico lessons list` | ⏳ | Lesson listing |
 | `aico lessons review` | ⏳ | Lesson review |
 | `aico lessons approve` | ⏳ | Lesson approval |

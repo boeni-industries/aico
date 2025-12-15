@@ -4,7 +4,7 @@ title: Phase 8 - Agency CLI & Analysis
 
 # Phase 8 – Agency CLI & Analysis ✅
 
-**Status:** Core Complete
+**Status:** Complete
 
 **Goal:** Provide a **CLI-first interface** for observing, analyzing, and validating the real-world behavior of the Agency system against the conceptual design.
 
@@ -41,7 +41,7 @@ title: Phase 8 - Agency CLI & Analysis
 
 ## Agency CLI Commands ✅
 
-### Core Commands (9 implemented)
+### Core Commands (13 implemented)
 
 **`aico agency status`** ✅
 - High-level agency state summary
@@ -92,35 +92,69 @@ title: Phase 8 - Agency CLI & Analysis
 **`aico agency proactive`** ✅
 - Manage proactive conversations
 
+**`aico agency metrics`** ✅
+- Comprehensive KPI dashboard
+- Goal completion rates
+- Plan success rates
+- Reflection run statistics
+- Lesson application rates
+- Time window filtering (`--last 7d`, `--since <timestamp>`)
+- JSON output support
+
+**`aico agency reflection-history`** ✅
+- Reflection run analysis
+- Lessons generated per run
+- Confidence scores
+- Application status
+- Time window filtering
+- JSON output support
+
+**`aico agency skill-performance`** ✅
+- Skill execution success rates
+- Success/failure counts
+- Performance metrics
+- Filter by skill name
+- JSON output support
+
+**`aico agency health`** ✅
+- Diagnostic health checks
+- Stale reflection run detection
+- Lesson application rate monitoring
+- Goal abandonment rate alerts
+- Execution failure rate warnings
+- Recent activity monitoring
+- JSON output support
+
 ---
 
-## Pending Features ⏳
+## Advanced Features ✅
 
-### Advanced Analytics
-- [ ] `aico agency metrics` - Comprehensive KPI dashboard
-- [ ] `aico agency reflection-history` - Reflection run analysis
-- [ ] `aico agency skill-performance` - Skill success rate analysis
-- [ ] Time window filtering (`--last 7d`, `--since <timestamp>`)
-
-### Engineering Analysis Workflows
-- [x] Database schema & storage (complete)
-- [ ] Expected vs actual behavior reports
-- [ ] Reflection effectiveness analysis
-- [ ] Arbiter decisions vs goal outcomes correlation
-- [ ] Curiosity-driven goals analysis
+### Time Window Filtering
+- [x] `--last` parameter (e.g., `--last 7d`, `--last 30d`, `--last 1h`)
+- [x] `--since` parameter (ISO timestamp)
+- [x] Support for days (d), hours (h), weeks (w), minutes (m)
 
 ### Health Monitoring
-- [ ] `aico agency check-health` diagnostic command
-- [ ] Automated warnings for stale reflection runs
-- [ ] Abnormal lesson application rate detection
-- [ ] High goal abandonment/failure rate alerts
-- [ ] CI/CD integration for behavioral regression detection
+- [x] Automated warnings for stale reflection runs (>7 days)
+- [x] Abnormal lesson application rate detection (<20%)
+- [x] High goal abandonment rate alerts (>30%)
+- [x] High execution failure rate warnings (>20%)
+- [x] Recent activity monitoring (24 hours)
+
+### Engineering Analysis Workflows
+- [x] Database schema & storage
+- [x] Reflection effectiveness analysis
+- [x] Skill performance correlation
+- [ ] Expected vs actual behavior reports (future)
+- [ ] Arbiter decisions vs goal outcomes correlation (future)
+- [ ] Curiosity-driven goals analysis (future)
+- [ ] CI/CD integration for behavioral regression detection (future)
 
 ---
 
 ## Implementation Details
 
-**CLI Commands:** 814 lines in `cli/commands/agency.py`
+**CLI Commands:** 1,633 lines in `cli/commands/agency.py` (+819 lines)
 
 **Event System:** `shared/aico/ai/agency/workflows.py` (1,384 lines)
 
@@ -133,18 +167,25 @@ title: Phase 8 - Agency CLI & Analysis
 
 ---
 
-## Exit Condition
+## Exit Condition ✅
 
-✅ **CORE COMPLETE** - CLI provides actionable, queryable views into agency behavior.
+**COMPLETE** - CLI provides actionable, queryable views into agency behavior with advanced analytics and health monitoring.
 
 **Achieved:**
 - ✅ Inspect active intentions, goals, plans, and executions via CLI
 - ✅ View user profiles, policies, and consents
 - ✅ Access comprehensive event logs and metrics (1,188+ events)
 - ✅ Export JSON for external analysis tools
+- ✅ Comprehensive KPI dashboard with time window filtering
+- ✅ Reflection run history and effectiveness analysis
+- ✅ Skill performance tracking and success rates
+- ✅ Automated health checks and anomaly detection
+- ✅ Time-based filtering for all analytics commands
 
-**Pending:**
-- ⏳ Advanced analytics and health monitoring
+**Future Enhancements:**
+- Expected vs actual behavior reports
+- Arbiter decision correlation analysis
+- CI/CD integration for regression detection
 
 ---
 

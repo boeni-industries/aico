@@ -68,6 +68,10 @@ def agency_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ("policies", "List, add, or remove policy rules"),
             ("consent", "Grant or revoke consent for specific actions"),
             ("proactive", "Manage proactive conversation initiations"),
+            ("metrics", "Display comprehensive KPI dashboard"),
+            ("reflection-history", "Analyze reflection run history"),
+            ("skill-performance", "Analyze skill execution success rates"),
+            ("health", "Run diagnostic health checks"),
         ]
         
         format_subcommand_help(
@@ -1058,6 +1062,568 @@ def executions(
         console.print(f"[red]✗[/red] Error listing executions: {e}")
         raise typer.Exit(1)
 
+
+
+@app.command()
+def metrics(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    last: Optional[str] = typer.Option(None, "--last", help="Time window (e.g., '7d', '30d', '1h')"),
+    since: Optional[str] = typer.Option(None, "--since", help="Start timestamp (ISO format)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    Display comprehensive KPI dashboard for agency system.
+    
+    Shows key performance indicators including:
+    - Goal completion rates
+    - Plan success rates
+    - Skill execution metrics
+    - Reflection run statistics
+    - Lesson application rates
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        # Parse time window
+        time_filter = ""
+        params = [user_id]
+        
+        if last:
+            from datetime import timedelta
+            duration = _parse_duration(last)
+            cutoff = (datetime.utcnow() - duration).isoformat()
+            time_filter = " AND created_at >= ?"
+            params.append(cutoff)
+        elif since:
+            time_filter = " AND created_at >= ?"
+            params.append(since)
+        
+        # Collect metrics
+        metrics_data = {}
+        
+        # Goal metrics
+        goal_stats = db.execute(
+            f"""SELECT status, COUNT(*) as count 
+                FROM agency_goals 
+                WHERE user_id = ?{time_filter}
+                GROUP BY status""",
+            tuple(params)
+        ).fetchall()
+        
+        total_goals = sum(row["count"] for row in goal_stats)
+        completed_goals = next((row["count"] for row in goal_stats if row["status"] == "completed"), 0)
+        
+        metrics_data["goals"] = {
+            "total": total_goals,
+            "completed": completed_goals,
+            "completion_rate": (completed_goals / total_goals * 100) if total_goals > 0 else 0,
+            "by_status": {row["status"]: row["count"] for row in goal_stats}
+        }
+        
+        # Plan metrics (join through goals to get user_id)
+        plan_stats = db.execute(
+            f"""SELECT p.status, COUNT(*) as count
+                FROM agency_plans p
+                JOIN agency_goals g ON p.goal_id = g.goal_id
+                WHERE g.user_id = ?{time_filter.replace('created_at', 'p.created_at') if time_filter else ''}
+                GROUP BY p.status""",
+            tuple(params)
+        ).fetchall()
+        
+        total_plans = sum(row["count"] for row in plan_stats)
+        completed_plans = next((row["count"] for row in plan_stats if row["status"] == "completed"), 0)
+        
+        metrics_data["plans"] = {
+            "total": total_plans,
+            "completed": completed_plans,
+            "success_rate": (completed_plans / total_plans * 100) if total_plans > 0 else 0,
+            "by_status": {row["status"]: row["count"] for row in plan_stats}
+        }
+        
+        # Execution metrics
+        exec_stats = db.execute(
+            f"""SELECT status, COUNT(*) as count, AVG(progress_percentage) as avg_progress
+                FROM plan_executions
+                WHERE user_id = ?{time_filter}
+                GROUP BY status""",
+            tuple(params)
+        ).fetchall()
+        
+        metrics_data["executions"] = {
+            "total": sum(row["count"] for row in exec_stats),
+            "by_status": {row["status"]: {"count": row["count"], "avg_progress": row["avg_progress"]} for row in exec_stats}
+        }
+        
+        # Reflection metrics
+        reflection_count = db.execute(
+            f"""SELECT COUNT(*) as count FROM agency_reflection_runs
+                WHERE user_id = ?{time_filter}""",
+            tuple(params)
+        ).fetchone()["count"]
+        
+        lesson_count = db.execute(
+            f"""SELECT COUNT(*) as count FROM agency_lessons
+                WHERE user_id = ?{time_filter}""",
+            tuple(params)
+        ).fetchone()["count"]
+        
+        applied_lessons = db.execute(
+            f"""SELECT COUNT(*) as count FROM agency_lessons
+                WHERE user_id = ? AND status = 'applied'{time_filter}""",
+            tuple(params)
+        ).fetchone()["count"]
+        
+        metrics_data["reflection"] = {
+            "runs": reflection_count,
+            "lessons_generated": lesson_count,
+            "lessons_applied": applied_lessons,
+            "application_rate": (applied_lessons / lesson_count * 100) if lesson_count > 0 else 0
+        }
+        
+        # Event metrics
+        event_count = db.execute(
+            f"""SELECT COUNT(*) as count FROM agency_events_log
+                WHERE user_id = ?{time_filter}""",
+            tuple(params)
+        ).fetchone()["count"]
+        
+        metrics_data["events"] = {
+            "total": event_count
+        }
+        
+        if json_output:
+            console.print_json(data=metrics_data)
+        else:
+            # Display formatted dashboard
+            console.print(Panel.fit(
+                f"[bold cyan]Agency Metrics Dashboard[/bold cyan]\n"
+                f"User: {user_id}\n"
+                f"Time Window: {last or since or 'All time'}",
+                border_style="cyan"
+            ))
+            
+            # Goals table
+            goals_table = Table(title="Goals", box=box.ROUNDED)
+            goals_table.add_column("Metric", style="cyan")
+            goals_table.add_column("Value", style="white")
+            goals_table.add_row("Total Goals", str(metrics_data["goals"]["total"]))
+            goals_table.add_row("Completed", str(metrics_data["goals"]["completed"]))
+            goals_table.add_row("Completion Rate", f"{metrics_data['goals']['completion_rate']:.1f}%")
+            console.print(goals_table)
+            
+            # Plans table
+            plans_table = Table(title="Plans", box=box.ROUNDED)
+            plans_table.add_column("Metric", style="cyan")
+            plans_table.add_column("Value", style="white")
+            plans_table.add_row("Total Plans", str(metrics_data["plans"]["total"]))
+            plans_table.add_row("Completed", str(metrics_data["plans"]["completed"]))
+            plans_table.add_row("Success Rate", f"{metrics_data['plans']['success_rate']:.1f}%")
+            console.print(plans_table)
+            
+            # Reflection table
+            reflection_table = Table(title="Reflection & Learning", box=box.ROUNDED)
+            reflection_table.add_column("Metric", style="cyan")
+            reflection_table.add_column("Value", style="white")
+            reflection_table.add_row("Reflection Runs", str(metrics_data["reflection"]["runs"]))
+            reflection_table.add_row("Lessons Generated", str(metrics_data["reflection"]["lessons_generated"]))
+            reflection_table.add_row("Lessons Applied", str(metrics_data["reflection"]["lessons_applied"]))
+            reflection_table.add_row("Application Rate", f"{metrics_data['reflection']['application_rate']:.1f}%")
+            console.print(reflection_table)
+            
+            console.print(f"\n[dim]Total Events: {metrics_data['events']['total']}[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error generating metrics: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@app.command()
+def reflection_history(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Number of runs to show"),
+    last: Optional[str] = typer.Option(None, "--last", help="Time window (e.g., '7d', '30d')"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    Analyze reflection run history and effectiveness.
+    
+    Shows:
+    - Recent reflection runs
+    - Lessons generated per run
+    - Confidence scores
+    - Application status
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        # Parse time window
+        time_filter = ""
+        params = [user_id]
+        
+        if last:
+            from datetime import timedelta
+            duration = _parse_duration(last)
+            cutoff = (datetime.utcnow() - duration).isoformat()
+            time_filter = " AND started_at >= ?"
+            params.append(cutoff)
+        
+        # Get reflection runs with lesson counts
+        query = f"""
+            SELECT 
+                r.run_id,
+                r.started_at,
+                r.completed_at,
+                r.status,
+                r.trigger_reason,
+                COUNT(l.lesson_id) as lessons_generated,
+                AVG(l.confidence) as avg_confidence
+            FROM agency_reflection_runs r
+            LEFT JOIN agency_lessons l ON r.run_id = l.source_reflection_run_id
+            WHERE r.user_id = ?{time_filter}
+            GROUP BY r.run_id
+            ORDER BY r.started_at DESC
+            LIMIT ?
+        """
+        params.append(limit)
+        
+        runs = db.execute(query, tuple(params)).fetchall()
+        
+        if not runs:
+            console.print("[yellow]No reflection runs found[/yellow]")
+            return
+        
+        if json_output:
+            output = [
+                {
+                    "run_id": r["run_id"],
+                    "started_at": r["started_at"],
+                    "completed_at": r["completed_at"],
+                    "status": r["status"],
+                    "trigger_reason": r["trigger_reason"],
+                    "lessons_generated": r["lessons_generated"],
+                    "avg_confidence": r["avg_confidence"]
+                }
+                for r in runs
+            ]
+            console.print_json(data=output)
+        else:
+            table = Table(title=f"Reflection History for {user_id}", box=box.ROUNDED)
+            table.add_column("Run ID", style="cyan")
+            table.add_column("Started", style="white")
+            table.add_column("Status", style="green")
+            table.add_column("Trigger", style="blue")
+            table.add_column("Lessons", style="yellow")
+            table.add_column("Avg Confidence", style="magenta")
+            
+            for r in runs:
+                status_color = {
+                    "completed": "green",
+                    "running": "blue",
+                    "failed": "red"
+                }.get(r["status"], "white")
+                
+                table.add_row(
+                    r["run_id"][:8],
+                    r["started_at"][:19] if r["started_at"] else "N/A",
+                    f"[{status_color}]{r['status']}[/{status_color}]",
+                    r["trigger_reason"] or "N/A",
+                    str(r["lessons_generated"]),
+                    f"{r['avg_confidence']:.2f}" if r["avg_confidence"] else "N/A"
+                )
+            
+            console.print(table)
+            console.print(f"\n[dim]Total: {len(runs)} reflection runs[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error analyzing reflection history: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@app.command()
+def skill_performance(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    skill_name: Optional[str] = typer.Option(None, "--skill", "-s", help="Filter by skill name"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Number of skills to show"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    Analyze skill execution success rates and performance.
+    
+    Shows:
+    - Skill execution counts
+    - Success/failure rates
+    - Average performance metrics
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        # Get skill performance from self-model
+        query = """
+            SELECT 
+                entity_id as skill_id,
+                performance_summary,
+                sample_size,
+                confidence,
+                last_updated
+            FROM agency_self_model
+            WHERE user_id = ? AND entity_type = 'skill'
+        """
+        params = [user_id]
+        
+        if skill_name:
+            query += " AND entity_id = ?"
+            params.append(skill_name)
+        
+        query += " ORDER BY sample_size DESC LIMIT ?"
+        params.append(limit)
+        
+        skills = db.execute(query, tuple(params)).fetchall()
+        
+        if not skills:
+            console.print("[yellow]No skill performance data found[/yellow]")
+            return
+        
+        if json_output:
+            output = []
+            for s in skills:
+                perf = json.loads(s["performance_summary"]) if s["performance_summary"] else {}
+                output.append({
+                    "skill_id": s["skill_id"],
+                    "performance": perf,
+                    "sample_size": s["sample_size"],
+                    "confidence": s["confidence"],
+                    "last_updated": s["last_updated"]
+                })
+            console.print_json(data=output)
+        else:
+            table = Table(title=f"Skill Performance for {user_id}", box=box.ROUNDED)
+            table.add_column("Skill ID", style="cyan")
+            table.add_column("Sample Size", style="white")
+            table.add_column("Success Rate", style="yellow")
+            table.add_column("Confidence", style="magenta")
+            table.add_column("Last Updated", style="dim")
+            
+            for s in skills:
+                perf = json.loads(s["performance_summary"]) if s["performance_summary"] else {}
+                success_rate = perf.get("success_rate", 0) * 100  # Convert to percentage
+                
+                rate_color = "green" if success_rate >= 80 else "yellow" if success_rate >= 60 else "red"
+                
+                table.add_row(
+                    s["skill_id"][:40],  # Truncate long IDs
+                    str(s["sample_size"]),
+                    f"[{rate_color}]{success_rate:.1f}%[/{rate_color}]",
+                    f"{s['confidence']:.2f}",
+                    s["last_updated"][:19] if s["last_updated"] else "N/A"
+                )
+            
+            console.print(table)
+            console.print(f"\n[dim]Total: {len(skills)} skills[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error analyzing skill performance: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+@app.command()
+def health(
+    user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """
+    Run diagnostic health checks on the agency system.
+    
+    Checks for:
+    - Stale reflection runs
+    - Abnormal lesson application rates
+    - High goal abandonment rates
+    - System anomalies
+    """
+    try:
+        user_id = get_user_id(user)
+        db = get_db_connection()
+        
+        health_issues = []
+        warnings = []
+        info = []
+        
+        # Check 1: Stale reflection runs
+        from datetime import timedelta
+        stale_cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        
+        stale_runs = db.execute(
+            """SELECT COUNT(*) as count FROM agency_reflection_runs
+               WHERE user_id = ? AND status = 'running' AND started_at < ?""",
+            (user_id, stale_cutoff)
+        ).fetchone()["count"]
+        
+        if stale_runs > 0:
+            health_issues.append({
+                "severity": "warning",
+                "check": "stale_reflection_runs",
+                "message": f"{stale_runs} reflection runs stuck in 'running' state for >7 days",
+                "count": stale_runs
+            })
+        
+        # Check 2: Lesson application rate
+        total_lessons = db.execute(
+            "SELECT COUNT(*) as count FROM agency_lessons WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()["count"]
+        
+        applied_lessons = db.execute(
+            "SELECT COUNT(*) as count FROM agency_lessons WHERE user_id = ? AND status = 'applied'",
+            (user_id,)
+        ).fetchone()["count"]
+        
+        if total_lessons > 10:
+            application_rate = (applied_lessons / total_lessons) * 100
+            if application_rate < 20:
+                warnings.append({
+                    "severity": "warning",
+                    "check": "low_lesson_application",
+                    "message": f"Low lesson application rate: {application_rate:.1f}% ({applied_lessons}/{total_lessons})",
+                    "rate": application_rate
+                })
+        
+        # Check 3: Goal abandonment rate
+        total_goals = db.execute(
+            "SELECT COUNT(*) as count FROM agency_goals WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()["count"]
+        
+        abandoned_goals = db.execute(
+            "SELECT COUNT(*) as count FROM agency_goals WHERE user_id = ? AND status = 'abandoned'",
+            (user_id,)
+        ).fetchone()["count"]
+        
+        if total_goals > 10:
+            abandonment_rate = (abandoned_goals / total_goals) * 100
+            if abandonment_rate > 30:
+                warnings.append({
+                    "severity": "warning",
+                    "check": "high_goal_abandonment",
+                    "message": f"High goal abandonment rate: {abandonment_rate:.1f}% ({abandoned_goals}/{total_goals})",
+                    "rate": abandonment_rate
+                })
+        
+        # Check 4: Failed plan executions
+        total_executions = db.execute(
+            "SELECT COUNT(*) as count FROM plan_executions WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()["count"]
+        
+        failed_executions = db.execute(
+            "SELECT COUNT(*) as count FROM plan_executions WHERE user_id = ? AND status = 'failed'",
+            (user_id,)
+        ).fetchone()["count"]
+        
+        if total_executions > 10:
+            failure_rate = (failed_executions / total_executions) * 100
+            if failure_rate > 20:
+                warnings.append({
+                    "severity": "warning",
+                    "check": "high_execution_failure",
+                    "message": f"High execution failure rate: {failure_rate:.1f}% ({failed_executions}/{total_executions})",
+                    "rate": failure_rate
+                })
+        
+        # Check 5: Recent activity
+        recent_cutoff = (datetime.utcnow() - timedelta(days=1)).isoformat()
+        recent_events = db.execute(
+            "SELECT COUNT(*) as count FROM agency_events_log WHERE user_id = ? AND created_at >= ?",
+            (user_id, recent_cutoff)
+        ).fetchone()["count"]
+        
+        if recent_events == 0:
+            info.append({
+                "severity": "info",
+                "check": "no_recent_activity",
+                "message": "No agency events in the last 24 hours"
+            })
+        
+        # Compile health report
+        health_status = "healthy" if not health_issues and not warnings else "degraded" if warnings else "unhealthy"
+        
+        health_report = {
+            "status": health_status,
+            "user_id": user_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "issues": health_issues,
+            "warnings": warnings,
+            "info": info
+        }
+        
+        if json_output:
+            console.print_json(data=health_report)
+        else:
+            # Display formatted health report
+            status_color = {
+                "healthy": "green",
+                "degraded": "yellow",
+                "unhealthy": "red"
+            }[health_status]
+            
+            console.print(Panel.fit(
+                f"[bold {status_color}]System Health: {health_status.upper()}[/bold {status_color}]\n"
+                f"User: {user_id}\n"
+                f"Checked: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}",
+                border_style=status_color
+            ))
+            
+            if health_issues:
+                console.print("\n[bold red]Issues:[/bold red]")
+                for issue in health_issues:
+                    console.print(f"  [red]✗[/red] {issue['message']}")
+            
+            if warnings:
+                console.print("\n[bold yellow]Warnings:[/bold yellow]")
+                for warning in warnings:
+                    console.print(f"  [yellow]⚠[/yellow] {warning['message']}")
+            
+            if info:
+                console.print("\n[bold blue]Info:[/bold blue]")
+                for i in info:
+                    console.print(f"  [blue]ℹ[/blue] {i['message']}")
+            
+            if not health_issues and not warnings and not info:
+                console.print("\n[green]✓ All checks passed[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error running health check: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+
+
+def _parse_duration(duration_str: str) -> "timedelta":
+    """
+    Parse duration string like '7d', '30d', '1h', '2w' into timedelta.
+    """
+    from datetime import timedelta
+    
+    unit = duration_str[-1]
+    value = int(duration_str[:-1])
+    
+    if unit == 'd':
+        return timedelta(days=value)
+    elif unit == 'h':
+        return timedelta(hours=value)
+    elif unit == 'w':
+        return timedelta(weeks=value)
+    elif unit == 'm':
+        return timedelta(minutes=value)
+    else:
+        raise ValueError(f"Unknown duration unit: {unit}")
 
 
 # Register proactive conversation subcommand
