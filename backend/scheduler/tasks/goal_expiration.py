@@ -5,7 +5,7 @@ Automatically expires old pending hobby goals that haven't been activated.
 Prevents accumulation of stale curiosity-generated goals.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any, Dict
 
 from .base import BaseTask, TaskContext, TaskResult
@@ -43,32 +43,31 @@ class GoalExpirationTask(BaseTask):
         Returns:
             TaskResult with expiration statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         try:
             logger.info("[GOAL_EXPIRATION] Starting goal expiration task")
             
-            # Get config
-            config = context.config_manager.get("core.services.agency.goal_expiration", {})
-            expiration_days = config.get("expiration_days", 7)
-            goal_types = config.get("goal_types", ["hobby", "curiosity"])
+            # Use hardcoded defaults (no config needed - these are safety constraints)
+            expiration_days = 7  # Goals older than 7 days (matches arbiter freshness window)
+            agent_origins = ["hobby", "curiosity"]  # Only auto-expire agent-generated goals, never user goals
             
             # Calculate expiration threshold
-            threshold = datetime.utcnow() - timedelta(days=expiration_days)
+            threshold = datetime.now(UTC) - timedelta(days=expiration_days)
             threshold_str = threshold.isoformat()
             
             # Get database connection
             db = context.db_connection
             
-            # Find expired goals
+            # Find expired goals - filter by ORIGIN not goal_type to ensure we never expire user goals
             expired_goals = db.execute(
-                """SELECT goal_id, user_id, title, goal_type, created_at 
+                """SELECT goal_id, user_id, title, origin, goal_type, created_at 
                    FROM agency_goals 
                    WHERE status = 'pending' 
-                   AND goal_type IN ({})
+                   AND origin IN ({})
                    AND created_at < ?
-                   ORDER BY created_at""".format(','.join('?' * len(goal_types))),
-                tuple(goal_types + [threshold_str])
+                   ORDER BY created_at""".format(','.join('?' * len(agent_origins))),
+                tuple(agent_origins + [threshold_str])
             ).fetchall()
             
             if not expired_goals:
@@ -92,7 +91,7 @@ class GoalExpirationTask(BaseTask):
                                updated_at = ?,
                                metadata = json_set(COALESCE(metadata, '{}'), '$.retirement_reason', 'expired')
                            WHERE goal_id = ?""",
-                        (datetime.utcnow().isoformat(), goal['goal_id'])
+                        (datetime.now(UTC).isoformat(), goal['goal_id'])
                     )
                     
                     # Remove from intention set
@@ -116,7 +115,7 @@ class GoalExpirationTask(BaseTask):
             db.commit()
             
             # Calculate execution time
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             
             logger.info(
                 f"[GOAL_EXPIRATION] Complete: retired {retired_count}/{len(expired_goals)} goals, "
@@ -136,7 +135,7 @@ class GoalExpirationTask(BaseTask):
             )
             
         except Exception as e:
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             logger.error(f"[GOAL_EXPIRATION] Task failed: {e}")
             
             return TaskResult(

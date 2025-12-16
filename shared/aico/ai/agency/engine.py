@@ -679,9 +679,10 @@ class AgencyEngine(BaseAIProcessor):
                 metadata["hobby_template_id"] = signal.context["template_id"]
                 metadata["hobby_category"] = signal.context.get("category")
             
-            # CRITICAL FIX: Check for existing goals with same title to prevent duplicates
+            # CRITICAL FIX: Check for existing goals to prevent duplicates
+            # 1. Exact title match (fast path)
             existing_goal = self.db.execute(
-                """SELECT goal_id, title, status, created_at FROM agency_goals 
+                """SELECT goal_id, title, description, status, created_at FROM agency_goals 
                    WHERE user_id = ? AND title = ? AND status IN ('pending', 'active', 'paused')
                    ORDER BY created_at DESC LIMIT 1""",
                 (user_id, signal.topic)
@@ -689,13 +690,55 @@ class AgencyEngine(BaseAIProcessor):
             
             if existing_goal:
                 logger.info(
-                    f"[AGENCY_ENGINE] Goal '{signal.topic}' already exists (id={existing_goal['goal_id']}, "
-                    f"status={existing_goal['status']}), skipping duplicate creation"
+                    f"[AGENCY_ENGINE] Goal '{signal.topic}' already exists (exact match, "
+                    f"id={existing_goal['goal_id']}, status={existing_goal['status']}), skipping duplicate"
                 )
-                # Return existing goal instead of creating duplicate
                 goal = await self.goal_store.get_goal(existing_goal['goal_id'])
-                # Don't create a new plan for existing goal
                 return goal, None
+            
+            # 2. Semantic similarity check (for near-duplicates with different wording)
+            # Get recent goals of same type for similarity comparison
+            recent_goals = self.db.execute(
+                """SELECT goal_id, title, description, status, created_at FROM agency_goals 
+                   WHERE user_id = ? 
+                   AND goal_type IN ('hobby', 'curiosity')
+                   AND status IN ('pending', 'active', 'paused')
+                   AND created_at > datetime('now', '-7 days')
+                   ORDER BY created_at DESC LIMIT 20""",
+                (user_id,)
+            ).fetchall()
+            
+            # Check for semantic duplicates using simple keyword overlap
+            # (More sophisticated: could use embeddings, but this is lightweight)
+            signal_keywords = set(signal.topic.lower().split())
+            signal_desc_keywords = set(signal.description.lower().split()) if signal.description else set()
+            
+            for existing in recent_goals:
+                existing_keywords = set(existing['title'].lower().split())
+                existing_desc_keywords = set(existing['description'].lower().split()) if existing['description'] else set()
+                
+                # Calculate Jaccard similarity for titles
+                title_overlap = len(signal_keywords & existing_keywords)
+                title_union = len(signal_keywords | existing_keywords)
+                title_similarity = title_overlap / title_union if title_union > 0 else 0
+                
+                # Calculate description similarity
+                desc_overlap = len(signal_desc_keywords & existing_desc_keywords)
+                desc_union = len(signal_desc_keywords | existing_desc_keywords)
+                desc_similarity = desc_overlap / desc_union if desc_union > 0 else 0
+                
+                # Combined similarity (weighted average)
+                combined_similarity = (title_similarity * 0.7) + (desc_similarity * 0.3)
+                
+                # If similarity > 0.6, consider it a duplicate
+                if combined_similarity > 0.6:
+                    logger.info(
+                        f"[AGENCY_ENGINE] Goal '{signal.topic}' is semantically similar to existing goal "
+                        f"'{existing['title']}' (similarity={combined_similarity:.2f}, id={existing['goal_id']}), "
+                        f"skipping duplicate"
+                    )
+                    goal = await self.goal_store.get_goal(existing['goal_id'])
+                    return goal, None
             
             # Create goal with appropriate origin
             goal, plan = await self.create_goal_with_optional_plan(
