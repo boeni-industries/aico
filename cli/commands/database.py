@@ -1302,15 +1302,19 @@ def exec(
                 return
         
         cursor = conn.execute(query)
-        result = cursor.fetchall()
         
         # For non-SELECT queries, commit the transaction and show affected rows
         query_upper = query.upper().strip()
-        if any(query_upper.startswith(op) for op in ["DELETE", "UPDATE", "INSERT"]):
+        is_mutation = any(query_upper.startswith(op) for op in ["DELETE", "UPDATE", "INSERT", "CREATE", "DROP", "ALTER"])
+        
+        if is_mutation:
             conn.commit()
             affected_rows = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
-            console.print(f"[green]Query executed successfully. Affected rows: {affected_rows}[/green]")
+            console.print(f"[green]✅ Query executed successfully. Affected rows: {affected_rows}[/green]")
             return
+        
+        # Only fetch results for SELECT queries
+        result = cursor.fetchall()
         
         if not result:
             console.print("[yellow]Query returned no results[/yellow]")
