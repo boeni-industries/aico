@@ -557,16 +557,15 @@ def intentions(
                 "timestamp": datetime.utcnow().isoformat(),
                 "intentions": [
                     {
-                        "goal_id": scored.goal.goal_id,
-                        "title": scored.goal.title,
-                        "origin": scored.goal.origin.value,
-                        "priority": scored.goal.priority.value,
-                        "status": scored.goal.status.value,
-                        "score": scored.score,
-                        "priority_band": scored.priority_band,
-                        "score_breakdown": scored.score_breakdown,
+                        "intention_id": intention.intention_id,
+                        "goal_id": intention.goal_id,
+                        "status": intention.status.value,
+                        "score": intention.arbiter_score,
+                        "priority_band": intention.priority_band.value,
+                        "reasons": intention.reasons,
+                        "activated_at": intention.activated_at.isoformat() if intention.activated_at else None,
                     }
-                    for scored in intention_set.intentions
+                    for intention in intention_set.intentions
                 ]
             }
             console.print_json(data=output)
@@ -575,6 +574,15 @@ def intentions(
             if not intention_set.intentions:
                 console.print(f"[yellow]No active intentions for user {user_id}[/yellow]")
                 return
+            
+            # Fetch goal details for display
+            goal_ids = [i.goal_id for i in intention_set.intentions]
+            placeholders = ','.join('?' * len(goal_ids))
+            goals_data = db.execute(
+                f"SELECT goal_id, title, origin, priority, status FROM agency_goals WHERE goal_id IN ({placeholders})",
+                tuple(goal_ids)
+            ).fetchall()
+            goals_map = {g["goal_id"]: g for g in goals_data}
             
             table = Table(
                 title=f"Active Intention Set for {user_id}",
@@ -590,24 +598,26 @@ def intentions(
             table.add_column("Band", style="yellow")
             table.add_column("Status", style="cyan")
             
-            for scored in intention_set.intentions:
-                goal = scored.goal
+            for intention in intention_set.intentions:
+                goal_data = goals_map.get(intention.goal_id)
+                
+                if not goal_data:
+                    continue
                 
                 # Color code priority band
                 band_color = {
-                    "critical": "red",
-                    "high": "yellow",
+                    "urgent": "red",
                     "normal": "green",
-                    "low": "blue"
-                }.get(scored.priority_band, "white")
+                    "background": "blue"
+                }.get(intention.priority_band.value, "white")
                 
                 table.add_row(
-                    goal.title,
-                    goal.origin.value,
-                    goal.priority.value,
-                    f"{scored.score:.3f}",
-                    f"[{band_color}]{scored.priority_band}[/{band_color}]",
-                    goal.status.value
+                    goal_data["title"],
+                    goal_data["origin"],
+                    goal_data["priority"],
+                    f"{intention.arbiter_score:.3f}",
+                    f"[{band_color}]{intention.priority_band.value}[/{band_color}]",
+                    intention.status.value
                 )
             
             console.print(table)

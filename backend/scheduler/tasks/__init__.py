@@ -10,6 +10,7 @@ from .agency_reflection import AgencyReflectionTask
 from .agency_arbiter import AgencyArbiterTask
 from .agency_plan_executor import AgencyPlanExecutorTask
 from .proactive_conversation import ProactiveConversationTask
+from .goal_expiration import GoalExpirationTask
 
 __all__ = [
     "BaseTask",
@@ -21,4 +22,5 @@ __all__ = [
     "AgencyArbiterTask",
     "AgencyPlanExecutorTask",
     "ProactiveConversationTask",
+    "GoalExpirationTask",
 ]

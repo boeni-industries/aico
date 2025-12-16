@@ -679,6 +679,24 @@ class AgencyEngine(BaseAIProcessor):
                 metadata["hobby_template_id"] = signal.context["template_id"]
                 metadata["hobby_category"] = signal.context.get("category")
             
+            # CRITICAL FIX: Check for existing goals with same title to prevent duplicates
+            existing_goal = self.db.execute(
+                """SELECT goal_id, title, status, created_at FROM agency_goals 
+                   WHERE user_id = ? AND title = ? AND status IN ('pending', 'active', 'paused')
+                   ORDER BY created_at DESC LIMIT 1""",
+                (user_id, signal.topic)
+            ).fetchone()
+            
+            if existing_goal:
+                logger.info(
+                    f"[AGENCY_ENGINE] Goal '{signal.topic}' already exists (id={existing_goal['goal_id']}, "
+                    f"status={existing_goal['status']}), skipping duplicate creation"
+                )
+                # Return existing goal instead of creating duplicate
+                goal = await self.goal_store.get_goal(existing_goal['goal_id'])
+                # Don't create a new plan for existing goal
+                return goal, None
+            
             # Create goal with appropriate origin
             goal, plan = await self.create_goal_with_optional_plan(
                 user_id=user_id,
