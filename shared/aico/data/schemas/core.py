@@ -2498,5 +2498,73 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # Drop table
             "DROP TABLE IF EXISTS aico_conversation_initiations",
         ]
+    ),
+    
+    34: SchemaVersion(
+        version=34,
+        name="Remove Foreign Key Constraints from plan_executions",
+        description="Remove foreign key constraints from plan_executions table to allow execution history preservation even when plans/goals are deleted",
+        run_outside_transaction=True,
+        sql_statements=[
+            # Recreate plan_executions without foreign key constraints
+            "DROP TABLE IF EXISTS plan_executions",
+            """CREATE TABLE IF NOT EXISTS plan_executions (
+                execution_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL,
+                goal_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                started_at TEXT,
+                completed_at TEXT,
+                paused_at TEXT,
+                cancelled_at TEXT,
+                current_step_id TEXT,
+                steps_completed INTEGER DEFAULT 0,
+                steps_total INTEGER NOT NULL,
+                progress_percentage REAL DEFAULT 0.0,
+                execution_context TEXT,
+                error_message TEXT,
+                cancellation_reason TEXT,
+                retry_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_plan ON plan_executions(plan_id)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_goal ON plan_executions(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_user ON plan_executions(user_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_status ON plan_executions(status, created_at)",
+        ],
+        rollback_statements=[
+            # Recreate with foreign keys
+            "DROP TABLE IF EXISTS plan_executions",
+            """CREATE TABLE IF NOT EXISTS plan_executions (
+                execution_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL,
+                goal_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                started_at TEXT,
+                completed_at TEXT,
+                paused_at TEXT,
+                cancelled_at TEXT,
+                current_step_id TEXT,
+                steps_completed INTEGER DEFAULT 0,
+                steps_total INTEGER NOT NULL,
+                progress_percentage REAL DEFAULT 0.0,
+                execution_context TEXT,
+                error_message TEXT,
+                cancellation_reason TEXT,
+                retry_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (plan_id) REFERENCES agency_plans(plan_id) ON DELETE CASCADE,
+                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_plan ON plan_executions(plan_id)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_goal ON plan_executions(goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_user ON plan_executions(user_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_plan_executions_status ON plan_executions(status, created_at)",
+        ]
     )
 })
