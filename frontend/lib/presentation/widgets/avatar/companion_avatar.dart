@@ -640,8 +640,8 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withValues(alpha: 0.12),
-                Colors.white.withValues(alpha: 0.08),
+                Colors.white.withValues(alpha: 0.22),
+                Colors.white.withValues(alpha: 0.18),
               ],
             ),
             borderRadius: BorderRadius.circular(12),

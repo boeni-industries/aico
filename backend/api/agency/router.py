@@ -140,7 +140,7 @@ async def get_intention_set(
     Returns the primary focus intention and list of active intentions with scores.
     """
     try:
-        user_id = user["uuid"]
+        user_id = user["user_uuid"]
         
         # Get intention set from engine
         intention_set = await engine.get_intention_set(user_id)
@@ -148,22 +148,25 @@ async def get_intention_set(
         # Limit results
         intentions = intention_set.intentions[:limit]
         
-        # Convert to response model
-        active_intentions = [
-            GoalSummary(
-                goal_id=scored.goal.goal_id,
-                title=scored.goal.title,
-                description=scored.goal.description,
-                origin=GoalOrigin(scored.goal.origin.value),
-                priority=GoalPriority(scored.goal.priority.value),
-                status=GoalStatus(scored.goal.status.value),
-                score=scored.score,
-                priority_band=scored.priority_band,
-                created_at=scored.goal.created_at,
-                metadata=scored.goal.metadata
-            )
-            for scored in intentions
-        ]
+        # Fetch actual Goal objects for each intention
+        active_intentions = []
+        for intention in intentions:
+            goal = await engine.get_goal(intention.goal_id)
+            if goal:
+                active_intentions.append(
+                    GoalSummary(
+                        goal_id=goal.goal_id,
+                        title=goal.title,
+                        description=goal.description,
+                        origin=GoalOrigin(goal.origin.value),
+                        priority=GoalPriority(goal.priority.value),
+                        status=GoalStatus(goal.status.value),
+                        score=intention.arbiter_score,
+                        priority_band=intention.priority_band.value,
+                        created_at=goal.created_at,
+                        metadata=goal.metadata
+                    )
+                )
         
         # Get hobby goals
         hobby_goals = [g for g in active_intentions if g.origin == GoalOrigin.HOBBY]
@@ -201,16 +204,17 @@ async def get_curiosity_status(
     Returns curiosity level and top curiosity opportunities.
     """
     try:
-        user_id = user["uuid"]
+        user_id = user["user_uuid"]
         
         # Get intention set to analyze curiosity goals
         intention_set = await engine.get_intention_set(user_id)
         
-        # Count curiosity-driven goals
-        curiosity_goals = [
-            scored for scored in intention_set.intentions
-            if scored.goal.origin.value == "curiosity"
-        ]
+        # Fetch goals and filter for curiosity-driven ones
+        curiosity_goals = []
+        for intention in intention_set.intentions:
+            goal = await engine.get_goal(intention.goal_id)
+            if goal and goal.origin.value == "curiosity":
+                curiosity_goals.append((intention, goal))
         
         # Determine curiosity level based on active curiosity goals
         if len(curiosity_goals) >= 3:
@@ -222,14 +226,14 @@ async def get_curiosity_status(
         
         # Extract curiosity opportunities from metadata
         opportunities = []
-        for scored in curiosity_goals[:3]:  # Top 3
-            if "curiosity_type" in scored.goal.metadata:
+        for intention, goal in curiosity_goals[:3]:  # Top 3
+            if "curiosity_type" in goal.metadata:
                 opportunities.append(
                     CuriosityOpportunity(
-                        theme=scored.goal.title,
-                        description=scored.goal.description or "",
-                        intensity=scored.goal.metadata.get("curiosity_score", 0.5),
-                        signal_type=scored.goal.metadata.get("curiosity_type", "unknown")
+                        theme=goal.title,
+                        description=goal.description or "",
+                        intensity=goal.metadata.get("curiosity_score", 0.5),
+                        signal_type=goal.metadata.get("curiosity_type", "unknown")
                     )
                 )
         
@@ -259,7 +263,7 @@ async def get_value_profile(
     Get user value profile - curiosity settings, proactive level, sensitive areas.
     """
     try:
-        user_id = user["uuid"]
+        user_id = user["user_uuid"]
         profile = service._get_or_create_profile(user_id)
         
         return ValueProfileResponse(
@@ -286,7 +290,7 @@ async def update_value_profile(
     Update user value profile settings.
     """
     try:
-        user_id = user["uuid"]
+        user_id = user["user_uuid"]
         profile = service._get_or_create_profile(user_id)
         
         # Apply updates
@@ -406,7 +410,7 @@ async def grant_consent(
     Grant or deny consent for a specific action.
     """
     try:
-        user_id = user["uuid"]
+        user_id = user["user_uuid"]
         consent_id = f"consent-{user_id}-{datetime.utcnow().timestamp()}"
         
         service.db.execute(
@@ -440,7 +444,7 @@ async def list_consents(
     List user's consents.
     """
     try:
-        user_id = user["uuid"]
+        user_id = user["user_uuid"]
         
         cursor = service.db.execute(
             "SELECT consent_id, user_id, consent_scope, decision, granted_at FROM consents WHERE user_id = ? ORDER BY granted_at DESC",
@@ -479,7 +483,7 @@ async def revoke_consent(
     Revoke a consent.
     """
     try:
-        user_id = user["uuid"]
+        user_id = user["user_uuid"]
         
         service.db.execute(
             "UPDATE consents SET decision = ? WHERE consent_id = ? AND user_id = ?",
@@ -508,7 +512,7 @@ async def get_agency_state(
     This is a convenience endpoint that combines multiple agency metrics.
     """
     try:
-        user_id = user["uuid"]
+        user_id = user["user_uuid"]
         
         # Get all components in parallel
         intention_set_task = get_intention_set(user, engine, limit=10)

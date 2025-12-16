@@ -21,7 +21,6 @@ import 'package:aico_frontend/presentation/screens/home/widgets/home_left_drawer
 import 'package:aico_frontend/presentation/screens/home/widgets/home_right_drawer.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
-import 'package:aico_frontend/presentation/widgets/agency/agency_badge_auto_demo.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/animated_avatar_container.dart';
 import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
 import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
@@ -216,8 +215,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                   ),
               ],
             ),
-            // Agency Badge Auto Demo - subtle indicator bottom-right
-            const AgencyBadgeAutoDemo(),
           ],
         ),
       ),

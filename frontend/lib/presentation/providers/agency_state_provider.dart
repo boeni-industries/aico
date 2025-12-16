@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:aico_frontend/data/models/agency_model.dart';
+import 'package:aico_frontend/domain/providers/agency_providers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -63,9 +67,93 @@ enum AgencyBadgeMode {
 /// Provider for agency badge state
 @riverpod
 class AgencyBadgeStateNotifier extends _$AgencyBadgeStateNotifier {
+  Timer? _pollTimer;
+  
   @override
   AgencyBadgeState build() {
+    // Start polling for agency state when provider is initialized
+    _startPolling();
+    
+    // Clean up timer on dispose
+    ref.onDispose(() {
+      _pollTimer?.cancel();
+    });
+    
     return const AgencyBadgeState();
+  }
+  
+  /// Start periodic polling of agency state
+  void _startPolling() {
+    // Poll immediately
+    _fetchAndUpdateState();
+    
+    // Then poll every 30 seconds
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _fetchAndUpdateState();
+    });
+  }
+  
+  /// Fetch agency state from backend and update UI state
+  Future<void> _fetchAndUpdateState() async {
+    try {
+      final repository = ref.read(agencyRepositoryProvider);
+      final agencyState = await repository.getAgencyState();
+      
+      // Map backend state to UI badge state
+      _mapAgencyStateToUI(agencyState);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Failed to fetch agency state: $e');
+      }
+      // On error, hide badge
+      hide();
+    }
+  }
+  
+  /// Map backend AgencyStateModel to UI badge state
+  void _mapAgencyStateToUI(AgencyStateModel agencyState) {
+    // Priority order:
+    // 1. Consent required actions (lessons pending) - highest priority
+    // 2. Primary focus (active intention)
+    // 3. Curiosity opportunities (goal progress)
+    // 4. Multiple active intentions
+    // 5. No badge
+    
+    if (agencyState.consentRequiredActions.isNotEmpty) {
+      // Lessons or actions need user approval
+      showLessonPending(
+        count: agencyState.consentRequiredActions.length,
+        intensity: 0.8,
+      );
+    } else if (agencyState.intentionSet.primaryFocus != null) {
+      // Active intention/focus
+      final focus = agencyState.intentionSet.primaryFocus!;
+      showActiveIntention(
+        summary: focus.title,
+        intensity: focus.score ?? 0.6,
+      );
+    } else if (agencyState.curiosityStatus.curiosityOpportunities.isNotEmpty) {
+      // Curiosity opportunities available
+      final opportunity = agencyState.curiosityStatus.curiosityOpportunities.first;
+      showGoalProgress(
+        progress: opportunity.intensity,
+        goalName: opportunity.theme,
+      );
+    } else if (agencyState.intentionSet.activeIntentions.length > 1) {
+      // Multiple active intentions
+      showMultipleItems(
+        count: agencyState.intentionSet.activeIntentions.length,
+        summary: '${agencyState.intentionSet.activeIntentions.length} active intentions',
+      );
+    } else {
+      // No active agency state
+      hide();
+    }
+  }
+  
+  /// Manually refresh agency state (for pull-to-refresh, etc.)
+  Future<void> refresh() async {
+    await _fetchAndUpdateState();
   }
   
   /// Set badge to active intention mode
