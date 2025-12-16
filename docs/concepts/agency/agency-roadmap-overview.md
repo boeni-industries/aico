@@ -160,39 +160,55 @@ This document provides a high-level overview of AICO's agency system implementat
 
 ---
 
-### Phase 9: Lesson Management & User Tooling 🚧
+### Phase 9: Lesson Management CLI ✅
 **Goal:** CLI tooling for lesson review and approval
 
-**Status:** In Progress
+**Status:** Complete (2025-12-15)
 
-**Prerequisites Completed (Phase 8):**
-- Metrics data collection (1,188+ events)
-- 13 CLI commands for agency monitoring
-- Advanced analytics commands
-
-**Pending:**
-- Lesson management CLI (5 commands)
-- Lesson approval/rejection workflow
-- Lesson statistics and reporting
+**Completed:**
+- ✅ Lesson management CLI (5 commands)
+- ✅ `aico agency lessons ls` - List and filter lessons
+- ✅ `aico agency lessons show` - Detailed lesson view
+- ✅ `aico agency lessons approve/reject` - Approval workflow
+- ✅ `aico agency lessons stats` - Lesson statistics
+- ✅ Full filtering support (status, confidence, time windows)
+- ✅ JSON output and rich table formatting
 
 [→ Phase 9 Details](agency-phase-9-lesson-management.md)
 
 ---
 
-### Phase 10: UI & Frontend Integration 🔮
-**Goal:** User-facing interfaces for monitoring and control
+### Phase 10: Web Dashboard & REST API 🔮
+**Goal:** REST API and web dashboard for monitoring and administration
 
 **Status:** Future
 
 **Scope:**
 - REST API endpoints for metrics and lessons
 - Web dashboard with real-time visualization
-- Flutter UI integration (agency dashboard, value profile management)
-- Policy and consent management UI
-- Embodiment integration
-- Real-world context awareness
+- Metrics and analytics visualization
+- Lesson management interface
+- System health monitoring
 
 [→ Phase 10 Details](agency-phase-10-ui-frontend.md)
+
+---
+
+### Phase 11: Flutter Frontend Integration 🔮
+**Goal:** Integrate agency system into Flutter mobile/desktop app
+
+**Status:** Future
+
+**Scope:**
+- Proactive message integration and notifications
+- Intention set visibility in conversation UI
+- Goal tracking and progress display
+- Behavioral feedback and lesson review
+- Agency settings and controls
+- Real-time WebSocket updates
+- Metrics and analytics visualization
+
+[→ Phase 11 Details](agency-phase-11-flutter-frontend.md)
 
 ---
 
@@ -245,7 +261,8 @@ These items were deferred from completed phases and represent potential improvem
 | Phase 6 | ✅ Complete | [Advanced Integration](agency-phase-6-advanced-integration.md) |
 | Phase 7 | ✅ Complete | [Testing & QA](agency-phase-7-testing-qa.md) |
 | Phase 8 | ✅ Complete | [CLI & Analysis](agency-phase-8-cli-analysis.md) |
-| Phase 9 | 🚧 In Progress | [Lesson Management](agency-phase-9-lesson-management.md) |
-| Phase 10 | 🔮 Future | [UI & Frontend](agency-phase-10-ui-frontend.md) |
+| Phase 9 | ✅ Complete | [Lesson Management](agency-phase-9-lesson-management.md) |
+| Phase 10 | 🔮 Future | [Web Dashboard & REST API](agency-phase-10-ui-frontend.md) |
+| Phase 11 | 🔮 Future | [Flutter Frontend](agency-phase-11-flutter-frontend.md) |
 
 Last Updated: 2025-12-15

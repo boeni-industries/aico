@@ -21,6 +21,7 @@ import 'package:aico_frontend/presentation/screens/home/widgets/home_left_drawer
 import 'package:aico_frontend/presentation/screens/home/widgets/home_right_drawer.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/widgets/agency/agency_badge_auto_demo.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/animated_avatar_container.dart';
 import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
 import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
@@ -168,49 +169,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     return Scaffold(
       body: HomeBackground(
         animationController: _backgroundAnimationController,
-        child: Row(
+        child: Stack(
           children: [
-            // Left drawer for navigation
-            if (isDesktop)
-              ListenableBuilder(
-                listenable: Listenable.merge([_navigationController, _drawerController]),
-                builder: (context, _) => HomeLeftDrawer(
-                  accentColor: accentColor,
-                  isExpanded: _drawerController.isLeftDrawerExpanded,
-                  currentPage: _navigationController.currentPage,
-                  onToggle: _drawerController.toggleLeftDrawer,
-                  onPageChange: _navigationController.switchToPage,
+            Row(
+              children: [
+                // Left drawer for navigation
+                if (isDesktop)
+                  ListenableBuilder(
+                    listenable: Listenable.merge([_navigationController, _drawerController]),
+                    builder: (context, _) => HomeLeftDrawer(
+                      accentColor: accentColor,
+                      isExpanded: _drawerController.isLeftDrawerExpanded,
+                      currentPage: _navigationController.currentPage,
+                      onToggle: _drawerController.toggleLeftDrawer,
+                      onPageChange: _navigationController.switchToPage,
+                    ),
+                  ),
+                
+                // Main content area
+                Expanded(
+                  flex: (_drawerController.isRightDrawerOpen && isDesktop) ? 2 : 3,
+                  child: SafeArea(
+                    child: ListenableBuilder(
+                      listenable: _navigationController,
+                      builder: (context, _) => _buildMainContent(context, theme, accentColor),
+                    ),
+                  ),
                 ),
-              ),
-            
-            // Main content area
-            Expanded(
-              flex: (_drawerController.isRightDrawerOpen && isDesktop) ? 2 : 3,
-              child: SafeArea(
-                child: ListenableBuilder(
-                  listenable: _navigationController,
-                  builder: (context, _) => _buildMainContent(context, theme, accentColor),
-                ),
-              ),
+                
+                // Right drawer for thoughts and memory
+                if (isDesktop)
+                  ListenableBuilder(
+                    listenable: _drawerController,
+                    builder: (context, _) {
+                      if (!_drawerController.isRightDrawerOpen) return const SizedBox.shrink();
+                      
+                      return HomeRightDrawer(
+                        accentColor: accentColor,
+                        glowController: _glowAnimationController,
+                        glowAnimation: _glowAnimation,
+                        isExpanded: _drawerController.isRightDrawerExpanded,
+                        onToggle: _drawerController.toggleRightDrawer,
+                        scrollToMessageId: _drawerController.scrollToThoughtId,
+                      );
+                    },
+                  ),
+              ],
             ),
-            
-            // Right drawer for thoughts and memory
-            if (isDesktop)
-              ListenableBuilder(
-                listenable: _drawerController,
-                builder: (context, _) {
-                  if (!_drawerController.isRightDrawerOpen) return const SizedBox.shrink();
-                  
-                  return HomeRightDrawer(
-                    accentColor: accentColor,
-                    glowController: _glowAnimationController,
-                    glowAnimation: _glowAnimation,
-                    isExpanded: _drawerController.isRightDrawerExpanded,
-                    onToggle: _drawerController.toggleRightDrawer,
-                    scrollToMessageId: _drawerController.scrollToThoughtId,
-                  );
-                },
-              ),
+            // Agency Badge Auto Demo - subtle indicator bottom-right
+            const AgencyBadgeAutoDemo(),
           ],
         ),
       ),

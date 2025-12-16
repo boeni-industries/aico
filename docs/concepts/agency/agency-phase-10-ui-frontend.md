@@ -1,12 +1,12 @@
 ---
-title: Phase 10 - UI & Frontend Integration
+title: Phase 10 - Web Dashboard & REST API
 ---
 
-# Phase 10 – UI & Frontend Integration 🔮
+# Phase 10 – Web Dashboard & REST API 🔮
 
 **Status:** Future
 
-**Goal:** Build user-facing interfaces for agency monitoring, configuration, and control through web dashboard and Flutter UI.
+**Goal:** Build REST API and web dashboard for agency monitoring, analytics, and administration.
 
 ---
 
@@ -164,11 +164,8 @@ Users can monitor, configure, and control AICO's agency system through intuitive
 3. Build lesson management interface
 4. Add real-time updates
 
-**Stage 3: Flutter Integration**
-1. Create agency dashboard screen
-2. Integrate with existing conversation UI
-3. Add value profile management
-4. Implement policy and consent controls
+**Stage 3:** 
+**Note:** Flutter frontend integration is covered in [Phase 11](agency-phase-11-flutter-frontend.md).
 
 **Stage 4: Advanced Features**
 1. Embodiment integration
