@@ -2566,5 +2566,42 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "CREATE INDEX IF NOT EXISTS idx_plan_executions_user ON plan_executions(user_id, status)",
             "CREATE INDEX IF NOT EXISTS idx_plan_executions_status ON plan_executions(status, created_at)",
         ]
+    ),
+    
+    35: SchemaVersion(
+        version=35,
+        name="Add message_id to trajectories",
+        description="Add message_id column to trajectories table for feedback linking",
+        sql_statements=[
+            # Add message_id column to trajectories
+            "ALTER TABLE trajectories ADD COLUMN message_id TEXT",
+            
+            # Add turn_number and user_input columns for complete trajectory tracking
+            "ALTER TABLE trajectories ADD COLUMN turn_number INTEGER",
+            "ALTER TABLE trajectories ADD COLUMN user_input TEXT",
+            "ALTER TABLE trajectories ADD COLUMN ai_response TEXT",
+            
+            # Create index for message_id lookups
+            "CREATE INDEX IF NOT EXISTS idx_trajectories_message_id ON trajectories(message_id)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_trajectories_message_id",
+            # Note: SQLite doesn't support DROP COLUMN easily
+            # In production, would need to recreate table without message_id
+        ]
+    ),
+    
+    36: SchemaVersion(
+        version=36,
+        name="Add free_text to ams_behavioral_feedback",
+        description="Add missing free_text column to ams_behavioral_feedback table (was lost in schema v22)",
+        sql_statements=[
+            # Add free_text column for user's detailed feedback
+            "ALTER TABLE ams_behavioral_feedback ADD COLUMN free_text TEXT",
+        ],
+        rollback_statements=[
+            # Note: SQLite doesn't support DROP COLUMN easily
+            # In production, would need to recreate table without free_text
+        ]
     )
 })

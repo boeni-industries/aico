@@ -278,17 +278,28 @@ The reflection engine analyzes performance data from dedicated behavioral tracki
 - Generate lessons to adjust goal arbiter weights
 - Optimize goal prioritization
 
-#### 5.3.3 `feedback_events` Table
+#### 5.3.3 `ams_behavioral_feedback` Table (User Feedback)
 
-**Purpose:** Tracks explicit user feedback and ratings  
-**Populated by:** User feedback system  
-**Used for:** Persona and style adjustments
+**Purpose:** Tracks explicit user feedback and ratings (thumbs up/down)  
+**Populated by:** User feedback system via `/api/v1/behavioral/feedback`  
+**Used for:** Immediate skill confidence updates and persona/style adjustments
 
-**Analysis:** `_analyze_user_feedback()` queries this table to:
-- Calculate average user satisfaction ratings
-- Identify low satisfaction patterns (< 3.0/5.0)
-- Generate lessons for persona/style adjustments
-- Improve user experience
+**Key fields:**
+- `feedback_id` - Unique feedback event ID
+- `reward` - User rating: 1 (thumbs up), -1 (thumbs down), 0 (neutral)
+- `reason` - Optional dropdown category (e.g., "incorrect_info", "wrong_tone")
+- `free_text` - Optional user-provided detailed feedback (max 300 chars)
+- `skill_id` - Which skill was used (if known)
+
+**Current Usage:**
+- `reason` field is analyzed for pattern detection
+- Immediate skill confidence updates via `SkillStore.update_confidence()`
+
+**TODO - Future Enhancement:**
+- **LLM-based analysis of `free_text` field** for nuanced lesson generation
+- Extract specific improvement suggestions from user's detailed feedback
+- Generate more targeted persona/style adjustment lessons
+- Correlate free text patterns with skill performance metrics
 
 ### 5.4 Separation from User Memories
 

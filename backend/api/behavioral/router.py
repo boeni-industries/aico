@@ -52,26 +52,13 @@ async def submit_feedback(
     })
     
     try:
-        # Lookup skill_id from trajectories if not provided
+        # Use skill_id from request (frontend should provide it if available)
         skill_id = request.skill_id
-        if not skill_id and request.message_id:
-            logger.info("📊 [FEEDBACK] Looking up skill_id from trajectories", extra={
+        
+        if not skill_id:
+            logger.info("📊 [FEEDBACK] No skill_id provided in feedback request", extra={
                 "message_id": request.message_id
             })
-            trajectory = db.execute(
-                "SELECT selected_skill_id FROM trajectories WHERE message_id = ? LIMIT 1",
-                (request.message_id,)
-            ).fetchone()
-            if trajectory and trajectory[0]:
-                skill_id = trajectory[0]
-                logger.info("📊 [FEEDBACK] Found skill_id from trajectory", extra={
-                    "skill_id": skill_id,
-                    "message_id": request.message_id
-                })
-            else:
-                logger.warning("📊 [FEEDBACK] No trajectory found for message_id", extra={
-                    "message_id": request.message_id
-                })
         
         # Create feedback event
         event_id = str(uuid.uuid4())
@@ -92,10 +79,10 @@ async def submit_feedback(
             "user_id": user_id
         })
         
-        # Store feedback event in AMS behavioral feedback table (schema v18)
+        # Store feedback event in AMS behavioral feedback table (schema v36)
         db.execute(
             """INSERT INTO ams_behavioral_feedback (
-                event_id, user_id, message_id, skill_id, reward,
+                feedback_id, user_id, message_id, skill_id, reward,
                 reason, free_text, timestamp, processed
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
