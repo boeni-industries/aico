@@ -128,6 +128,37 @@ class GoalStore:
             logger.error(f"[AGENCY_GOALS] Failed to retrieve goals: {e}", extra={"user_id": user_id})
             raise
 
+    async def update_goal(self, goal: Goal) -> Goal:
+        """Update an existing goal with all fields including metadata."""
+        try:
+            now = datetime.now(UTC)
+            goal.updated_at = now
+            
+            self.db.execute(
+                """UPDATE agency_goals SET 
+                    title = ?, description = ?, status = ?, priority = ?,
+                    metadata_json = ?, updated_at = ?
+                WHERE goal_id = ?""",
+                (
+                    goal.title,
+                    goal.description,
+                    goal.status.value,
+                    goal.priority.value,
+                    json.dumps(goal.metadata) if goal.metadata else None,
+                    goal.updated_at.isoformat(),
+                    goal.goal_id,
+                ),
+            )
+            self.db.commit()
+            logger.info(
+                "[AGENCY_GOALS] Updated goal",
+                extra={"goal_id": goal.goal_id, "user_id": goal.user_id}
+            )
+            return goal
+        except Exception as e:
+            logger.error(f"[AGENCY_GOALS] Failed to update goal: {e}", extra={"goal_id": goal.goal_id})
+            raise
+    
     async def update_goal_status(self, goal_id: str, new_status: GoalStatus) -> None:
         """Update goal status."""
         try:

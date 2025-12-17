@@ -153,12 +153,13 @@ class GoalArbiter:
                     raise ValueError("core.services.agency.arbiter.scoring_weights not found in configuration")
                 
                 self.weights = {
-                    "priority": float(weights_config.get("priority", 0.30)),
+                    "priority": float(weights_config.get("priority", 0.25)),
                     "origin": float(weights_config.get("origin", 0.20)),
-                    "freshness": float(weights_config.get("freshness", 0.15)),
+                    "freshness": float(weights_config.get("freshness", 0.10)),
                     "curiosity_score": float(weights_config.get("curiosity_score", 0.15)),
+                    "persistence": float(weights_config.get("persistence", 0.15)),
                     "personality_fit": float(weights_config.get("personality_fit", 0.10)),
-                    "emotion_boost": float(weights_config.get("emotion_boost", 0.10)),
+                    "emotion_boost": float(weights_config.get("emotion_boost", 0.05)),
                 }
                 
                 print(f"🔧 [ARBITER DEBUG] Loaded weights: {self.weights}")
@@ -398,6 +399,26 @@ class GoalArbiter:
         emotion_weight = self._get_adjusted_weight("emotion_boost", self.weights["emotion_boost"], user_id)
         breakdown["emotion_boost"] = emotion_boost * emotion_weight
         
+        # 7. Persistence score (intent frequency/reinforcement)
+        mention_count = goal.metadata.get("mention_count", 1)
+        mention_frequency = goal.metadata.get("mention_frequency", 0.0)
+        
+        # Score based on mention count: 1 mention = 0.0, 2 = 0.3, 3+ = 0.6-1.0
+        persistence_score = min(1.0, (mention_count - 1) * 0.3)
+        
+        # Boost if mentions are recent and frequent (>1 per day)
+        if mention_frequency > 1.0:
+            persistence_score = min(1.0, persistence_score * 1.2)
+        
+        persistence_weight = self._get_adjusted_weight("persistence", self.weights.get("persistence", 0.15), user_id)
+        breakdown["persistence"] = persistence_score * persistence_weight
+        
+        if self.logger and mention_count > 1:
+            self.logger.debug(
+                f"[ARBITER] Goal {goal.goal_id} persistence: "
+                f"mentions={mention_count}, frequency={mention_frequency:.2f}/day, score={persistence_score:.3f}"
+            )
+        
         # Calculate total score
         total_score = sum(breakdown.values())
         
@@ -560,29 +581,122 @@ class GoalArbiter:
             )
             
             if existing:
-                # Update score if changed significantly
-                if abs(existing.arbiter_score - scored_goal.arbiter_score) > 0.1:
+                if existing.status == IntentionStatus.ACTIVE:
+                    # Already active, just update score if changed significantly
+                    if abs(existing.arbiter_score - scored_goal.arbiter_score) > 0.1:
+                        existing.arbiter_score = scored_goal.arbiter_score
+                        existing.priority_band = scored_goal.priority_band
+                        existing.updated_at = datetime.now(UTC)
+                        await self._update_intention(existing)
+                    continue
+                
+                # Intention exists but NOT active (dropped/proposed) → reactivation candidate
+                if scored_goal.priority_band == PriorityBand.URGENT:
+                    # Urgent goals always get reactivated
+                    existing.status = IntentionStatus.ACTIVE
+                    existing.arbiter_score = scored_goal.arbiter_score
+                    existing.priority_band = scored_goal.priority_band
+                    existing.activated_at = datetime.now(UTC)
+                    existing.updated_at = datetime.now(UTC)
+                    await self._update_intention(existing)
+                    new_intentions.append(existing)
+                    if self.logger:
+                        self.logger.info(f"[ARBITER] Reactivated urgent intention: '{scored_goal.goal.title}'")
+                elif scored_goal.priority_band == PriorityBand.NORMAL:
+                    if active_count < intention_set.max_active:
+                        # Reactivate if capacity available
+                        existing.status = IntentionStatus.ACTIVE
+                        existing.arbiter_score = scored_goal.arbiter_score
+                        existing.priority_band = scored_goal.priority_band
+                        existing.activated_at = datetime.now(UTC)
+                        existing.updated_at = datetime.now(UTC)
+                        await self._update_intention(existing)
+                        new_intentions.append(existing)
+                        active_count += 1
+                        if self.logger:
+                            self.logger.info(f"[ARBITER] Reactivated intention: '{scored_goal.goal.title}' (score={scored_goal.arbiter_score:.3f})")
+                    else:
+                        # At capacity: competitive replacement for reactivation
+                        active_intentions = [i for i in intention_set.intentions if i.status == IntentionStatus.ACTIVE]
+                        if active_intentions:
+                            lowest = min(active_intentions, key=lambda i: i.arbiter_score)
+                            if scored_goal.arbiter_score > lowest.arbiter_score:
+                                # Replace: deactivate lowest, reactivate this one
+                                await self.deactivate_intention(lowest.intention_id, reason="replaced_by_higher_score")
+                                existing.status = IntentionStatus.ACTIVE
+                                existing.arbiter_score = scored_goal.arbiter_score
+                                existing.priority_band = scored_goal.priority_band
+                                existing.activated_at = datetime.now(UTC)
+                                existing.updated_at = datetime.now(UTC)
+                                await self._update_intention(existing)
+                                new_intentions.append(existing)
+                                if self.logger:
+                                    self.logger.info(
+                                        f"[ARBITER] Competitive reactivation: '{scored_goal.goal.title}' "
+                                        f"(score={scored_goal.arbiter_score:.3f}) replaced intention with score {lowest.arbiter_score:.3f}"
+                                    )
+                elif scored_goal.priority_band == PriorityBand.BACKGROUND:
+                    # Update to proposed status
+                    existing.status = IntentionStatus.PROPOSED
                     existing.arbiter_score = scored_goal.arbiter_score
                     existing.priority_band = scored_goal.priority_band
                     existing.updated_at = datetime.now(UTC)
                     await self._update_intention(existing)
+                    new_intentions.append(existing)
                 continue
             
-            # Add new intention if we have capacity
+            # No existing intention → create new
             if scored_goal.priority_band == PriorityBand.URGENT:
                 # Urgent goals always get added
                 intention = await self._create_intention(scored_goal, user_id)
                 new_intentions.append(intention)
-            elif scored_goal.priority_band == PriorityBand.NORMAL and active_count < intention_set.max_active:
-                intention = await self._create_intention(scored_goal, user_id)
-                new_intentions.append(intention)
-                active_count += 1
+                if self.logger:
+                    self.logger.info(f"[ARBITER] Created urgent intention: '{scored_goal.goal.title}'")
+            elif scored_goal.priority_band == PriorityBand.NORMAL:
+                if active_count < intention_set.max_active:
+                    # Add if capacity available
+                    intention = await self._create_intention(scored_goal, user_id)
+                    new_intentions.append(intention)
+                    active_count += 1
+                    if self.logger:
+                        self.logger.info(f"[ARBITER] Created intention: '{scored_goal.goal.title}' (score={scored_goal.arbiter_score:.3f})")
+                else:
+                    # At capacity: check if this goal scores higher than lowest active intention
+                    active_intentions = [i for i in intention_set.intentions if i.status == IntentionStatus.ACTIVE]
+                    if active_intentions:
+                        lowest = min(active_intentions, key=lambda i: i.arbiter_score)
+                        if scored_goal.arbiter_score > lowest.arbiter_score:
+                            # Replace: deactivate lowest, activate new
+                            await self.deactivate_intention(lowest.intention_id, reason="replaced_by_higher_score")
+                            intention = await self._create_intention(scored_goal, user_id)
+                            new_intentions.append(intention)
+                            if self.logger:
+                                self.logger.info(
+                                    f"[ARBITER] Competitive replacement: '{scored_goal.goal.title}' "
+                                    f"(score={scored_goal.arbiter_score:.3f}) replaced intention with score {lowest.arbiter_score:.3f}"
+                                )
             elif scored_goal.priority_band == PriorityBand.BACKGROUND:
                 # Background goals are proposed but not activated
                 intention = await self._create_intention(scored_goal, user_id, activate=False)
                 new_intentions.append(intention)
         
-        # Refresh intention set
+        # Enforce max_active capacity: deactivate lowest scorers if over limit
+        intention_set = await self.get_intention_set(user_id)
+        active_intentions = [i for i in intention_set.intentions if i.status == IntentionStatus.ACTIVE]
+        
+        if len(active_intentions) > intention_set.max_active:
+            # Sort by score, keep top max_active, deactivate the rest
+            sorted_active = sorted(active_intentions, key=lambda i: i.arbiter_score, reverse=True)
+            to_deactivate = sorted_active[intention_set.max_active:]
+            
+            for intention in to_deactivate:
+                await self.deactivate_intention(intention.intention_id, reason="capacity_limit")
+                if self.logger:
+                    self.logger.info(
+                        f"[ARBITER] Deactivated intention (score={intention.arbiter_score:.3f}) - over capacity"
+                    )
+        
+        # Refresh intention set after capacity enforcement
         intention_set = await self.get_intention_set(user_id)
         
         # Publish changes if message bus available

@@ -49,6 +49,7 @@ class AgencyArbiterTask(BaseTask):
         start_time = datetime.utcnow()
         
         try:
+            print("🎯 [ARBITER_TASK] Starting arbiter evaluation")
             logger.info("🎯 [ARBITER_TASK] Starting arbiter evaluation")
             
             # Get configuration
@@ -58,6 +59,7 @@ class AgencyArbiterTask(BaseTask):
             user_ids = await self._get_active_users(context, max_users)
             
             if not user_ids:
+                print("🎯 [ARBITER_TASK] No active users with pending goals")
                 logger.info("🎯 [ARBITER_TASK] No active users with pending goals")
                 return TaskResult(
                     success=True,
@@ -65,6 +67,7 @@ class AgencyArbiterTask(BaseTask):
                     data={"users_processed": 0}
                 )
             
+            print(f"🎯 [ARBITER_TASK] Evaluating {len(user_ids)} users")
             logger.info(f"🎯 [ARBITER_TASK] Evaluating {len(user_ids)} users")
             
             # Get agency engine from AI registry
@@ -72,6 +75,7 @@ class AgencyArbiterTask(BaseTask):
             agency_engine = ai_registry.get("agency")
             
             if not agency_engine:
+                print("🎯 [ARBITER_TASK] ❌ Agency engine not found in AI registry")
                 logger.error("🎯 [ARBITER_TASK] Agency engine not found in AI registry")
                 return TaskResult(
                     success=False,
@@ -87,9 +91,11 @@ class AgencyArbiterTask(BaseTask):
                     pending_goals = await self._get_pending_goals(context, user_id)
                     
                     if not pending_goals:
+                        print(f"🎯 [ARBITER_TASK] No pending goals for user {user_id}")
                         logger.debug(f"🎯 [ARBITER_TASK] No pending goals for user {user_id}")
                         continue
                     
+                    print(f"🎯 [ARBITER_TASK] User {user_id}: {len(pending_goals)} pending goals")
                     logger.info(f"🎯 [ARBITER_TASK] User {user_id}: {len(pending_goals)} pending goals")
                     
                     # Update intention set via agency engine
@@ -112,12 +118,16 @@ class AgencyArbiterTask(BaseTask):
                         "status": "success"
                     })
                     
+                    print(f"🎯 [ARBITER_TASK] User {user_id}: {active_count} active intentions from {len(pending_goals)} goals")
                     logger.info(
                         f"🎯 [ARBITER_TASK] User {user_id}: "
                         f"{active_count} active intentions from {len(pending_goals)} goals"
                     )
                     
                 except Exception as e:
+                    print(f"🎯 [ARBITER_TASK] ❌ Failed for user {user_id}: {e}")
+                    import traceback
+                    print(f"🎯 [ARBITER_TASK] Traceback: {traceback.format_exc()}")
                     logger.exception(f"🎯 [ARBITER_TASK] Failed for user {user_id}: {e}")
                     results.append({
                         "user_id": user_id,
@@ -132,6 +142,7 @@ class AgencyArbiterTask(BaseTask):
             
             duration = (datetime.utcnow() - start_time).total_seconds()
             
+            print(f"🎯 [ARBITER_TASK] Completed: {successful} successful, {failed} failed, {total_active} total active intentions ({duration:.1f}s)")
             logger.info(
                 f"🎯 [ARBITER_TASK] Completed: {successful} successful, {failed} failed, "
                 f"{total_active} total active intentions ({duration:.1f}s)"
@@ -152,6 +163,9 @@ class AgencyArbiterTask(BaseTask):
             
         except Exception as e:
             duration = (datetime.utcnow() - start_time).total_seconds()
+            print(f"🎯 [ARBITER_TASK] ❌ Task failed: {e}")
+            import traceback
+            print(f"🎯 [ARBITER_TASK] Traceback: {traceback.format_exc()}")
             logger.exception(f"🎯 [ARBITER_TASK] Task failed: {e}")
             
             return TaskResult(

@@ -1049,37 +1049,121 @@ class ModelserviceZMQHandlers:
             return response
     
     async def handle_intent_request(self, request_payload) -> IntentClassificationResponse:
-        """Handle intent classification requests via AICO AI processor."""
+        """Handle intent classification requests using zero-shot NLI."""
+        import time
+        handler_start = time.time()
+        print(f"⏱️ [INTENT_TIMING] Handler started at {handler_start}")
+        
         try:
             self.logger.info("🔍 [INTENT_HANDLER] Intent classification request received")
+            response = IntentClassificationResponse()
+            
+            # Extract request data
+            extract_start = time.time()
+            text = request_payload.text
+            model = request_payload.model if request_payload.HasField('model') else "intent_classification"
+            extract_time = time.time() - extract_start
+            print(f"⏱️ [INTENT_TIMING] Text extraction took {extract_time*1000:.2f}ms")
+            
+            self.logger.info(f"🔍 [INTENT_HANDLER] Text: '{text[:50]}...', Model: {model}")
+            
+            if not text:
+                response.success = False
+                response.error = "text is required"
+                response.predicted_intent = "general"
+                response.confidence = 0.0
+                return response
             
             # Ensure transformers system is initialized
             if not self.transformers_initialized:
                 self.logger.info("🔍 [INTENT_HANDLER] Initializing transformers system...")
                 await self.initialize_transformers_system()
             
-            # Verify intent classification model is available
-            intent_model = self.get_transformer_model("intent_classification")
-            if intent_model is None:
-                self.logger.error("❌ [INTENT_HANDLER] Intent classification model not available")
-                raise Exception("Intent classification model not available")
+            # Get zero-shot classification pipeline
+            get_model_start = time.time()
+            classifier = self.transformers_manager.get_model("intent_classification")
+            get_model_time = time.time() - get_model_start
+            print(f"⏱️ [INTENT_TIMING] Getting classifier took {get_model_time*1000:.2f}ms")
             
-            # Import and get the intent handler
-            from modelservice.handlers.intent_classification_handler import get_intent_classification_handler
-            handler = await get_intent_classification_handler()
+            if classifier is None:
+                self.logger.error("❌ [INTENT_HANDLER] Zero-shot classifier not available")
+                response.success = False
+                response.error = "Intent classification model not available"
+                response.predicted_intent = "general"
+                response.confidence = 0.0
+                return response
             
-            # Handle the request using the AI processor
-            response = await handler.handle_request(request_payload)
+            # Define intent labels for classification
+            intent_labels = [
+                "greeting", "question", "request", "information_sharing",
+                "confirmation", "negation", "complaint", "farewell", "general"
+            ]
             
-            self.logger.info(f"✅ [INTENT_HANDLER] Intent classified as: {response.predicted_intent} "
-                           f"(confidence={response.confidence:.2f})")
+            self.logger.info("🔍 [INTENT_HANDLER] Running zero-shot classification...")
+            print(f"⏱️ [INTENT_TIMING] About to run classification...")
+            
+            # Run classification in thread pool to avoid blocking
+            import asyncio
+            classify_start = time.time()
+            result = await asyncio.to_thread(
+                classifier,
+                text,
+                intent_labels,
+                multi_label=False
+            )
+            classify_time = time.time() - classify_start
+            print(f"⏱️ [INTENT_TIMING] Classification took {classify_time*1000:.2f}ms")
+            
+            print(f"⏱️ [INTENT_TIMING] About to log result...")
+            self.logger.info(f"🔍 [INTENT_HANDLER] Result: {result}")
+            print(f"⏱️ [INTENT_TIMING] Result logged, extracting...")
+            
+            # Extract results
+            extract_result_start = time.time()
+            print(f"⏱️ [INTENT_TIMING] Checking result validity...")
+            if result and result.get('labels') and result.get('scores'):
+                print(f"⏱️ [INTENT_TIMING] Result is valid, extracting fields...")
+                response.success = True
+                response.predicted_intent = result['labels'][0]
+                response.confidence = result['scores'][0]
+                print(f"⏱️ [INTENT_TIMING] 📊 CLASSIFIED: intent='{result['labels'][0]}', confidence={result['scores'][0]:.4f}")
+                response.detected_language = "unknown"  # Could add language detection
+                print(f"⏱️ [INTENT_TIMING] Main fields extracted, adding alternatives...")
+                
+                # Add alternative predictions
+                try:
+                    alternatives_data = list(zip(result['labels'][1:4], result['scores'][1:4]))
+                    for label, score in alternatives_data:
+                        alt = response.alternative_predictions.add()
+                        alt.intent = label
+                        alt.confidence = float(score)  # Ensure it's a Python float, not numpy
+                except Exception as e:
+                    print(f"⏱️ [INTENT_TIMING] Error adding alternatives: {e}")
+                    # Continue without alternatives if there's an error
+                
+                print(f"⏱️ [INTENT_TIMING] Alternatives added")
+                extract_result_time = time.time() - extract_result_start
+                print(f"⏱️ [INTENT_TIMING] Extracting results took {extract_result_time*1000:.2f}ms")
+                
+                self.logger.info(f"✅ [INTENT_HANDLER] Classified as: {response.predicted_intent} "
+                               f"(confidence={response.confidence:.3f})")
+            else:
+                response.success = False
+                response.error = "No classification result returned"
+                response.predicted_intent = "general"
+                response.confidence = 0.0
+            
+            handler_total = time.time() - handler_start
+            print(f"⏱️ [INTENT_TIMING] ✅ TOTAL HANDLER TIME: {handler_total*1000:.2f}ms")
+            print(f"⏱️ [INTENT_TIMING] Handler returning response at {time.time()}")
             
             return response
             
         except Exception as e:
             self.logger.error(f"❌ [INTENT_HANDLER] Intent classification failed: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             
-            # Return error response
             response = IntentClassificationResponse()
             response.success = False
             response.predicted_intent = "general"

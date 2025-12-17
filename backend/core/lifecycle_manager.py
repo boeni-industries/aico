@@ -478,6 +478,14 @@ class BackendLifecycleManager:
                 # Re-raise to fail loudly
                 raise RuntimeError(error_msg)
 
+            # Inject modelservice client for goal embeddings (needed for deduplication)
+            try:
+                agency_engine.modelservice_client = modelservice_client
+                self.logger.info("✅ [AI_PROCESSORS] Injected modelservice client into AgencyEngine")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject modelservice client: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will not generate goal embeddings")
+            
             # Inject LLM planning helper (Phase 1: templated prompts + hand-authored patterns)
             try:
                 from backend.services.agency_planner import LLMPlanningHelper

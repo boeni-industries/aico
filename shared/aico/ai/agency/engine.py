@@ -116,6 +116,9 @@ class AgencyEngine(BaseAIProcessor):
         )
         logger.info("[AGENCY_ENGINE] Self-Reflection Engine initialized (Phase 5)")
         
+        # Initialize modelservice client for embeddings (needed for goal deduplication)
+        self.modelservice_client = None  # Will be set via set_modelservice_client() if available
+        
         # Phase 6.10: Plan Execution Engine
         from .executor import PlanExecutor
         from .skill_invoker import SkillInvoker
@@ -1095,6 +1098,153 @@ class AgencyEngine(BaseAIProcessor):
                 performance_context[goal_type] = perf_data
         
         return performance_context
+    
+    # ------------------------------------------------------------------
+    # PerceptualEvent Processing (Phase 6 - Conversation Integration)
+    # ------------------------------------------------------------------
+    
+    async def process_perceptual_event(self, event) -> Optional[Goal]:
+        """
+        Process a PerceptualEvent and potentially create a goal.
+        
+        This is the main entry point for conversation-based goal extraction
+        and other perception-driven goal creation.
+        
+        Args:
+            event: PerceptualEvent from conversation, sensors, or other sources
+            
+        Returns:
+            Created Goal if event resulted in goal creation, None otherwise
+        """
+        from .perceptual_events import PerceptType, GoalOriginType
+        
+        try:
+            logger.info(
+                f"[AGENCY_ENGINE] Processing {event.percept_type.value} event: {event.summary_text[:100]}"
+            )
+            
+            # Only process events with goal candidates
+            if not event.candidate_goal_summaries:
+                logger.debug("[AGENCY_ENGINE] Event has no goal candidates, skipping")
+                return None
+            
+            # Extract goal details from event
+            goal_title = event.candidate_goal_summaries[0]
+            goal_description = event.metadata.get("goal_description")
+            
+            # Map event origin to goal origin
+            origin_map = {
+                GoalOriginType.USER: GoalOrigin.USER,
+                GoalOriginType.CURIOSITY: GoalOrigin.CURIOSITY,
+                GoalOriginType.AGENT_SELF: GoalOrigin.HOBBY,
+                GoalOriginType.SYSTEM_MAINTENANCE: GoalOrigin.MAINTENANCE,
+            }
+            origin = origin_map.get(event.candidate_origin, GoalOrigin.USER)
+            
+            # Map horizon to goal type
+            horizon_to_type = {
+                "theme": "theme",
+                "project": "project",
+                "task": "task"
+            }
+            goal_type = horizon_to_type.get(
+                event.candidate_goal_horizon.value if event.candidate_goal_horizon else "project",
+                "project"
+            )
+            
+            # Determine priority from urgency score
+            if event.urgency_score >= 0.8:
+                priority = GoalPriority.HIGH
+            elif event.urgency_score >= 0.5:
+                priority = GoalPriority.NORMAL
+            else:
+                priority = GoalPriority.LOW
+            
+            # Generate title embedding for similarity matching
+            title_embedding = None
+            try:
+                if self.modelservice_client:
+                    embedding_response = await self.modelservice_client.get_embeddings(
+                        model="paraphrase-multilingual",
+                        prompt=goal_title
+                    )
+                    if embedding_response.get("success"):
+                        title_embedding = embedding_response["data"]["embedding"]
+            except Exception as e:
+                logger.warning(f"[AGENCY_ENGINE] Failed to generate title embedding: {e}")
+            
+            # Build metadata
+            from datetime import datetime, UTC
+            now = datetime.now(UTC)
+            
+            # Initialize intent_mentions array with first mention
+            initial_mention = {
+                "message_id": event.metadata.get("message_id"),
+                "timestamp": (event.timestamp or now).isoformat(),
+                "confidence": event.confidence_score,
+                "message_text": event.metadata.get("original_message", "")[:100]
+            }
+            
+            metadata = {
+                "percept_id": event.percept_id,
+                "source_component": event.source_component,
+                "confidence": event.confidence_score,
+                "salience": event.salience_score,
+                "extracted_from_conversation": event.metadata.get("extracted_from_conversation", False),
+                "original_message": event.metadata.get("original_message"),
+                "intent_type": event.metadata.get("intent_type"),
+                "title_embedding": title_embedding,  # Store for similarity matching
+                "intent_mentions": [initial_mention],  # Initialize with first mention
+                "mention_count": 1,  # Initialize persistence tracking
+                "mention_frequency": 0.0,  # Will be calculated on first reinforcement
+                "first_mentioned": (event.timestamp or now).isoformat(),
+                "last_mentioned": (event.timestamp or now).isoformat(),
+            }
+            
+            # Get user_id from event actors
+            user_id = event.actors[0] if event.actors else None
+            if not user_id:
+                logger.warning("[AGENCY_ENGINE] Event has no user_id in actors, cannot create goal")
+                return None
+            
+            # Create goal with optional plan
+            goal, plan = await self.create_goal_with_optional_plan(
+                user_id=user_id,
+                title=goal_title,
+                description=goal_description,
+                origin=origin,
+                goal_type=goal_type,
+                priority=priority,
+                metadata=metadata,
+                auto_plan=True  # Generate plan for user goals
+            )
+            
+            logger.info(
+                f"[AGENCY_ENGINE] Created goal from {event.percept_type.value}: "
+                f"'{goal_title}' (id={goal.goal_id}, origin={origin.value})"
+            )
+            
+            # Log event
+            await self.event_store.log_event(
+                AgencyEvent(
+                    user_id=user_id,
+                    goal_id=goal.goal_id,
+                    plan_id=plan.plan_id if plan else None,
+                    event_type="goal_created_from_percept",
+                    source="perceptual_event_processor",
+                    payload={
+                        "percept_type": event.percept_type.value,
+                        "percept_id": event.percept_id,
+                        "confidence": event.confidence_score,
+                    }
+                )
+            )
+            
+            return goal
+            
+        except Exception as e:
+            logger.error(f"[AGENCY_ENGINE] Failed to process perceptual event: {e}")
+            return None
     
     # ------------------------------------------------------------------
     # BaseAIProcessor abstract method implementations

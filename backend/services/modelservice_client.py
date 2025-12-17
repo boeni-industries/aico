@@ -243,16 +243,19 @@ class ModelServiceClient:
                         from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
                         embeddings_response = EmbeddingsResponse()
                         if message.any_payload.Unpack(embeddings_response):
-                            # Commented out to reduce log volume
-                            # self.logger.debug(f"Successfully unpacked EmbeddingsResponse: success={embeddings_response.success}")
+                            print(f"🔍 [EMBEDDING_RESPONSE] Successfully unpacked EmbeddingsResponse")
+                            print(f"🔍 [EMBEDDING_RESPONSE] success={embeddings_response.success}")
+                            print(f"🔍 [EMBEDDING_RESPONSE] error={embeddings_response.error if embeddings_response.HasField('error') else None}")
+                            print(f"🔍 [EMBEDDING_RESPONSE] embedding length={len(embeddings_response.embedding) if embeddings_response.embedding else 0}")
                             req_data.update({
                                 'success': embeddings_response.success,
                                 'error': embeddings_response.error if embeddings_response.HasField('error') else None
                             })
                             if embeddings_response.success and embeddings_response.embedding:
                                 req_data['data'] = {'embedding': list(embeddings_response.embedding)}
-                                # Commented out to reduce log volume
-                                # self.logger.debug(f"Extracted embedding with {len(embeddings_response.embedding)} dimensions")
+                                print(f"🔍 [EMBEDDING_RESPONSE] ✅ Extracted embedding with {len(embeddings_response.embedding)} dimensions")
+                            else:
+                                print(f"🔍 [EMBEDDING_RESPONSE] ❌ No embedding data or success=False")
                             req_event.set()
                         else:
                             self.logger.error("Failed to unpack EmbeddingsResponse")
@@ -412,10 +415,15 @@ class ModelServiceClient:
                 self.logger.debug(f"💬 [CHAT_DEBUG] Reusing existing subscription to {response_topic}")
         
         try:
-            # Send request with correlation ID
+            # Send request with correlation ID and reply_to for targeted responses
             publish_start = time.time()
             # Reduced publishing debug noise
-            await self.bus_client.publish(request_topic, request_proto, correlation_id=correlation_id)
+            await self.bus_client.publish(
+                request_topic, 
+                request_proto, 
+                correlation_id=correlation_id,
+                reply_to=response_topic
+            )
             publish_time = time.time() - publish_start
             
             # Only log slow publishing
@@ -755,6 +763,27 @@ class ModelServiceClient:
             AICOTopics.MODELSERVICE_INTENT_RESPONSE,
             request_data
         )
+    
+    async def classify_intent(
+        self, 
+        text: str,
+        model: str = "intent_classification"
+    ) -> Dict[str, Any]:
+        """Classify intent using zero-shot NLI model."""
+        request_data = {
+            "text": text,
+            "model": model
+        }
+        
+        self.logger.debug(f"Intent classification request: text='{text[:50]}...'")
+        
+        result = await self._send_request(
+            AICOTopics.MODELSERVICE_INTENT_REQUEST,
+            AICOTopics.MODELSERVICE_INTENT_RESPONSE,
+            request_data
+        )
+        
+        return result
     
     async def get_sentiment_analysis(self, text: str) -> Dict[str, Any]:
         """Get sentiment analysis from modelservice."""

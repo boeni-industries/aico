@@ -31,6 +31,16 @@ from .arbiter import (
     PriorityBand,
     ScoredGoal,
 )
+from .perceptual_events import (
+    PerceptualEvent,
+    PerceptType,
+    GoalHorizon,
+    GoalOriginType,
+)
+from .goal_extractor import (
+    UserGoalExtractor,
+    get_goal_extractor,
+)
 
 __all__ = [
     "Goal",
@@ -63,4 +73,10 @@ __all__ = [
     "IntentionStatus",
     "PriorityBand",
     "ScoredGoal",
+    "PerceptualEvent",
+    "PerceptType",
+    "GoalHorizon",
+    "GoalOriginType",
+    "UserGoalExtractor",
+    "get_goal_extractor",
 ]

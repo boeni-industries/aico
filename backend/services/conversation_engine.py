@@ -251,6 +251,7 @@ class ConversationEngine(BaseService):
     
     async def _handle_user_input(self, message) -> None:
         """Handle incoming user input message"""
+        print(f"💬 [CONVERSATION_ENGINE] 🔥🔥🔥 _handle_user_input CALLED!")
         try:
             import time
             timestamp = time.time()
@@ -286,6 +287,29 @@ class ConversationEngine(BaseService):
             # Generate response using semantic memory approach
             print(f"💬 [CONVERSATION_ENGINE] 🎯 Generating response...")
             await self._generate_response(user_context, conv_message)
+            
+            # Phase 6: Async goal extraction (fire-and-forget, no blocking)
+            if self.enable_agency and self.agency_plugin:
+                try:
+                    print(f"🎯 [GOAL_EXTRACTION] ✅ Agency enabled, creating async task...")
+                    message_text = conv_message.message.text
+                    print(f"🎯 [GOAL_EXTRACTION] Message: '{message_text[:50]}...'")
+                    import asyncio
+                    task = asyncio.create_task(
+                        self._extract_user_goal_async(
+                            user_id=user_id,
+                            message_id=conv_message.message_id,
+                            message_text=message_text,
+                            conversation_id=conversation_id
+                        )
+                    )
+                    print(f"🎯 [GOAL_EXTRACTION] ✅ Async task created: {task}")
+                except Exception as task_error:
+                    print(f"🎯 [GOAL_EXTRACTION] ❌ ERROR creating async task: {task_error}")
+                    import traceback
+                    print(f"🎯 [GOAL_EXTRACTION] Traceback: {traceback.format_exc()}")
+            else:
+                print(f"🎯 [GOAL_EXTRACTION] ❌ NOT creating task - enable_agency={self.enable_agency}, agency_plugin={self.agency_plugin}")
             
         except Exception as e:
             self.logger.error(f"Error handling user input: {e}", extra={
@@ -1421,6 +1445,115 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error during conversation engine stop: {e}")
+    
+    # ============================================================================
+    # GOAL EXTRACTION (Phase 6 - Conversation Integration)
+    # ============================================================================
+    
+    async def _extract_user_goal_async(
+        self,
+        user_id: str,
+        message_id: str,
+        message_text: str,
+        conversation_id: str
+    ) -> None:
+        """
+        Extract user goals from conversation message (async, non-blocking).
+        
+        This runs in the background after the conversation response is sent,
+        using XLM-RoBERTa for fast intent classification and LLM for goal extraction.
+        
+        Args:
+            user_id: User ID
+            message_id: Message ID for provenance
+            message_text: User's message text
+            conversation_id: Conversation ID for context
+        """
+        try:
+            print(f"🎯 [GOAL_EXTRACTION] Starting async extraction for user {user_id[:8]}")
+            print(f"🎯 [GOAL_EXTRACTION] Message: '{message_text[:100]}...'")
+            self.logger.info(f"[GOAL_EXTRACTION] Starting async extraction for message: {message_text[:50]}...")
+            
+            # Get goal extractor with event store for metrics tracking
+            from aico.ai.agency import UserGoalExtractor
+            from aico.ai.processors import ai_registry
+            print(f"🎯 [GOAL_EXTRACTION] Getting goal extractor instance...")
+            
+            # Get agency engine to access event store and database connection
+            agency_engine = ai_registry.get("agency")
+            event_store = agency_engine.event_store if agency_engine else None
+            db_connection = self.container.get_service("database") if hasattr(self, 'container') else None
+            
+            extractor = UserGoalExtractor(event_store=event_store, db_connection=db_connection)
+            print(f"🎯 [GOAL_EXTRACTION] ✅ Goal extractor ready (event_store={'enabled' if event_store else 'disabled'})")
+            
+            # Extract goal (XLM-RoBERTa + LLM, ~500ms total)
+            print(f"🎯 [GOAL_EXTRACTION] Calling extractor.extract_goal_from_message()...")
+            perceptual_event = await extractor.extract_goal_from_message(
+                user_id=user_id,
+                message_id=message_id,
+                message_text=message_text,
+                conversation_id=conversation_id,
+                conversation_context=None  # TODO: Get recent conversation context
+            )
+            
+            if not perceptual_event:
+                print(f"🎯 [GOAL_EXTRACTION] ❌ No goal detected in message (intent not goal-forming or low confidence)")
+                self.logger.info("[GOAL_EXTRACTION] No goal detected in message")
+                return
+            
+            print(f"🎯 [GOAL_EXTRACTION] ✅ Goal detected!")
+            print(f"🎯 [GOAL_EXTRACTION]   Title: '{perceptual_event.candidate_goal_summaries[0]}'")
+            print(f"🎯 [GOAL_EXTRACTION]   Confidence: {perceptual_event.confidence_score:.2f}")
+            # Handle both enum and string values for horizon
+            horizon_value = perceptual_event.candidate_goal_horizon.value if hasattr(perceptual_event.candidate_goal_horizon, 'value') else perceptual_event.candidate_goal_horizon if perceptual_event.candidate_goal_horizon else 'unknown'
+            print(f"🎯 [GOAL_EXTRACTION]   Horizon: {horizon_value}")
+            print(f"🎯 [GOAL_EXTRACTION]   Urgency: {perceptual_event.urgency_score:.2f}")
+            self.logger.info(
+                f"[GOAL_EXTRACTION] Goal detected: '{perceptual_event.candidate_goal_summaries[0]}' "
+                f"(confidence={perceptual_event.confidence_score:.2f})"
+            )
+            
+            # Get agency engine from registry
+            from aico.ai.processors import ai_registry
+            print(f"🎯 [GOAL_EXTRACTION] Getting agency engine from registry...")
+            agency_engine = ai_registry.get("agency")
+            
+            if not agency_engine:
+                print(f"🎯 [GOAL_EXTRACTION] ❌ Agency engine not available in registry")
+                self.logger.warning("[GOAL_EXTRACTION] Agency engine not available in registry")
+                return
+            print(f"🎯 [GOAL_EXTRACTION] ✅ Agency engine ready")
+            
+            # Process perceptual event to create goal
+            print(f"🎯 [GOAL_EXTRACTION] Processing perceptual event to create goal...")
+            goal = await agency_engine.process_perceptual_event(perceptual_event)
+            
+            if goal:
+                print(f"🎯 [GOAL_EXTRACTION] ✅✅✅ SUCCESS! Created user goal:")
+                print(f"🎯 [GOAL_EXTRACTION]   Goal ID: {goal.goal_id}")
+                print(f"🎯 [GOAL_EXTRACTION]   Title: '{goal.title}'")
+                print(f"🎯 [GOAL_EXTRACTION]   Origin: {goal.origin.value}")
+                print(f"🎯 [GOAL_EXTRACTION]   Status: {goal.status.value}")
+                print(f"🎯 [GOAL_EXTRACTION]   Priority: {goal.priority.value}")
+                self.logger.info(
+                    f"[GOAL_EXTRACTION] ✅ Created user goal: '{goal.title}' "
+                    f"(id={goal.goal_id}, origin={goal.origin.value})"
+                )
+                
+                # Frontend will pick up via regular polling of agency endpoints
+                # No WebSocket needed - polling already implemented
+                
+            else:
+                print(f"🎯 [GOAL_EXTRACTION] ❌ Failed to create goal from perceptual event")
+                self.logger.warning("[GOAL_EXTRACTION] Failed to create goal from perceptual event")
+                
+        except Exception as e:
+            # Don't fail conversation flow if goal extraction fails
+            print(f"🎯 [GOAL_EXTRACTION] ❌❌❌ EXCEPTION: {e}")
+            import traceback
+            print(f"🎯 [GOAL_EXTRACTION] Traceback: {traceback.format_exc()}")
+            self.logger.error(f"[GOAL_EXTRACTION] Async goal extraction failed: {e}", exc_info=True)
     
     # ============================================================================
     # PROACTIVE CONVERSATION HANDLER

@@ -114,13 +114,13 @@ class TransformersManager:
         ),
         "intent_classification": TransformerModelConfig(
             name="intent_classification",
-            model_id="xlm-roberta-base",
+            model_id="joeddav/xlm-roberta-large-xnli",
             task=ModelTask.TEXT_CLASSIFICATION,
-            priority=2,
+            priority=1,
             required=True,
-            description="Multilingual intent classification using XLM-RoBERTa",
+            description="Multilingual zero-shot intent classification via NLI (15+ languages)",
             multilingual=True,
-            memory_mb=600
+            memory_mb=800
         ),
         "embeddings": TransformerModelConfig(
             name="embeddings",
@@ -261,6 +261,7 @@ class TransformersManager:
         critical_models = [
             "paraphrase-multilingual",  # Embedding model (used for every message)
             "entity_extraction",  # GLiNER (used for KG extraction)
+            "intent_classification",  # Zero-shot NLI (used for every user message)
         ]
         
         for model_name in critical_models:
@@ -313,6 +314,42 @@ class TransformersManager:
                         
                         warmup_time = time.time() - warmup_start
                         print(f"   ✅ {model_name} warmed up in {warmup_time:.2f}s (GPU initialized, JIT compiled, ready)", flush=True)
+                        self.logger.info(f"✅ {model_name} warmed up in {warmup_time:.2f}s")
+                    
+                    elif model_name == "intent_classification":
+                        print(f"   🔥 Warming up {model_name}...", flush=True)
+                        import time
+                        import asyncio
+                        import torch
+                        from transformers import pipeline
+                        warmup_start = time.time()
+                        
+                        # Try to use MPS (Apple Silicon GPU) if available
+                        device = 0 if torch.backends.mps.is_available() else -1
+                        device_name = "MPS (Apple Silicon GPU)" if device == 0 else "CPU"
+                        print(f"   🚀 Using device for warmup: {device_name}", flush=True)
+                        
+                        # Create zero-shot classification pipeline
+                        classifier = pipeline(
+                            "zero-shot-classification",
+                            model="joeddav/xlm-roberta-large-xnli",
+                            device=device
+                        )
+                        
+                        # Warmup with realistic intent classification examples
+                        warmup_texts = [
+                            "Hello",
+                            "Can you help me?",
+                            "I want to learn Spanish"
+                        ]
+                        candidate_labels = ["greeting", "question", "request", "farewell"]
+                        
+                        # First pass: Triggers model loading, tokenization, inference pipeline
+                        for text in warmup_texts:
+                            _ = await asyncio.to_thread(classifier, text, candidate_labels)
+                        
+                        warmup_time = time.time() - warmup_start
+                        print(f"   ✅ {model_name} warmed up in {warmup_time:.2f}s (NLI pipeline ready)", flush=True)
                         self.logger.info(f"✅ {model_name} warmed up in {warmup_time:.2f}s")
                 else:
                     print(f"   ⚠️  {model_name} not available", flush=True)
@@ -488,41 +525,41 @@ class TransformersManager:
                 return None
         
         elif model_name == "intent_classification":
-            # Load XLM-RoBERTa model for intent classification
+            # Load zero-shot NLI pipeline for intent classification
             try:
                 if model_name not in self.loaded_models:
                     try:
-                        from transformers import AutoTokenizer, AutoModel
+                        from transformers import pipeline
                     except ImportError as e:
                         self.logger.warning(f"transformers package not available: {e}")
-                        # Return None instead of dummy model - let the caller handle it
                         return None
-                        
-                    from dataclasses import dataclass
                     
-                    print(f"🔍 Loading XLM-RoBERTa model for intent classification...")
-                    self.logger.info(f"Loading XLM-RoBERTa model for intent classification...")
+                    print(f"🔍 Loading zero-shot NLI pipeline for intent classification...")
+                    self.logger.info(f"Loading zero-shot NLI pipeline (joeddav/xlm-roberta-large-xnli)...")
                     
-                    # Load tokenizer and model
-                    tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
-                    model = AutoModel.from_pretrained("xlm-roberta-base")
+                    # Create zero-shot classification pipeline
+                    # Try to use MPS (Apple Silicon GPU) if available, otherwise CPU
+                    import torch
+                    device = 0 if torch.backends.mps.is_available() else -1
                     
-                    # Create a model wrapper with both components
-                    @dataclass
-                    class IntentModelWrapper:
-                        tokenizer: Any
-                        model: Any
+                    classifier = pipeline(
+                        "zero-shot-classification",
+                        model="joeddav/xlm-roberta-large-xnli",
+                        device=device
+                    )
                     
-                    wrapper = IntentModelWrapper(tokenizer=tokenizer, model=model)
-                    self.loaded_models[model_name] = wrapper
+                    device_name = "MPS (Apple Silicon GPU)" if device == 0 else "CPU"
+                    print(f"🚀 Using device: {device_name}")
                     
-                    print(f"✅ XLM-RoBERTa intent classification ready (multilingual)")
-                    self.logger.info(f"✅ XLM-RoBERTa model loaded successfully")
+                    self.loaded_models[model_name] = classifier
+                    
+                    print(f"✅ Zero-shot NLI intent classification ready (15+ languages)")
+                    self.logger.info(f"✅ Zero-shot NLI pipeline loaded successfully")
                 
                 return self.loaded_models[model_name]
                 
             except Exception as e:
-                self.logger.error(f"Failed to load XLM-RoBERTa model: {e}")
+                self.logger.error(f"Failed to load zero-shot NLI pipeline: {e}")
                 return None
         
         elif model_name == "paraphrase-multilingual":
