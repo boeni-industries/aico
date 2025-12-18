@@ -71,7 +71,7 @@ async def get_pending_initiations(
             """SELECT initiation_id, user_id, conversation_id, question,
                       initiated_at, resolution_status, resolved_at,
                       user_response_time, engagement_score
-               FROM aico_conversation_initiations
+               FROM conversation_initiations
                WHERE user_id = ? AND resolution_status = 'pending'
                ORDER BY initiated_at DESC""",
             (user_id,)
@@ -128,7 +128,7 @@ async def respond_to_initiation(
         # Verify initiation exists and belongs to user
         cursor = db.execute(
             """SELECT initiation_id, user_id, initiated_at, resolution_status, trigger_reason
-               FROM aico_conversation_initiations
+               FROM conversation_initiations
                WHERE initiation_id = ?""",
             (response.initiation_id,)
         )
@@ -162,7 +162,7 @@ async def respond_to_initiation(
         
         # Update initiation status
         db.execute(
-            """UPDATE aico_conversation_initiations
+            """UPDATE conversation_initiations
                SET resolution_status = ?,
                    resolved_at = ?,
                    user_response_time = ?,
@@ -273,7 +273,7 @@ async def get_initiation_history(
             """SELECT initiation_id, user_id, conversation_id, question,
                       initiated_at, resolution_status, resolved_at,
                       user_response_time, engagement_score
-               FROM aico_conversation_initiations
+               FROM conversation_initiations
                WHERE user_id = ?
                ORDER BY initiated_at DESC
                LIMIT ?""",

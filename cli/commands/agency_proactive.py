@@ -93,7 +93,7 @@ def get_db_connection():
 
 def get_current_user_id(db: EncryptedLibSQLConnection) -> str:
     """Get current user ID from database."""
-    cursor = db.execute("SELECT uuid FROM users WHERE is_active = 1 LIMIT 1")
+    cursor = db.execute("SELECT uuid FROM user_profiles WHERE is_active = 1 LIMIT 1")
     user = cursor.fetchone()
     if not user:
         console.print("[red]✗[/red] No active user found")
@@ -126,7 +126,7 @@ def list_initiations(
             SELECT initiation_id, conversation_id, question, 
                    initiated_at, resolution_status, resolved_at,
                    user_response_time, engagement_score, trigger_reason
-            FROM aico_conversation_initiations
+            FROM conversation_initiations
             WHERE user_id = ?
         """
         params = [user_id]
@@ -202,7 +202,7 @@ def list_initiations(
                     COUNT(*) as count,
                     AVG(user_response_time) as avg_response_time,
                     AVG(engagement_score) as avg_engagement
-                FROM aico_conversation_initiations
+                FROM conversation_initiations
                 WHERE user_id = ?
                 GROUP BY resolution_status
             """
@@ -259,7 +259,7 @@ def show_initiation(
                    trigger_source, trigger_reason,
                    initiated_at, resolution_status, resolved_at,
                    user_response_time, engagement_score, created_at, updated_at
-            FROM aico_conversation_initiations
+            FROM conversation_initiations
             WHERE initiation_id LIKE ? AND user_id = ?
         """, (f"{initiation_id}%", user_id))
         
@@ -338,7 +338,7 @@ def respond_to_initiation(
         # Verify initiation exists
         cursor = db.execute("""
             SELECT initiation_id, resolution_status, initiated_at, trigger_reason
-            FROM aico_conversation_initiations
+            FROM conversation_initiations
             WHERE initiation_id LIKE ? AND user_id = ?
         """, (f"{initiation_id}%", user_id))
         
@@ -359,7 +359,7 @@ def respond_to_initiation(
         
         # Update initiation
         db.execute("""
-            UPDATE aico_conversation_initiations
+            UPDATE conversation_initiations
             SET resolution_status = ?,
                 resolved_at = ?,
                 user_response_time = ?,
@@ -630,7 +630,7 @@ def test_initiation(
             conversation_id = f"{user_id}_{int(datetime.utcnow().timestamp())}"
             
             db.execute("""
-                INSERT INTO aico_conversation_initiations (
+                INSERT INTO conversation_initiations (
                     initiation_id, user_id, conversation_id,
                     trigger_source, trigger_reason, question,
                     context, urgency, expected_answer_type,

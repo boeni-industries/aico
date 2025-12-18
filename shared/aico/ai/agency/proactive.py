@@ -622,7 +622,7 @@ class ReminderSystem:
         try:
             row = self.db.fetch_one(
                 """
-                SELECT cluster_id FROM reminder_clusters
+                SELECT cluster_id FROM proactive_reminder_clusters
                 WHERE user_id = ? AND status = 'pending'
                   AND scheduled_delivery >= ? AND scheduled_delivery <= ?
                 ORDER BY scheduled_delivery ASC LIMIT 1
@@ -637,7 +637,7 @@ class ReminderSystem:
             cluster_id = str(uuid.uuid4())
             self.db.execute(
                 """
-                INSERT INTO reminder_clusters (
+                INSERT INTO proactive_reminder_clusters (
                     cluster_id, user_id, scheduled_delivery, status,
                     reminder_count, created_at
                 ) VALUES (?, ?, ?, ?, 0, ?)
@@ -662,7 +662,7 @@ class ReminderSystem:
         try:
             self.db.execute(
                 """
-                UPDATE reminder_clusters
+                UPDATE proactive_reminder_clusters
                 SET reminder_count = (
                     SELECT COUNT(*) FROM agency_reminders
                     WHERE cluster_id = ?
