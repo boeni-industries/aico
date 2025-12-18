@@ -194,6 +194,15 @@ class AgencyEngine(BaseAIProcessor):
         """
         self._llm_plan_refiner = refiner
         logger.info("[AGENCY_ENGINE] LLM plan refiner injected")
+    
+    def set_llm_client(self, llm_client: Any) -> None:
+        """Inject LLM client into Planner for LLM-based plan generation.
+        
+        Args:
+            llm_client: LLM client (e.g., ModelServiceClient) for plan generation
+        """
+        self.planner.llm_client = llm_client
+        logger.info("[AGENCY_ENGINE] LLM client injected into Planner")
 
     # ------------------------------------------------------------------
     # Goal & plan API (Phase 1 core)

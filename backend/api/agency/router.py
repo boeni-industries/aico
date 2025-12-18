@@ -42,6 +42,7 @@ from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorL
 from aico.core.paths import get_default_database_path
 from aico.data.libsql import EncryptedLibSQLConnection
 from aico.security import AICOKeyManager
+from aico.ai import ai_registry
 
 logger = get_logger("backend", "api.agency")
 router = APIRouter()
@@ -52,41 +53,21 @@ router = APIRouter()
 # ============================================================================
 
 async def get_agency_engine() -> AgencyEngine:
-    """Get AgencyEngine instance with encrypted database connection"""
+    """Get AgencyEngine instance from global ai_registry (with LLM client injected)"""
     try:
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
+        # Get the global AgencyEngine instance that has LLM client injected during startup
+        engine = ai_registry.get("agency")
         
-        # Get encrypted database connection
-        db_path = get_default_database_path()
-        key_manager = AICOKeyManager(config)
-        
-        # Try session-based auth first
-        cached_key = key_manager._get_cached_session()
-        if cached_key:
-            key_manager._extend_session()
-            db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-        else:
-            # Try stored key from keyring
-            import keyring
-            stored_key = keyring.get_password(key_manager.service_name, "master_key")
-            if stored_key:
-                master_key = bytes.fromhex(stored_key)
-                key_manager._cache_session(master_key)
-                db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Database authentication failed - no cached session or stored key"
-                )
-        
-        db = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        engine = AgencyEngine(config, db)
+        if not engine:
+            raise HTTPException(
+                status_code=500,
+                detail="AgencyEngine not available in ai_registry - backend may not be fully initialized"
+            )
         
         return engine
         
     except Exception as e:
-        logger.error(f"Failed to initialize AgencyEngine: {e}")
+        logger.error(f"Failed to get AgencyEngine from registry: {e}")
         raise HTTPException(status_code=500, detail=f"Agency service unavailable: {str(e)}")
 
 

@@ -482,6 +482,14 @@ class BackendLifecycleManager:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject modelservice client: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will not generate goal embeddings")
             
+            # Inject LLM client into Planner for LLM-based plan generation
+            try:
+                agency_engine.set_llm_client(modelservice_client)
+                self.logger.info("✅ [AI_PROCESSORS] Injected LLM client into Planner")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject LLM client: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] Planner will use fallback planning only")
+            
             # Inject LLM planning helper (Phase 1: templated prompts + hand-authored patterns)
             try:
                 from backend.services.agency_planner import LLMPlanningHelper
