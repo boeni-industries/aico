@@ -78,7 +78,7 @@ class LessonApplicationService:
             False  # Emergency freeze mechanism
         )
         
-        logger.info(
+        logger.debug(
             f"[LESSON_APPLICATOR] Initialized (min_confidence={self.min_confidence}, "
             f"dry_run={self.dry_run}, policy_amendment_limit={self.policy_amendment_limit}/day, "
             f"policy_freeze={self.policy_freeze})"

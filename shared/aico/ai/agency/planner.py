@@ -67,7 +67,7 @@ class Planner:
         self.db = db_connection
         self._plan_cache: Dict[str, Dict[str, Any]] = {}
         
-        logger.info(
+        logger.debug(
             f"[PLANNER] Initialized with LLM: {llm_client is not None}, "
             f"caching: {enable_caching}, DB: {db_connection is not None}"
         )

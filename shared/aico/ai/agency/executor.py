@@ -442,6 +442,10 @@ class PlanExecutor:
         try:
             # Get plan and step details
             plan = await self.plan_store.get_plan(execution.plan_id)
+            
+            if not plan:
+                raise ValueError(f"Plan {execution.plan_id} not found")
+            
             step = next((s for s in plan.steps if s.step_id == step_exec.step_id), None)
             
             if not step:

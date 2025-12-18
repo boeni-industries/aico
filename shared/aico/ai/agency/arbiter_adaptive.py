@@ -125,7 +125,7 @@ class AdaptiveScoringEngine:
                 )
             
             if self.logger and self.arms:
-                self.logger.info(f"[ADAPTIVE] Loaded {len(self.arms)} bandit arms")
+                self.logger.debug(f"[ADAPTIVE] Loaded {len(self.arms)} bandit arms")
                 
         except Exception as e:
             if self.logger:
@@ -158,7 +158,7 @@ class AdaptiveScoringEngine:
             self._save_arm(arm)
         
         if self.logger:
-            self.logger.info(f"[ADAPTIVE] Initialized {len(arm_configs)} default arms")
+            self.logger.debug(f"[ADAPTIVE] Initialized {len(arm_configs)} default arms")
     
     def _save_arm(self, arm: WeightArm) -> None:
         """Save or update an arm in the database."""

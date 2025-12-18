@@ -95,7 +95,7 @@ class SelfReflectionEngine:
             0.7  # Minimum confidence to apply lessons
         )
         
-        logger.info(
+        logger.debug(
             f"[SELF_REFLECTION] Initialized in '{self.policy_mode}' mode "
             f"(min_samples={self.min_sample_size}, confidence_threshold={self.confidence_threshold})"
         )

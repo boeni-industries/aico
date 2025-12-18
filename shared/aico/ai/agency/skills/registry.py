@@ -167,7 +167,7 @@ class SkillRegistry:
     def __init__(self):
         self._skills: Dict[str, Skill] = {}
         self._categories: Dict[str, List[str]] = {}
-        logger.info("🔧 [SKILL_REGISTRY] Initialized skill registry")
+        logger.debug("🔧 [SKILL_REGISTRY] Initialized skill registry")
     
     def register(self, skill: Skill) -> None:
         """
@@ -192,7 +192,7 @@ class SkillRegistry:
         if skill_id not in self._categories[category]:
             self._categories[category].append(skill_id)
         
-        logger.info(
+        logger.debug(
             f"🔧 [SKILL_REGISTRY] Registered skill '{skill_id}' "
             f"({skill.name}) in category '{category}'"
         )

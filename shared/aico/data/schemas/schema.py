@@ -1182,6 +1182,21 @@ V1_SCHEMA = [
     """CREATE INDEX idx_workflow_stages_execution ON workflow_stages(execution_id, stage_order)""",
     """CREATE INDEX idx_workflow_stages_status ON workflow_stages(status)""",
 
+    """CREATE TABLE user_time_preferences (
+                preference_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                time_period TEXT NOT NULL,  -- early_morning, morning, afternoon, evening, night
+                productivity_score REAL NOT NULL DEFAULT 1.0,  -- 0.0-2.0, relative productivity
+                active INTEGER DEFAULT 1,  -- 1=active, 0=disabled
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES "user_profiles"(uuid) ON DELETE CASCADE,
+                UNIQUE(user_id, time_period)
+            )""",
+
+    """CREATE INDEX idx_user_time_preferences_user ON user_time_preferences(user_id, active)""",
+    """CREATE INDEX idx_user_time_preferences_active ON user_time_preferences(active) WHERE active = 1""",
+
 ]
 
 # Alias for compatibility

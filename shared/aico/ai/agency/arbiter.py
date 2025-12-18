@@ -131,14 +131,14 @@ class GoalArbiter:
             adaptive_config = AdaptiveConfig()
             self.adaptive_engine = AdaptiveScoringEngine(db, adaptive_config, logger)
             if logger:
-                logger.info("[ARBITER] Phase 6.5: Adaptive scoring enabled")
+                logger.debug("[ARBITER] Phase 6.5: Adaptive scoring enabled")
         else:
             self.adaptive_engine = None
         
         if enable_context_aware:
             self.context_engine = ContextAwarePrioritization(db, logger)
             if logger:
-                logger.info("[ARBITER] Phase 6.5: Context-aware prioritization enabled")
+                logger.debug("[ARBITER] Phase 6.5: Context-aware prioritization enabled")
         else:
             self.context_engine = None
         
@@ -176,7 +176,7 @@ class GoalArbiter:
                 
                 print("✅ [ARBITER DEBUG] Scoring weights validated successfully!")
                 if logger:
-                    logger.info(f"[ARBITER] Loaded scoring weights from config: {self.weights}")
+                    logger.debug(f"[ARBITER] Loaded scoring weights from config: {self.weights}")
             except Exception as e:
                 error_msg = f"Failed to load arbiter configuration: {e}"
                 if logger:

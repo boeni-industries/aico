@@ -90,7 +90,7 @@ class AgencyEngine(BaseAIProcessor):
         
         # Phase 4: Values & Ethics service
         self.values_ethics = ValuesEthicsService(db_connection, logger=logger)
-        logger.info("[AGENCY_ENGINE] Values & Ethics service initialized (Phase 4)")
+        logger.debug("[AGENCY_ENGINE] Values & Ethics service initialized (Phase 4)")
         
         # Phase 4: Goal Arbiter with configuration
         self.arbiter = GoalArbiter(
@@ -99,7 +99,7 @@ class AgencyEngine(BaseAIProcessor):
             message_bus=message_bus, 
             logger=logger
         )
-        logger.info("[AGENCY_ENGINE] Goal Arbiter initialized (Phase 4)")
+        logger.debug("[AGENCY_ENGINE] Goal Arbiter initialized (Phase 4)")
         
         # Phase 5: Self-Reflection Engine
         from .reflection import SelfReflectionEngine
@@ -108,7 +108,7 @@ class AgencyEngine(BaseAIProcessor):
             db_connection=db_connection,
             llm_client=None  # Will be set later if available
         )
-        logger.info("[AGENCY_ENGINE] Self-Reflection Engine initialized (Phase 5)")
+        logger.debug("[AGENCY_ENGINE] Self-Reflection Engine initialized (Phase 5)")
         
         # Initialize modelservice client for embeddings (needed for goal deduplication)
         self.modelservice_client = None  # Will be set via set_modelservice_client() if available
@@ -144,7 +144,7 @@ class AgencyEngine(BaseAIProcessor):
         self.skill_registry.register(AskUserSkill(db=db_connection, message_bus=message_bus))
         self.skill_registry.register(InitiateConversationSkill(db=db_connection, message_bus=message_bus))
         
-        logger.info(
+        logger.debug(
             f"[AGENCY_ENGINE] Skill Registry initialized with {len(self.skill_registry)} skills"
         )
         
@@ -163,7 +163,7 @@ class AgencyEngine(BaseAIProcessor):
             skill_invoker=self.skill_invoker,
             logger=logger
         )
-        logger.info("[AGENCY_ENGINE] Plan Executor initialized (Phase 6.10)")
+        logger.debug("[AGENCY_ENGINE] Plan Executor initialized (Phase 6.10)")
         
         # Optional backend hook for LLM-based plan refinement (injected by backend)
         self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner
@@ -171,14 +171,14 @@ class AgencyEngine(BaseAIProcessor):
         # Phase 2: World Model integration
         self.world_model = world_model
         if world_model and WORLD_MODEL_AVAILABLE:
-            logger.info("[AGENCY_ENGINE] World Model integration enabled (Phase 2)")
+            logger.debug("[AGENCY_ENGINE] World Model integration enabled (Phase 2)")
         else:
             logger.debug("[AGENCY_ENGINE] Running without World Model (Phase 1 mode)")
         
         # Phase 2: Personality integration
         self.personality = personality_service
         if personality_service and PERSONALITY_AVAILABLE:
-            logger.info("[AGENCY_ENGINE] Personality integration enabled (Phase 2)")
+            logger.debug("[AGENCY_ENGINE] Personality integration enabled (Phase 2)")
         else:
             logger.debug("[AGENCY_ENGINE] Running without Personality (Phase 1 mode)")
 

@@ -45,7 +45,7 @@ class SkillInvoker:
         self.max_retries = max_retries
         self.logger = logger or globals()["logger"]
         
-        self.logger.info(
+        self.logger.debug(
             f"🔧 [SKILL_INVOKER] Initialized with {len(skill_registry)} skills, "
             f"timeout={default_timeout}s, max_retries={max_retries}"
         )

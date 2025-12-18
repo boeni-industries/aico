@@ -58,7 +58,7 @@ class LessonMemoryProjector:
         self.self_model_store = SelfModelStore(db_connection)
         self.run_store = ReflectionRunStore(db_connection)
         
-        logger.info("[LESSON_PROJECTOR] Initialized")
+        logger.debug("[LESSON_PROJECTOR] Initialized")
     
     async def project_lesson_to_memory(
         self,
