@@ -509,7 +509,7 @@ class TaskScheduler(BaseService):
         
         # Clean up any stale locks from previous runs (e.g., if backend crashed)
         self.logger.info("Cleaning up stale task locks from previous runs...")
-        database.execute("DELETE FROM task_locks")
+        database.execute("DELETE FROM scheduler_task_locks")
         database.commit()
         self.logger.info("Stale task locks cleared")
         

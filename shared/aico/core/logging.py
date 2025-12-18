@@ -322,6 +322,9 @@ class AICOLogger:
     def error(self, message: str, **kwargs):
         self._log("ERROR", message, **kwargs)
     
+    def critical(self, message: str, **kwargs):
+        self._log("CRITICAL", message, **kwargs)
+    
     def exception(self, message: str, **kwargs):
         """Log an exception with traceback"""
         kwargs["extra"] = kwargs.get("extra", {})
