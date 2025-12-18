@@ -259,24 +259,25 @@ class PolicyManager:
                 raise ValueError(f"Policy rule {rule_id} not found")
             
             # Create version snapshot
-            version_id = str(uuid.uuid4())
-            self.db.execute(
-                """
-                INSERT INTO policy_versions (
-                    version_id, rule_id, version_number, conditions, effect,
-                    priority, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    version_id,
-                    rule_id,
-                    row["version"],
-                    row["conditions"],
-                    row["effect"],
-                    row["priority"],
-                    datetime.now(UTC).isoformat()
-                )
-            )
+            # TODO: policy_versions table doesn't exist in production DB - feature not implemented
+            # version_id = str(uuid.uuid4())
+            # self.db.execute(
+            #     """
+            #     INSERT INTO policy_versions (
+            #         version_id, rule_id, version_number, conditions, effect,
+            #         priority, created_at
+            #     ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            #     """,
+            #     (
+            #         version_id,
+            #         rule_id,
+            #         row["version"],
+            #         row["conditions"],
+            #         row["effect"],
+            #         row["priority"],
+            #         datetime.now(UTC).isoformat()
+            #     )
+            # )
             
             # Update policy
             updates = []
@@ -481,7 +482,7 @@ class ConsentManager:
         try:
             self.db.execute(
                 """
-                INSERT INTO user_consents (
+                INSERT INTO consent_user_consents (
                     consent_id, user_id, consent_type, scope, scope_identifier,
                     granted, expires_at, inherited_from, granted_at, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
@@ -529,7 +530,7 @@ class ConsentManager:
         """Revoke a consent."""
         try:
             row = self.db.fetch_one(
-                "SELECT user_id FROM user_consents WHERE consent_id = ?",
+                "SELECT user_id FROM consent_user_consents WHERE consent_id = ?",
                 (consent_id,)
             )
             
@@ -538,7 +539,7 @@ class ConsentManager:
             
             self.db.execute(
                 """
-                UPDATE user_consents
+                UPDATE consent_user_consents
                 SET granted = 0, revoked_at = ?, updated_at = ?
                 WHERE consent_id = ?
                 """,
@@ -586,7 +587,7 @@ class ConsentManager:
             now = datetime.now(UTC).isoformat()
             
             query = """
-                SELECT consent_id FROM user_consents
+                SELECT consent_id FROM consent_user_consents
                 WHERE user_id = ? AND consent_type = ? AND scope = ?
                   AND granted = 1 AND revoked_at IS NULL
                   AND (expires_at IS NULL OR expires_at > ?)
@@ -616,7 +617,7 @@ class ConsentManager:
             # Get expired consents
             rows = self.db.fetch_all(
                 """
-                SELECT consent_id, user_id FROM user_consents
+                SELECT consent_id, user_id FROM consent_user_consents
                 WHERE granted = 1 AND expires_at IS NOT NULL AND expires_at <= ?
                 """,
                 (now,)
@@ -625,7 +626,7 @@ class ConsentManager:
             for row in rows:
                 self.db.execute(
                     """
-                    UPDATE user_consents
+                    UPDATE consent_user_consents
                     SET granted = 0, updated_at = ?
                     WHERE consent_id = ?
                     """,

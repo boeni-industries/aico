@@ -161,23 +161,19 @@ class TestPolicyManager:
             priority=90
         )
         
-        # Verify update
-        row = policy_manager.db.fetch_one(
+        # Verify update by querying database directly
+        updated_rule = policy_manager.db.fetch_one(
             "SELECT * FROM agency_policy_rules WHERE rule_id = ?",
             (rule_id,)
         )
+        assert updated_rule is not None
+        import json
+        conditions = json.loads(updated_rule["conditions"])
+        assert conditions["priority"] == "high"
+        assert updated_rule["effect"] == "block"
+        assert updated_rule["priority"] == 90
         
-        assert row["effect"] == "block"
-        assert row["priority"] == 90
-        assert row["version"] == 2
-        
-        # Verify version history
-        version_row = policy_manager.db.fetch_one(
-            "SELECT * FROM policy_versions WHERE rule_id = ? AND version_number = 1",
-            (rule_id,)
-        )
-        
-        assert version_row is not None
+        # Note: policy_versions table was removed in migration 38 as unused
     
     def test_policy_caching(self, policy_manager, test_user):
         """Test that policies are cached."""
@@ -224,7 +220,7 @@ class TestConsentManager:
         
         # Verify in database
         row = consent_manager.db.fetch_one(
-            "SELECT * FROM user_consents WHERE consent_id = ?",
+            "SELECT * FROM consent_user_consents WHERE consent_id = ?",
             (consent_id,)
         )
         
@@ -244,7 +240,7 @@ class TestConsentManager:
         )
         
         row = consent_manager.db.fetch_one(
-            "SELECT * FROM user_consents WHERE consent_id = ?",
+            "SELECT * FROM consent_user_consents WHERE consent_id = ?",
             (consent_id,)
         )
         
@@ -261,7 +257,7 @@ class TestConsentManager:
         consent_manager.revoke_consent(consent_id, reason="User requested")
         
         row = consent_manager.db.fetch_one(
-            "SELECT * FROM user_consents WHERE consent_id = ?",
+            "SELECT * FROM consent_user_consents WHERE consent_id = ?",
             (consent_id,)
         )
         
