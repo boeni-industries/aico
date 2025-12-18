@@ -160,7 +160,7 @@ class MemoryConsolidationTask(BaseTask):
             
             # Query users for today's shard
             users_query = """
-                SELECT uuid FROM users 
+                SELECT uuid FROM user_profiles 
                 WHERE is_active = 1
                 AND (CAST(substr(uuid, 1, 8) AS INTEGER) % ?) = ?
             """

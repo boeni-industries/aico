@@ -241,7 +241,7 @@ class AgencyPlanExecutorTask(BaseTask):
         try:
             rows = context.db_connection.execute(
                 """SELECT execution_id, plan_id, goal_id, user_id
-                   FROM plan_executions
+                   FROM agency_plan_executions
                    WHERE status IN ('pending', 'running')
                    ORDER BY created_at ASC
                    LIMIT ?""",
@@ -275,7 +275,7 @@ class AgencyPlanExecutorTask(BaseTask):
                    WHERE i.status = 'active'
                      AND p.status IN ('draft', 'active')
                      AND NOT EXISTS (
-                         SELECT 1 FROM plan_executions pe
+                         SELECT 1 FROM agency_plan_executions pe
                          WHERE pe.plan_id = p.plan_id
                            AND pe.status IN ('pending', 'running')
                      )

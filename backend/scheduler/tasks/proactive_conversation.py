@@ -89,7 +89,7 @@ class ProactiveConversationTask(BaseTask):
             civility_scorer = CivilityScorer()
             
             # Get all active users
-            cursor = db.execute("SELECT uuid FROM users WHERE is_active = 1")
+            cursor = db.execute("SELECT uuid FROM user_profiles WHERE is_active = 1")
             user_ids = [row[0] for row in cursor.fetchall()]
             
             if not user_ids:
@@ -116,7 +116,7 @@ class ProactiveConversationTask(BaseTask):
                     # Check for pending initiations (don't spam)
                     pending = db.execute(
                         """SELECT COUNT(*) as count
-                           FROM aico_conversation_initiations
+                           FROM conversation_initiations
                            WHERE user_id = ?
                            AND resolution_status = 'pending'""",
                         (user_id,)
@@ -195,7 +195,7 @@ class ProactiveConversationTask(BaseTask):
                         topic, message = self._generate_message_for_strategy(strategy_id, context_features)
                         
                         db.execute(
-                            """INSERT INTO aico_conversation_initiations (
+                            """INSERT INTO conversation_initiations (
                                 initiation_id, user_id, conversation_id,
                                 trigger_source, trigger_reason, question,
                                 context, urgency, expected_answer_type,

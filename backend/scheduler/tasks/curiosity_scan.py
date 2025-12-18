@@ -12,7 +12,14 @@ from .base import BaseTask, TaskContext, TaskResult
 from aico.core.logging import get_logger
 from aico.ai import ai_registry
 
-logger = get_logger("backend", "scheduler.tasks.curiosity_scan")
+# Defer logger initialization to avoid import-time errors
+logger = None
+
+def _get_logger():
+    global logger
+    if logger is None:
+        logger = get_logger("backend", "scheduler.tasks.curiosity_scan")
+    return logger
 
 
 class CuriosityScanTask(BaseTask):
@@ -50,14 +57,14 @@ class CuriosityScanTask(BaseTask):
         start_time = datetime.utcnow()
         
         try:
-            logger.info("[CURIOSITY_SCAN] Starting curiosity scan")
+            _get_logger().info("[CURIOSITY_SCAN] Starting curiosity scan")
             
             # Get required services from AI registry
             curiosity_engine = ai_registry.get("curiosity")
             agency_engine = ai_registry.get("agency")
             
             if not curiosity_engine:
-                logger.warning("[CURIOSITY_SCAN] CuriosityEngine not available, skipping")
+                _get_logger().warning("[CURIOSITY_SCAN] CuriosityEngine not available, skipping")
                 return TaskResult(
                     success=True,
                     message="CuriosityEngine not available",
@@ -65,7 +72,7 @@ class CuriosityScanTask(BaseTask):
                 )
             
             if not agency_engine:
-                logger.warning("[CURIOSITY_SCAN] AgencyEngine not available, skipping")
+                _get_logger().warning("[CURIOSITY_SCAN] AgencyEngine not available, skipping")
                 return TaskResult(
                     success=True,
                     message="AgencyEngine not available",
@@ -74,11 +81,11 @@ class CuriosityScanTask(BaseTask):
             
             # Get all active users from database
             db = context.db_connection
-            cursor = db.execute("SELECT DISTINCT uuid FROM users WHERE is_active = 1")
+            cursor = db.execute("SELECT DISTINCT uuid FROM user_profiles WHERE is_active = 1")
             user_ids = [row[0] for row in cursor.fetchall()]
             
             if not user_ids:
-                logger.warning("[CURIOSITY_SCAN] No active users found")
+                _get_logger().warning("[CURIOSITY_SCAN] No active users found")
                 return TaskResult(
                     success=True,
                     message="No active users",
@@ -87,11 +94,11 @@ class CuriosityScanTask(BaseTask):
             
             # Check lifecycle state (if available)
             lifecycle_state = getattr(context, "lifecycle_state", "unknown")
-            logger.debug(f"[CURIOSITY_SCAN] Lifecycle state: {lifecycle_state}")
+            _get_logger().debug(f"[CURIOSITY_SCAN] Lifecycle state: {lifecycle_state}")
             
             # Defer if user is active (not idle)
             if lifecycle_state == "active":
-                logger.info("[CURIOSITY_SCAN] User active, deferring scan")
+                _get_logger().info("[CURIOSITY_SCAN] User active, deferring scan")
                 return TaskResult(
                     success=True,
                     message="Deferred - user active",
@@ -108,7 +115,7 @@ class CuriosityScanTask(BaseTask):
                 print(f"\n{'='*60}")
                 print(f"👤 User {idx}/{len(user_ids)}: {user_id[:8]}...")
                 print(f"{'='*60}")
-                logger.info(f"[CURIOSITY_SCAN] Scanning for user {user_id}")
+                _get_logger().info(f"[CURIOSITY_SCAN] Scanning for user {user_id}")
                 
                 try:
                     # Get config from services.agency.curiosity
@@ -121,7 +128,7 @@ class CuriosityScanTask(BaseTask):
                         max_signals=max_signals,
                     )
                     
-                    logger.info(f"[CURIOSITY_SCAN] Found {len(signals)} curiosity signals for {user_id}")
+                    _get_logger().info(f"[CURIOSITY_SCAN] Found {len(signals)} curiosity signals for {user_id}")
                     total_signals += len(signals)
                     high_score_signals = [s for s in signals if s.total_score >= min_score]
                     print(f"  ✨ Found {len(signals)} curiosity signals ({len(high_score_signals)} above {min_score} threshold)")
@@ -130,7 +137,7 @@ class CuriosityScanTask(BaseTask):
                     for signal_idx, signal in enumerate(signals, 1):
                         # Only create goals for signals with score >= min_score threshold
                         if signal.total_score < min_score:
-                            logger.debug(
+                            _get_logger().debug(
                                 f"[CURIOSITY_SCAN] Skipping low-score signal: "
                                 f"{signal.topic} (score={signal.total_score:.2f})"
                             )
@@ -146,7 +153,7 @@ class CuriosityScanTask(BaseTask):
                             )
                             
                             total_goals_created += 1
-                            logger.info(
+                            _get_logger().info(
                                 f"[CURIOSITY_SCAN] Created {signal.signal_type.value} goal: "
                                 f"{goal.title} (score={signal.total_score:.2f})"
                             )
@@ -154,13 +161,13 @@ class CuriosityScanTask(BaseTask):
                         except Exception as e:
                             total_goals_failed += 1
                             print(f"❌ {str(e)[:50]}")
-                            logger.error(
+                            _get_logger().error(
                                 f"[CURIOSITY_SCAN] Failed to create goal from signal "
                                 f"{signal.signal_id}: {e}"
                             )
                 
                 except Exception as e:
-                    logger.error(f"[CURIOSITY_SCAN] Failed to scan for user {user_id}: {e}")
+                    _get_logger().error(f"[CURIOSITY_SCAN] Failed to scan for user {user_id}: {e}")
             
             # Calculate execution time
             duration = (datetime.utcnow() - start_time).total_seconds()
@@ -191,7 +198,7 @@ class CuriosityScanTask(BaseTask):
             print(f"  Lifecycle State:  {lifecycle_state}")
             print("=" * 80)
             
-            logger.info(
+            _get_logger().info(
                 f"[CURIOSITY_SCAN] Complete: {len(user_ids)} users, {total_signals} signals, "
                 f"{total_goals_created} goals created, {duration:.1f}s"
             )
@@ -200,7 +207,7 @@ class CuriosityScanTask(BaseTask):
             
         except Exception as e:
             duration = (datetime.utcnow() - start_time).total_seconds()
-            logger.error(f"[CURIOSITY_SCAN] Task failed: {e}")
+            _get_logger().error(f"[CURIOSITY_SCAN] Task failed: {e}")
             
             return TaskResult(
                 success=False,
@@ -233,12 +240,12 @@ class CuriosityScanTask(BaseTask):
             
             # Allow during unknown state (fallback)
             if lifecycle_state == "unknown":
-                logger.debug("[CURIOSITY_SCAN] Unknown lifecycle state, allowing run")
+                _get_logger().debug("[CURIOSITY_SCAN] Unknown lifecycle state, allowing run")
                 return True
             
             # Defer during active interaction
             if lifecycle_state == "active":
-                logger.debug("[CURIOSITY_SCAN] User active, deferring")
+                _get_logger().debug("[CURIOSITY_SCAN] User active, deferring")
                 return False
             
             # Check quiet hours (if configured)
@@ -255,12 +262,12 @@ class CuriosityScanTask(BaseTask):
                     in_quiet_hours = start_hour <= current_hour < end_hour
                 
                 if in_quiet_hours:
-                    logger.debug("[CURIOSITY_SCAN] In quiet hours, deferring")
+                    _get_logger().debug("[CURIOSITY_SCAN] In quiet hours, deferring")
                     return False
             
             return True
             
         except Exception as e:
-            logger.error(f"[CURIOSITY_SCAN] Error checking should_run: {e}")
+            _get_logger().error(f"[CURIOSITY_SCAN] Error checking should_run: {e}")
             # Default to allowing run on error
             return True

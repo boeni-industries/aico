@@ -314,7 +314,7 @@ async def update_value_profile(
         # Save to database
         service.db.execute(
             """
-            UPDATE value_profiles 
+            UPDATE ethics_value_profiles 
             SET curiosity_intensity = ?, 
                 proactive_behavior_level = ?,
                 sensitive_life_areas = ?,
@@ -359,7 +359,7 @@ async def list_policies(
     List policy rules - what's allowed, warned, or blocked.
     """
     try:
-        query = "SELECT * FROM policy_rules WHERE enabled = 1"
+        query = "SELECT * FROM ethics_policy_rules WHERE enabled = 1"
         params = []
         
         if target_type:
@@ -415,7 +415,7 @@ async def grant_consent(
         
         service.db.execute(
             """
-            INSERT INTO consents (consent_id, user_id, consent_scope, decision, granted_at)
+            INSERT INTO consent_records (consent_id, user_id, consent_scope, decision, granted_at)
             VALUES (?, ?, ?, ?, ?)
             """,
             (consent_id, user_id, json.dumps(request.scope), request.decision, datetime.utcnow().isoformat())
@@ -447,7 +447,7 @@ async def list_consents(
         user_id = user["user_uuid"]
         
         cursor = service.db.execute(
-            "SELECT consent_id, user_id, consent_scope, decision, granted_at FROM consents WHERE user_id = ? ORDER BY granted_at DESC",
+            "SELECT consent_id, user_id, consent_scope, decision, granted_at FROM consent_records WHERE user_id = ? ORDER BY granted_at DESC",
             (user_id,)
         )
         consents = cursor.fetchall()
@@ -486,7 +486,7 @@ async def revoke_consent(
         user_id = user["user_uuid"]
         
         service.db.execute(
-            "UPDATE consents SET decision = ? WHERE consent_id = ? AND user_id = ?",
+            "UPDATE consent_records SET decision = ? WHERE consent_id = ? AND user_id = ?",
             ("denied", consent_id, user_id)
         )
         service.db.commit()

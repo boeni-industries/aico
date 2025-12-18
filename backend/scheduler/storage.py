@@ -54,7 +54,7 @@ class TaskStore:
             now = datetime.now().isoformat()
             
             self.db.execute("""
-                INSERT INTO scheduled_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
+                INSERT INTO scheduler_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     task_class = excluded.task_class,
@@ -76,7 +76,7 @@ class TaskStore:
         try:
             cursor = self.db.execute(
                 "SELECT task_id, task_class, schedule, config, enabled, created_at, updated_at "
-                "FROM scheduled_tasks WHERE task_id = ?", (task_id,)
+                "FROM scheduler_tasks WHERE task_id = ?", (task_id,)
             )
             row = cursor.fetchone()
             
@@ -102,7 +102,7 @@ class TaskStore:
         try:
             query = """
                 SELECT task_id, task_class, schedule, config, enabled, created_at, updated_at
-                FROM scheduled_tasks
+                FROM scheduler_tasks
             """
             params = ()
             
@@ -135,7 +135,7 @@ class TaskStore:
     def delete_task(self, task_id: str) -> bool:
         """Delete a scheduled task"""
         try:
-            cursor = self.db.execute("DELETE FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+            cursor = self.db.execute("DELETE FROM scheduler_tasks WHERE task_id = ?", (task_id,))
             self.db.commit()
             
             deleted = cursor.rowcount > 0
@@ -155,7 +155,7 @@ class TaskStore:
         try:
             now = datetime.now().isoformat()
             cursor = self.db.execute(
-                "UPDATE scheduled_tasks SET enabled = ?, updated_at = ? WHERE task_id = ?",
+                "UPDATE scheduler_tasks SET enabled = ?, updated_at = ? WHERE task_id = ?",
                 (enabled, now, task_id)
             )
             self.db.commit()
@@ -176,7 +176,7 @@ class TaskStore:
         try:
             now = datetime.now().isoformat()
             self.db.execute("""
-                INSERT INTO task_executions (task_id, execution_id, status, started_at)
+                INSERT INTO scheduler_task_executions (task_id, execution_id, status, started_at)
                 VALUES (?, ?, ?, ?)
             """, (task_id, execution_id, TaskStatus.RUNNING.value, now))
             
@@ -195,7 +195,7 @@ class TaskStore:
             result_json = json.dumps(result.to_dict())
             
             self.db.execute("""
-                UPDATE task_executions 
+                UPDATE scheduler_task_executions 
                 SET status = ?, completed_at = ?, result = ?, error_message = ?, duration_seconds = ?
                 WHERE task_id = ? AND execution_id = ?
             """, (
@@ -213,7 +213,7 @@ class TaskStore:
         try:
             cursor = self.db.execute("""
                 SELECT execution_id, status, started_at, completed_at, result, error_message, duration_seconds
-                FROM task_executions 
+                FROM scheduler_task_executions 
                 WHERE task_id = ?
                 ORDER BY started_at DESC
                 LIMIT ?
@@ -346,7 +346,7 @@ class TaskStore:
             cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
             
             cursor = self.db.execute(
-                "DELETE FROM task_executions WHERE started_at < ?", (cutoff_date,)
+                "DELETE FROM scheduler_task_executions WHERE started_at < ?", (cutoff_date,)
             )
             self.db.commit()
             
