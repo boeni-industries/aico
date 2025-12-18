@@ -41,7 +41,7 @@ class TestSkillExecutionTracking:
         """Create a test skill."""
         skill_id = "test-skill-1"
         db.execute(
-            """INSERT OR IGNORE INTO skills 
+            """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
@@ -65,7 +65,7 @@ class TestSkillExecutionTracking:
         
         # Verify in database
         row = feedback_service.db.fetch_one(
-            "SELECT * FROM skill_executions WHERE execution_id = ?",
+            "SELECT * FROM agency_skill_executions WHERE execution_id = ?",
             (execution_id,)
         )
         
@@ -88,7 +88,7 @@ class TestSkillExecutionTracking:
         assert execution_id is not None
         
         row = feedback_service.db.fetch_one(
-            "SELECT * FROM skill_executions WHERE execution_id = ?",
+            "SELECT * FROM agency_skill_executions WHERE execution_id = ?",
             (execution_id,)
         )
         
@@ -116,7 +116,7 @@ class TestSkillExecutionTracking:
         )
         
         row = feedback_service.db.fetch_one(
-            "SELECT * FROM skill_executions WHERE execution_id = ?",
+            "SELECT * FROM agency_skill_executions WHERE execution_id = ?",
             (execution_id,)
         )
         
@@ -152,7 +152,7 @@ class TestSkillExecutionTracking:
         
         # Verify link
         row = feedback_service.db.fetch_one(
-            "SELECT * FROM goal_skill_executions WHERE execution_id = ?",
+            "SELECT * FROM agency_goal_skill_executions WHERE execution_id = ?",
             (execution_id,)
         )
         
@@ -165,7 +165,7 @@ class TestSkillExecutionTracking:
         # Clean up first
         goal_id = "test-goal-get-exec-1"
         db.execute("PRAGMA foreign_keys = OFF")
-        db.execute("DELETE FROM goal_skill_executions WHERE goal_id = ?", (goal_id,))
+        db.execute("DELETE FROM agency_goal_skill_executions WHERE goal_id = ?", (goal_id,))
         db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (goal_id,))
         db.commit()
         db.execute("PRAGMA foreign_keys = ON")
@@ -227,7 +227,7 @@ class TestBehavioralFeedback:
         """Create a test skill."""
         skill_id = "test-skill-feedback-1"
         db.execute(
-            """INSERT OR IGNORE INTO skills 
+            """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
@@ -343,7 +343,7 @@ class TestOutcomeDetection:
         """Create a test skill."""
         skill_id = "test-skill-outcome-1"
         db.execute(
-            """INSERT OR IGNORE INTO skills 
+            """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
@@ -567,7 +567,7 @@ class TestAnalytics:
         """Create a test skill."""
         skill_id = "test-skill-analytics-1"
         db.execute(
-            """INSERT OR IGNORE INTO skills 
+            """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
@@ -579,7 +579,7 @@ class TestAnalytics:
     def test_get_skill_success_rate(self, feedback_service, test_user, test_skill_id, db):
         """Test calculating skill success rate."""
         # Clean up any existing executions for this skill
-        db.execute("DELETE FROM skill_executions WHERE skill_id = ?", (test_skill_id,))
+        db.execute("DELETE FROM agency_skill_executions WHERE skill_id = ?", (test_skill_id,))
         db.commit()
         
         # Record multiple executions
@@ -593,7 +593,7 @@ class TestAnalytics:
         
         # Verify executions were recorded
         count = db.fetch_one(
-            "SELECT COUNT(*) as count FROM skill_executions WHERE skill_id = ? AND user_id = ?",
+            "SELECT COUNT(*) as count FROM agency_skill_executions WHERE skill_id = ? AND user_id = ?",
             (test_skill_id, test_user)
         )
         assert count["count"] == 10, f"Expected 10 executions, got {count['count']}"
@@ -606,8 +606,12 @@ class TestAnalytics:
         
         assert success_rate == pytest.approx(0.7, abs=0.01)
     
-    def test_get_skill_success_rate_no_data(self, feedback_service):
+    def test_get_skill_success_rate_no_data(self, feedback_service, db):
         """Test success rate with no data returns neutral."""
+        # Clean up any leftover data for this skill
+        db.execute("DELETE FROM agency_skill_executions WHERE skill_id = ?", ("nonexistent-skill",))
+        db.commit()
+        
         success_rate = feedback_service.get_skill_success_rate(
             skill_id="nonexistent-skill",
             days=30
@@ -662,7 +666,7 @@ class TestBehavioralFeedbackIntegration:
         """Create a test skill."""
         skill_id = "test-skill-integration-1"
         db.execute(
-            """INSERT OR IGNORE INTO skills 
+            """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
@@ -676,8 +680,8 @@ class TestBehavioralFeedbackIntegration:
         # Clean up first
         goal_id = "test-goal-complete-1"
         db.execute("PRAGMA foreign_keys = OFF")
-        db.execute("DELETE FROM goal_skill_executions WHERE goal_id = ?", (goal_id,))
-        db.execute("DELETE FROM skill_executions WHERE skill_id = ?", (test_skill_id,))
+        db.execute("DELETE FROM agency_goal_skill_executions WHERE goal_id = ?", (goal_id,))
+        db.execute("DELETE FROM agency_skill_executions WHERE skill_id = ?", (test_skill_id,))
         db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (goal_id,))
         db.commit()
         db.execute("PRAGMA foreign_keys = ON")

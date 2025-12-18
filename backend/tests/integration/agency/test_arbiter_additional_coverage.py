@@ -518,7 +518,7 @@ class TestAdaptiveLearning:
         
         # Verify outcome was recorded
         outcomes = test_db.fetch_all(
-            "SELECT * FROM goal_outcomes WHERE goal_id = ?",
+            "SELECT * FROM agency_goal_outcomes WHERE goal_id = ?",
             ("outcome-test-1",)
         )
         
@@ -547,7 +547,7 @@ class TestAdaptiveLearning:
         )
         
         outcomes = test_db.fetch_all(
-            "SELECT * FROM goal_outcomes WHERE goal_id = ?",
+            "SELECT * FROM agency_goal_outcomes WHERE goal_id = ?",
             ("outcome-test-2",)
         )
         

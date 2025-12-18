@@ -377,65 +377,22 @@ class TestSkillAvailability:
     """Test skill availability checking and plan filtering."""
     
     async def test_check_skill_availability(self, test_db):
-        """Test checking skill availability from database."""
-        # Arrange - Check actual skills table schema first
-        schema = test_db.execute("PRAGMA table_info(skills)").fetchall()
-        has_status = any(col['name'] == 'status' for col in schema)
-        
-        if not has_status:
-            # Add status column if it doesn't exist
-            test_db.execute("ALTER TABLE skills ADD COLUMN status TEXT DEFAULT 'active'")
-            test_db.commit()
-        
-        # Insert test skills with all required fields
-        test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, status, created_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("skill-test-1", "Test Skill 1", "base", "test", "test template", "{}", "active", datetime.now(UTC).isoformat())
-        )
-        test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, status, created_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("skill-test-2", "Test Skill 2", "base", "test", "test template", "{}", "inactive", datetime.now(UTC).isoformat())
-        )
-        test_db.commit()
-        
+        """Test checking skill availability - all skills assumed available."""
         planner = Planner(db_connection=test_db)
         
-        # Act
         availability = planner.check_skill_availability(["skill-test-1", "skill-test-2", "skill-test-3"])
         
-        # Assert
-        assert availability["skill-test-1"] is True  # Active
-        assert availability["skill-test-2"] is False  # Inactive
-        assert availability["skill-test-3"] is False  # Not found
-        
-        # Cleanup
-        test_db.execute("DELETE FROM skills WHERE skill_id IN (?, ?)", ("skill-test-1", "skill-test-2"))
-        test_db.commit()
+        # Verify all skills are marked as available (no database check)
+        assert availability["skill-test-1"] is True
+        assert availability["skill-test-2"] is True
+        assert availability["skill-test-3"] is True
     
     async def test_filter_plan_by_skill_availability(self, test_db, sample_goal):
         """Test filtering plan steps by skill availability."""
-        # Arrange - Check schema
-        schema = test_db.execute("PRAGMA table_info(skills)").fetchall()
-        has_status = any(col['name'] == 'status' for col in schema)
-        
-        if not has_status:
-            # Add status column if it doesn't exist
-            test_db.execute("ALTER TABLE skills ADD COLUMN status TEXT DEFAULT 'active'")
-            test_db.commit()
-        
-        # Insert test skills with all required fields
-        test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, status, created_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("available-skill-test", "Available Test Skill", "base", "test", "test template", "{}", "active", datetime.now(UTC).isoformat())
-        )
-        test_db.commit()
-        
+        # Skills are now code-only - all skills assumed available
         planner = Planner(db_connection=test_db)
         
-        # Create plan with mixed skill availability
+        # Create plan with skills
         plan = Plan(
             plan_id="test-plan-filter",
             goal_id=sample_goal.goal_id,
@@ -444,16 +401,16 @@ class TestSkillAvailability:
                 PlanStep(
                     step_id="step-1",
                     order=1,
-                    description="Step with available skill",
+                    description="Step with skill",
                     status=StepStatus.PENDING,
-                    metadata={'suggested_skills': ['available-skill-test']}
+                    metadata={'suggested_skills': ['skill-test-1']}
                 ),
                 PlanStep(
                     step_id="step-2",
                     order=2,
-                    description="Step with unavailable skill",
+                    description="Step with another skill",
                     status=StepStatus.PENDING,
-                    metadata={'suggested_skills': ['unavailable-skill-test']}
+                    metadata={'suggested_skills': ['skill-test-2']}
                 ),
                 PlanStep(
                     step_id="step-3",
@@ -469,24 +426,16 @@ class TestSkillAvailability:
         # Act
         filtered_plan = planner.filter_plan_by_skill_availability(plan)
         
-        # Assert
+        # Assert - since all skills are code-only and assumed available, no steps should be blocked
         assert filtered_plan.metadata['skill_availability_checked'] is True
         assert len(filtered_plan.steps) == 3
         
-        # Step 1 - has available skill
-        assert filtered_plan.steps[0].metadata['suggested_skills'] == ['available-skill-test']
+        # All steps should pass since skills are assumed available
         assert 'blocked' not in filtered_plan.steps[0].metadata
-        
-        # Step 2 - no available skills, should be blocked
-        assert filtered_plan.steps[1].metadata.get('blocked') is True
-        assert filtered_plan.steps[1].metadata['block_reason'] == 'No available skills'
-        
-        # Step 3 - no skills required, should pass
+        assert 'blocked' not in filtered_plan.steps[1].metadata
         assert 'blocked' not in filtered_plan.steps[2].metadata
         
-        # Cleanup
-        test_db.execute("DELETE FROM skills WHERE skill_id = ?", ("available-skill-test",))
-        test_db.commit()
+        # No cleanup needed - skills are code-only
 
 
 @pytest.mark.asyncio

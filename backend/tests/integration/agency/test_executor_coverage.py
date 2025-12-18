@@ -77,6 +77,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -140,6 +141,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -163,6 +165,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -220,6 +223,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -286,6 +290,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -353,6 +358,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -419,6 +425,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -446,6 +453,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -500,6 +508,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -553,6 +562,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -578,6 +588,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         
@@ -638,6 +649,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(
             db=test_db,
             plan_store=engine.plan_store,
+            goal_store=engine.goal_store,
             skill_invoker=None
         )
         

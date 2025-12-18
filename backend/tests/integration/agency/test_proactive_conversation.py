@@ -51,7 +51,7 @@ class TestContextualFeatureExtraction:
         now = datetime.now(UTC)
         for i in range(5):
             test_db.execute("""
-                INSERT INTO aico_conversation_initiations (
+                INSERT INTO conversation_initiations (
                     initiation_id, user_id, conversation_id,
                     trigger_source, trigger_reason, question,
                     initiated_at, resolution_status, created_at
@@ -426,7 +426,7 @@ class TestProactiveInitiationFlow:
         conversation_id = f"{test_user}_{int(datetime.now(UTC).timestamp())}"
         
         test_db.execute("""
-            INSERT INTO aico_conversation_initiations (
+            INSERT INTO conversation_initiations (
                 initiation_id, user_id, conversation_id,
                 trigger_source, trigger_reason, question,
                 context, urgency, expected_answer_type,
@@ -450,7 +450,7 @@ class TestProactiveInitiationFlow:
         
         # Verify creation
         cursor = test_db.execute("""
-            SELECT * FROM aico_conversation_initiations
+            SELECT * FROM conversation_initiations
             WHERE initiation_id = ?
         """, (initiation_id,))
         
@@ -468,7 +468,7 @@ class TestProactiveInitiationFlow:
         initiated_at = datetime.now(UTC)
         
         test_db.execute("""
-            INSERT INTO aico_conversation_initiations (
+            INSERT INTO conversation_initiations (
                 initiation_id, user_id, conversation_id,
                 trigger_source, trigger_reason, question,
                 initiated_at, resolution_status, created_at
@@ -491,7 +491,7 @@ class TestProactiveInitiationFlow:
         response_time = int((resolved_at - initiated_at).total_seconds())
         
         test_db.execute("""
-            UPDATE aico_conversation_initiations
+            UPDATE conversation_initiations
             SET resolution_status = ?,
                 resolved_at = ?,
                 user_response_time = ?,
@@ -510,7 +510,7 @@ class TestProactiveInitiationFlow:
         
         # Verify update
         cursor = test_db.execute("""
-            SELECT * FROM aico_conversation_initiations
+            SELECT * FROM conversation_initiations
             WHERE initiation_id = ?
         """, (initiation_id,))
         
@@ -526,7 +526,7 @@ class TestProactiveInitiationFlow:
         initiation_id = str(uuid.uuid4())
         
         test_db.execute("""
-            INSERT INTO aico_conversation_initiations (
+            INSERT INTO conversation_initiations (
                 initiation_id, user_id, conversation_id,
                 trigger_source, trigger_reason, question,
                 initiated_at, resolution_status, created_at
@@ -547,7 +547,7 @@ class TestProactiveInitiationFlow:
         # Check for pending
         cursor = test_db.execute("""
             SELECT COUNT(*) as count
-            FROM aico_conversation_initiations
+            FROM conversation_initiations
             WHERE user_id = ? AND resolution_status = 'pending'
         """, (test_user,))
         

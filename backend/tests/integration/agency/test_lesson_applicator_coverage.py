@@ -104,9 +104,9 @@ async def test_apply_skill_lesson_with_real_data(agency_engine, test_user, test_
     from datetime import datetime, UTC
     skill_id = f"test_skill_for_lesson_{uuid.uuid4().hex[:8]}"
     test_db.execute(
-        """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (skill_id, "Test Skill", "base", "test", "test template", '{}', "active", datetime.now(UTC).isoformat())
+        """INSERT INTO agency_skill_learning_data (skill_id, dimension_vector, created_at, updated_at)
+           VALUES (?, ?, ?, ?)""",
+        (skill_id, '{}', datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
     )
     test_db.commit()
     
@@ -147,7 +147,7 @@ async def test_apply_skill_lesson_with_real_data(agency_engine, test_user, test_
     # Only verify skill was updated if lesson was actually applied
     if result:
         row = test_db.execute(
-            "SELECT dimension_vector FROM skills WHERE skill_id = ?",
+            "SELECT dimension_vector FROM agency_skill_learning_data WHERE skill_id = ?",
             (skill_id,)
         ).fetchone()
         

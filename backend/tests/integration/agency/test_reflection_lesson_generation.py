@@ -34,13 +34,12 @@ class TestSkillPerformanceLessonGeneration:
         window_start = datetime.now(UTC) - timedelta(days=7)
         window_end = datetime.now(UTC)
         
-        # Create skill first with unique ID
+        # Create skill learning data with unique ID
         skill_id = f"poor_skill_{str(uuid.uuid4())[:8]}"
         test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, 
-               procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Poor Skill", "base", "test", "test", "{}",
+            """INSERT INTO agency_skill_learning_data (skill_id, dimension_vector, created_at, updated_at)
+               VALUES (?, ?, ?, ?)""",
+            (skill_id, "{}",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         
@@ -76,13 +75,12 @@ class TestSkillPerformanceLessonGeneration:
         window_start = datetime.now(UTC) - timedelta(days=7)
         window_end = datetime.now(UTC)
         
-        # Create skill first with unique ID
+        # Create skill learning data with unique ID
         skill_id = f"good_skill_{str(uuid.uuid4())[:8]}"
         test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, 
-               procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Good Skill", "base", "test", "test", "{}",
+            """INSERT INTO agency_skill_learning_data (skill_id, dimension_vector, created_at, updated_at)
+               VALUES (?, ?, ?, ?)""",
+            (skill_id, "{}",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         
@@ -122,13 +120,12 @@ class TestSkillPerformanceLessonGeneration:
         window_start = datetime.now(UTC) - timedelta(days=7)
         window_end = datetime.now(UTC)
         
-        # Create skill first with unique ID
+        # Create skill learning data with unique ID
         skill_id = f"kg_skill_{str(uuid.uuid4())[:8]}"
         test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, 
-               procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "KG Test Skill", "base", "test", "test", "{}",
+            """INSERT INTO agency_skill_learning_data (skill_id, dimension_vector, created_at, updated_at)
+               VALUES (?, ?, ?, ?)""",
+            (skill_id, "{}",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         
@@ -354,13 +351,12 @@ class TestReflectionRunWithLessonGeneration:
         """Test that reflection run generates skill lessons from behavioral feedback."""
         engine = SelfReflectionEngine(test_config, test_db)
         
-        # Create skill first with unique ID
+        # Create skill learning data with unique ID
         skill_id = f"integ_skill_{str(uuid.uuid4())[:8]}"
         test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, 
-               procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Integration Test Skill", "base", "test", "test", "{}",
+            """INSERT INTO agency_skill_learning_data (skill_id, dimension_vector, created_at, updated_at)
+               VALUES (?, ?, ?, ?)""",
+            (skill_id, "{}",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         

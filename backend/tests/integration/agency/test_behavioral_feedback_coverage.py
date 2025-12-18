@@ -37,7 +37,7 @@ class TestBehavioralFeedbackCoverage:
         """Create a test skill."""
         skill_id = "test-skill-coverage-1"
         db.execute(
-            """INSERT OR IGNORE INTO skills 
+            """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
@@ -64,7 +64,7 @@ class TestBehavioralFeedbackCoverage:
         
         # Verify error message stored
         row = feedback_service.db.fetch_one(
-            "SELECT * FROM skill_executions WHERE execution_id = ?",
+            "SELECT * FROM agency_skill_executions WHERE execution_id = ?",
             (execution_id,)
         )
         assert row["error_message"] == "Connection timeout"
@@ -86,22 +86,23 @@ class TestBehavioralFeedbackCoverage:
         )
         
         row = feedback_service.db.fetch_one(
-            "SELECT * FROM skill_executions WHERE execution_id = ?",
+            "SELECT * FROM agency_skill_executions WHERE execution_id = ?",
             (execution_id,)
         )
         
         stored_context = json.loads(row["context_json"])
         assert stored_context == context
     
-    def test_record_skill_execution_database_error(self, feedback_service, test_user):
+    def test_record_skill_execution_database_error(self, feedback_service, test_user, db):
         """Test error handling when database fails (covers lines 161-164)."""
-        # Use invalid skill_id to trigger FK constraint error
-        with pytest.raises(Exception):
-            feedback_service.record_skill_execution(
-                skill_id="nonexistent-skill",
-                user_id=test_user,
-                outcome=SkillOutcome.SUCCESS
-            )
+        # Mock database error
+        with patch.object(db, 'execute', side_effect=Exception("DB error")):
+            with pytest.raises(Exception):
+                feedback_service.record_skill_execution(
+                    skill_id="test-skill",
+                    user_id=test_user,
+                    outcome=SkillOutcome.SUCCESS
+                )
         
         # Verify logger was called
         assert feedback_service.logger.error.called
@@ -136,7 +137,7 @@ class TestBehavioralFeedbackCoverage:
         
         # Verify link
         row = db.fetch_one(
-            "SELECT * FROM goal_skill_executions WHERE execution_id = ?",
+            "SELECT * FROM agency_goal_skill_executions WHERE execution_id = ?",
             (execution_id,)
         )
         assert row["execution_order"] == 3
@@ -394,10 +395,14 @@ class TestBehavioralFeedbackCoverage:
         
         assert success_rate == 1.0
     
-    def test_get_skill_success_rate_no_data(self, feedback_service):
-        """Test success rate returns default when no data (covers line 586)."""
+    def test_get_skill_success_rate_no_data(self, feedback_service, db):
+        """Test success rate with no data (covers line 586)."""
+        # Clean up any leftover data
+        db.execute("DELETE FROM agency_skill_executions WHERE skill_id = ?", ("nonexistent-skill-coverage",))
+        db.commit()
+        
         success_rate = feedback_service.get_skill_success_rate(
-            skill_id="nonexistent-skill",
+            skill_id="nonexistent-skill-coverage",
             days=30
         )
         

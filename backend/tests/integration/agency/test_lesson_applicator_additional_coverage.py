@@ -95,13 +95,12 @@ class TestApplyLessonConfidenceThreshold:
         """Test that lessons above confidence threshold are processed."""
         service = LessonApplicationService(test_config, test_db)
         
-        # Create skill first with unique ID
+        # Create skill learning data with unique ID
         skill_id = f"test_skill_{str(uuid.uuid4())[:8]}"
         test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context, 
-               procedure_template, dimension_vector, created_at, updated_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base", "test", "test", "{}", 
+            """INSERT INTO agency_skill_learning_data (skill_id, dimension_vector, created_at, updated_at) 
+               VALUES (?, ?, ?, ?)""",
+            (skill_id, "{}", 
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
@@ -202,10 +201,9 @@ class TestApplySkillLesson:
         skill_id = f"test_skill_{str(uuid.uuid4())[:8]}"
         existing_vector = {"existing_field": "value"}
         test_db.execute(
-            """INSERT INTO skills (skill_id, skill_name, skill_type, trigger_context,
-               procedure_template, dimension_vector, created_at, updated_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill 2", "base", "test", "test",
+            """INSERT INTO agency_skill_learning_data (skill_id, dimension_vector, created_at, updated_at) 
+               VALUES (?, ?, ?, ?)""",
+            (skill_id,
              json.dumps(existing_vector), datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         test_db.commit()
@@ -237,7 +235,7 @@ class TestApplySkillLesson:
         # Only verify dimension vector if lesson was actually applied
         if result:
             row = test_db.execute(
-                "SELECT dimension_vector FROM skills WHERE skill_id = ?",
+                "SELECT dimension_vector FROM agency_skill_learning_data WHERE skill_id = ?",
                 (skill_id,)
             ).fetchone()
             

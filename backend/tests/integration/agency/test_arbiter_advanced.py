@@ -40,7 +40,7 @@ class TestAdaptiveScoringEngine:
         # Clean up test data (but preserve arbiter_bandit_arms for FK constraints)
         # Temporarily disable foreign key constraints for cleanup
         db.execute("PRAGMA foreign_keys = OFF")
-        db.execute("DELETE FROM goal_outcomes")
+        db.execute("DELETE FROM agency_goal_outcomes")
         db.execute("DELETE FROM arbiter_ab_tests")
         # Don't delete arbiter_bandit_arms - it will be repopulated by engine initialization
         # and deleting it breaks the table structure
@@ -436,7 +436,7 @@ class TestContextAwarePrioritization:
         """Test dependency information retrieval."""
         # Clean up first
         db.execute("PRAGMA foreign_keys = OFF")
-        db.execute("DELETE FROM goal_dependencies WHERE dependency_id = 'dep-test-1'")
+        db.execute("DELETE FROM agency_goal_dependencies WHERE dependency_id = 'dep-test-1'")
         db.execute("DELETE FROM agency_goals WHERE goal_id IN ('goal-dep-1', 'goal-dep-2')")
         db.commit()
         db.execute("PRAGMA foreign_keys = ON")
@@ -454,7 +454,7 @@ class TestContextAwarePrioritization:
         
         # Create test dependencies in database
         db.execute(
-            """INSERT INTO goal_dependencies 
+            """INSERT INTO agency_goal_dependencies 
                (dependency_id, goal_id, prerequisite_goal_id, active, created_at)
                VALUES (?, ?, ?, 1, ?)""",
             ("dep-test-1", "goal-dep-2", "goal-dep-1", datetime.now(UTC).isoformat())
@@ -662,7 +662,7 @@ class TestGoalArbiterAdvanced:
         """Test recording goal outcome for adaptive learning."""
         # Clean up first
         db.execute("PRAGMA foreign_keys = OFF")
-        db.execute("DELETE FROM goal_outcomes WHERE goal_id = 'goal-outcome-test-1'")
+        db.execute("DELETE FROM agency_goal_outcomes WHERE goal_id = 'goal-outcome-test-1'")
         db.execute("DELETE FROM agency_goals WHERE goal_id = 'goal-outcome-test-1'")
         db.commit()
         db.execute("PRAGMA foreign_keys = ON")
@@ -693,7 +693,7 @@ class TestGoalArbiterAdvanced:
         
         # Check that outcome was recorded
         outcomes = arbiter.db.fetch_all(
-            "SELECT * FROM goal_outcomes WHERE goal_id = ?",
+            "SELECT * FROM agency_goal_outcomes WHERE goal_id = ?",
             ("goal-outcome-test-1",)
         )
         
