@@ -481,6 +481,68 @@ async def revoke_consent(
 # Combined State Endpoint
 # ============================================================================
 
+@router.post("/goals/{goal_id}/replan", response_model=dict)
+async def replan_goal(
+    goal_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
+    force: bool = False
+):
+    """
+    Regenerate plan for a goal.
+    
+    Deletes existing plan and generates a new one using the planner.
+    """
+    try:
+        user_id = user["user_uuid"]
+        
+        # Get goal
+        goal = await engine.get_goal(goal_id)
+        if not goal:
+            raise HTTPException(status_code=404, detail=f"Goal {goal_id} not found")
+        
+        # Verify ownership
+        if goal.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to replan this goal")
+        
+        # Check if plan is active
+        existing_plans = await engine.plan_store.list_plans_for_goal(goal_id)
+        existing_plan = existing_plans[0] if existing_plans else None
+        if existing_plan and existing_plan.status.value == "active" and not force:
+            raise HTTPException(
+                status_code=400,
+                detail="Plan is currently active. Use force=true to replan anyway."
+            )
+        
+        # Delete existing plan steps (if any) - plans are soft-deleted by status change
+        if existing_plan:
+            # Update plan status to abandoned
+            from aico.ai.agency.models import PlanStatus
+            await engine.plan_store.update_plan_status(existing_plan.plan_id, PlanStatus.ABANDONED)
+        
+        # Generate new plan
+        new_plan = await engine._generate_and_store_plan(goal)
+        
+        # Build response with plan details
+        metadata = new_plan.metadata.copy() if new_plan and new_plan.metadata else {}
+        if new_plan:
+            metadata["plan_id"] = new_plan.plan_id
+            metadata["plan_strategy"] = new_plan.metadata.get("plan_strategy", "llm_refined")
+        
+        return {
+            "goal_id": goal.goal_id,
+            "title": goal.title,
+            "description": goal.description,
+            "status": goal.status.value,
+            "metadata": metadata
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to replan goal: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
+
 @router.get("/state", response_model=AgencyStateResponse)
 async def get_agency_state(
     user: Annotated[dict, Depends(get_current_user)],

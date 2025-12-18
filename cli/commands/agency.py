@@ -1080,87 +1080,36 @@ def replan_goal(
     goal_id: str = typer.Argument(..., help="Goal ID to replan"),
     force: bool = typer.Option(False, "--force", "-f", help="Force replanning even if plan is active"),
 ):
-    """Regenerate plan for a goal with better step granularity."""
+    """Regenerate plan for a goal through the backend API."""
     try:
-        import asyncio
+        from cli.utils.api_client import get_backend_client
         
-        with _suppress_debug_output():
-            db = get_db_connection()
-            config = ConfigurationManager()
-            config.initialize(lightweight=True)
+        console.print(f"[cyan]Requesting replanning for goal {goal_id[:8]}...[/cyan]")
         
-        # Get goal
-        row = db.fetch_one(
-            "SELECT goal_id, user_id, title, description FROM agency_goals WHERE goal_id = ?",
-            (goal_id,)
-        )
-        
-        if not row:
-            console.print(f"[red]✗[/red] Goal {goal_id} not found")
-            raise typer.Exit(1)
-        
-        goal_title = row["title"]
-        user_id = row["user_id"]
-        
-        # Check existing plan
-        plan_row = db.fetch_one(
-            "SELECT plan_id, status FROM agency_plans WHERE goal_id = ?",
-            (goal_id,)
-        )
-        
-        if plan_row and plan_row["status"] == "active" and not force:
-            console.print(f"[yellow]⚠[/yellow] Plan for '{goal_title}' is active. Use --force to replan anyway.")
-            raise typer.Exit(1)
-        
-        console.print(f"[cyan]Replanning goal:[/cyan] {goal_title}")
-        
-        # Initialize agency engine
-        console.print("[dim]Initializing agency engine...[/dim]")
-        engine = AgencyEngine(config=config, db_connection=db)
-        
-        # Get goal object
-        from aico.ai.agency.models import Goal
-        goal = asyncio.run(engine.goal_store.get_goal(goal_id))
-        
-        if not goal:
-            console.print(f"[red]✗[/red] Failed to load goal")
-            raise typer.Exit(1)
-        
-        # Delete old plan if exists
-        if plan_row:
-            db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (plan_row["plan_id"],))
-            db.commit()
-            console.print(f"[dim]Deleted old plan {plan_row['plan_id'][:8]}...[/dim]")
-        
-        # Generate new plan
-        console.print("[dim]Generating new plan with better granularity...[/dim]")
-        plan = asyncio.run(engine.planner.generate_initial_plan(
-            goal=goal,
-            context={"user_id": user_id}
-        ))
-        
-        # Save plan
-        asyncio.run(engine.plan_store.create_plan(plan))
-        
-        console.print(f"[green]✓[/green] Created new plan with {len(plan.steps)} steps")
-        
-        # Display steps
-        table = Table(title=f"Plan Steps for '{goal_title}'", box=box.ROUNDED)
-        table.add_column("#", style="cyan", width=3)
-        table.add_column("Description", style="white")
-        
-        for step in plan.steps:
-            table.add_row(str(step.order), step.description[:100])
-        
-        console.print(table)
-        console.print(f"\n[dim]Plan ID: {plan.plan_id}[/dim]")
-        console.print(f"[dim]Status: {plan.status.value}[/dim]")
-        console.print(f"[dim]Strategy: {plan.metadata.get('strategy', 'unknown')}[/dim]")
+        with get_backend_client() as client:
+            result = client.post(
+                f"/api/v1/agency/goals/{goal_id}/replan",
+                params={"force": force}
+            )
+            
+            console.print(f"[green]✓[/green] Plan regenerated successfully")
+            console.print(f"[dim]Goal: {result['title']}[/dim]")
+            console.print(f"[dim]Strategy: {result['metadata'].get('plan_strategy', 'unknown')}[/dim]")
+            console.print(f"[dim]Plan ID: {result['metadata'].get('plan_id', 'unknown')[:8]}...[/dim]")
         
     except Exception as e:
-        console.print(f"[red]✗[/red] Error replanning goal: {e}")
-        import traceback
-        traceback.print_exc()
+        error_msg = str(e)
+        if "Cannot connect" in error_msg or "Connection" in error_msg:
+            console.print(f"[red]✗[/red] Cannot connect to backend")
+            console.print("[yellow]⚠[/yellow] Make sure the backend is running")
+        elif "404" in error_msg:
+            console.print(f"[red]✗[/red] Goal {goal_id} not found")
+        elif "400" in error_msg:
+            console.print(f"[yellow]⚠[/yellow] {error_msg}")
+        else:
+            console.print(f"[red]✗[/red] Error replanning goal: {e}")
+            import traceback
+            traceback.print_exc()
         raise typer.Exit(1)
 
 

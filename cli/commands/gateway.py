@@ -1089,6 +1089,44 @@ def auth_login():
         # Get or generate JWT secret using key manager
         jwt_secret = key_manager.get_jwt_secret("api_gateway")
         
+        # Auto-detect active user from database
+        from aico.core.paths import get_default_database_path
+        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        try:
+            db_path = get_default_database_path()
+            
+            # Get database key using same pattern as agency.py
+            cached_key = key_manager._get_cached_session()
+            if cached_key:
+                key_manager._extend_session()
+                db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
+            else:
+                # Try stored key from keyring
+                import keyring
+                stored_key = keyring.get_password(key_manager.service_name, "master_key")
+                if stored_key:
+                    master_key = bytes.fromhex(stored_key)
+                    key_manager._cache_session(master_key)
+                    db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+                else:
+                    # No key available - fallback to config
+                    user_id = config_manager.get("core.user.id", "aico-cli")
+                    db_key = None
+            
+            if db_key:
+                db = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+                cursor = db.execute("SELECT uuid FROM user_profiles WHERE is_active = 1 LIMIT 1")
+                user_row = cursor.fetchone()
+                if user_row:
+                    user_id = user_row["uuid"]
+                else:
+                    user_id = config_manager.get("core.user.id", "aico-cli")
+            else:
+                user_id = config_manager.get("core.user.id", "aico-cli")
+        except Exception:
+            # Fallback to config on any DB error
+            user_id = config_manager.get("core.user.id", "aico-cli")
+        
         # Get CLI roles from configuration - CLI gets admin access by default
         # This is intentional: CLI operations require admin privileges for system management
         cli_roles = ["cli", "admin"]  # CLI role includes admin privileges
@@ -1096,13 +1134,13 @@ def auth_login():
         # Create CLI token payload (matching backend admin endpoint expectations)
         now = datetime.utcnow()
         payload = {
-            "sub": "aico-cli",  # Subject: AICO CLI
-            "username": "aico-cli",  # Username field expected by backend
-            "iss": "aico-gateway",  # Issuer: AICO Gateway
-            "aud": "aico-api",  # Audience: AICO API
+            "sub": user_id,  # Subject: configured user or CLI
+            "user_uuid": user_id,  # User identifier from config
+            "username": user_id,
+            "roles": cli_roles,
+            "permissions": [],  # CLI has full access via admin role
             "iat": int(now.timestamp()),  # Issued at
             "exp": int((now + timedelta(days=7)).timestamp()),  # Expires in 7 days
-            "roles": cli_roles,  # CLI gets admin access for system operations
             "type": "cli_token"  # Token type
         }
         

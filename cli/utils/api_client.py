@@ -176,6 +176,161 @@ def get_modelservice_client() -> Generator[CLIModelServiceClient, None, None]:
     yield _cli_modelservice_client
 
 
+class CLIBackendClient:
+    """Encrypted HTTP client for CLI-backend API Gateway communication."""
+    
+    def __init__(self):
+        self.config_manager = ConfigurationManager()
+        self.config_manager.initialize()
+        
+        # Get backend API Gateway configuration
+        gateway_config = self.config_manager.get("api_gateway", {})
+        rest_config = gateway_config.get("rest", {})
+        host = rest_config.get("host", "127.0.0.1")
+        port = rest_config.get("port", 8771)
+        self.base_url = f"http://{host}:{port}"
+        
+        # Initialize service authentication
+        self.key_manager = AICOKeyManager(self.config_manager)
+        self.identity_manager = TransportIdentityManager(self.key_manager)
+        self.service_auth = ServiceAuthManager(self.key_manager, self.identity_manager)
+        self.secure_channel: Optional[SecureTransportChannel] = None
+        self.session_established = False
+        
+        self._initialize_secure_channel()
+    
+    def _initialize_secure_channel(self):
+        """Initialize secure transport channel for encrypted communication."""
+        try:
+            self.secure_channel = self.identity_manager.create_secure_channel("backend")
+        except Exception as e:
+            raise EncryptionError(f"Failed to initialize secure channel: {e}") from e
+    
+    async def _ensure_session(self):
+        """Ensure encrypted session is established with backend."""
+        if self.session_established and self.secure_channel.is_session_valid():
+            return
+        
+        try:
+            # Perform handshake with backend
+            handshake_request = self.secure_channel.create_handshake_request()
+            
+            handshake_payload = {
+                "handshake_request": handshake_request
+            }
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/api/v1/handshake",
+                    json=handshake_payload
+                )
+                
+                if response.status_code != 200:
+                    raise EncryptionError(f"Backend handshake failed: HTTP {response.status_code} - {response.text}")
+                
+                response_data = response.json()
+                
+                if response_data.get("status") == "session_established":
+                    self.secure_channel.process_handshake_response(response_data["handshake_response"])
+                    self.session_established = True
+                else:
+                    raise EncryptionError(f"Handshake failed: {response_data.get('error', 'Unknown error')}")
+                
+        except httpx.RequestError as e:
+            raise EncryptionError(f"Network error during backend handshake: {e}") from e
+    
+    async def request(self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Make encrypted HTTP request to backend."""
+        await self._ensure_session()
+        
+        if not self.secure_channel:
+            raise EncryptionError("No secure channel available for backend communication")
+        
+        url = f"{self.base_url}{endpoint}"
+        if params:
+            url += "?" + "&".join(f"{k}={v}" for k, v in params.items())
+        
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                identity = self.identity_manager.get_component_identity("backend")
+                client_id = bytes(identity.verify_key).hex()[:16]
+                
+                # Get JWT token for authentication
+                jwt_token = self.key_manager.get_jwt_token("api_gateway")
+                if not jwt_token:
+                    raise EncryptionError(
+                        "No JWT token found. Run 'aico gateway auth login' to authenticate."
+                    )
+                
+                headers = {
+                    "X-Client-ID": client_id,
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {jwt_token}"
+                }
+                
+                # Encrypt request payload
+                if data:
+                    encrypted_payload = self.secure_channel.encrypt_json_payload(data)
+                    request_data = {
+                        "encrypted": True,
+                        "payload": encrypted_payload,
+                        "client_id": client_id
+                    }
+                else:
+                    request_data = {
+                        "encrypted": True,
+                        "client_id": client_id
+                    }
+                
+                # Use appropriate HTTP method
+                if method.upper() == "POST":
+                    response = await client.post(url, headers=headers, json=request_data)
+                elif method.upper() == "GET":
+                    response = await client.post(url, headers=headers, json=request_data)
+                elif method.upper() == "DELETE":
+                    response = await client.post(url, headers=headers, json=request_data)
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")
+                
+                if response.status_code not in [200, 201, 204]:
+                    raise httpx.HTTPStatusError(
+                        f"Backend API error: {method} {endpoint} returned HTTP {response.status_code}",
+                        request=response.request,
+                        response=response
+                    )
+                
+                if response.status_code == 204:
+                    return {}
+                
+                # Decrypt response
+                response_data = response.json()
+                if response_data.get("encrypted") and "payload" in response_data:
+                    return self.secure_channel.decrypt_json_payload(response_data["payload"])
+                elif "encrypted_payload" in response_data:
+                    return self.secure_channel.decrypt_json_payload(response_data["encrypted_payload"])
+                else:
+                    # Some responses might not be encrypted (error messages, etc.)
+                    return response_data
+                    
+        except httpx.RequestError as e:
+            raise EncryptionError(f"Network error during {method} {endpoint}: {e}") from e
+    
+    def post(self, endpoint: str, json: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None):
+        """Synchronous POST request."""
+        return asyncio.run(self.request("POST", endpoint, json, params))
+    
+    def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None):
+        """Synchronous GET request."""
+        return asyncio.run(self.request("GET", endpoint, None, params))
+
+
+@contextmanager
+def get_backend_client() -> Generator[CLIBackendClient, None, None]:
+    """Get encrypted backend API client for CLI commands."""
+    client = CLIBackendClient()
+    yield client
+
+
 @contextmanager  
 def get_gateway_client() -> Generator[httpx.Client, None, None]:
     """Get configured HTTP client for API Gateway."""
