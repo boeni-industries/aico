@@ -661,6 +661,19 @@ class AgencyEngine(BaseAIProcessor):
             }
             priority = priority_map.get(signal.priority, GoalPriority.NORMAL)
             
+            # Generate title embedding for similarity matching
+            title_embedding = None
+            try:
+                if self.modelservice_client:
+                    embedding_response = await self.modelservice_client.get_embeddings(
+                        model="paraphrase-multilingual",
+                        prompt=signal.topic
+                    )
+                    if embedding_response.get("success"):
+                        title_embedding = embedding_response["data"]["embedding"]
+            except Exception as e:
+                logger.warning(f"[AGENCY_ENGINE] Failed to generate title embedding: {e}")
+            
             # Build metadata with curiosity context
             metadata = {
                 "curiosity_signal_id": signal.signal_id,
@@ -670,6 +683,7 @@ class AgencyEngine(BaseAIProcessor):
                 "user_relevance_score": signal.user_relevance_score,
                 "source_component": signal.source_component,
                 "topic_tags": signal.topic_tags,
+                "title_embedding": title_embedding,  # Store for similarity matching
             }
             
             # Add template info if available

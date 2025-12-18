@@ -96,7 +96,7 @@ class GoalExpirationTask(BaseTask):
                     
                     # Remove from intention set
                     db.execute(
-                        "DELETE FROM intention_set WHERE goal_id = ?",
+                        "DELETE FROM agency_intention_set WHERE goal_id = ?",
                         (goal['goal_id'],)
                     )
                     

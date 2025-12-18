@@ -271,7 +271,7 @@ class AgencyPlanExecutorTask(BaseTask):
                 """SELECT DISTINCT p.plan_id, p.goal_id, g.user_id
                    FROM agency_plans p
                    JOIN agency_goals g ON p.goal_id = g.goal_id
-                   JOIN intention_set i ON g.goal_id = i.goal_id
+                   JOIN agency_intention_set i ON g.goal_id = i.goal_id
                    WHERE i.status = 'active'
                      AND p.status IN ('draft', 'active')
                      AND NOT EXISTS (

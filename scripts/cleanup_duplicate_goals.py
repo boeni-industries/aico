@@ -77,7 +77,7 @@ def cleanup_duplicate_goals(user_id: str, dry_run: bool = True):
     deleted_intentions = 0
     for goal in to_delete:
         result = db.execute(
-            "DELETE FROM intention_set WHERE goal_id = ?",
+            "DELETE FROM agency_intention_set WHERE goal_id = ?",
             (goal['goal_id'],)
         )
         deleted_intentions += result.rowcount if hasattr(result, 'rowcount') else 0
