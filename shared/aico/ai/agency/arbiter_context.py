@@ -396,7 +396,7 @@ class ContextAwarePrioritization:
             depends_on = self.db.fetch_all(
                 """
                 SELECT prerequisite_goal_id
-                FROM goal_dependencies
+                FROM agency_goal_dependencies
                 WHERE goal_id = ? AND active = 1
                 """,
                 (goal_id,)
@@ -406,7 +406,7 @@ class ContextAwarePrioritization:
             blocks = self.db.fetch_all(
                 """
                 SELECT goal_id
-                FROM goal_dependencies
+                FROM agency_goal_dependencies
                 WHERE prerequisite_goal_id = ? AND active = 1
                 """,
                 (goal_id,)

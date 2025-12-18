@@ -130,7 +130,7 @@ class BehavioralFeedbackService:
         try:
             self.db.execute(
                 """
-                INSERT INTO skill_executions (
+                INSERT INTO agency_skill_executions (
                     execution_id, skill_id, user_id, message_id, goal_id,
                     execution_time_ms, outcome, error_message, context_json, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -184,7 +184,7 @@ class BehavioralFeedbackService:
             
             self.db.execute(
                 """
-                INSERT INTO goal_skill_executions (
+                INSERT INTO agency_goal_skill_executions (
                     link_id, goal_id, skill_id, execution_id, execution_order, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
@@ -214,8 +214,8 @@ class BehavioralFeedbackService:
         try:
             rows = self.db.fetch_all(
                 """
-                SELECT se.* FROM skill_executions se
-                JOIN goal_skill_executions gse ON se.execution_id = gse.execution_id
+                SELECT se.* FROM agency_skill_executions se
+                JOIN agency_goal_skill_executions gse ON se.execution_id = gse.execution_id
                 WHERE gse.goal_id = ?
                 ORDER BY gse.execution_order, se.created_at
                 """,
@@ -337,7 +337,7 @@ class BehavioralFeedbackService:
         """
         try:
             row = self.db.fetch_one(
-                "SELECT outcome FROM skill_executions WHERE execution_id = ?",
+                "SELECT outcome FROM agency_skill_executions WHERE execution_id = ?",
                 (execution_id,)
             )
             
@@ -561,9 +561,9 @@ class BehavioralFeedbackService:
                 row = self.db.fetch_one(
                     """
                     SELECT 
-                        SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) as successes,
+                        COALESCE(SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END), 0) as successes,
                         COUNT(*) as total
-                    FROM skill_executions
+                    FROM agency_skill_executions
                     WHERE skill_id = ? AND user_id = ? AND created_at >= ?
                     """,
                     (skill_id, user_id, from_date)
@@ -572,9 +572,9 @@ class BehavioralFeedbackService:
                 row = self.db.fetch_one(
                     """
                     SELECT 
-                        SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) as successes,
+                        COALESCE(SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END), 0) as successes,
                         COUNT(*) as total
-                    FROM skill_executions
+                    FROM agency_skill_executions
                     WHERE skill_id = ? AND created_at >= ?
                     """,
                     (skill_id, from_date)

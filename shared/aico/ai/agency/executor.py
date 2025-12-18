@@ -148,11 +148,13 @@ class PlanExecutor:
         self,
         db: EncryptedLibSQLConnection,
         plan_store: PlanStore,
+        goal_store: "GoalStore",
         skill_invoker: Optional[Any] = None,
         logger=None,
     ):
         self.db = db
         self.plan_store = plan_store
+        self.goal_store = goal_store
         self.skill_invoker = skill_invoker
         self.logger = logger or globals()["logger"]
     
@@ -194,6 +196,10 @@ class PlanExecutor:
         # Persist execution
         await self._save_execution(execution)
         
+        self.logger.info(
+            f"[EXECUTOR DEBUG] Creating step executions for {len(plan.steps)} steps..."
+        )
+        
         # Create step execution records
         for step in plan.steps:
             step_exec = StepExecution(
@@ -201,12 +207,26 @@ class PlanExecutor:
                 execution_id=execution.execution_id,
                 step_id=step.step_id,
                 step_order=step.order,
+                skill_id=step.skill_id,  # Copy skill_id from plan step
             )
             await self._save_step_execution(step_exec)
+            
+            self.logger.info(
+                f"[EXECUTOR DEBUG] Created step execution: order={step.order}, "
+                f"skill_id={step.skill_id}, step_exec_id={step_exec.step_execution_id[:8]}..."
+            )
+        
+        # Verify step executions were created
+        count_row = self.db.fetch_one(
+            "SELECT COUNT(*) as count FROM agency_step_executions WHERE execution_id = ?",
+            (execution.execution_id,)
+        )
+        created_count = count_row["count"] if count_row else 0
         
         self.logger.info(
-            f"[EXECUTOR] Started execution {execution.execution_id} "
-            f"for plan {plan_id} ({len(plan.steps)} steps)"
+            f"[EXECUTOR] Started execution {execution.execution_id[:8]}... "
+            f"for plan {plan_id[:8]}... ({len(plan.steps)} steps) "
+            f"- Verified {created_count} step_executions in DB"
         )
         
         return execution
@@ -270,8 +290,7 @@ class PlanExecutor:
             
         except Exception as e:
             self.logger.error(
-                f"[EXECUTOR] Step execution failed: {e}",
-                exc_info=True
+                f"[EXECUTOR] Step execution failed: {e}"
             )
             
             # Mark step as failed
@@ -437,14 +456,18 @@ class PlanExecutor:
                 self.logger.info(
                     f"🎬 [EXECUTOR] Invoking skill '{step_exec.skill_id}' for step {step_exec.step_order}"
                 )
+                
+                # Prepare skill input data from step metadata
+                skill_input = self._prepare_skill_input(step, execution)
+                
                 self.logger.debug(
-                    f"🎬 [EXECUTOR] Step input data: {json.dumps(step_exec.input_data, indent=2)}"
+                    f"🎬 [EXECUTOR] Step input data: {json.dumps(skill_input, indent=2)}"
                 )
                 
                 result = await self.skill_invoker.invoke_skill(
                     skill_id=step_exec.skill_id,
                     user_id=execution.user_id,
-                    input_data=step_exec.input_data,
+                    input_data=skill_input,
                     context={
                         **execution.execution_context,
                         "execution_id": execution.execution_id,
@@ -472,10 +495,19 @@ class PlanExecutor:
                 step_exec.skill_invocation_id = result.get("invocation_id")
             else:
                 # No skill - mark as completed (placeholder step)
-                self.logger.info(
-                    f"🎬 [EXECUTOR] Step {step_exec.step_order} has no skill - marking as completed"
+                error_msg = (
+                    f"❌ [EXECUTOR] CRITICAL: Step {step_exec.step_order} has NO SKILL ASSIGNED! "
+                    f"Step description: '{step.description[:100]}...' "
+                    f"This step will complete as a placeholder without doing any actual work. "
+                    f"Plan steps MUST have skills assigned during plan generation."
                 )
-                step_exec.output_data = {"status": "completed", "note": "No skill invocation"}
+                self.logger.error(error_msg)
+                print(error_msg)  # Also print to console for visibility
+                step_exec.output_data = {
+                    "status": "completed", 
+                    "note": "No skill invocation - placeholder step",
+                    "error": "Step has no skill assigned"
+                }
             
             # Mark step as completed
             step_exec.status = StepExecutionStatus.COMPLETED
@@ -506,8 +538,7 @@ class PlanExecutor:
             await self._save_step_execution(step_exec)
             
             self.logger.error(
-                f"❌ [EXECUTOR] Step {step_exec.step_order} failed after {step_exec.duration_ms}ms: {e}",
-                exc_info=True
+                f"❌ [EXECUTOR] Step {step_exec.step_order} failed after {step_exec.duration_ms}ms: {e}"
             )
             
             raise
@@ -529,13 +560,79 @@ class PlanExecutor:
             f"({execution.steps_completed}/{execution.steps_total} steps)"
         )
     
+    def _prepare_skill_input(
+        self,
+        step: "PlanStep",
+        execution: PlanExecution,
+    ) -> Dict[str, Any]:
+        """
+        Prepare skill input data from step metadata and execution context.
+        
+        Extracts parameters needed by skills from step metadata and goal information.
+        """
+        skill_input = {}
+        
+        # Get goal information for context
+        goal = self.goal_store.get_goal(execution.goal_id)
+        
+        # Extract common parameters from step metadata
+        metadata = step.metadata or {}
+        
+        # For initiate_conversation skill
+        if step.skill_id == "initiate_conversation":
+            # Extract topic from metadata or use goal title
+            topic = metadata.get("conversation_topic") or metadata.get("topic")
+            if not topic and goal:
+                # Generate topic from goal title and step description
+                topic = f"{goal.title.lower().replace(' ', '_')}"
+            
+            skill_input["topic"] = topic or "goal_progress"
+            
+            # Use step description as the message
+            skill_input["message"] = step.description
+            
+            # Optional parameters
+            if "reason" in metadata:
+                skill_input["reason"] = metadata["reason"]
+            if "emotional_context" in metadata:
+                skill_input["emotional_context"] = metadata["emotional_context"]
+        
+        # For ask_user skill
+        elif step.skill_id == "ask_user":
+            # Use step description as the question
+            skill_input["question"] = step.description
+            
+            # Optional parameters
+            if "expected_answer_type" in metadata:
+                skill_input["expected_answer_type"] = metadata["expected_answer_type"]
+            if "context" in metadata:
+                skill_input["context"] = metadata["context"]
+        
+        # For other skills, pass through metadata as-is
+        else:
+            skill_input.update(metadata)
+        
+        return skill_input
+    
     async def _get_next_pending_step(
         self,
         execution_id: str,
     ) -> Optional[StepExecution]:
         """Get next pending step in order."""
+        # Debug: Check total step executions for this execution
+        count_row = self.db.fetch_one(
+            "SELECT COUNT(*) as count FROM agency_step_executions WHERE execution_id = ?",
+            (execution_id,)
+        )
+        total_steps = count_row["count"] if count_row else 0
+        
+        self.logger.info(
+            f"[EXECUTOR DEBUG] Looking for pending steps in execution {execution_id[:8]}... "
+            f"Total step_executions in DB: {total_steps}"
+        )
+        
         row = self.db.fetch_one(
-            """SELECT * FROM step_executions
+            """SELECT * FROM agency_step_executions
                WHERE execution_id = ? AND status = 'pending'
                ORDER BY step_order ASC
                LIMIT 1""",
@@ -543,14 +640,23 @@ class PlanExecutor:
         )
         
         if not row:
+            self.logger.warning(
+                f"[EXECUTOR DEBUG] No pending steps found for execution {execution_id[:8]}... "
+                f"(total steps in DB: {total_steps})"
+            )
             return None
+        
+        self.logger.info(
+            f"[EXECUTOR DEBUG] Found pending step: order={row['step_order']}, "
+            f"skill_id={row.get('skill_id', 'None')}"
+        )
         
         return self._row_to_step_execution(row)
     
     async def _has_pending_steps(self, execution_id: str) -> bool:
         """Check if execution has pending steps."""
         row = self.db.fetch_one(
-            """SELECT COUNT(*) as count FROM step_executions
+            """SELECT COUNT(*) as count FROM agency_step_executions
                WHERE execution_id = ? AND status = 'pending'""",
             (execution_id,)
         )
@@ -562,7 +668,7 @@ class PlanExecutor:
         now = datetime.now(UTC).isoformat()
         
         self.db.execute(
-            """INSERT OR REPLACE INTO plan_executions (
+            """INSERT OR REPLACE INTO agency_plan_executions (
                 execution_id, plan_id, goal_id, user_id, status,
                 started_at, completed_at, paused_at, cancelled_at,
                 current_step_id, steps_completed, steps_total,
@@ -598,7 +704,7 @@ class PlanExecutor:
         now = datetime.now(UTC).isoformat()
         
         self.db.execute(
-            """INSERT OR REPLACE INTO step_executions (
+            """INSERT OR REPLACE INTO agency_step_executions (
                 step_execution_id, execution_id, step_id, step_order, status,
                 started_at, completed_at, duration_ms, skill_id,
                 skill_invocation_id, input_data, output_data, error_message,
@@ -629,7 +735,7 @@ class PlanExecutor:
     async def _get_execution(self, execution_id: str) -> Optional[PlanExecution]:
         """Get execution from database."""
         row = self.db.fetch_one(
-            "SELECT * FROM plan_executions WHERE execution_id = ?",
+            "SELECT * FROM agency_plan_executions WHERE execution_id = ?",
             (execution_id,)
         )
         
@@ -664,7 +770,7 @@ class PlanExecutor:
     ) -> List[StepExecution]:
         """Get all step executions for an execution."""
         rows = self.db.fetch_all(
-            """SELECT * FROM step_executions
+            """SELECT * FROM agency_step_executions
                WHERE execution_id = ?
                ORDER BY step_order ASC""",
             (execution_id,)
@@ -713,7 +819,7 @@ class PlanExecutor:
         }
         
         self.db.execute(
-            """INSERT INTO execution_state_snapshots (
+            """INSERT INTO agency_execution_snapshots (
                 snapshot_id, execution_id, snapshot_type, state_data, created_at
             ) VALUES (?, ?, ?, ?, ?)""",
             (

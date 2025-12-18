@@ -89,22 +89,16 @@ class AgencyEngine(BaseAIProcessor):
         )
         
         # Phase 4: Values & Ethics service
-        print("🔧 [PHASE 4 DEBUG] Initializing ValuesEthicsService...")
         self.values_ethics = ValuesEthicsService(db_connection, logger=logger)
-        print("✅ [PHASE 4 DEBUG] ValuesEthicsService initialized!")
         logger.info("[AGENCY_ENGINE] Values & Ethics service initialized (Phase 4)")
         
         # Phase 4: Goal Arbiter with configuration
-        print("🔧 [PHASE 4 DEBUG] Initializing GoalArbiter with config...")
-        print(f"🔧 [PHASE 4 DEBUG] Config object: {config}")
-        print(f"🔧 [PHASE 4 DEBUG] Message bus: {message_bus}")
         self.arbiter = GoalArbiter(
             db_connection, 
             config=config,
             message_bus=message_bus, 
             logger=logger
         )
-        print("✅ [PHASE 4 DEBUG] GoalArbiter initialized!")
         logger.info("[AGENCY_ENGINE] Goal Arbiter initialized (Phase 4)")
         
         # Phase 5: Self-Reflection Engine
@@ -147,8 +141,8 @@ class AgencyEngine(BaseAIProcessor):
         
         # Communication skills (AICO-initiated conversations)
         from .skills import AskUserSkill, InitiateConversationSkill
-        self.skill_registry.register(AskUserSkill(db=db_connection))
-        self.skill_registry.register(InitiateConversationSkill(db=db_connection))
+        self.skill_registry.register(AskUserSkill(db=db_connection, message_bus=message_bus))
+        self.skill_registry.register(InitiateConversationSkill(db=db_connection, message_bus=message_bus))
         
         logger.info(
             f"[AGENCY_ENGINE] Skill Registry initialized with {len(self.skill_registry)} skills"
@@ -165,6 +159,7 @@ class AgencyEngine(BaseAIProcessor):
         self.executor = PlanExecutor(
             db=db_connection,
             plan_store=self.plan_store,
+            goal_store=self.goal_store,
             skill_invoker=self.skill_invoker,
             logger=logger
         )
@@ -684,7 +679,7 @@ class AgencyEngine(BaseAIProcessor):
             
             # CRITICAL FIX: Check for existing goals to prevent duplicates
             # 1. Exact title match (fast path)
-            existing_goal = self.db.execute(
+            existing_goal = self._db_connection.execute(
                 """SELECT goal_id, title, description, status, created_at FROM agency_goals 
                    WHERE user_id = ? AND title = ? AND status IN ('pending', 'active', 'paused')
                    ORDER BY created_at DESC LIMIT 1""",
@@ -701,7 +696,7 @@ class AgencyEngine(BaseAIProcessor):
             
             # 2. Semantic similarity check (for near-duplicates with different wording)
             # Get recent goals of same type for similarity comparison
-            recent_goals = self.db.execute(
+            recent_goals = self._db_connection.execute(
                 """SELECT goal_id, title, description, status, created_at FROM agency_goals 
                    WHERE user_id = ? 
                    AND goal_type IN ('hobby', 'curiosity')

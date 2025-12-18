@@ -515,7 +515,7 @@ class GoalArbiter:
         """
         rows = self.db.fetch_all(
             """
-            SELECT * FROM intention_set 
+            SELECT * FROM agency_intention_set 
             WHERE user_id = ? AND status IN ('proposed', 'active', 'paused')
             ORDER BY arbiter_score DESC
             """,
@@ -699,6 +699,9 @@ class GoalArbiter:
         # Refresh intention set after capacity enforcement
         intention_set = await self.get_intention_set(user_id)
         
+        # Activate/deactivate plans based on ALL intention statuses
+        await self._sync_plans_with_intentions(user_id, intention_set.intentions)
+        
         # Publish changes if message bus available
         if self.message_bus and new_intentions:
             await self._publish_intention_set_update(intention_set)
@@ -769,7 +772,7 @@ class GoalArbiter:
         
         self.db.execute(
             """
-            INSERT INTO intention_set (
+            INSERT INTO agency_intention_set (
                 intention_id, goal_id, user_id, status, arbiter_score,
                 priority_band, reasons_json, activated_at, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -794,7 +797,7 @@ class GoalArbiter:
         """Update an existing intention in the database."""
         self.db.execute(
             """
-            UPDATE intention_set 
+            UPDATE agency_intention_set 
             SET status = ?, arbiter_score = ?, priority_band = ?,
                 reasons_json = ?, activated_at = ?, deactivated_at = ?,
                 updated_at = ?
@@ -815,7 +818,7 @@ class GoalArbiter:
     async def _get_intention(self, intention_id: str) -> Optional[Intention]:
         """Get an intention by ID."""
         row = self.db.fetch_one(
-            "SELECT * FROM intention_set WHERE intention_id = ?",
+            "SELECT * FROM agency_intention_set WHERE intention_id = ?",
             (intention_id,)
         )
         
@@ -835,6 +838,64 @@ class GoalArbiter:
             created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
             updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
         )
+    
+    async def _sync_plans_with_intentions(
+        self,
+        user_id: str,
+        new_intentions: List[Intention]
+    ) -> None:
+        """
+        Sync plan status with intention status changes.
+        Activate plans for newly active intentions, pause plans for deactivated ones.
+        """
+        from .models import PlanStatus
+        
+        for intention in new_intentions:
+            try:
+                # Get plan for this goal
+                row = self.db.fetch_one(
+                    "SELECT plan_id, status FROM agency_plans WHERE goal_id = ?",
+                    (intention.goal_id,)
+                )
+                
+                if not row:
+                    continue
+                
+                plan_id = row["plan_id"]
+                current_plan_status = row["status"]
+                
+                # Activate plan if intention is active and plan is draft
+                if intention.status == IntentionStatus.ACTIVE and current_plan_status == "draft":
+                    self.db.execute(
+                        "UPDATE agency_plans SET status = ?, updated_at = ? WHERE plan_id = ?",
+                        (PlanStatus.ACTIVE.value, datetime.now(UTC).isoformat(), plan_id)
+                    )
+                    self.db.commit()
+                    
+                    if self.logger:
+                        self.logger.info(
+                            f"[ARBITER] Activated plan {plan_id[:8]}... for intention {intention.intention_id[:8]}..."
+                        )
+                
+                # Pause plan if intention is dropped/paused and plan is active
+                elif intention.status in [IntentionStatus.DROPPED, IntentionStatus.PAUSED] and current_plan_status == "active":
+                    self.db.execute(
+                        "UPDATE agency_plans SET status = ?, updated_at = ? WHERE plan_id = ?",
+                        (PlanStatus.PAUSED.value, datetime.now(UTC).isoformat(), plan_id)
+                    )
+                    self.db.commit()
+                    
+                    if self.logger:
+                        self.logger.info(
+                            f"[ARBITER] Paused plan {plan_id[:8]}... for intention {intention.intention_id[:8]}..."
+                        )
+                        
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(
+                        f"[ARBITER] Failed to sync plan for intention {intention.intention_id}: {e}",
+                        exc_info=True
+                    )
     
     async def _publish_intention_set_update(self, intention_set: IntentionSet) -> None:
         """Publish intention set update to message bus."""
@@ -903,7 +964,7 @@ class GoalArbiter:
             outcome_id = str(uuid.uuid4())
             self.db.execute(
                 """
-                INSERT INTO goal_outcomes (
+                INSERT INTO agency_goal_outcomes (
                     outcome_id, goal_id, user_id, arm_id, outcome,
                     success, reward, completion_time_minutes,
                     user_satisfaction, metadata_json, created_at

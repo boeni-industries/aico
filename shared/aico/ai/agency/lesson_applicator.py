@@ -156,39 +156,42 @@ class LessonApplicationService:
         # Store lesson metadata in skill's dimension_vector or metadata
         # This allows the bandit selector to use adjusted weights
         try:
-            # Check if skill exists
+            # Check if skill learning data exists
             row = self.db.execute(
-                "SELECT skill_id, dimension_vector FROM skills WHERE skill_id = ?",
+                "SELECT skill_id, dimension_vector FROM agency_skill_learning_data WHERE skill_id = ?",
                 (skill_id,)
             ).fetchone()
             
             if not row:
-                logger.warning(
-                    f"[LESSON_APPLICATOR] Skill {skill_id} not found, cannot apply lesson"
+                # Initialize learning data for new skill
+                logger.info(
+                    f"[LESSON_APPLICATOR] Initializing learning data for skill {skill_id}"
                 )
-                return False
+                dimension_vector = [0.0] * 11  # Default 11-dimensional vector
+            else:
+                # Parse existing dimension vector
+                try:
+                    dimension_vector = json.loads(row["dimension_vector"])
+                except (json.JSONDecodeError, KeyError):
+                    logger.warning(
+                        f"[LESSON_APPLICATOR] Invalid dimension vector for skill {skill_id}, reinitializing"
+                    )
+                    dimension_vector = [0.0] * 11  # Default 11-dimensional vector
             
-            # Parse existing dimension vector
-            import json
-            dimension_vector = json.loads(row["dimension_vector"]) if row["dimension_vector"] else {}
+            # Apply adjustments
+            for dim_idx, adjustment in change.items():
+                if 0 <= dim_idx < len(dimension_vector):
+                    dimension_vector[dim_idx] += adjustment
+                    # Clamp to [-1, 1] range
+                    dimension_vector[dim_idx] = max(-1.0, min(1.0, dimension_vector[dim_idx]))
             
-            # Add lesson adjustment
-            if "lesson_adjustments" not in dimension_vector:
-                dimension_vector["lesson_adjustments"] = {}
-            
-            dimension_vector["lesson_adjustments"][change.field] = {
-                "value": change.new,
-                "lesson_id": lesson.lesson_id,
-                "applied_at": datetime.now(UTC).isoformat(),
-                "confidence": lesson.confidence,
-            }
-            
-            # Update skill
+            # Insert or update skill learning data
+            now = datetime.now(UTC).isoformat()
             self.db.execute(
-                """UPDATE skills 
-                   SET dimension_vector = ?, updated_at = ?
-                   WHERE skill_id = ?""",
-                (json.dumps(dimension_vector), datetime.now(UTC).isoformat(), skill_id)
+                """INSERT OR REPLACE INTO skill_learning_data 
+                   (skill_id, dimension_vector, created_at, updated_at)
+                   VALUES (?, ?, ?, ?)""",
+                (skill_id, json.dumps(dimension_vector), now, now)
             )
             self.db.commit()
             
