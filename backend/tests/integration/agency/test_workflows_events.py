@@ -452,7 +452,7 @@ class TestEventReplaySystem:
         
         # Verify session created
         row = replay_system.db.fetch_one(
-            "SELECT * FROM event_replay_sessions WHERE session_id = ?",
+            "SELECT * FROM system_event_replay_sessions WHERE session_id = ?",
             (session_id,)
         )
         

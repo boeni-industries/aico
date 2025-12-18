@@ -510,7 +510,7 @@ class TestConsentManagerCoverage:
         )
         
         row = consent_manager.db.fetch_one(
-            "SELECT * FROM user_consents WHERE consent_id = ?",
+            "SELECT * FROM consent_user_consents WHERE consent_id = ?",
             (consent_id,)
         )
         
@@ -526,7 +526,7 @@ class TestConsentManagerCoverage:
         )
         
         row = consent_manager.db.fetch_one(
-            "SELECT * FROM user_consents WHERE consent_id = ?",
+            "SELECT * FROM consent_user_consents WHERE consent_id = ?",
             (consent_id,)
         )
         

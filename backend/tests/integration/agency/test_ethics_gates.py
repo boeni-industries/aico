@@ -37,7 +37,7 @@ class TestPhase4EthicsGates:
         
         # Update in DB
         test_db.execute(
-            "UPDATE value_profiles SET sensitive_life_areas = ? WHERE profile_id = ?",
+            "UPDATE ethics_value_profiles SET sensitive_life_areas = ? WHERE profile_id = ?",
             ('["health", "finance", "relationships"]', profile.profile_id)
         )
         test_db.commit()
@@ -77,7 +77,7 @@ class TestPhase4EthicsGates:
         profile.curiosity_intensity = 1.0  # Allow high intensity
         
         test_db.execute(
-            "UPDATE value_profiles SET sensitive_life_areas = ?, curiosity_intensity = ? WHERE profile_id = ?",
+            "UPDATE ethics_value_profiles SET sensitive_life_areas = ?, curiosity_intensity = ? WHERE profile_id = ?",
             ("[]", 1.0, profile.profile_id)
         )
         test_db.commit()
@@ -120,7 +120,7 @@ class TestPhase4EthicsGates:
         profile.curiosity_intensity = 0.5  # Low threshold - signals above this trigger warning
         
         test_db.execute(
-            "UPDATE value_profiles SET sensitive_life_areas = ?, curiosity_intensity = ? WHERE profile_id = ?",
+            "UPDATE ethics_value_profiles SET sensitive_life_areas = ?, curiosity_intensity = ? WHERE profile_id = ?",
             ("[]", 0.5, profile.profile_id)
         )
         test_db.commit()
@@ -170,7 +170,7 @@ class TestPhase4EthicsGates:
         profile.curiosity_intensity = 0.9  # High threshold - most signals allowed
         
         test_db.execute(
-            "UPDATE value_profiles SET sensitive_life_areas = ?, curiosity_intensity = ? WHERE profile_id = ?",
+            "UPDATE ethics_value_profiles SET sensitive_life_areas = ?, curiosity_intensity = ? WHERE profile_id = ?",
             ("[]", 0.9, profile.profile_id)
         )
         test_db.commit()
@@ -213,7 +213,7 @@ class TestPhase4EthicsGates:
         profile.curiosity_intensity = 0.1  # Very restrictive
         
         test_db.execute(
-            "UPDATE value_profiles SET sensitive_life_areas = ?, curiosity_intensity = ? WHERE profile_id = ?",
+            "UPDATE ethics_value_profiles SET sensitive_life_areas = ?, curiosity_intensity = ? WHERE profile_id = ?",
             ('["everything"]', 0.1, profile.profile_id)
         )
         test_db.commit()
@@ -250,7 +250,7 @@ class TestPhase4EthicsGates:
             profile.proactive_behavior_level = level
             
             test_db.execute(
-                "UPDATE value_profiles SET proactive_behavior_level = ? WHERE profile_id = ?",
+                "UPDATE ethics_value_profiles SET proactive_behavior_level = ? WHERE profile_id = ?",
                 (level.value, profile.profile_id)
             )
             test_db.commit()
@@ -269,7 +269,7 @@ class TestPhase4EthicsGates:
         profile.sensitive_life_areas = ["health", "finance", "relationships", "work"]
         
         test_db.execute(
-            "UPDATE value_profiles SET sensitive_life_areas = ? WHERE profile_id = ?",
+            "UPDATE ethics_value_profiles SET sensitive_life_areas = ? WHERE profile_id = ?",
             ('["health", "finance", "relationships", "work"]', profile.profile_id)
         )
         test_db.commit()

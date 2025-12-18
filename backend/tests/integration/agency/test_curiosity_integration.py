@@ -176,11 +176,15 @@ class TestPhase3CuriosityIntegration:
         ]
         
         for signal_priority, expected_goal_priority in priorities:
+            # Use unique topic to avoid duplicate detection
+            import uuid
+            unique_topic = f"Test {signal_priority} priority goal {uuid.uuid4().hex[:8]}"
+            
             signal = IntrinsicSignal(
                 signal_id=f"priority-signal-{signal_priority}",
                 user_id=test_user,
                 signal_type=CuriosityType.HOBBY_PLAY,
-                topic=f"Test {signal_priority} priority",
+                topic=unique_topic,
                 description="Test",
                 total_score=0.6,
                 priority=signal_priority,
@@ -194,7 +198,7 @@ class TestPhase3CuriosityIntegration:
             )
             
             # Assert
-            assert goal.priority == expected_goal_priority
+            assert goal.priority == expected_goal_priority, f"Expected {expected_goal_priority} but got {goal.priority} for signal priority '{signal_priority}'"
     
     async def test_goal_metadata_preserves_all_signal_info(self, test_config, test_db, test_user, permissive_value_profile):
         """Test that all relevant signal information is preserved in goal metadata."""

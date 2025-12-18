@@ -170,7 +170,7 @@ class TestAgencyAPIEndpoints:
         
         # Act - Query policies directly from database
         cursor = test_db.execute(
-            "SELECT * FROM policy_rules WHERE enabled = 1 ORDER BY priority ASC"
+            "SELECT * FROM ethics_policy_rules WHERE enabled = 1 ORDER BY priority ASC"
         )
         policies = cursor.fetchall()
         
@@ -195,7 +195,7 @@ class TestAgencyAPIEndpoints:
         
         # Act
         cursor = test_db.execute(
-            "SELECT * FROM policy_rules WHERE enabled = 1 AND target_type = ? ORDER BY priority ASC",
+            "SELECT * FROM ethics_policy_rules WHERE enabled = 1 AND target_type = ? ORDER BY priority ASC",
             (target_type,)
         )
         policies = cursor.fetchall()
@@ -215,7 +215,7 @@ class TestAgencyAPIEndpoints:
         # Act
         test_db.execute(
             """
-            INSERT INTO consents (consent_id, user_id, consent_scope, decision, granted_at)
+            INSERT INTO consent_records (consent_id, user_id, consent_scope, decision, granted_at)
             VALUES (?, ?, ?, ?, ?)
             """,
             (consent_id, test_user, json.dumps(scope), "granted", datetime.now(UTC).isoformat())
@@ -224,7 +224,7 @@ class TestAgencyAPIEndpoints:
         
         # Verify
         cursor = test_db.execute(
-            "SELECT * FROM consents WHERE consent_id = ?",
+            "SELECT * FROM consent_records WHERE consent_id = ?",
             (consent_id,)
         )
         consent = cursor.fetchone()
@@ -235,7 +235,7 @@ class TestAgencyAPIEndpoints:
         assert consent[3] == "granted"  # decision
         
         # Cleanup
-        test_db.execute("DELETE FROM consents WHERE consent_id = ?", (consent_id,))
+        test_db.execute("DELETE FROM consent_records WHERE consent_id = ?", (consent_id,))
         test_db.commit()
     
     async def test_list_consents_for_user(self, test_config, test_db, test_user):
@@ -247,7 +247,7 @@ class TestAgencyAPIEndpoints:
         
         test_db.execute(
             """
-            INSERT INTO consents (consent_id, user_id, consent_scope, decision, granted_at)
+            INSERT INTO consent_records (consent_id, user_id, consent_scope, decision, granted_at)
             VALUES (?, ?, ?, ?, ?)
             """,
             (consent_id, test_user, json.dumps(scope), "granted", datetime.now(UTC).isoformat())
@@ -256,7 +256,7 @@ class TestAgencyAPIEndpoints:
         
         # Act
         cursor = test_db.execute(
-            "SELECT * FROM consents WHERE user_id = ? ORDER BY granted_at DESC",
+            "SELECT * FROM consent_records WHERE user_id = ? ORDER BY granted_at DESC",
             (test_user,)
         )
         consents = cursor.fetchall()
@@ -267,7 +267,7 @@ class TestAgencyAPIEndpoints:
         assert found
         
         # Cleanup
-        test_db.execute("DELETE FROM consents WHERE consent_id = ?", (consent_id,))
+        test_db.execute("DELETE FROM consent_records WHERE consent_id = ?", (consent_id,))
         test_db.commit()
     
     async def test_revoke_consent(self, test_config, test_db, test_user):
@@ -279,7 +279,7 @@ class TestAgencyAPIEndpoints:
         
         test_db.execute(
             """
-            INSERT INTO consents (consent_id, user_id, consent_scope, decision, granted_at)
+            INSERT INTO consent_records (consent_id, user_id, consent_scope, decision, granted_at)
             VALUES (?, ?, ?, ?, ?)
             """,
             (consent_id, test_user, json.dumps(scope), "granted", datetime.now(UTC).isoformat())
@@ -288,14 +288,14 @@ class TestAgencyAPIEndpoints:
         
         # Act - Revoke by updating decision (note: schema doesn't have updated_at column)
         test_db.execute(
-            "UPDATE consents SET decision = ? WHERE consent_id = ? AND user_id = ?",
+            "UPDATE consent_records SET decision = ? WHERE consent_id = ? AND user_id = ?",
             ("denied", consent_id, test_user)
         )
         test_db.commit()
         
         # Verify
         cursor = test_db.execute(
-            "SELECT decision FROM consents WHERE consent_id = ?",
+            "SELECT decision FROM consent_records WHERE consent_id = ?",
             (consent_id,)
         )
         result = cursor.fetchone()
@@ -305,7 +305,7 @@ class TestAgencyAPIEndpoints:
         assert result[0] == "denied"
         
         # Cleanup
-        test_db.execute("DELETE FROM consents WHERE consent_id = ?", (consent_id,))
+        test_db.execute("DELETE FROM consent_records WHERE consent_id = ?", (consent_id,))
         test_db.commit()
     
     async def test_hobby_goals_identified(self, test_config, test_db, test_user):

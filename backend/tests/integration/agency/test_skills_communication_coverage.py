@@ -158,7 +158,7 @@ class TestAskUserSkill:
             
             # Verify stored in database
             row = test_db.execute(
-                "SELECT * FROM aico_conversation_initiations WHERE initiation_id = ?",
+                "SELECT * FROM conversation_initiations WHERE initiation_id = ?",
                 (result.output["initiation_id"],)
             ).fetchone()
             

@@ -31,7 +31,7 @@ class TestAdaptiveScoringEngineCoverage:
         # Clean up test data (but preserve bandit arms for FK constraints)
         test_db.execute("PRAGMA foreign_keys = OFF")
         try:
-            test_db.execute("DELETE FROM goal_outcomes")
+            test_db.execute("DELETE FROM agency_goal_outcomes")
         except:
             pass
         try:
