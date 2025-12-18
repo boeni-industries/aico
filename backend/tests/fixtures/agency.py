@@ -238,6 +238,13 @@ async def seeded_goals(test_db, sample_goals):
     """Seed database with sample goals."""
     from aico.ai.agency.store import GoalStore
     
+    # Clean up any existing goals with these IDs first
+    test_db.execute("PRAGMA foreign_keys = OFF")
+    for goal in sample_goals:
+        test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (goal.goal_id,))
+    test_db.commit()
+    test_db.execute("PRAGMA foreign_keys = ON")
+    
     store = GoalStore(test_db)
     for goal in sample_goals:
         await store.create_goal(goal)
@@ -249,6 +256,13 @@ async def seeded_goals(test_db, sample_goals):
 async def seeded_goal_with_plan(test_db, sample_goal, sample_plan):
     """Seed database with a goal and its plan."""
     from aico.ai.agency.store import GoalStore, PlanStore
+    
+    # Clean up any existing goal/plan with these IDs first
+    test_db.execute("PRAGMA foreign_keys = OFF")
+    test_db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (sample_plan.plan_id,))
+    test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (sample_goal.goal_id,))
+    test_db.commit()
+    test_db.execute("PRAGMA foreign_keys = ON")
     
     goal_store = GoalStore(test_db)
     plan_store = PlanStore(test_db)
@@ -277,7 +291,7 @@ def permissive_value_profile(test_user, test_db):
     # Update in database
     test_db.execute(
         """
-        UPDATE value_profiles 
+        UPDATE ethics_value_profiles 
         SET sensitive_life_areas = ?, curiosity_intensity = ?, proactive_behavior_level = ?
         WHERE profile_id = ?
         """,

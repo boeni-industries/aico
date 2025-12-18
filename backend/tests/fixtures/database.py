@@ -64,8 +64,34 @@ async def test_user(test_db):
     # Create user directly via SQL (no UserService = no extra connections)
     user_uuid = str(uuid.uuid4())
     
+    # Clean up common test IDs BEFORE creating test user to prevent UNIQUE constraint failures
+    test_db.execute("PRAGMA foreign_keys = OFF")
+    # Clean up goals with pattern-based IDs
+    test_db.execute("DELETE FROM agency_plans WHERE goal_id LIKE 'capacity-goal-%'")
+    test_db.execute("DELETE FROM agency_plans WHERE goal_id LIKE 'test-%'")
+    test_db.execute("DELETE FROM agency_plans WHERE goal_id LIKE 'goal-%'")
+    test_db.execute("DELETE FROM agency_plans WHERE goal_id LIKE '%skill%'")
+    test_db.execute("DELETE FROM agency_plans WHERE goal_id LIKE 'hist-goal-%'")
+    test_db.execute("DELETE FROM agency_goals WHERE goal_id LIKE 'capacity-goal-%'")
+    test_db.execute("DELETE FROM agency_goals WHERE goal_id LIKE 'test-%'")
+    test_db.execute("DELETE FROM agency_goals WHERE goal_id LIKE 'goal-%'")
+    test_db.execute("DELETE FROM agency_goals WHERE goal_id LIKE '%skill%'")
+    test_db.execute("DELETE FROM agency_goals WHERE goal_id LIKE 'hist-goal-%'")
+    # Clean up specific common IDs
+    common_test_ids = ['g1', 'g2', 'g3', 'background-goal', 'active-intention', 
+                       'inactive-intention', 'hobby-signal-goal', 'knowledge-gap-goal',
+                       'novelty-goal', 'self-performance-goal', 'outcome-test-1', 
+                       'outcome-test-2', 'outcome-test-3', 'dep-test-1', 'dep-test-2',
+                       'test-goal-get-exec-1', 'test-goal-complete-1', 'source-goal-pattern',
+                       'target-goal-pattern', 'goal-filter-1', 'goal-filter-2']
+    for goal_id in common_test_ids:
+        test_db.execute("DELETE FROM agency_plans WHERE goal_id = ?", (goal_id,))
+        test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (goal_id,))
+    test_db.commit()
+    test_db.execute("PRAGMA foreign_keys = ON")
+    
     test_db.execute("""
-        INSERT INTO users (uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at)
+        INSERT INTO user_profiles (uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     """, (user_uuid, "Test User (Pytest)", "pytest", "person", True, "en"))
     test_db.commit()
@@ -75,42 +101,38 @@ async def test_user(test_db):
     # Cleanup: Delete all data for this test user
     # Temporarily disable foreign keys for cleanup
     test_db.execute("PRAGMA foreign_keys = OFF")
+    test_db.commit()
     
     # Delete Phase 6.9 data (workflows & events)
-    test_db.execute("DELETE FROM event_metrics WHERE metric_name LIKE 'test%'", ())
-    test_db.execute("DELETE FROM event_replay_sessions WHERE user_id = ?", (user_uuid,))
-    test_db.execute("DELETE FROM event_triggers", ())
+    test_db.execute("DELETE FROM system_event_metrics WHERE metric_name LIKE 'test%'", ())
+    test_db.execute("DELETE FROM system_event_replay_sessions WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM agency_events_log WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM workflow_stages WHERE execution_id IN (SELECT execution_id FROM workflow_executions WHERE user_id = ?)", (user_uuid,))
     test_db.execute("DELETE FROM workflow_executions WHERE user_id = ?", (user_uuid,))
     
     # Delete Phase 6.8 data (policy & ethics)
-    test_db.execute("DELETE FROM policy_conflicts WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM ethics_gate_audit WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM ethics_decisions_cache WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM consent_audit_log WHERE user_id = ?", (user_uuid,))
-    test_db.execute("DELETE FROM user_consents WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM consent_user_consents WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM agency_policy_rules WHERE user_id = ?", (user_uuid,))
     
     # Delete Phase 6.7 data (proactive behaviors)
     test_db.execute("DELETE FROM proactive_analytics WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM user_proactive_preferences WHERE user_id = ?", (user_uuid,))
-    test_db.execute("DELETE FROM reminder_clusters WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM proactive_reminder_clusters WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM agency_reminders WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM agency_followups WHERE user_id = ?", (user_uuid,))
     
     # Delete Phase 6.6 data (behavioral feedback)
     test_db.execute("DELETE FROM user_feedback_requests WHERE user_id = ?", (user_uuid,))
-    test_db.execute("DELETE FROM goal_skill_executions WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
-    test_db.execute("DELETE FROM skill_executions WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM agency_goal_skill_executions WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
+    test_db.execute("DELETE FROM agency_skill_executions WHERE user_id = ?", (user_uuid,))
     test_db.execute("DELETE FROM ams_behavioral_feedback WHERE user_id = ?", (user_uuid,))
     
     # Delete Phase 6.5 data (arbiter advanced)
-    test_db.execute("DELETE FROM goal_outcomes WHERE user_id = ?", (user_uuid,))
-    test_db.execute("DELETE FROM arbiter_scoring_history WHERE user_id = ?", (user_uuid,))
-    test_db.execute("DELETE FROM arbiter_context_snapshots WHERE user_id = ?", (user_uuid,))
-    test_db.execute("DELETE FROM goal_dependencies WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
-    test_db.execute("DELETE FROM user_time_preferences WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM agency_goal_outcomes WHERE user_id = ?", (user_uuid,))
+    test_db.execute("DELETE FROM agency_goal_dependencies WHERE goal_id IN (SELECT goal_id FROM agency_goals WHERE user_id = ?)", (user_uuid,))
     
     # Delete Phase 5 data (reflection)
     test_db.execute("DELETE FROM agency_arbiter_adjustments WHERE user_id = ?", (user_uuid,))
@@ -122,8 +144,8 @@ async def test_user(test_db):
     test_db.execute("DELETE FROM agency_goals WHERE user_id = ?", (user_uuid,))
     
     # Delete user authentication and user
-    test_db.execute("DELETE FROM user_authentication WHERE user_uuid = ?", (user_uuid,))
-    test_db.execute("DELETE FROM users WHERE uuid = ?", (user_uuid,))
+    test_db.execute("DELETE FROM auth_user_credentials WHERE user_uuid = ?", (user_uuid,))
+    test_db.execute("DELETE FROM user_profiles WHERE uuid = ?", (user_uuid,))
     test_db.commit()
     
     # Re-enable foreign keys
