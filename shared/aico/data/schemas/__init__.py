@@ -4,6 +4,6 @@ AICO Data Schemas
 Schema registration and management for AICO's database systems.
 """
 
-from .core import *
+from .schema import *
 
 __all__ = ["LOGS_SCHEMA"]
