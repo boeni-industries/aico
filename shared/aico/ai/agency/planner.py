@@ -159,11 +159,23 @@ class Planner:
             # Build prompt for LLM
             prompt = self._build_planning_prompt(goal, context)
             
-            # Call LLM (implementation depends on LLM client interface)
-            if hasattr(self.llm_client, 'generate_plan'):
-                response = await self.llm_client.generate_plan(prompt)
-            elif hasattr(self.llm_client, 'complete'):
-                response = await self.llm_client.complete(prompt)
+            # Call LLM using ModelServiceClient API
+            if hasattr(self.llm_client, 'get_chat_completions'):
+                # Use chat completions API with system + user message
+                messages = [
+                    {"role": "system", "content": "You are a helpful planning assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+                model = getattr(self.llm_client, 'model_name', 'eve')
+                result = await self.llm_client.get_chat_completions(model, messages)
+                # Extract content from modelservice_client response structure
+                response = result.get("data", {}).get("content", "")
+            elif hasattr(self.llm_client, 'get_completions'):
+                # Use completions API with just prompt
+                model = getattr(self.llm_client, 'model_name', 'eve')
+                result = await self.llm_client.get_completions(model, prompt)
+                # Extract content from modelservice_client response structure
+                response = result.get("data", {}).get("content", "")
             else:
                 logger.warning("[PLANNER] LLM client has no compatible method")
                 return None
@@ -599,13 +611,14 @@ Format your response as a JSON array of steps:
         try:
             # Try to extract JSON from response
             response = response.strip()
+            logger.debug(f"[PLANNER] Parsing LLM response (length: {len(response)}, first 200 chars: {response[:200]})")
             
             # Find JSON array in response
             start_idx = response.find('[')
             end_idx = response.rfind(']') + 1
             
             if start_idx == -1 or end_idx == 0:
-                logger.warning("[PLANNER] No JSON array found in LLM response")
+                logger.warning(f"[PLANNER] No JSON array found in LLM response: {response[:500]}")
                 return []
             
             json_str = response[start_idx:end_idx]
