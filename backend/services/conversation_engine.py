@@ -1341,7 +1341,7 @@ class ConversationEngine(BaseService):
             # Get turn number (count messages in conversation)
             conversation_id = user_message.message.conversation_id
             turn_number = db.execute(
-                "SELECT COUNT(*) FROM trajectories WHERE user_id = ? AND conversation_id = ?",
+                "SELECT COUNT(*) FROM ams_trajectories WHERE user_id = ? AND conversation_id = ?",
                 (user_context.user_id, conversation_id)
             ).fetchone()[0] + 1
             
@@ -1374,7 +1374,7 @@ class ConversationEngine(BaseService):
             
             # Insert trajectory with message_id for feedback linking
             db.execute(
-                """INSERT INTO trajectories (
+                """INSERT INTO ams_trajectories (
                     trajectory_id, user_id, conversation_id, turn_number,
                     user_input, selected_skill_id, ai_response, message_id, 
                     agency_context, timestamp

@@ -74,7 +74,7 @@ class MemoryAlbumStore:
         
         cursor = self.db.execute(
             """
-            INSERT INTO user_memories (
+            INSERT INTO ams_user_memories (
                 fact_id, user_id, fact_type, category, confidence,
                 is_immutable, valid_from, content, extraction_method,
                 source_conversation_id, source_message_id,
@@ -154,7 +154,7 @@ class MemoryAlbumStore:
                 content_type, conversation_title, conversation_summary,
                 turn_range, key_moments_json,
                 created_at, updated_at
-            FROM user_memories
+            FROM ams_user_memories
             WHERE user_id = ?
                 AND extraction_method = 'user_curated'
         """
@@ -232,7 +232,7 @@ class MemoryAlbumStore:
         params.extend([fact_id, user_id])
         
         query = f"""
-            UPDATE user_memories
+            UPDATE ams_user_memories
             SET {', '.join(updates)}
             WHERE fact_id = ? AND user_id = ?
         """
@@ -256,7 +256,7 @@ class MemoryAlbumStore:
         
         cursor = self.db.execute(
             """
-            UPDATE user_memories
+            UPDATE ams_user_memories
             SET revisit_count = revisit_count + 1,
                 last_revisited = CURRENT_TIMESTAMP
             WHERE fact_id = ? AND user_id = ?
@@ -280,7 +280,7 @@ class MemoryAlbumStore:
         
         cursor = self.db.execute(
             """
-            DELETE FROM user_memories
+            DELETE FROM ams_user_memories
             WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
             """,
             (fact_id, user_id)

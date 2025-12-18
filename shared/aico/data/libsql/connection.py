@@ -202,7 +202,7 @@ class LibSQLConnection:
             
         Example:
             with conn.get_connection() as db:
-                result = db.execute("SELECT * FROM users")
+                result = db.execute("SELECT * FROM user_profiles")
         """
         connection = self.connect()
         try:
@@ -368,8 +368,8 @@ class LibSQLConnection:
         
         Example:
             with conn.transaction():
-                conn.execute("INSERT INTO users (name) VALUES (?)", ("Alice",))
-                conn.execute("INSERT INTO users (name) VALUES (?)", ("Bob",))
+                conn.execute("INSERT INTO user_profiles (name) VALUES (?)", ("Alice",))
+                conn.execute("INSERT INTO user_profiles (name) VALUES (?)", ("Bob",))
         """
         try:
             yield self

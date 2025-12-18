@@ -419,13 +419,10 @@ class BackendLifecycleManager:
             
             # Create message bus client for Phase 4 intention set publishing
             # Note: Connection will be established later when message bus broker is ready
-            print("🔧 [PHASE 4 DEBUG] Creating message bus client for AgencyEngine...")
             from aico.core.bus import MessageBusClient
             message_bus = MessageBusClient("agency_engine", config_manager=self.config)
-            print(f"🔧 [PHASE 4 DEBUG] Message bus client created (will connect when broker is ready): {message_bus}")
             
             # Create AgencyEngine with Phase 2 services and Phase 4 message bus
-            print("🔧 [PHASE 4 DEBUG] Creating AgencyEngine with Phase 4 components...")
             agency_engine = AgencyEngine(
                 self.config,
                 db_connection=db_connection,
@@ -433,7 +430,6 @@ class BackendLifecycleManager:
                 personality_service=personality_service,
                 message_bus=message_bus,
             )
-            print("✅ [PHASE 4 DEBUG] AgencyEngine created successfully!")
             self.logger.info("✅ Created AgencyEngine with shared database connection and message bus")
 
             # Initialize AgencyEngine (placeholder hook for future behaviour)
@@ -502,9 +498,7 @@ class BackendLifecycleManager:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject LLM planning helper: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will use deterministic planning only")
 
-            print("🔧 [PHASE 4 DEBUG] Registering AgencyEngine in ai_registry...")
             ai_registry.register("agency", agency_engine)
-            print("✅ [PHASE 4 DEBUG] AgencyEngine registered in ai_registry!")
             self.logger.info("Registered 'agency' processor with Phase 2 context services.")
             
         except Exception as e:

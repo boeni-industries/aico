@@ -231,7 +231,7 @@ async def update_memory(
                 content_type, conversation_title, conversation_summary,
                 turn_range, key_moments_json,
                 created_at, updated_at
-            FROM user_memories
+            FROM ams_user_memories
             WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
         """, (fact_id, user_uuid))
         

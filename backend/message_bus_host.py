@@ -271,7 +271,7 @@ class AICOMessageBusHost:
                     COUNT(DISTINCT source) as unique_sources,
                     MIN(timestamp) as earliest_message,
                     MAX(timestamp) as latest_message
-                FROM events
+                FROM system_events
             """)
             
             row = await cursor.fetchone()
@@ -351,7 +351,7 @@ class AICOMessageBusHost:
                 
                 # Insert message into database (using actual protobuf fields)
                 db_connection.execute("""
-                    INSERT INTO events (
+                    INSERT INTO system_events (
                         timestamp, topic, source, message_type, message_id,
                         priority, correlation_id, payload, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -461,7 +461,7 @@ class AICOMessageBusHost:
                 
                 # Insert message into database synchronously for reliability
                 self.db_connection.execute("""
-                    INSERT INTO events (
+                    INSERT INTO system_events (
                         timestamp, topic, source, message_type, message_id,
                         priority, correlation_id, payload, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

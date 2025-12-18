@@ -20,7 +20,7 @@ class LogRepository:
         """Ensure log tables exist"""
         try:
             self.db.execute("""
-                CREATE TABLE IF NOT EXISTS logs (
+                CREATE TABLE IF NOT EXISTS system_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp TEXT NOT NULL,
                     level TEXT NOT NULL,
@@ -32,13 +32,13 @@ class LogRepository:
                 )
             """)
             self.db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)
+                CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON system_logs(timestamp)
             """)
             self.db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level)
+                CREATE INDEX IF NOT EXISTS idx_logs_level ON system_logs(level)
             """)
             self.db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_logs_subsystem ON logs(subsystem)
+                CREATE INDEX IF NOT EXISTS idx_logs_subsystem ON system_logs(subsystem)
             """)
             self.db.commit()
         except Exception as e:
@@ -55,7 +55,7 @@ class LogRepository:
                    search: Optional[str] = None) -> List[Dict[str, Any]]:
         """Query logs with filters"""
         
-        query = "SELECT * FROM logs WHERE 1=1"
+        query = "SELECT * FROM system_logs WHERE 1=1"
         params = []
         
         if level:
@@ -113,7 +113,7 @@ class LogRepository:
     def get_log_by_id(self, log_id: str) -> Optional[Dict[str, Any]]:
         """Get specific log entry by ID"""
         try:
-            cursor = self.db.execute("SELECT * FROM logs WHERE id = ?", [log_id])
+            cursor = self.db.execute("SELECT * FROM system_logs WHERE id = ?", [log_id])
             row = cursor.fetchone()
             
             if row:
@@ -139,13 +139,13 @@ class LogRepository:
         """Get log statistics"""
         try:
             # Total logs
-            cursor = self.db.execute("SELECT COUNT(*) FROM logs")
+            cursor = self.db.execute("SELECT COUNT(*) FROM system_logs")
             total_logs = cursor.fetchone()[0]
             
             # Logs by level
             cursor = self.db.execute("""
                 SELECT level, COUNT(*) 
-                FROM logs 
+                FROM system_logs 
                 GROUP BY level
             """)
             levels = dict(cursor.fetchall())
@@ -153,7 +153,7 @@ class LogRepository:
             # Recent logs (last 24 hours)
             cursor = self.db.execute("""
                 SELECT COUNT(*) 
-                FROM logs 
+                FROM system_logs 
                 WHERE timestamp >= datetime('now', '-1 day', 'utc')
             """)
             recent_logs = cursor.fetchone()[0]
@@ -177,7 +177,7 @@ class LogRepository:
         """Add a log entry"""
         try:
             self.db.execute("""
-                INSERT INTO logs (timestamp, level, subsystem, module, message, extra_data)
+                INSERT INTO system_logs (timestamp, level, subsystem, module, message, extra_data)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, [
                 datetime.utcnow().replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z'),
@@ -203,7 +203,7 @@ class LogRepository:
                    search: Optional[str] = None) -> int:
         """Count logs with filters"""
         
-        query = "SELECT COUNT(*) FROM logs WHERE 1=1"
+        query = "SELECT COUNT(*) FROM system_logs WHERE 1=1"
         params = []
         
         if level:

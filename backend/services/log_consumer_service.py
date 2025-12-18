@@ -273,7 +273,7 @@ class LogConsumerService(BaseService):
 
             # Insert to database using LibSQL execute() method
             self.db_connection.execute("""
-                INSERT INTO logs (
+                INSERT INTO system_logs (
                     timestamp, level, subsystem, module, function_name, file_path, line_number, topic, message,
                     user_uuid, session_id, trace_id, extra
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

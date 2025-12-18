@@ -347,7 +347,7 @@ class ConsolidationStateManager:
         try:
             await storage.execute(
                 """
-                INSERT OR REPLACE INTO consolidation_state 
+                INSERT OR REPLACE INTO ams_consolidation_state 
                 (id, state_json, updated_at) 
                 VALUES (?, ?, ?)
                 """,
@@ -370,7 +370,7 @@ class ConsolidationStateManager:
         """
         try:
             result = await storage.execute(
-                "SELECT state_json FROM consolidation_state WHERE id = ?",
+                "SELECT state_json FROM ams_consolidation_state WHERE id = ?",
                 ("current",)
             )
             

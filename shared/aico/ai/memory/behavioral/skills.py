@@ -42,7 +42,7 @@ class SkillStore:
             Created skill with timestamps
         """
         self.db.execute(
-            """INSERT INTO skills (
+            """INSERT INTO ams_behavioral_skills (
                 skill_id, skill_name, skill_type, trigger_context,
                 procedure_template, dimension_vector, supported_languages, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -70,7 +70,7 @@ class SkillStore:
     async def get_skill(self, skill_id: str) -> Optional[Skill]:
         """Get skill by ID."""
         row = self.db.execute(
-            "SELECT * FROM skills WHERE skill_id = ?",
+            "SELECT * FROM ams_behavioral_skills WHERE skill_id = ?",
             (skill_id,)
         ).fetchone()
         
@@ -127,12 +127,12 @@ class SkillStore:
         """
         if skill_type:
             rows = self.db.execute(
-                "SELECT * FROM skills WHERE skill_type = ? LIMIT ?",
+                "SELECT * FROM ams_behavioral_skills WHERE skill_type = ? LIMIT ?",
                 (skill_type, limit)
             ).fetchall()
         else:
             rows = self.db.execute(
-                "SELECT * FROM skills LIMIT ?",
+                "SELECT * FROM ams_behavioral_skills LIMIT ?",
                 (limit,)
             ).fetchall()
         
