@@ -113,7 +113,7 @@ async def main():
     
     # Get all users
     print("👥 Fetching users...")
-    result = db_connection.execute("SELECT DISTINCT user_id FROM user_memories").fetchall()
+    result = db_connection.execute("SELECT DISTINCT user_id FROM ams_user_memories").fetchall()
     all_users = [row[0] for row in result]
     
     if not all_users:

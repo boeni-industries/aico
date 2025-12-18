@@ -39,7 +39,7 @@ from aico.core.config import ConfigurationManager
 
 # Import schema module to satisfy import chain, but we'll reload it in commands
 # to pick up any schema changes made after this module was first imported
-import aico.data.schemas.core
+import aico.data.schemas.schema
 
 # Import shared utilities using the same pattern as other CLI modules
 from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
@@ -335,7 +335,7 @@ def init(
             
             # Step 3: Fresh import - this will re-run decorators and re-register schemas
             console.print("🔄 Re-importing schema definitions...")
-            import aico.data.schemas.core
+            import aico.data.schemas.schema
             
             # Debug: Check what versions are registered
             core_schemas = SchemaRegistry.get_core_schemas()
@@ -493,7 +493,7 @@ def init(
                 del sys.modules[module_name]
             
             # Step 3: Fresh import - this will re-run decorators and re-register schemas
-            import aico.data.schemas.core
+            import aico.data.schemas.schema
             
             # Step 4: Apply schemas (now with fresh definitions)
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
@@ -616,7 +616,7 @@ def status(
             
             # Get latest available version from registry
             # Import core schema to ensure registration
-            import aico.data.schemas.core
+            import aico.data.schemas.schema
             core_schemas = SchemaRegistry.get_core_schemas()
             latest_version = 0
             if core_schemas:
@@ -1290,25 +1290,62 @@ def exec(
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Execute raw SQL query"""
-    conn = _get_db_connection()
+    # CRITICAL: For DROP TABLE operations, we need to ensure no other connections are holding locks
+    query_upper = query.upper().strip()
+    is_drop_table = query_upper.startswith("DROP TABLE")
+    
+    # Clean up any existing CLI logging connections BEFORE getting new connection
+    if is_drop_table:
+        try:
+            from cli.utils.logging import _cli_logging_manager
+            _cli_logging_manager.cleanup()
+        except:
+            pass
+        
+        # For DROP TABLE, use a completely fresh connection without CLI logging
+        # to avoid any lock conflicts
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        key_manager = AICOKeyManager(config)
+        
+        # Get database path
+        db_config = config.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        # Create minimal connection without logging
+        db_key = key_manager.derive_database_key(key_manager._get_cached_session() or key_manager.authenticate(typer.prompt("Enter master password", hide_input=True), interactive=False), "libsql", str(db_path))
+        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+    else:
+        conn = _get_db_connection()
     
     cursor = None
     try:
         # Safety check for destructive operations
-        query_upper = query.upper().strip()
         if any(query_upper.startswith(op) for op in ["DROP", "DELETE", "UPDATE", "INSERT"]):
             if not typer.confirm(f"Execute potentially destructive query: {query}?"):
                 console.print("[yellow]Cancelled[/yellow]")
                 return
         
+        # For DROP TABLE, disable foreign keys temporarily
+        if is_drop_table:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.commit()
+        
         cursor = conn.execute(query)
         
         # For non-SELECT queries, commit the transaction and show affected rows
-        query_upper = query.upper().strip()
         is_mutation = any(query_upper.startswith(op) for op in ["DELETE", "UPDATE", "INSERT", "CREATE", "DROP", "ALTER"])
         
         if is_mutation:
             conn.commit()
+            
+            # Re-enable foreign keys if we disabled them
+            if is_drop_table:
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.commit()
+            
             affected_rows = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
             console.print(f"[green]✅ Query executed successfully. Affected rows: {affected_rows}[/green]")
             return

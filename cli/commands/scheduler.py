@@ -187,7 +187,7 @@ def list_tasks(
     try:
         with _get_database_connection() as db:
             # Query tasks from database
-            query = "SELECT task_id, task_class, schedule, enabled, created_at, updated_at FROM scheduled_tasks"
+            query = "SELECT task_id, task_class, schedule, enabled, created_at, updated_at FROM scheduler_tasks"
             params = ()
             
             if enabled_only:
@@ -266,7 +266,7 @@ def show_task(
             # Get task details
             cursor = db.execute(
                 "SELECT task_id, task_class, schedule, config, enabled, created_at, updated_at "
-                "FROM scheduled_tasks WHERE task_id = ?", (task_id,)
+                "FROM scheduler_tasks WHERE task_id = ?", (task_id,)
             )
             task = cursor.fetchone()
             
@@ -357,7 +357,7 @@ def create_task(
         
         with _get_database_connection() as db:
             # Check if task already exists
-            cursor = db.execute("SELECT task_id FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+            cursor = db.execute("SELECT task_id FROM scheduler_tasks WHERE task_id = ?", (task_id,))
             if cursor.fetchone():
                 console.print(f"[red]Task already exists: {task_id}[/red]")
                 raise typer.Exit(1)
@@ -367,7 +367,7 @@ def create_task(
             config_json = json.dumps(config) if config else None
             
             db.execute("""
-                INSERT INTO scheduled_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
+                INSERT INTO scheduler_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (task_id, task_class, schedule, config_json, enabled, now, now))
             
@@ -397,7 +397,7 @@ def update_task(
         
         with _get_database_connection() as db:
             # Check task exists
-            cursor = db.execute("SELECT * FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+            cursor = db.execute("SELECT * FROM scheduler_tasks WHERE task_id = ?", (task_id,))
             task = cursor.fetchone()
             if not task:
                 console.print(f"[red]Task not found: {task_id}[/red]")
@@ -441,7 +441,7 @@ def update_task(
             params.append(task_id)
             
             # Execute update
-            query = f"UPDATE scheduled_tasks SET {', '.join(updates)} WHERE task_id = ?"
+            query = f"UPDATE scheduler_tasks SET {', '.join(updates)} WHERE task_id = ?"
             db.execute(query, params)
             db.commit()
             
@@ -459,7 +459,7 @@ def enable_task(task_id: str = typer.Argument(..., help="Task ID to enable")):
     try:
         with _get_database_connection() as db:
             cursor = db.execute(
-                "UPDATE scheduled_tasks SET enabled = TRUE, updated_at = ? WHERE task_id = ?",
+                "UPDATE scheduler_tasks SET enabled = TRUE, updated_at = ? WHERE task_id = ?",
                 (datetime.now().isoformat(), task_id)
             )
             
@@ -482,7 +482,7 @@ def disable_task(task_id: str = typer.Argument(..., help="Task ID to disable")):
     try:
         with _get_database_connection() as db:
             cursor = db.execute(
-                "UPDATE scheduled_tasks SET enabled = FALSE, updated_at = ? WHERE task_id = ?",
+                "UPDATE scheduler_tasks SET enabled = FALSE, updated_at = ? WHERE task_id = ?",
                 (datetime.now().isoformat(), task_id)
             )
             
@@ -523,7 +523,7 @@ def trigger_task(
             
             # Check task exists before triggering
             with _get_database_connection() as db:
-                cursor = db.execute("SELECT task_id FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+                cursor = db.execute("SELECT task_id FROM scheduler_tasks WHERE task_id = ?", (task_id,))
                 if not cursor.fetchone():
                     console.print(f"[red]Task not found: {task_id}[/red]")
                     raise typer.Exit(1)
@@ -557,7 +557,7 @@ def delete_task(
                 raise typer.Exit()
         
         with _get_database_connection() as db:
-            cursor = db.execute("DELETE FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+            cursor = db.execute("DELETE FROM scheduler_tasks WHERE task_id = ?", (task_id,))
             
             if cursor.rowcount == 0:
                 console.print(f"[red]Task not found: {task_id}[/red]")
@@ -639,7 +639,7 @@ def _show_single_execution(execution_id: str, format_output: str):
     with _get_database_connection() as db:
         cursor = db.execute("""
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
-            FROM task_executions 
+            FROM scheduler_task_executions 
             WHERE execution_id = ?
         """, (execution_id,))
         
@@ -700,7 +700,7 @@ def _show_single_execution(execution_id: str, format_output: str):
 def _show_task_history(task_id: str, limit: int, format_output: str, status: Optional[str] = None):
     """Show execution history for a specific task."""
     with _get_database_connection() as db:
-        cursor = db.execute("SELECT task_id FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+        cursor = db.execute("SELECT task_id FROM scheduler_tasks WHERE task_id = ?", (task_id,))
         if not cursor.fetchone():
             console.print(f"[red]Task not found: {task_id}[/red]")
             raise typer.Exit(1)
@@ -708,7 +708,7 @@ def _show_task_history(task_id: str, limit: int, format_output: str, status: Opt
         # Build query with optional status filter
         query = """
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
-            FROM task_executions 
+            FROM scheduler_task_executions 
             WHERE task_id = ?
         """
         params = [task_id]
@@ -738,7 +738,7 @@ def _show_recent_history(limit: int, format_output: str, status: Optional[str] =
         # Build query with optional status filter
         query = """
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
-            FROM task_executions
+            FROM scheduler_task_executions
         """
         params = []
         
@@ -837,16 +837,16 @@ def scheduler_status():
     try:
         with _get_database_connection() as db:
             # Get task counts
-            cursor = db.execute("SELECT COUNT(*) FROM scheduled_tasks")
+            cursor = db.execute("SELECT COUNT(*) FROM scheduler_tasks")
             total_tasks = cursor.fetchone()[0]
             
-            cursor = db.execute("SELECT COUNT(*) FROM scheduled_tasks WHERE enabled = TRUE")
+            cursor = db.execute("SELECT COUNT(*) FROM scheduler_tasks WHERE enabled = TRUE")
             enabled_tasks = cursor.fetchone()[0]
             
             # Get recent execution stats
             cursor = db.execute("""
                 SELECT status, COUNT(*) 
-                FROM task_executions 
+                FROM scheduler_task_executions 
                 WHERE started_at > datetime('now', '-24 hours')
                 GROUP BY status
             """)
@@ -930,7 +930,7 @@ def cleanup_history(
             
             # Count what would be deleted
             cursor = db.execute(
-                "SELECT COUNT(*) FROM task_executions WHERE started_at < ?", (cutoff_date,)
+                "SELECT COUNT(*) FROM scheduler_task_executions WHERE started_at < ?", (cutoff_date,)
             )
             count = cursor.fetchone()[0]
             
@@ -944,7 +944,7 @@ def cleanup_history(
                 # Show sample of what would be deleted
                 cursor = db.execute("""
                     SELECT task_id, status, started_at 
-                    FROM task_executions 
+                    FROM scheduler_task_executions 
                     WHERE started_at < ?
                     ORDER BY started_at DESC
                     LIMIT 10
@@ -960,7 +960,7 @@ def cleanup_history(
             else:
                 # Actually delete
                 cursor = db.execute(
-                    "DELETE FROM task_executions WHERE started_at < ?", (cutoff_date,)
+                    "DELETE FROM scheduler_task_executions WHERE started_at < ?", (cutoff_date,)
                 )
                 db.commit()
                 
@@ -1023,7 +1023,7 @@ def cancel_stale_runs(
             # Find stale running executions
             cursor = db.execute("""
                 SELECT execution_id, task_id, started_at 
-                FROM task_executions 
+                FROM scheduler_task_executions 
                 WHERE status = 'running' AND started_at < ?
                 ORDER BY started_at
             """, (cutoff_time,))
@@ -1065,7 +1065,7 @@ def cancel_stale_runs(
             else:
                 # Actually cancel them
                 cursor = db.execute("""
-                    UPDATE task_executions 
+                    UPDATE scheduler_task_executions 
                     SET status = 'failed',
                         error_message = 'Cancelled: stale execution (running > ' || ? || ' hours)',
                         completed_at = CURRENT_TIMESTAMP,

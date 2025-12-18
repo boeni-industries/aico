@@ -36,20 +36,20 @@ class CLILogger:
     def _validate_logs_table(self):
         """Validate that logs table exists - FAIL LOUDLY if missing"""
         try:
-            # Check if logs table exists
+            # Check if system_logs table exists
             result = self.db.execute("""
                 SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='logs'
+                WHERE type='table' AND name='system_logs'
             """).fetchone()
             
             if not result:
                 raise RuntimeError(
-                    "CRITICAL: logs table does not exist in database. "
+                    "CRITICAL: system_logs table does not exist in database. "
                     "Run 'aico db init' to initialize the database schema first."
                 )
             
             # Validate table structure has required columns
-            columns = self.db.execute("PRAGMA table_info(logs)").fetchall()
+            columns = self.db.execute("PRAGMA table_info(system_logs)").fetchall()
             required_columns = {
                 'id', 'timestamp', 'level', 'subsystem', 'module', 
                 'message', 'function_name', 'file_path', 'line_number',
@@ -95,7 +95,7 @@ class CLILogger:
             # Insert log entry - FAIL LOUDLY if this fails
             # Format matches AICO LogRepository.store_log() exactly
             self.db.execute("""
-                INSERT INTO logs (
+                INSERT INTO system_logs (
                     timestamp, level, subsystem, module, function_name,
                     file_path, line_number, topic, message, user_uuid,
                     session_id, trace_id, extra

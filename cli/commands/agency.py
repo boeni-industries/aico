@@ -684,7 +684,7 @@ def profile(
         if updated:
             db.execute(
                 """
-                UPDATE value_profiles 
+                UPDATE ethics_value_profiles 
                 SET curiosity_intensity = ?, 
                     proactive_behavior_level = ?,
                     sensitive_life_areas = ?,
@@ -754,7 +754,7 @@ def policies(
         db = get_db_connection()
         
         # Query policies
-        query = "SELECT * FROM policy_rules"
+        query = "SELECT * FROM ethics_policy_rules"
         params = []
         
         if target_type:
@@ -857,7 +857,7 @@ def consent(
             
             db.execute(
                 """
-                INSERT INTO consents (consent_id, user_id, scope, decision, granted_at)
+                INSERT INTO consent_records (consent_id, user_id, scope, decision, granted_at)
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (consent_id, user_id, json.dumps(scope), "granted", datetime.utcnow().isoformat())
@@ -869,7 +869,7 @@ def consent(
         if revoke:
             # Revoke consent
             db.execute(
-                "UPDATE consents SET decision = ?, updated_at = ? WHERE consent_id = ? AND user_id = ?",
+                "UPDATE consent_records SET decision = ?, updated_at = ? WHERE consent_id = ? AND user_id = ?",
                 ("denied", datetime.utcnow().isoformat(), revoke, user_id)
             )
             db.commit()
@@ -878,7 +878,7 @@ def consent(
         
         # List consents
         cursor = db.execute(
-            "SELECT * FROM consents WHERE user_id = ? ORDER BY granted_at DESC",
+            "SELECT * FROM consent_records WHERE user_id = ? ORDER BY granted_at DESC",
             (user_id,)
         )
         consents = cursor.fetchall()
@@ -1018,7 +1018,7 @@ def executions(
             SELECT execution_id, plan_id, goal_id, status, 
                    progress_percentage, steps_completed, steps_total,
                    started_at, completed_at
-            FROM plan_executions 
+            FROM agency_plan_executions 
             WHERE user_id = ?
         """
         params = [user_id]
@@ -1073,6 +1073,95 @@ def executions(
         console.print(f"[red]✗[/red] Error listing executions: {e}")
         raise typer.Exit(1)
 
+
+
+@app.command("replan")
+def replan_goal(
+    goal_id: str = typer.Argument(..., help="Goal ID to replan"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force replanning even if plan is active"),
+):
+    """Regenerate plan for a goal with better step granularity."""
+    try:
+        import asyncio
+        
+        with _suppress_debug_output():
+            db = get_db_connection()
+            config = ConfigurationManager()
+            config.initialize(lightweight=True)
+        
+        # Get goal
+        row = db.fetch_one(
+            "SELECT goal_id, user_id, title, description FROM agency_goals WHERE goal_id = ?",
+            (goal_id,)
+        )
+        
+        if not row:
+            console.print(f"[red]✗[/red] Goal {goal_id} not found")
+            raise typer.Exit(1)
+        
+        goal_title = row["title"]
+        user_id = row["user_id"]
+        
+        # Check existing plan
+        plan_row = db.fetch_one(
+            "SELECT plan_id, status FROM agency_plans WHERE goal_id = ?",
+            (goal_id,)
+        )
+        
+        if plan_row and plan_row["status"] == "active" and not force:
+            console.print(f"[yellow]⚠[/yellow] Plan for '{goal_title}' is active. Use --force to replan anyway.")
+            raise typer.Exit(1)
+        
+        console.print(f"[cyan]Replanning goal:[/cyan] {goal_title}")
+        
+        # Initialize agency engine
+        console.print("[dim]Initializing agency engine...[/dim]")
+        engine = AgencyEngine(config=config, db_connection=db)
+        
+        # Get goal object
+        from aico.ai.agency.models import Goal
+        goal = asyncio.run(engine.goal_store.get_goal(goal_id))
+        
+        if not goal:
+            console.print(f"[red]✗[/red] Failed to load goal")
+            raise typer.Exit(1)
+        
+        # Delete old plan if exists
+        if plan_row:
+            db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (plan_row["plan_id"],))
+            db.commit()
+            console.print(f"[dim]Deleted old plan {plan_row['plan_id'][:8]}...[/dim]")
+        
+        # Generate new plan
+        console.print("[dim]Generating new plan with better granularity...[/dim]")
+        plan = asyncio.run(engine.planner.generate_initial_plan(
+            goal=goal,
+            context={"user_id": user_id}
+        ))
+        
+        # Save plan
+        asyncio.run(engine.plan_store.create_plan(plan))
+        
+        console.print(f"[green]✓[/green] Created new plan with {len(plan.steps)} steps")
+        
+        # Display steps
+        table = Table(title=f"Plan Steps for '{goal_title}'", box=box.ROUNDED)
+        table.add_column("#", style="cyan", width=3)
+        table.add_column("Description", style="white")
+        
+        for step in plan.steps:
+            table.add_row(str(step.order), step.description[:100])
+        
+        console.print(table)
+        console.print(f"\n[dim]Plan ID: {plan.plan_id}[/dim]")
+        console.print(f"[dim]Status: {plan.status.value}[/dim]")
+        console.print(f"[dim]Strategy: {plan.metadata.get('strategy', 'unknown')}[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error replanning goal: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -1155,7 +1244,7 @@ def metrics(
         # Execution metrics
         exec_stats = db.execute(
             f"""SELECT status, COUNT(*) as count, AVG(progress_percentage) as avg_progress
-                FROM plan_executions
+                FROM agency_plan_executions
                 WHERE user_id = ?{time_filter}
                 GROUP BY status""",
             tuple(params)
@@ -1529,12 +1618,12 @@ def health(
         
         # Check 4: Failed plan executions
         total_executions = db.execute(
-            "SELECT COUNT(*) as count FROM plan_executions WHERE user_id = ?",
+            "SELECT COUNT(*) as count FROM agency_plan_executions WHERE user_id = ?",
             (user_id,)
         ).fetchone()["count"]
         
         failed_executions = db.execute(
-            "SELECT COUNT(*) as count FROM plan_executions WHERE user_id = ? AND status = 'failed'",
+            "SELECT COUNT(*) as count FROM agency_plan_executions WHERE user_id = ? AND status = 'failed'",
             (user_id,)
         ).fetchone()["count"]
         

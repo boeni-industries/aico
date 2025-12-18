@@ -267,7 +267,7 @@ def cat(
     filters = {}
     if id:
         # Get specific log by ID
-        logs = [repo.db.execute("SELECT * FROM logs WHERE id = ?", [id]).fetchone()]
+        logs = [repo.db.execute("SELECT * FROM system_logs WHERE id = ?", [id]).fetchone()]
         if not logs[0]:
             console.print(f"[red]Log with ID {id} not found[/red]")
             raise typer.Exit(1)

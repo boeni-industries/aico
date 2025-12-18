@@ -313,7 +313,7 @@ def show_stats(
                 COUNT(DISTINCT source) as unique_sources,
                 MIN(timestamp) as earliest_message,
                 MAX(timestamp) as latest_message
-            FROM events
+            FROM system_events
         """)
         
         row = cursor.fetchone()
@@ -338,7 +338,7 @@ def show_stats(
         # Top topics
         cursor = conn.execute("""
             SELECT topic, COUNT(*) as count
-            FROM events 
+            FROM system_events 
             GROUP BY topic 
             ORDER BY count DESC 
             LIMIT 10
@@ -394,7 +394,7 @@ def clear_messages(
         conn = _get_database_connection(detected_db_path)
         
         # Clear messages
-        conn.execute("DELETE FROM events")
+        conn.execute("DELETE FROM system_events")
         conn.commit()
         
         console.print("[green]✓ Message log cleared[/green]")
