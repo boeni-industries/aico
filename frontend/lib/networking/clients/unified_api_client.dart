@@ -355,8 +355,7 @@ class UnifiedApiClient {
       await _performHandshake();
     }
 
-    // Log request start
-    debugPrint('📡 [UnifiedApiClient] Making encrypted request: $method $endpoint');
+    // Silent - only log errors
 
     try {
       // Build headers with authentication
@@ -379,7 +378,7 @@ class UnifiedApiClient {
         ),
       );
 
-      debugPrint('📡 [UnifiedApiClient] Response status: ${response.statusCode}');
+      // Silent - only log errors
 
       // Handle specific status codes manually since we disabled Dio's automatic throwing
       if (response.statusCode == 401 && !skipTokenRefresh) {

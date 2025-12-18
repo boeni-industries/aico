@@ -59,8 +59,8 @@ class EmotionState extends _$EmotionState {
   }
 
   void _startPolling() {
-    // Poll every 2 seconds when active
-    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+    // Poll every 5 seconds when active (reduced from 2s to minimize console spam)
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
       await _fetchEmotion();
     });
     
@@ -85,14 +85,12 @@ class EmotionState extends _$EmotionState {
       
       // Only update if emotion changed
       if (emotion != null && emotion != state) {
-        print('[EMOTION] State changed: ${state?.primary ?? "null"} → ${emotion.primary}');
         state = emotion;
         
         // Invalidate emotion history cache to trigger refresh
         ref.invalidate(emotionHistoryProvider);
       }
     } catch (e) {
-      print('[EMOTION_PROVIDER] Error fetching emotion: $e');
       // Silently fail - emotion is non-critical
     }
   }
