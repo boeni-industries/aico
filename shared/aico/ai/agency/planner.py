@@ -245,31 +245,17 @@ class Planner:
         return plan
     
     def _generate_simple_fallback(self, goal: Goal) -> Plan:
-        """Generate simple two-step fallback plan (last resort).
+        """Generate goal-specific fallback plan with actionable steps.
         
         Args:
             goal: Goal to plan for
             
         Returns:
-            Simple two-step plan
+            Plan with 5-7 concrete steps based on goal type
         """
-        steps = [
-            PlanStep(
-                step_id=str(uuid.uuid4()),
-                order=1,
-                description=f"Clarify details and constraints for goal: {goal.title}",
-                status=StepStatus.PENDING,
-                metadata={"phase": "intake"},
-            ),
-            PlanStep(
-                step_id=str(uuid.uuid4()),
-                order=2,
-                description=f"Take first concrete action towards: {goal.title}",
-                status=StepStatus.PENDING,
-                metadata={"phase": "action"},
-            ),
-        ]
-
+        # Generate goal-specific steps based on common patterns
+        steps = self._generate_goal_specific_steps(goal)
+        
         plan = Plan(
             plan_id=str(uuid.uuid4()),
             goal_id=goal.goal_id,
@@ -282,6 +268,255 @@ class Planner:
         )
 
         return plan
+    
+    def _generate_goal_specific_steps(self, goal: Goal) -> List[PlanStep]:
+        """Generate actionable steps based on goal content.
+        
+        Args:
+            goal: Goal to generate steps for
+            
+        Returns:
+            List of 5-7 concrete, actionable steps
+        """
+        title_lower = goal.title.lower()
+        description_lower = (goal.description or "").lower()
+        combined = f"{title_lower} {description_lower}"
+        
+        # Learning goals (language, skill, subject)
+        if any(word in combined for word in ["learn", "study", "practice", "master", "improve"]):
+            if any(word in combined for word in ["language", "spanish", "french", "german", "english"]):
+                return [
+                    PlanStep(
+                        step_id=str(uuid.uuid4()),
+                        order=1,
+                        description=f"Research and compare learning platforms (Duolingo, Babbel, iTalki, etc.) for {goal.title}",
+                        status=StepStatus.PENDING,
+                        skill_id="initiate_conversation",
+                        metadata={"phase": "research", "conversation_topic": "language_learning_platforms"},
+                    ),
+                    PlanStep(
+                        step_id=str(uuid.uuid4()),
+                        order=2,
+                        description="Set specific proficiency goal (conversational, academic, travel, or business level)",
+                        status=StepStatus.PENDING,
+                        skill_id="ask_user",
+                        metadata={"phase": "planning", "question_type": "proficiency_goal"},
+                    ),
+                    PlanStep(
+                        step_id=str(uuid.uuid4()),
+                        order=3,
+                        description="Create study schedule (daily time commitment, weekly goals)",
+                        status=StepStatus.PENDING,
+                        skill_id="ask_user",
+                        metadata={"phase": "planning", "question_type": "schedule"},
+                    ),
+                    PlanStep(
+                        step_id=str(uuid.uuid4()),
+                        order=4,
+                        description="Choose platform and create account or enroll in course",
+                        status=StepStatus.PENDING,
+                        skill_id="initiate_conversation",
+                        metadata={"phase": "setup", "conversation_topic": "platform_selection"},
+                    ),
+                    PlanStep(
+                        step_id=str(uuid.uuid4()),
+                        order=5,
+                        description="Complete first lesson or module (vocabulary, grammar basics)",
+                        status=StepStatus.PENDING,
+                        skill_id="initiate_conversation",
+                        metadata={"phase": "action", "conversation_topic": "first_lesson_check_in"},
+                    ),
+                    PlanStep(
+                        step_id=str(uuid.uuid4()),
+                        order=6,
+                        description="Find conversation partner or language exchange group",
+                        status=StepStatus.PENDING,
+                        skill_id="initiate_conversation",
+                        metadata={"phase": "action", "conversation_topic": "conversation_partner"},
+                    ),
+                    PlanStep(
+                        step_id=str(uuid.uuid4()),
+                        order=7,
+                        description="Schedule first practice conversation session",
+                        status=StepStatus.PENDING,
+                        skill_id="ask_user",
+                        metadata={"phase": "action", "question_type": "practice_scheduling"},
+                    ),
+                ]
+            else:
+                return self._generate_generic_learning_steps(goal)
+        
+        # Project/creation goals
+        elif any(word in combined for word in ["build", "create", "make", "develop", "write"]):
+            return self._generate_project_steps(goal)
+        
+        # Health/fitness goals
+        elif any(word in combined for word in ["exercise", "fitness", "health", "workout", "diet"]):
+            return self._generate_health_steps(goal)
+        
+        # Generic fallback (5 steps)
+        else:
+            return self._generate_generic_steps(goal)
+    
+    def _generate_generic_learning_steps(self, goal: Goal) -> List[PlanStep]:
+        """Generic learning goal steps."""
+        return [
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=1,
+                description=f"Research learning resources and methods for {goal.title}",
+                status=StepStatus.PENDING,
+                metadata={"phase": "research"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=2,
+                description="Define learning objectives and success criteria",
+                status=StepStatus.PENDING,
+                metadata={"phase": "planning"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=3,
+                description="Create study plan with timeline and milestones",
+                status=StepStatus.PENDING,
+                metadata={"phase": "planning"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=4,
+                description="Gather necessary materials or enroll in course",
+                status=StepStatus.PENDING,
+                metadata={"phase": "setup"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=5,
+                description="Complete first learning session or module",
+                status=StepStatus.PENDING,
+                metadata={"phase": "action"},
+            ),
+        ]
+    
+    def _generate_project_steps(self, goal: Goal) -> List[PlanStep]:
+        """Project/creation goal steps."""
+        return [
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=1,
+                description=f"Define project scope and requirements for {goal.title}",
+                status=StepStatus.PENDING,
+                metadata={"phase": "planning"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=2,
+                description="Break down project into major components or phases",
+                status=StepStatus.PENDING,
+                metadata={"phase": "planning"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=3,
+                description="Gather necessary tools, materials, or resources",
+                status=StepStatus.PENDING,
+                metadata={"phase": "setup"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=4,
+                description="Complete first component or prototype",
+                status=StepStatus.PENDING,
+                metadata={"phase": "action"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=5,
+                description="Review progress and adjust plan as needed",
+                status=StepStatus.PENDING,
+                metadata={"phase": "review"},
+            ),
+        ]
+    
+    def _generate_health_steps(self, goal: Goal) -> List[PlanStep]:
+        """Health/fitness goal steps."""
+        return [
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=1,
+                description=f"Set specific, measurable targets for {goal.title}",
+                status=StepStatus.PENDING,
+                metadata={"phase": "planning"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=2,
+                description="Research appropriate methods and best practices",
+                status=StepStatus.PENDING,
+                metadata={"phase": "research"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=3,
+                description="Create weekly schedule with specific activities",
+                status=StepStatus.PENDING,
+                metadata={"phase": "planning"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=4,
+                description="Complete first session or day of new routine",
+                status=StepStatus.PENDING,
+                metadata={"phase": "action"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=5,
+                description="Track progress and adjust approach as needed",
+                status=StepStatus.PENDING,
+                metadata={"phase": "review"},
+            ),
+        ]
+    
+    def _generate_generic_steps(self, goal: Goal) -> List[PlanStep]:
+        """Generic goal steps (last resort)."""
+        return [
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=1,
+                description=f"Clarify specific objectives and constraints for {goal.title}",
+                status=StepStatus.PENDING,
+                metadata={"phase": "planning"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=2,
+                description="Research approaches and gather necessary information",
+                status=StepStatus.PENDING,
+                metadata={"phase": "research"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=3,
+                description="Create action plan with timeline and milestones",
+                status=StepStatus.PENDING,
+                metadata={"phase": "planning"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=4,
+                description="Take first concrete action towards goal",
+                status=StepStatus.PENDING,
+                metadata={"phase": "action"},
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=5,
+                description="Review progress and adjust plan as needed",
+                status=StepStatus.PENDING,
+                metadata={"phase": "review"},
+            ),
+        ]
     
     def _build_planning_prompt(
         self,
@@ -552,24 +787,10 @@ Format your response as a JSON array of steps:
             return {skill_id: True for skill_id in skill_ids}
         
         try:
-            # Query database for skill availability
-            placeholders = ','.join('?' * len(skill_ids))
-            query = f"SELECT skill_id, status FROM skills WHERE skill_id IN ({placeholders})"
-            
-            rows = self.db.execute(query, skill_ids).fetchall()
-            
-            # Build availability map
-            availability = {}
-            found_skills = {row['skill_id']: row.get('status', 'active') for row in rows}
-            
-            for skill_id in skill_ids:
-                if skill_id in found_skills:
-                    # Skill exists - check if active
-                    availability[skill_id] = found_skills[skill_id] == 'active'
-                else:
-                    # Skill not found - not available
-                    availability[skill_id] = False
-            
+            # Skills are now code-only (registered in-memory)
+            # All skills in skill_ids are assumed available if they're in the registry
+            # The skill registry validates availability at registration time
+            availability = {skill_id: True for skill_id in skill_ids}
             return availability
             
         except Exception as e:

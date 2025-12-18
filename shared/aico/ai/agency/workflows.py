@@ -305,7 +305,7 @@ class EventSystem:
             # Try to increment existing metric
             self.db.execute(
                 """
-                INSERT INTO event_metrics (
+                INSERT INTO system_event_metrics (
                     metric_id, metric_name, metric_type, event_type, event_category,
                     time_bucket, bucket_start, value, count, created_at
                 ) VALUES (?, ?, 'counter', ?, ?, 'hourly', ?, 1.0, 1, ?)
@@ -660,7 +660,7 @@ class EventReplaySystem:
             
             self.db.execute(
                 """
-                INSERT INTO event_replay_sessions (
+                INSERT INTO system_event_replay_sessions (
                     session_id, user_id, replay_name, start_time, end_time,
                     event_filters, replay_speed, status, events_replayed,
                     started_at, created_at
@@ -711,7 +711,7 @@ class EventReplaySystem:
         try:
             # Get session details
             session = self.db.fetch_one(
-                "SELECT * FROM event_replay_sessions WHERE session_id = ?",
+                "SELECT * FROM system_event_replay_sessions WHERE session_id = ?",
                 (session_id,)
             )
             
@@ -720,7 +720,7 @@ class EventReplaySystem:
             
             # Update status to running
             self.db.execute(
-                "UPDATE event_replay_sessions SET status = 'running' WHERE session_id = ?",
+                "UPDATE system_event_replay_sessions SET status = 'running' WHERE session_id = ?",
                 (session_id,)
             )
             self.db.commit()
@@ -755,7 +755,7 @@ class EventReplaySystem:
                 
                 # Update progress
                 self.db.execute(
-                    "UPDATE event_replay_sessions SET events_replayed = ? WHERE session_id = ?",
+                    "UPDATE system_event_replay_sessions SET events_replayed = ? WHERE session_id = ?",
                     (events_replayed, session_id)
                 )
                 self.db.commit()
@@ -763,7 +763,7 @@ class EventReplaySystem:
             # Mark as completed
             self.db.execute(
                 """
-                UPDATE event_replay_sessions
+                UPDATE system_event_replay_sessions
                 SET status = 'completed', completed_at = ?
                 WHERE session_id = ?
                 """,
@@ -782,7 +782,7 @@ class EventReplaySystem:
             
             # Mark as failed
             self.db.execute(
-                "UPDATE event_replay_sessions SET status = 'failed' WHERE session_id = ?",
+                "UPDATE system_event_replay_sessions SET status = 'failed' WHERE session_id = ?",
                 (session_id,)
             )
             self.db.commit()
@@ -793,7 +793,7 @@ class EventReplaySystem:
         """Get replay session details."""
         try:
             row = self.db.fetch_one(
-                "SELECT * FROM event_replay_sessions WHERE session_id = ?",
+                "SELECT * FROM system_event_replay_sessions WHERE session_id = ?",
                 (session_id,)
             )
             
@@ -872,7 +872,7 @@ class EventMetricsCollector:
             # Check if metric exists
             existing = self.db.fetch_one(
                 """
-                SELECT metric_id, value, count, metric_type FROM event_metrics
+                SELECT metric_id, value, count, metric_type FROM system_event_metrics
                 WHERE metric_name = ? AND time_bucket = ? AND bucket_start = ?
                   AND (event_type IS ? OR (event_type IS NULL AND ? IS NULL))
                 """,
@@ -891,7 +891,7 @@ class EventMetricsCollector:
                 
                 self.db.execute(
                     """
-                    UPDATE event_metrics
+                    UPDATE system_event_metrics
                     SET value = ?, count = count + 1
                     WHERE metric_id = ?
                     """,
@@ -901,7 +901,7 @@ class EventMetricsCollector:
                 # Insert new metric
                 self.db.execute(
                     """
-                    INSERT INTO event_metrics (
+                    INSERT INTO system_event_metrics (
                         metric_id, metric_name, metric_type, event_type, event_category,
                         time_bucket, bucket_start, value, count, metadata, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
@@ -949,7 +949,7 @@ class EventMetricsCollector:
         """
         try:
             query = """
-                SELECT * FROM event_metrics
+                SELECT * FROM system_event_metrics
                 WHERE metric_name = ? AND time_bucket = ?
             """
             params = [metric_name, time_bucket]
@@ -1004,7 +1004,7 @@ class EventMetricsCollector:
                     AVG(value) as avg_value,
                     SUM(value) as total_value,
                     COUNT(*) as data_points
-                FROM event_metrics
+                FROM system_event_metrics
                 WHERE metric_name = ? AND time_bucket = ? AND bucket_start >= ?
                 """,
                 (metric_name, time_bucket, start_time.isoformat())

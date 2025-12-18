@@ -406,7 +406,7 @@ def extract_contextual_features(
     # Get recent interaction data
     recent_initiations = db.execute(
         """SELECT initiated_at, resolved_at, resolution_status, user_response_time
-           FROM aico_conversation_initiations
+           FROM conversation_initiations
            WHERE user_id = ?
            AND initiated_at > datetime('now', '-7 days')
            ORDER BY initiated_at DESC""",

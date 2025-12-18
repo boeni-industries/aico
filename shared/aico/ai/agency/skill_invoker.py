@@ -261,15 +261,19 @@ class SkillInvoker:
             f"skill='{skill_id}' user={user_id[:8]}..."
         )
         
+        # Extract goal_id from context if available
+        goal_id = context.get("goal_id") if context else None
+        
         self.db.execute(
-            """INSERT INTO skill_executions (
-                execution_id, skill_id, user_id, outcome,
+            """INSERT INTO agency_skill_executions (
+                execution_id, skill_id, user_id, goal_id, outcome,
                 context_json, created_at
-            ) VALUES (?, ?, ?, 'running', ?, ?)""",
+            ) VALUES (?, ?, ?, ?, 'running', ?, ?)""",
             (
                 invocation_id,
                 skill_id,
                 user_id,
+                goal_id,
                 json.dumps(context),
                 now,
             )
@@ -294,7 +298,7 @@ class SkillInvoker:
         )
         
         self.db.execute(
-            """UPDATE skill_executions
+            """UPDATE agency_skill_executions
                SET outcome = ?, error_message = ?, execution_time_ms = ?
                WHERE execution_id = ?""",
             (

@@ -32,8 +32,13 @@ class AskUserSkill(Skill):
     Used for: Information gathering, clarification, preference discovery
     """
     
-    def __init__(self, db: Optional[EncryptedLibSQLConnection] = None):
+    def __init__(
+        self, 
+        db: Optional[EncryptedLibSQLConnection] = None,
+        message_bus: Optional[Any] = None
+    ):
         self.db = db
+        self.message_bus = message_bus
     
     @property
     def skill_id(self) -> str:
@@ -114,7 +119,7 @@ class AskUserSkill(Skill):
             
             # Store initiation in database
             self.db.execute(
-                """INSERT INTO aico_conversation_initiations 
+                """INSERT INTO conversation_initiations 
                    (initiation_id, user_id, conversation_id, trigger_source, 
                     trigger_reason, question, context, urgency, expected_answer_type,
                     initiated_at, resolution_status)

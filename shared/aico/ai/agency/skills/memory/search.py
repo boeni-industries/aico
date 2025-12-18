@@ -104,7 +104,7 @@ class SearchMemorySkill(Skill):
                     semantic_results = self.db.execute(
                         """SELECT fact_id, fact_type, content, category, confidence, 
                                   source_conversation_id, created_at
-                           FROM user_memories
+                           FROM ams_user_memories
                            WHERE user_id = ?
                            ORDER BY created_at DESC
                            LIMIT ?""",
@@ -137,7 +137,7 @@ class SearchMemorySkill(Skill):
                     conversations = self.db.execute(
                         """SELECT initiation_id, conversation_id, question, context, 
                                   initiated_at, resolution_status
-                           FROM aico_conversation_initiations
+                           FROM conversation_initiations
                            WHERE user_id = ?
                            ORDER BY initiated_at DESC
                            LIMIT ?""",

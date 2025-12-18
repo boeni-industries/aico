@@ -304,7 +304,7 @@ class ValuesEthicsService:
         # Store in database
         self.db.execute(
             """
-            INSERT INTO consents (
+            INSERT INTO consent_records (
                 consent_id, user_id, consent_scope, decision, 
                 context_json, granted_at, expires_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -335,7 +335,7 @@ class ValuesEthicsService:
         """Add a new policy rule."""
         self.db.execute(
             """
-            INSERT INTO policy_rules (
+            INSERT INTO ethics_policy_rules (
                 rule_id, rule_name, target_type, conditions_json, effect,
                 user_message_template, priority, enabled, scope, scope_id,
                 created_at, updated_at
@@ -368,7 +368,7 @@ class ValuesEthicsService:
     def get_policy_rule(self, rule_id: str) -> Optional[PolicyRule]:
         """Get a policy rule by ID."""
         row = self.db.fetch_one(
-            "SELECT * FROM policy_rules WHERE rule_id = ?",
+            "SELECT * FROM ethics_policy_rules WHERE rule_id = ?",
             (rule_id,)
         )
         
@@ -402,7 +402,7 @@ class ValuesEthicsService:
         
         # Check database
         row = self.db.fetch_one(
-            "SELECT * FROM value_profiles WHERE user_id = ?",
+            "SELECT * FROM ethics_value_profiles WHERE user_id = ?",
             (user_id,)
         )
         
@@ -423,7 +423,7 @@ class ValuesEthicsService:
             profile = ValueProfile(user_id=user_id)
             self.db.execute(
                 """
-                INSERT INTO value_profiles (
+                INSERT INTO ethics_value_profiles (
                     profile_id, user_id, sensitive_life_areas, 
                     allowed_curiosity_domains, curiosity_intensity,
                     proactive_behavior_level, storage_preferences,
@@ -465,7 +465,7 @@ class ValuesEthicsService:
         # Get global + user-specific policies
         rows = self.db.fetch_all(
             """
-            SELECT * FROM policy_rules 
+            SELECT * FROM ethics_policy_rules 
             WHERE target_type = ? 
               AND enabled = 1
               AND (scope = 'global' OR (scope = 'user' AND scope_id = ?))

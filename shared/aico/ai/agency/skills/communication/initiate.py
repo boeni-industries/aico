@@ -32,8 +32,13 @@ class InitiateConversationSkill(Skill):
     Used for: Sharing concerns, discussing topics, expressing needs
     """
     
-    def __init__(self, db: Optional[EncryptedLibSQLConnection] = None):
+    def __init__(
+        self, 
+        db: Optional[EncryptedLibSQLConnection] = None,
+        message_bus: Optional[Any] = None
+    ):
         self.db = db
+        self.message_bus = message_bus
     
     @property
     def skill_id(self) -> str:
@@ -113,7 +118,7 @@ class InitiateConversationSkill(Skill):
             
             # Store initiation in database
             self.db.execute(
-                """INSERT INTO aico_conversation_initiations 
+                """INSERT INTO conversation_initiations 
                    (initiation_id, user_id, conversation_id, trigger_source, 
                     trigger_reason, question, context, urgency, expected_answer_type,
                     initiated_at, resolution_status)
@@ -135,36 +140,57 @@ class InitiateConversationSkill(Skill):
             self.db.commit()
             
             # Publish to conversation initiation topic
-            try:
-                from aico.core.bus import MessageBusClient
-                from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
-                from google.protobuf.timestamp_pb2 import Timestamp
-                
-                bus_client = MessageBusClient()
-                await bus_client.connect()
-                
-                proto_timestamp = Timestamp()
-                proto_timestamp.FromDatetime(datetime.now(UTC))
-                
-                conv_message = ConversationMessage(
-                    timestamp=proto_timestamp,
-                    source="agency_skill",
-                    message_id=initiation_id,
-                    user_id=user_id
+            message_published = False
+            
+            if self.message_bus and self.message_bus.running:
+                try:
+                    # Use provided message bus client (already connected in backend)
+                    # Create protobuf message for message bus
+                    from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
+                    from google.protobuf.timestamp_pb2 import Timestamp
+                    
+                    proto_timestamp = Timestamp()
+                    proto_timestamp.FromDatetime(datetime.now(UTC))
+                    
+                    conv_message = ConversationMessage(
+                        timestamp=proto_timestamp,
+                        source="agency_skill",
+                        message_id=initiation_id,
+                        user_id=user_id
+                    )
+                    
+                    conv_message.message.text = message
+                    conv_message.message.type = Message.MessageType.AICO_INITIATED
+                    conv_message.message.conversation_id = conversation_id
+                    conv_message.message.turn_number = 1
+                    
+                    # Add metadata as JSON in message metadata
+                    conv_message.message.metadata = json.dumps({
+                        'topic': topic,
+                        'reason': reason,
+                        'emotional_context': emotional_context,
+                        'urgency': 'low',
+                        'expected_answer_type': 'dialogue',
+                        'initiated_at': now,
+                    })
+                    
+                    # Publish using async message bus
+                    await self.message_bus.publish(
+                        topic='conversation/aico/initiate/v1',
+                        payload=conv_message
+                    )
+                    
+                    message_published = True
+                    logger.info(f"💭 [INITIATE_CONVERSATION] Published to message bus: {initiation_id[:8]}...")
+                    
+                except Exception as e:
+                    logger.warning(f"💭 [INITIATE_CONVERSATION] Failed to publish to message bus: {e}")
+                    logger.debug(f"💭 [INITIATE_CONVERSATION] Message bus error details:", exc_info=True)
+            else:
+                logger.info(
+                    f"💭 [INITIATE_CONVERSATION] Message bus not available or not connected - "
+                    f"initiation stored in database only (will be polled by frontend)"
                 )
-                
-                conv_message.message.text = message
-                conv_message.message.type = Message.MessageType.AICO_INITIATED
-                conv_message.message.conversation_id = conversation_id
-                conv_message.message.turn_number = 1
-                
-                await bus_client.publish("conversation/aico/initiate/v1", conv_message)
-                await bus_client.disconnect()
-                
-                logger.info(f"💭 [INITIATE_CONVERSATION] Published to message bus: {initiation_id[:8]}...")
-                
-            except Exception as e:
-                logger.warning(f"💭 [INITIATE_CONVERSATION] Failed to publish to message bus: {e}")
             
             result = {
                 "initiation_id": initiation_id,

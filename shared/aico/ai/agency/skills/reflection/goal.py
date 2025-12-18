@@ -115,7 +115,7 @@ class ReflectOnGoalSkill(Skill):
                     execs = self.db.execute(
                         """SELECT execution_id, status, steps_completed, steps_total, 
                                   started_at, completed_at, error_message
-                           FROM plan_executions
+                           FROM agency_plan_executions
                            WHERE plan_id = ?
                            ORDER BY created_at DESC
                            LIMIT 5""",

@@ -57,7 +57,7 @@ class UserPreferencesManager:
             # In production, might want a separate user_preferences table
             
             cursor = self.db.execute(
-                "SELECT uuid FROM users WHERE uuid = ?",
+                "SELECT uuid FROM user_profiles WHERE uuid = ?",
                 (user_id,)
             )
             user = cursor.fetchone()
