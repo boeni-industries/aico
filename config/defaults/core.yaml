@@ -408,9 +408,9 @@ services:
       max_background_intentions: 5  # Maximum number of background/proposed goals per user
       scoring_weights:  # Weights for goal scoring algorithm (must sum to ~1.0)
         priority: 0.25      # Weight for goal priority (high/normal/low) [was 0.30]
-        origin: 0.20        # Weight for goal origin (user > curiosity > hobby > maintenance)
+        origin: 0.25        # Weight for goal origin (user > curiosity > hobby > maintenance) [was 0.20]
         freshness: 0.10     # Weight for how recently the goal was created [was 0.15]
-        curiosity_score: 0.15  # Weight for curiosity signal score (if applicable)
+        curiosity_score: 0.10  # Weight for curiosity signal score (if applicable) [was 0.15]
         persistence: 0.15   # Weight for intent frequency/reinforcement [NEW]
         personality_fit: 0.10  # Weight for personality alignment (Phase 2+)
         emotion_boost: 0.05    # Weight for emotional state boost (Phase 2+) [was 0.10]
