@@ -73,6 +73,7 @@ def agency_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ("skill-performance", "Analyze skill execution success rates"),
             ("health", "Run diagnostic health checks"),
             ("lessons", "Manage lessons (list, review, approve, reject)"),
+            ("skillgaps", "Manage skill gaps identified during planning"),
         ]
         
         format_subcommand_help(
@@ -2232,6 +2233,10 @@ def stats(
 
 # Register lessons subcommand
 app.add_typer(lessons_app, name="lessons")
+
+# Register skillgaps subcommand
+from .agency_skillgaps import app as skillgaps_app
+app.add_typer(skillgaps_app, name="skillgaps")
 
 
 if __name__ == "__main__":
