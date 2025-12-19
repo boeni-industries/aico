@@ -227,6 +227,7 @@ class LLMPlanningHelper:
                         order=step_num,
                         description=description,
                         status=StepStatus.PENDING,
+                        skill_id=base_step.skill_id if base_step else None,
                         metadata={
                             **(base_step.metadata if base_step else {}),
                             "llm_refined": True,

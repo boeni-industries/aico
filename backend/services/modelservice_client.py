@@ -171,6 +171,14 @@ class ModelServiceClient:
                 request_proto.temperature = data["options"]["temperature"]
             if "max_tokens" in data.get("options", {}):
                 request_proto.max_tokens = data["options"]["max_tokens"]
+            if "response_format" in data.get("options", {}):
+                # Serialize response_format to JSON string if it's a dict (JSON Schema)
+                response_format = data["options"]["response_format"]
+                if isinstance(response_format, dict):
+                    import json
+                    request_proto.response_format = json.dumps(response_format)
+                else:
+                    request_proto.response_format = response_format
         elif "embeddings" in request_topic:
             # Create EmbeddingsRequest protobuf
             protobuf_start = time.time()

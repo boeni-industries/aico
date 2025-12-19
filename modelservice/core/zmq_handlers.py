@@ -264,6 +264,17 @@ class ModelserviceZMQHandlers:
                     "stream": True,  # Enable streaming
                     "think": enable_thinking  # Ollama 0.12+ thinking mode (default: True, can be disabled for KG extraction)
                 }
+                
+                # Add response_format if specified (for structured JSON output)
+                if hasattr(request_payload, 'response_format') and request_payload.HasField('response_format'):
+                    # Parse JSON Schema string back to dict for Ollama
+                    response_format_str = request_payload.response_format
+                    try:
+                        # Try to parse as JSON (for JSON Schema)
+                        request_data["format"] = json.loads(response_format_str)
+                    except (json.JSONDecodeError, ValueError):
+                        # If not valid JSON, use as-is (e.g., "json" string)
+                        request_data["format"] = response_format_str
                 # Commented out to reduce log volume
                 # self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True, thinking=True")
                 

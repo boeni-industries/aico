@@ -8,9 +8,15 @@ from enum import Enum
 from collections import defaultdict
 
 from aico.core.logging import get_logger
-
-from .models import Goal, Plan, PlanStatus, PlanStep, StepStatus
-from .templates import PLAN_SHAPES, PlanShape
+from aico.core.json_sanitizer import sanitize_llm_json
+from aico.ai.agency.models import (
+    Goal,
+    Plan,
+    PlanStep,
+    PlanStatus,
+    StepStatus,
+)
+from aico.ai.agency.templates import PLAN_SHAPES, PlanShape
 
 
 logger = get_logger("shared", "ai.agency.planner")
@@ -52,6 +58,7 @@ class Planner:
         enable_caching: bool = True,
         cache_ttl_seconds: int = 3600,
         db_connection: Optional[Any] = None,
+        skill_registry: Optional[Any] = None,
     ) -> None:
         """Initialize planner.
         
@@ -60,16 +67,19 @@ class Planner:
             enable_caching: Whether to cache generated plans
             cache_ttl_seconds: TTL for cached plans (default 1 hour)
             db_connection: Optional database connection for skill availability checks
+            skill_registry: Optional skill registry for skill assignment
         """
         self.llm_client = llm_client
         self.enable_caching = enable_caching
         self.cache_ttl_seconds = cache_ttl_seconds
         self.db = db_connection
+        self.skill_registry = skill_registry
         self._plan_cache: Dict[str, Dict[str, Any]] = {}
         
         logger.debug(
             f"[PLANNER] Initialized with LLM: {llm_client is not None}, "
-            f"caching: {enable_caching}, DB: {db_connection is not None}"
+            f"caching: {enable_caching}, DB: {db_connection is not None}, "
+            f"skill_registry: {skill_registry is not None}"
         )
 
     async def generate_initial_plan(
@@ -134,11 +144,19 @@ class Planner:
         plan = await self._generate_template_plan(goal)
         if plan:
             logger.info(f"[PLANNER] Generated template plan for goal {goal.goal_id}")
+            # Assign skills to template plan steps
+            if self.skill_registry:
+                plan.steps = self._assign_skills_to_steps(plan.steps)
+                logger.debug(f"[PLANNER] Assigned skills to {len(plan.steps)} template plan steps")
             return plan
         
         # Last resort: simple fallback
         plan = self._generate_simple_fallback(goal)
         logger.info(f"[PLANNER] Generated simple fallback plan for goal {goal.goal_id}")
+        # Assign skills to fallback plan steps
+        if self.skill_registry:
+            plan.steps = self._assign_skills_to_steps(plan.steps)
+            logger.debug(f"[PLANNER] Assigned skills to {len(plan.steps)} fallback plan steps")
         return plan
     
     async def _generate_llm_plan(
@@ -167,15 +185,41 @@ class Planner:
                     {"role": "user", "content": prompt}
                 ]
                 model = getattr(self.llm_client, 'model_name', 'eve')
-                result = await self.llm_client.get_chat_completions(model, messages)
+                # Request structured JSON output with schema for variable-length array
+                json_schema = {
+                    "type": "object",
+                    "properties": {
+                        "steps": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "description": {"type": "string"},
+                                    "preconditions": {"type": "array", "items": {"type": "string"}},
+                                    "suggested_skills": {"type": "array", "items": {"type": "string"}}
+                                },
+                                "required": ["description", "preconditions", "suggested_skills"]
+                            }
+                        }
+                    },
+                    "required": ["steps"]
+                }
+                options = {"response_format": json_schema}
+                result = await self.llm_client.get_chat_completions(model, messages, options=options)
+                logger.debug(f"[PLANNER] LLM result structure: {type(result)}, keys: {result.keys() if isinstance(result, dict) else 'not a dict'}")
+                logger.debug(f"[PLANNER] LLM result content: {result}")
                 # Extract content from modelservice_client response structure
                 response = result.get("data", {}).get("content", "")
+                logger.debug(f"[PLANNER] Extracted response length: {len(response)}, first 100 chars: {response[:100] if response else 'EMPTY'}")
             elif hasattr(self.llm_client, 'get_completions'):
                 # Use completions API with just prompt
                 model = getattr(self.llm_client, 'model_name', 'eve')
                 result = await self.llm_client.get_completions(model, prompt)
+                logger.debug(f"[PLANNER] LLM result structure: {type(result)}, keys: {result.keys() if isinstance(result, dict) else 'not a dict'}")
+                logger.debug(f"[PLANNER] LLM result content: {result}")
                 # Extract content from modelservice_client response structure
                 response = result.get("data", {}).get("content", "")
+                logger.debug(f"[PLANNER] Extracted response length: {len(response)}, first 100 chars: {response[:100] if response else 'EMPTY'}")
             else:
                 logger.warning("[PLANNER] LLM client has no compatible method")
                 return None
@@ -185,6 +229,11 @@ class Planner:
             
             if not steps:
                 return None
+            
+            # Assign skills to steps based on their descriptions and metadata
+            if self.skill_registry:
+                steps = self._assign_skills_to_steps(steps)
+                logger.debug(f"[PLANNER] Assigned skills to {len(steps)} steps")
             
             plan = Plan(
                 plan_id=str(uuid.uuid4()),
@@ -567,31 +616,19 @@ class Planner:
         # Extract context elements
         world_context = context.get('world_model', {})
         
-        prompt = f"""Generate a detailed action plan for the following goal:
+        prompt = f"""Create a detailed action plan for this goal:
 
 Goal: {goal.title}
 Description: {goal.description or 'No additional description'}
 Type: {goal.goal_type}
 Priority: {goal.priority.value}
 
-Context:
-{json.dumps(world_context, indent=2) if world_context else 'No world model context'}
+Generate 3-7 concrete, actionable steps to achieve this goal. For each step:
+- Provide a clear description of what needs to be done
+- List any preconditions or dependencies
+- Suggest relevant skills or tools that might be needed
 
-Please generate a plan with 3-7 concrete, actionable steps. For each step:
-1. Provide a clear description of what needs to be done
-2. Identify any preconditions or dependencies
-3. Suggest which skills or tools might be needed
-
-Format your response as a JSON array of steps:
-[
-  {{
-    "description": "Step description",
-    "preconditions": ["condition1", "condition2"],
-    "suggested_skills": ["skill1", "skill2"]
-  }},
-  ...
-]
-"""
+Return your plan as a JSON object with a "steps" array."""
         return prompt
     
     def _parse_llm_response(
@@ -609,28 +646,49 @@ Format your response as a JSON array of steps:
             List of PlanStep objects
         """
         try:
-            # Try to extract JSON from response
+            # Use the robust JSON sanitizer
             response = response.strip()
             logger.debug(f"[PLANNER] Parsing LLM response (length: {len(response)}, first 200 chars: {response[:200]})")
             
-            # Find JSON array in response
-            start_idx = response.find('[')
-            end_idx = response.rfind(']') + 1
+            # Sanitize and parse JSON using the reusable utility
+            # Expecting an object with "steps" array due to JSON Schema
+            result = sanitize_llm_json(response, expected_type=dict, strict=False)
             
-            if start_idx == -1 or end_idx == 0:
-                logger.warning(f"[PLANNER] No JSON array found in LLM response: {response[:500]}")
+            if not result.success:
+                logger.error(f"[PLANNER] JSON sanitization failed: {result.error}")
+                if result.strategy:
+                    logger.debug(f"[PLANNER] Failed after trying strategy: {result.strategy.value}")
                 return []
             
-            json_str = response[start_idx:end_idx]
-            steps_data = json.loads(json_str)
+            # Extract steps array from the response object
+            response_obj = result.data
+            if not isinstance(response_obj, dict) or "steps" not in response_obj:
+                logger.error(f"[PLANNER] Response missing 'steps' array: {response_obj}")
+                return []
+            
+            steps_data = response_obj["steps"]
+            if not isinstance(steps_data, list):
+                logger.error(f"[PLANNER] 'steps' is not an array: {type(steps_data)}")
+                return []
+            
+            logger.info(f"[PLANNER] Successfully parsed JSON using strategy: {result.strategy.value}, got {len(steps_data)} steps")
             
             # Convert to PlanStep objects
             steps = []
             for index, step_data in enumerate(steps_data, start=1):
+                if not isinstance(step_data, dict):
+                    logger.warning(f"[PLANNER] Step {index} is not a dict, skipping")
+                    continue
+                    
+                description = step_data.get('description', '').strip()
+                if not description:
+                    logger.warning(f"[PLANNER] Step {index} has no description, skipping")
+                    continue
+                
                 step = PlanStep(
                     step_id=str(uuid.uuid4()),
                     order=index,
-                    description=step_data.get('description', f'Step {index}'),
+                    description=description,
                     status=StepStatus.PENDING,
                     metadata={
                         'preconditions': step_data.get('preconditions', []),
@@ -640,11 +698,13 @@ Format your response as a JSON array of steps:
                 )
                 steps.append(step)
             
+            if not steps:
+                logger.warning("[PLANNER] No valid steps extracted from LLM response")
+                return []
+            
+            logger.info(f"[PLANNER] Successfully created {len(steps)} plan steps")
             return steps
             
-        except json.JSONDecodeError as e:
-            logger.error(f"[PLANNER] Failed to parse LLM response as JSON: {e}")
-            return []
         except Exception as e:
             logger.error(f"[PLANNER] Error parsing LLM response: {e}", exc_info=True)
             return []
@@ -779,6 +839,100 @@ Format your response as a JSON array of steps:
         )
         
         return new_plan
+    
+    def _assign_skills_to_steps(self, steps: List[PlanStep]) -> List[PlanStep]:
+        """Assign skills to plan steps based on their metadata and descriptions.
+        
+        Uses a multi-tier matching strategy:
+        1. Match by shape_role (research, clarify, act, etc.)
+        2. Match by keywords in description
+        3. Default to generic skills based on step type
+        
+        Args:
+            steps: List of plan steps to assign skills to
+            
+        Returns:
+            Steps with skill_id assigned where possible
+        """
+        if not self.skill_registry:
+            logger.warning("[PLANNER] No skill registry available for skill assignment")
+            return steps
+        
+        # Get all available skills
+        available_skills = self.skill_registry.list_all()
+        if not available_skills:
+            logger.warning("[PLANNER] No skills registered in skill registry")
+            return steps
+        
+        # Build skill lookup maps
+        skills_by_category = {}
+        for skill in available_skills:
+            category = getattr(skill, 'category', 'general')
+            if category not in skills_by_category:
+                skills_by_category[category] = []
+            skills_by_category[category].append(skill)
+        
+        # Role to skill category mapping
+        role_to_category = {
+            'research': 'memory',  # Search memory, analyze conversations
+            'clarify': 'communication',  # Ask user questions
+            'synthesize': 'analysis',  # Analyze and synthesize information
+            'act': 'communication',  # Initiate conversations, ask questions
+        }
+        
+        # Assign skills to each step
+        for step in steps:
+            if step.skill_id:
+                # Already has a skill assigned (from template)
+                continue
+            
+            # Get shape_role from metadata
+            shape_role = step.metadata.get('shape_role', '')
+            
+            # Try to match by role
+            if shape_role in role_to_category:
+                category = role_to_category[shape_role]
+                category_skills = skills_by_category.get(category, [])
+                
+                if category_skills:
+                    # For now, use first skill in category
+                    # TODO: More sophisticated matching based on description
+                    skill = category_skills[0]
+                    step.skill_id = skill.skill_id
+                    logger.debug(
+                        f"[PLANNER] Assigned skill '{skill.skill_id}' to step "
+                        f"(role: {shape_role}, category: {category})"
+                    )
+                    continue
+            
+            # Fallback: Check for specific keywords in description
+            description_lower = step.description.lower()
+            
+            if any(word in description_lower for word in ['ask', 'question', 'clarify', 'understand']):
+                # Communication skill
+                comm_skills = skills_by_category.get('communication', [])
+                if comm_skills:
+                    # Prefer ask_user for questions
+                    ask_skill = next((s for s in comm_skills if 'ask' in s.skill_id.lower()), comm_skills[0])
+                    step.skill_id = ask_skill.skill_id
+                    logger.debug(f"[PLANNER] Assigned communication skill '{ask_skill.skill_id}' to step")
+                    continue
+            
+            elif any(word in description_lower for word in ['research', 'search', 'find', 'look up', 'analyze']):
+                # Memory/analysis skill
+                memory_skills = skills_by_category.get('memory', [])
+                if memory_skills:
+                    step.skill_id = memory_skills[0].skill_id
+                    logger.debug(f"[PLANNER] Assigned memory skill '{memory_skills[0].skill_id}' to step")
+                    continue
+            
+            # No skill assigned - leave as null
+            logger.debug(
+                f"[PLANNER] No skill assigned to step (role: {shape_role}, "
+                f"desc: {step.description[:50]}...)"
+            )
+        
+        return steps
     
     def _cache_plan(self, goal: Goal, plan: Plan) -> None:
         """Cache a successfully generated plan.

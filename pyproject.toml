@@ -31,6 +31,7 @@ dependencies = [
     "grand-cypher", # GQL/Cypher query language support for knowledge graph
     "hnswlib", # HNSW approximate nearest neighbor search for entity resolution
     "fast-langdetect>=0.2.1", # Ultra-fast language detection (80x faster, 95% accuracy, 217 languages)
+    "json-repair>=0.30.0", # Robust JSON repair for LLM-generated output (zero dependencies)
     "typer>=0.12.3,<1.0.0", # CLI framework
     "rich>=13.7.0,<14.0.0", # Rich terminal output
     "requests>=2.31.0,<3.0.0", # HTTP client for CLI

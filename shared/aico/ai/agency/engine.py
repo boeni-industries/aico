@@ -81,11 +81,13 @@ class AgencyEngine(BaseAIProcessor):
         self.reflection_store = ReflectionStore(db_connection)
         
         # Initialize planner with optional LLM client (will be set later if available)
+        # Note: skill_registry will be set after it's initialized below
         self.planner = Planner(
             llm_client=None,  # Set via set_llm_client() if available
             enable_caching=True,
             cache_ttl_seconds=3600,
-            db_connection=db_connection,  # For skill availability checks
+            db_connection=db_connection,
+            skill_registry=None,  # Set after skill_registry is initialized
         )
         
         # Phase 4: Values & Ethics service
@@ -147,6 +149,10 @@ class AgencyEngine(BaseAIProcessor):
         logger.debug(
             f"[AGENCY_ENGINE] Skill Registry initialized with {len(self.skill_registry)} skills"
         )
+        
+        # Now that skill_registry is initialized, set it on the planner
+        self.planner.skill_registry = self.skill_registry
+        logger.debug("[AGENCY_ENGINE] Planner configured with skill registry for skill assignment")
         
         self.skill_invoker = SkillInvoker(
             db=db_connection,
