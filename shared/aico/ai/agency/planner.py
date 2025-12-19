@@ -932,6 +932,18 @@ Return your plan as a JSON object with a "steps" array."""
                     exc_info=True
                 )
         
+        # Log summary of skill assignment results
+        matched_count = sum(1 for step in steps if step.skill_id)
+        unmatched_count = len(steps) - matched_count
+        
+        if unmatched_count == 0:
+            logger.info(f"[PLANNER] All {len(steps)} steps successfully matched to skills")
+        else:
+            logger.info(
+                f"[PLANNER] Skill assignment complete: {matched_count}/{len(steps)} matched, "
+                f"{unmatched_count} unmatched (logged as skill gaps)"
+            )
+        
         return steps
     
     def _cache_plan(self, goal: Goal, plan: Plan) -> None:
