@@ -478,6 +478,9 @@ class BackendLifecycleManager:
             try:
                 agency_engine.modelservice_client = modelservice_client
                 self.logger.info("✅ [AI_PROCESSORS] Injected modelservice client into AgencyEngine")
+                
+                # Update SkillMatcher with embedding client for skill gap deduplication
+                agency_engine.update_skill_matcher_embedding_client()
             except Exception as e:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject modelservice client: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will not generate goal embeddings")

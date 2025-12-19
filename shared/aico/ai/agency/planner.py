@@ -627,10 +627,36 @@ Description: {goal.description or 'No additional description'}
 Type: {goal.goal_type}
 Priority: {goal.priority.value}
 
-Generate 3-7 concrete, actionable steps to achieve this goal. For each step:
-- Provide a clear description of what needs to be done
-- List any preconditions or dependencies
-- Suggest relevant skills or tools that might be needed
+Generate 3-7 concrete, actionable steps to achieve this goal.
+
+CRITICAL REQUIREMENTS FOR EACH STEP:
+- Must be a DISCRETE, EXECUTABLE action (not an ongoing process or abstract strategy)
+- Must be something a specific software skill/function can perform
+- Must have clear inputs and outputs
+- Avoid meta-planning concepts like "set goals", "track progress", "adjust plan", "create schedule"
+- Instead, break these down into specific actions like:
+  * "Query user's calendar for available time slots"
+  * "Search knowledge base for user's current skill level in X"
+  * "Generate a list of online communities for topic Y"
+  * "Ask user to specify their weekly time commitment"
+  * "Analyze past learning patterns from user history"
+
+EXAMPLES OF GOOD STEPS:
+✓ "Search the web for top-rated Spanish language learning apps"
+✓ "Query user's memory for previous Python projects completed"
+✓ "Generate a personalized study plan template with daily tasks"
+✓ "Find and list 5 Spanish-English language exchange groups in user's city"
+
+EXAMPLES OF BAD STEPS (DO NOT GENERATE THESE):
+✗ "Set clear, prioritized goals" (too abstract, not executable)
+✗ "Track progress weekly" (ongoing process, not a discrete action)
+✗ "Adjust the plan based on feedback" (meta-planning, not actionable)
+✗ "Use active learning techniques" (strategy, not a specific action)
+
+For each step provide:
+- description: Clear, specific action that can be executed by a software skill
+- preconditions: What information or state is needed before this step
+- suggested_skills: Specific skill names that could perform this action (e.g., "web_search", "query_memory", "ask_user", "analyze_data")
 
 Return your plan as a JSON object with a "steps" array."""
         return prompt

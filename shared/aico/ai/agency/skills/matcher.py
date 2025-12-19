@@ -15,11 +15,15 @@ easily extensible as new skills are added.
 from __future__ import annotations
 
 import re
+import json
+import hashlib
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple, Set
 from dataclasses import dataclass, field
 from enum import Enum
 
 from aico.core.logging import get_logger
+from aico.data.libsql.connection import LibSQLConnection
 from .registry import Skill, SkillRegistry
 
 
@@ -97,6 +101,7 @@ class SkillMatcher:
         self,
         skill_registry: SkillRegistry,
         embedding_client: Optional[Any] = None,
+        db_connection: Optional[LibSQLConnection] = None,
     ):
         """
         Initialize skill matcher.
@@ -104,9 +109,11 @@ class SkillMatcher:
         Args:
             skill_registry: Registry of available skills
             embedding_client: Optional client for semantic embeddings
+            db_connection: Optional database connection for gap tracking
         """
         self.skill_registry = skill_registry
         self.embedding_client = embedding_client
+        self.db_connection = db_connection
         
         # Build skill metadata index
         self.skill_metadata: Dict[str, SkillMetadata] = {}
@@ -302,6 +309,14 @@ class SkillMatcher:
         logger.warning(
             f"🎯 [SKILL_MATCHER] No skill match found for: {step_description[:100]}..."
         )
+        
+        # Log skill gap for learning
+        await self._log_skill_gap(
+            step_description=step_description,
+            step_metadata=step_metadata,
+            llm_suggested_skills=llm_suggested_skills or []
+        )
+        
         return None
     
     async def _match_by_embedding(self, description: str) -> List[SkillMatch]:
@@ -482,6 +497,239 @@ class SkillMatcher:
         
         # No fallback match
         return None
+    
+    async def _log_skill_gap(
+        self,
+        step_description: str,
+        step_metadata: Dict[str, Any],
+        llm_suggested_skills: List[str]
+    ) -> None:
+        """Log unmatched skill pattern for learning and development planning."""
+        if not self.db_connection:
+            logger.debug("🎯 [SKILL_MATCHER] No database connection - skipping gap logging")
+            return
+        
+        try:
+            # Generate embedding for similarity matching
+            embedding = None
+            if self.embedding_client:
+                try:
+                    embedding = await self._generate_embedding(step_description)
+                except Exception as e:
+                    logger.debug(f"🎯 [SKILL_MATCHER] Could not generate embedding: {e}")
+            
+            # Find similar existing gaps to avoid duplicates
+            similar_gap_id = await self._find_similar_gap(
+                step_description=step_description,
+                embedding=embedding
+            )
+            
+            if similar_gap_id:
+                # Update existing gap frequency
+                await self._increment_gap_frequency(similar_gap_id)
+                logger.debug(
+                    f"🎯 [SKILL_MATCHER] Updated existing gap frequency: {similar_gap_id}"
+                )
+            else:
+                # Create new gap entry
+                gap_id = self._generate_gap_id(step_description)
+                skill_spec = self._generate_skill_specification(
+                    step_description=step_description,
+                    llm_suggested_skills=llm_suggested_skills,
+                    step_metadata=step_metadata
+                )
+                
+                now = datetime.utcnow().isoformat()
+                
+                self.db_connection.execute(
+                    """
+                    INSERT INTO agency_skill_gaps (
+                        gap_id, step_description, llm_suggested_skills,
+                        step_metadata, pattern_embedding, frequency_count,
+                        first_seen_at, last_seen_at, priority_score,
+                        status, suggested_skill_spec, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        gap_id,
+                        step_description,
+                        json.dumps(llm_suggested_skills),
+                        json.dumps(step_metadata),
+                        json.dumps(embedding) if embedding else None,
+                        1,  # frequency_count
+                        now,
+                        now,
+                        self._calculate_priority_score(step_metadata),
+                        'identified',
+                        skill_spec,
+                        now,
+                        now
+                    )
+                )
+                
+                logger.info(
+                    f"📊 [SKILL_MATCHER] Logged new skill gap: {gap_id} - '{step_description[:60]}...'"
+                )
+        
+        except Exception as e:
+            logger.error(f"🎯 [SKILL_MATCHER] Error logging skill gap: {e}")
+    
+    async def _generate_embedding(self, text: str) -> Optional[List[float]]:
+        """Generate embedding for text using embedding client."""
+        if not self.embedding_client:
+            return None
+        
+        # Use modelservice client to generate embeddings
+        try:
+            if hasattr(self.embedding_client, 'get_embeddings'):
+                result = await self.embedding_client.get_embeddings(
+                    model="paraphrase-multilingual",
+                    prompt=text
+                )
+                if result.get("success") and result.get("data", {}).get("embedding"):
+                    return result["data"]["embedding"]
+        except Exception as e:
+            logger.debug(f"🎯 [SKILL_MATCHER] Embedding generation failed: {e}")
+        
+        return None
+    
+    async def _find_similar_gap(
+        self,
+        step_description: str,
+        embedding: Optional[List[float]] = None
+    ) -> Optional[str]:
+        """Find similar existing gap to avoid duplicates."""
+        if not self.db_connection:
+            return None
+        
+        try:
+            # First try exact description match
+            result = self.db_connection.execute(
+                "SELECT gap_id FROM agency_skill_gaps WHERE step_description = ? AND status = 'identified'",
+                (step_description,)
+            ).fetchone()
+            if result:
+                return result[0]
+            
+            # If we have embeddings, find semantically similar gaps
+            if embedding:
+                # Fetch all active gaps with embeddings
+                gaps = self.db_connection.execute(
+                    "SELECT gap_id, step_description, pattern_embedding FROM agency_skill_gaps WHERE status = 'identified' AND pattern_embedding IS NOT NULL"
+                ).fetchall()
+                
+                # Calculate cosine similarity
+                best_match_id = None
+                best_similarity = 0.0
+                
+                for gap_id, desc, emb_json in gaps:
+                    try:
+                        gap_embedding = json.loads(emb_json)
+                        similarity = self._cosine_similarity(embedding, gap_embedding)
+                        
+                        # High similarity threshold (0.85) to avoid false positives
+                        if similarity > 0.85 and similarity > best_similarity:
+                            best_similarity = similarity
+                            best_match_id = gap_id
+                    except Exception:
+                        continue
+                
+                if best_match_id:
+                    logger.debug(
+                        f"🎯 [SKILL_MATCHER] Found similar gap (similarity={best_similarity:.2f}): {best_match_id}"
+                    )
+                    return best_match_id
+        
+        except Exception as e:
+            logger.debug(f"🎯 [SKILL_MATCHER] Error finding similar gap: {e}")
+        
+        return None
+    
+    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calculate cosine similarity between two vectors."""
+        if len(vec1) != len(vec2):
+            return 0.0
+        
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        magnitude1 = sum(a * a for a in vec1) ** 0.5
+        magnitude2 = sum(b * b for b in vec2) ** 0.5
+        
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+        
+        return dot_product / (magnitude1 * magnitude2)
+    
+    async def _increment_gap_frequency(self, gap_id: str) -> None:
+        """Increment frequency count for existing gap."""
+        if not self.db_connection:
+            return
+        
+        try:
+            now = datetime.utcnow().isoformat()
+            self.db_connection.execute(
+                """
+                UPDATE agency_skill_gaps
+                SET frequency_count = frequency_count + 1,
+                    last_seen_at = ?,
+                    updated_at = ?
+                WHERE gap_id = ?
+                """,
+                (now, now, gap_id)
+            )
+        except Exception as e:
+            logger.error(f"🎯 [SKILL_MATCHER] Error incrementing gap frequency: {e}")
+    
+    def _generate_gap_id(self, step_description: str) -> str:
+        """Generate unique ID for skill gap."""
+        # Use hash of description for deterministic ID
+        hash_obj = hashlib.sha256(step_description.encode('utf-8'))
+        return f"gap_{hash_obj.hexdigest()[:16]}"
+    
+    def _calculate_priority_score(self, step_metadata: Dict[str, Any]) -> float:
+        """Calculate priority score based on context."""
+        # Base priority
+        priority = 1.0
+        
+        # Increase priority for high-importance goals
+        goal_priority = step_metadata.get('goal_priority', 'normal')
+        if goal_priority == 'high':
+            priority *= 2.0
+        elif goal_priority == 'urgent':
+            priority *= 3.0
+        
+        return priority
+    
+    def _generate_skill_specification(
+        self,
+        step_description: str,
+        llm_suggested_skills: List[str],
+        step_metadata: Dict[str, Any]
+    ) -> str:
+        """Generate skill specification from pattern."""
+        # Extract action verbs from description
+        action_verbs = self._extract_action_verbs(step_description)
+        
+        # Extract key concepts
+        keywords = self._extract_keywords(step_description, "")
+        
+        # Build specification
+        spec_parts = []
+        
+        if llm_suggested_skills:
+            spec_parts.append(f"**Suggested Skill Names:** {', '.join(llm_suggested_skills)}")
+        
+        if action_verbs:
+            spec_parts.append(f"**Required Actions:** {', '.join(action_verbs)}")
+        
+        if keywords:
+            spec_parts.append(f"**Key Concepts:** {', '.join(keywords[:10])}")
+        
+        spec_parts.append(f"**Example Use Case:** {step_description}")
+        
+        if 'shape_role' in step_metadata:
+            spec_parts.append(f"**Category Hint:** {step_metadata['shape_role']}")
+        
+        return "\n\n".join(spec_parts)
     
     def refresh_metadata(self) -> None:
         """Refresh metadata index (call when new skills are registered)."""

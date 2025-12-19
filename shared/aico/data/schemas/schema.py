@@ -421,6 +421,29 @@ V1_SCHEMA = [
     """CREATE INDEX idx_self_model_user_entity ON agency_self_model(user_id, entity_type, entity_id)""",
     """CREATE INDEX idx_self_model_window ON agency_self_model(window_start, window_end)""",
 
+    """CREATE TABLE agency_skill_gaps (
+                gap_id TEXT PRIMARY KEY,
+                step_description TEXT NOT NULL,
+                llm_suggested_skills TEXT,           -- JSON array of skill names suggested by LLM
+                step_metadata TEXT,                  -- JSON: full step context (goal_id, plan_id, etc.)
+                pattern_embedding TEXT,              -- JSON: 768-dim embedding for similarity matching
+                frequency_count INTEGER DEFAULT 1,
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                priority_score REAL DEFAULT 0.0,     -- frequency * goal_importance
+                status TEXT DEFAULT 'identified',    -- identified, planned, in_progress, resolved
+                suggested_skill_spec TEXT,           -- Auto-generated skill requirements
+                resolved_skill_id TEXT,              -- Skill ID that resolved this gap
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+
+    """CREATE INDEX idx_skill_gaps_status ON agency_skill_gaps(status)""",
+    """CREATE INDEX idx_skill_gaps_priority ON agency_skill_gaps(priority_score DESC)""",
+    """CREATE INDEX idx_skill_gaps_frequency ON agency_skill_gaps(frequency_count DESC)""",
+    """CREATE INDEX idx_skill_gaps_last_seen ON agency_skill_gaps(last_seen_at DESC)""",
+
     """CREATE TABLE "agency_skill_executions" (
                 execution_id TEXT PRIMARY KEY,
                 skill_id TEXT NOT NULL,

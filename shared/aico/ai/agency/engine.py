@@ -152,8 +152,13 @@ class AgencyEngine(BaseAIProcessor):
         # Now that skill_registry is initialized, set it on the planner
         self.planner.skill_registry = self.skill_registry
         # Initialize SkillMatcher now that registry is available
+        # Note: embedding_client will be set after modelservice_client is injected
         from .skills.matcher import SkillMatcher
-        self.planner.skill_matcher = SkillMatcher(self.skill_registry)
+        self.planner.skill_matcher = SkillMatcher(
+            skill_registry=self.skill_registry,
+            embedding_client=None,  # Will be updated via update_skill_matcher_embedding_client()
+            db_connection=db_connection
+        )
         logger.debug("[AGENCY_ENGINE] Planner configured with skill registry and SkillMatcher for robust skill assignment")
         
         self.skill_invoker = SkillInvoker(
@@ -211,6 +216,18 @@ class AgencyEngine(BaseAIProcessor):
         """
         self.planner.llm_client = llm_client
         logger.info("[AGENCY_ENGINE] LLM client injected into Planner")
+    
+    def update_skill_matcher_embedding_client(self) -> None:
+        """Update SkillMatcher's embedding client after modelservice_client is injected.
+        
+        This should be called after set_modelservice_client() to enable semantic
+        similarity matching for skill gap deduplication.
+        """
+        if self.modelservice_client and self.planner.skill_matcher:
+            self.planner.skill_matcher.embedding_client = self.modelservice_client
+            logger.info("[AGENCY_ENGINE] Modelservice client injected into SkillMatcher for embedding-based gap deduplication")
+        else:
+            logger.warning("[AGENCY_ENGINE] Cannot update SkillMatcher embedding client - modelservice_client or skill_matcher not available")
 
     # ------------------------------------------------------------------
     # Goal & plan API (Phase 1 core)
