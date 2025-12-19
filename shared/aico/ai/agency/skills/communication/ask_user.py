@@ -209,9 +209,8 @@ class AskUserSkill(Skill):
             )
             
         except Exception as e:
-            logger.error(
-                f"💬 [ASK_USER] Failed to create question: {e}",
-                exc_info=True
+            logger.exception(
+                f"💬 [ASK_USER] Failed to create question: {e}"
             )
             return SkillResult(
                 success=False,

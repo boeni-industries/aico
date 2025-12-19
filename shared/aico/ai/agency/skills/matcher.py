@@ -119,7 +119,7 @@ class SkillMatcher:
         self.skill_metadata: Dict[str, SkillMetadata] = {}
         self._build_metadata_index()
         
-        logger.info(
+        logger.debug(
             f"🎯 [SKILL_MATCHER] Initialized with {len(self.skill_metadata)} skills"
         )
     

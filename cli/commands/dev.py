@@ -27,6 +27,7 @@ def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", 
         
         subcommands = [
             ("wipe", "Wipe development data with granular control (--security, --data, --config, --all)"),
+            ("reset", "Reset specific subsystems (--agency, --memory, --scheduler)"),
             ("protoc", "Compile Protocol Buffer files to Python code")
         ]
         
@@ -36,6 +37,8 @@ def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", 
             "aico dev wipe --security --data",
             "aico dev wipe --all",
             "aico dev wipe --all --dry-run",
+            "aico dev reset --agency",
+            "aico dev reset --agency --dry-run",
             "aico dev protoc"
         ]
         
@@ -341,6 +344,160 @@ def wipe(
         
     except Exception as e:
         console.print(f"❌ [red]Wipe operation failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(help="Reset specific subsystems for testing")
+def reset(
+    agency: bool = typer.Option(False, "--agency", help="Reset agency system (goals, plans, executions, intentions)"),
+    memory: bool = typer.Option(False, "--memory", help="Reset memory system (conversations, segments, entities)"),
+    scheduler: bool = typer.Option(False, "--scheduler", help="Reset scheduler tasks and history"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be deleted without doing it"),
+    i_know_what_im_doing: bool = typer.Option(False, "--i-know-what-im-doing", help="Skip environment checks (DANGEROUS)")
+):
+    """🔄 Reset specific subsystems for clean testing.
+    
+    Examples:
+      aico dev reset --agency              # Reset agency system only
+      aico dev reset --agency --dry-run    # Preview what would be deleted
+      aico dev reset --memory              # Reset memory system only
+      aico dev reset --agency --memory     # Reset multiple subsystems
+    """
+    
+    # Security checks (unless explicitly bypassed)
+    if not i_know_what_im_doing:
+        _check_development_environment()
+    
+    # Determine what to reset
+    if not (agency or memory or scheduler):
+        console.print("❌ [red]No reset targets specified. Use --agency, --memory, or --scheduler[/red]")
+        console.print("💡 [dim]Run 'aico dev reset --help' for examples[/dim]")
+        raise typer.Exit(1)
+    
+    # Build list of tables/items to delete
+    tables_to_clear = []
+    items_description = []
+    
+    if agency:
+        tables_to_clear.extend([
+            "agency_goals",
+            "agency_plans",
+            "agency_plan_executions",
+            "agency_step_executions",
+            "agency_intention_set",
+            "agency_skill_executions",
+            "agency_goal_skill_executions",
+            "agency_events",
+            "agency_skill_gaps",
+            "agency_lessons",
+            "agency_reflection_runs",
+            "agency_reflection_notes",
+            "agency_goal_outcomes",
+            "agency_arbiter_adjustments",
+            "agency_followups",
+            "agency_reminders",
+            "agency_goal_dependencies",
+            "agency_execution_snapshots",
+            "agency_skill_learning_data",
+            "agency_events_log"
+        ])
+        items_description.append("All agency goals, plans, executions, and related data")
+    
+    if memory:
+        tables_to_clear.extend([
+            "conversations",
+            "conversation_segments",
+            "entities",
+            "entity_relations"
+        ])
+        items_description.append("All conversation history and memory data")
+    
+    if scheduler:
+        tables_to_clear.extend([
+            "scheduler_tasks",
+            "scheduler_history"
+        ])
+        items_description.append("All scheduler task history")
+    
+    # Dry run mode
+    if dry_run:
+        console.print("🔍 [cyan]DRY RUN - Would clear these tables:[/cyan]")
+        for table in tables_to_clear:
+            console.print(f"  • {table}")
+        console.print("\n💡 [dim]Remove --dry-run to execute[/dim]")
+        return
+    
+    # Require explicit confirmation
+    subsystems = []
+    if agency: subsystems.append("agency")
+    if memory: subsystems.append("memory")
+    if scheduler: subsystems.append("scheduler")
+    operation_name = f"reset-{'-'.join(subsystems)}"
+    
+    _require_explicit_confirmation(operation_name, items_description)
+    
+    try:
+        from aico.data.libsql import EncryptedLibSQLConnection
+        from aico.core.paths import get_default_database_path
+        
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        
+        db_path = get_default_database_path()
+        db = EncryptedLibSQLConnection(str(db_path))
+        db.connect()
+        
+        console.print(f"🔄 [yellow]Resetting {', '.join(subsystems)} subsystem(s)...[/yellow]")
+        
+        tables_cleared = 0
+        rows_deleted = 0
+        
+        for table in tables_to_clear:
+            try:
+                # Check if table exists
+                result = db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,)
+                ).fetchone()
+                
+                if result:
+                    # Count rows before deletion
+                    count_result = db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                    row_count = count_result[0] if count_result else 0
+                    
+                    if row_count > 0:
+                        # Delete all rows
+                        db.execute(f"DELETE FROM {table}")
+                        db.commit()
+                        console.print(f"🗑️ Cleared {table}: {row_count} rows deleted")
+                        tables_cleared += 1
+                        rows_deleted += row_count
+                    else:
+                        console.print(f"📭 [dim]{table}: already empty[/dim]")
+                else:
+                    console.print(f"⚠️ [yellow]{table}: table not found[/yellow]")
+                    
+            except Exception as e:
+                console.print(f"❌ [red]Failed to clear {table}: {e}[/red]")
+        
+        db.disconnect()
+        
+        # Success summary
+        console.print(f"\n🎉 [bold green]Reset operation completed successfully![/bold green]")
+        console.print(f"📊 Cleared {tables_cleared} tables, deleted {rows_deleted} total rows")
+        
+        if agency:
+            console.print("\n💡 [cyan]Agency system reset. Next steps:[/cyan]")
+            console.print("  1. Start backend to trigger curiosity scan")
+            console.print("  2. Hobby goals will be created automatically")
+            console.print("  3. Arbiter will select top goals for intention set")
+            console.print("  4. Plan executor will generate and execute plans")
+            console.print("  5. Use 'aico agency status' to monitor progress")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Reset operation failed: {e}[/red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
         raise typer.Exit(1)
 
 

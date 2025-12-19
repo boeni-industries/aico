@@ -300,13 +300,18 @@ def status(
     user: Optional[str] = typer.Option(None, "--user", "-u", help="User ID (defaults to config user)"),
     limit: int = typer.Option(5, "--limit", "-n", help="Maximum number of intentions to sample"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed breakdown of all subsystems"),
 ):
-    """View high-level agency status for a user.
+    """View comprehensive agency status for a user.
 
-    Shows a concise snapshot of the agency state:
-    - User and profile highlights (curiosity, proactive level)
-    - Number of active intentions
-    - Top intention summary (if any)
+    Shows complete snapshot of the agency system state:
+    - Goals (by status and origin)
+    - Active intentions and arbiter scores
+    - Plans (draft, active, completed, abandoned)
+    - Executions (pending, running, completed, failed)
+    - Skill gaps identified
+    - Recent lessons learned
+    - Scheduler task status
     """
     try:
         try:
@@ -363,33 +368,132 @@ def status(
                     )
                     goal_map[goal.goal_id] = goal
 
-            # Optional: fetch goal summary for this user
+            # Fetch comprehensive agency metrics
             goals_summary = None
+            plans_summary = None
+            executions_summary = None
+            skill_gaps_summary = None
+            lessons_summary = None
+            
             try:
+                # Goals by status and origin
                 cursor = db.execute(
-                    "SELECT status, COUNT(*) FROM agency_goals WHERE user_id = ? GROUP BY status",
+                    "SELECT status, origin, COUNT(*) FROM agency_goals WHERE user_id = ? GROUP BY status, origin",
+                    (user_id,),
+                )
+                rows = cursor.fetchall()
+                by_status = {}
+                by_origin = {}
+                for row in rows:
+                    status, origin, count = row[0] or "unknown", row[1] or "unknown", row[2]
+                    by_status[status] = by_status.get(status, 0) + count
+                    by_origin[origin] = by_origin.get(origin, 0) + count
+
+                total_goals = sum(by_status.values())
+                goals_summary = {
+                    "total": int(total_goals),
+                    "by_status": {k: int(v) for k, v in by_status.items()},
+                    "by_origin": {k: int(v) for k, v in by_origin.items()},
+                }
+            except Exception:
+                goals_summary = None
+            
+            try:
+                # Plans by status
+                cursor = db.execute(
+                    "SELECT p.status, COUNT(*) FROM agency_plans p JOIN agency_goals g ON p.goal_id = g.goal_id WHERE g.user_id = ? GROUP BY p.status",
                     (user_id,),
                 )
                 rows = cursor.fetchall()
                 by_status = {row[0] or "unknown": row[1] for row in rows}
-
-                total_goals = sum(by_status.values())
-                completed = by_status.get("completed", 0)
-                retired = by_status.get("retired", 0)
-                active = by_status.get("active", 0) + by_status.get("pending", 0)
-                paused = by_status.get("paused", 0)
-
-                goals_summary = {
-                    "total": int(total_goals),
-                    "active": int(active),
-                    "completed": int(completed),
-                    "retired": int(retired),
-                    "paused": int(paused),
+                plans_summary = {
+                    "total": int(sum(by_status.values())),
                     "by_status": {k: int(v) for k, v in by_status.items()},
                 }
             except Exception:
-                # If schema or query fails, silently skip goals section
-                goals_summary = None
+                plans_summary = None
+            
+            try:
+                # Executions by status
+                cursor = db.execute(
+                    "SELECT pe.status, COUNT(*) FROM agency_plan_executions pe JOIN agency_plans p ON pe.plan_id = p.plan_id JOIN agency_goals g ON p.goal_id = g.goal_id WHERE g.user_id = ? GROUP BY pe.status",
+                    (user_id,),
+                )
+                rows = cursor.fetchall()
+                by_status = {row[0] or "unknown": row[1] for row in rows}
+                
+                # Get latest failed execution details
+                failed_exec = None
+                if by_status.get("failed", 0) > 0:
+                    failed_cursor = db.execute(
+                        "SELECT pe.execution_id, pe.error_message, pe.completed_at FROM agency_plan_executions pe JOIN agency_plans p ON pe.plan_id = p.plan_id JOIN agency_goals g ON p.goal_id = g.goal_id WHERE g.user_id = ? AND pe.status = 'failed' ORDER BY pe.completed_at DESC LIMIT 1",
+                        (user_id,),
+                    )
+                    failed_row = failed_cursor.fetchone()
+                    if failed_row:
+                        failed_exec = {
+                            "execution_id": failed_row[0],
+                            "error": failed_row[1],
+                            "completed_at": failed_row[2],
+                        }
+                
+                executions_summary = {
+                    "total": int(sum(by_status.values())),
+                    "by_status": {k: int(v) for k, v in by_status.items()},
+                    "latest_failed": failed_exec,
+                }
+            except Exception:
+                executions_summary = None
+            
+            try:
+                # Skill gaps - get top 3 by priority
+                cursor = db.execute(
+                    "SELECT COUNT(*), AVG(frequency_count), AVG(priority_score) FROM agency_skill_gaps"
+                )
+                row = cursor.fetchone()
+                
+                # Fetch top 3 gaps by priority
+                top_gaps_cursor = db.execute(
+                    "SELECT llm_suggested_skills, frequency_count, priority_score FROM agency_skill_gaps ORDER BY priority_score DESC, frequency_count DESC LIMIT 3"
+                )
+                top_gaps = []
+                for r in top_gaps_cursor.fetchall():
+                    skill_name = r[0] or "Unknown skill"
+                    # Parse JSON array if present
+                    try:
+                        if skill_name.startswith('['):
+                            parsed = json.loads(skill_name)
+                            skill_name = ", ".join(parsed) if isinstance(parsed, list) else skill_name
+                    except:
+                        pass
+                    top_gaps.append({
+                        "name": skill_name,
+                        "frequency": r[1],
+                        "priority": r[2]
+                    })
+                
+                skill_gaps_summary = {
+                    "total": int(row[0]) if row[0] else 0,
+                    "avg_frequency": float(row[1]) if row[1] else 0.0,
+                    "avg_priority": float(row[2]) if row[2] else 0.0,
+                    "top_gaps": top_gaps,
+                }
+            except Exception:
+                skill_gaps_summary = None
+            
+            try:
+                # Lessons
+                cursor = db.execute(
+                    "SELECT status, COUNT(*) FROM agency_lessons GROUP BY status"
+                )
+                rows = cursor.fetchall()
+                by_status = {row[0] or "unknown": row[1] for row in rows}
+                lessons_summary = {
+                    "total": int(sum(by_status.values())),
+                    "by_status": {k: int(v) for k, v in by_status.items()},
+                }
+            except Exception:
+                lessons_summary = None
         intentions = intention_set.intentions or []
 
         if len(intentions) > limit:
@@ -428,68 +532,199 @@ def status(
             console.print_json(data=output)
             return
 
-        # Rich table output
-        table = Table(
-            title=f"Agency Status for {user_id}",
-            box=box.SIMPLE_HEAD,
-            title_justify="left",
-            header_style="bold cyan",
-        )
-        table.add_column("Metric", style="yellow", no_wrap=True)
-        table.add_column("Value", style="white")
-
-        # Profile summary
-        table.add_row("User", user_id)
-        table.add_row("Curiosity Intensity", f"{profile.curiosity_intensity:.2f}")
-        table.add_row("Proactive Level", profile.proactive_behavior_level.value)
-
-        sensitive = ", ".join(profile.sensitive_life_areas) if profile.sensitive_life_areas else "[dim]None configured[/dim]"
-        table.add_row("Sensitive Areas", sensitive)
-
-        # Intention summary
+        # Modern dashboard layout with summary metrics
+        from rich.panel import Panel
+        from rich.columns import Columns
+        from rich.layout import Layout
+        
+        console.print()
+        console.print(f"[bold cyan]Agency System Dashboard[/bold cyan]")
+        console.print(f"[dim]User: {user_id}[/dim]")
+        console.print()
+        
+        # Calculate totals first
         total_intentions = len(intention_set.intentions)
-        table.add_row("Active Intentions", str(total_intentions))
-
-        if top_intention and top_goal:
+        total_goals = goals_summary.get("total", 0) if goals_summary else 0
+        total_plans = plans_summary.get("total", 0) if plans_summary else 0
+        total_execs = executions_summary.get("total", 0) if executions_summary else 0
+        total_gaps = skill_gaps_summary.get("total", 0) if skill_gaps_summary else 0
+        total_lessons = lessons_summary.get("total", 0) if lessons_summary else 0
+        
+        # Summary metrics bar
+        metrics_table = Table(show_header=False, box=box.ROUNDED, border_style="cyan", padding=(0, 2))
+        metrics_table.add_column("Metric", style="dim", no_wrap=True)
+        metrics_table.add_column("Value", justify="center", style="bold white")
+        metrics_table.add_column("", width=2)
+        metrics_table.add_column("Metric", style="dim", no_wrap=True)
+        metrics_table.add_column("Value", justify="center", style="bold white")
+        metrics_table.add_column("", width=2)
+        metrics_table.add_column("Metric", style="dim", no_wrap=True)
+        metrics_table.add_column("Value", justify="center", style="bold white")
+        
+        metrics_table.add_row(
+            "Intentions", str(total_intentions), "",
+            "Goals", str(total_goals), "",
+            "Plans", str(total_plans)
+        )
+        
+        console.print(metrics_table)
+        console.print()
+        
+        # Profile section - inline compact
+        profile_content = f"[dim]Curiosity:[/dim] {profile.curiosity_intensity:.0%}  [dim]Proactive:[/dim] {profile.proactive_behavior_level.value.title()}"
+        if profile.sensitive_life_areas:
+            sensitive = ", ".join(profile.sensitive_life_areas)
+            profile_content += f"  [dim]Sensitive:[/dim] {sensitive}"
+        console.print(Panel(profile_content, title="[bold]Profile[/bold]", border_style="blue", padding=(0, 1)))
+        console.print()
+        
+        # Active Intentions
+        if total_intentions > 0 and top_intention and top_goal:
             band_color = {
                 "urgent": "red",
                 "normal": "yellow",
                 "background": "blue",
             }.get(top_intention.priority_band.value, "white")
-
-            band_str = f"[{band_color}]{top_intention.priority_band.value}[/{band_color}]"
-            table.add_row("Top Intention", top_goal.title)
-            table.add_row("Top Origin", top_goal.origin.value)
-            table.add_row("Top Priority", top_goal.priority.value)
-            table.add_row("Top Score", f"{top_intention.arbiter_score:.3f}")
-            table.add_row("Top Band", band_str)
-            table.add_row("Intention Status", top_intention.status.value)
-            table.add_row("Goal Status", top_goal.status.value)
+            
+            intentions_table = Table(show_header=False, box=None, padding=(0, 0))
+            intentions_table.add_column("Field", style="dim", width=12)
+            intentions_table.add_column("Value", style="white")
+            
+            intentions_table.add_row("Title", f"[bold]{top_goal.title}[/bold]")
+            
+            # Add description if available
+            if top_goal.description:
+                desc_preview = top_goal.description[:80] + "..." if len(top_goal.description) > 80 else top_goal.description
+                intentions_table.add_row("Description", f"[dim]{desc_preview}[/dim]")
+            
+            # Add relative timestamp
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
+            age = now - top_goal.created_at.replace(tzinfo=timezone.utc)
+            if age.days > 0:
+                age_str = f"{age.days}d ago"
+            elif age.seconds >= 3600:
+                age_str = f"{age.seconds // 3600}h ago"
+            else:
+                age_str = f"{age.seconds // 60}m ago"
+            
+            intentions_table.add_row("Origin", top_goal.origin.value)
+            intentions_table.add_row("Priority", top_goal.priority.value)
+            intentions_table.add_row("Score", f"{top_intention.arbiter_score:.3f}")
+            intentions_table.add_row("Band", f"[{band_color}]{top_intention.priority_band.value}[/{band_color}]")
+            intentions_table.add_row("Status", top_intention.status.value)
+            intentions_table.add_row("Age", age_str)
+            
+            console.print(Panel(intentions_table, title=f"[bold]Top Intention[/bold] (1 of {total_intentions})", border_style="green", padding=(0, 1)))
         else:
-            table.add_row("Top Intention", "[dim]None[/dim]")
-
+            console.print(Panel("[dim]No active intentions[/dim]", title="[bold]Active Intentions[/bold]", border_style="dim", padding=(0, 1)))
         console.print()
-        console.print(table)
 
-        # Goals & activity summary (even if there are no intentions)
-        if goals_summary is not None:
-            goals_table = Table(
-                title="Goals & Activity",
-                box=box.SIMPLE_HEAD,
-                title_justify="left",
-                header_style="bold green",
-            )
-            goals_table.add_column("Metric", style="yellow", no_wrap=True)
-            goals_table.add_column("Value", style="white")
-
-            goals_table.add_row("Total Goals", str(goals_summary.get("total", 0)))
-            goals_table.add_row("Active/Pending", str(goals_summary.get("active", 0)))
-            goals_table.add_row("Paused", str(goals_summary.get("paused", 0)))
-            goals_table.add_row("Completed", str(goals_summary.get("completed", 0)))
-            goals_table.add_row("Retired", str(goals_summary.get("retired", 0)))
-
+        # Goals breakdown
+        if goals_summary is not None and total_goals > 0:
+            goals_table = Table(show_header=True, box=box.SIMPLE, padding=(0, 0), show_edge=False)
+            goals_table.add_column("Category", style="cyan", width=18)
+            goals_table.add_column("Count", justify="right", style="white", width=6)
+            
+            by_status = goals_summary.get("by_status", {})
+            for status, count in sorted(by_status.items()):
+                goals_table.add_row(status.capitalize(), str(count))
+            
+            if goals_summary.get("by_origin", {}):
+                goals_table.add_row("", "")  # Separator
+                by_origin = goals_summary.get("by_origin", {})
+                for origin, count in sorted(by_origin.items()):
+                    goals_table.add_row(f"{origin.capitalize()}", str(count))
+            
+            console.print(Panel(goals_table, title=f"[bold]Goals[/bold] ({total_goals})", border_style="green", padding=(0, 1)))
+        elif goals_summary is not None:
+            console.print(Panel("[dim]No goals[/dim]", title="[bold]Goals[/bold]", border_style="dim", padding=(0, 1)))
+        console.print()
+        
+        # Verbose details
+        if verbose:
+            # Plans
+            if plans_summary is not None and total_plans > 0:
+                plans_table = Table(show_header=False, box=None, padding=(0, 0))
+                plans_table.add_column("Status", style="cyan", width=12)
+                plans_table.add_column("Count", justify="right", style="white")
+                
+                by_status = plans_summary.get("by_status", {})
+                for status, count in sorted(by_status.items()):
+                    plans_table.add_row(status.capitalize(), str(count))
+                
+                console.print(Panel(plans_table, title=f"[bold]Plans[/bold] ({total_plans})", border_style="blue", padding=(0, 1)))
+            elif plans_summary is not None:
+                console.print(Panel("[dim]No plans[/dim]", title="[bold]Plans[/bold]", border_style="dim", padding=(0, 1)))
             console.print()
-            console.print(goals_table)
+            
+            # Executions
+            if executions_summary is not None and total_execs > 0:
+                exec_table = Table(show_header=False, box=None, padding=(0, 0))
+                exec_table.add_column("Status", style="cyan", width=12)
+                exec_table.add_column("Count", justify="right", style="white")
+                
+                by_status = executions_summary.get("by_status", {})
+                for status, count in sorted(by_status.items()):
+                    status_style = "red" if status == "failed" else "cyan"
+                    exec_table.add_row(f"[{status_style}]{status.capitalize()}[/{status_style}]", str(count))
+                
+                # Add latest failure details if available
+                failed_exec = executions_summary.get("latest_failed")
+                if failed_exec and failed_exec.get("error"):
+                    exec_table.add_row("", "")  # Separator
+                    error_msg = failed_exec["error"]
+                    # Wrap long errors to multiple lines instead of truncating
+                    if len(error_msg) > 80:
+                        # Split into chunks of 80 chars at word boundaries
+                        import textwrap
+                        wrapped = textwrap.fill(error_msg, width=80, break_long_words=False, break_on_hyphens=False)
+                        exec_table.add_row("[dim]Latest error:[/dim]", f"[red]{wrapped}[/red]")
+                    else:
+                        exec_table.add_row("[dim]Latest error:[/dim]", f"[red]{error_msg}[/red]")
+                
+                console.print(Panel(exec_table, title=f"[bold]Executions[/bold] ({total_execs})", border_style="magenta", padding=(0, 1)))
+            elif executions_summary is not None:
+                console.print(Panel("[dim]No executions[/dim]", title="[bold]Executions[/bold]", border_style="dim", padding=(0, 1)))
+            console.print()
+            
+            # Skill Gaps
+            if skill_gaps_summary is not None and total_gaps > 0:
+                top_gaps = skill_gaps_summary.get('top_gaps', [])
+                
+                if top_gaps:
+                    gaps_table = Table(show_header=True, box=box.SIMPLE, padding=(0, 0), show_edge=False)
+                    gaps_table.add_column("Skill", style="cyan", no_wrap=False)
+                    gaps_table.add_column("Freq", justify="right", style="yellow", width=5)
+                    gaps_table.add_column("Pri", justify="right", style="red", width=5)
+                    
+                    for gap in top_gaps:
+                        gaps_table.add_row(
+                            gap['name'],
+                            str(int(gap['frequency'])),
+                            f"{gap['priority']:.1f}"
+                        )
+                    
+                    console.print(Panel(gaps_table, title=f"[bold]Top Skill Gaps[/bold] ({total_gaps} total)", border_style="red", padding=(0, 1)))
+                else:
+                    console.print(Panel("[dim]No skill gaps[/dim]", title="[bold]Skill Gaps[/bold]", border_style="dim", padding=(0, 1)))
+            elif skill_gaps_summary is not None:
+                console.print(Panel("[dim]No skill gaps[/dim]", title="[bold]Skill Gaps[/bold]", border_style="dim", padding=(0, 1)))
+            console.print()
+            
+            # Lessons
+            if lessons_summary is not None and total_lessons > 0:
+                lessons_table = Table(show_header=False, box=None, padding=(0, 0))
+                lessons_table.add_column("Status", style="cyan", width=12)
+                lessons_table.add_column("Count", justify="right", style="white")
+                
+                by_status = lessons_summary.get("by_status", {})
+                for status, count in sorted(by_status.items()):
+                    lessons_table.add_row(status.capitalize(), str(count))
+                
+                console.print(Panel(lessons_table, title=f"[bold]Lessons[/bold] ({total_lessons})", border_style="cyan", padding=(0, 1)))
+            elif lessons_summary is not None:
+                console.print(Panel("[dim]No lessons[/dim]", title="[bold]Lessons[/bold]", border_style="dim", padding=(0, 1)))
         # If we have a top intention with a score breakdown, show contributing factors
         if top_intention and getattr(top_intention, "score_breakdown", None):
             factors = top_intention.score_breakdown
@@ -513,7 +748,10 @@ def status(
             console.print()
             console.print(factors_table)
 
-        console.print(f"\n[dim]Sampled up to {limit} intentions for summary[/dim]")
+        console.print()
+        if not verbose:
+            console.print(f"[dim]Use --verbose to see plans, executions, skill gaps, and lessons[/dim]")
+        console.print()
 
     except Exception as e:
         console.print(f"[red]✗[/red] Error retrieving status: {e}")

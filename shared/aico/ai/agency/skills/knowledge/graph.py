@@ -178,9 +178,8 @@ class UpdateKnowledgeGraphSkill(Skill):
             )
             
         except Exception as e:
-            logger.error(
-                f"📊 [UPDATE_KNOWLEDGE_GRAPH] Update failed: {e}",
-                exc_info=True
+            logger.exception(
+                f"📊 [UPDATE_KNOWLEDGE_GRAPH] Update failed: {e}"
             )
             return SkillResult(
                 success=False,

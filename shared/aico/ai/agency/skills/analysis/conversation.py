@@ -127,9 +127,8 @@ class AnalyzeConversationSkill(Skill):
             )
             
         except Exception as e:
-            logger.error(
-                f"💬 [ANALYZE_CONVERSATION] Analysis failed: {e}",
-                exc_info=True
+            logger.exception(
+                f"💬 [ANALYZE_CONVERSATION] Analysis failed: {e}"
             )
             return SkillResult(
                 success=False,

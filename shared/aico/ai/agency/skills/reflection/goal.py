@@ -222,9 +222,8 @@ class ReflectOnGoalSkill(Skill):
             )
             
         except Exception as e:
-            logger.error(
-                f"🤔 [REFLECT_ON_GOAL] Reflection failed: {e}",
-                exc_info=True
+            logger.exception(
+                f"🤔 [REFLECT_ON_GOAL] Reflection failed: {e}"
             )
             return SkillResult(
                 success=False,

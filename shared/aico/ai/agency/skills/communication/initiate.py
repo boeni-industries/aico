@@ -185,7 +185,6 @@ class InitiateConversationSkill(Skill):
                     
                 except Exception as e:
                     logger.warning(f"💭 [INITIATE_CONVERSATION] Failed to publish to message bus: {e}")
-                    logger.debug(f"💭 [INITIATE_CONVERSATION] Message bus error details:", exc_info=True)
             else:
                 logger.info(
                     f"💭 [INITIATE_CONVERSATION] Message bus not available or not connected - "
@@ -219,9 +218,8 @@ class InitiateConversationSkill(Skill):
             )
             
         except Exception as e:
-            logger.error(
-                f"💭 [INITIATE_CONVERSATION] Failed to initiate conversation: {e}",
-                exc_info=True
+            logger.exception(
+                f"💭 [INITIATE_CONVERSATION] Failed to initiate conversation: {e}"
             )
             return SkillResult(
                 success=False,

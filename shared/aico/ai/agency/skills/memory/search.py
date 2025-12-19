@@ -187,9 +187,8 @@ class SearchMemorySkill(Skill):
             )
             
         except Exception as e:
-            logger.error(
-                f"🧠 [SEARCH_MEMORY] Search failed: {e}",
-                exc_info=True
+            logger.exception(
+                f"🧠 [SEARCH_MEMORY] Search failed: {e}"
             )
             return SkillResult(
                 success=False,
