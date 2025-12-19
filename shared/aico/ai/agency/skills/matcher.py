@@ -547,7 +547,7 @@ class SkillMatcher:
                         gap_id, step_description, llm_suggested_skills,
                         step_metadata, pattern_embedding, frequency_count,
                         first_seen_at, last_seen_at, priority_score,
-                        status, suggested_skill_spec, created_at, updated_at
+                        suggested_skill_spec, notes, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
@@ -560,8 +560,8 @@ class SkillMatcher:
                         now,
                         now,
                         self._calculate_priority_score(step_metadata),
-                        'identified',
                         skill_spec,
+                        None,  # notes
                         now,
                         now
                     )
@@ -605,7 +605,7 @@ class SkillMatcher:
         try:
             # First try exact description match
             result = self.db_connection.execute(
-                "SELECT gap_id FROM agency_skill_gaps WHERE step_description = ? AND status = 'identified'",
+                "SELECT gap_id FROM agency_skill_gaps WHERE step_description = ?",
                 (step_description,)
             ).fetchone()
             if result:
@@ -613,9 +613,9 @@ class SkillMatcher:
             
             # If we have embeddings, find semantically similar gaps
             if embedding:
-                # Fetch all active gaps with embeddings
+                # Fetch all gaps with embeddings
                 gaps = self.db_connection.execute(
-                    "SELECT gap_id, step_description, pattern_embedding FROM agency_skill_gaps WHERE status = 'identified' AND pattern_embedding IS NOT NULL"
+                    "SELECT gap_id, step_description, pattern_embedding FROM agency_skill_gaps WHERE pattern_embedding IS NOT NULL"
                 ).fetchall()
                 
                 # Calculate cosine similarity
@@ -627,8 +627,8 @@ class SkillMatcher:
                         gap_embedding = json.loads(emb_json)
                         similarity = self._cosine_similarity(embedding, gap_embedding)
                         
-                        # High similarity threshold (0.85) to avoid false positives
-                        if similarity > 0.85 and similarity > best_similarity:
+                        # Similarity threshold (0.75) - groups similar patterns while avoiding false positives
+                        if similarity > 0.75 and similarity > best_similarity:
                             best_similarity = similarity
                             best_match_id = gap_id
                     except Exception:

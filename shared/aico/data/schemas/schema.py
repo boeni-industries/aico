@@ -431,15 +431,11 @@ V1_SCHEMA = [
                 first_seen_at TEXT NOT NULL,
                 last_seen_at TEXT NOT NULL,
                 priority_score REAL DEFAULT 0.0,     -- frequency * goal_importance
-                status TEXT DEFAULT 'identified',    -- identified, planned, in_progress, resolved
                 suggested_skill_spec TEXT,           -- Auto-generated skill requirements
-                resolved_skill_id TEXT,              -- Skill ID that resolved this gap
                 notes TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""",
-
-    """CREATE INDEX idx_skill_gaps_status ON agency_skill_gaps(status)""",
     """CREATE INDEX idx_skill_gaps_priority ON agency_skill_gaps(priority_score DESC)""",
     """CREATE INDEX idx_skill_gaps_frequency ON agency_skill_gaps(frequency_count DESC)""",
     """CREATE INDEX idx_skill_gaps_last_seen ON agency_skill_gaps(last_seen_at DESC)""",
