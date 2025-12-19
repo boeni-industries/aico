@@ -17,6 +17,7 @@ from aico.ai.agency.models import (
     StepStatus,
 )
 from aico.ai.agency.templates import PLAN_SHAPES, PlanShape
+from aico.ai.agency.skills.matcher import SkillMatcher
 
 
 logger = get_logger("shared", "ai.agency.planner")
@@ -54,31 +55,34 @@ class Planner:
 
     def __init__(
         self,
-        llm_client: Optional[Any] = None,
+        llm_client: Any,
+        skill_registry: Optional[Any] = None,
         enable_caching: bool = True,
         cache_ttl_seconds: int = 3600,
-        db_connection: Optional[Any] = None,
-        skill_registry: Optional[Any] = None,
-    ) -> None:
+    ):
         """Initialize planner.
         
         Args:
-            llm_client: Optional LLM client for plan generation
-            enable_caching: Whether to cache generated plans
-            cache_ttl_seconds: TTL for cached plans (default 1 hour)
-            db_connection: Optional database connection for skill availability checks
+            llm_client: LLM client for plan generation
             skill_registry: Optional skill registry for skill assignment
+            enable_caching: Whether to cache generated plans
+            cache_ttl_seconds: Cache TTL in seconds
         """
         self.llm_client = llm_client
+        self.skill_registry = skill_registry
         self.enable_caching = enable_caching
         self.cache_ttl_seconds = cache_ttl_seconds
-        self.db = db_connection
-        self.skill_registry = skill_registry
         self._plan_cache: Dict[str, Dict[str, Any]] = {}
+        
+        # Initialize skill matcher if registry available
+        self.skill_matcher = None
+        if skill_registry:
+            self.skill_matcher = SkillMatcher(skill_registry)
+            logger.info("[PLANNER] Initialized with SkillMatcher for robust skill assignment")
         
         logger.debug(
             f"[PLANNER] Initialized with LLM: {llm_client is not None}, "
-            f"caching: {enable_caching}, DB: {db_connection is not None}, "
+            f"caching: {enable_caching}, "
             f"skill_registry: {skill_registry is not None}"
         )
 
@@ -146,7 +150,7 @@ class Planner:
             logger.info(f"[PLANNER] Generated template plan for goal {goal.goal_id}")
             # Assign skills to template plan steps
             if self.skill_registry:
-                plan.steps = self._assign_skills_to_steps(plan.steps)
+                plan.steps = await self._assign_skills_to_steps(plan.steps)
                 logger.debug(f"[PLANNER] Assigned skills to {len(plan.steps)} template plan steps")
             return plan
         
@@ -155,7 +159,7 @@ class Planner:
         logger.info(f"[PLANNER] Generated simple fallback plan for goal {goal.goal_id}")
         # Assign skills to fallback plan steps
         if self.skill_registry:
-            plan.steps = self._assign_skills_to_steps(plan.steps)
+            plan.steps = await self._assign_skills_to_steps(plan.steps)
             logger.debug(f"[PLANNER] Assigned skills to {len(plan.steps)} fallback plan steps")
         return plan
     
@@ -232,7 +236,7 @@ class Planner:
             
             # Assign skills to steps based on their descriptions and metadata
             if self.skill_registry:
-                steps = self._assign_skills_to_steps(steps)
+                steps = await self._assign_skills_to_steps(steps)
                 logger.debug(f"[PLANNER] Assigned skills to {len(steps)} steps")
             
             plan = Plan(
@@ -840,13 +844,16 @@ Return your plan as a JSON object with a "steps" array."""
         
         return new_plan
     
-    def _assign_skills_to_steps(self, steps: List[PlanStep]) -> List[PlanStep]:
-        """Assign skills to plan steps based on their metadata and descriptions.
+    async def _assign_skills_to_steps(self, steps: List[PlanStep]) -> List[PlanStep]:
+        """Assign skills to plan steps using sophisticated SkillMatcher.
         
-        Uses a multi-tier matching strategy:
-        1. Match by shape_role (research, clarify, act, etc.)
-        2. Match by keywords in description
-        3. Default to generic skills based on step type
+        Uses multi-tier matching strategy:
+        1. Exact skill_id match (if already assigned)
+        2. Semantic similarity (embeddings)
+        3. Keyword/synonym matching
+        4. Category-based matching (shape_role)
+        5. LLM-suggested skill names (fuzzy matching)
+        6. Fallback to generic skills
         
         Args:
             steps: List of plan steps to assign skills to
@@ -854,83 +861,50 @@ Return your plan as a JSON object with a "steps" array."""
         Returns:
             Steps with skill_id assigned where possible
         """
-        if not self.skill_registry:
-            logger.warning("[PLANNER] No skill registry available for skill assignment")
+        if not self.skill_matcher:
+            logger.warning("[PLANNER] No skill matcher available for skill assignment")
             return steps
-        
-        # Get all available skills
-        available_skills = self.skill_registry.list_all()
-        if not available_skills:
-            logger.warning("[PLANNER] No skills registered in skill registry")
-            return steps
-        
-        # Build skill lookup maps
-        skills_by_category = {}
-        for skill in available_skills:
-            category = getattr(skill, 'category', 'general')
-            if category not in skills_by_category:
-                skills_by_category[category] = []
-            skills_by_category[category].append(skill)
-        
-        # Role to skill category mapping
-        role_to_category = {
-            'research': 'memory',  # Search memory, analyze conversations
-            'clarify': 'communication',  # Ask user questions
-            'synthesize': 'analysis',  # Analyze and synthesize information
-            'act': 'communication',  # Initiate conversations, ask questions
-        }
         
         # Assign skills to each step
         for step in steps:
             if step.skill_id:
                 # Already has a skill assigned (from template)
+                logger.debug(
+                    f"[PLANNER] Step already has skill assigned: {step.skill_id}"
+                )
                 continue
             
-            # Get shape_role from metadata
-            shape_role = step.metadata.get('shape_role', '')
+            # Extract LLM-suggested skills from metadata if available
+            llm_suggested_skills = step.metadata.get('suggested_skills', [])
             
-            # Try to match by role
-            if shape_role in role_to_category:
-                category = role_to_category[shape_role]
-                category_skills = skills_by_category.get(category, [])
+            # Use skill matcher to find best match
+            try:
+                match = await self.skill_matcher.match_skill(
+                    step_description=step.description,
+                    step_metadata=step.metadata,
+                    llm_suggested_skills=llm_suggested_skills,
+                )
                 
-                if category_skills:
-                    # For now, use first skill in category
-                    # TODO: More sophisticated matching based on description
-                    skill = category_skills[0]
-                    step.skill_id = skill.skill_id
+                if match:
+                    step.skill_id = match.skill_id
+                    # Store match metadata for debugging
+                    step.metadata['skill_match_confidence'] = match.confidence
+                    step.metadata['skill_match_strategy'] = match.strategy.value
+                    step.metadata['skill_match_reasoning'] = match.reasoning
+                    
                     logger.debug(
-                        f"[PLANNER] Assigned skill '{skill.skill_id}' to step "
-                        f"(role: {shape_role}, category: {category})"
+                        f"[PLANNER] Assigned skill '{match.skill_id}' to step "
+                        f"(confidence={match.confidence:.2f}, strategy={match.strategy.value})"
                     )
-                    continue
-            
-            # Fallback: Check for specific keywords in description
-            description_lower = step.description.lower()
-            
-            if any(word in description_lower for word in ['ask', 'question', 'clarify', 'understand']):
-                # Communication skill
-                comm_skills = skills_by_category.get('communication', [])
-                if comm_skills:
-                    # Prefer ask_user for questions
-                    ask_skill = next((s for s in comm_skills if 'ask' in s.skill_id.lower()), comm_skills[0])
-                    step.skill_id = ask_skill.skill_id
-                    logger.debug(f"[PLANNER] Assigned communication skill '{ask_skill.skill_id}' to step")
-                    continue
-            
-            elif any(word in description_lower for word in ['research', 'search', 'find', 'look up', 'analyze']):
-                # Memory/analysis skill
-                memory_skills = skills_by_category.get('memory', [])
-                if memory_skills:
-                    step.skill_id = memory_skills[0].skill_id
-                    logger.debug(f"[PLANNER] Assigned memory skill '{memory_skills[0].skill_id}' to step")
-                    continue
-            
-            # No skill assigned - leave as null
-            logger.debug(
-                f"[PLANNER] No skill assigned to step (role: {shape_role}, "
-                f"desc: {step.description[:50]}...)"
-            )
+                else:
+                    logger.debug(
+                        f"[PLANNER] No skill match found for step: {step.description[:50]}..."
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[PLANNER] Error matching skill for step: {e}",
+                    exc_info=True
+                )
         
         return steps
     

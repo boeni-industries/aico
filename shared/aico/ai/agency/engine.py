@@ -86,7 +86,6 @@ class AgencyEngine(BaseAIProcessor):
             llm_client=None,  # Set via set_llm_client() if available
             enable_caching=True,
             cache_ttl_seconds=3600,
-            db_connection=db_connection,
             skill_registry=None,  # Set after skill_registry is initialized
         )
         
@@ -152,7 +151,10 @@ class AgencyEngine(BaseAIProcessor):
         
         # Now that skill_registry is initialized, set it on the planner
         self.planner.skill_registry = self.skill_registry
-        logger.debug("[AGENCY_ENGINE] Planner configured with skill registry for skill assignment")
+        # Initialize SkillMatcher now that registry is available
+        from .skills.matcher import SkillMatcher
+        self.planner.skill_matcher = SkillMatcher(self.skill_registry)
+        logger.debug("[AGENCY_ENGINE] Planner configured with skill registry and SkillMatcher for robust skill assignment")
         
         self.skill_invoker = SkillInvoker(
             db=db_connection,

@@ -12,6 +12,7 @@ Skills are organized by category:
 """
 
 from .registry import SkillRegistry, Skill, SkillParameter, SkillResult
+from .matcher import SkillMatcher, SkillMatch, MatchStrategy
 
 # Import skills from their category modules
 from .analysis import AnalyzeConversationSkill
@@ -26,6 +27,10 @@ __all__ = [
     "Skill",
     "SkillParameter",
     "SkillResult",
+    # Skill matching
+    "SkillMatcher",
+    "SkillMatch",
+    "MatchStrategy",
     # Analysis skills
     "AnalyzeConversationSkill",
     # Memory skills
