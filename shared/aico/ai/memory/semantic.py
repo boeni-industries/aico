@@ -94,7 +94,7 @@ class SemanticMemoryStore:
         
         # CRITICAL: This log MUST show all three parameters to confirm code is loaded
         logger.info(f"✅ SemanticMemoryStore V3 initialized (fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}, temporal={self._temporal_enabled})")
-        logger.warning(f"🔍 DEBUG: Config values loaded - fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}")
+        logger.debug(f"🔍 DEBUG: Config values loaded - fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}")
     
     def set_modelservice(self, modelservice):
         """Set the ModelService instance for embedding generation"""
