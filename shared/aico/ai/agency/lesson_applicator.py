@@ -267,9 +267,8 @@ class LessonApplicationService:
             return True
             
         except Exception as e:
-            logger.error(
-                f"[LESSON_APPLICATOR] Failed to store arbiter adjustment: {e}",
-                exc_info=True
+            logger.exception(
+                f"[LESSON_APPLICATOR] Failed to store arbiter adjustment: {e}"
             )
             return False
     
@@ -313,9 +312,8 @@ class LessonApplicationService:
             return True
             
         except Exception as e:
-            logger.error(
-                f"[LESSON_APPLICATOR] Failed to mark persona lesson as applied: {e}",
-                exc_info=True
+            logger.exception(
+                f"[LESSON_APPLICATOR] Failed to mark persona lesson as applied: {e}"
             )
             return False
     
@@ -487,9 +485,8 @@ class LessonApplicationService:
             return True
             
         except Exception as e:
-            logger.error(
-                f"[LESSON_APPLICATOR] Failed to apply policy amendment: {e}",
-                exc_info=True
+            logger.exception(
+                f"[LESSON_APPLICATOR] Failed to apply policy amendment: {e}"
             )
             # Rollback on error
             self.db.rollback()

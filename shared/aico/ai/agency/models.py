@@ -33,6 +33,7 @@ class PlanStatus(str, Enum):
     DRAFT = "draft"
     ACTIVE = "active"
     COMPLETED = "completed"
+    PAUSED = "paused"
     ABANDONED = "abandoned"
 
 

@@ -566,7 +566,7 @@ class KGConsolidationTask(BaseTask):
             working_store = memory_manager._working_store
             
             if not working_store or not working_store._initialized:
-                logger.warning("🕸️ [KG_TASK] Working memory store not initialized")
+                logger.info("🕸️ [KG_TASK] Working memory store not yet initialized, skipping consolidation marking")
                 return
             
             db = working_store.dbs.get("session_memory")

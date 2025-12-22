@@ -303,7 +303,7 @@ class UserGoalExtractor:
             print(f"🔍 [GOAL_EXTRACTOR] ❌❌❌ EXCEPTION: {e}")
             import traceback
             print(f"🔍 [GOAL_EXTRACTOR] Traceback: {traceback.format_exc()}")
-            logger.error(f"[GOAL_EXTRACTOR] Goal extraction failed: {e}", exc_info=True)
+            logger.exception(f"[GOAL_EXTRACTOR] Goal extraction failed: {e}")
             
             # Log error
             await self._log_extraction_event(

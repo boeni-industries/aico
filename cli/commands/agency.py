@@ -620,40 +620,84 @@ def status(
             console.print(Panel("[dim]No active intentions[/dim]", title="[bold]Active Intentions[/bold]", border_style="dim", padding=(0, 1)))
         console.print()
 
-        # Goals breakdown
+        # Goals breakdown - Minimalist design
         if goals_summary is not None and total_goals > 0:
-            goals_table = Table(show_header=True, box=box.SIMPLE, padding=(0, 0), show_edge=False)
-            goals_table.add_column("Category", style="cyan", width=18)
-            goals_table.add_column("Count", justify="right", style="white", width=6)
+            goals_table = Table(show_header=False, box=None, padding=(0, 0))
+            goals_table.add_column("Label", style="white", no_wrap=True, width=12)
+            goals_table.add_column("Count", justify="right", style="white", width=4)
+            goals_table.add_column("Bar", style="dim", width=24)
             
             by_status = goals_summary.get("by_status", {})
-            for status, count in sorted(by_status.items()):
-                goals_table.add_row(status.capitalize(), str(count))
+            for status, count in sorted(by_status.items(), key=lambda x: x[1], reverse=True):
+                pct = (count / total_goals) * 100 if total_goals > 0 else 0
+                bar_width = int((count / total_goals) * 20) if total_goals > 0 else 0
+                bar = "▪" * bar_width
+                
+                # Minimal color: only highlight active items
+                label_style = "green" if status == "active" else "white"
+                bar_style = "green" if status == "active" else "dim"
+                
+                goals_table.add_row(
+                    f"[{label_style}]{status.capitalize()}[/{label_style}]",
+                    f"[white]{count}[/white]",
+                    f"[{bar_style}]{bar}[/{bar_style}] [dim]{pct:.0f}%[/dim]"
+                )
             
-            if goals_summary.get("by_origin", {}):
-                goals_table.add_row("", "")  # Separator
-                by_origin = goals_summary.get("by_origin", {})
-                for origin, count in sorted(by_origin.items()):
-                    goals_table.add_row(f"{origin.capitalize()}", str(count))
+            # Origin breakdown with visual separation
+            by_origin = goals_summary.get("by_origin", {})
+            if by_origin:
+                goals_table.add_row("", "", "")  # Whitespace separator
+                for origin, count in sorted(by_origin.items(), key=lambda x: x[1], reverse=True):
+                    pct = (count / total_goals) * 100 if total_goals > 0 else 0
+                    bar_width = int((count / total_goals) * 20) if total_goals > 0 else 0
+                    bar = "▪" * bar_width
+                    goals_table.add_row(
+                        f"[dim]{origin.capitalize()}[/dim]",
+                        f"[white]{count}[/white]",
+                        f"[dim]{bar} {pct:.0f}%[/dim]"
+                    )
             
-            console.print(Panel(goals_table, title=f"[bold]Goals[/bold] ({total_goals})", border_style="green", padding=(0, 1)))
+            console.print(Panel(
+                goals_table,
+                title=f"[bold white]Goals[/bold white] [dim]({total_goals})[/dim]",
+                border_style="dim",
+                padding=(1, 2)
+            ))
         elif goals_summary is not None:
             console.print(Panel("[dim]No goals[/dim]", title="[bold]Goals[/bold]", border_style="dim", padding=(0, 1)))
         console.print()
         
         # Verbose details
         if verbose:
-            # Plans
+            # Plans - Minimalist design
             if plans_summary is not None and total_plans > 0:
                 plans_table = Table(show_header=False, box=None, padding=(0, 0))
-                plans_table.add_column("Status", style="cyan", width=12)
-                plans_table.add_column("Count", justify="right", style="white")
+                plans_table.add_column("Label", style="white", no_wrap=True, width=12)
+                plans_table.add_column("Count", justify="right", style="white", width=4)
+                plans_table.add_column("Bar", style="dim", width=24)
                 
                 by_status = plans_summary.get("by_status", {})
-                for status, count in sorted(by_status.items()):
-                    plans_table.add_row(status.capitalize(), str(count))
+                for status, count in sorted(by_status.items(), key=lambda x: x[1], reverse=True):
+                    pct = (count / total_plans) * 100 if total_plans > 0 else 0
+                    bar_width = int((count / total_plans) * 20) if total_plans > 0 else 0
+                    bar = "▪" * bar_width
+                    
+                    # Minimal color: only highlight active items
+                    label_style = "blue" if status == "active" else "white"
+                    bar_style = "blue" if status == "active" else "dim"
+                    
+                    plans_table.add_row(
+                        f"[{label_style}]{status.capitalize()}[/{label_style}]",
+                        f"[white]{count}[/white]",
+                        f"[{bar_style}]{bar}[/{bar_style}] [dim]{pct:.0f}%[/dim]"
+                    )
                 
-                console.print(Panel(plans_table, title=f"[bold]Plans[/bold] ({total_plans})", border_style="blue", padding=(0, 1)))
+                console.print(Panel(
+                    plans_table,
+                    title=f"[bold white]Plans[/bold white] [dim]({total_plans})[/dim]",
+                    border_style="dim",
+                    padding=(1, 2)
+                ))
             elif plans_summary is not None:
                 console.print(Panel("[dim]No plans[/dim]", title="[bold]Plans[/bold]", border_style="dim", padding=(0, 1)))
             console.print()
@@ -669,21 +713,37 @@ def status(
                     status_style = "red" if status == "failed" else "cyan"
                     exec_table.add_row(f"[{status_style}]{status.capitalize()}[/{status_style}]", str(count))
                 
-                # Add latest failure details if available
+                console.print(Panel(exec_table, title=f"[bold]Executions[/bold] ({total_execs})", border_style="magenta", padding=(0, 1)))
+                
+                # Show latest failure in separate panel below if available
                 failed_exec = executions_summary.get("latest_failed")
                 if failed_exec and failed_exec.get("error"):
-                    exec_table.add_row("", "")  # Separator
                     error_msg = failed_exec["error"]
-                    # Wrap long errors to multiple lines instead of truncating
-                    if len(error_msg) > 80:
-                        # Split into chunks of 80 chars at word boundaries
-                        import textwrap
-                        wrapped = textwrap.fill(error_msg, width=80, break_long_words=False, break_on_hyphens=False)
-                        exec_table.add_row("[dim]Latest error:[/dim]", f"[red]{wrapped}[/red]")
-                    else:
-                        exec_table.add_row("[dim]Latest error:[/dim]", f"[red]{error_msg}[/red]")
+                    completed_at = failed_exec.get("completed_at")
+                    
+                    # Format timestamp
+                    time_str = ""
+                    if completed_at:
+                        try:
+                            dt = datetime.fromisoformat(completed_at.replace('Z', '+00:00'))
+                            now = datetime.now(dt.tzinfo or None)
+                            delta = now - dt
+                            if delta.days > 0:
+                                time_str = f"{delta.days}d ago"
+                            elif delta.seconds >= 3600:
+                                time_str = f"{delta.seconds // 3600}h ago"
+                            elif delta.seconds >= 60:
+                                time_str = f"{delta.seconds // 60}m ago"
+                            else:
+                                time_str = "just now"
+                        except:
+                            time_str = ""
+                    
+                    # Create error display
+                    error_content = f"[red]{error_msg}[/red]"
+                    title = f"[bold red]⚠ Latest Failure[/bold red]" + (f" [dim]({time_str})[/dim]" if time_str else "")
+                    console.print(Panel(error_content, title=title, border_style="red", padding=(0, 1)))
                 
-                console.print(Panel(exec_table, title=f"[bold]Executions[/bold] ({total_execs})", border_style="magenta", padding=(0, 1)))
             elif executions_summary is not None:
                 console.print(Panel("[dim]No executions[/dim]", title="[bold]Executions[/bold]", border_style="dim", padding=(0, 1)))
             console.print()

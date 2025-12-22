@@ -322,7 +322,7 @@ class LessonMemoryProjector:
             return lessons
             
         except Exception as e:
-            logger.error(f"[LESSON_PROJECTOR] Failed to query active lessons: {e}", exc_info=True)
+            logger.exception(f"[LESSON_PROJECTOR] Failed to query active lessons: {e}")
             return []
     
     def _generate_relevance_tags(self, lesson: Lesson) -> List[str]:

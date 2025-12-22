@@ -182,6 +182,17 @@ class PlanExecutor:
         if not plan:
             raise ValueError(f"Plan {plan_id} not found")
         
+        self.logger.info(
+            f"[EXECUTOR DEBUG] Retrieved plan {plan_id[:8]}... with {len(plan.steps)} steps"
+        )
+        
+        if len(plan.steps) == 0:
+            self.logger.error(
+                f"[EXECUTOR DEBUG] ❌ Plan {plan_id[:8]}... has NO STEPS! "
+                f"Cannot create execution. Plan status: {plan.status.value}"
+            )
+            raise ValueError(f"Plan {plan_id} has no steps defined")
+        
         # Create execution record
         execution = PlanExecution(
             execution_id=str(uuid.uuid4()),
@@ -462,7 +473,7 @@ class PlanExecutor:
                 )
                 
                 # Prepare skill input data from step metadata
-                skill_input = self._prepare_skill_input(step, execution)
+                skill_input = await self._prepare_skill_input(step, execution)
                 
                 self.logger.debug(
                     f"🎬 [EXECUTOR] Step input data: {json.dumps(skill_input, indent=2)}"
@@ -564,7 +575,7 @@ class PlanExecutor:
             f"({execution.steps_completed}/{execution.steps_total} steps)"
         )
     
-    def _prepare_skill_input(
+    async def _prepare_skill_input(
         self,
         step: "PlanStep",
         execution: PlanExecution,
@@ -577,7 +588,7 @@ class PlanExecutor:
         skill_input = {}
         
         # Get goal information for context
-        goal = self.goal_store.get_goal(execution.goal_id)
+        goal = await self.goal_store.get_goal(execution.goal_id)
         
         # Extract common parameters from step metadata
         metadata = step.metadata or {}

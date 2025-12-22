@@ -892,9 +892,8 @@ class GoalArbiter:
                         
             except Exception as e:
                 if self.logger:
-                    self.logger.error(
-                        f"[ARBITER] Failed to sync plan for intention {intention.intention_id}: {e}",
-                        exc_info=True
+                    self.logger.exception(
+                        f"[ARBITER] Failed to sync plan for intention {intention.intention_id}: {e}"
                     )
     
     async def _publish_intention_set_update(self, intention_set: IntentionSet) -> None:

@@ -129,7 +129,7 @@ class Planner:
                         self._cache_plan(goal, plan)
                         return plan
                 except Exception as e:
-                    logger.error(f"[PLANNER] Pattern-based planning failed: {e}", exc_info=True)
+                    logger.exception(f"[PLANNER] Pattern-based planning failed: {e}")
         
         # Try LLM generation
         if self.llm_client:
@@ -142,7 +142,7 @@ class Planner:
                 else:
                     logger.warning(f"[PLANNER] LLM plan validation failed, falling back")
             except Exception as e:
-                logger.error(f"[PLANNER] LLM plan generation failed: {e}", exc_info=True)
+                logger.exception(f"[PLANNER] LLM plan generation failed: {e}")
         
         # Fall back to template-based
         plan = await self._generate_template_plan(goal)
@@ -254,7 +254,7 @@ class Planner:
             return plan
             
         except Exception as e:
-            logger.error(f"[PLANNER] LLM plan generation error: {e}", exc_info=True)
+            logger.exception(f"[PLANNER] LLM plan generation error: {e}")
             return None
     
     async def _generate_template_plan(self, goal: Goal) -> Optional[Plan]:
@@ -736,7 +736,7 @@ Return your plan as a JSON object with a "steps" array."""
             return steps
             
         except Exception as e:
-            logger.error(f"[PLANNER] Error parsing LLM response: {e}", exc_info=True)
+            logger.exception(f"[PLANNER] Error parsing LLM response: {e}")
             return []
     
     def _validate_plan(self, plan: Plan, goal: Goal) -> bool:
@@ -927,9 +927,8 @@ Return your plan as a JSON object with a "steps" array."""
                         f"[PLANNER] No skill match found for step: {step.description[:50]}..."
                     )
             except Exception as e:
-                logger.error(
-                    f"[PLANNER] Error matching skill for step: {e}",
-                    exc_info=True
+                logger.exception(
+                    f"[PLANNER] Error matching skill for step: {e}"
                 )
         
         # Log summary of skill assignment results
@@ -1321,5 +1320,5 @@ Return your plan as a JSON object with a "steps" array."""
             return True
             
         except Exception as e:
-            logger.error(f"[PLANNER] Failed to record plan outcome: {e}", exc_info=True)
+            logger.exception(f"[PLANNER] Failed to record plan outcome: {e}")
             return False

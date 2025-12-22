@@ -179,9 +179,9 @@ class SkillInvoker:
                 self.logger.error(
                     f"❌ [SKILL_INVOKER] Skill '{skill_id}' failed: {e} "
                     f"(attempt {retry_count + 1}/{self.max_retries + 1}) "
-                    f"invocation={invocation_id[:8]}...",
-                    exc_info=True
+                    f"invocation={invocation_id[:8]}..."
                 )
+                logger.exception(f"❌ [SKILL_INVOKER] Exception details:")
             
             retry_count += 1
             
