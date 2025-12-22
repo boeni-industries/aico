@@ -196,10 +196,7 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   /// Called when AICO starts responding (first streaming chunk).
   /// Triggers talking animation group with automatic variations.
   void startTalking() {
-    debugPrint('[AvatarViewer] 🗣️ Starting talking animation');
-    
     if (_webViewController == null || !_isReady) {
-      debugPrint('[AvatarViewer] ⚠️ Cannot start talking - WebView not ready');
       return;
     }
     
@@ -213,10 +210,7 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   /// Called when AICO finishes responding (streaming complete).
   /// Returns to idle animation group with automatic variations.
   void stopTalking() {
-    debugPrint('[AvatarViewer] 🤫 Stopping talking animation');
-    
     if (_webViewController == null || !_isReady) {
-      debugPrint('[AvatarViewer] ⚠️ Cannot stop talking - WebView not ready');
       return;
     }
     
@@ -235,8 +229,6 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
       final audioData = next.metadata?['audioData'] as String?;
       
       if (audioData != null && audioData.isNotEmpty) {
-        debugPrint('[AvatarViewer] � Passing audio to WebView for lip-sync');
-        
         // Pass audio to WebView for lip-sync
         _webViewController!.evaluateJavascript(
           source: """
@@ -247,9 +239,6 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
             })();
           """,
         );
-        
-      } else {
-        debugPrint('[AvatarViewer] ⚠️ No audio data available for lip-sync');
       }
     }
   }

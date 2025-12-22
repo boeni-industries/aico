@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:aico_frontend/presentation/widgets/proactive/proactive_notification_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -86,6 +87,8 @@ class HomeLeftDrawer extends ConsumerWidget {
                       ),
                       children: [
                         _buildToggleItem(theme),
+                        const SizedBox(height: 8),
+                        const ProactiveNotificationBadge(),
                         const SizedBox(height: 8),
                         _buildNavItem(
                           theme,

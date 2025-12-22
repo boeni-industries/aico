@@ -171,8 +171,6 @@ class Layout extends _$Layout {
           )
         : ConversationModality.voice;
     
-    debugPrint('[LayoutProvider] Loaded modality from preferences: $savedModality -> $modality');
-    
     return LayoutState(modality: modality);
   }
 
@@ -184,7 +182,6 @@ class Layout extends _$Layout {
       // Persist the new modality
       final prefs = ref.read(sharedPreferencesProvider);
       prefs.setString(_keyConversationModality, newModality.name);
-      debugPrint('[LayoutProvider] Saved modality to preferences: ${newModality.name}');
     }
   }
 

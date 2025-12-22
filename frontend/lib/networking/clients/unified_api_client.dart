@@ -506,7 +506,7 @@ class UnifiedApiClient {
   ) {
     if (responseData == null) return null;
 
-    Map<String, dynamic> data;
+    dynamic data;
     
     // Handle encrypted responses
     if (responseData is Map<String, dynamic> && 
@@ -517,8 +517,8 @@ class UnifiedApiClient {
       data = responseData;
     }
 
-    // Apply JSON transformation if provided
-    if (fromJson != null) {
+    // Apply JSON transformation if provided (only works for Map responses)
+    if (fromJson != null && data is Map<String, dynamic>) {
       return fromJson(data);
     }
 

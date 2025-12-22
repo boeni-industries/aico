@@ -86,20 +86,11 @@ class AICOLog {
   ) {
     final logger = _logger;
     if (logger == null) {
-      // Fallback to debug print if logger not initialized
-      if (kDebugMode) {
-        debugPrint('[AICO-FALLBACK][${level.name.toUpperCase()}] $message');
-        if (topic != null) {
-          debugPrint('[AICO-FALLBACK] Topic: $topic');
-        }
-        if (extra != null) {
-          debugPrint('[AICO-FALLBACK] Extra: $extra');
-        }
+      // Fallback to debug print only for errors if logger not initialized
+      if (kDebugMode && (level == LogLevel.error || error != null)) {
+        debugPrint('[AICO] $message');
         if (error != null) {
-          debugPrint('[AICO-FALLBACK] Error: $error');
-        }
-        if (stackTrace != null) {
-          debugPrint('[AICO-FALLBACK] Stack trace: $stackTrace');
+          debugPrint('[AICO] Error: $error');
         }
       }
       return;

@@ -198,7 +198,6 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
         memoryType: 'moment',
       );
       
-      AICOLog.debug('Calling repository', topic: 'memory_album_provider');
       final memoryId = await _repository.rememberContent(request);
       
       // Check if provider is still mounted after async operation
