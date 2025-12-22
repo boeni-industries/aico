@@ -623,6 +623,17 @@ class PlanExecutor:
             if "context" in metadata:
                 skill_input["context"] = metadata["context"]
         
+        # For search_memory skill
+        elif step.skill_id == "search_memory":
+            # Use step description as the search query
+            skill_input["query"] = metadata.get("query") or step.description
+            
+            # Optional parameters
+            if "limit" in metadata:
+                skill_input["limit"] = metadata["limit"]
+            if "memory_types" in metadata:
+                skill_input["memory_types"] = metadata["memory_types"]
+        
         # For other skills, pass through metadata as-is
         else:
             skill_input.update(metadata)
