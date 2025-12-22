@@ -152,18 +152,15 @@ class ModelserviceZMQService:
         ]
             
             subscribed_topics = []
-            print(f"🔍 [MODELSERVICE] About to subscribe to {len(modelservice_topics)} topics...")
             for topic in modelservice_topics:
                 if topic in self.topic_handlers:
-                    print(f"🎧 [MODELSERVICE] Subscribing to: {topic}")
                     await self.bus_client.subscribe(topic, self._handle_message)
                     subscribed_topics.append(topic)
-                    print(f"✅ [MODELSERVICE] Subscribed to: {topic}")
                     self.logger.info(f"Subscribed to topic: {topic}")
                 else:
-                    print(f"⚠️ [MODELSERVICE] Topic {topic} NOT in topic_handlers - skipping")
                     self.logger.warning(f"No handler found for topic {topic} during subscription")
             
+            print(f"✅ Subscribed to {len(subscribed_topics)} topics")
             self.logger.info(f"Successfully subscribed to {len(subscribed_topics)} modelservice topics")
             
             # Initialize NER system now that all services are ready
@@ -239,12 +236,8 @@ class ModelserviceZMQService:
             # Use message type as topic (already includes /v1 suffix)
             topic = message_type
             request_payload = ModelserviceMessageParser.extract_request_payload(envelope, topic)
-            self.logger.debug(f"Handling message: topic={topic}, correlation_id={correlation_id}")
-            
             # Route to appropriate handler
             if topic in self.topic_handlers:
-                handler_name = self.topic_handlers[topic].__name__
-                self.logger.debug(f"Routing to handler: {handler_name}")
                 
                 # Execute handler with correlation_id for streaming support
                 if topic == AICOTopics.MODELSERVICE_CHAT_REQUEST:
@@ -252,24 +245,14 @@ class ModelserviceZMQService:
                     response = await self.topic_handlers[topic](request_payload, correlation_id)
                 elif topic == AICOTopics.MODELSERVICE_TTS_REQUEST:
                     # TTS requests are streaming - handle async generator
-                    import time
-                    stream_start = time.time()
-                    print(f"🎤 [MODELSERVICE ZMQ] Handling TTS streaming request")
                     chunk_count = 0
                     async for chunk in self.topic_handlers[topic](request_payload):
                         chunk_count += 1
-                        # Publish each chunk to the stream topic
-                        publish_start = time.time()
-                        print(f"📤 [MODELSERVICE ZMQ] Publishing TTS chunk #{chunk_count} (is_final={chunk.is_final})")
                         await self.bus_client.publish(
                             AICOTopics.MODELSERVICE_TTS_STREAM,
                             chunk
                         )
-                        publish_time = time.time() - publish_start
-                        print(f"✅ [MODELSERVICE ZMQ] Chunk #{chunk_count} published in {publish_time*1000:.2f}ms")
-                    stream_total = time.time() - stream_start
-                    print(f"⏱️ [MODELSERVICE ZMQ TIMING] Total streaming time: {stream_total*1000:.2f}ms ({chunk_count} chunks)")
-                    print(f"🎤 [MODELSERVICE ZMQ] TTS streaming complete - {chunk_count} chunks published")
+                    self.logger.info(f"TTS streaming complete - {chunk_count} chunks")
                     return  # No single response to send
                 else:
                     # Other handlers don't need correlation_id yet
@@ -278,31 +261,16 @@ class ModelserviceZMQService:
                 # Send Protocol Buffer response if correlation_id is provided
                 if correlation_id and self.bus_client:
                     # Check if request specified a reply_to topic (request-specific routing)
-                    self.logger.info(f"🔍 [REPLY_TO_DEBUG] Checking for reply_to in metadata.attributes: {envelope.metadata.attributes}")
-                    print(f"🤖 [MODELSERVICE] 🔎 Incoming request: topic={topic}, correlation_id={correlation_id}")
-                    print(f"🤖 [MODELSERVICE] 🔎 metadata.attributes={dict(envelope.metadata.attributes)}")
                     reply_to = envelope.metadata.attributes.get("reply_to")
-                    self.logger.info(f"🔍 [REPLY_TO_DEBUG] Extracted reply_to: {reply_to}")
                     if reply_to:
                         # Use request-specific response topic for targeted delivery
                         response_topic = reply_to
-                        self.logger.info(f"🔍 [REPLY_TO_DEBUG] Using reply_to topic: {response_topic}")
-                        print(f"🤖 [MODELSERVICE] 📤 Using reply_to topic for response: {response_topic}")
                     else:
                         # Fallback to default response topic (legacy behavior)
                         response_topic = self._get_response_topic(topic)
-                        self.logger.info(f"🔍 [REPLY_TO_DEBUG] Using default response topic: {response_topic}")
-                        print(f"🤖 [MODELSERVICE] 📤 Using DEFAULT response topic: {response_topic}")
                     
                     if response_topic:
-                        import time
-                        publish_start = time.time()
-                        self.logger.info(f"🔍 [REPLY_TO_DEBUG] Publishing response to: {response_topic} with correlation_id: {correlation_id}")
-                        print(f"🤖 [MODELSERVICE] 🚀 Publishing sentiment response to '{response_topic}' (correlation_id={correlation_id})")
                         await self.bus_client.publish(response_topic, response, correlation_id=correlation_id)
-                        publish_time = time.time() - publish_start
-                        self.logger.info(f"🔍 [REPLY_TO_DEBUG] Response published successfully to {response_topic}")
-                        print(f"🤖 [MODELSERVICE] ✅ Sentiment response published to '{response_topic}' (publish took {publish_time:.3f}s)")
             else:
                 self.logger.error(f"No handler found for topic: {topic}")
             

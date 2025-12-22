@@ -1581,23 +1581,23 @@ class ConversationEngine(BaseService):
             print(f"💬 [PROACTIVE] 📨 Received proactive initiation message")
             self.logger.info("💬 [PROACTIVE] Received proactive initiation message")
             
-            # Debug: Check message type
-            print(f"💬 [PROACTIVE] 🔍 Message type: {type(message)}")
-            print(f"💬 [PROACTIVE] 🔍 Message content: {message}")
+            # Unpack protobuf AicoMessage -> ConversationMessage
+            from aico.proto.aico_conversation_pb2 import ConversationMessage
             
-            # Handle protobuf message if needed
-            if hasattr(message, 'payload'):
-                # It's a protobuf AicoMessage, extract payload
-                import json
-                message = json.loads(message.payload)
-                print(f"💬 [PROACTIVE] 🔍 Extracted payload as dict")
+            conv_message = ConversationMessage()
+            if not message.any_payload.Unpack(conv_message):
+                print(f"💬 [PROACTIVE] ❌ Failed to unpack ConversationMessage from protobuf")
+                self.logger.error("💬 [PROACTIVE] Failed to unpack ConversationMessage")
+                return
             
-            # Extract message data
-            initiation_id = message.get('initiation_id')
-            user_id = message.get('user_id')
-            conversation_id = message.get('conversation_id')
-            proactive_message = message.get('message')
-            topic = message.get('topic')
+            print(f"💬 [PROACTIVE] ✅ Unpacked ConversationMessage successfully")
+            
+            # Extract message data from protobuf
+            initiation_id = conv_message.message_id
+            user_id = conv_message.user_id
+            conversation_id = conv_message.message.conversation_id
+            proactive_message = conv_message.message.text
+            topic = None  # Not in ConversationMessage, will need to get from metadata or DB
             
             if not all([initiation_id, user_id, conversation_id, proactive_message]):
                 print(f"💬 [PROACTIVE] ⚠️ Missing required fields in initiation message")
@@ -1628,8 +1628,8 @@ class ConversationEngine(BaseService):
                     'conversation_id': conversation_id,
                     'message': proactive_message,
                     'topic': topic,
-                    'urgency': message.get('urgency', 'medium'),
-                    'timestamp': message.get('initiated_at'),
+                    'urgency': 'medium',  # Default, not in ConversationMessage
+                    'timestamp': conv_message.timestamp.ToDatetime().isoformat(),
                     'requires_response': True
                 }
                 
