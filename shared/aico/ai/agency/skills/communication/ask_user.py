@@ -148,7 +148,7 @@ class AskUserSkill(Skill):
                 from google.protobuf.timestamp_pb2 import Timestamp
                 
                 # Create message bus client (if available)
-                bus_client = MessageBusClient()
+                bus_client = MessageBusClient(client_id=f"ask_user_skill_{initiation_id[:8]}")
                 await bus_client.connect()
                 
                 # Create conversation message

@@ -78,20 +78,11 @@ class SkillStore:
             return None
         
         try:
-            # Debug: Print raw data before parsing
-            print(f"🔍 [SKILL_DEBUG] Parsing skill: {row[0]}")
-            print(f"🔍 [SKILL_DEBUG] Raw trigger_context: {repr(row[3])}")
-            print(f"🔍 [SKILL_DEBUG] Raw dimension_vector: {repr(row[5])}")
-            print(f"🔍 [SKILL_DEBUG] Raw supported_languages: {repr(row[6])}")
-            
             trigger_context = json.loads(row[3])
-            print(f"✅ [SKILL_DEBUG] Parsed trigger_context successfully")
             
             dimension_vector = json.loads(row[5])
-            print(f"✅ [SKILL_DEBUG] Parsed dimension_vector successfully")
             
             supported_languages = json.loads(row[6]) if row[6] else ["en"]
-            print(f"✅ [SKILL_DEBUG] Parsed supported_languages successfully")
             
             return Skill(
                 skill_id=row[0],
@@ -136,12 +127,9 @@ class SkillStore:
                 (limit,)
             ).fetchall()
         
-        print(f"🔍 [SKILL_DEBUG] list_skills found {len(rows)} rows")
-        
         skills = []
         for row in rows:
             try:
-                print(f"🔍 [SKILL_DEBUG] Parsing skill in list: {row[0]}")
                 skill = Skill(
                     skill_id=row[0],
                     skill_name=row[1],

@@ -145,9 +145,7 @@ class GoalArbiter:
         # Load scoring weights from config with validation
         if config:
             try:
-                print("🔧 [ARBITER DEBUG] Loading scoring weights from config...")
                 weights_config = config.get("core.services.agency.arbiter.scoring_weights", {})
-                print(f"🔧 [ARBITER DEBUG] Weights config: {weights_config}")
                 
                 if not weights_config:
                     raise ValueError("core.services.agency.arbiter.scoring_weights not found in configuration")
@@ -162,19 +160,14 @@ class GoalArbiter:
                     "emotion_boost": float(weights_config.get("emotion_boost", 0.05)),
                 }
                 
-                print(f"🔧 [ARBITER DEBUG] Loaded weights: {self.weights}")
-                
                 # Validate weights sum to approximately 1.0
                 total_weight = sum(self.weights.values())
-                print(f"🔧 [ARBITER DEBUG] Total weight: {total_weight:.3f}")
                 
                 if abs(total_weight - 1.0) > 0.01:
                     raise ValueError(
                         f"Arbiter scoring weights must sum to ~1.0, got {total_weight:.3f}. "
                         f"Check core.services.agency.arbiter.scoring_weights in configuration."
                     )
-                
-                print("✅ [ARBITER DEBUG] Scoring weights validated successfully!")
                 if logger:
                     logger.debug(f"[ARBITER] Loaded scoring weights from config: {self.weights}")
             except Exception as e:

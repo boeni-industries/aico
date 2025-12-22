@@ -390,19 +390,14 @@ class BackendLifecycleManager:
             # Phase 3: Initialize CuriosityEngine
             curiosity_engine = None
             try:
-                print("[DEBUG] Attempting to import CuriosityEngine...")
                 from aico.ai.curiosity import CuriosityEngine
-                print("[DEBUG] CuriosityEngine imported successfully")
                 
                 # Phase 6.3: Get AMS service for user interest tracking
                 ams_service = None
                 try:
                     ams_service = ai_registry.get("memory")  # MemoryManager provides AMS access
-                    print(f"[DEBUG] Retrieved AMS service: {ams_service}")
                 except Exception as e:
-                    print(f"[DEBUG] Could not get AMS service: {e}")
-                
-                print(f"[DEBUG] Creating CuriosityEngine with world_model={world_model}, personality={personality_service}, ams={ams_service}")
+                    logger.debug(f"Could not get AMS service: {e}")
                 curiosity_engine = CuriosityEngine(
                     world_model=world_model,
                     personality_service=personality_service,
@@ -521,7 +516,6 @@ class BackendLifecycleManager:
         
         # Register CuriosityEngine (Phase 3) - outside try/except to ensure it runs
         try:
-            print(f"[DEBUG] About to register CuriosityEngine: {curiosity_engine}")
             if curiosity_engine:
                 ai_registry.register("curiosity", curiosity_engine)
                 print("✅ [AI_PROCESSORS] Registered 'curiosity' processor (Phase 3).")
