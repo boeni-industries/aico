@@ -1622,20 +1622,28 @@ class ConversationEngine(BaseService):
             # Publish to user-specific notification topic
             try:
                 notification_topic = f'user/{user_id}/notifications/v1'
-                notification_message = {
-                    'type': 'proactive_conversation',
-                    'initiation_id': initiation_id,
-                    'conversation_id': conversation_id,
-                    'message': proactive_message,
-                    'topic': topic,
-                    'urgency': 'medium',  # Default, not in ConversationMessage
-                    'timestamp': conv_message.timestamp.ToDatetime().isoformat(),
-                    'requires_response': True
-                }
+                
+                # Create notification as protobuf ConversationMessage
+                from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
+                from google.protobuf.timestamp_pb2 import Timestamp
+                
+                notification_conv_msg = ConversationMessage()
+                notification_conv_msg.timestamp.CopyFrom(conv_message.timestamp)
+                notification_conv_msg.source = "proactive_engine"
+                notification_conv_msg.message_id = initiation_id
+                notification_conv_msg.user_id = user_id
+                
+                # Build notification message text
+                notification_text = f"[Proactive] {proactive_message}"
+                
+                notification_conv_msg.message.text = notification_text
+                notification_conv_msg.message.type = Message.MessageType.SYSTEM_NOTIFICATION
+                notification_conv_msg.message.conversation_id = conversation_id
+                notification_conv_msg.message.turn_number = 0
                 
                 await self.bus_client.publish(
                     topic=notification_topic,
-                    message=notification_message
+                    payload=notification_conv_msg
                 )
                 
                 print(f"💬 [PROACTIVE] ✅ Published notification to {notification_topic}")
