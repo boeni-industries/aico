@@ -113,21 +113,22 @@ class ProactiveConversationTask(BaseTask):
                     # Extract contextual features
                     context_features = extract_contextual_features(db, user_id)
                     
-                    # Check for pending initiations (don't spam)
-                    pending = db.execute(
+                    # Check for recent initiations (don't spam or duplicate)
+                    recent = db.execute(
                         """SELECT COUNT(*) as count
                            FROM conversation_initiations
                            WHERE user_id = ?
-                           AND resolution_status = 'pending'""",
+                           AND resolution_status = 'pending'
+                           AND datetime(initiated_at) > datetime('now', '-24 hours')""",
                         (user_id,)
                     ).fetchone()
                     
-                    if pending and pending['count'] > 0:
-                        logger.debug(f"🗣️ [PROACTIVE] User {user_id[:8]} has pending initiations, skipping")
+                    if recent and recent['count'] > 0:
+                        logger.debug(f"🗣️ [PROACTIVE] User {user_id[:8]} has recent pending initiations, skipping")
                         decisions.append({
                             'user_id': user_id[:8],
                             'decision': 'skip',
-                            'reason': 'pending_initiations'
+                            'reason': 'recent_pending_initiations'
                         })
                         continue
                     
@@ -187,6 +188,25 @@ class ProactiveConversationTask(BaseTask):
                     })
                     
                     if should_initiate:
+                        # Check for duplicate strategy in last 24h
+                        duplicate = db.execute(
+                            """SELECT COUNT(*) as count
+                               FROM conversation_initiations
+                               WHERE user_id = ?
+                               AND trigger_reason = ?
+                               AND datetime(initiated_at) > datetime('now', '-24 hours')""",
+                            (user_id, f"proactive_check_strategy_{strategy_id}")
+                        ).fetchone()
+                        
+                        if duplicate and duplicate['count'] > 0:
+                            logger.debug(f"🗣️ [PROACTIVE] User {user_id[:8]} already has initiation for strategy {strategy_id}, skipping")
+                            decisions.append({
+                                'user_id': user_id[:8],
+                                'decision': 'skip',
+                                'reason': 'duplicate_strategy'
+                            })
+                            continue
+                        
                         # Create initiation record
                         initiation_id = str(uuid.uuid4())
                         conversation_id = f"{user_id}_{int(datetime.utcnow().timestamp())}"

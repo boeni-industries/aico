@@ -7,22 +7,26 @@ part 'proactive_state_provider.g.dart';
 /// State for proactive conversations
 class ProactiveState {
   final List<InitiationModel> pendingInitiations;
+  final List<InitiationModel> historyInitiations;
   final bool isLoading;
   final String? error;
 
   const ProactiveState({
     this.pendingInitiations = const [],
+    this.historyInitiations = const [],
     this.isLoading = false,
     this.error,
   });
 
   ProactiveState copyWith({
     List<InitiationModel>? pendingInitiations,
+    List<InitiationModel>? historyInitiations,
     bool? isLoading,
     String? error,
   }) {
     return ProactiveState(
       pendingInitiations: pendingInitiations ?? this.pendingInitiations,
+      historyInitiations: historyInitiations ?? this.historyInitiations,
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );
@@ -117,5 +121,20 @@ class ProactiveStateNotifier extends _$ProactiveStateNotifier {
       responseText: responseText,
       engagementScore: engagementScore,
     );
+  }
+
+  /// Fetch history of all initiations
+  Future<void> fetchHistory() async {
+    try {
+      final repository = ref.read(proactiveRepositoryProvider);
+      final history = await repository.getInitiationHistory();
+      
+      state = state.copyWith(
+        historyInitiations: history,
+      );
+    } catch (e) {
+      print('🔔 [PROACTIVE] ❌ Error fetching history: $e');
+      state = state.copyWith(error: e.toString());
+    }
   }
 }

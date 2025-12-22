@@ -301,7 +301,7 @@ async def get_initiation_history(
         
     except Exception as e:
         print(f"📜 [PROACTIVE_API] ❌ Error fetching history: {e}")
-        logger.error(f"📜 [PROACTIVE_API] Error fetching history: {e}", exc_info=True)
+        logger.error(f"📜 [PROACTIVE_API] Error fetching history: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch history: {str(e)}"

@@ -7,9 +7,10 @@ import 'package:aico_frontend/presentation/providers/settings_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/drawer/drawer_tab_switcher.dart';
 import 'package:aico_frontend/presentation/widgets/emotion/emotional_timeline.dart';
-import 'package:aico_frontend/presentation/widgets/thinking/ambient_thinking_indicator.dart';
+import 'package:aico_frontend/presentation/widgets/thinking/ambient_drawer_indicator.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/thinking_preview_card.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
+import 'package:aico_frontend/presentation/widgets/proactive/proactive_timeline.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -194,7 +195,12 @@ class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
                 scrollToMessageId: widget.scrollToMessageId,
                 onCollapse: widget.onToggle,
               )
-            : _buildEmotionalTimeline(),
+            : _selectedTab == DrawerTab.emotions
+                ? _buildEmotionalTimeline()
+                : ProactiveTimeline(
+                    key: const ValueKey('notifications'),
+                    onCollapse: widget.onToggle,
+                  ),
       );
     }
 
@@ -249,12 +255,12 @@ class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
       onTap: widget.onToggle,
       child: Stack(
         children: [
-          // Ambient indicator
+          // Ambient indicator with vertical pill
           Positioned(
             left: 0,
             top: 0,
             bottom: 0,
-            child: AmbientThinkingIndicator(
+            child: AmbientDrawerIndicator(
               key: const ValueKey('ambient_indicator'),
               isStreaming: isStreaming,
               thoughtCount: conversationState.thinkingHistory.length,
