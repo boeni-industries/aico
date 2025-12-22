@@ -666,7 +666,7 @@ class PlanExecutor:
         )
         
         if not row:
-            self.logger.warning(
+            self.logger.info(
                 f"[EXECUTOR DEBUG] No pending steps found for execution {execution_id[:8]}... "
                 f"(total steps in DB: {total_steps})"
             )

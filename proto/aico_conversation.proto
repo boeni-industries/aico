@@ -44,6 +44,7 @@ message Message {
     SYSTEM_NOTIFICATION = 3;
     THINKING_ALOUD = 4;
     INTERNAL_REFLECTION = 5;
+    AICO_INITIATED = 6;
   }
 }
 

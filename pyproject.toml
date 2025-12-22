@@ -19,6 +19,7 @@ dependencies = [
     "watchdog",
     "pyzmq>=27.0.1",
     "protobuf>=6.32.0,<7.0.0",
+    "grpcio-tools>=1.62.0",
     "platformdirs>=4.0.0",
     "psutil>=6.1.0",
     "passlib[bcrypt]>=1.7.4",
