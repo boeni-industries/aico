@@ -4,7 +4,7 @@ Proactive Conversation API Endpoints
 Handles AICO-initiated conversation tracking and user responses.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
@@ -157,7 +157,9 @@ async def respond_to_initiation(
         
         # Calculate response time
         initiated_at = datetime.fromisoformat(initiation['initiated_at'])
-        resolved_at = datetime.utcnow()
+        if initiated_at.tzinfo is None:
+            initiated_at = initiated_at.replace(tzinfo=timezone.utc)
+        resolved_at = datetime.now(timezone.utc)
         response_time = int((resolved_at - initiated_at).total_seconds())
         
         # Update initiation status
@@ -227,8 +229,7 @@ async def respond_to_initiation(
             # Don't fail the response if learning update fails
             print(f"🎓 [PROACTIVE_API] ⚠️ Learning update failed: {learning_error}")
             logger.warning(
-                f"🎓 [PROACTIVE_API] Failed to update learning system: {learning_error}",
-                exc_info=True
+                f"🎓 [PROACTIVE_API] Failed to update learning system: {learning_error}"
             )
         
         return {
@@ -243,8 +244,7 @@ async def respond_to_initiation(
     except Exception as e:
         print(f"📝 [PROACTIVE_API] ❌ Error recording response: {e}")
         logger.error(
-            f"📝 [PROACTIVE_API] Error recording response: {e}",
-            exc_info=True
+            f"📝 [PROACTIVE_API] Error recording response: {e}"
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
