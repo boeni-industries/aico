@@ -426,7 +426,7 @@ class MessageBusClient:
                     else:
                         callback(message)
                 except Exception as e:
-                    self.logger.error(f"Error in message callback: {e}")
+                    self.logger.exception(f"Error in message callback: {e}")
         else:
             try:
                 if asyncio.iscoroutinefunction(callback):
@@ -434,7 +434,7 @@ class MessageBusClient:
                 else:
                     callback(message)
             except Exception as e:
-                self.logger.error(f"Error in message callback: {e}")
+                self.logger.exception(f"Error in message callback: {e}")
     
     async def _persist_message(self, message: AicoMessage):
         """Persist message using the provided handler (if persistence enabled)"""

@@ -1581,6 +1581,17 @@ class ConversationEngine(BaseService):
             print(f"💬 [PROACTIVE] 📨 Received proactive initiation message")
             self.logger.info("💬 [PROACTIVE] Received proactive initiation message")
             
+            # Debug: Check message type
+            print(f"💬 [PROACTIVE] 🔍 Message type: {type(message)}")
+            print(f"💬 [PROACTIVE] 🔍 Message content: {message}")
+            
+            # Handle protobuf message if needed
+            if hasattr(message, 'payload'):
+                # It's a protobuf AicoMessage, extract payload
+                import json
+                message = json.loads(message.payload)
+                print(f"💬 [PROACTIVE] 🔍 Extracted payload as dict")
+            
             # Extract message data
             initiation_id = message.get('initiation_id')
             user_id = message.get('user_id')
@@ -1647,8 +1658,7 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             print(f"💬 [PROACTIVE] ❌ Error handling proactive initiation: {e}")
-            self.logger.error(
-                f"💬 [PROACTIVE] Error handling proactive initiation: {e}",
-                exc_info=True
+            self.logger.exception(
+                f"💬 [PROACTIVE] Error handling proactive initiation: {e}"
             )
             raise
