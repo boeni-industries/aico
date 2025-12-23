@@ -60,6 +60,7 @@ class AgencyEngine(BaseAIProcessor):
         world_model: Optional["WorldModelService"] = None,
         personality_service: Optional["PersonalityService"] = None,
         message_bus: Optional[Any] = None,
+        memory_manager: Optional[Any] = None,
     ):
         """Initialize the agency engine.
 
@@ -70,10 +71,12 @@ class AgencyEngine(BaseAIProcessor):
             world_model: Optional world model service for Phase 2+ context (Phase 2)
             personality_service: Optional personality service for Phase 2+ (Phase 2)
             message_bus: Optional message bus for intention set publishing (Phase 4)
+            memory_manager: Optional memory manager for skills that need memory access
         """
         super().__init__(component_name="agency_engine", version="v1")
         self.config = config
         self._db_connection = db_connection
+        self._memory_manager = memory_manager
 
         self.goal_store = GoalStore(db_connection)
         self.plan_store = PlanStore(db_connection)
@@ -129,7 +132,7 @@ class AgencyEngine(BaseAIProcessor):
         self.skill_registry = SkillRegistry()
         
         # Analysis skills
-        self.skill_registry.register(AnalyzeConversationSkill(db=db_connection))
+        self.skill_registry.register(AnalyzeConversationSkill(db=db_connection, memory_manager=self._memory_manager))
         
         # Memory skills
         self.skill_registry.register(SearchMemorySkill(db=db_connection))

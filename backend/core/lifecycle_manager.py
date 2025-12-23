@@ -424,6 +424,7 @@ class BackendLifecycleManager:
                 world_model=world_model,
                 personality_service=personality_service,
                 message_bus=message_bus,
+                memory_manager=memory_manager,
             )
             self.logger.info("✅ Created AgencyEngine with shared database connection and message bus")
 
