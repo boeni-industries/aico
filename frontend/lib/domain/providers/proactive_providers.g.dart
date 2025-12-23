@@ -59,7 +59,7 @@ final class ProactiveRemoteDataSourceProvider
 }
 
 String _$proactiveRemoteDataSourceHash() =>
-    r'4e69633ab3d44fcf7ff18378a5ea269462c36581';
+    r'f9725a06b59d295cf6dbef0c3f31d373b8b70855';
 
 /// Provider for ProactiveRepository
 
@@ -112,4 +112,4 @@ final class ProactiveRepositoryProvider
 }
 
 String _$proactiveRepositoryHash() =>
-    r'89d6e7d2347d90a8ab6cfd7ec2c6861af808dae4';
+    r'068ce902beaddc9f16d43e61cde3311334def1ea';

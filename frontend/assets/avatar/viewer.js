@@ -150,7 +150,7 @@ async function loadAvatar() {
                 );
                 if (hasEyeMorphs) {
                     eyeMeshes.push(node);
-                    console.log('[AICO Avatar] Eye mesh:', node.name, '- Morph targets:', morphTargets.join(', '));
+                    // console.log('[AICO Avatar] Eye mesh:', node.name, '- Morph targets:', morphTargets.join(', '));
                 }
             }
         });
@@ -537,7 +537,7 @@ function setEmotion(emotion) {
     
     currentEmotion = emotion;
     targetEmotionValues = { ...emotionPresets[emotion] };
-    console.log(`[AICO Avatar] Emotion set to: ${emotion}`);
+    // console.log(`[AICO Avatar] Emotion set to: ${emotion}`);
 }
 
 // Apply emotion expressions with smooth transitions

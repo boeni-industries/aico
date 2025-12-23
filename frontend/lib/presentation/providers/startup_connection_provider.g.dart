@@ -43,7 +43,7 @@ final class StartupConnectionNotifierProvider
 }
 
 String _$startupConnectionNotifierHash() =>
-    r'224a1c6028c8368efb17dae8d08dbc33c76ea1cb';
+    r'ea0e10ed2a0e7c84a3b4e3eb4576fcabfd4199c5';
 
 abstract class _$StartupConnectionNotifier
     extends $Notifier<StartupConnectionState> {

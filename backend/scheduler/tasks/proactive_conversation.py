@@ -24,6 +24,11 @@ class ProactiveConversationTask(BaseTask):
     - 11-dimensional contextual feature extraction
     - Real-time decision making
     
+    Multi-layer duplicate prevention:
+    1. Batch pre-filter: Skip users with pending initiations (single DB query)
+    2. Question content matching: Detect semantic duplicates via text similarity
+    3. In-memory cache: Ultra-fast lookup for recent initiations across runs
+    
     Runs periodically to:
     1. Extract contextual features for each active user
     2. Use learning system to decide if now is a good time
@@ -34,6 +39,10 @@ class ProactiveConversationTask(BaseTask):
     task_id = "agency.proactive_conversation"
     priority = TaskPriority.NORMAL
     queue = TaskQueue.BACKGROUND_LIGHT
+    
+    # LAYER 3: In-memory cache for recent initiations (class-level, shared across runs)
+    # Format: {user_id: [(strategy_id, question_prefix, timestamp), ...]}
+    _recent_initiations_cache: Dict[str, List[tuple]] = {}
     
     default_config = {
         "enabled": True,
@@ -90,9 +99,9 @@ class ProactiveConversationTask(BaseTask):
             
             # Get all active users
             cursor = db.execute("SELECT uuid FROM user_profiles WHERE is_active = 1")
-            user_ids = [row[0] for row in cursor.fetchall()]
+            all_user_ids = [row[0] for row in cursor.fetchall()]
             
-            if not user_ids:
+            if not all_user_ids:
                 logger.info("🗣️ [PROACTIVE] No active users found")
                 return TaskResult(
                     success=True,
@@ -100,7 +109,25 @@ class ProactiveConversationTask(BaseTask):
                     skipped=True,
                 )
             
-            logger.info(f"🗣️ [PROACTIVE] Checking {len(user_ids)} active users")
+            # LAYER 1: Batch pre-filter users with recent pending initiations
+            # This prevents expensive feature extraction for users we'll skip anyway
+            placeholders = ','.join('?' * len(all_user_ids))
+            users_with_pending = db.execute(
+                f"""SELECT DISTINCT user_id
+                   FROM conversation_initiations
+                   WHERE user_id IN ({placeholders})
+                   AND resolution_status = 'pending'
+                   AND datetime(initiated_at) > datetime('now', '-24 hours')""",
+                all_user_ids
+            ).fetchall()
+            
+            users_to_skip = {row[0] for row in users_with_pending}
+            user_ids = [uid for uid in all_user_ids if uid not in users_to_skip]
+            
+            logger.info(
+                f"🗣️ [PROACTIVE] Pre-filtered {len(all_user_ids)} users: "
+                f"{len(user_ids)} eligible, {len(users_to_skip)} skipped (recent pending)"
+            )
             
             initiations_created = 0
             users_checked = 0
@@ -110,27 +137,8 @@ class ProactiveConversationTask(BaseTask):
                 try:
                     users_checked += 1
                     
-                    # Extract contextual features
+                    # Extract contextual features (only for eligible users)
                     context_features = extract_contextual_features(db, user_id)
-                    
-                    # Check for recent initiations (don't spam or duplicate)
-                    recent = db.execute(
-                        """SELECT COUNT(*) as count
-                           FROM conversation_initiations
-                           WHERE user_id = ?
-                           AND resolution_status = 'pending'
-                           AND datetime(initiated_at) > datetime('now', '-24 hours')""",
-                        (user_id,)
-                    ).fetchone()
-                    
-                    if recent and recent['count'] > 0:
-                        logger.debug(f"🗣️ [PROACTIVE] User {user_id[:8]} has recent pending initiations, skipping")
-                        decisions.append({
-                            'user_id': user_id[:8],
-                            'decision': 'skip',
-                            'reason': 'recent_pending_initiations'
-                        })
-                        continue
                     
                     # Score on Adaptivity dimension
                     patience_score = adaptivity_scorer.calculate_patience_score(
@@ -188,31 +196,67 @@ class ProactiveConversationTask(BaseTask):
                     })
                     
                     if should_initiate:
-                        # Check for duplicate strategy in last 24h
+                        # Determine topic and message based on strategy
+                        topic, message = self._generate_message_for_strategy(strategy_id, context_features)
+                        
+                        # LAYER 3: Check in-memory cache first (fastest)
+                        question_prefix = message[:50]
+                        now = datetime.utcnow()
+                        cache_hit = False
+                        
+                        if user_id in self._recent_initiations_cache:
+                            # Clean expired entries (>24h old)
+                            self._recent_initiations_cache[user_id] = [
+                                (s, q, t) for s, q, t in self._recent_initiations_cache[user_id]
+                                if (now - t).total_seconds() < 86400  # 24 hours
+                            ]
+                            
+                            # Check for duplicates
+                            for cached_strategy, cached_question, _ in self._recent_initiations_cache[user_id]:
+                                if cached_strategy == strategy_id or cached_question == question_prefix:
+                                    cache_hit = True
+                                    logger.debug(
+                                        f"🗣️ [PROACTIVE] ⚡ Cache hit: User {user_id[:8]} has recent similar initiation, skipping"
+                                    )
+                                    decisions.append({
+                                        'user_id': user_id[:8],
+                                        'decision': 'skip',
+                                        'reason': 'duplicate_cache_hit'
+                                    })
+                                    break
+                        
+                        if cache_hit:
+                            continue
+                        
+                        # LAYER 2: Check database for duplicate strategy AND question content
+                        # Only if cache miss (most runs will hit cache, saving DB queries)
                         duplicate = db.execute(
                             """SELECT COUNT(*) as count
                                FROM conversation_initiations
                                WHERE user_id = ?
-                               AND trigger_reason = ?
+                               AND (
+                                   trigger_reason = ?
+                                   OR question LIKE ?
+                               )
                                AND datetime(initiated_at) > datetime('now', '-24 hours')""",
-                            (user_id, f"proactive_check_strategy_{strategy_id}")
+                            (user_id, f"proactive_check_strategy_{strategy_id}", f"%{question_prefix}%")
                         ).fetchone()
                         
                         if duplicate and duplicate['count'] > 0:
-                            logger.debug(f"🗣️ [PROACTIVE] User {user_id[:8]} already has initiation for strategy {strategy_id}, skipping")
+                            logger.debug(
+                                f"🗣️ [PROACTIVE] User {user_id[:8]} already has similar initiation "
+                                f"(strategy {strategy_id} or matching question), skipping"
+                            )
                             decisions.append({
                                 'user_id': user_id[:8],
                                 'decision': 'skip',
-                                'reason': 'duplicate_strategy'
+                                'reason': 'duplicate_strategy_or_question'
                             })
                             continue
                         
                         # Create initiation record
                         initiation_id = str(uuid.uuid4())
                         conversation_id = f"{user_id}_{int(datetime.utcnow().timestamp())}"
-                        
-                        # Determine topic and message based on strategy
-                        topic, message = self._generate_message_for_strategy(strategy_id, context_features)
                         
                         db.execute(
                             """INSERT INTO conversation_initiations (
@@ -238,6 +282,13 @@ class ProactiveConversationTask(BaseTask):
                         )
                         db.commit()
                         
+                        # Update in-memory cache
+                        if user_id not in self._recent_initiations_cache:
+                            self._recent_initiations_cache[user_id] = []
+                        self._recent_initiations_cache[user_id].append(
+                            (strategy_id, question_prefix, now)
+                        )
+                        
                         initiations_created += 1
                         
                         print(f"🗣️ [PROACTIVE] ✅ Created initiation {initiation_id[:8]} for user {user_id[:8]}")
@@ -246,11 +297,23 @@ class ProactiveConversationTask(BaseTask):
                             f"for user {user_id[:8]} with strategy {strategy_id}"
                         )
                         
+                        # Broadcast to WebSocket clients for real-time notification
+                        try:
+                            await self._broadcast_new_initiation(
+                                user_id=user_id,
+                                initiation_id=initiation_id,
+                                question=message,
+                                initiated_at=datetime.utcnow().isoformat(),
+                                trigger_reason=f"proactive_check_strategy_{strategy_id}"
+                            )
+                        except Exception as ws_error:
+                            logger.warning(f"🗣️ [PROACTIVE] Failed to broadcast WebSocket notification: {ws_error}")
+                        
                         # Publish to message bus for ConversationEngine
                         try:
-                            from aico.messaging.bus_client import MessageBusClient
+                            from aico.core.bus import MessageBusClient
                             
-                            bus_client = MessageBusClient()
+                            bus_client = MessageBusClient(client_id=f"proactive_scheduler_{initiation_id[:8]}")
                             
                             # Create initiation message
                             initiation_message = {
@@ -376,3 +439,45 @@ class ProactiveConversationTask(BaseTask):
             return messages.get(strategy_value, ("general", "How are you?"))
         
         return "general", "I wanted to reach out. How are you doing?"
+    
+    async def _broadcast_new_initiation(
+        self,
+        user_id: str,
+        initiation_id: str,
+        question: str,
+        initiated_at: str,
+        trigger_reason: str
+    ) -> None:
+        """Broadcast new proactive initiation via WebSocket to user.
+        
+        Args:
+            user_id: User UUID
+            initiation_id: Initiation UUID
+            question: Question text
+            initiated_at: ISO timestamp
+            trigger_reason: Trigger reason
+        """
+        from aico.core.bus import MessageBusClient
+        
+        bus_client = MessageBusClient("proactive_scheduler_ws")
+        await bus_client.connect()
+        
+        try:
+            # Publish to user-specific WebSocket topic
+            await bus_client.publish(
+                f"proactive.notifications.{user_id}",
+                {
+                    "type": "new_initiation",
+                    "initiation_id": initiation_id,
+                    "question": question,
+                    "initiated_at": initiated_at,
+                    "trigger_reason": trigger_reason,
+                    "resolution_status": "pending"
+                }
+            )
+            
+            logger.info(
+                f"🗣️ [PROACTIVE] 📡 Broadcasted WebSocket notification for initiation {initiation_id[:8]}"
+            )
+        finally:
+            await bus_client.disconnect()

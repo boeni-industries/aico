@@ -111,6 +111,34 @@ class InitiateConversationSkill(Skill):
             if not topic or not message:
                 raise ValueError("Topic and message are required")
             
+            trigger_reason = reason or "proactive_dialogue"
+            
+            # Check for duplicate message in last 24 hours
+            duplicate = self.db.execute(
+                """SELECT COUNT(*) as count
+                   FROM conversation_initiations
+                   WHERE user_id = ?
+                   AND question = ?
+                   AND trigger_reason = ?
+                   AND datetime(initiated_at) > datetime('now', '-24 hours')""",
+                (user_id, message, trigger_reason)
+            ).fetchone()
+            
+            if duplicate and duplicate['count'] > 0:
+                logger.debug(
+                    f"💭 [INITIATE_CONVERSATION] Duplicate conversation detected for user {user_id[:8]}, "
+                    f"skipping creation"
+                )
+                return SkillResult(
+                    success=True,
+                    output={
+                        "status": "skipped",
+                        "reason": "duplicate_conversation",
+                        "message": "Conversation already initiated recently"
+                    },
+                    metadata={"skill_id": self.skill_id}
+                )
+            
             # Create conversation initiation record
             initiation_id = str(uuid.uuid4())
             conversation_id = f"{user_id}_{int(datetime.now(UTC).timestamp())}"
@@ -128,7 +156,7 @@ class InitiateConversationSkill(Skill):
                     user_id,
                     conversation_id,
                     "skill",
-                    reason or "proactive_dialogue",
+                    trigger_reason,
                     message,
                     json.dumps({"topic": topic, "emotional_context": emotional_context}),
                     "low",  # Conversations are typically low urgency

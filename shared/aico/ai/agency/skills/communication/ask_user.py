@@ -112,6 +112,32 @@ class AskUserSkill(Skill):
             if not question:
                 raise ValueError("Question is required")
             
+            # Check for duplicate question in last 24 hours
+            duplicate = self.db.execute(
+                """SELECT COUNT(*) as count
+                   FROM conversation_initiations
+                   WHERE user_id = ?
+                   AND question = ?
+                   AND trigger_reason = 'information_gap'
+                   AND datetime(initiated_at) > datetime('now', '-24 hours')""",
+                (user_id, question)
+            ).fetchone()
+            
+            if duplicate and duplicate['count'] > 0:
+                logger.debug(
+                    f"💬 [ASK_USER] Duplicate question detected for user {user_id[:8]}, "
+                    f"skipping creation"
+                )
+                return SkillResult(
+                    success=True,
+                    output={
+                        "status": "skipped",
+                        "reason": "duplicate_question",
+                        "message": "Question already asked recently"
+                    },
+                    metadata={"skill_id": self.skill_id}
+                )
+            
             # Create conversation initiation record
             initiation_id = str(uuid.uuid4())
             conversation_id = f"{user_id}_{int(datetime.now(UTC).timestamp())}"

@@ -986,21 +986,6 @@ V1_SCHEMA = [
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""",
 
-    """CREATE TABLE skill_executions_new (
-                execution_id TEXT PRIMARY KEY,
-                skill_id TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                message_id TEXT,
-                goal_id TEXT,
-                execution_time_ms INTEGER,
-                outcome TEXT NOT NULL,
-                error_message TEXT,
-                context_json TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES "user_profiles"(uuid) ON DELETE CASCADE,
-                FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL
-            )""",
-
     """CREATE TABLE "system_event_metrics" (
                 metric_id TEXT PRIMARY KEY,
                 metric_name TEXT NOT NULL,

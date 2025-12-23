@@ -186,6 +186,12 @@ class PlanExecutor:
             f"[EXECUTOR DEBUG] Retrieved plan {plan_id[:8]}... with {len(plan.steps)} steps"
         )
         
+        # CRITICAL DEBUG: Log plan details
+        if plan.steps:
+            self.logger.info(
+                f"[EXECUTOR DEBUG] Plan steps: {[{'order': s.order, 'skill_id': s.skill_id, 'desc': s.description[:50]} for s in plan.steps[:3]]}"
+            )
+        
         if len(plan.steps) == 0:
             self.logger.error(
                 f"[EXECUTOR DEBUG] ❌ Plan {plan_id[:8]}... has NO STEPS! "
@@ -226,6 +232,15 @@ class PlanExecutor:
                 f"[EXECUTOR DEBUG] Created step execution: order={step.order}, "
                 f"skill_id={step.skill_id}, step_exec_id={step_exec.step_execution_id[:8]}..."
             )
+        
+        # Ensure all step executions are committed
+        self.db.commit()
+        
+        # Force WAL checkpoint to ensure changes are visible
+        try:
+            self.db.execute("PRAGMA wal_checkpoint(FULL)")
+        except Exception as e:
+            self.logger.warning(f"[EXECUTOR] WAL checkpoint failed: {e}")
         
         # Verify step executions were created
         count_row = self.db.fetch_one(

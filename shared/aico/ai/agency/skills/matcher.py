@@ -289,7 +289,7 @@ class SkillMatcher:
         # Strategy 6: Fallback to generic skills
         if not matches:
             fallback_match = self._fallback_match(step_description, step_metadata)
-            if fallback_match:
+            if fallback_match is not None:
                 matches.append(fallback_match)
         
         # Select best match
@@ -464,11 +464,15 @@ class SkillMatcher:
         description: str,
         metadata: Dict[str, Any]
     ) -> Optional[SkillMatch]:
-        """Fallback to generic skill based on description patterns."""
+        """Fallback to generic skill based on description patterns.
+        
+        Returns None if no pattern matches - this signals a skill gap that should
+        be logged for development consideration but NOT executed.
+        """
         description_lower = description.lower()
         
-        # Fallback patterns
-        if any(word in description_lower for word in ['ask', 'question', 'clarify', 'understand', 'confirm']):
+        # Fallback patterns (ordered by specificity)
+        if any(word in description_lower for word in ['ask', 'question', 'clarify', 'understand', 'confirm', 'prompt', 'request']):
             return SkillMatch(
                 skill_id='ask_user',
                 skill_name='Ask User',
@@ -477,7 +481,7 @@ class SkillMatcher:
                 reasoning="Fallback: Question/clarification pattern detected"
             )
         
-        if any(word in description_lower for word in ['search', 'find', 'lookup', 'retrieve', 'recall', 'remember']):
+        if any(word in description_lower for word in ['search', 'find', 'lookup', 'retrieve', 'recall', 'remember', 'research']):
             return SkillMatch(
                 skill_id='search_memory',
                 skill_name='Search Memory',
@@ -495,7 +499,13 @@ class SkillMatcher:
                 reasoning="Fallback: Analysis pattern detected"
             )
         
-        # No fallback match
+        # CRITICAL: No pattern match found
+        # This indicates a skill gap that should be logged for development consideration
+        # Return None to signal that this step cannot be executed with current skills
+        logger.warning(
+            f"🎯 [SKILL_MATCHER] No pattern match for '{description[:100]}...' - "
+            f"skill gap will be logged for development consideration"
+        )
         return None
     
     async def _log_skill_gap(
