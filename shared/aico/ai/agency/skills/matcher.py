@@ -499,14 +499,20 @@ class SkillMatcher:
                 reasoning="Fallback: Analysis pattern detected"
             )
         
-        # CRITICAL: No pattern match found
-        # This indicates a skill gap that should be logged for development consideration
-        # Return None to signal that this step cannot be executed with current skills
+        # Catch-all fallback: Default to initiate_conversation for any unmatched step
+        # This ensures all steps can execute, even if they don't match specific patterns
+        # The skill gap will still be logged for future skill development
         logger.warning(
-            f"🎯 [SKILL_MATCHER] No pattern match for '{description[:100]}...' - "
-            f"skill gap will be logged for development consideration"
+            f"🎯 [SKILL_MATCHER] No specific pattern match for '{description[:100]}...' - "
+            f"using default fallback skill 'initiate_conversation'"
         )
-        return None
+        return SkillMatch(
+            skill_id='initiate_conversation',
+            skill_name='Initiate Conversation',
+            confidence=0.3,
+            strategy=MatchStrategy.FALLBACK,
+            reasoning="Default fallback: No specific pattern matched, using conversation skill"
+        )
     
     async def _log_skill_gap(
         self,
