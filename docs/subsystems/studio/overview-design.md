@@ -33,6 +33,7 @@ The overview must work equally well on **desktop and large laptop screens** (pri
   - Each card represents a **primary left-hand domain**:
     - Operations
     - Intelligence
+    - Emotion
     - Memory & AMS
     - Agency
     - Security
@@ -100,7 +101,15 @@ The overview must work equally well on **desktop and large laptop screens** (pri
   - Failed auth attempts in last 24h.
 - **Drill-down**: opens Security hub.
 
-### 3.6 System Summary
+### 3.6 Emotion Summary
+
+- **Primary KPI**: dominant emotion band (e.g. calm / curious / warm_concern) over recent window.
+- **Secondary KPIs**:
+  - Average valence and arousal (mood position).
+  - Time spent in high-intensity or crisis-regulated states.
+- **Drill-down**: opens Emotion hub, focusing the emotion strip and circumplex for the same time window.
+
+### 3.7 System Summary
 
 - **Primary KPI**: version alignment (are backend, modelservice, frontend, Studio aligned?).
 - **Secondary KPIs**:

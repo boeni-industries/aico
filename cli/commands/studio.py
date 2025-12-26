@@ -159,7 +159,17 @@ def start(
                     }
                 )
 
-            subprocess.Popen(pkg_cmd, **process_kwargs)
+            # Start Studio dev server and track PID via ProcessManager
+            proc = subprocess.Popen(pkg_cmd, **process_kwargs)
+
+            try:
+                pm = ProcessManager("studio")
+                pm.write_pid(proc.pid)
+            except Exception:
+                # PID tracking is best-effort; do not fail startup if this breaks
+                console.print(
+                    f"[yellow]{chars['warning']} Failed to write Studio PID file; 'aico studio stop' may not work reliably[/yellow]"
+                )
 
             # Give it a moment to start
             import time
@@ -182,12 +192,13 @@ def start(
                 console.print()
 
                 result = subprocess.run(pkg_cmd, cwd=str(studio_dir), env=env)
-                console.print(f"[yellow]Studio process exited with code {result.returncode}[/yellow]")
-                if result.returncode not in (0, 15):
+                # Treat normal exit, SIGTERM (15) and -15 (Unix signal) as graceful.
+                if result.returncode in (0, 15, -15):
+                    console.print(f"[green]{chars['check']} Studio stopped gracefully[/green]")
+                else:
+                    console.print(f"[yellow]Studio process exited with code {result.returncode}[/yellow]")
                     console.print(f"[red]{chars['cross']} Studio exited with code {result.returncode}[/red]")
                     raise typer.Exit(result.returncode)
-                else:
-                    console.print(f"[green]{chars['check']} Studio stopped gracefully[/green]")
             except KeyboardInterrupt:
                 console.print("\n[yellow]Studio process interrupted[/yellow]")
                 console.print(f"[green]{chars['check']} Studio stopped gracefully[/green]")
@@ -208,23 +219,29 @@ def stop():
     """Stop the Studio admin UI."""
     try:
         console.print(f"[yellow]{chars['hourglass']} Stopping Studio...[/yellow]")
-
         process_manager = ProcessManager("studio")
-        success = process_manager.stop_service(timeout=15)
 
-        if success:
-            console.print(f"[green]{chars['check']} Studio stopped gracefully[/green]")
+        # First try to stop using the tracked PID, if any
+        status = process_manager.get_service_status()
+        pid = status.get("pid")
+        graceful_stopped = False
+        if pid:
+            graceful_stopped = process_manager.stop_service(timeout=15)
+
+        # Regardless of PID file state, scan for matching Studio processes and
+        # terminate them as well. This covers foreground/legacy runs where the
+        # PID file was never written.
+        try:
+            stale_stopped = process_manager.cleanup_stale_processes()
+        except Exception:
+            stale_stopped = 0
+
+        if graceful_stopped or stale_stopped > 0:
+            msg_extra = f" (including {stale_stopped} stale process(es))" if stale_stopped else ""
+            console.print(f"[green]{chars['check']} Studio stopped{msg_extra}[/green]")
         else:
-            console.print(f"[yellow]{chars['warning']} Graceful Studio shutdown failed, attempting process cleanup...[/yellow]")
-            try:
-                stopped_count = process_manager.cleanup_stale_processes()
-                if stopped_count > 0:
-                    console.print(f"[green]{chars['check']} Stopped {stopped_count} stale Studio process(es)[/green]")
-                else:
-                    console.print(f"[yellow]{chars['warning']} No running Studio processes found[/yellow]")
-            except Exception:
-                console.print(f"[red]{chars['cross']} Failed to clean up Studio processes automatically[/red]")
-                console.print("[yellow]Please stop any Studio dev server processes manually[/yellow]")
+            console.print(f"[yellow]{chars['warning']} No running Studio processes found to stop[/yellow]")
+            console.print("[dim]If a dev server is running in the foreground of this terminal, press Ctrl+C there.[/dim]")
     except Exception as e:
         console.print(f"[red]{chars['cross']} Failed to stop Studio: {e}[/red]")
         raise typer.Exit(1)

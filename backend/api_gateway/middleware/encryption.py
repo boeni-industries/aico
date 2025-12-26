@@ -6,6 +6,7 @@ while maintaining JSON API compatibility.
 """
 
 import json
+import os
 import asyncio
 from typing import Dict, Any, Optional, Callable
 from fastapi import FastAPI, Request, Response, HTTPException
@@ -63,7 +64,9 @@ class EncryptionMiddleware:
         self.compression_threshold = message_config.get("compression_threshold", 1024)
         
         # Configuration
-        self.require_encryption = True
+        # Encryption is required by default for all protected endpoints.
+        # This can be overridden in configuration with security.transport_encryption.require_encryption.
+        self.require_encryption = config.get("require_encryption", True)
         self.handshake_path = "/api/v1/handshake"
         
         # Initialize channels dictionary for session management
@@ -104,7 +107,14 @@ class EncryptionMiddleware:
             response = await self._handle_handshake(request)
             await response(scope, receive, send)
             return
-        
+
+        # Let CORS preflight requests pass through to the underlying app so that
+        # FastAPI's CORSMiddleware can handle them and return proper headers.
+        if request.method == "OPTIONS":
+            self.logger.debug(f"Passing through CORS preflight for path: {path}")
+            await self.app(scope, receive, send)
+            return
+
         # Skip encryption for health checks only
         if self._should_skip_encryption(request):
             self.logger.debug(f"Skipping encryption for path: {path}")
@@ -180,12 +190,28 @@ class EncryptionMiddleware:
                             "status_code": 401
                         }
                     )
+                    # Build a CORS-friendly 401 response so browser clients
+                    # receive proper Access-Control-* headers.
+                    origin = request.headers.get("origin")
+                    headers = {}
+                    if origin:
+                        headers["Access-Control-Allow-Origin"] = origin
+                        headers["Access-Control-Allow-Credentials"] = "true"
+                        # Echo requested headers/methods for robustness
+                        req_headers = request.headers.get("access-control-request-headers")
+                        if req_headers:
+                            headers["Access-Control-Allow-Headers"] = req_headers
+                        headers["Access-Control-Allow-Methods"] = request.headers.get(
+                            "access-control-request-method", request.method
+                        )
+
                     response = JSONResponse(
                         status_code=401,
                         content={
                             "error": "Encryption required",
                             "message": "Perform handshake at /api/v1/handshake first"
-                        }
+                        },
+                        headers=headers or None,
                     )
                     await response(scope, receive, send)
                     return

@@ -3,8 +3,11 @@ import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { studioLightTheme, studioDarkTheme } from './theme';
 import { StudioLayout } from './layout/StudioLayout';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import { LoginPage } from './auth/LoginPage';
 
-function App() {
+const AppShell: React.FC = () => {
+  const { user } = useAuth();
   const [mode, setMode] = React.useState<'light' | 'dark'>('dark');
   const theme = mode === 'dark' ? studioDarkTheme : studioLightTheme;
 
@@ -15,8 +18,20 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <StudioLayout mode={mode} onToggleTheme={handleToggleTheme} />
+      {user ? (
+        <StudioLayout mode={mode} onToggleTheme={handleToggleTheme} />
+      ) : (
+        <LoginPage />
+      )}
     </ThemeProvider>
+  );
+};
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
 
