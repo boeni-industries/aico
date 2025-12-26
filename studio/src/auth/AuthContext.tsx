@@ -1,6 +1,15 @@
 import React from 'react';
-import { setAuthToken, clearAuthToken, getAuthToken, getStoredUserUuid, setStoredUserUuid } from '../api/config';
-import { authenticateUser, AuthenticationResponseDto, UserDto, fetchUserProfile } from '../api/users';
+import {
+  setAuthToken,
+  clearAuthToken,
+  getAuthToken,
+  getStoredUserUuid,
+  setStoredUserUuid,
+  getStoredUserProfile,
+  setStoredUserProfile,
+  setRefreshToken,
+} from '../api/config';
+import { authenticateUser, AuthenticationResponseDto, UserDto } from '../api/users';
 
 export interface AuthState {
   user: UserDto | null;
@@ -26,31 +35,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   React.useEffect(() => {
     const token = getAuthToken();
     const storedUserUuid = getStoredUserUuid();
-    if (!token || !storedUserUuid) {
+    const storedProfile = getStoredUserProfile() as UserDto | null;
+    if (!token || !storedUserUuid || !storedProfile) {
       return;
     }
 
-    let cancelled = false;
-
-    async function hydrate(userUuid: string) {
-      try {
-        const user = await fetchUserProfile(userUuid);
-        if (cancelled) return;
-        setState({ user, accessToken: token, refreshToken: null });
-      } catch {
-        // If profile fetch fails (e.g. token expired), clear stale storage
-        if (cancelled) return;
-        clearAuthToken();
-        setStoredUserUuid(null);
-        setState({ user: null, accessToken: null, refreshToken: null });
-      }
-    }
-
-    hydrate(storedUserUuid);
-
-    return () => {
-      cancelled = true;
-    };
+    setState({ user: storedProfile, accessToken: token, refreshToken: null });
   }, []);
 
   const login = async (userUuid: string, pin: string) => {
@@ -59,7 +49,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error(response.error || 'Authentication failed');
     }
     setAuthToken(response.jwt_token);
+    setRefreshToken(response.refresh_token ?? null);
     setStoredUserUuid(response.user.uuid);
+    setStoredUserProfile(response.user);
     setState({
       user: response.user,
       accessToken: response.jwt_token,
@@ -69,7 +61,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     clearAuthToken();
+    setRefreshToken(null);
     setStoredUserUuid(null);
+    setStoredUserProfile(null);
     setState({ user: null, accessToken: null, refreshToken: null });
   };
 

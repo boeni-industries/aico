@@ -33,6 +33,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
           flexDirection: { xs: 'column', md: 'row' },
           alignItems: { xs: 'flex-start', md: 'center' },
           gap: 2,
+          borderRadius: 1,
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -102,6 +103,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
               display: 'flex',
               flexDirection: 'column',
               gap: 1.5,
+              borderRadius: 1,
             }}
           >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -147,7 +149,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
       </Box>
 
       {/* Events / anomalies list */}
-      <Paper sx={{ p: 2.5 }}>
+      <Paper sx={{ p: 2.5, borderRadius: 1 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             Recent events & anomalies

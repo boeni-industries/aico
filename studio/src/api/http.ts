@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthToken } from './config';
+import { API_BASE_URL, getAuthToken, setAuthToken, getRefreshToken, setRefreshToken } from './config';
 import { ensureSecureSession, wrapEncryptedRequestBody, unwrapEncryptedResponse } from '../transport/secureTransport';
 
 export interface HttpRequestOptions {
@@ -63,6 +63,15 @@ export async function httpJson<T>(options: HttpRequestOptions): Promise<T> {
   }
 
   if (!response.ok) {
+    // If 401 and we have a refresh token, try to refresh and retry once
+    if (response.status === 401 && getRefreshToken()) {
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        // Retry the original request with new token
+        return httpJson<T>(options);
+      }
+    }
+    
     const text = await response.text().catch(() => '');
     throw new Error(
       `HTTP ${response.status} ${response.statusText} when calling ${url.toString()}` +
@@ -76,4 +85,68 @@ export async function httpJson<T>(options: HttpRequestOptions): Promise<T> {
   }
   const data = await response.json();
   return unwrapEncryptedResponse<T>(data);
+}
+
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  // Prevent multiple simultaneous refresh attempts
+  if (isRefreshing && refreshPromise) {
+    return refreshPromise;
+  }
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) {
+        return false;
+      }
+
+      // Ensure we have an active encryption session before refreshing token
+      // This handles the case where both JWT and encryption session expired
+      const { clientId } = await ensureSecureSession();
+      if (!clientId) {
+        return false;
+      }
+
+      // Prepare encrypted request body
+      const requestBody = wrapEncryptedRequestBody({ refresh_token: refreshToken });
+
+      const response = await fetch(`${API_BASE_URL}/users/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-ID': clientId,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = await response.json();
+      const decryptedData = unwrapEncryptedResponse<{ success: boolean; jwt_token?: string; refresh_token?: string }>(data);
+      
+      if (decryptedData.success && decryptedData.jwt_token) {
+        setAuthToken(decryptedData.jwt_token);
+        // Update refresh token if backend rotates it
+        if (decryptedData.refresh_token) {
+          setRefreshToken(decryptedData.refresh_token);
+        }
+        return true;
+      }
+
+      return false;
+    } catch {
+      return false;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }

@@ -1,6 +1,7 @@
 export type OverviewDomainKey =
   | 'operations'
   | 'intelligence'
+  | 'emotion'
   | 'memory'
   | 'agency'
   | 'security'
@@ -57,6 +58,16 @@ export const overviewStubData: OverviewMetrics = {
       secondary: [
         { label: 'LLM p95 latency', value: '1.2s' },
         { label: 'Extraction calls/min', value: '18' },
+      ],
+    },
+    {
+      key: 'emotion',
+      title: 'Emotion',
+      kpiLabel: 'Current state',
+      kpiValue: 'Calm',
+      secondary: [
+        { label: 'Valence', value: '+0.42' },
+        { label: 'Arousal', value: '0.31' },
       ],
     },
     {

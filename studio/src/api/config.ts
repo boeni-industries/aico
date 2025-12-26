@@ -14,7 +14,9 @@ export const API_BASE_URL =
 // (e.g. gateway auth login or frontend login) and stored under this key.
 
 const TOKEN_STORAGE_KEY = 'aico_jwt_token';
+const REFRESH_TOKEN_STORAGE_KEY = 'aico_refresh_token';
 const USER_UUID_STORAGE_KEY = 'aico_user_uuid';
+const USER_PROFILE_STORAGE_KEY = 'aico_user_profile';
 
 export function getAuthToken(): string | null {
   try {
@@ -44,6 +46,28 @@ export function clearAuthToken() {
   }
 }
 
+export function getStoredUserProfile(): unknown | null {
+  try {
+    const raw = window.localStorage.getItem(USER_PROFILE_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUserProfile(profile: unknown | null | undefined) {
+  try {
+    if (!profile) {
+      window.localStorage.removeItem(USER_PROFILE_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function getStoredUserUuid(): string | null {
   try {
     return window.localStorage.getItem(USER_UUID_STORAGE_KEY);
@@ -63,3 +87,25 @@ export function setStoredUserUuid(uuid: string | null | undefined) {
     // Ignore storage errors
   }
 }
+
+export function getRefreshToken(): string | null {
+  try {
+    return window.localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setRefreshToken(token: string | null | undefined) {
+  try {
+    if (!token) {
+      window.localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export { setRefreshToken as default };
