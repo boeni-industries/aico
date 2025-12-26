@@ -242,8 +242,13 @@ class GoalStore:
 class PlanStore:
     """Persistence layer for agency_plans table."""
 
-    def __init__(self, db_connection) -> None:
+    def __init__(self, db_connection, skill_registry=None) -> None:
         self.db = db_connection
+        self.skill_registry = skill_registry
+        self.skill_matcher = None
+        if skill_registry:
+            from .skills.matcher import SkillMatcher
+            self.skill_matcher = SkillMatcher(skill_registry)
 
     async def create_plan(self, plan: Plan) -> Plan:
         """Create a new plan."""
@@ -285,6 +290,14 @@ class PlanStore:
                 return None
             steps_data = json.loads(row[3]) if row[3] else []
             steps = [PlanStep(**s) for s in steps_data]
+            
+            # Fix old plans with None skill_ids by applying skill matching
+            if self.skill_matcher and any(step.skill_id is None for step in steps):
+                logger.info(f"[AGENCY_PLANS] Fixing {sum(1 for s in steps if s.skill_id is None)} steps with None skill_id in plan {plan_id[:8]}...")
+                steps = await self._assign_skills_to_steps(steps)
+                # Update plan in database with fixed skills
+                await self._update_plan_steps(row[0], steps)
+            
             return Plan(
                 plan_id=row[0],
                 goal_id=row[1],
@@ -298,6 +311,42 @@ class PlanStore:
             logger.error(f"[AGENCY_PLANS] Failed to retrieve plan: {e}", extra={"plan_id": plan_id})
             raise
 
+    async def _assign_skills_to_steps(self, steps: List[PlanStep]) -> List[PlanStep]:
+        """Assign skills to plan steps using SkillMatcher."""
+        if not self.skill_matcher:
+            return steps
+        
+        for step in steps:
+            if step.skill_id is None:
+                try:
+                    match = await self.skill_matcher.match_skill(
+                        step_description=step.description,
+                        step_metadata=step.metadata,
+                        llm_suggested_skills=step.metadata.get('suggested_skills', []),
+                    )
+                    if match:
+                        step.skill_id = match.skill_id
+                        step.metadata['skill_match_confidence'] = match.confidence
+                        step.metadata['skill_match_strategy'] = match.strategy.value
+                        logger.debug(f"[AGENCY_PLANS] Assigned skill '{match.skill_id}' to step (confidence={match.confidence:.2f})")
+                except Exception as e:
+                    logger.error(f"[AGENCY_PLANS] Error assigning skill to step: {e}")
+        
+        return steps
+    
+    async def _update_plan_steps(self, plan_id: str, steps: List[PlanStep]) -> None:
+        """Update plan steps in database."""
+        try:
+            self.db.execute(
+                "UPDATE agency_plans SET steps_json = ?, updated_at = ? WHERE plan_id = ?",
+                (json.dumps([step.dict() for step in steps]), datetime.now(UTC).isoformat(), plan_id)
+            )
+            self.db.commit()
+            logger.debug(f"[AGENCY_PLANS] Updated steps for plan {plan_id[:8]}...")
+        except Exception as e:
+            logger.error(f"[AGENCY_PLANS] Failed to update plan steps: {e}")
+            raise
+    
     async def list_plans_for_goal(self, goal_id: str) -> List[Plan]:
         """Retrieve a list of plans for a goal."""
         try:

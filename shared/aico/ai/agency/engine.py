@@ -79,7 +79,6 @@ class AgencyEngine(BaseAIProcessor):
         self._memory_manager = memory_manager
 
         self.goal_store = GoalStore(db_connection)
-        self.plan_store = PlanStore(db_connection)
         self.event_store = AgencyEventStore(db_connection)
         self.reflection_store = ReflectionStore(db_connection)
         
@@ -151,6 +150,9 @@ class AgencyEngine(BaseAIProcessor):
         logger.debug(
             f"[AGENCY_ENGINE] Skill Registry initialized with {len(self.skill_registry)} skills"
         )
+        
+        # Initialize PlanStore with skill_registry for auto-fixing old plans
+        self.plan_store = PlanStore(db_connection, skill_registry=self.skill_registry)
         
         # Now that skill_registry is initialized, set it on the planner
         self.planner.skill_registry = self.skill_registry
