@@ -1,5 +1,5 @@
 import { API_BASE_URL, getAuthToken } from './config';
-import { ensureSecureSession, wrapEncryptedRequestBody, unwrapEncryptedResponse, getClientId } from '../transport/secureTransport';
+import { ensureSecureSession, wrapEncryptedRequestBody, unwrapEncryptedResponse } from '../transport/secureTransport';
 
 export interface HttpRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
