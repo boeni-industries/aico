@@ -95,6 +95,7 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({ mode, onToggleTheme 
                       { label: 'Valence', value: latest.valence >= 0 ? `+${latest.valence.toFixed(2)}` : latest.valence.toFixed(2) },
                       { label: 'Arousal', value: latest.arousal.toFixed(2) },
                     ],
+                    isImplemented: true, // Preserve implementation status
                   }
                 : domain
             ),

@@ -13,6 +13,7 @@ export interface OverviewDomainCard {
   kpiLabel: string;
   kpiValue: string;
   secondary: { label: string; value: string }[];
+  isImplemented: boolean; // true = real backend data, false = mock data
 }
 
 export interface OverviewEventItem {
@@ -49,6 +50,7 @@ export const overviewStubData: OverviewMetrics = {
         { label: 'Error rate (5m)', value: '0.2%' },
         { label: 'Jobs running', value: '3' },
       ],
+      isImplemented: false,
     },
     {
       key: 'intelligence',
@@ -59,6 +61,7 @@ export const overviewStubData: OverviewMetrics = {
         { label: 'LLM p95 latency', value: '1.2s' },
         { label: 'Extraction calls/min', value: '18' },
       ],
+      isImplemented: false,
     },
     {
       key: 'emotion',
@@ -69,6 +72,7 @@ export const overviewStubData: OverviewMetrics = {
         { label: 'Valence', value: '+0.42' },
         { label: 'Arousal', value: '0.31' },
       ],
+      isImplemented: true, // Real backend integration
     },
     {
       key: 'memory',
@@ -79,6 +83,7 @@ export const overviewStubData: OverviewMetrics = {
         { label: 'Working mem. use', value: '64%' },
         { label: 'Last consolidation', value: '12m ago' },
       ],
+      isImplemented: false,
     },
     {
       key: 'agency',
@@ -89,6 +94,7 @@ export const overviewStubData: OverviewMetrics = {
         { label: 'Plans in-flight', value: '3' },
         { label: 'Proactive msgs (24h)', value: '4' },
       ],
+      isImplemented: false,
     },
     {
       key: 'security',
@@ -99,6 +105,7 @@ export const overviewStubData: OverviewMetrics = {
         { label: 'Master key age', value: '9d' },
         { label: 'Failed auth (24h)', value: '1' },
       ],
+      isImplemented: false,
     },
     {
       key: 'system',
@@ -109,6 +116,7 @@ export const overviewStubData: OverviewMetrics = {
         { label: 'Schema version', value: 'v33' },
         { label: 'Plugins', value: '3 active' },
       ],
+      isImplemented: false,
     },
   ],
   events: [

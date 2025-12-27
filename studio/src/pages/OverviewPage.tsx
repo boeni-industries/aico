@@ -104,12 +104,32 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
               flexDirection: 'column',
               gap: 1.5,
               borderRadius: 1,
+              border: domain.isImplemented
+                ? '2px solid rgba(33, 150, 243, 0.3)' // Blue for implemented
+                : '2px solid rgba(239, 83, 80, 0.3)', // Red-ish for mock
+              position: 'relative',
             }}
           >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                  {domain.title}
-                </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    {domain.title}
+                  </Typography>
+                  {!domain.isImplemented && (
+                    <Chip
+                      label="Mock"
+                      size="small"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        bgcolor: 'rgba(239, 83, 80, 0.15)',
+                        color: 'rgb(239, 83, 80)',
+                        border: '1px solid rgba(239, 83, 80, 0.4)',
+                      }}
+                    />
+                  )}
+                </Box>
                 <Typography
                   variant="body2"
                   color="text.secondary"

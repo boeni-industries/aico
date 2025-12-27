@@ -478,8 +478,159 @@ async def revoke_consent(
 
 
 # ============================================================================
-# Combined State Endpoint
+# Goal Management Endpoints
 # ============================================================================
+
+@router.get("/goals", response_model=GoalListResponse)
+async def list_goals(
+    user: Annotated[dict, Depends(get_current_user)],
+    engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
+    status: Optional[GoalStatus] = None,
+    origin: Optional[GoalOrigin] = None,
+    priority: Optional[GoalPriority] = None,
+    limit: int = Query(50, ge=1, le=200),
+    page: int = Query(1, ge=1)
+):
+    """
+    List goals for the current user with optional filters.
+    """
+    try:
+        user_id = user["user_uuid"]
+        
+        # Get all goals for user
+        all_goals = await engine.list_goals_for_user(user_id)
+        
+        # Apply filters
+        filtered_goals = all_goals
+        if status:
+            filtered_goals = [g for g in filtered_goals if g.status == status]
+        if origin:
+            filtered_goals = [g for g in filtered_goals if g.origin == origin]
+        if priority:
+            filtered_goals = [g for g in filtered_goals if g.priority == priority]
+        
+        # Pagination
+        total = len(filtered_goals)
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_goals = filtered_goals[start_idx:end_idx]
+        
+        # Convert to response format
+        goal_responses = [
+            GoalResponse(
+                goal_id=g.goal_id,
+                user_id=g.user_id,
+                origin=GoalOrigin(g.origin.value),
+                goal_type=g.goal_type,
+                title=g.title,
+                description=g.description or "",
+                status=GoalStatus(g.status.value),
+                priority=GoalPriority(g.priority.value),
+                metadata=g.metadata,
+                created_at=g.created_at,
+                updated_at=g.updated_at
+            )
+            for g in paginated_goals
+        ]
+        
+        return GoalListResponse(
+            goals=goal_responses,
+            total=total,
+            page=page,
+            page_size=limit
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to list goals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/goals/{goal_id}", response_model=GoalResponse)
+async def get_goal(
+    goal_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    engine: Annotated[AgencyEngine, Depends(get_agency_engine)]
+):
+    """
+    Get a specific goal by ID with full details including plan, provenance, and execution history.
+    """
+    try:
+        user_id = user["user_uuid"]
+        
+        goal = await engine.get_goal(goal_id)
+        if not goal:
+            raise HTTPException(status_code=404, detail=f"Goal {goal_id} not found")
+        
+        # Verify ownership
+        if goal.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this goal")
+        
+        # Enrich metadata with plan details
+        enriched_metadata = goal.metadata.copy() if goal.metadata else {}
+        
+        # Fetch plan if exists (wrapped in try-except to handle missing methods gracefully)
+        try:
+            if hasattr(engine, 'plan_store') and engine.plan_store:
+                plans = await engine.plan_store.list_plans_for_goal(goal_id)
+                if plans:
+                    active_plan = plans[0]  # Get most recent plan
+                    enriched_metadata["plan_id"] = active_plan.plan_id
+                    enriched_metadata["plan_title"] = active_plan.title or "Untitled Plan"
+                    enriched_metadata["plan_strategy"] = active_plan.metadata.get("plan_strategy", "llm_refined") if active_plan.metadata else "llm_refined"
+                    
+                    # Fetch plan steps
+                    try:
+                        steps = await engine.plan_store.list_steps_for_plan(active_plan.plan_id)
+                        enriched_metadata["plan_steps"] = [
+                            {
+                                "title": step.title,
+                                "status": step.status.value,
+                                "skill": step.skill_name,
+                                "duration": step.metadata.get("estimated_duration") if step.metadata else None,
+                            }
+                            for step in steps
+                        ]
+                    except Exception as step_err:
+                        logger.debug(f"Could not fetch plan steps: {step_err}")
+        except Exception as plan_err:
+            logger.debug(f"Could not fetch plan details: {plan_err}")
+        
+        # Add provenance information
+        if goal.metadata and any(k in goal.metadata for k in ["conversation_id", "memory_id", "emotion_state"]):
+            enriched_metadata["provenance"] = {
+                "conversation": goal.metadata.get("conversation_id"),
+                "memory": goal.metadata.get("memory_id"),
+                "emotion": goal.metadata.get("emotion_state"),
+            }
+        
+        # Add execution statistics (placeholder - would need execution tracking)
+        enriched_metadata["executions"] = {
+            "completed": 0,
+            "running": 0,
+            "total_time": None,
+            "last_run": None,
+        }
+        
+        return GoalResponse(
+            goal_id=goal.goal_id,
+            user_id=goal.user_id,
+            origin=GoalOrigin(goal.origin.value),
+            goal_type=goal.goal_type,
+            title=goal.title,
+            description=goal.description or "",
+            status=GoalStatus(goal.status.value),
+            priority=GoalPriority(goal.priority.value),
+            metadata=enriched_metadata,
+            created_at=goal.created_at,
+            updated_at=goal.updated_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get goal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/goals/{goal_id}/replan", response_model=dict)
 async def replan_goal(
