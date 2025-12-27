@@ -85,13 +85,14 @@ The overview must work equally well on **desktop and large laptop screens** (pri
   - Last consolidation job outcome and time.
 - **Drill-down**: opens Memory & AMS hub, with quick links to Working, Semantic, KG, and Memory Album.
 
-### 3.4 Agency Summary
+### 3.4 Agency Summary ✅ FULLY IMPLEMENTED
 
 - **Primary KPI**: active goals count.
 - **Secondary KPIs**:
-  - Plans in-flight vs completed today.
-  - Proactive engagements in the last 24 hours.
+  - Curiosity level (low/medium/high).
+  - Lessons learned count.
 - **Drill-down**: opens Agency hub (goal board view).
+- **Implementation status**: Complete with all 5 tabs (Overview, Goals, Curiosity, Learning, Values), glassmorphic design, detail drawer with plan/provenance/execution history.
 
 ### 3.5 Security Summary
 

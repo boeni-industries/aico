@@ -89,12 +89,12 @@ export const overviewStubData: OverviewMetrics = {
       key: 'agency',
       title: 'Agency',
       kpiLabel: 'Active goals',
-      kpiValue: '5',
+      kpiValue: '10',
       secondary: [
-        { label: 'Plans in-flight', value: '3' },
-        { label: 'Proactive msgs (24h)', value: '4' },
+        { label: 'Curiosity level', value: 'Low' },
+        { label: 'Lessons learned', value: '12' },
       ],
-      isImplemented: false,
+      isImplemented: true,
     },
     {
       key: 'security',

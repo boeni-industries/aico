@@ -10,6 +10,8 @@ import {
 import CircleIcon from '@mui/icons-material/Circle';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { OverviewMetrics, OverviewDomainKey } from '../data/overview';
+import { AgencyCard } from '../components/overview/AgencyCard';
+import { EmotionCard } from '../components/overview/EmotionCard';
 
 export interface OverviewPageProps {
   data: OverviewMetrics;
@@ -94,7 +96,38 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
           gap: 2,
         }}
       >
-        {data.domains.map((domain) => (
+        {data.domains.map((domain) => {
+          // Special handling for Agency domain - use custom card
+          if (domain.key === 'agency') {
+            return (
+              <AgencyCard
+                key={domain.key}
+                activeGoals={parseInt(domain.kpiValue)}
+                primaryFocus="Practice English Communication"
+                curiosityLevel="low"
+                lessonsLearned={12}
+                onClick={() => onOpenDomain('agency')}
+              />
+            );
+          }
+
+          // Special handling for Emotion domain - use custom card
+          if (domain.key === 'emotion') {
+            const valence = parseFloat(domain.secondary.find(s => s.label === 'Valence')?.value || '0');
+            const arousal = parseFloat(domain.secondary.find(s => s.label === 'Arousal')?.value || '0');
+            return (
+              <EmotionCard
+                key={domain.key}
+                currentState={domain.kpiValue}
+                valence={valence}
+                arousal={arousal}
+                onClick={() => onOpenDomain('emotion')}
+              />
+            );
+          }
+          
+          // Default card for other domains
+          return (
           <Paper
             key={domain.key}
             sx={{
@@ -165,7 +198,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
                 </Button>
               </Box>
             </Paper>
-        ))}
+          );
+        })}
       </Box>
 
       {/* Events / anomalies list */}

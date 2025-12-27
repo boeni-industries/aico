@@ -113,6 +113,14 @@ export const AgencyPage: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {/* Page Description */}
+      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6, maxWidth: '800px' }}>
+        Monitor AICO's autonomous goal-driven behavior. Track active intentions, curiosity-driven exploration, 
+        value alignment, and learning progress. View detailed plans, execution history, and the provenance chain 
+        showing how goals emerge from conversations, memories, and emotional context.
+      </Typography>
+
+      {/* Refresh Controls */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
         <Tooltip title={autoRefresh ? 'Auto-refresh enabled (5s)' : 'Auto-refresh disabled'}>
           <IconButton
