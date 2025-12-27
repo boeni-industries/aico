@@ -169,11 +169,42 @@ async def get_graph_stats(
         ).fetchall()
         edge_types = {row[0]: row[1] for row in edge_types_raw}
         
+        # Calculate total node properties
+        # Each node has properties stored as JSON - count total fields across all nodes
+        import json
+        nodes_with_props = db_connection.execute(
+            "SELECT properties FROM kg_nodes WHERE user_id = ? AND is_current = 1",
+            [user_id]
+        ).fetchall()
+        total_node_properties = sum(
+            len(json.loads(row[0])) if row[0] else 0 
+            for row in nodes_with_props
+        )
+        
+        # Estimate storage size (rough approximation)
+        # Get total size of serialized data for nodes and edges
+        node_data_size = sum(
+            len(str(row[0])) if row[0] else 0
+            for row in nodes_with_props
+        )
+        edge_data = db_connection.execute(
+            "SELECT properties FROM kg_edges WHERE user_id = ? AND is_current = 1",
+            [user_id]
+        ).fetchall()
+        edge_data_size = sum(
+            len(str(row[0])) if row[0] else 0
+            for row in edge_data
+        )
+        # Convert bytes to MB (rough estimate including metadata overhead)
+        storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.5  # 1.5x for overhead
+        
         return GraphStatsResponse(
             total_nodes=node_count,
             total_edges=edge_count,
+            total_node_properties=total_node_properties,
             node_types=node_types,
             edge_types=edge_types,
+            storage_size_mb=round(storage_size_mb, 2),
             user_id=user_id
         )
         

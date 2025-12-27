@@ -1,32 +1,111 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Tabs, Tab, TextField, Button, Chip, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, Paper, Tabs, Tab, TextField, Button, Chip, IconButton } from '@mui/material';
 import {
   Search as SearchIcon,
   Code as CodeIcon,
   Analytics as AnalyticsIcon,
   AccountTree as GraphIcon,
   Info as InfoIcon,
+  InfoOutlined as InfoOutlinedIcon,
 } from '@mui/icons-material';
 import { KnowledgeGraphVisualization } from './KnowledgeGraphVisualization';
+import { StyledTooltip } from '../common/StyledTooltip';
 
 interface KnowledgeGraphExplorerProps {
   nodes: any[];
   edges: any[];
+  stats?: {
+    total_node_properties: number;
+    storage_size_mb: number;
+  };
 }
 
-export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ nodes, edges }) => {
+export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ nodes, edges, stats }) => {
   const [activeTab, setActiveTab] = useState<'graph' | 'query' | 'analytics' | 'properties'>('graph');
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filteredNodes, setFilteredNodes] = useState(nodes);
+  
+  // Sync filteredNodes when nodes prop changes
+  React.useEffect(() => {
+    setFilteredNodes(nodes);
+    console.log('KG Explorer: Loaded', nodes.length, 'nodes');
+    if (nodes.length > 0) {
+      console.log('Sample node structure:', {
+        id: nodes[0].id,
+        label: nodes[0].label,
+        type: nodes[0].type,
+        properties: nodes[0].properties,
+        hasProperties: !!nodes[0].properties,
+        propertyKeys: nodes[0].properties ? Object.keys(nodes[0].properties) : []
+      });
+      
+      // Show a few more samples to understand the data
+      console.log('First 5 nodes labels:', nodes.slice(0, 5).map(n => ({
+        label: n.label,
+        type: n.type,
+        name: n.properties?.name
+      })));
+    }
+  }, [nodes]);
+  
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    
+    if (!query.trim()) {
+      setFilteredNodes(nodes);
+      return;
+    }
+    
+    const lowerQuery = query.toLowerCase();
+    
+    const filtered = nodes.filter(node => {
+      // Check display label (could be properties.name or label)
+      const displayLabel = (node.label || '').toLowerCase();
+      const nameProperty = (node.properties?.name || '').toLowerCase();
+      const typeField = (node.type || '').toLowerCase();
+      
+      // Check if query matches label, name property, type, or any property value
+      const matchesLabel = displayLabel.includes(lowerQuery) || nameProperty.includes(lowerQuery) || typeField.includes(lowerQuery);
+      const matchesId = (node.id || '').toLowerCase().includes(lowerQuery);
+      
+      // Search through all property values
+      const matchesProperties = node.properties && Object.values(node.properties).some(value => {
+        const strValue = String(value).toLowerCase();
+        return strValue.includes(lowerQuery);
+      });
+      
+      return matchesLabel || matchesId || matchesProperties;
+    });
+    
+    setFilteredNodes(filtered);
+  };
+  
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setFilteredNodes(nodes);
+  };
+  
+  // Update filtered nodes when nodes prop changes
+  React.useEffect(() => {
+    if (searchQuery) {
+      handleSearchChange(searchQuery);
+    }
+  }, [nodes]);
 
   return (
     <Box>
       {/* Stats Bar */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
         <Paper sx={{ p: 2, flex: 1, minWidth: 200, borderRadius: '12px', bgcolor: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 0.5, display: 'block' }}>
-            TOTAL NODES
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+              TOTAL NODES
+            </Typography>
+            <StyledTooltip title="Entities extracted from conversations and stored in the knowledge graph. Each node represents a person, place, concept, or thing." arrow>
+              <InfoOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary', cursor: 'help' }} />
+            </StyledTooltip>
+          </Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#8B5CF6' }}>
             {nodes.length.toLocaleString()}
           </Typography>
@@ -36,21 +115,31 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
         </Paper>
 
         <Paper sx={{ p: 2, flex: 1, minWidth: 200, borderRadius: '12px', bgcolor: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 0.5, display: 'block' }}>
-            NODE PROPERTIES
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+              NODE PROPERTIES
+            </Typography>
+            <StyledTooltip title="Total metadata fields across all nodes. Properties include attributes like names, descriptions, timestamps, and custom fields extracted from conversations." arrow>
+              <InfoOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary', cursor: 'help' }} />
+            </StyledTooltip>
+          </Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#10B981' }}>
-            {nodes.reduce((sum, node) => sum + Object.keys(node.properties || {}).length, 0).toLocaleString()}
+            {(stats?.total_node_properties || nodes.reduce((sum, node) => sum + Object.keys(node.properties || {}).length, 0)).toLocaleString()}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-            Rich metadata fields (~{(nodes.reduce((sum, node) => sum + Object.keys(node.properties || {}).length, 0) / Math.max(nodes.length, 1)).toFixed(2)} per node)
+            Rich metadata fields (~{((stats?.total_node_properties || nodes.reduce((sum, node) => sum + Object.keys(node.properties || {}).length, 0)) / Math.max(nodes.length, 1)).toFixed(2)} per node)
           </Typography>
         </Paper>
 
         <Paper sx={{ p: 2, flex: 1, minWidth: 200, borderRadius: '12px', bgcolor: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 0.5, display: 'block' }}>
-            RELATIONSHIPS
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+              RELATIONSHIPS
+            </Typography>
+            <StyledTooltip title="Connections between entities showing how they relate to each other. Examples: 'knows', 'works_at', 'interested_in', 'located_in'." arrow>
+              <InfoOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary', cursor: 'help' }} />
+            </StyledTooltip>
+          </Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#3B82F6' }}>
             {edges.length.toLocaleString()}
           </Typography>
@@ -60,27 +149,32 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
         </Paper>
 
         <Paper sx={{ p: 2, flex: 1, minWidth: 200, borderRadius: '12px', bgcolor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 0.5, display: 'block' }}>
-            STORAGE
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+              STORAGE SIZE
+            </Typography>
+            <StyledTooltip title="Approximate disk space used by knowledge graph data including nodes, edges, and all properties. Stored in libSQL database." arrow>
+              <InfoOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary', cursor: 'help' }} />
+            </StyledTooltip>
+          </Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#F59E0B' }}>
-            Hybrid
+            {stats?.storage_size_mb ? `${stats.storage_size_mb.toFixed(2)} MB` : 'N/A'}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-            ChromaDB + libSQL
+            libSQL database
           </Typography>
         </Paper>
       </Box>
 
-      {/* Semantic Search */}
+      {/* Search */}
       <Paper sx={{ p: 2.5, mb: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 1 }}>
           <SearchIcon sx={{ color: 'text.secondary' }} />
           <TextField
             fullWidth
-            placeholder={`Semantic search across ${nodes.length.toLocaleString()} nodes (e.g., 'English learning projects')`}
+            placeholder={`Filter ${nodes.length.toLocaleString()} nodes by label, property, or ID...`}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             variant="outlined"
             size="small"
             sx={{
@@ -89,23 +183,27 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
               },
             }}
           />
-          <Button
-            variant="contained"
-            sx={{
-              borderRadius: '12px',
-              textTransform: 'none',
-              px: 3,
-            }}
-          >
-            Search
-          </Button>
+          {searchQuery && (
+            <Button
+              variant="outlined"
+              onClick={handleClearSearch}
+              sx={{
+                borderRadius: '12px',
+                textTransform: 'none',
+                px: 2,
+              }}
+            >
+              Clear
+            </Button>
+          )}
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-          <Chip label="Vector similarity" size="small" sx={{ fontSize: '0.7rem' }} />
-          <Chip label="Property filtering" size="small" sx={{ fontSize: '0.7rem' }} />
-          <Chip label="Temporal queries" size="small" sx={{ fontSize: '0.7rem' }} />
-          <Chip label="Multi-hop reasoning" size="small" sx={{ fontSize: '0.7rem' }} />
-        </Box>
+        {searchQuery && (
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem', ml: 5 }}>
+            {filteredNodes.length === nodes.length 
+              ? `Showing all ${nodes.length} nodes`
+              : `Found ${filteredNodes.length} of ${nodes.length} nodes`}
+          </Typography>
+        )}
       </Paper>
 
       {/* Tabs */}
@@ -122,8 +220,11 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
       {activeTab === 'graph' && (
         <Box>
           <KnowledgeGraphVisualization
-            nodes={nodes}
-            edges={edges}
+            nodes={filteredNodes}
+            edges={edges.filter(edge => 
+              filteredNodes.some(n => n.id === edge.source_id) && 
+              filteredNodes.some(n => n.id === edge.target_id)
+            )}
             onNodeClick={(node) => setSelectedNode(node)}
           />
           

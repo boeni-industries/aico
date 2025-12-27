@@ -44,6 +44,8 @@ class GraphStatsResponse(BaseModel):
     
     total_nodes: int = Field(..., description="Total number of nodes")
     total_edges: int = Field(..., description="Total number of edges")
+    total_node_properties: int = Field(..., description="Total number of node properties across all nodes")
     node_types: Dict[str, int] = Field(..., description="Node count by type")
     edge_types: Dict[str, int] = Field(..., description="Edge count by type")
+    storage_size_mb: float = Field(..., description="Approximate storage size in MB")
     user_id: str = Field(..., description="User ID")

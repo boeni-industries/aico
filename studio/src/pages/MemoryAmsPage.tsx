@@ -35,12 +35,21 @@ export const MemoryAmsPage: React.FC = () => {
 
       const [statsData, nodesData, edgesData, workingData, semanticData, albumData] = await Promise.all([
         fetchGraphStats(),
-        fetchNodes(100, 0),
-        fetchEdges(100, 0),
+        fetchNodes(1000, 0), // Increased limit to ensure we get all nodes
+        fetchEdges(1000, 0), // Increased limit to ensure we get all edges
         fetchWorkingMemoryStats(),
         fetchSemanticMemoryStats(),
         fetchMemoryAlbum(undefined, false, 50, 0),
       ]);
+
+      console.log('KG Data loaded:', {
+        totalNodes: statsData.total_nodes,
+        fetchedNodes: nodesData.nodes.length,
+        totalEdges: statsData.total_edges,
+        fetchedEdges: edgesData.edges.length,
+        nodeTypes: statsData.node_types,
+        edgeTypes: statsData.edge_types
+      });
 
       setGraphStats(statsData);
       setNodes(nodesData.nodes);
@@ -236,6 +245,10 @@ export const MemoryAmsPage: React.FC = () => {
               <KnowledgeGraphExplorer
                 nodes={transformedNodes}
                 edges={transformedEdges}
+                stats={graphStats ? {
+                  total_node_properties: graphStats.total_node_properties,
+                  storage_size_mb: graphStats.storage_size_mb,
+                } : undefined}
               />
             )}
           </>

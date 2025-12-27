@@ -41,8 +41,10 @@ export interface KGEdge {
 export interface GraphStats {
   total_nodes: number;
   total_edges: number;
+  total_node_properties: number;
   node_types: Record<string, number>;
   edge_types: Record<string, number>;
+  storage_size_mb: number;
   user_id: string;
 }
 
