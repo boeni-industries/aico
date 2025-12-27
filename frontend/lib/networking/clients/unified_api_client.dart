@@ -180,7 +180,7 @@ class UnifiedApiClient {
           : _encryptionService.createEncryptedRequest({});
 
       // Make streaming request using Dio
-      
+      // CRITICAL: Disable receiveTimeout for streaming to prevent timeout during long LLM generation
       final response = await _dio!.request<ResponseBody>(
         endpoint,
         data: requestData,
@@ -189,6 +189,7 @@ class UnifiedApiClient {
           method: method,
           headers: headers,
           responseType: ResponseType.stream, // Enable streaming response
+          receiveTimeout: Duration.zero, // Disable timeout for streaming responses
         ),
       );
 
