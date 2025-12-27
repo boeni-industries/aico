@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Paper, Typography, CircularProgress, Alert, Tooltip, Slider, ToggleButton, ToggleButtonGroup, Button, Chip } from '@mui/material';
+import { Box, Paper, Typography, CircularProgress, Alert, Tooltip, Slider, ToggleButton, ToggleButtonGroup, Button, Chip, useTheme } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import { fetchEmotionHistory, EmotionHistoryItemDto } from '../api/emotion';
 
@@ -80,6 +80,11 @@ const EmotionStrip: React.FC<{ history: EmotionHistoryItemDto[]; windowHours: nu
 };
 
 const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ history }) => {
+  const theme = useTheme();
+  const textColor = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.8)';
+  const textColorSecondary = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.65)';
+  const lineColor = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)';
+  const circleStroke = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
   const samples = sortHistory(history);
 
   const radius = 120;
@@ -158,29 +163,29 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
             cy={0}
             r={radius}
             fill="none"
-            stroke="rgba(255,255,255,0.12)"
+            stroke={circleStroke}
             strokeWidth={1}
           />
-          <line x1={-radius} y1={0} x2={radius} y2={0} stroke="rgba(255,255,255,0.16)" strokeWidth={1} />
-          <line x1={0} y1={-radius} x2={0} y2={radius} stroke="rgba(255,255,255,0.16)" strokeWidth={1} />
+          <line x1={-radius} y1={0} x2={radius} y2={0} stroke={lineColor} strokeWidth={1} />
+          <line x1={0} y1={-radius} x2={0} y2={radius} stroke={lineColor} strokeWidth={1} />
           {/* Axis labels - cardinal points outside circle */}
-          <text x={0} y={-radius - 20} fill="rgba(255,255,255,0.9)" fontSize={11} textAnchor="middle">
+          <text x={0} y={-radius - 20} fill={textColor} fontSize={11} textAnchor="middle">
             high arousal
           </text>
-          <text x={0} y={radius + 32} fill="rgba(255,255,255,0.9)" fontSize={11} textAnchor="middle">
+          <text x={0} y={radius + 32} fill={textColor} fontSize={11} textAnchor="middle">
             low arousal
           </text>
-          <text x={radius + 45} y={5} fill="rgba(255,255,255,0.9)" fontSize={11} textAnchor="middle">
+          <text x={radius + 45} y={5} fill={textColor} fontSize={11} textAnchor="middle">
             pleasant
           </text>
-          <text x={-radius - 45} y={5} fill="rgba(255,255,255,0.9)" fontSize={11} textAnchor="middle">
+          <text x={-radius - 45} y={5} fill={textColor} fontSize={11} textAnchor="middle">
             unpleasant
           </text>
           {/* Quadrant descriptions - diagonal positions outside circle */}
           <text
             x={radius * 0.707 + 8}
             y={-radius * 0.707 - 24}
-            fill="rgba(255,255,255,0.78)"
+            fill={textColorSecondary}
             fontSize={10}
             textAnchor="middle"
           >
@@ -189,7 +194,7 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
           <text
             x={radius * 0.707 + 8}
             y={-radius * 0.707 - 12}
-            fill="rgba(255,255,255,0.78)"
+            fill={textColorSecondary}
             fontSize={10}
             textAnchor="middle"
           >
@@ -198,7 +203,7 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
           <text
             x={-radius * 0.707 - 8}
             y={-radius * 0.707 - 24}
-            fill="rgba(255,255,255,0.78)"
+            fill={textColorSecondary}
             fontSize={10}
             textAnchor="middle"
           >
@@ -207,7 +212,7 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
           <text
             x={-radius * 0.707 - 8}
             y={-radius * 0.707 - 12}
-            fill="rgba(255,255,255,0.78)"
+            fill={textColorSecondary}
             fontSize={10}
             textAnchor="middle"
           >
@@ -216,7 +221,7 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
           <text
             x={radius * 0.707 + 8}
             y={radius * 0.707 + 18}
-            fill="rgba(255,255,255,0.78)"
+            fill={textColorSecondary}
             fontSize={10}
             textAnchor="middle"
           >
@@ -225,7 +230,7 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
           <text
             x={radius * 0.707 + 8}
             y={radius * 0.707 + 30}
-            fill="rgba(255,255,255,0.78)"
+            fill={textColorSecondary}
             fontSize={10}
             textAnchor="middle"
           >
@@ -234,7 +239,7 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
           <text
             x={-radius * 0.707 - 8}
             y={radius * 0.707 + 18}
-            fill="rgba(255,255,255,0.78)"
+            fill={textColorSecondary}
             fontSize={10}
             textAnchor="middle"
           >
@@ -243,7 +248,7 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
           <text
             x={-radius * 0.707 - 8}
             y={radius * 0.707 + 30}
-            fill="rgba(255,255,255,0.78)"
+            fill={textColorSecondary}
             fontSize={10}
             textAnchor="middle"
           >
@@ -267,9 +272,17 @@ const EmotionCircumplex: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
 };
 
 const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ history }) => {
+  const theme = useTheme();
   const [selectedMetric, setSelectedMetric] = React.useState<'all' | 'valence' | 'arousal' | 'intensity'>('all');
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
   const samples = sortHistory(history);
+  
+  const axisTextColor = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
+  const gridColor = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+  const gridColorLight = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+  const axisColor = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)';
+  const indicatorColor = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)';
+  const markerStroke = theme.palette.mode === 'dark' ? 'white' : 'rgba(0,0,0,0.8)';
   
   if (samples.length === 0) return null;
 
@@ -282,12 +295,17 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
   // Format timestamp for x-axis (short format)
   const formatTimeShort = (timestamp: string) => {
     try {
+      // Parse ISO timestamp from backend
       const date = new Date(timestamp);
-      if (isNaN(date.getTime())) return '';
+      if (!date || isNaN(date.getTime())) {
+        console.warn('Invalid timestamp for short format:', timestamp);
+        return '';
+      }
       const hours = date.getHours().toString().padStart(2, '0');
       const minutes = date.getMinutes().toString().padStart(2, '0');
       return `${hours}:${minutes}`;
-    } catch {
+    } catch (e) {
+      console.error('Error formatting timestamp short:', timestamp, e);
       return '';
     }
   };
@@ -295,16 +313,28 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
   // Format timestamp for tooltip (readable format)
   const formatTimeFull = (timestamp: string) => {
     try {
+      // Parse ISO timestamp from backend (e.g., "2025-12-27T00:28:00.123456+00:00")
       const date = new Date(timestamp);
-      if (isNaN(date.getTime())) return timestamp;
+      if (!date || isNaN(date.getTime())) {
+        console.warn('Invalid timestamp for full format:', timestamp);
+        // Fallback: try to extract readable parts from string
+        const match = timestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+        if (match) {
+          const [, year, month, day, hours, minutes] = match;
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${hours}:${minutes}`;
+        }
+        return timestamp.substring(0, 19).replace('T', ' ');
+      }
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const month = months[date.getMonth()];
       const day = date.getDate();
       const hours = date.getHours().toString().padStart(2, '0');
       const minutes = date.getMinutes().toString().padStart(2, '0');
       return `${month} ${day}, ${hours}:${minutes}`;
-    } catch {
-      return timestamp;
+    } catch (e) {
+      console.error('Error formatting timestamp full:', timestamp, e);
+      return timestamp.substring(0, 19).replace('T', ' ');
     }
   };
 
@@ -387,10 +417,12 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
           <Box 
             sx={{ 
               p: 1.5, 
-              bgcolor: 'rgba(0,0,0,0.95)', 
+              bgcolor: 'background.paper',
               borderRadius: 1, 
               fontSize: '0.875rem',
-              border: '1px solid rgba(255,255,255,0.1)',
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: 2,
             }}
           >
             <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
@@ -415,18 +447,18 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
         <svg width={width} height={height} style={{ minWidth: width }}>
           <g transform={`translate(${padding.left},${padding.top})`}>
             {/* Grid lines */}
-            <line x1={0} y1={chartHeight / 2} x2={chartWidth} y2={chartHeight / 2} stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
-            <line x1={0} y1={0} x2={chartWidth} y2={0} stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
-            <line x1={0} y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
+            <line x1={0} y1={chartHeight / 2} x2={chartWidth} y2={chartHeight / 2} stroke={gridColor} strokeWidth={1} />
+            <line x1={0} y1={0} x2={chartWidth} y2={0} stroke={gridColorLight} strokeWidth={1} />
+            <line x1={0} y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke={gridColorLight} strokeWidth={1} />
             
             {/* Y-axis labels */}
-            <text x={-10} y={0} fill="rgba(255,255,255,0.6)" fontSize={10} textAnchor="end" dominantBaseline="middle">
+            <text x={-10} y={0} fill={axisTextColor} fontSize={10} textAnchor="end" dominantBaseline="middle">
               1.0
             </text>
-            <text x={-10} y={chartHeight / 2} fill="rgba(255,255,255,0.6)" fontSize={10} textAnchor="end" dominantBaseline="middle">
+            <text x={-10} y={chartHeight / 2} fill={axisTextColor} fontSize={10} textAnchor="end" dominantBaseline="middle">
               0.0
             </text>
-            <text x={-10} y={chartHeight} fill="rgba(255,255,255,0.6)" fontSize={10} textAnchor="end" dominantBaseline="middle">
+            <text x={-10} y={chartHeight} fill={axisTextColor} fontSize={10} textAnchor="end" dominantBaseline="middle">
               -1.0
             </text>
             
@@ -485,19 +517,19 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
                       y1={0}
                       x2={xScale(i)}
                       y2={chartHeight}
-                      stroke="rgba(255,255,255,0.3)"
+                      stroke={indicatorColor}
                       strokeWidth={1}
                       strokeDasharray="4 2"
                     />
                     {/* Data point markers */}
                     {(selectedMetric === 'all' || selectedMetric === 'valence') && (
-                      <circle cx={xScale(i)} cy={yScale(valenceData[i])} r={4} fill="hsl(200, 70%, 55%)" stroke="white" strokeWidth={1.5} />
+                      <circle cx={xScale(i)} cy={yScale(valenceData[i])} r={4} fill="hsl(200, 70%, 55%)" stroke={markerStroke} strokeWidth={1.5} />
                     )}
                     {(selectedMetric === 'all' || selectedMetric === 'arousal') && (
-                      <circle cx={xScale(i)} cy={yScale(arousalData[i])} r={4} fill="hsl(30, 80%, 60%)" stroke="white" strokeWidth={1.5} />
+                      <circle cx={xScale(i)} cy={yScale(arousalData[i])} r={4} fill="hsl(30, 80%, 60%)" stroke={markerStroke} strokeWidth={1.5} />
                     )}
                     {(selectedMetric === 'all' || selectedMetric === 'intensity') && (
-                      <circle cx={xScale(i)} cy={yScale(intensityData[i])} r={4} fill="hsl(280, 60%, 65%)" stroke="white" strokeWidth={1.5} />
+                      <circle cx={xScale(i)} cy={yScale(intensityData[i])} r={4} fill="hsl(280, 60%, 65%)" stroke={markerStroke} strokeWidth={1.5} />
                     )}
                   </>
                 )}
@@ -505,22 +537,25 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
             ))}
             
             {/* Axes */}
-            <line x1={0} y1={0} x2={0} y2={chartHeight} stroke="rgba(255,255,255,0.3)" strokeWidth={1} />
-            <line x1={0} y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke="rgba(255,255,255,0.3)" strokeWidth={1} />
+            <line x1={0} y1={0} x2={0} y2={chartHeight} stroke={axisColor} strokeWidth={1} />
+            <line x1={0} y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke={axisColor} strokeWidth={1} />
             
             {/* X-axis time labels */}
-            {timeLabels.map(({ index, label }) => (
-              <text
-                key={index}
-                x={xScale(index)}
-                y={chartHeight + 25}
-                fill="rgba(255,255,255,0.6)"
-                fontSize={9}
-                textAnchor="middle"
-              >
-                {label}
-              </text>
-            ))}
+            {timeLabels.length > 0 && timeLabels.map(({ index, label }) => {
+              if (!label || label.trim() === '') return null;
+              return (
+                <text
+                  key={index}
+                  x={xScale(index)}
+                  y={chartHeight + 25}
+                  fill={axisTextColor}
+                  fontSize={10}
+                  textAnchor="middle"
+                >
+                  {label}
+                </text>
+              );
+            })}
           </g>
         </svg>
       </Box>
