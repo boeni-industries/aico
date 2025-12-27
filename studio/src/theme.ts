@@ -97,6 +97,14 @@ const baseThemeOptions: ThemeOptions = {
         },
       },
     },
+    MuiMenu: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 12, // Medium radius for dropdown menus, not XLarge
+          minWidth: 180,
+        },
+      },
+    },
   },
 };
 

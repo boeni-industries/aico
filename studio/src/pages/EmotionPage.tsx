@@ -9,24 +9,41 @@ function sortHistory(history: EmotionHistoryItemDto[]): EmotionHistoryItemDto[] 
 }
 
 function colorForEmotion(_feeling: string, valence: number, arousal: number): string {
-  // Research-inspired quadrant mapping:
-  //  - Positive + high arousal   → warm yellow/orange (energetic pleasant)
-  //  - Positive + low arousal    → green/teal (calm pleasant)
-  //  - Negative + high arousal   → red (energetic unpleasant)
-  //  - Negative + low arousal    → blue/indigo (calm unpleasant)
+  // High-contrast, accessible color mapping for emotion quadrants
+  // Designed for visibility in low light and for vision-impaired users
+  // Each quadrant has distinct hue with strong saturation and appropriate lightness
+  
   let hue: number;
+  let baseSat: number;
+  let baseLight: number;
+  
   if (valence >= 0 && arousal >= 0.5) {
-    hue = 40; // energetic pleasant
+    // Energetic pleasant: Bright orange/amber (high energy, positive)
+    hue = 35;
+    baseSat = 85;
+    baseLight = 55;
   } else if (valence >= 0 && arousal < 0.5) {
-    hue = 150; // calm pleasant
+    // Calm pleasant: Vibrant green/emerald (low energy, positive)
+    hue = 145;
+    baseSat = 75;
+    baseLight = 45;
   } else if (valence < 0 && arousal >= 0.5) {
-    hue = 5; // energetic unpleasant
+    // Energetic unpleasant: Bold red/crimson (high energy, negative)
+    hue = 0;
+    baseSat = 85;
+    baseLight = 50;
   } else {
-    hue = 215; // calm unpleasant
+    // Calm unpleasant: Deep blue/sapphire (low energy, negative)
+    hue = 220;
+    baseSat = 75;
+    baseLight = 50;
   }
 
-  const sat = 65 + arousal * 20; // 65-85
-  const light = 45 + arousal * 12; // 45-57
+  // Modulate saturation and lightness based on arousal for additional distinction
+  // Higher arousal = more saturated and slightly lighter
+  const sat = baseSat + arousal * 10; // Add up to 10% saturation
+  const light = baseLight + arousal * 8; // Add up to 8% lightness
+  
   return `hsl(${hue}, ${sat}%, ${light}%)`;
 }
 
