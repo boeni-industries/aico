@@ -143,28 +143,28 @@ async def get_graph_stats(
         
         logger.info(f"Fetching graph stats for user {user_id}")
         
-        # Get node count
+        # Get node count (all nodes, not just current versions)
         node_count = db_connection.execute(
-            "SELECT COUNT(*) FROM kg_nodes WHERE user_id = ? AND is_current = 1",
+            "SELECT COUNT(*) FROM kg_nodes WHERE user_id = ?",
             [user_id]
         ).fetchone()[0]
         
-        # Get edge count
+        # Get edge count (all edges, not just current versions)
         edge_count = db_connection.execute(
-            "SELECT COUNT(*) FROM kg_edges WHERE user_id = ? AND is_current = 1",
+            "SELECT COUNT(*) FROM kg_edges WHERE user_id = ?",
             [user_id]
         ).fetchone()[0]
         
         # Get node type distribution
         node_types_raw = db_connection.execute(
-            "SELECT label, COUNT(*) FROM kg_nodes WHERE user_id = ? AND is_current = 1 GROUP BY label",
+            "SELECT label, COUNT(*) FROM kg_nodes WHERE user_id = ? GROUP BY label",
             [user_id]
         ).fetchall()
         node_types = {row[0]: row[1] for row in node_types_raw}
         
         # Get edge type distribution
         edge_types_raw = db_connection.execute(
-            "SELECT relation_type, COUNT(*) FROM kg_edges WHERE user_id = ? AND is_current = 1 GROUP BY relation_type",
+            "SELECT relation_type, COUNT(*) FROM kg_edges WHERE user_id = ? GROUP BY relation_type",
             [user_id]
         ).fetchall()
         edge_types = {row[0]: row[1] for row in edge_types_raw}
@@ -173,7 +173,7 @@ async def get_graph_stats(
         # Each node has properties stored as JSON - count total fields across all nodes
         import json
         nodes_with_props = db_connection.execute(
-            "SELECT properties FROM kg_nodes WHERE user_id = ? AND is_current = 1",
+            "SELECT properties FROM kg_nodes WHERE user_id = ?",
             [user_id]
         ).fetchall()
         total_node_properties = sum(
@@ -188,7 +188,7 @@ async def get_graph_stats(
             for row in nodes_with_props
         )
         edge_data = db_connection.execute(
-            "SELECT properties FROM kg_edges WHERE user_id = ? AND is_current = 1",
+            "SELECT properties FROM kg_edges WHERE user_id = ?",
             [user_id]
         ).fetchall()
         edge_data_size = sum(
@@ -250,14 +250,14 @@ async def list_nodes(
         
         logger.info(f"Fetching nodes for user {user_id} (limit={limit}, offset={offset})")
         
-        # Fetch nodes
+        # Fetch nodes (all nodes, not just current versions)
         nodes_raw = db_connection.execute(
             """
             SELECT id, user_id, label, properties, confidence, source_text,
                    created_at, updated_at, valid_from, valid_until, is_current,
                    canonical_id, aliases_json
             FROM kg_nodes 
-            WHERE user_id = ? AND is_current = 1
+            WHERE user_id = ?
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
             """,
@@ -329,14 +329,14 @@ async def list_edges(
         
         logger.info(f"Fetching edges for user {user_id} (limit={limit}, offset={offset})")
         
-        # Fetch edges
+        # Fetch edges (all edges, not just current versions)
         edges_raw = db_connection.execute(
             """
             SELECT id, user_id, source_id, target_id, relation_type, properties,
                    confidence, source_text, created_at, updated_at,
                    valid_from, valid_until, is_current
             FROM kg_edges 
-            WHERE user_id = ? AND is_current = 1
+            WHERE user_id = ?
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
             """,

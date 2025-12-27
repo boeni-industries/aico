@@ -222,8 +222,8 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
           <KnowledgeGraphVisualization
             nodes={filteredNodes}
             edges={edges.filter(edge => 
-              filteredNodes.some(n => n.id === edge.source_id) && 
-              filteredNodes.some(n => n.id === edge.target_id)
+              filteredNodes.some(n => n.id === edge.source) && 
+              filteredNodes.some(n => n.id === edge.target)
             )}
             onNodeClick={(node) => setSelectedNode(node)}
           />
