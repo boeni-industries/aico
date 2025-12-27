@@ -1,6 +1,7 @@
 import React from 'react';
-import { Box, Paper, Typography, CircularProgress, Alert, Tooltip, Slider, ToggleButton, ToggleButtonGroup, Button, Chip, useTheme } from '@mui/material';
+import { Box, Paper, Typography, CircularProgress, Alert, Tooltip, Slider, ToggleButton, ToggleButtonGroup, Button, Chip, useTheme, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { fetchEmotionHistory, EmotionHistoryItemDto } from '../api/emotion';
 
 function sortHistory(history: EmotionHistoryItemDto[]): EmotionHistoryItemDto[] {
@@ -831,75 +832,98 @@ const EmotionEpisodes: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ histo
   );
 };
 
-const EmotionExport: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ history }) => {
-  const exportCSV = () => {
-    const headers = ['timestamp', 'feeling', 'valence', 'arousal', 'intensity'];
-    const rows = history.map(h => [
-      h.timestamp,
-      h.feeling,
-      h.valence.toString(),
-      h.arousal.toString(),
-      h.intensity.toString(),
-    ]);
-    
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `emotion-history-${new Date().toISOString()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+// Export utility functions
+const exportEmotionCSV = (history: EmotionHistoryItemDto[]) => {
+  const headers = ['timestamp', 'feeling', 'valence', 'arousal', 'intensity'];
+  const rows = history.map(h => [
+    h.timestamp,
+    h.feeling,
+    h.valence.toString(),
+    h.arousal.toString(),
+    h.intensity.toString(),
+  ]);
+  
+  const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `emotion-history-${new Date().toISOString()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const exportEmotionJSON = (history: EmotionHistoryItemDto[]) => {
+  const json = JSON.stringify(history, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `emotion-history-${new Date().toISOString()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// Page actions menu component - exported for use in StudioLayout
+export const EmotionPageActions: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ history }) => {
+  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+  const open = Boolean(anchorEl);
+
+  const handleClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
   };
 
-  const exportJSON = () => {
-    const json = JSON.stringify(history, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `emotion-history-${new Date().toISOString()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleExportCSV = () => {
+    exportEmotionCSV(history);
+    handleClose();
+  };
+
+  const handleExportJSON = () => {
+    exportEmotionJSON(history);
+    handleClose();
   };
 
   return (
-    <Paper
-      sx={{
-        p: 2,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 1.5,
-        borderRadius: 1,
-      }}
-    >
-      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-        Export data
-      </Typography>
-      <Typography variant="body2" color="text.secondary">
-        Download emotion history for external analysis or archival.
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<DownloadIcon />}
-          onClick={exportCSV}
-          disabled={history.length === 0}
-        >
-          Export CSV
-        </Button>
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<DownloadIcon />}
-          onClick={exportJSON}
-          disabled={history.length === 0}
-        >
-          Export JSON
-        </Button>
-      </Box>
-    </Paper>
+    <>
+      <IconButton
+        size="small"
+        onClick={handleClick}
+        aria-label="page actions"
+        sx={{ color: 'text.secondary' }}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+      >
+        <MenuItem onClick={handleExportCSV}>
+          <ListItemIcon>
+            <DownloadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Export as CSV</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleExportJSON}>
+          <ListItemIcon>
+            <DownloadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Export as JSON</ListItemText>
+        </MenuItem>
+      </Menu>
+    </>
   );
 };
 
@@ -1013,6 +1037,15 @@ export const EmotionPage: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {/* Page header with actions */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box />
+        {!loading && !error && history.length > 0 && (
+          <EmotionPageActions history={history} />
+        )}
+      </Box>
+      
+      {/* Lookback window slider */}
       <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5, maxWidth: 480, borderRadius: 1 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
           Lookback window
@@ -1061,10 +1094,7 @@ export const EmotionPage: React.FC = () => {
             <EmotionCircumplex history={history} />
             <EmotionLabelDistribution history={history} />
           </Box>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3 }}>
-            <EmotionEpisodes history={history} />
-            <EmotionExport history={history} />
-          </Box>
+          <EmotionEpisodes history={history} />
         </Box>
       )}
     </Box>

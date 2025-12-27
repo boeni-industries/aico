@@ -34,7 +34,7 @@ import { IntelligencePage } from '../pages/IntelligencePage';
 import { MemoryAmsPage } from '../pages/MemoryAmsPage';
 import { AgencyPage } from '../pages/AgencyPage';
 import { SecurityPage } from '../pages/SecurityPage';
-import { EmotionPage } from '../pages/EmotionPage';
+import { EmotionPage, EmotionPageActions } from '../pages/EmotionPage';
 import { SystemPage } from '../pages/SystemPage';
 import { useAuth } from '../auth/AuthContext';
 
@@ -198,6 +198,8 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({ mode, onToggleTheme 
             </Box>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              {/* Page-specific actions will be added here in future */}
+              
               <IconButton size="small" onClick={onToggleTheme} color="inherit">
                 {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
               </IconButton>
