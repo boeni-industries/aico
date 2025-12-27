@@ -28,7 +28,8 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { OverviewPage } from '../pages/OverviewPage';
-import { overviewStubData } from '../data/overview';
+import { overviewStubData, OverviewMetrics } from '../data/overview';
+import { fetchEmotionHistory } from '../api/emotion';
 import { OperationsPage } from '../pages/OperationsPage';
 import { IntelligencePage } from '../pages/IntelligencePage';
 import { MemoryAmsPage } from '../pages/MemoryAmsPage';
@@ -71,7 +72,41 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({ mode, onToggleTheme 
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [active, setActive] = React.useState<StudioNavKey>('overview');
+  const [overviewData, setOverviewData] = React.useState<OverviewMetrics>(overviewStubData);
   const { user, logout } = useAuth();
+
+  // Fetch latest emotion data for overview
+  React.useEffect(() => {
+    if (active !== 'overview') return;
+
+    async function loadEmotionData() {
+      try {
+        const response = await fetchEmotionHistory({ limit: 1, hours: 1 });
+        if (response.history.length > 0) {
+          const latest = response.history[response.history.length - 1];
+          setOverviewData(prev => ({
+            ...prev,
+            domains: prev.domains.map(domain => 
+              domain.key === 'emotion'
+                ? {
+                    ...domain,
+                    kpiValue: latest.feeling.charAt(0).toUpperCase() + latest.feeling.slice(1),
+                    secondary: [
+                      { label: 'Valence', value: latest.valence >= 0 ? `+${latest.valence.toFixed(2)}` : latest.valence.toFixed(2) },
+                      { label: 'Arousal', value: latest.arousal.toFixed(2) },
+                    ],
+                  }
+                : domain
+            ),
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to load emotion data for overview:', error);
+      }
+    }
+
+    loadEmotionData();
+  }, [active]);
 
   const handleDrawerToggle = () => {
     setMobileOpen((prev) => !prev);
@@ -225,7 +260,7 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({ mode, onToggleTheme 
           </Box>
 
           {active === 'overview' && (
-            <OverviewPage data={overviewStubData} onOpenDomain={(key) => setActive(key)} />
+            <OverviewPage data={overviewData} onOpenDomain={(key) => setActive(key)} />
           )}
           {active === 'operations' && <OperationsPage />}
           {active === 'intelligence' && <IntelligencePage />}

@@ -8,6 +8,43 @@ function sortHistory(history: EmotionHistoryItemDto[]): EmotionHistoryItemDto[] 
   return [...history].sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
 }
 
+function formatTooltipTimestamp(timestamp: string): { date: string; time: string } {
+  try {
+    // Handle ISO 8601 format with timezone
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid timestamp:', timestamp);
+      // Try regex fallback for ISO format
+      const match = timestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+      if (match) {
+        const [, year, month, day, hours, minutes, seconds] = match;
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return {
+          date: `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`,
+          time: `${hours}:${minutes}:${seconds}`
+        };
+      }
+      return { date: timestamp, time: '' };
+    }
+    
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[date.getMonth()];
+    const day = date.getDate();
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    
+    return {
+      date: `${month} ${day}, ${year}`,
+      time: `${hours}:${minutes}:${seconds}`
+    };
+  } catch (e) {
+    console.error('Error formatting timestamp:', e);
+    return { date: timestamp, time: '' };
+  }
+}
+
 function colorForEmotion(_feeling: string, valence: number, arousal: number): string {
   // High-contrast, accessible color mapping for emotion quadrants
   // Designed for visibility in low light and for vision-impaired users
@@ -80,15 +117,197 @@ const EmotionStrip: React.FC<{ history: EmotionHistoryItemDto[]; windowHours: nu
         {samples.map((item) => {
           const color = colorForEmotion(item.feeling, item.valence, item.arousal);
           const opacity = 0.3 + item.intensity * 0.7;
+          const { date, time } = formatTooltipTimestamp(item.timestamp);
+          
+          const tooltipContent = (
+            <Box sx={{ py: 1.25, px: 1.75 }}>
+              {/* Emotion name with color indicator */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25 }}>
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: color,
+                    flexShrink: 0,
+                  }}
+                />
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontWeight: 600,
+                    fontSize: '0.875rem',
+                    textTransform: 'capitalize',
+                    letterSpacing: '0.01em',
+                  }}
+                >
+                  {item.feeling}
+                </Typography>
+              </Box>
+              
+              {/* Timestamp */}
+              <Box sx={{ mb: 1.25, pl: 0 }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    fontSize: '0.7rem',
+                    color: 'text.secondary',
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {date || 'Invalid date'}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.03em',
+                    mt: 0.25,
+                  }}
+                >
+                  {time || 'Invalid time'}
+                </Typography>
+              </Box>
+              
+              {/* Metrics with refined layout */}
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: 1.25,
+                  pt: 1.25,
+                  borderTop: 1,
+                  borderColor: 'divider',
+                }}
+              >
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: 'block',
+                      fontSize: '0.625rem',
+                      color: 'text.secondary',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      mb: 0.5,
+                      fontWeight: 500,
+                    }}
+                  >
+                    Valence
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: '0.875rem',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {item.valence.toFixed(2)}
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: 'block',
+                      fontSize: '0.625rem',
+                      color: 'text.secondary',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      mb: 0.5,
+                      fontWeight: 500,
+                    }}
+                  >
+                    Arousal
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: '0.875rem',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {item.arousal.toFixed(2)}
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: 'block',
+                      fontSize: '0.625rem',
+                      color: 'text.secondary',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      mb: 0.5,
+                      fontWeight: 500,
+                    }}
+                  >
+                    Intensity
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: '0.875rem',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {item.intensity.toFixed(2)}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          );
+          
           return (
             <Tooltip
               key={item.timestamp}
-              title={`${item.timestamp}\n${item.feeling} • v=${item.valence.toFixed(2)}, a=${item.arousal.toFixed(
-                2,
-              )}, i=${item.intensity.toFixed(2)}`}
+              title={tooltipContent}
               arrow
+              componentsProps={{
+                tooltip: {
+                  sx: {
+                    bgcolor: 'background.paper',
+                    color: 'text.primary',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08)',
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 0,
+                    maxWidth: 300,
+                    backdropFilter: 'blur(8px)',
+                    '& .MuiTooltip-arrow': {
+                      color: 'background.paper',
+                      '&::before': {
+                        border: 1,
+                        borderColor: 'divider',
+                      },
+                    },
+                  },
+                },
+              }}
+              enterDelay={200}
+              enterNextDelay={100}
+              leaveDelay={0}
             >
-              <Box sx={{ bgcolor: color, opacity }} />
+              <Box
+                sx={{
+                  bgcolor: color,
+                  opacity,
+                  transition: 'all 0.2s ease-in-out',
+                  '&:hover': {
+                    opacity: Math.min(opacity + 0.15, 1),
+                    transform: 'scaleY(1.1)',
+                  },
+                }}
+              />
             </Tooltip>
           );
         })}
