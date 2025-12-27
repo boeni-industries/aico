@@ -377,35 +377,76 @@ class WorkingMemoryStore:
                     'recent_activity': []
                 }
             
-            # Count active (non-expired) items
+            # Count active (non-expired) items and collect activity
             active_items = 0
             expired_items = 0
             recent_activity = []
+            ttl_sum = 0.0
+            ttl_count = 0
             
+            # Collect all items first for proper sorting
+            all_items = []
             with self.env.begin(db=session_db) as txn:
                 cursor = txn.cursor()
                 for key, value in cursor:
                     try:
                         data = json.loads(value.decode('utf-8'))
+                        key_str = key.decode('utf-8')
+                        stored_at = data.get('_stored_at', 'unknown')
+                        expires_at = data.get('_expires_at')
+                        
                         if self._is_expired(data):
                             expired_items += 1
                         else:
                             active_items += 1
-                            # Collect recent activity (last 10 items)
-                            if len(recent_activity) < 10:
-                                recent_activity.append({
-                                    'id': key.decode('utf-8'),
-                                    'timestamp': data.get('_stored_at', 'unknown'),
-                                    'action': 'write',
-                                    'key': key.decode('utf-8').split(':')[0]
-                                })
+                            
+                            # Calculate TTL utilization for this item
+                            if stored_at != 'unknown' and expires_at:
+                                try:
+                                    stored_time = datetime.fromisoformat(stored_at.rstrip('Z'))
+                                    expires_time = datetime.fromisoformat(expires_at.rstrip('Z'))
+                                    now = datetime.utcnow()
+                                    total_ttl = (expires_time - stored_time).total_seconds()
+                                    remaining_ttl = (expires_time - now).total_seconds()
+                                    if total_ttl > 0:
+                                        ttl_used = ((total_ttl - remaining_ttl) / total_ttl) * 100
+                                        ttl_sum += ttl_used
+                                        ttl_count += 1
+                                except:
+                                    pass
+                            
+                            # Extract conversation_id and message info
+                            conv_id = key_str.split(':')[0]
+                            message_role = data.get('role', 'unknown')
+                            # Return full content - frontend will handle truncation
+                            message_preview = data.get('content', '') if isinstance(data.get('content'), str) else ''
+                            
+                            all_items.append({
+                                'key_str': key_str,
+                                'stored_at': stored_at,
+                                'conv_id': conv_id,
+                                'role': message_role,
+                                'preview': message_preview
+                            })
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         continue
             
-            # Calculate capacity
+            # Sort by timestamp (most recent first) and take last 10
+            all_items.sort(key=lambda x: x['stored_at'], reverse=True)
+            for item in all_items[:10]:
+                recent_activity.append({
+                    'id': item['key_str'],
+                    'timestamp': item['stored_at'],
+                    'action': 'stored',
+                    'conversation_id': item['conv_id'],
+                    'role': item['role'],
+                    'preview': item['preview']
+                })
+            
+            # Calculate capacity and utilization
             capacity = max(10000, active_items * 2)
             utilization_percent = (active_items / capacity) * 100 if capacity > 0 else 0
-            ttl_utilization_percent = 68.0  # Placeholder
+            ttl_utilization_percent = (ttl_sum / ttl_count) if ttl_count > 0 else 0.0
             eviction_rate_per_min = expired_items / 60.0 if expired_items > 0 else 0.0
             
             return {

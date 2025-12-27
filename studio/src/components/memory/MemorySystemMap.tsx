@@ -22,6 +22,7 @@ interface MemoryTier {
 interface MemorySystemMapProps {
   tiers: MemoryTier[];
   onTierClick: (key: string) => void;
+  activeTab?: string;
 }
 
 const healthColors = {
@@ -30,7 +31,7 @@ const healthColors = {
   attention: { bg: 'rgba(239, 68, 68, 0.12)', text: '#EF4444', border: 'rgba(239, 68, 68, 0.3)' },
 };
 
-export const MemorySystemMap: React.FC<MemorySystemMapProps> = ({ tiers, onTierClick }) => {
+export const MemorySystemMap: React.FC<MemorySystemMapProps> = ({ tiers, onTierClick, activeTab }) => {
   return (
     <Box
       sx={{
@@ -74,10 +75,11 @@ export const MemorySystemMap: React.FC<MemorySystemMapProps> = ({ tiers, onTierC
                 minWidth: 200,
                 borderRadius: '16px',
                 border: '1.5px solid',
-                borderColor: tier.color + '40',
-                bgcolor: 'background.paper',
+                borderColor: activeTab === tier.key ? tier.color : tier.color + '40',
+                bgcolor: activeTab === tier.key ? tier.color + '08' : 'background.paper',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease-in-out',
+                boxShadow: activeTab === tier.key ? `0 8px 24px ${tier.color}30` : 'none',
                 '&:hover': {
                   boxShadow: `0 8px 24px ${tier.color}20`,
                   borderColor: tier.color,

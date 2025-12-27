@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Typography, Tabs, Tab, CircularProgress } from '@mui/material';
 import {
   Memory as MemoryIcon,
@@ -12,29 +12,25 @@ import { KnowledgeGraphExplorer } from '../components/memory/KnowledgeGraphExplo
 import { WorkingMemoryPanel } from '../components/memory/WorkingMemoryPanel';
 import { SemanticMemoryPanel } from '../components/memory/SemanticMemoryPanel';
 import { MemoryAlbumPanel } from '../components/memory/MemoryAlbumPanel';
+import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { fetchGraphStats, fetchNodes, fetchEdges, KGNode, KGEdge, GraphStats } from '../api/kg';
 import { fetchWorkingMemoryStats, fetchSemanticMemoryStats, fetchMemoryAlbum, WorkingMemoryStats, SemanticMemoryStats, MemoryAlbumEntry } from '../api/memory';
 
-type MemoryTab = 'overview' | 'working' | 'semantic' | 'knowledge-graph' | 'ams' | 'album';
+type MemoryTab = 'working' | 'semantic' | 'knowledge-graph' | 'ams' | 'album';
 
 export const MemoryAmsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<MemoryTab>('overview');
+  const [activeTab, setActiveTab] = useState<MemoryTab>('working');
   const [graphStats, setGraphStats] = useState<GraphStats | null>(null);
   const [nodes, setNodes] = useState<KGNode[]>([]);
   const [edges, setEdges] = useState<KGEdge[]>([]);
   const [workingStats, setWorkingStats] = useState<WorkingMemoryStats | null>(null);
   const [semanticStats, setSemanticStats] = useState<SemanticMemoryStats | null>(null);
   const [albumEntries, setAlbumEntries] = useState<MemoryAlbumEntry[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadMemoryData();
-  }, []);
-
-  const loadMemoryData = async () => {
+  const loadMemoryData = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
 
       const [statsData, nodesData, edgesData, workingData, semanticData, albumData] = await Promise.all([
@@ -55,10 +51,18 @@ export const MemoryAmsPage: React.FC = () => {
     } catch (err: any) {
       console.error('Failed to load memory data:', err);
       setError(err.message || 'Failed to load memory data');
-    } finally {
-      setLoading(false);
     }
-  };
+  }, []);
+
+  const { isRefreshing, autoRefreshEnabled, toggleAutoRefresh, refresh } = useAutoRefresh({
+    onRefresh: loadMemoryData,
+    interval: 5000,
+    defaultEnabled: true,
+  });
+
+  useEffect(() => {
+    loadMemoryData();
+  }, [loadMemoryData]);
 
   const memoryTiers = [
     {
@@ -155,16 +159,25 @@ export const MemoryAmsPage: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      {/* Page Description */}
-      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6, maxWidth: '800px' }}>
-        Explore AICO's complete memory architecture: from fast working memory to long-term semantic storage,
-        knowledge graph relationships, adaptive consolidation, and your curated conversation album.
-      </Typography>
+      {/* Page Header with Auto-Refresh Controls */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6, maxWidth: '800px' }}>
+          Explore AICO's complete memory architecture: from fast working memory to long-term semantic storage,
+          knowledge graph relationships, adaptive consolidation, and your curated conversation album.
+        </Typography>
+        <AutoRefreshControls
+          autoRefreshEnabled={autoRefreshEnabled}
+          onToggleAutoRefresh={toggleAutoRefresh}
+          onRefresh={refresh}
+          isRefreshing={isRefreshing}
+        />
+      </Box>
 
       {/* Memory System Map */}
       <MemorySystemMap
         tiers={memoryTiers}
         onTierClick={(key) => setActiveTab(key as MemoryTab)}
+        activeTab={activeTab}
       />
 
       {/* Tabs */}
@@ -180,7 +193,6 @@ export const MemoryAmsPage: React.FC = () => {
             },
           }}
         >
-          <Tab label="Overview" value="overview" />
           <Tab label="Working Memory" value="working" />
           <Tab label="Semantic Memory" value="semantic" />
           <Tab label="Knowledge Graph" value="knowledge-graph" />
@@ -191,17 +203,6 @@ export const MemoryAmsPage: React.FC = () => {
 
       {/* Tab Content */}
       <Box sx={{ py: 2 }}>
-        {activeTab === 'overview' && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Memory System Overview
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Select a tier from the map above to explore detailed metrics and visualizations.
-            </Typography>
-          </Box>
-        )}
-
         {activeTab === 'working' && workingStats && (
           <WorkingMemoryPanel
             activeItems={workingStats.active_items}
@@ -223,7 +224,7 @@ export const MemoryAmsPage: React.FC = () => {
 
         {activeTab === 'knowledge-graph' && (
           <>
-            {loading ? (
+            {isRefreshing ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
                 <CircularProgress />
               </Box>

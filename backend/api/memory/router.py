@@ -108,11 +108,14 @@ class SemanticMemoryStatsResponse(BaseModel):
 
 
 class ActivityEntry(BaseModel):
-    """Recent activity entry."""
-    id: str
-    timestamp: str
-    action: str
-    key: str
+    """Recent activity entry"""
+    id: str = Field(..., description="Activity ID")
+    timestamp: str = Field(..., description="Activity timestamp")
+    action: str = Field(..., description="Action type (stored, evict)")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID")
+    role: Optional[str] = Field(None, description="Message role (user, assistant)")
+    preview: Optional[str] = Field(None, description="Message preview")
+
 
 class WorkingMemoryStatsResponse(BaseModel):
     """Working memory statistics."""
@@ -199,7 +202,7 @@ async def get_semantic_stats(
         raise
     except Exception as e:
         error_msg = f"❌ SEMANTIC STATS ENDPOINT FAILURE: {e}"
-        logger.error(error_msg, exc_info=True)
+        logger.error(error_msg)
         print(f"\n{'='*80}")
         print(f"❌ /api/v1/memory/semantic/stats ENDPOINT FAILED")
         print(f"{'='*80}")
@@ -285,7 +288,7 @@ async def get_working_stats(
         raise
     except Exception as e:
         error_msg = f"❌ WORKING STATS ENDPOINT FAILURE: {e}"
-        logger.error(error_msg, exc_info=True)
+        logger.error(error_msg)
         print(f"\n{'='*80}")
         print(f"❌ /api/v1/memory/working/stats ENDPOINT FAILED")
         print(f"{'='*80}")
