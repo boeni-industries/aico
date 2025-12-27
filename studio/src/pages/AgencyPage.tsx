@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Box, Typography, Tabs, Tab, IconButton, Tooltip, CircularProgress, Alert } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
@@ -16,6 +16,8 @@ import {
   fetchGoals,
   fetchGoal,
 } from '../api/agency';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 import {
   AgencyStateResponse,
   GoalSummary,
@@ -31,46 +33,25 @@ export const AgencyPage: React.FC = () => {
   const [allGoals, setAllGoals] = React.useState<GoalSummary[]>([]);
   const [selectedGoal, setSelectedGoal] = React.useState<GoalResponse | null>(null);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [loading, setLoading] = React.useState(true);
   const [goalLoading, setGoalLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = React.useState(true);
 
-  const loadAgencyData = React.useCallback(async () => {
-    try {
-      const [state, goalsResponse] = await Promise.all([
-        fetchAgencyState(),
-        fetchGoals({ limit: 100 }),
-      ]);
+  const loadAgencyData = useCallback(async () => {
+    const [state, goalsResponse] = await Promise.all([
+      fetchAgencyState(),
+      fetchGoals({ limit: 100 }),
+    ]);
 
-      setAgencyState(state);
-      setAllGoals(goalsResponse.goals);
-      setError(null);
-    } catch (err: any) {
-      console.error('Failed to load agency data:', err);
-      const errorMessage = err.message || 'Failed to load agency data';
-      
-      if (!autoRefresh) {
-        setError(errorMessage);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [autoRefresh]);
+    setAgencyState(state);
+    setAllGoals(goalsResponse.goals);
+    setError(null);
+  }, []);
 
-  React.useEffect(() => {
-    loadAgencyData();
-  }, [loadAgencyData]);
-
-  React.useEffect(() => {
-    if (!autoRefresh) return;
-
-    const interval = setInterval(() => {
-      loadAgencyData();
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, loadAgencyData]);
+  const { autoRefreshEnabled, toggleAutoRefresh, refresh, isRefreshing } = useAutoRefresh({
+    onRefresh: loadAgencyData,
+    interval: 5000,
+    defaultEnabled: true,
+  });
 
 
   const handleGoalClick = async (goal: GoalSummary) => {
@@ -93,10 +74,6 @@ export const AgencyPage: React.FC = () => {
     setTimeout(() => setSelectedGoal(null), 300);
   };
 
-  const handleRefresh = () => {
-    setLoading(true);
-    loadAgencyData();
-  };
 
   const metrics: AgencyMetricsType | null = agencyState
     ? {
@@ -122,22 +99,13 @@ export const AgencyPage: React.FC = () => {
 
       {/* Refresh Controls */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
-        <Tooltip title={autoRefresh ? 'Auto-refresh enabled (5s)' : 'Auto-refresh disabled'}>
-          <IconButton
-            size="small"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            sx={{
-              color: autoRefresh ? 'primary.main' : 'text.secondary',
-            }}
-          >
-            <AutorenewIcon />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Refresh now">
-          <IconButton size="small" onClick={handleRefresh} disabled={loading}>
-            <SyncIcon />
-          </IconButton>
-        </Tooltip>
+        <AutoRefreshControls
+          autoRefreshEnabled={autoRefreshEnabled}
+          onToggleAutoRefresh={toggleAutoRefresh}
+          onRefresh={refresh}
+          isRefreshing={isRefreshing}
+          intervalSeconds={5}
+        />
       </Box>
 
       {error && (
@@ -146,7 +114,7 @@ export const AgencyPage: React.FC = () => {
         </Alert>
       )}
 
-      {agencyState && (
+      {!isRefreshing && agencyState && (
         <IntentionBar
           primaryFocus={agencyState.intention_set.primary_focus}
           activeIntentions={agencyState.intention_set.active_intentions}
@@ -177,7 +145,7 @@ export const AgencyPage: React.FC = () => {
       <Box sx={{ py: 2 }}>
         {activeTab === 'overview' && (
           <Box>
-            <AgencyMetrics metrics={metrics} loading={loading} />
+            <AgencyMetrics metrics={metrics} loading={isRefreshing} />
             <Box sx={{ mt: 4 }}>
               <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
                 Recent Activity
@@ -209,20 +177,20 @@ export const AgencyPage: React.FC = () => {
                     origin: 'System',
                   },
                 ]}
-                loading={loading}
+                loading={isRefreshing}
               />
             </Box>
           </Box>
         )}
 
         {activeTab === 'goals' && (
-          <GoalBoard goals={allGoals} loading={loading} onGoalClick={handleGoalClick} />
+          <GoalBoard goals={allGoals} loading={isRefreshing} onGoalClick={handleGoalClick} />
         )}
 
         {activeTab === 'curiosity' && (
           <CuriosityDashboard
             curiosityStatus={agencyState?.curiosity_status || null}
-            loading={loading}
+            loading={isRefreshing}
           />
         )}
 
@@ -261,18 +229,18 @@ export const AgencyPage: React.FC = () => {
                 created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
               },
             ]}
-            loading={loading}
+            loading={isRefreshing}
           />
         )}
 
         {activeTab === 'values' && (
           <ValueProfile
             valueProfile={agencyState?.value_profile || null}
-            loading={loading}
+            loading={isRefreshing}
           />
         )}
 
-        {loading && activeTab !== 'overview' && (
+        {isRefreshing && activeTab !== 'overview' && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
             <CircularProgress />
           </Box>

@@ -80,10 +80,11 @@ export const overviewStubData: OverviewMetrics = {
       kpiLabel: 'Retrieval quality',
       kpiValue: '92%',
       secondary: [
-        { label: 'Working mem. use', value: '64%' },
-        { label: 'Last consolidation', value: '12m ago' },
+        { label: 'Working items', value: '1,247' },
+        { label: 'Semantic vectors', value: '45.2K' },
+        { label: 'KG nodes', value: '892' },
       ],
-      isImplemented: false,
+      isImplemented: true,
     },
     {
       key: 'agency',

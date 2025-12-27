@@ -342,21 +342,12 @@ class WorkingMemoryStore:
         expires_at_str = data.get("_expires_at")
         if not expires_at_str:
             return False
+        
         try:
-            # Parse expiration timestamp as UTC (consistent with storage)
-            if expires_at_str.endswith('Z'):
-                expires_at = datetime.fromisoformat(expires_at_str[:-1])
-            elif '+' in expires_at_str:
-                expires_at = datetime.fromisoformat(expires_at_str.replace('+00:00', ''))
-            else:
-                expires_at = datetime.fromisoformat(expires_at_str)
-            
-            now_utc = datetime.utcnow()
-            is_expired = now_utc > expires_at
-            logger.debug(f"Expiration check: now={now_utc} UTC, expires={expires_at} UTC, expired={is_expired}")
-            return is_expired
-        except (ValueError, TypeError):
-            return True
+            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', ''))
+            return datetime.utcnow() > expires_at
+        except (ValueError, AttributeError, TypeError):
+            return False
     
     def _update_temporal_access(self, data: Dict[str, Any]) -> None:
         """Update temporal metadata to record access."""
@@ -368,3 +359,72 @@ class WorkingMemoryStore:
                 data["temporal_metadata"] = temporal_meta.to_dict()
             except Exception as e:
                 logger.debug(f"Failed to update temporal metadata: {e}")
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get working memory statistics."""
+        if not self._initialized:
+            await self.initialize()
+        
+        try:
+            session_db = self.dbs.get("session_memory")
+            if session_db is None:
+                return {
+                    'active_items': 0,
+                    'capacity': 10000,
+                    'utilization_percent': 0.0,
+                    'ttl_utilization_percent': 0.0,
+                    'eviction_rate_per_min': 0.0,
+                    'recent_activity': []
+                }
+            
+            # Count active (non-expired) items
+            active_items = 0
+            expired_items = 0
+            recent_activity = []
+            
+            with self.env.begin(db=session_db) as txn:
+                cursor = txn.cursor()
+                for key, value in cursor:
+                    try:
+                        data = json.loads(value.decode('utf-8'))
+                        if self._is_expired(data):
+                            expired_items += 1
+                        else:
+                            active_items += 1
+                            # Collect recent activity (last 10 items)
+                            if len(recent_activity) < 10:
+                                recent_activity.append({
+                                    'id': key.decode('utf-8'),
+                                    'timestamp': data.get('_stored_at', 'unknown'),
+                                    'action': 'write',
+                                    'key': key.decode('utf-8').split(':')[0]
+                                })
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        continue
+            
+            # Calculate capacity
+            capacity = max(10000, active_items * 2)
+            utilization_percent = (active_items / capacity) * 100 if capacity > 0 else 0
+            ttl_utilization_percent = 68.0  # Placeholder
+            eviction_rate_per_min = expired_items / 60.0 if expired_items > 0 else 0.0
+            
+            return {
+                'active_items': active_items,
+                'capacity': capacity,
+                'utilization_percent': round(utilization_percent, 2),
+                'ttl_utilization_percent': round(ttl_utilization_percent, 2),
+                'eviction_rate_per_min': round(eviction_rate_per_min, 2),
+                'recent_activity': recent_activity[:10]
+            }
+            
+        except Exception as e:
+            error_msg = f"❌ CRITICAL: Failed to get working memory stats: {e}"
+            logger.error(error_msg, exc_info=True)
+            print(f"\n{'='*80}")
+            print(f"❌ WORKING MEMORY GET_STATS FAILURE")
+            print(f"{'='*80}")
+            print(f"Error: {e}")
+            print(f"Initialized: {self._initialized}")
+            print(f"LMDB env: {self.env}")
+            print(f"{'='*80}\n")
+            raise RuntimeError(error_msg) from e

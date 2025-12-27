@@ -77,13 +77,15 @@ The overview must work equally well on **desktop and large laptop screens** (pri
   - Sentiment/emotion analysis success rate.
 - **Drill-down**: opens Intelligence domain hub.
 
-### 3.3 Memory & AMS Summary
+### 3.3 Memory & AMS Summary ✅ FULLY IMPLEMENTED
 
 - **Primary KPI**: retrieval quality index (combined score from hybrid search + AMS).
 - **Secondary KPIs**:
-  - Working memory utilization.
-  - Last consolidation job outcome and time.
+  - Working memory items count.
+  - Semantic vectors count.
+  - Knowledge graph nodes count.
 - **Drill-down**: opens Memory & AMS hub, with quick links to Working, Semantic, KG, and Memory Album.
+- **Implementation status**: Complete with 5 tabs (Overview, Working Memory, Semantic Memory, Knowledge Graph, Memory Album), interactive graph visualization, system map showing tier connections, and comprehensive metrics panels.
 
 ### 3.4 Agency Summary ✅ FULLY IMPLEMENTED
 

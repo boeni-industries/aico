@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box,
   Chip,
@@ -6,12 +6,23 @@ import {
   Stack,
   Typography,
   Button,
+  Grid,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import CircleIcon from '@mui/icons-material/Circle';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
 import { OverviewMetrics, OverviewDomainKey } from '../data/overview';
 import { AgencyCard } from '../components/overview/AgencyCard';
 import { EmotionCard } from '../components/overview/EmotionCard';
+import { MemoryCard } from '../components/overview/MemoryCard';
+import { fetchGraphStats } from '../api/kg';
+import { fetchWorkingMemoryStats, fetchSemanticMemoryStats } from '../api/memory';
+import { fetchSystemOverview, SystemOverview } from '../api/system';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 
 export interface OverviewPageProps {
   data: OverviewMetrics;
@@ -25,6 +36,37 @@ const statusLabel: Record<OverviewMetrics['systemStatus'], string> = {
 };
 
 export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }) => {
+  const [kgNodeCount, setKgNodeCount] = useState<number>(0);
+  const [kgEdgeCount, setKgEdgeCount] = useState<number>(0);
+  const [workingItems, setWorkingItems] = useState<number>(0);
+  const [semanticVectors, setSemanticVectors] = useState<number>(0);
+  const [retrievalQuality, setRetrievalQuality] = useState<number>(0);
+  const [systemOverview, setSystemOverview] = useState<SystemOverview | null>(null);
+  const [eventFilter, setEventFilter] = useState<'all' | 'error' | 'warning'>('all');
+  const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
+
+  const loadAllStats = useCallback(async () => {
+    const [kgStats, workingStats, semanticStats, sysOverview] = await Promise.all([
+      fetchGraphStats(),
+      fetchWorkingMemoryStats(),
+      fetchSemanticMemoryStats(),
+      fetchSystemOverview(),
+    ]);
+    
+    setKgNodeCount(kgStats.total_nodes);
+    setKgEdgeCount(kgStats.total_edges);
+    setWorkingItems(workingStats.active_items);
+    setSemanticVectors(semanticStats.total_vectors);
+    setRetrievalQuality(Math.round(semanticStats.retrieval_quality_percent));
+    setSystemOverview(sysOverview);
+  }, []);
+
+  const { autoRefreshEnabled, toggleAutoRefresh, refresh, isRefreshing } = useAutoRefresh({
+    onRefresh: loadAllStats,
+    interval: 5000,
+    defaultEnabled: true,
+  });
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Hero band */}
@@ -48,6 +90,13 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
         </Box>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center">
+          <AutoRefreshControls
+            autoRefreshEnabled={autoRefreshEnabled}
+            onToggleAutoRefresh={toggleAutoRefresh}
+            onRefresh={refresh}
+            isRefreshing={isRefreshing}
+            intervalSeconds={5}
+          />
           <Chip
             icon={
               <CircleIcon
@@ -67,17 +116,17 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
             sx={{ borderRadius: 999 }}
           />
           <Chip
-            label={`Uptime ${data.uptime}`}
+            label={`Uptime ${systemOverview?.uptime_formatted || data.uptime}`}
             variant="outlined"
             sx={{ borderRadius: 999 }}
           />
           <Chip
-            label={`${data.activeConversations} active conversations`}
+            label={`${systemOverview?.active_conversations ?? data.activeConversations} active conversations`}
             variant="outlined"
             sx={{ borderRadius: 999 }}
           />
           <Chip
-            label={`${data.activeGoals} active goals`}
+            label={`${systemOverview?.active_goals ?? data.activeGoals} active goals`}
             variant="outlined"
             sx={{ borderRadius: 999 }}
           />
@@ -122,6 +171,21 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
                 valence={valence}
                 arousal={arousal}
                 onClick={() => onOpenDomain('emotion')}
+              />
+            );
+          }
+
+          // Special handling for Memory domain - use custom card
+          if (domain.key === 'memory') {
+            return (
+              <MemoryCard
+                key={domain.key}
+                workingMemoryItems={workingItems}
+                semanticVectors={semanticVectors}
+                knowledgeGraphNodes={kgNodeCount}
+                knowledgeGraphEdges={kgEdgeCount}
+                retrievalQuality={retrievalQuality}
+                onClick={() => onOpenDomain('memory')}
               />
             );
           }
@@ -204,54 +268,128 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
 
       {/* Events / anomalies list */}
       <Paper sx={{ p: 2.5, borderRadius: 1 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             Recent events & anomalies
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Placeholder data – wired to backend event stream later.
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="caption" color="text.secondary">
+              Filter:
+            </Typography>
+            <Stack direction="row" spacing={0.5}>
+              <Chip
+                label="All"
+                size="small"
+                onClick={() => setEventFilter('all')}
+                sx={{
+                  bgcolor: eventFilter === 'all' ? 'primary.main' : 'transparent',
+                  color: eventFilter === 'all' ? 'white' : 'text.secondary',
+                  border: '1px solid',
+                  borderColor: eventFilter === 'all' ? 'primary.main' : 'divider',
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: eventFilter === 'all' ? 'primary.dark' : 'action.hover' },
+                }}
+              />
+              <Chip
+                label="Errors"
+                size="small"
+                onClick={() => setEventFilter('error')}
+                sx={{
+                  bgcolor: eventFilter === 'error' ? 'error.main' : 'transparent',
+                  color: eventFilter === 'error' ? 'white' : 'text.secondary',
+                  border: '1px solid',
+                  borderColor: eventFilter === 'error' ? 'error.main' : 'divider',
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: eventFilter === 'error' ? 'error.dark' : 'action.hover' },
+                }}
+              />
+              <Chip
+                label="Warnings"
+                size="small"
+                onClick={() => setEventFilter('warning')}
+                sx={{
+                  bgcolor: eventFilter === 'warning' ? 'warning.main' : 'transparent',
+                  color: eventFilter === 'warning' ? 'white' : 'text.secondary',
+                  border: '1px solid',
+                  borderColor: eventFilter === 'warning' ? 'warning.main' : 'divider',
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: eventFilter === 'warning' ? 'warning.dark' : 'action.hover' },
+                }}
+              />
+            </Stack>
+          </Stack>
         </Box>
 
-        <Stack spacing={1.25}>
-          {data.events.map((event) => (
-            <Box
-              key={event.id}
-              sx={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 1.5,
-              }}
-            >
-              <Chip
-                size="small"
-                label={event.severity.toUpperCase()}
-                color={
-                  event.severity === 'error'
-                    ? 'error'
-                    : event.severity === 'warning'
-                    ? 'warning'
-                    : 'default'
-                }
-                variant={event.severity === 'info' ? 'outlined' : 'filled'}
-              />
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {event.title}
-                </Typography>
-                {event.description && (
-                  <Typography variant="body2" color="text.secondary">
-                    {event.description}
-                  </Typography>
-                )}
-                <Typography variant="caption" color="text.secondary">
-                  {/* Time is a plain string for now; can be replaced with relative time later. */}
-                  {event.time}
-                  {event.domain !== 'overview' && ` · ${event.domain}`}
-                </Typography>
+        <Stack spacing={0.5}>
+          {systemOverview && systemOverview.recent_events.length > 0 ? (
+            systemOverview.recent_events
+              .filter(event => eventFilter === 'all' || event.severity === eventFilter)
+              .map((event, index) => (
+              <Box
+                key={index}
+                onClick={() => setExpandedEvent(expandedEvent === index ? null : index)}
+                sx={{
+                  display: 'flex',
+                  gap: 1,
+                  p: 1,
+                  bgcolor: 'background.default',
+                  borderRadius: 1,
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: 'action.hover' },
+                  transition: 'background-color 0.2s',
+                }}
+              >
+                <Chip
+                  label={event.severity === 'error' ? 'ERR' : 'WARN'}
+                  size="small"
+                  sx={{
+                    bgcolor: event.severity === 'error' ? 'error.main' : 'warning.main',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.6rem',
+                    height: 18,
+                    minWidth: 40,
+                  }}
+                />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 'fit-content' }}>
+                      {new Date(event.timestamp).toLocaleTimeString()}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.875rem', flex: 1 }}>
+                      {event.title}
+                    </Typography>
+                    {event.count > 1 && (
+                      <Chip
+                        label={`×${event.count}`}
+                        size="small"
+                        sx={{
+                          height: 18,
+                          fontSize: '0.65rem',
+                          bgcolor: 'action.selected',
+                          fontWeight: 600,
+                        }}
+                      />
+                    )}
+                  </Box>
+                  {expandedEvent === index && (
+                    <>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, mb: 0.5 }}>
+                        {event.description}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Latest: {new Date(event.timestamp).toLocaleString()} · {event.domain}
+                      </Typography>
+                    </>
+                  )}
+                </Box>
               </Box>
-            </Box>
-          ))}
+            ))
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+              No recent events available
+            </Typography>
+          )}
         </Stack>
       </Paper>
     </Box>

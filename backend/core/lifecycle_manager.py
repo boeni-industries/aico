@@ -969,6 +969,8 @@ class BackendLifecycleManager:
         from backend.api.admin.router import router as admin_router
         from backend.api.logs.router import router as logs_router
         from backend.api.conversation.router import router as conversation_router
+        from backend.api.memory.router import router as memory_router
+        from backend.api.system.router import router as system_router
         from backend.api.memory_album import router as memory_album_router
         from backend.api.kg.router import router as kg_router
         from backend.api.behavioral.router import router as behavioral_router
@@ -991,6 +993,12 @@ class BackendLifecycleManager:
         
         self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/conversation", "tags": ["conversation"]})
+        
+        self.app.include_router(memory_router, prefix="/api/v1", tags=["memory"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1", "tags": ["memory"]})
+        
+        self.app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system"]})
         
         self.app.include_router(memory_album_router, prefix="/api/v1/memory-album", tags=["memory-album"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/memory-album", "tags": ["memory-album"]})
