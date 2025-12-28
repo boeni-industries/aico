@@ -13,6 +13,7 @@ from datetime import datetime
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
+from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
 from .modelservice_client import ModelserviceClient
@@ -714,6 +715,9 @@ class LLMRelationExtractor(ExtractionStrategy):
         # Get LLM timeout from config
         kg_config = config.get("core.memory.semantic.knowledge_graph", {})
         self.llm_timeout = kg_config.get("llm_timeout_seconds", 30.0)
+        
+        # Initialize JSON sanitizer for robust LLM response parsing
+        self.json_sanitizer = LLMJsonSanitizer(strict=False, log_repairs=True)
     
     async def extract(
         self,
@@ -884,24 +888,21 @@ Return valid JSON only, no explanation."""
             return PropertyGraph()
     
     def _parse_llm_response(self, text: str) -> Dict[str, Any]:
-        """Parse LLM JSON response, handling common issues."""
-        try:
-            # Try to extract JSON from response
-            original_text = text
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-                print(f"🔗 [PARSER] Extracted JSON from markdown code block")
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-                print(f"🔗 [PARSER] Extracted from generic code block")
-            
-            parsed = json.loads(text.strip())
-            print(f"🔗 [PARSER] ✅ Successfully parsed JSON")
-            return parsed
-        except Exception as e:
-            print(f"🔗 [PARSER] ❌ Failed to parse LLM response: {e}")
-            print(f"🔗 [PARSER] Raw text (first 500 chars): {original_text[:500]}")
-            logger.warning(f"Failed to parse LLM response: {e}")
+        """Parse LLM JSON response using robust sanitizer with automatic repair."""
+        # Use the JSON sanitizer for robust parsing
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=dict,
+            return_objects=True
+        )
+        
+        if result.success:
+            print(f"🔗 [PARSER] ✅ Successfully parsed JSON (strategy: {result.strategy.value})")
+            return result.data
+        else:
+            print(f"🔗 [PARSER] ❌ Failed to parse LLM response: {result.error}")
+            print(f"🔗 [PARSER] Raw text (first 500 chars): {text[:500]}")
+            logger.warning(f"Failed to parse LLM response after all repair strategies: {result.error}")
             return {"relationships": [], "new_entities": []}
     
     def _find_or_create_node(

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
+from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
 
@@ -46,6 +47,9 @@ class GraphFusion:
         # Get config settings
         kg_config = config.get("core.memory.semantic.knowledge_graph", {})
         self.llm_timeout = kg_config.get("llm_timeout_seconds", 30.0)
+        
+        # Initialize JSON sanitizer for robust LLM response parsing
+        self.json_sanitizer = LLMJsonSanitizer(strict=False, log_repairs=True)
         
         logger.info("GraphFusion initialized")
     
@@ -459,14 +463,15 @@ Return valid JSON only."""
         return f"{edge.source_id}|{edge.relation_type}|{edge.target_id}"
     
     def _parse_json_response(self, text: str) -> Dict[str, Any]:
-        """Parse JSON response from LLM."""
-        try:
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-            
-            return json.loads(text.strip())
-        except Exception as e:
-            logger.warning(f"Failed to parse JSON response: {e}")
+        """Parse JSON response from LLM using robust sanitizer with automatic repair."""
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=dict,
+            return_objects=True
+        )
+        
+        if result.success:
+            return result.data
+        else:
+            logger.warning(f"Failed to parse JSON response after all repair strategies: {result.error}")
             return {}
