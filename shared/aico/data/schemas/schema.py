@@ -874,14 +874,18 @@ V1_SCHEMA = [
                 source_id TEXT NOT NULL,
                 target_id TEXT NOT NULL,
                 relation_type TEXT NOT NULL,
-                properties JSON NOT NULL,
-                confidence REAL NOT NULL,
+                properties TEXT,
+                confidence REAL,
                 source_text TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL, valid_from TEXT, valid_until TEXT, is_current INTEGER DEFAULT 1,
+                updated_at TEXT,
+                valid_from TEXT,
+                valid_until TEXT,
+                is_current INTEGER DEFAULT 1,
                 FOREIGN KEY (user_id) REFERENCES "user_profiles"(uuid) ON DELETE CASCADE,
                 FOREIGN KEY (source_id) REFERENCES kg_nodes(id) ON DELETE CASCADE,
-                FOREIGN KEY (target_id) REFERENCES kg_nodes(id) ON DELETE CASCADE
+                FOREIGN KEY (target_id) REFERENCES kg_nodes(id) ON DELETE CASCADE,
+                UNIQUE(user_id, source_id, target_id, relation_type, is_current)
             )""",
 
     """CREATE INDEX idx_kg_edges_relation_user ON kg_edges(user_id, relation_type, is_current)""",

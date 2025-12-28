@@ -88,7 +88,7 @@ class Node:
     def to_chromadb_document(self) -> Dict[str, Any]:
         """Convert to ChromaDB document format."""
         # Combine all text fields for embedding
-        text_content = f"{self.label}: {json.dumps(self.properties)} | {self.source_text}"
+        text_content = f"{self.label}: {json.dumps(self.properties, sort_keys=True)} | {self.source_text}"
         
         return {
             "id": self.id,
@@ -109,7 +109,7 @@ class Node:
             self.id,
             self.user_id,
             self.label,
-            json.dumps(self.properties),
+            json.dumps(self.properties, sort_keys=True),
             self.confidence,
             self.source_text,
             self.created_at,
@@ -119,7 +119,7 @@ class Node:
             self.valid_until,
             self.is_current,
             self.canonical_id,
-            json.dumps(self.aliases) if self.aliases else None
+            json.dumps(self.aliases, sort_keys=True) if self.aliases else None
         )
 
 
@@ -196,7 +196,7 @@ class Edge:
     def to_chromadb_document(self) -> Dict[str, Any]:
         """Convert to ChromaDB document format."""
         # Combine all text fields for embedding
-        text_content = f"{self.relation_type}: {json.dumps(self.properties)} | {self.source_text}"
+        text_content = f"{self.relation_type}: {json.dumps(self.properties, sort_keys=True)} | {self.source_text}"
         
         return {
             "id": self.id,
@@ -220,7 +220,7 @@ class Edge:
             self.source_id,
             self.target_id,
             self.relation_type,
-            json.dumps(self.properties),
+            json.dumps(self.properties, sort_keys=True),
             self.confidence,
             self.source_text,
             self.created_at,
@@ -244,17 +244,42 @@ class PropertyGraph:
     edges: List[Edge] = field(default_factory=list)
     
     def add_node(self, node: Node) -> None:
-        """Add node to graph."""
+        """Add node to graph with duplicate prevention."""
+        # Check for duplicate by (label, properties)
+        node_key = (node.label, json.dumps(node.properties, sort_keys=True))
+        for existing_node in self.nodes:
+            existing_key = (existing_node.label, json.dumps(existing_node.properties, sort_keys=True))
+            if node_key == existing_key:
+                # Duplicate found - keep the one with higher confidence
+                if node.confidence > existing_node.confidence:
+                    self.nodes.remove(existing_node)
+                    self.nodes.append(node)
+                return
+        # Not a duplicate - add it
         self.nodes.append(node)
     
     def add_edge(self, edge: Edge) -> None:
-        """Add edge to graph."""
+        """Add edge to graph with duplicate prevention."""
+        # Check for duplicate by (source_id, target_id, relation_type)
+        edge_key = (edge.source_id, edge.target_id, edge.relation_type)
+        for existing_edge in self.edges:
+            existing_key = (existing_edge.source_id, existing_edge.target_id, existing_edge.relation_type)
+            if edge_key == existing_key:
+                # Duplicate found - keep the one with higher confidence
+                if edge.confidence > existing_edge.confidence:
+                    self.edges.remove(existing_edge)
+                    self.edges.append(edge)
+                return
+        # Not a duplicate - add it
         self.edges.append(edge)
     
     def merge(self, other: 'PropertyGraph') -> None:
-        """Merge another graph into this one."""
-        self.nodes.extend(other.nodes)
-        self.edges.extend(other.edges)
+        """Merge another graph into this one with deduplication."""
+        # Use add_node/add_edge to ensure deduplication
+        for node in other.nodes:
+            self.add_node(node)
+        for edge in other.edges:
+            self.add_edge(edge)
     
     def get_node_by_id(self, node_id: str) -> Optional[Node]:
         """Get node by ID."""

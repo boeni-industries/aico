@@ -9,6 +9,9 @@ from typing import List, Optional, Dict, Any
 import json
 import asyncio
 from datetime import datetime, timezone
+import time
+import asyncio
+import threading
 
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
@@ -16,6 +19,9 @@ from aico.core.logging import get_logger
 from .models import Node, Edge, PropertyGraph
 
 logger = get_logger("shared", "ai.knowledge_graph.storage")
+
+# Global lock for edge insertion to prevent race conditions in parallel extraction
+_edge_insertion_lock = threading.Lock()
 
 
 class PropertyGraphStorage:
@@ -226,18 +232,17 @@ class PropertyGraphStorage:
                     self.db.commit()
             await asyncio.to_thread(_mark_historical)
             
-            # Update ChromaDB metadata for historical nodes
-            def _sync_update_chromadb_metadata():
+            # DELETE historical nodes from ChromaDB (not just update metadata)
+            # This prevents accumulation of stale embeddings
+            def _sync_delete_chromadb_historical():
                 for node_id in superseded_node_ids:
                     try:
-                        self._node_collection.update(
-                            ids=[node_id],
-                            metadatas=[{"is_current": 0}]
-                        )
+                        # Delete the node embedding entirely
+                        self._node_collection.delete(ids=[node_id])
                     except Exception as e:
-                        logger.warning(f"Failed to update ChromaDB metadata for node {node_id}: {e}")
-            await asyncio.to_thread(_sync_update_chromadb_metadata)
-            print(f"  💾 [STORAGE] ✅ Marked {len(superseded_node_ids)} nodes as historical (+ updated edges and ChromaDB)")
+                        logger.warning(f"Failed to delete ChromaDB embedding for historical node {node_id}: {e}")
+            await asyncio.to_thread(_sync_delete_chromadb_historical)
+            print(f"  💾 [STORAGE] ✅ Marked {len(superseded_node_ids)} nodes as historical (+ cleaned edges and ChromaDB)")
         
         # Save to libSQL (structured queries)
         def _sync_save_all():
@@ -252,14 +257,14 @@ class PropertyGraphStorage:
                         """,
                         (
                             node.id, node.user_id, node.label,
-                            json.dumps(node.properties), node.confidence, node.source_text,
+                            json.dumps(node.properties, sort_keys=True), node.confidence, node.source_text,
                             1, node.created_at, node.updated_at
                         )
                     )
                 
-                # Save edges (with duplicate prevention)
+                # Save edges (lock is now at transaction level, not here)
                 for edge in graph.edges:
-                    # Debug: Check if source_text exists
+                        # Debug: Check if source_text exists
                     if not hasattr(edge, 'source_text') or edge.source_text is None:
                         print(f"  💾 [STORAGE] ⚠️  Edge {edge.id} missing source_text! Edge: {edge}")
                         # Set default source_text to avoid constraint violation
@@ -277,8 +282,14 @@ class PropertyGraphStorage:
                     existing = cursor.fetchone()
                     
                     if existing:
-                        # Duplicate edge - skip insertion, just update confidence if higher
+                        # LAYER 2: SELECT-then-INSERT logic caught duplicate
                         existing_id = existing[0]
+                        logger.warning(
+                            f"[LAYER 2] Duplicate edge prevented by SELECT check: "
+                            f"relation={edge.relation_type}, source={edge.source_id[:8]}, target={edge.target_id[:8]}, "
+                            f"existing_id={existing_id}, attempted_id={edge.id}"
+                        )
+                        print(f"  💾 [STORAGE] 🔍 [LAYER 2] Duplicate edge detected: {edge.relation_type} (existing: {existing_id}, new: {edge.id})")
                         self.db.execute(
                             """
                             UPDATE kg_edges SET confidence = MAX(confidence, ?), updated_at = ?
@@ -286,26 +297,79 @@ class PropertyGraphStorage:
                             """,
                             (edge.confidence, edge.updated_at, existing_id)
                         )
+                        print(f"  💾 [STORAGE] ✅ [LAYER 2] Updated existing edge {existing_id} instead of inserting duplicate")
                     else:
-                        # New edge - insert
-                        self.db.execute(
-                            """
-                            INSERT INTO kg_edges 
-                            (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                edge.id, edge.source_id, edge.target_id, edge.relation_type,
-                                json.dumps(edge.properties), edge.confidence, edge.user_id,
-                                edge.source_text, 1, edge.created_at, edge.updated_at
+                        # New edge - insert with UNIQUE constraint protection
+                        try:
+                            self.db.execute(
+                                """
+                                INSERT INTO kg_edges 
+                                (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    edge.id, edge.source_id, edge.target_id, edge.relation_type,
+                                    json.dumps(edge.properties, sort_keys=True), edge.confidence, edge.user_id,
+                                    edge.source_text, 1, edge.created_at, edge.updated_at
+                                )
                             )
-                        )
+                        except Exception as e:
+                            # LAYER 3: UNIQUE constraint violation - database safety net activated
+                            # This means Layer 1 (lock) and Layer 2 (SELECT) both failed to prevent duplicate
+                            if "UNIQUE constraint failed" in str(e):
+                                logger.error(
+                                    f"[LAYER 3] CRITICAL: Database UNIQUE constraint caught duplicate that bypassed Layers 1 & 2! "
+                                    f"relation={edge.relation_type}, source={edge.source_id[:8]}, target={edge.target_id[:8]}, "
+                                    f"attempted_id={edge.id}. This indicates a race condition or logic bug."
+                                )
+                                print(f"  💾 [STORAGE] 🛡️  [LAYER 3] UNIQUE constraint caught race condition for {edge.relation_type}")
+                                print(f"  💾 [STORAGE] ⚠️  [LAYER 3] WARNING: Layers 1 & 2 failed - investigate race condition!")
+                                
+                                cursor = self.db.execute(
+                                    """
+                                    SELECT id FROM kg_edges 
+                                    WHERE source_id = ? AND target_id = ? AND relation_type = ? AND is_current = 1
+                                    LIMIT 1
+                                    """,
+                                    (edge.source_id, edge.target_id, edge.relation_type)
+                                )
+                                existing = cursor.fetchone()
+                                if existing:
+                                    existing_id = existing[0]
+                                    self.db.execute(
+                                        """
+                                        UPDATE kg_edges SET confidence = MAX(confidence, ?), updated_at = ?
+                                        WHERE id = ?
+                                        """,
+                                        (edge.confidence, edge.updated_at, existing_id)
+                                    )
+                                    logger.info(f"[LAYER 3] Successfully recovered: updated existing edge {existing_id}")
+                                    print(f"  💾 [STORAGE] ✅ [LAYER 3] Database constraint prevented duplicate, updated {existing_id}")
+                                else:
+                                    # Should never happen, but log it
+                                    logger.critical(
+                                        f"[LAYER 3] CRITICAL BUG: UNIQUE constraint failed but edge not found in database! "
+                                        f"relation={edge.relation_type}, source={edge.source_id}, target={edge.target_id}, error={e}"
+                                    )
+                                    print(f"  💾 [STORAGE] ❌ [LAYER 3] UNIQUE constraint error but edge not found: {e}")
+                                    raise
+                            else:
+                                # Different error - re-raise
+                                logger.error(f"[STORAGE] Database error during edge insertion: {e}")
+                                raise
                 
                 self.db.commit()
         
         print(f"\n  💾 [STORAGE] Saving to libSQL: {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
+        logger.info(f"[LAYER 1] Acquiring transaction lock for {len(graph.edges)} edges")
         libsql_start = time.time()
-        await asyncio.to_thread(_sync_save_all)
+        
+        # LAYER 1: Transaction-level lock to prevent race conditions
+        # This ensures only ONE transaction can insert edges at a time
+        with _edge_insertion_lock:
+            logger.debug(f"[LAYER 1] Lock acquired, starting transaction")
+            await asyncio.to_thread(_sync_save_all)
+            logger.debug(f"[LAYER 1] Transaction complete, lock released")
         libsql_time = time.time() - libsql_start
         print(f"  💾 [STORAGE] ✅ libSQL complete in {libsql_time:.2f}s")
         
