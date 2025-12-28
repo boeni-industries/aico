@@ -519,18 +519,50 @@ class KGConsolidationTask(BaseTask):
             print(f"🕸️ [KG_TASK] 🔄 Updating edges to point to canonical nodes...")
             for superseded_id, canonical_id in node_mapping.items():
                 # Update edges where superseded node is the source
-                result = db.execute(
-                    "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ? AND user_id = ?",
-                    (canonical_id, superseded_id, user_id)
-                )
-                edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                try:
+                    result = db.execute(
+                        "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ? AND user_id = ?",
+                        (canonical_id, superseded_id, user_id)
+                    )
+                    edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                except Exception as e:
+                    if "UNIQUE constraint failed" in str(e):
+                        # UNIQUE constraint violation - this edge would become a duplicate after update
+                        # Delete the edge instead of updating it
+                        logger.warning(
+                            f"[POST_DEDUP] UNIQUE constraint prevented edge update (source_id). "
+                            f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                        )
+                        result = db.execute(
+                            "DELETE FROM kg_edges WHERE source_id = ? AND user_id = ?",
+                            (superseded_id, user_id)
+                        )
+                        print(f"🕸️ [KG_TASK] 🛡️  Deleted {result.rowcount if hasattr(result, 'rowcount') else 0} duplicate edges (source update)")
+                    else:
+                        raise
                 
                 # Update edges where superseded node is the target
-                result = db.execute(
-                    "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ? AND user_id = ?",
-                    (canonical_id, superseded_id, user_id)
-                )
-                edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                try:
+                    result = db.execute(
+                        "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ? AND user_id = ?",
+                        (canonical_id, superseded_id, user_id)
+                    )
+                    edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                except Exception as e:
+                    if "UNIQUE constraint failed" in str(e):
+                        # UNIQUE constraint violation - this edge would become a duplicate after update
+                        # Delete the edge instead of updating it
+                        logger.warning(
+                            f"[POST_DEDUP] UNIQUE constraint prevented edge update (target_id). "
+                            f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                        )
+                        result = db.execute(
+                            "DELETE FROM kg_edges WHERE target_id = ? AND user_id = ?",
+                            (superseded_id, user_id)
+                        )
+                        print(f"🕸️ [KG_TASK] 🛡️  Deleted {result.rowcount if hasattr(result, 'rowcount') else 0} duplicate edges (target update)")
+                    else:
+                        raise
             
             print(f"🕸️ [KG_TASK] ✅ Updated {edges_updated} edge references")
             
