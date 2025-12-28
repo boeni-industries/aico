@@ -977,12 +977,29 @@ class MemoryManager(BaseAIProcessor):
             print(f"🕸️ [KG] Using shared resolver (incremental HNSW)")
         print(f"{'='*80}")
         try:
-            # 1. Extract entities and relationships
-            print(f"\n🕸️ [KG] Step 1: Multi-pass extraction...")
+            # 1. Load existing entities for context (prevents duplicates at extraction time)
+            print(f"\n🕸️ [KG] Step 1: Loading existing entities for context...")
+            context_start = time.time()
+            existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
+            context_time = time.time() - context_start
+            
+            # Build context for extractor (entity names and IDs for LLM to reference)
+            entity_context = [
+                {
+                    "id": node.id,
+                    "label": node.label,
+                    "name": node.properties.get("name", "")
+                }
+                for node in existing_nodes
+            ]
+            print(f"🕸️ [KG] ✅ Loaded {len(entity_context)} existing entities in {context_time:.2f}s")
+            
+            # 2. Extract entities and relationships (with existing entity context)
+            print(f"\n🕸️ [KG] Step 2: Multi-pass extraction with context...")
             extraction_start = time.time()
             logger.info(f"🕸️ [KG] Starting background extraction for user {user_id}")
             
-            new_graph = await self._kg_extractor.extract(text, user_id)
+            new_graph = await self._kg_extractor.extract(text, user_id, context={"entities": entity_context})
             extraction_time = time.time() - extraction_start
             
             print(f"\n🕸️ [KG] ✅ Extraction complete in {extraction_time:.2f}s")
@@ -991,50 +1008,13 @@ class MemoryManager(BaseAIProcessor):
             logger.info(f"🕸️ [KG] Extracted {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges in {extraction_time:.2f}s")
             
             if len(new_graph.nodes) == 0 and len(new_graph.edges) == 0:
-                logger.info(" [KG]  No entities extracted, skipping")
+                logger.info("🕸️ [KG] No entities extracted, skipping")
                 return
             
-            # 2. Entity resolution (deduplicate against existing graph)
-            print(f"\n [KG]  Step 2: Entity resolution (HNSW-based deduplication)")
-            resolution_start = time.time()
-            superseded_ids = set()  # Track nodes that should be marked historical
-            try:
-                # Get existing nodes for this user
-                db_fetch_start = time.time()
-                existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
-                db_fetch_time = time.time() - db_fetch_start
-                print(f" [KG]    Found {len(existing_nodes)} existing nodes in DB ({db_fetch_time:.2f}s)")
-                
-                # Use shared resolver if provided (incremental HNSW), otherwise use instance resolver
-                resolver = shared_resolver if shared_resolver else self._kg_resolver
-                
-                # Resolve entities (deduplicate)
-                resolve_start = time.time()
-                resolution_result = await resolver.resolve(new_graph, user_id, existing_nodes)
-                resolve_time = time.time() - resolve_start
-                
-                resolved_graph = resolution_result.resolved_graph
-                superseded_ids = resolution_result.superseded_node_ids
-                
-                duplicates_merged = len(new_graph.nodes) - len(resolved_graph.nodes)
-                print(f"\n🕸️ [KG] ✅ Resolution complete in {resolve_time:.2f}s")
-                print(f"🕸️ [KG]    Before: {len(new_graph.nodes)} nodes")
-                print(f"🕸️ [KG]    After:  {len(resolved_graph.nodes)} nodes")
-                print(f"🕸️ [KG]    Merged: {duplicates_merged} duplicates")
-                
-                # Use resolved graph for storage
-                new_graph = resolved_graph
-            except Exception as e:
-                resolution_time = time.time() - resolution_start
-                print(f"\n🕸️ [KG] ⚠️  Entity resolution failed after {resolution_time:.2f}s: {e}")
-                print(f"🕸️ [KG]    Proceeding with unresolved graph")
-                logger.warning(f"Entity resolution failed: {e}, proceeding with unresolved graph")
-                superseded_ids = set()  # No superseded nodes if resolution failed
-                import traceback
-                traceback.print_exc()
-            
-            # 3. Graph fusion - SKIPPED (not critical for initial testing)
-            print(f"\n🕸️ [KG] Step 3: Graph fusion (skipped for now)")
+            # 3. Skip per-message resolution (context-aware extraction prevents most duplicates)
+            # Resolution now only runs in batch post-processing for final cleanup
+            print(f"\n🕸️ [KG] Step 3: Skipping per-message resolution (context-aware extraction used)")
+            superseded_ids = set()
             
             # 4. Save to storage (libSQL + ChromaDB with embeddings)
             print(f"\n🕸️ [KG] Step 4: Saving to storage...")
@@ -1046,8 +1026,8 @@ class MemoryManager(BaseAIProcessor):
             print(f"\n🕸️ [KG] ✅ Storage complete in {storage_time:.2f}s")
             print(f"\n{'='*80}")
             print(f"🕸️ [KG] ✅ PIPELINE COMPLETE in {total_time:.2f}s")
-            print(f"🕸️ [KG]    Extraction:  {extraction_time:.2f}s ({extraction_time/total_time*100:.1f}%)")
-            print(f"🕸️ [KG]    Resolution: {time.time() - resolution_start:.2f}s ({(time.time() - resolution_start)/total_time*100:.1f}%)")
+            print(f"🕸️ [KG]    Context:    {context_time:.2f}s ({context_time/total_time*100:.1f}%)")
+            print(f"🕸️ [KG]    Extraction: {extraction_time:.2f}s ({extraction_time/total_time*100:.1f}%)")
             print(f"🕸️ [KG]    Storage:    {storage_time:.2f}s ({storage_time/total_time*100:.1f}%)")
             print(f"🕸️ [KG]    Final: {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
             print(f"{'='*80}\n")

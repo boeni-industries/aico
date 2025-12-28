@@ -218,9 +218,26 @@ class PropertyGraphStorage:
                             "UPDATE kg_nodes SET is_current = 0, updated_at = ? WHERE id = ?",
                             (datetime.now(timezone.utc).isoformat(), node_id)
                         )
+                        # Also mark edges pointing to/from this node as historical to prevent orphans
+                        self.db.execute(
+                            "UPDATE kg_edges SET is_current = 0, updated_at = ? WHERE (source_id = ? OR target_id = ?) AND is_current = 1",
+                            (datetime.now(timezone.utc).isoformat(), node_id, node_id)
+                        )
                     self.db.commit()
             await asyncio.to_thread(_mark_historical)
-            print(f"  💾 [STORAGE] ✅ Marked {len(superseded_node_ids)} nodes as historical")
+            
+            # Update ChromaDB metadata for historical nodes
+            def _sync_update_chromadb_metadata():
+                for node_id in superseded_node_ids:
+                    try:
+                        self._node_collection.update(
+                            ids=[node_id],
+                            metadatas=[{"is_current": 0}]
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to update ChromaDB metadata for node {node_id}: {e}")
+            await asyncio.to_thread(_sync_update_chromadb_metadata)
+            print(f"  💾 [STORAGE] ✅ Marked {len(superseded_node_ids)} nodes as historical (+ updated edges and ChromaDB)")
         
         # Save to libSQL (structured queries)
         def _sync_save_all():
@@ -240,7 +257,7 @@ class PropertyGraphStorage:
                         )
                     )
                 
-                # Save edges
+                # Save edges (with duplicate prevention)
                 for edge in graph.edges:
                     # Debug: Check if source_text exists
                     if not hasattr(edge, 'source_text') or edge.source_text is None:
@@ -248,18 +265,41 @@ class PropertyGraphStorage:
                         # Set default source_text to avoid constraint violation
                         edge.source_text = ""
                     
-                    self.db.execute(
+                    # Check if duplicate edge already exists (same source, target, relation_type)
+                    cursor = self.db.execute(
                         """
-                        INSERT OR REPLACE INTO kg_edges 
-                        (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        SELECT id FROM kg_edges 
+                        WHERE source_id = ? AND target_id = ? AND relation_type = ? AND is_current = 1
+                        LIMIT 1
                         """,
-                        (
-                            edge.id, edge.source_id, edge.target_id, edge.relation_type,
-                            json.dumps(edge.properties), edge.confidence, edge.user_id,
-                            edge.source_text, 1, edge.created_at, edge.updated_at
-                        )
+                        (edge.source_id, edge.target_id, edge.relation_type)
                     )
+                    existing = cursor.fetchone()
+                    
+                    if existing:
+                        # Duplicate edge - skip insertion, just update confidence if higher
+                        existing_id = existing[0]
+                        self.db.execute(
+                            """
+                            UPDATE kg_edges SET confidence = MAX(confidence, ?), updated_at = ?
+                            WHERE id = ?
+                            """,
+                            (edge.confidence, edge.updated_at, existing_id)
+                        )
+                    else:
+                        # New edge - insert
+                        self.db.execute(
+                            """
+                            INSERT INTO kg_edges 
+                            (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                edge.id, edge.source_id, edge.target_id, edge.relation_type,
+                                json.dumps(edge.properties), edge.confidence, edge.user_id,
+                                edge.source_text, 1, edge.created_at, edge.updated_at
+                            )
+                        )
                 
                 self.db.commit()
         
@@ -301,18 +341,22 @@ class PropertyGraphStorage:
         embedding_time = time.time() - embedding_start
         print(f"  💾 [STORAGE] ✅ Embeddings ready in {embedding_time:.2f}s ({len(nodes_with_embeddings)} cached, {len(nodes_without_embeddings)} generated)")
         
-        chroma_nodes_start = time.time()
-        def _sync_save_nodes_to_chroma():
-            self._node_collection.upsert(
-                ids=[doc["id"] for doc in node_docs],
-                embeddings=embeddings,
-                documents=[doc["document"] for doc in node_docs],
-                metadatas=[doc["metadata"] for doc in node_docs]
-            )
-        
-        await asyncio.to_thread(_sync_save_nodes_to_chroma)
-        chroma_nodes_time = time.time() - chroma_nodes_start
-        print(f"  💾 [STORAGE] ✅ ChromaDB nodes saved in {chroma_nodes_time:.2f}s")
+        # Only save to ChromaDB if we have nodes (avoid empty embeddings list error)
+        if node_docs:
+            chroma_nodes_start = time.time()
+            def _sync_save_nodes_to_chroma():
+                self._node_collection.upsert(
+                    ids=[doc["id"] for doc in node_docs],
+                    embeddings=embeddings,
+                    documents=[doc["document"] for doc in node_docs],
+                    metadatas=[doc["metadata"] for doc in node_docs]
+                )
+            
+            await asyncio.to_thread(_sync_save_nodes_to_chroma)
+            chroma_nodes_time = time.time() - chroma_nodes_start
+            print(f"  💾 [STORAGE] ✅ ChromaDB nodes saved in {chroma_nodes_time:.2f}s")
+        else:
+            print(f"  💾 [STORAGE] ⏭️  No new nodes to save to ChromaDB (edge-only graph)")
         
         # Save edges to ChromaDB
         if graph.edges:

@@ -985,7 +985,8 @@ class MultiPassExtractor:
     async def extract(
         self,
         text: str,
-        user_id: str
+        user_id: str,
+        context: Dict[str, Any] = None
     ) -> PropertyGraph:
         """
         Extract knowledge graph from text using multi-pass algorithm.
@@ -993,17 +994,21 @@ class MultiPassExtractor:
         Args:
             text: Text to extract from
             user_id: User ID
+            context: Optional context with existing entities to prevent duplicates
             
         Returns:
             PropertyGraph with extracted entities and relationships
         """
+        if context is None:
+            context = {}
+            
         print(f"\n📚 [MULTIPASS] Starting multi-pass extraction (max_passes={self.max_gleanings + 1})")
         logger.info(f"Starting multi-pass extraction (max_passes={self.max_gleanings + 1})")
         pipeline_start = time.time()
         
-        # Pass 1: Initial extraction
+        # Pass 1: Initial extraction with context
         pass1_start = time.time()
-        graph = await self._initial_extraction(text, user_id)
+        graph = await self._initial_extraction(text, user_id, context)
         pass1_time = time.time() - pass1_start
         initial_count = len(graph)
         
@@ -1035,7 +1040,8 @@ class MultiPassExtractor:
     async def _initial_extraction(
         self,
         text: str,
-        user_id: str
+        user_id: str,
+        context: Dict[str, Any] = None
     ) -> PropertyGraph:
         """
         Pass 1: Initial extraction using GLiNER + LLM.
@@ -1043,10 +1049,13 @@ class MultiPassExtractor:
         Args:
             text: Text to extract from
             user_id: User ID
+            context: Optional context with existing entities
             
         Returns:
             PropertyGraph with initial extraction
         """
+        if context is None:
+            context = {}
         # Step 1: Extract entities using GLiNER (fast)
         print(f"\n  🔍 [ENTITIES] Starting GLiNER entity extraction...")
         entity_start = time.time()
@@ -1061,18 +1070,21 @@ class MultiPassExtractor:
         graph.merge(entity_graph)
         
         # Step 2: Build entity context for relation extraction
-        entity_context = {
-            "entities": [
-                {
-                    "id": node.id,
-                    "label": node.label,
-                    "name": safe_get_name(node)
-                }
-                for node in entity_graph.nodes
-            ]
-        }
+        # Merge newly extracted entities with existing entities from context
+        all_entities = context.get("entities", [])  # Existing entities from DB
+        new_entities = [
+            {
+                "id": node.id,
+                "label": node.label,
+                "name": safe_get_name(node)
+            }
+            for node in entity_graph.nodes
+        ]
+        all_entities.extend(new_entities)
         
-        # Step 3: Extract relations WITH entity context (only one LLM call needed)
+        entity_context = {"entities": all_entities}
+        
+        # Step 3: Extract relations WITH full entity context (existing + new)
         print(f"🔗 [RELATIONS] Starting relation extraction with {len(entity_context['entities'])} known entities")
         logger.debug(f"Starting relation extraction with {len(entity_context['entities'])} known entities")
         
