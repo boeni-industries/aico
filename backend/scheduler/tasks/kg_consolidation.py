@@ -629,6 +629,92 @@ class KGConsolidationTask(BaseTask):
             
             print(f"🕸️ [KG_TASK] ✅ Updated {edges_updated} edge references")
             
+            # CRITICAL FIX: Update orphaned edges from previous batches
+            # These are edges pointing to nodes that were merged AFTER the edge was created
+            print(f"🕸️ [KG_TASK] 🔄 Checking for orphaned edges from previous batches...")
+            
+            # Find all current edges pointing to historical nodes
+            cursor = db.execute("""
+                SELECT DISTINCT e.id, e.source_id, e.target_id, e.relation_type,
+                       CASE WHEN ns.is_current = 0 THEN 1 ELSE 0 END as source_historical,
+                       CASE WHEN nt.is_current = 0 THEN 1 ELSE 0 END as target_historical
+                FROM kg_edges e
+                LEFT JOIN kg_nodes ns ON e.source_id = ns.id
+                LEFT JOIN kg_nodes nt ON e.target_id = nt.id
+                WHERE e.is_current = 1 
+                AND e.user_id = ?
+                AND (ns.is_current = 0 OR nt.is_current = 0)
+            """, (user_id,))
+            
+            orphaned_edges = cursor.fetchall()
+            orphaned_fixed = 0
+            orphaned_deleted = 0
+            
+            for edge_id, source_id, target_id, relation_type, source_hist, target_hist in orphaned_edges:
+                # For each orphaned edge, find the canonical node it should point to
+                fixed = False
+                
+                # If source is historical, find its canonical replacement
+                if source_hist:
+                    cursor = db.execute("""
+                        SELECT id FROM kg_nodes 
+                        WHERE user_id = ? 
+                        AND label = (SELECT label FROM kg_nodes WHERE id = ?)
+                        AND properties = (SELECT properties FROM kg_nodes WHERE id = ?)
+                        AND is_current = 1
+                        LIMIT 1
+                    """, (user_id, source_id, source_id))
+                    canonical_source = cursor.fetchone()
+                    if canonical_source:
+                        try:
+                            db.execute(
+                                "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE id = ?",
+                                (canonical_source[0], edge_id)
+                            )
+                            orphaned_fixed += 1
+                            fixed = True
+                        except Exception as e:
+                            if "UNIQUE constraint failed" in str(e):
+                                db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
+                                orphaned_deleted += 1
+                                fixed = True
+                
+                # If target is historical, find its canonical replacement
+                if target_hist and not fixed:
+                    cursor = db.execute("""
+                        SELECT id FROM kg_nodes 
+                        WHERE user_id = ? 
+                        AND label = (SELECT label FROM kg_nodes WHERE id = ?)
+                        AND properties = (SELECT properties FROM kg_nodes WHERE id = ?)
+                        AND is_current = 1
+                        LIMIT 1
+                    """, (user_id, target_id, target_id))
+                    canonical_target = cursor.fetchone()
+                    if canonical_target:
+                        try:
+                            db.execute(
+                                "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE id = ?",
+                                (canonical_target[0], edge_id)
+                            )
+                            orphaned_fixed += 1
+                            fixed = True
+                        except Exception as e:
+                            if "UNIQUE constraint failed" in str(e):
+                                db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
+                                orphaned_deleted += 1
+                                fixed = True
+                
+                # If we couldn't find a canonical node, delete the edge as last resort
+                if not fixed:
+                    db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
+                    orphaned_deleted += 1
+            
+            if orphaned_fixed > 0:
+                print(f"🕸️ [KG_TASK] ✅ Fixed {orphaned_fixed} orphaned edges from previous batches")
+            if orphaned_deleted > 0:
+                print(f"🕸️ [KG_TASK] 🧹 Deleted {orphaned_deleted} orphaned edges (no canonical node found)")
+                logger.warning(f"[POST_DEDUP] Deleted {orphaned_deleted} orphaned edges with no canonical replacement")
+            
             db.commit()
             
             return {
