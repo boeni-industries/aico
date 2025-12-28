@@ -234,59 +234,120 @@ class PropertyGraphStorage:
             await asyncio.to_thread(_mark_historical)
             print(f"  [STORAGE] Marked {len(superseded_node_ids)} nodes as historical")
         
-        # ALWAYS clean up ALL historical embeddings from ChromaDB (not just from this run)
-        # This ensures ChromaDB stays in sync with libSQL even if historical records exist from previous runs
-        print(f"  [STORAGE] Cleaning up historical embeddings from ChromaDB...")
+        # ALWAYS clean up ALL historical embeddings AND orphaned embeddings from ChromaDB
+        # This ensures ChromaDB stays perfectly in sync with libSQL current nodes/edges
+        print(f"  [STORAGE] Cleaning up ChromaDB embeddings...")
         
-        def _sync_delete_all_historical_chromadb():
-            # Query ALL historical nodes from database
-            cursor = self.db.execute("SELECT id FROM kg_nodes WHERE is_current = 0")
-            historical_node_ids = [row[0] for row in cursor.fetchall()]
+        def _sync_cleanup_chromadb():
+            # Get all current node IDs from libSQL
+            cursor = self.db.execute("SELECT id FROM kg_nodes WHERE is_current = 1")
+            current_node_ids = set(row[0] for row in cursor.fetchall())
             
-            # Delete historical node embeddings
-            if historical_node_ids:
+            # Get all node IDs from ChromaDB
+            try:
+                chroma_nodes = self._node_collection.get()
+                chroma_node_ids = set(chroma_nodes['ids']) if chroma_nodes['ids'] else set()
+            except Exception as e:
+                logger.warning(f"Failed to get ChromaDB node IDs: {e}")
+                chroma_node_ids = set()
+            
+            # Find orphaned node embeddings (in ChromaDB but not in current libSQL nodes)
+            orphaned_node_ids = chroma_node_ids - current_node_ids
+            
+            # Delete orphaned node embeddings
+            if orphaned_node_ids:
                 try:
-                    self._node_collection.delete(ids=historical_node_ids)
-                    logger.info(f"Deleted {len(historical_node_ids)} historical node embeddings from ChromaDB")
-                    print(f"  [STORAGE]  Deleted {len(historical_node_ids)} historical node embeddings")
+                    self._node_collection.delete(ids=list(orphaned_node_ids))
+                    logger.info(f"Deleted {len(orphaned_node_ids)} orphaned node embeddings from ChromaDB")
+                    print(f"  [STORAGE] 🧹 Deleted {len(orphaned_node_ids)} orphaned node embeddings")
                 except Exception as e:
-                    logger.warning(f"Failed to delete ChromaDB embeddings for historical nodes: {e}")
+                    logger.warning(f"Failed to delete orphaned node embeddings: {e}")
             
-            # Query ALL historical edges from database
-            cursor = self.db.execute("SELECT id FROM kg_edges WHERE is_current = 0")
-            historical_edge_ids = [row[0] for row in cursor.fetchall()]
+            # Get all current edge IDs from libSQL
+            cursor = self.db.execute("SELECT id FROM kg_edges WHERE is_current = 1")
+            current_edge_ids = set(row[0] for row in cursor.fetchall())
             
-            # Delete historical edge embeddings
-            if historical_edge_ids:
+            # Get all edge IDs from ChromaDB
+            try:
+                chroma_edges = self._edge_collection.get()
+                chroma_edge_ids = set(chroma_edges['ids']) if chroma_edges['ids'] else set()
+            except Exception as e:
+                logger.warning(f"Failed to get ChromaDB edge IDs: {e}")
+                chroma_edge_ids = set()
+            
+            # Find orphaned edge embeddings (in ChromaDB but not in current libSQL edges)
+            orphaned_edge_ids = chroma_edge_ids - current_edge_ids
+            
+            # Delete orphaned edge embeddings
+            if orphaned_edge_ids:
                 try:
-                    self._edge_collection.delete(ids=historical_edge_ids)
-                    logger.info(f"Deleted {len(historical_edge_ids)} historical edge embeddings from ChromaDB")
-                    print(f"  [STORAGE]  Deleted {len(historical_edge_ids)} historical edge embeddings")
+                    self._edge_collection.delete(ids=list(orphaned_edge_ids))
+                    logger.info(f"Deleted {len(orphaned_edge_ids)} orphaned edge embeddings from ChromaDB")
+                    print(f"  [STORAGE] 🧹 Deleted {len(orphaned_edge_ids)} orphaned edge embeddings")
                 except Exception as e:
-                    logger.warning(f"Failed to delete ChromaDB embeddings for historical edges: {e}")
+                    logger.warning(f"Failed to delete orphaned edge embeddings: {e}")
             
-            if not historical_node_ids and not historical_edge_ids:
-                print(f"  [STORAGE] No historical embeddings to clean")
+            if not orphaned_node_ids and not orphaned_edge_ids:
+                print(f"  [STORAGE] ✅ ChromaDB already in sync")
+            else:
+                print(f"  [STORAGE] ✅ ChromaDB cleanup complete: {len(orphaned_node_ids)} nodes, {len(orphaned_edge_ids)} edges removed")
         
-        await asyncio.to_thread(_sync_delete_all_historical_chromadb)
+        await asyncio.to_thread(_sync_cleanup_chromadb)
         
         # Save to libSQL (structured queries)
         def _sync_save_all():
+            # Track node ID mappings for edge reference updates
+            node_id_mapping = {}  # attempted_id -> actual_id
+            
             with self.db:
-                # Save nodes
+                # Save nodes with UNIQUE constraint handling
                 for node in graph.nodes:
-                    self.db.execute(
-                        """
-                        INSERT OR REPLACE INTO kg_nodes 
-                        (id, user_id, label, properties, confidence, source_text, is_current, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            node.id, node.user_id, node.label,
-                            json.dumps(node.properties, sort_keys=True), node.confidence, node.source_text,
-                            1, node.created_at, node.updated_at
+                    try:
+                        self.db.execute(
+                            """
+                            INSERT INTO kg_nodes 
+                            (id, user_id, label, properties, confidence, source_text, is_current, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                node.id, node.user_id, node.label,
+                                json.dumps(node.properties, sort_keys=True), node.confidence, node.source_text,
+                                1, node.created_at, node.updated_at
+                            )
                         )
-                    )
+                        # Node inserted successfully - map to itself
+                        node_id_mapping[node.id] = node.id
+                    except Exception as e:
+                        if "UNIQUE constraint failed" in str(e):
+                            # Node already exists - find it and update confidence if higher
+                            cursor = self.db.execute(
+                                """
+                                SELECT id, confidence FROM kg_nodes 
+                                WHERE user_id = ? AND label = ? AND properties = ? AND is_current = 1
+                                LIMIT 1
+                                """,
+                                (node.user_id, node.label, json.dumps(node.properties, sort_keys=True))
+                            )
+                            existing = cursor.fetchone()
+                            if existing:
+                                existing_id, existing_confidence = existing
+                                # Map attempted ID to existing ID for edge reference updates
+                                node_id_mapping[node.id] = existing_id
+                                logger.info(
+                                    f"[NODE_DEDUP] Node already exists: label={node.label}, "
+                                    f"existing_id={existing_id}, attempted_id={node.id}"
+                                )
+                                # Update confidence if new one is higher
+                                if node.confidence > existing_confidence:
+                                    self.db.execute(
+                                        "UPDATE kg_nodes SET confidence = ?, updated_at = ? WHERE id = ?",
+                                        (node.confidence, node.updated_at, existing_id)
+                                    )
+                                    print(f"  💾 [STORAGE] 🔄 Updated node confidence: {node.label} ({existing_id})")
+                                else:
+                                    print(f"  💾 [STORAGE] ✅ Node exists with higher confidence: {node.label} ({existing_id})")
+                        else:
+                            raise
                 
                 # Save edges (lock is now at transaction level, not here)
                 for edge in graph.edges:
@@ -296,6 +357,13 @@ class PropertyGraphStorage:
                         # Set default source_text to avoid constraint violation
                         edge.source_text = ""
                     
+                    # Update edge node references if nodes were deduplicated
+                    actual_source_id = node_id_mapping.get(edge.source_id, edge.source_id)
+                    actual_target_id = node_id_mapping.get(edge.target_id, edge.target_id)
+                    
+                    if actual_source_id != edge.source_id or actual_target_id != edge.target_id:
+                        print(f"  💾 [STORAGE] 🔄 Remapping edge references: source {edge.source_id[:8]}→{actual_source_id[:8]}, target {edge.target_id[:8]}→{actual_target_id[:8]}")
+                    
                     # Check if duplicate edge already exists (same source, target, relation_type)
                     cursor = self.db.execute(
                         """
@@ -303,7 +371,7 @@ class PropertyGraphStorage:
                         WHERE source_id = ? AND target_id = ? AND relation_type = ? AND is_current = 1
                         LIMIT 1
                         """,
-                        (edge.source_id, edge.target_id, edge.relation_type)
+                        (actual_source_id, actual_target_id, edge.relation_type)
                     )
                     existing = cursor.fetchone()
                     
@@ -325,7 +393,7 @@ class PropertyGraphStorage:
                         )
                         print(f"  💾 [STORAGE] ✅ [LAYER 2] Updated existing edge {existing_id} instead of inserting duplicate")
                     else:
-                        # New edge - insert with UNIQUE constraint protection
+                        # New edge - insert with UNIQUE constraint protection and remapped node IDs
                         try:
                             self.db.execute(
                                 """
@@ -334,7 +402,7 @@ class PropertyGraphStorage:
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """,
                                 (
-                                    edge.id, edge.source_id, edge.target_id, edge.relation_type,
+                                    edge.id, actual_source_id, actual_target_id, edge.relation_type,
                                     json.dumps(edge.properties, sort_keys=True), edge.confidence, edge.user_id,
                                     edge.source_text, 1, edge.created_at, edge.updated_at
                                 )
@@ -357,7 +425,7 @@ class PropertyGraphStorage:
                                     WHERE source_id = ? AND target_id = ? AND relation_type = ? AND is_current = 1
                                     LIMIT 1
                                     """,
-                                    (edge.source_id, edge.target_id, edge.relation_type)
+                                    (actual_source_id, actual_target_id, edge.relation_type)
                                 )
                                 existing = cursor.fetchone()
                                 if existing:

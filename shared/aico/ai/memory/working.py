@@ -80,6 +80,8 @@ class WorkingMemoryStore:
             for db_name in self._named_dbs:
                 self.dbs[db_name] = self.env.open_db(db_name.encode('utf-8'), create=True)
 
+            self._initialized = True
+            logger.info(f"[DEBUG] WorkingMemoryStore: Initialization complete")
 
         except Exception as e:
             logger.error(f"Failed to initialize working memory store: {e}")

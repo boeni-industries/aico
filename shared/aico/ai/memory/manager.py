@@ -323,7 +323,7 @@ class MemoryManager(BaseAIProcessor):
                 # Create our own ChromaDB client
                 import chromadb
                 from chromadb.config import Settings
-                chromadb_path = AICOPaths.get_chromadb_path()
+                chromadb_path = AICOPaths.get_semantic_memory_path()
                 chromadb_client = chromadb.PersistentClient(
                     path=str(chromadb_path),
                     settings=Settings(anonymized_telemetry=False, allow_reset=True)

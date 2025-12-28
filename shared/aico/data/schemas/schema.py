@@ -912,8 +912,15 @@ V1_SCHEMA = [
                 confidence REAL NOT NULL,
                 source_text TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL, valid_from TEXT, valid_until TEXT, is_current INTEGER DEFAULT 1, canonical_id TEXT, aliases_json TEXT, language TEXT,
-                FOREIGN KEY (user_id) REFERENCES "user_profiles"(uuid) ON DELETE CASCADE
+                updated_at TEXT NOT NULL,
+                valid_from TEXT,
+                valid_until TEXT,
+                is_current INTEGER DEFAULT 1,
+                canonical_id TEXT,
+                aliases_json TEXT,
+                language TEXT,
+                FOREIGN KEY (user_id) REFERENCES "user_profiles"(uuid) ON DELETE CASCADE,
+                UNIQUE(user_id, label, properties, is_current)
             )""",
 
     """CREATE INDEX idx_kg_nodes_canonical ON kg_nodes(canonical_id)""",

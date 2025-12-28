@@ -974,7 +974,7 @@ def cleanup_history(
 @app.command("cancel")
 @sensitive
 def cancel_stale_runs(
-    max_hours: int = typer.Option(24, "--max-hours", "-m", help="Mark runs older than N hours as failed"),
+    max_hours: float = typer.Option(24.0, "--max-hours", "-m", help="Mark runs older than N hours as failed"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be cancelled without cancelling"),
     help_flag: bool = typer.Option(False, "--help", "-h", help="Show this help message and exit")
 ):
