@@ -214,9 +214,10 @@ class PropertyGraphStorage:
         if superseded_node_ids is None:
             superseded_node_ids = set()
         
-        # Mark superseded nodes as historical before saving new ones
+        # Mark superseded nodes as historical (if any from resolution)
         if superseded_node_ids:
-            print(f"\n  💾 [STORAGE] Marking {len(superseded_node_ids)} superseded nodes as historical...")
+            print(f"\n  [STORAGE] Marking {len(superseded_node_ids)} superseded nodes as historical...")
+            
             def _mark_historical():
                 with self.db:
                     for node_id in superseded_node_ids:
@@ -231,18 +232,43 @@ class PropertyGraphStorage:
                         )
                     self.db.commit()
             await asyncio.to_thread(_mark_historical)
+            print(f"  [STORAGE] Marked {len(superseded_node_ids)} nodes as historical")
+        
+        # ALWAYS clean up ALL historical embeddings from ChromaDB (not just from this run)
+        # This ensures ChromaDB stays in sync with libSQL even if historical records exist from previous runs
+        print(f"  [STORAGE] Cleaning up historical embeddings from ChromaDB...")
+        
+        def _sync_delete_all_historical_chromadb():
+            # Query ALL historical nodes from database
+            cursor = self.db.execute("SELECT id FROM kg_nodes WHERE is_current = 0")
+            historical_node_ids = [row[0] for row in cursor.fetchall()]
             
-            # DELETE historical nodes from ChromaDB (not just update metadata)
-            # This prevents accumulation of stale embeddings
-            def _sync_delete_chromadb_historical():
-                for node_id in superseded_node_ids:
-                    try:
-                        # Delete the node embedding entirely
-                        self._node_collection.delete(ids=[node_id])
-                    except Exception as e:
-                        logger.warning(f"Failed to delete ChromaDB embedding for historical node {node_id}: {e}")
-            await asyncio.to_thread(_sync_delete_chromadb_historical)
-            print(f"  💾 [STORAGE] ✅ Marked {len(superseded_node_ids)} nodes as historical (+ cleaned edges and ChromaDB)")
+            # Delete historical node embeddings
+            if historical_node_ids:
+                try:
+                    self._node_collection.delete(ids=historical_node_ids)
+                    logger.info(f"Deleted {len(historical_node_ids)} historical node embeddings from ChromaDB")
+                    print(f"  [STORAGE]  Deleted {len(historical_node_ids)} historical node embeddings")
+                except Exception as e:
+                    logger.warning(f"Failed to delete ChromaDB embeddings for historical nodes: {e}")
+            
+            # Query ALL historical edges from database
+            cursor = self.db.execute("SELECT id FROM kg_edges WHERE is_current = 0")
+            historical_edge_ids = [row[0] for row in cursor.fetchall()]
+            
+            # Delete historical edge embeddings
+            if historical_edge_ids:
+                try:
+                    self._edge_collection.delete(ids=historical_edge_ids)
+                    logger.info(f"Deleted {len(historical_edge_ids)} historical edge embeddings from ChromaDB")
+                    print(f"  [STORAGE]  Deleted {len(historical_edge_ids)} historical edge embeddings")
+                except Exception as e:
+                    logger.warning(f"Failed to delete ChromaDB embeddings for historical edges: {e}")
+            
+            if not historical_node_ids and not historical_edge_ids:
+                print(f"  [STORAGE] No historical embeddings to clean")
+        
+        await asyncio.to_thread(_sync_delete_all_historical_chromadb)
         
         # Save to libSQL (structured queries)
         def _sync_save_all():
