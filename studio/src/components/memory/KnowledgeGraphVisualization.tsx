@@ -13,6 +13,7 @@ interface GraphNode {
   type: 'person' | 'organization' | 'location' | 'event' | 'project' | 'goal' | 'task' | 'activity' | 'interest' | 'priority' | 'skill' | 'topic' | 'product';
   connections: number;
   importance: number;
+  is_current?: number;
   properties?: {
     status?: string;
     progress?: number;
@@ -129,27 +130,49 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
 
       const radius = 8 + node.importance * 12;
       const color = nodeColors[node.type];
+      const isCurrent = node.is_current === 1;
+      const opacity = isCurrent ? 1 : 0.4;
 
-      // Node circle
+      // Node circle (outer)
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = color + '40';
+      ctx.fillStyle = color + (isCurrent ? '40' : '20');
       ctx.fill();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      
+      // Border styling based on status
+      if (isCurrent) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else {
+        // Dashed border for historical nodes
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       // Inner circle
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius * 0.5, 0, 2 * Math.PI);
       ctx.fillStyle = color;
+      ctx.globalAlpha = opacity;
       ctx.fill();
+      ctx.globalAlpha = 1;
 
-      // Label
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px Inter, sans-serif';
+      // Label with opacity
+      ctx.fillStyle = isCurrent ? '#fff' : 'rgba(255, 255, 255, 0.5)';
+      ctx.font = isCurrent ? '12px Inter, sans-serif' : 'italic 11px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(node.label, pos.x, pos.y + radius + 16);
+      
+      // Add small status indicator
+      if (!isCurrent) {
+        ctx.fillStyle = '#F59E0B';
+        ctx.font = 'bold 10px Inter, sans-serif';
+        ctx.fillText('H', pos.x + radius - 4, pos.y - radius + 8);
+      }
     });
 
     ctx.restore();

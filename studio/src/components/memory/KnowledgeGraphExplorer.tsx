@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Tabs, Tab, TextField, Button, Chip, IconButton } from '@mui/material';
+import { Box, Typography, Paper, Tabs, Tab, TextField, Button, Chip, IconButton, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import {
   Search as SearchIcon,
   Code as CodeIcon,
@@ -7,6 +7,9 @@ import {
   AccountTree as GraphIcon,
   Info as InfoIcon,
   InfoOutlined as InfoOutlinedIcon,
+  CheckCircle as CheckCircleIcon,
+  History as HistoryIcon,
+  FilterList as FilterListIcon,
 } from '@mui/icons-material';
 import { KnowledgeGraphVisualization } from './KnowledgeGraphVisualization';
 import { StyledTooltip } from '../common/StyledTooltip';
@@ -25,6 +28,11 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredNodes, setFilteredNodes] = useState(nodes);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'current' | 'historical'>('all');
+  
+  // Calculate status counts
+  const currentCount = nodes.filter(n => n.is_current === 1).length;
+  const historicalCount = nodes.filter(n => n.is_current === 0).length;
   
   // Sync filteredNodes when nodes prop changes
   React.useEffect(() => {
@@ -49,36 +57,46 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
     }
   }, [nodes]);
   
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
+  const applyFilters = (query: string, status: 'all' | 'current' | 'historical') => {
+    let filtered = nodes;
     
-    if (!query.trim()) {
-      setFilteredNodes(nodes);
-      return;
+    // Apply status filter
+    if (status === 'current') {
+      filtered = filtered.filter(n => n.is_current === 1);
+    } else if (status === 'historical') {
+      filtered = filtered.filter(n => n.is_current === 0);
     }
     
-    const lowerQuery = query.toLowerCase();
-    
-    const filtered = nodes.filter(node => {
-      // Check display label (could be properties.name or label)
-      const displayLabel = (node.label || '').toLowerCase();
-      const nameProperty = (node.properties?.name || '').toLowerCase();
-      const typeField = (node.type || '').toLowerCase();
-      
-      // Check if query matches label, name property, type, or any property value
-      const matchesLabel = displayLabel.includes(lowerQuery) || nameProperty.includes(lowerQuery) || typeField.includes(lowerQuery);
-      const matchesId = (node.id || '').toLowerCase().includes(lowerQuery);
-      
-      // Search through all property values
-      const matchesProperties = node.properties && Object.values(node.properties).some(value => {
-        const strValue = String(value).toLowerCase();
-        return strValue.includes(lowerQuery);
+    // Apply search filter
+    if (query.trim()) {
+      const lowerQuery = query.toLowerCase();
+      filtered = filtered.filter(node => {
+        const displayLabel = (node.label || '').toLowerCase();
+        const nameProperty = (node.properties?.name || '').toLowerCase();
+        const typeField = (node.type || '').toLowerCase();
+        const matchesLabel = displayLabel.includes(lowerQuery) || nameProperty.includes(lowerQuery) || typeField.includes(lowerQuery);
+        const matchesId = (node.id || '').toLowerCase().includes(lowerQuery);
+        const matchesProperties = node.properties && Object.values(node.properties).some(value => {
+          const strValue = String(value).toLowerCase();
+          return strValue.includes(lowerQuery);
+        });
+        return matchesLabel || matchesId || matchesProperties;
       });
-      
-      return matchesLabel || matchesId || matchesProperties;
-    });
+    }
     
     setFilteredNodes(filtered);
+  };
+  
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    applyFilters(query, statusFilter);
+  };
+  
+  const handleStatusFilterChange = (event: React.MouseEvent<HTMLElement>, newStatus: 'all' | 'current' | 'historical' | null) => {
+    if (newStatus !== null) {
+      setStatusFilter(newStatus);
+      applyFilters(searchQuery, newStatus);
+    }
   };
   
   const handleClearSearch = () => {
@@ -88,91 +106,61 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
   
   // Update filtered nodes when nodes prop changes
   React.useEffect(() => {
-    if (searchQuery) {
-      handleSearchChange(searchQuery);
-    }
+    applyFilters(searchQuery, statusFilter);
   }, [nodes]);
 
   return (
     <Box>
-      {/* Stats Bar */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <Paper sx={{ p: 2, flex: 1, minWidth: 200, borderRadius: '12px', bgcolor: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
-              TOTAL NODES
-            </Typography>
-            <StyledTooltip title="Entities extracted from conversations and stored in the knowledge graph. Each node represents a person, place, concept, or thing." arrow>
-              <InfoOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary', cursor: 'help' }} />
-            </StyledTooltip>
-          </Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#8B5CF6' }}>
-            {nodes.length.toLocaleString()}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-            Entities in knowledge graph
-          </Typography>
-        </Paper>
-
-        <Paper sx={{ p: 2, flex: 1, minWidth: 200, borderRadius: '12px', bgcolor: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
-              NODE PROPERTIES
-            </Typography>
-            <StyledTooltip title="Total metadata fields across all nodes. Properties include attributes like names, descriptions, timestamps, and custom fields extracted from conversations." arrow>
-              <InfoOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary', cursor: 'help' }} />
-            </StyledTooltip>
-          </Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#10B981' }}>
-            {(stats?.total_node_properties || nodes.reduce((sum, node) => sum + Object.keys(node.properties || {}).length, 0)).toLocaleString()}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-            Rich metadata fields (~{((stats?.total_node_properties || nodes.reduce((sum, node) => sum + Object.keys(node.properties || {}).length, 0)) / Math.max(nodes.length, 1)).toFixed(2)} per node)
-          </Typography>
-        </Paper>
-
-        <Paper sx={{ p: 2, flex: 1, minWidth: 200, borderRadius: '12px', bgcolor: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
-              RELATIONSHIPS
-            </Typography>
-            <StyledTooltip title="Connections between entities showing how they relate to each other. Examples: 'knows', 'works_at', 'interested_in', 'located_in'." arrow>
-              <InfoOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary', cursor: 'help' }} />
-            </StyledTooltip>
-          </Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#3B82F6' }}>
-            {edges.length.toLocaleString()}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-            Edges with properties
-          </Typography>
-        </Paper>
-
-        <Paper sx={{ p: 2, flex: 1, minWidth: 200, borderRadius: '12px', bgcolor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
-              STORAGE SIZE
-            </Typography>
-            <StyledTooltip title="Approximate disk space used by knowledge graph data including nodes, edges, and all properties. Stored in libSQL database." arrow>
-              <InfoOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary', cursor: 'help' }} />
-            </StyledTooltip>
-          </Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#F59E0B' }}>
-            {stats?.storage_size_mb ? `${stats.storage_size_mb.toFixed(2)} MB` : 'N/A'}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-            libSQL database
-          </Typography>
-        </Paper>
-      </Box>
-
-      {/* Search */}
+      {/* Search & Filters */}
       <Paper sx={{ p: 2.5, mb: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 1 }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FilterListIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Status Filter
+            </Typography>
+          </Box>
+          <ToggleButtonGroup
+            value={statusFilter}
+            exclusive
+            onChange={handleStatusFilterChange}
+            size="small"
+            sx={{
+              '& .MuiToggleButton-root': {
+                px: 2,
+                py: 0.5,
+                fontSize: '0.75rem',
+                textTransform: 'none',
+                border: '1px solid',
+                borderColor: 'divider',
+                '&.Mui-selected': {
+                  bgcolor: 'primary.main',
+                  color: 'primary.contrastText',
+                  '&:hover': {
+                    bgcolor: 'primary.dark',
+                  },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="all">
+              All ({nodes.length})
+            </ToggleButton>
+            <ToggleButton value="current">
+              <CheckCircleIcon sx={{ fontSize: 16, mr: 0.5 }} />
+              Current ({currentCount})
+            </ToggleButton>
+            <ToggleButton value="historical">
+              <HistoryIcon sx={{ fontSize: 16, mr: 0.5 }} />
+              Historical ({historicalCount})
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <SearchIcon sx={{ color: 'text.secondary' }} />
           <TextField
             fullWidth
-            placeholder={`Filter ${nodes.length.toLocaleString()} nodes by label, property, or ID...`}
+            placeholder={`Search ${filteredNodes.length.toLocaleString()} nodes by label, property, or ID...`}
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
             variant="outlined"
@@ -230,9 +218,26 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
           
           {selectedNode && (
             <Paper sx={{ mt: 3, p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                Node Details: {selectedNode.label}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
+                  Node Details: {selectedNode.label}
+                </Typography>
+                <Chip
+                  icon={selectedNode.is_current === 1 ? <CheckCircleIcon /> : <HistoryIcon />}
+                  label={selectedNode.is_current === 1 ? 'Current' : 'Historical'}
+                  size="small"
+                  sx={{
+                    bgcolor: selectedNode.is_current === 1 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                    color: selectedNode.is_current === 1 ? '#10B981' : '#F59E0B',
+                    border: `1px solid ${selectedNode.is_current === 1 ? '#10B981' : '#F59E0B'}`,
+                    fontWeight: 600,
+                    fontSize: '0.7rem',
+                    '& .MuiChip-icon': {
+                      color: selectedNode.is_current === 1 ? '#10B981' : '#F59E0B',
+                    },
+                  }}
+                />
+              </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
                 <Box>
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>

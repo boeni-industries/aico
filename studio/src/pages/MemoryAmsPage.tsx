@@ -9,6 +9,7 @@ import {
 } from '@mui/icons-material';
 import { MemorySystemMap } from '../components/memory/MemorySystemMap';
 import { KnowledgeGraphExplorer } from '../components/memory/KnowledgeGraphExplorer';
+import { KnowledgeGraphAnalytics } from '../components/memory/KnowledgeGraphAnalytics';
 import { WorkingMemoryPanel } from '../components/memory/WorkingMemoryPanel';
 import { SemanticMemoryPanel } from '../components/memory/SemanticMemoryPanel';
 import { MemoryAlbumPanel } from '../components/memory/MemoryAlbumPanel';
@@ -242,14 +243,24 @@ export const MemoryAmsPage: React.FC = () => {
                 <Typography color="error">{error}</Typography>
               </Box>
             ) : (
-              <KnowledgeGraphExplorer
-                nodes={transformedNodes}
-                edges={transformedEdges}
-                stats={graphStats ? {
-                  total_node_properties: graphStats.total_node_properties,
-                  storage_size_mb: graphStats.storage_size_mb,
-                } : undefined}
-              />
+              <>
+                {/* Comprehensive Analytics Dashboard */}
+                {graphStats && (
+                  <Box sx={{ mb: 3 }}>
+                    <KnowledgeGraphAnalytics stats={graphStats} />
+                  </Box>
+                )}
+                
+                {/* Graph Explorer */}
+                <KnowledgeGraphExplorer
+                  nodes={transformedNodes}
+                  edges={transformedEdges}
+                  stats={graphStats ? {
+                    total_node_properties: graphStats.total_node_properties,
+                    storage_size_mb: graphStats.storage_size_mb,
+                  } : undefined}
+                />
+              </>
             )}
           </>
         )}

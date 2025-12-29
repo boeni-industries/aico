@@ -141,37 +141,54 @@ async def get_graph_stats(
                 detail="User ID not found in token"
             )
         
-        logger.info(f"Fetching graph stats for user {user_id}")
+        logger.info(f"Fetching comprehensive graph stats for user {user_id}")
         
-        # Get node count (all nodes, not just current versions)
+        # Import analytics engine
+        from backend.api.kg.analytics import KGAnalyticsEngine
+        import json
+        
+        # Initialize analytics engine
+        analytics = KGAnalyticsEngine(db_connection, user_id)
+        
+        # Basic counts with current/historical breakdown
         node_count = db_connection.execute(
             "SELECT COUNT(*) FROM kg_nodes WHERE user_id = ?",
             [user_id]
         ).fetchone()[0]
         
-        # Get edge count (all edges, not just current versions)
+        current_node_count = db_connection.execute(
+            "SELECT COUNT(*) FROM kg_nodes WHERE user_id = ? AND is_current = 1",
+            [user_id]
+        ).fetchone()[0]
+        
+        historical_node_count = node_count - current_node_count
+        
         edge_count = db_connection.execute(
             "SELECT COUNT(*) FROM kg_edges WHERE user_id = ?",
             [user_id]
         ).fetchone()[0]
         
-        # Get node type distribution
+        current_edge_count = db_connection.execute(
+            "SELECT COUNT(*) FROM kg_edges WHERE user_id = ? AND is_current = 1",
+            [user_id]
+        ).fetchone()[0]
+        
+        historical_edge_count = edge_count - current_edge_count
+        
+        # Node/edge type distributions
         node_types_raw = db_connection.execute(
             "SELECT label, COUNT(*) FROM kg_nodes WHERE user_id = ? GROUP BY label",
             [user_id]
         ).fetchall()
         node_types = {row[0]: row[1] for row in node_types_raw}
         
-        # Get edge type distribution
         edge_types_raw = db_connection.execute(
             "SELECT relation_type, COUNT(*) FROM kg_edges WHERE user_id = ? GROUP BY relation_type",
             [user_id]
         ).fetchall()
         edge_types = {row[0]: row[1] for row in edge_types_raw}
         
-        # Calculate total node properties
-        # Each node has properties stored as JSON - count total fields across all nodes
-        import json
+        # Total properties
         nodes_with_props = db_connection.execute(
             "SELECT properties FROM kg_nodes WHERE user_id = ?",
             [user_id]
@@ -181,37 +198,94 @@ async def get_graph_stats(
             for row in nodes_with_props
         )
         
-        # Estimate storage size (rough approximation)
-        # Get total size of serialized data for nodes and edges
-        node_data_size = sum(
-            len(str(row[0])) if row[0] else 0
-            for row in nodes_with_props
-        )
-        edge_data = db_connection.execute(
-            "SELECT properties FROM kg_edges WHERE user_id = ?",
+        # Storage size
+        all_nodes = db_connection.execute(
+            "SELECT * FROM kg_nodes WHERE user_id = ?",
             [user_id]
         ).fetchall()
-        edge_data_size = sum(
-            len(str(row[0])) if row[0] else 0
-            for row in edge_data
-        )
-        # Convert bytes to MB (rough estimate including metadata overhead)
-        storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.5  # 1.5x for overhead
+        all_edges = db_connection.execute(
+            "SELECT * FROM kg_edges WHERE user_id = ?",
+            [user_id]
+        ).fetchall()
         
-        return GraphStatsResponse(
+        node_data_size = sum(
+            sum(len(str(field)) if field else 0 for field in row)
+            for row in all_nodes
+        )
+        edge_data_size = sum(
+            sum(len(str(field)) if field else 0 for field in row)
+            for row in all_edges
+        )
+        storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.3
+        
+        # Calculate comprehensive metrics using analytics engine
+        logger.info("Calculating health metrics...")
+        health_metrics = analytics.calculate_health_metrics()
+        
+        logger.info("Calculating structure metrics...")
+        structure_metrics = analytics.calculate_structure_metrics()
+        
+        logger.info("Calculating temporal metrics...")
+        temporal_metrics = analytics.calculate_temporal_metrics()
+        
+        logger.info("Calculating centrality metrics...")
+        centrality_metrics = analytics.calculate_centrality_metrics()
+        logger.info(f"Centrality metrics calculated: {centrality_metrics}")
+        logger.info(f"Top by degree count: {len(centrality_metrics.get('top_by_degree', []))}")
+        logger.info(f"Top by pagerank count: {len(centrality_metrics.get('top_by_pagerank', []))}")
+        logger.info(f"Top by betweenness count: {len(centrality_metrics.get('top_by_betweenness', []))}")
+        
+        logger.info("Calculating clustering metrics...")
+        clustering_metrics = analytics.calculate_clustering_metrics()
+        
+        # Detect actual duplicate pairs
+        logger.info("Detecting duplicate node pairs...")
+        duplicate_pairs = analytics.detect_duplicate_pairs()
+        logger.info(f"Found {len(duplicate_pairs)} duplicate pairs")
+        
+        # Convert to schema format
+        from backend.api.kg.schemas import DuplicateNodePair
+        duplicate_pair_objects = [
+            DuplicateNodePair(
+                id1=pair['id1'],
+                name1=pair['name1'],
+                label1=pair['label1'],
+                id2=pair['id2'],
+                name2=pair['name2'],
+                label2=pair['label2'],
+                similarity=pair['similarity']
+            )
+            for pair in duplicate_pairs
+        ]
+        
+        response = GraphStatsResponse(
             total_nodes=node_count,
+            current_nodes=current_node_count,
+            historical_nodes=historical_node_count,
             total_edges=edge_count,
+            current_edges=current_edge_count,
+            historical_edges=historical_edge_count,
             total_node_properties=total_node_properties,
             node_types=node_types,
             edge_types=edge_types,
             storage_size_mb=round(storage_size_mb, 2),
-            user_id=user_id
+            user_id=user_id,
+            health=health_metrics,
+            duplicate_pairs=duplicate_pair_objects if duplicate_pair_objects else None,
+            structure=structure_metrics,
+            temporal=temporal_metrics,
+            centrality=centrality_metrics,
+            clustering=clustering_metrics
         )
+        logger.info(f"Response centrality data: {response.centrality}")
+        return response
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get graph stats: {e}", exc_info=True)
+        import traceback
+        logger.error(f"Failed to get graph stats: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve graph statistics: {str(e)}"
