@@ -103,6 +103,97 @@ class ClusteringMetrics(BaseModel):
     modularity_score: float = Field(..., description="Quality of community structure")
 
 
+class NodeVersion(BaseModel):
+    """Schema for a single node version."""
+    id: str = Field(..., description="Node ID")
+    user_id: str = Field(..., description="User ID")
+    label: str = Field(..., description="Node label/type")
+    properties: Dict[str, Any] = Field(default_factory=dict, description="Node properties")
+    confidence: float = Field(..., description="Confidence score")
+    source_text: Optional[str] = Field(None, description="Source text that created this node")
+    created_at: str = Field(..., description="Creation timestamp")
+    updated_at: str = Field(..., description="Last update timestamp")
+    valid_from: Optional[str] = Field(None, description="Start of validity period")
+    valid_until: Optional[str] = Field(None, description="End of validity period (null if current)")
+    is_current: int = Field(..., description="1 if current version, 0 if historical")
+    canonical_id: Optional[str] = Field(None, description="Canonical ID linking versions")
+    aliases: List[str] = Field(default_factory=list, description="Alternative names")
+    reason: Optional[str] = Field(None, description="Reason for this version change")
+
+
+class NodeHistoryResponse(BaseModel):
+    """Response schema for node version history."""
+    canonical_id: str = Field(..., description="Canonical ID of the entity")
+    total_versions: int = Field(..., description="Total number of versions")
+    versions: List[NodeVersion] = Field(..., description="List of all versions, newest first")
+
+
+class ChangeRecord(BaseModel):
+    """Schema for a single change record."""
+    change_type: str = Field(..., description="Type of change: node_created, node_updated, node_deleted, edge_created, edge_updated, edge_deleted")
+    entity_type: str = Field(..., description="node or edge")
+    entity_id: str = Field(..., description="ID of the changed entity")
+    entity_label: Optional[str] = Field(None, description="Label/type of the entity")
+    timestamp: str = Field(..., description="When the change occurred")
+    properties_changed: Optional[List[str]] = Field(None, description="List of property keys that changed")
+    old_values: Optional[Dict[str, Any]] = Field(None, description="Old property values")
+    new_values: Optional[Dict[str, Any]] = Field(None, description="New property values")
+    source_text: Optional[str] = Field(None, description="Source text that triggered the change")
+    reason: Optional[str] = Field(None, description="Reason for change: user_correction, conflict_resolution, auto_update, etc.")
+
+
+class ChangesResponse(BaseModel):
+    """Response schema for changes in a time range."""
+    from_timestamp: str = Field(..., description="Start of time range")
+    to_timestamp: str = Field(..., description="End of time range")
+    total_changes: int = Field(..., description="Total number of changes")
+    changes: List[ChangeRecord] = Field(..., description="List of changes")
+
+
+class TemporalGraphRequest(BaseModel):
+    """Request schema for temporal graph state query."""
+    as_of: str = Field(..., description="ISO 8601 timestamp to query graph state")
+    include_edges: bool = Field(default=True, description="Whether to include edges")
+    node_limit: Optional[int] = Field(default=None, description="Maximum nodes to return", ge=1, le=10000)
+
+
+class TemporalGraphResponse(BaseModel):
+    """Response schema for temporal graph state."""
+    as_of: str = Field(..., description="Timestamp of graph state")
+    total_nodes: int = Field(..., description="Number of nodes at this time")
+    total_edges: int = Field(..., description="Number of edges at this time")
+    nodes: List[NodeVersion] = Field(..., description="Nodes that were current at this time")
+    edges: List[Dict[str, Any]] = Field(..., description="Edges that were current at this time")
+
+
+class GraphComparisonRequest(BaseModel):
+    """Request schema for comparing graph states."""
+    from_timestamp: str = Field(..., description="Earlier timestamp")
+    to_timestamp: str = Field(..., description="Later timestamp")
+
+
+class GraphDiff(BaseModel):
+    """Difference between two graph states."""
+    nodes_added: int = Field(..., description="Nodes added between timestamps")
+    nodes_removed: int = Field(..., description="Nodes removed between timestamps")
+    nodes_modified: int = Field(..., description="Nodes with property changes")
+    edges_added: int = Field(..., description="Edges added between timestamps")
+    edges_removed: int = Field(..., description="Edges removed between timestamps")
+    edges_modified: int = Field(..., description="Edges with property changes")
+    added_node_ids: List[str] = Field(default_factory=list, description="IDs of added nodes")
+    removed_node_ids: List[str] = Field(default_factory=list, description="IDs of removed nodes")
+    modified_node_ids: List[str] = Field(default_factory=list, description="IDs of modified nodes")
+
+
+class GraphComparisonResponse(BaseModel):
+    """Response schema for graph comparison."""
+    from_timestamp: str = Field(..., description="Earlier timestamp")
+    to_timestamp: str = Field(..., description="Later timestamp")
+    diff: GraphDiff = Field(..., description="Differences between states")
+    from_state: Dict[str, int] = Field(..., description="Graph metrics at from_timestamp")
+    to_state: Dict[str, int] = Field(..., description="Graph metrics at to_timestamp")
+
+
 class GraphStatsResponse(BaseModel):
     """Response schema for comprehensive graph statistics."""
     

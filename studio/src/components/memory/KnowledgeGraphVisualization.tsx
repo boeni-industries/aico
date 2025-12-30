@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
-import { Box, Typography, Chip, IconButton, Tooltip, Paper, Select, MenuItem, FormControl, InputLabel, Drawer, styled } from '@mui/material';
+import { Box, Typography, Chip, IconButton, Tooltip, Paper, Select, MenuItem, FormControl, InputLabel, Drawer, styled, CircularProgress } from '@mui/material';
+import { fetchNodeHistory, NodeHistoryResponse } from '../../api/kg';
 import {
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
@@ -102,6 +103,8 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [selectedNodeTypes, setSelectedNodeTypes] = useState<Set<string>>(new Set());
   const [hoveredLegendType, setHoveredLegendType] = useState<string | null>(null);
+  const [nodeHistory, setNodeHistory] = useState<NodeHistoryResponse | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   
   // Cache graphData to prevent re-renders
   const graphDataRef = useRef<any>(null);
@@ -189,10 +192,27 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
     }
   }, [graphData]);
 
-  const handleNodeClick = useCallback((node: any) => {
+  const handleNodeClick = useCallback(async (node: any) => {
     setSelectedNode(node);
     setDetailDrawerOpen(true);
-    onNodeClick?.(node);
+    setNodeHistory(null);
+    
+    // Fetch version history if node has an ID
+    if (node.id) {
+      setLoadingHistory(true);
+      try {
+        const history = await fetchNodeHistory(node.id);
+        setNodeHistory(history);
+      } catch (error) {
+        console.error('Failed to fetch node history:', error);
+      } finally {
+        setLoadingHistory(false);
+      }
+    }
+    
+    if (onNodeClick) {
+      onNodeClick(node);
+    }
   }, [onNodeClick]);
 
   const handleNodeHover = useCallback((node: any) => {
@@ -1023,127 +1043,152 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
 
             {/* Entity Timeline - Temporal History */}
             <Box sx={{ mt: 3 }}>
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255,255,255,0.6)', 
-                textTransform: 'uppercase', 
-                fontSize: '0.65rem', 
-                fontWeight: 600, 
-                mb: 2, 
-                display: 'block',
-                letterSpacing: '0.05em'
-              }}>
-                📅 Timeline
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255,255,255,0.6)', 
+                  textTransform: 'uppercase', 
+                  fontSize: '0.65rem', 
+                  fontWeight: 600,
+                  letterSpacing: '0.05em'
+                }}>
+                  📅 Timeline {nodeHistory && `(${nodeHistory.total_versions} versions)`}
+                </Typography>
+                {loadingHistory && <CircularProgress size={16} sx={{ color: 'rgba(255,255,255,0.5)' }} />}
+              </Box>
                 
-                <Box sx={{ position: 'relative', pl: 3 }}>
-                  {/* Timeline line */}
-                  <Box sx={{
-                    position: 'absolute',
-                    left: '8px',
-                    top: '8px',
-                    bottom: '8px',
-                    width: '2px',
-                    background: 'linear-gradient(180deg, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0.1) 100%)',
-                  }} />
-                  
-                  {/* Current version */}
-                  {selectedNode.is_current === 1 && (
-                    <Box sx={{ position: 'relative', mb: 3 }}>
-                      <Box sx={{
-                        position: 'absolute',
-                        left: '-19px',
-                        top: '4px',
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        bgcolor: '#10B981',
-                        border: '2px solid rgba(16, 185, 129, 0.3)',
-                        boxShadow: '0 0 12px rgba(16, 185, 129, 0.6)',
-                      }} />
-                      <Paper sx={{
-                        p: 2,
-                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%)',
-                        backdropFilter: 'blur(10px)',
-                        border: '1px solid rgba(16, 185, 129, 0.2)',
-                        borderRadius: '10px',
+              <Box sx={{ position: 'relative', pl: 3 }}>
+                {/* Timeline line */}
+                <Box sx={{
+                  position: 'absolute',
+                  left: '8px',
+                  top: '8px',
+                  bottom: '8px',
+                  width: '2px',
+                  background: 'linear-gradient(180deg, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0.1) 100%)',
+                }} />
+                
+                {/* Show all versions if history loaded */}
+                {nodeHistory && nodeHistory.versions.map((version, index) => (
+                  <Box key={version.id} sx={{ position: 'relative', mb: 3 }}>
+                    {/* Version marker */}
+                    <Box sx={{
+                      position: 'absolute',
+                      left: '-19px',
+                      top: '4px',
+                      width: '12px',
+                      height: '12px',
+                      borderRadius: '50%',
+                      bgcolor: version.is_current === 1 ? '#10B981' : 'transparent',
+                      border: version.is_current === 1 
+                        ? '2px solid rgba(16, 185, 129, 0.3)' 
+                        : '2px solid rgba(148, 163, 184, 0.3)',
+                      boxShadow: version.is_current === 1 ? '0 0 12px rgba(16, 185, 129, 0.6)' : 'none',
+                    }} />
+                    
+                    <Paper sx={{
+                      p: 2,
+                      background: version.is_current === 1
+                        ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%)'
+                        : 'rgba(255,255,255,0.03)',
+                      backdropFilter: 'blur(10px)',
+                      border: version.is_current === 1
+                        ? '1px solid rgba(16, 185, 129, 0.2)'
+                        : '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '10px',
+                    }}>
+                      <Typography variant="body2" sx={{ 
+                        fontWeight: 600, 
+                        color: version.is_current === 1 ? '#10B981' : 'rgba(255,255,255,0.7)',
+                        mb: 1 
                       }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#10B981', mb: 1 }}>
-                          ● NOW (Current)
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block', mb: 0.5 }}>
-                          Status: {selectedNode.type}
-                        </Typography>
-                        {selectedNode.valid_from && (
+                        {version.is_current === 1 ? 'NOW (Current)' : `Version ${nodeHistory.total_versions - index}`}
+                      </Typography>
+                      
+                      {/* Property changes diff */}
+                      {index < nodeHistory.versions.length - 1 && (() => {
+                        const prevVersion = nodeHistory.versions[index + 1];
+                        const changedProps: string[] = [];
+                        Object.keys(version.properties).forEach(key => {
+                          if (JSON.stringify(version.properties[key]) !== JSON.stringify(prevVersion.properties[key])) {
+                            changedProps.push(key);
+                          }
+                        });
+                        return changedProps.length > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block', mb: 0.5 }}>
+                              Changed: {changedProps.join(', ')}
+                            </Typography>
+                            {changedProps.map(key => (
+                              <Typography key={key} variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', display: 'block', fontSize: '0.65rem' }}>
+                                {key}: {JSON.stringify(prevVersion.properties[key])} → {JSON.stringify(version.properties[key])}
+                              </Typography>
+                            ))}
+                          </Box>
+                        );
+                      })()}
+                      
+                      {/* Reason for change */}
+                      {version.reason && (
+                        <Chip 
+                          label={version.reason.replace(/_/g, ' ')}
+                          size="small"
+                          sx={{
+                            height: '20px',
+                            fontSize: '0.65rem',
+                            bgcolor: 'rgba(59, 130, 246, 0.15)',
+                            color: '#3B82F6',
+                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            mb: 1
+                          }}
+                        />
+                      )}
+                      
+                      {/* Timestamps */}
+                      <Box sx={{ mb: 1 }}>
+                        {version.valid_from ? (
                           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
-                            Valid since: {new Date(selectedNode.valid_from).toLocaleDateString()}
+                            {version.valid_until 
+                              ? `⏱️ Valid: ${new Date(version.valid_from).toLocaleDateString()} → ${new Date(version.valid_until).toLocaleDateString()}`
+                              : `⏱️ Valid since: ${new Date(version.valid_from).toLocaleDateString()}`
+                            }
+                          </Typography>
+                        ) : (
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
+                            📅 Created: {new Date(version.created_at).toLocaleDateString()}
                           </Typography>
                         )}
-                      </Paper>
-                    </Box>
-                  )}
-                  
-                  {/* Historical marker */}
-                  {selectedNode.is_current === 0 && (
-                    <Box sx={{ position: 'relative', mb: 3 }}>
-                      <Box sx={{
-                        position: 'absolute',
-                        left: '-19px',
-                        top: '4px',
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        bgcolor: 'transparent',
-                        border: '2px solid rgba(245, 158, 11, 0.5)',
-                      }} />
-                      <Paper sx={{
-                        p: 2,
-                        background: 'rgba(245, 158, 11, 0.08)',
-                        backdropFilter: 'blur(10px)',
-                        border: '1px solid rgba(245, 158, 11, 0.2)',
-                        borderRadius: '10px',
-                      }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#F59E0B', mb: 1 }}>
-                          ○ Historical Version
-                        </Typography>
-                        {selectedNode.valid_from && selectedNode.valid_until && (
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
-                            Valid: {new Date(selectedNode.valid_from).toLocaleDateString()} → {new Date(selectedNode.valid_until).toLocaleDateString()}
+                        {version.updated_at && version.updated_at !== version.created_at && (
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', display: 'block', fontSize: '0.6rem' }}>
+                            Updated: {new Date(version.updated_at).toLocaleDateString()}
                           </Typography>
                         )}
-                      </Paper>
-                    </Box>
-                  )}
-                  
-                  {/* Created timestamp */}
-                  {selectedNode.created_at && (
-                    <Box sx={{ position: 'relative' }}>
-                      <Box sx={{
-                        position: 'absolute',
-                        left: '-19px',
-                        top: '4px',
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        bgcolor: 'transparent',
-                        border: '2px solid rgba(148, 163, 184, 0.3)',
-                      }} />
-                      <Paper sx={{
-                        p: 2,
-                        background: 'rgba(255,255,255,0.03)',
-                        backdropFilter: 'blur(10px)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: '10px',
-                      }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', mb: 0.5 }}>
-                          ○ First Created
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-                          {new Date(selectedNode.created_at).toLocaleDateString()} at {new Date(selectedNode.created_at).toLocaleTimeString()}
-                        </Typography>
-                      </Paper>
-                    </Box>
-                  )}
-                </Box>
+                      </Box>
+                      
+                      {version.source_text && nodeHistory.total_versions > 1 && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="caption" sx={{ 
+                            color: 'rgba(255,255,255,0.5)', 
+                            display: 'block',
+                            fontSize: '0.6rem',
+                            fontWeight: 600,
+                            mb: 0.5
+                          }}>
+                            📄 Source Context:
+                          </Typography>
+                          <Typography variant="caption" sx={{ 
+                            color: 'rgba(255,255,255,0.4)', 
+                            display: 'block',
+                            fontStyle: 'italic',
+                            fontSize: '0.65rem'
+                          }}>
+                            "{version.source_text.substring(0, 100)}{version.source_text.length > 100 ? '...' : ''}"
+                          </Typography>
+                        </Box>
+                      )}
+                    </Paper>
+                  </Box>
+                ))}
+              </Box>
             </Box>
 
             {/* Properties - Glassmorphic */}

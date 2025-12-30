@@ -20,6 +20,7 @@ export interface KGNode {
   is_current: number;
   canonical_id?: string;
   aliases?: string[];
+  reason?: string;
 }
 
 export interface KGEdge {
@@ -36,6 +37,7 @@ export interface KGEdge {
   valid_from?: string;
   valid_until?: string;
   is_current: number;
+  reason?: string;
 }
 
 export interface HealthMetrics {
@@ -158,5 +160,131 @@ export async function executeGQLQuery(query: string, format: string = 'json'): P
     method: 'POST',
     path: '/kg/query',
     body: { query, format },
+  });
+}
+
+// Temporal API Types
+
+export interface NodeVersion {
+  id: string;
+  user_id: string;
+  label: string;
+  properties: Record<string, any>;
+  confidence: number;
+  source_text?: string;
+  created_at: string;
+  updated_at: string;
+  valid_from: string;
+  valid_until?: string | null;
+  is_current: number;
+  canonical_id?: string;
+  aliases: string[];
+  reason?: string;
+}
+
+export interface NodeHistoryResponse {
+  canonical_id: string;
+  total_versions: number;
+  versions: NodeVersion[];
+}
+
+export interface ChangeRecord {
+  change_type: 'node_created' | 'node_updated' | 'node_deleted' | 
+                'edge_created' | 'edge_updated' | 'edge_deleted';
+  entity_type: 'node' | 'edge';
+  entity_id: string;
+  entity_label?: string;
+  timestamp: string;
+  properties_changed?: string[];
+  old_values?: Record<string, any>;
+  new_values?: Record<string, any>;
+  source_text?: string;
+  reason?: string;
+}
+
+export interface ChangesResponse {
+  from_timestamp: string;
+  to_timestamp: string;
+  total_changes: number;
+  changes: ChangeRecord[];
+}
+
+export interface TemporalGraphRequest {
+  as_of: string;
+  include_edges?: boolean;
+  node_limit?: number;
+}
+
+export interface TemporalGraphResponse {
+  as_of: string;
+  total_nodes: number;
+  total_edges: number;
+  nodes: NodeVersion[];
+  edges: KGEdge[];
+}
+
+export interface GraphComparisonRequest {
+  from_timestamp: string;
+  to_timestamp: string;
+}
+
+export interface GraphDiff {
+  nodes_added: number;
+  nodes_removed: number;
+  nodes_modified: number;
+  edges_added: number;
+  edges_removed: number;
+  edges_modified: number;
+  added_node_ids: string[];
+  removed_node_ids: string[];
+  modified_node_ids: string[];
+}
+
+export interface GraphComparisonResponse {
+  from_timestamp: string;
+  to_timestamp: string;
+  diff: GraphDiff;
+  from_state: Record<string, number>;
+  to_state: Record<string, number>;
+}
+
+// Temporal API Functions
+
+export async function fetchNodeHistory(nodeId: string): Promise<NodeHistoryResponse> {
+  return httpJson<NodeHistoryResponse>({
+    method: 'GET',
+    path: `/kg/nodes/${nodeId}/history`,
+  });
+}
+
+export async function fetchChanges(
+  fromTimestamp: string,
+  toTimestamp: string,
+  limit: number = 100
+): Promise<ChangesResponse> {
+  return httpJson<ChangesResponse>({
+    method: 'GET',
+    path: '/kg/changes',
+    query: { from_timestamp: fromTimestamp, to_timestamp: toTimestamp, limit },
+  });
+}
+
+export async function fetchTemporalGraphState(
+  request: TemporalGraphRequest
+): Promise<TemporalGraphResponse> {
+  return httpJson<TemporalGraphResponse>({
+    method: 'POST',
+    path: '/kg/temporal',
+    body: request,
+  });
+}
+
+export async function compareGraphStates(
+  request: GraphComparisonRequest
+): Promise<GraphComparisonResponse> {
+  return httpJson<GraphComparisonResponse>({
+    method: 'POST',
+    path: '/kg/compare',
+    body: request,
   });
 }

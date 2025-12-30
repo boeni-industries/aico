@@ -882,6 +882,7 @@ V1_SCHEMA = [
                 valid_from TEXT,
                 valid_until TEXT,
                 is_current INTEGER DEFAULT 1,
+                reason TEXT,
                 FOREIGN KEY (user_id) REFERENCES "user_profiles"(uuid) ON DELETE CASCADE,
                 FOREIGN KEY (source_id) REFERENCES kg_nodes(id) ON DELETE CASCADE,
                 FOREIGN KEY (target_id) REFERENCES kg_nodes(id) ON DELETE CASCADE,
@@ -893,6 +894,7 @@ V1_SCHEMA = [
     """CREATE INDEX idx_kg_edges_target ON kg_edges(target_id)""",
     """CREATE INDEX idx_kg_edges_temporal ON kg_edges(user_id, is_current, valid_from)""",
     """CREATE INDEX idx_kg_edges_user_relation ON kg_edges(user_id, relation_type)""",
+    """CREATE INDEX idx_kg_edges_reason ON kg_edges(reason) WHERE reason IS NOT NULL""",
 
     """CREATE TABLE kg_node_properties (
                 node_id TEXT NOT NULL,
@@ -919,6 +921,7 @@ V1_SCHEMA = [
                 canonical_id TEXT,
                 aliases_json TEXT,
                 language TEXT,
+                reason TEXT,
                 FOREIGN KEY (user_id) REFERENCES "user_profiles"(uuid) ON DELETE CASCADE,
                 UNIQUE(user_id, label, properties, is_current)
             )""",
@@ -928,6 +931,7 @@ V1_SCHEMA = [
     """CREATE INDEX idx_kg_nodes_temporal ON kg_nodes(user_id, is_current, valid_from)""",
     """CREATE INDEX idx_kg_nodes_user_created ON kg_nodes(user_id, created_at)""",
     """CREATE INDEX idx_kg_nodes_user_label ON kg_nodes(user_id, label)""",
+    """CREATE INDEX idx_kg_nodes_reason ON kg_nodes(reason) WHERE reason IS NOT NULL""",
 
     """CREATE TABLE proactive_analytics (
                 analytics_id TEXT PRIMARY KEY,

@@ -24,6 +24,10 @@ from backend.api.kg.dependencies import (
 router = APIRouter()
 logger = get_logger("backend", "api.kg")
 
+# Include temporal endpoints
+from backend.api.kg.temporal_router import router as temporal_router
+router.include_router(temporal_router, tags=["temporal"])
+
 
 @router.post("/query", response_model=GQLQueryResponse)
 async def execute_gql_query(
