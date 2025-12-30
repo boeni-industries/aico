@@ -17,10 +17,16 @@ export interface GraphNode {
   connections: number;
   importance: number;
   is_current?: number;
+  canonical_id?: string;
+  valid_from?: string;
+  valid_until?: string | null;
+  created_at?: string;
+  updated_at?: string;
   properties?: {
     status?: string;
     progress?: number;
     is_current?: boolean;
+    [key: string]: any;
   };
 }
 
@@ -1013,6 +1019,131 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
                   {(selectedNode.importance * 100).toFixed(0)}%
                 </Typography>
               </Paper>
+            </Box>
+
+            {/* Entity Timeline - Temporal History */}
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="caption" sx={{ 
+                color: 'rgba(255,255,255,0.6)', 
+                textTransform: 'uppercase', 
+                fontSize: '0.65rem', 
+                fontWeight: 600, 
+                mb: 2, 
+                display: 'block',
+                letterSpacing: '0.05em'
+              }}>
+                📅 Timeline
+              </Typography>
+                
+                <Box sx={{ position: 'relative', pl: 3 }}>
+                  {/* Timeline line */}
+                  <Box sx={{
+                    position: 'absolute',
+                    left: '8px',
+                    top: '8px',
+                    bottom: '8px',
+                    width: '2px',
+                    background: 'linear-gradient(180deg, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0.1) 100%)',
+                  }} />
+                  
+                  {/* Current version */}
+                  {selectedNode.is_current === 1 && (
+                    <Box sx={{ position: 'relative', mb: 3 }}>
+                      <Box sx={{
+                        position: 'absolute',
+                        left: '-19px',
+                        top: '4px',
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        bgcolor: '#10B981',
+                        border: '2px solid rgba(16, 185, 129, 0.3)',
+                        boxShadow: '0 0 12px rgba(16, 185, 129, 0.6)',
+                      }} />
+                      <Paper sx={{
+                        p: 2,
+                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                        borderRadius: '10px',
+                      }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#10B981', mb: 1 }}>
+                          ● NOW (Current)
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block', mb: 0.5 }}>
+                          Status: {selectedNode.type}
+                        </Typography>
+                        {selectedNode.valid_from && (
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
+                            Valid since: {new Date(selectedNode.valid_from).toLocaleDateString()}
+                          </Typography>
+                        )}
+                      </Paper>
+                    </Box>
+                  )}
+                  
+                  {/* Historical marker */}
+                  {selectedNode.is_current === 0 && (
+                    <Box sx={{ position: 'relative', mb: 3 }}>
+                      <Box sx={{
+                        position: 'absolute',
+                        left: '-19px',
+                        top: '4px',
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        bgcolor: 'transparent',
+                        border: '2px solid rgba(245, 158, 11, 0.5)',
+                      }} />
+                      <Paper sx={{
+                        p: 2,
+                        background: 'rgba(245, 158, 11, 0.08)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(245, 158, 11, 0.2)',
+                        borderRadius: '10px',
+                      }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#F59E0B', mb: 1 }}>
+                          ○ Historical Version
+                        </Typography>
+                        {selectedNode.valid_from && selectedNode.valid_until && (
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
+                            Valid: {new Date(selectedNode.valid_from).toLocaleDateString()} → {new Date(selectedNode.valid_until).toLocaleDateString()}
+                          </Typography>
+                        )}
+                      </Paper>
+                    </Box>
+                  )}
+                  
+                  {/* Created timestamp */}
+                  {selectedNode.created_at && (
+                    <Box sx={{ position: 'relative' }}>
+                      <Box sx={{
+                        position: 'absolute',
+                        left: '-19px',
+                        top: '4px',
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        bgcolor: 'transparent',
+                        border: '2px solid rgba(148, 163, 184, 0.3)',
+                      }} />
+                      <Paper sx={{
+                        p: 2,
+                        background: 'rgba(255,255,255,0.03)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: '10px',
+                      }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', mb: 0.5 }}>
+                          ○ First Created
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                          {new Date(selectedNode.created_at).toLocaleDateString()} at {new Date(selectedNode.created_at).toLocaleTimeString()}
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  )}
+                </Box>
             </Box>
 
             {/* Properties - Glassmorphic */}
