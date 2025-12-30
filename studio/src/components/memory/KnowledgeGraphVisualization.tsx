@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
-import { Box, Typography, Chip, IconButton, Tooltip, Paper, Select, MenuItem, FormControl, InputLabel, Drawer } from '@mui/material';
+import { Box, Typography, Chip, IconButton, Tooltip, Paper, Select, MenuItem, FormControl, InputLabel, Drawer, styled } from '@mui/material';
 import {
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
   CenterFocusStrong as CenterIcon,
   Refresh as RefreshIcon,
   Close as CloseIcon,
+  AccountTree as LayoutIcon,
 } from '@mui/icons-material';
 import ForceGraph2D from 'react-force-graph-2d';
 
@@ -37,6 +38,28 @@ interface KnowledgeGraphVisualizationProps {
   edges: GraphEdge[];
   onNodeClick?: (node: GraphNode) => void;
 }
+
+// Styled glassmorphic tooltip
+const GlassmorphicTooltip = styled(({ className, ...props }: any) => (
+  <Tooltip {...props} classes={{ popper: className }} />
+))(({ theme }) => ({
+  '& .MuiTooltip-tooltip': {
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    backdropFilter: 'blur(12px) saturate(180%)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '8px',
+    padding: '8px 12px',
+    fontSize: '0.75rem',
+    fontWeight: 500,
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+  },
+  '& .MuiTooltip-arrow': {
+    color: 'rgba(0, 0, 0, 0.85)',
+    '&::before': {
+      border: '1px solid rgba(255, 255, 255, 0.1)',
+    },
+  },
+}));
 
 const nodeColors: Record<string, string> = {
   person: '#3B82F6',
@@ -71,6 +94,8 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [dagError, setDagError] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [selectedNodeTypes, setSelectedNodeTypes] = useState<Set<string>>(new Set());
+  const [hoveredLegendType, setHoveredLegendType] = useState<string | null>(null);
   
   // Cache graphData to prevent re-renders
   const graphDataRef = useRef<any>(null);
@@ -122,15 +147,25 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
       // Configure forces after a delay
       setTimeout(() => {
         if (fg) {
-          // Configure stronger forces for better spacing
-          fg.d3Force('charge').strength(-400);
-          fg.d3Force('link').distance(100);
+          const d3 = require('d3-force');
+          
+          // Reduce charge strength to bring disconnected components closer
+          fg.d3Force('charge').strength(-200);
+          
+          // Keep link distance reasonable for connected nodes
+          fg.d3Force('link').distance(80);
+          
+          // Add strong center force to pull all nodes toward center
+          // This prevents disconnected components from drifting far apart
+          fg.d3Force('center', d3.forceCenter().strength(0.3));
           
           // Add collision force to prevent overlap
-          const d3 = require('d3-force');
           fg.d3Force('collide', d3.forceCollide().radius((node: any) => {
             return Math.sqrt(node.val || 20) * 1.5 + 15;
           }).strength(0.9));
+          
+          // Add many-body force with reduced strength for better clustering
+          fg.d3Force('charge').strength(-200).distanceMax(400);
           
           // Reheat simulation to apply new forces
           fg.d3ReheatSimulation();
@@ -206,6 +241,60 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
     }
   };
 
+  const handleReLayout = () => {
+    if (fgRef.current && graphData) {
+      const fg = fgRef.current;
+      const d3 = require('d3-force');
+      
+      // Calculate center of mass for all nodes using the graphData from useMemo
+      let centerX = 0, centerY = 0;
+      if (graphData.nodes.length > 0) {
+        graphData.nodes.forEach((node: any) => {
+          if (node.x && node.y) {
+            centerX += node.x;
+            centerY += node.y;
+          }
+        });
+        centerX /= graphData.nodes.length;
+        centerY /= graphData.nodes.length;
+      }
+      
+      // Use moderate center force at calculated center (not too strong)
+      fg.d3Force('center', d3.forceCenter(centerX, centerY).strength(0.5));
+      
+      // Reheat the simulation with smooth animation
+      fg.d3ReheatSimulation();
+      
+      // Gradually restore original forces with smooth transition
+      // This prevents jerky "snap back" behavior
+      setTimeout(() => {
+        if (fg) {
+          // Transition to slightly weaker center force
+          fg.d3Force('center', d3.forceCenter(centerX, centerY).strength(0.4));
+        }
+      }, 1000);
+      
+      setTimeout(() => {
+        if (fg) {
+          // Final transition to normal center force
+          fg.d3Force('center', d3.forceCenter().strength(0.3));
+        }
+      }, 2000);
+      
+      // Fit to view after layout settles
+      setTimeout(() => {
+        if (fg) {
+          fg.zoomToFit(400);
+          setTimeout(() => {
+            if (fg) {
+              setZoomLevel(fg.zoom());
+            }
+          }, 450);
+        }
+      }, 3000);
+    }
+  };
+
   const closeDetailDrawer = () => {
     setDetailDrawerOpen(false);
   };
@@ -248,26 +337,95 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
             Optimized for cyclic graphs
           </Typography>
         </Box>
-        <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, mb: 1, display: 'block' }}>
-          NODE TYPES
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600 }}>
+            NODE TYPES
+          </Typography>
+          {selectedNodeTypes.size > 0 && (
+            <IconButton
+              size="small"
+              onClick={() => setSelectedNodeTypes(new Set())}
+              sx={{
+                p: 0.5,
+                bgcolor: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '6px',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  bgcolor: 'rgba(239, 68, 68, 0.25)',
+                  transform: 'scale(1.05)',
+                  boxShadow: '0 0 12px rgba(239, 68, 68, 0.4)',
+                },
+              }}
+            >
+              <CloseIcon sx={{ fontSize: 12, color: '#EF4444' }} />
+            </IconButton>
+          )}
+        </Box>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, mb: 1 }}>
-          {Object.entries(nodeColors).map(([type, color]) => (
-            <Box key={type} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {Object.entries(nodeColors).map(([type, color]) => {
+            const isSelected = selectedNodeTypes.has(type);
+            const isHovered = hoveredLegendType === type;
+            
+            return (
               <Box
-                sx={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  bgcolor: color,
-                  boxShadow: `0 0 6px ${color}60`,
+                key={type}
+                onMouseEnter={() => setHoveredLegendType(type)}
+                onMouseLeave={() => setHoveredLegendType(null)}
+                onClick={() => {
+                  const newSelected = new Set(selectedNodeTypes);
+                  if (newSelected.has(type)) {
+                    newSelected.delete(type);
+                  } else {
+                    newSelected.add(type);
+                  }
+                  setSelectedNodeTypes(newSelected);
                 }}
-              />
-              <Typography variant="caption" sx={{ fontSize: '0.65rem', textTransform: 'capitalize' }}>
-                {type}
-              </Typography>
-            </Box>
-          ))}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  bgcolor: isSelected ? `${color}20` : 'transparent',
+                  border: isSelected ? `1px solid ${color}60` : '1px solid transparent',
+                  transform: isHovered ? 'scale(1.05)' : 'scale(1)',
+                  boxShadow: isSelected ? `0 0 12px ${color}40` : 'none',
+                  '&:hover': {
+                    bgcolor: `${color}15`,
+                    border: `1px solid ${color}40`,
+                  },
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    bgcolor: color,
+                    boxShadow: isSelected || isHovered ? `0 0 8px ${color}` : `0 0 6px ${color}60`,
+                    transition: 'all 0.2s ease',
+                    transform: isSelected ? 'scale(1.2)' : 'scale(1)',
+                  }}
+                />
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontSize: '0.65rem',
+                    textTransform: 'capitalize',
+                    fontWeight: isSelected ? 600 : 400,
+                    color: isSelected ? '#fff' : 'rgba(255,255,255,0.8)',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  {type}
+                </Typography>
+              </Box>
+            );
+          })}
         </Box>
         <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
           <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: 'rgba(255,255,255,0.6)', mb: 1, display: 'block' }}>
@@ -330,7 +488,7 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
           zIndex: 10,
         }}
       >
-        <Tooltip title="Zoom In" placement="left">
+        <GlassmorphicTooltip title="Zoom In" placement="left" arrow>
           <IconButton
             size="small"
             onClick={handleZoomIn}
@@ -343,8 +501,8 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
           >
             <ZoomInIcon fontSize="small" />
           </IconButton>
-        </Tooltip>
-        <Tooltip title="Zoom Out" placement="left">
+        </GlassmorphicTooltip>
+        <GlassmorphicTooltip title="Zoom Out" placement="left" arrow>
           <IconButton
             size="small"
             onClick={handleZoomOut}
@@ -357,8 +515,8 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
           >
             <ZoomOutIcon fontSize="small" />
           </IconButton>
-        </Tooltip>
-        <Tooltip title="Fit to View" placement="left">
+        </GlassmorphicTooltip>
+        <GlassmorphicTooltip title="Fit to View" placement="left" arrow>
           <IconButton
             size="small"
             onClick={handleCenter}
@@ -371,7 +529,29 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
           >
             <CenterIcon fontSize="small" />
           </IconButton>
-        </Tooltip>
+        </GlassmorphicTooltip>
+        
+        {/* Re-Layout Button */}
+        <GlassmorphicTooltip title="Re-layout Graph" placement="left" arrow>
+          <IconButton
+            size="small"
+            onClick={handleReLayout}
+            sx={{
+              bgcolor: 'rgba(0, 0, 0, 0.6)',
+              backdropFilter: 'blur(12px)',
+              color: 'white',
+              mt: 1,
+              '&:hover': { 
+                bgcolor: 'rgba(0, 0, 0, 0.8)',
+                transform: 'rotate(180deg)',
+                transition: 'transform 0.6s ease',
+              },
+              transition: 'transform 0.6s ease',
+            }}
+          >
+            <LayoutIcon fontSize="small" />
+          </IconButton>
+        </GlassmorphicTooltip>
         
         {/* Zoom Level Indicator */}
         <Paper
@@ -528,7 +708,10 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
           dagLevelDistance={50}
           onDagError={handleDagError}
           nodeLabel="name"
-          nodeVal="val"
+          nodeVal={(node: any) => {
+            // Always return same size regardless of selection state
+            return node.val;
+          }}
           nodeColor={(node: any) => {
             const isCurrent = node.is_current === 1;
             const baseColor = node.color || '#64748B';
@@ -545,8 +728,43 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
             const isCurrent = node.is_current === 1;
             const nodeRadius = Math.sqrt(node.val || 20) * 1.2;
             
-            // Draw glow effect for current nodes
-            if (isCurrent) {
+            // Determine if node should be highlighted
+            const isTypeSelected = selectedNodeTypes.size > 0;
+            const isThisTypeSelected = selectedNodeTypes.has(node.type);
+            const isThisTypeHovered = hoveredLegendType === node.type;
+            const shouldHighlight = isThisTypeSelected || isThisTypeHovered;
+            const shouldFade = isTypeSelected && !shouldHighlight;
+            
+            // Draw prominent ring for highlighted nodes
+            if (shouldHighlight) {
+              // Outer glow ring
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, nodeRadius + 12, 0, 2 * Math.PI);
+              const gradient = ctx.createRadialGradient(node.x, node.y, nodeRadius + 8, node.x, node.y, nodeRadius + 12);
+              gradient.addColorStop(0, `${node.color}80`);
+              gradient.addColorStop(1, 'transparent');
+              ctx.fillStyle = gradient;
+              ctx.fill();
+              
+              // Prominent selection ring - thicker and more visible
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, nodeRadius + 6, 0, 2 * Math.PI);
+              ctx.strokeStyle = node.color;
+              ctx.lineWidth = 4 / globalScale;
+              ctx.globalAlpha = 1;
+              ctx.stroke();
+              ctx.globalAlpha = 1;
+              
+              // Inner white ring for extra emphasis
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, nodeRadius + 4, 0, 2 * Math.PI);
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 2 / globalScale;
+              ctx.globalAlpha = 0.8;
+              ctx.stroke();
+              ctx.globalAlpha = 1;
+            } else if (isCurrent && !shouldFade) {
+              // Normal glow for non-highlighted current nodes
               ctx.beginPath();
               ctx.arc(node.x, node.y, nodeRadius + 4, 0, 2 * Math.PI);
               const gradient = ctx.createRadialGradient(node.x, node.y, nodeRadius, node.x, node.y, nodeRadius + 4);
@@ -556,35 +774,48 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
               ctx.fill();
             }
             
-            // Draw node circle
+            // Draw node circle with fade effect (no size change)
             ctx.beginPath();
             ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI);
             ctx.fillStyle = node.color || '#64748B';
-            ctx.globalAlpha = isCurrent ? 1 : 0.3;
+            
+            if (shouldFade) {
+              ctx.globalAlpha = isCurrent ? 0.25 : 0.15;
+            } else if (shouldHighlight) {
+              ctx.globalAlpha = isCurrent ? 1 : 0.5;
+            } else {
+              ctx.globalAlpha = isCurrent ? 1 : 0.3;
+            }
+            
             ctx.fill();
             ctx.globalAlpha = 1;
             
-            // Draw border
+            // Draw border (consistent width)
             ctx.strokeStyle = node.color || '#64748B';
             ctx.lineWidth = 2 / globalScale;
-            if (!isCurrent) {
+            
+            if (shouldFade) {
+              ctx.globalAlpha = 0.25;
+            } else if (!isCurrent) {
               ctx.setLineDash([5 / globalScale, 3 / globalScale]);
             }
+            
             ctx.stroke();
             ctx.setLineDash([]);
+            ctx.globalAlpha = 1;
             
             // Draw label with background for better readability
-            if (globalScale > 0.8) {
+            if (globalScale > 0.8 && !shouldFade) {
               ctx.font = `600 ${fontSize}px Inter, sans-serif`;
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               
               const labelY = node.y + nodeRadius + fontSize + 4;
               const textMetrics = ctx.measureText(label);
-              const padding = 6;
+              const padding = shouldHighlight ? 8 : 6;
               
               // Draw label background
-              ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+              ctx.fillStyle = shouldHighlight ? `${node.color}30` : 'rgba(0, 0, 0, 0.75)';
               ctx.fillRect(
                 node.x - textMetrics.width / 2 - padding,
                 labelY - fontSize / 2 - padding / 2,
@@ -593,8 +824,16 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
               );
               
               // Draw label text
-              ctx.fillStyle = isCurrent ? '#ffffff' : 'rgba(255, 255, 255, 0.6)';
+              if (shouldHighlight) {
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = node.color;
+                ctx.shadowBlur = 4;
+              } else {
+                ctx.fillStyle = isCurrent ? '#ffffff' : 'rgba(255, 255, 255, 0.6)';
+              }
+              
               ctx.fillText(label, node.x, labelY);
+              ctx.shadowBlur = 0;
             }
           }}
           linkColor={(link: any) => {
