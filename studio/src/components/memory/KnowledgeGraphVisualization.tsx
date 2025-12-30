@@ -246,40 +246,52 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
       const fg = fgRef.current;
       const d3 = require('d3-force');
       
-      // Calculate center of mass for all nodes using the graphData from useMemo
+      // Calculate center of mass for all nodes
       let centerX = 0, centerY = 0;
+      let nodeCount = 0;
       if (graphData.nodes.length > 0) {
         graphData.nodes.forEach((node: any) => {
-          if (node.x && node.y) {
+          if (node.x && node.y && isFinite(node.x) && isFinite(node.y)) {
             centerX += node.x;
             centerY += node.y;
+            nodeCount++;
           }
         });
-        centerX /= graphData.nodes.length;
-        centerY /= graphData.nodes.length;
+        if (nodeCount > 0) {
+          centerX /= nodeCount;
+          centerY /= nodeCount;
+        }
       }
       
-      // Use moderate center force at calculated center (not too strong)
-      fg.d3Force('center', d3.forceCenter(centerX, centerY).strength(0.5));
+      // Apply moderate centering forces during re-layout
+      fg.d3Force('center', d3.forceCenter(centerX, centerY).strength(0.6));
       
-      // Reheat the simulation with smooth animation
+      // Add weak X and Y positioning forces to prevent drift without bunching
+      fg.d3Force('x', d3.forceX(centerX).strength(0.05));
+      fg.d3Force('y', d3.forceY(centerY).strength(0.05));
+      
+      // Keep normal charge for good spacing
+      fg.d3Force('charge').strength(-200);
+      
+      // Reheat simulation
       fg.d3ReheatSimulation();
       
-      // Gradually restore original forces with smooth transition
-      // This prevents jerky "snap back" behavior
+      // Gradually reduce positioning forces
       setTimeout(() => {
         if (fg) {
-          // Transition to slightly weaker center force
-          fg.d3Force('center', d3.forceCenter(centerX, centerY).strength(0.4));
+          fg.d3Force('x', d3.forceX(centerX).strength(0.02));
+          fg.d3Force('y', d3.forceY(centerY).strength(0.02));
         }
       }, 1000);
       
       setTimeout(() => {
         if (fg) {
-          // Final transition to normal center force
+          // Remove positioning forces and restore normal configuration
+          fg.d3Force('x', null);
+          fg.d3Force('y', null);
           fg.d3Force('center', d3.forceCenter().strength(0.3));
         }
-      }, 2000);
+      }, 2500);
       
       // Fit to view after layout settles
       setTimeout(() => {
