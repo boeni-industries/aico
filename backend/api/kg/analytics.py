@@ -352,9 +352,6 @@ class KGAnalyticsEngine:
         
         duplicate_pairs = detector.detect_duplicates(node_dicts)
         
-        if self._logger:
-            self._logger.info(f"Detected {len(duplicate_pairs)} duplicate pairs for user {self.user_id}")
-        
         return duplicate_pairs
     
     def calculate_clustering_metrics(self) -> Dict[str, Any]:

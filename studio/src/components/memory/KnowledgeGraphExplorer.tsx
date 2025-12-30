@@ -28,7 +28,7 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredNodes, setFilteredNodes] = useState(nodes);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'current' | 'historical'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'current' | 'historical'>('current');
   
   // Calculate status counts
   const currentCount = nodes.filter(n => n.is_current === 1).length;
@@ -215,76 +215,6 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
             )}
             onNodeClick={(node) => setSelectedNode(node)}
           />
-          
-          {selectedNode && (
-            <Paper sx={{ mt: 3, p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
-                  Node Details: {selectedNode.label}
-                </Typography>
-                <Chip
-                  icon={selectedNode.is_current === 1 ? <CheckCircleIcon /> : <HistoryIcon />}
-                  label={selectedNode.is_current === 1 ? 'Current' : 'Historical'}
-                  size="small"
-                  sx={{
-                    bgcolor: selectedNode.is_current === 1 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                    color: selectedNode.is_current === 1 ? '#10B981' : '#F59E0B',
-                    border: `1px solid ${selectedNode.is_current === 1 ? '#10B981' : '#F59E0B'}`,
-                    fontWeight: 600,
-                    fontSize: '0.7rem',
-                    '& .MuiChip-icon': {
-                      color: selectedNode.is_current === 1 ? '#10B981' : '#F59E0B',
-                    },
-                  }}
-                />
-              </Box>
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                    TYPE
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {selectedNode.type.toUpperCase()}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                    CONNECTIONS
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {selectedNode.connections}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                    IMPORTANCE
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {(selectedNode.importance * 100).toFixed(0)}%
-                  </Typography>
-                </Box>
-                {selectedNode.properties && (
-                  <Box sx={{ gridColumn: '1 / -1' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 1, display: 'block' }}>
-                      PROPERTIES
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {Object.entries(selectedNode.properties).map(([key, value]) => (
-                        <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', p: 1, bgcolor: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-                          <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>
-                            {key}:
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                          </Typography>
-                        </Box>
-                      ))}
-                    </Box>
-                  </Box>
-                )}
-              </Box>
-            </Paper>
-          )}
         </Box>
       )}
 
