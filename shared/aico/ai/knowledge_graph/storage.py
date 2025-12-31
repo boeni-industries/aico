@@ -306,13 +306,16 @@ class PropertyGraphStorage:
                         self.db.execute(
                             """
                             INSERT INTO kg_nodes 
-                            (id, user_id, label, properties, confidence, source_text, is_current, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (id, user_id, label, properties, confidence, source_text, is_current, created_at, updated_at,
+                             valid_from, valid_until, language, canonical_id, aliases_json)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 node.id, node.user_id, node.label,
                                 json.dumps(node.properties, sort_keys=True), node.confidence, node.source_text,
-                                1, node.created_at, node.updated_at
+                                1, node.created_at, node.updated_at,
+                                node.valid_from, node.valid_until, node.language, node.canonical_id,
+                                json.dumps(node.aliases, sort_keys=True) if node.aliases else None
                             )
                         )
                         # Node inserted successfully - map to itself
@@ -398,13 +401,15 @@ class PropertyGraphStorage:
                             self.db.execute(
                                 """
                                 INSERT INTO kg_edges 
-                                (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at,
+                                 valid_from, valid_until)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """,
                                 (
                                     edge.id, actual_source_id, actual_target_id, edge.relation_type,
                                     json.dumps(edge.properties, sort_keys=True), edge.confidence, edge.user_id,
-                                    edge.source_text, 1, edge.created_at, edge.updated_at
+                                    edge.source_text, 1, edge.created_at, edge.updated_at,
+                                    edge.valid_from, edge.valid_until
                                 )
                             )
                         except Exception as e:
