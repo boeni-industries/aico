@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
 import { Box, Typography, Chip, IconButton, Tooltip, Paper, Select, MenuItem, FormControl, InputLabel, Drawer, styled, CircularProgress } from '@mui/material';
-import { fetchNodeHistory, NodeHistoryResponse } from '../../api/kg';
+import { fetchNodeHistory, NodeHistoryResponse, fetchTemporalGraphState, fetchChanges } from '../../api/kg';
 import {
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
@@ -10,6 +10,7 @@ import {
   AccountTree as LayoutIcon,
 } from '@mui/icons-material';
 import ForceGraph2D from 'react-force-graph-2d';
+import { TemporalControls } from './TemporalControls';
 
 export interface GraphNode {
   id: string;
@@ -44,6 +45,7 @@ interface KnowledgeGraphVisualizationProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   onNodeClick?: (node: GraphNode) => void;
+  onTemporalStateChange?: (nodes: GraphNode[], edges: GraphEdge[], isLive: boolean) => void;
 }
 
 // Styled glassmorphic tooltip
@@ -91,6 +93,7 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
   nodes,
   edges,
   onNodeClick,
+  onTemporalStateChange,
 }) => {
   const fgRef = useRef<any>(null);
   const [layoutType, setLayoutType] = useState<LayoutType>('force');
@@ -105,6 +108,8 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
   const [hoveredLegendType, setHoveredLegendType] = useState<string | null>(null);
   const [nodeHistory, setNodeHistory] = useState<NodeHistoryResponse | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [selectedTimestamp, setSelectedTimestamp] = useState<string | null>(null);
+  const [activityData, setActivityData] = useState<Array<{ date: string; changeCount: number }>>([]);
   
   // Cache graphData to prevent re-renders
   const graphDataRef = useRef<any>(null);
@@ -191,6 +196,110 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
       }, 200);
     }
   }, [graphData]);
+
+  // Handle timeline scrubber changes
+  const handleTimelineChange = useCallback(async (timestamp: string, isLive: boolean) => {
+    setSelectedTimestamp(isLive ? null : timestamp);
+    
+    if (isLive) {
+      console.log('Returning to live view');
+      if (onTemporalStateChange) {
+        // Return to original live data
+        onTemporalStateChange(nodes, edges, true);
+      }
+      return;
+    }
+    
+    console.log('Fetching temporal graph state for:', timestamp);
+    try {
+      const temporalState = await fetchTemporalGraphState({ 
+        as_of: timestamp, 
+        include_edges: true,
+        node_limit: 1000
+      });
+      
+      console.log(`[TEMPORAL] Loaded temporal state: ${temporalState.total_nodes} nodes, ${temporalState.total_edges} edges`);
+      
+      // Transform temporal data to GraphNode/GraphEdge format
+      const historicalNodes: GraphNode[] = temporalState.nodes.map(node => ({
+        id: node.id,
+        label: node.label,
+        type: node.label.toLowerCase() as any, // Map label to type
+        connections: 0, // Will be calculated
+        importance: node.confidence * 100,
+        is_current: node.is_current,
+        canonical_id: node.canonical_id,
+        valid_from: node.valid_from,
+        valid_until: node.valid_until,
+        created_at: node.created_at,
+        updated_at: node.updated_at,
+        properties: node.properties
+      }));
+      
+      const historicalEdges: GraphEdge[] = temporalState.edges.map(edge => ({
+        id: edge.id,
+        source: edge.source_id,
+        target: edge.target_id,
+        relation_type: edge.relation_type,
+        strength: edge.confidence,
+        is_current: edge.is_current,
+        properties: edge.properties
+      }));
+      
+      console.log(`[TEMPORAL] Transformed to ${historicalNodes.length} nodes, ${historicalEdges.length} edges`);
+      if (historicalEdges.length > 0) {
+        console.log(`[TEMPORAL] Sample edge:`, historicalEdges[0]);
+      }
+      
+      // Calculate connections for nodes
+      historicalNodes.forEach(node => {
+        node.connections = historicalEdges.filter(
+          e => e.source === node.id || e.target === node.id
+        ).length;
+      });
+      
+      if (onTemporalStateChange) {
+        onTemporalStateChange(historicalNodes, historicalEdges, false);
+      }
+      
+    } catch (error) {
+      console.error('Failed to fetch temporal graph state:', error);
+    }
+  }, [nodes, edges, onTemporalStateChange]);
+
+  // Fetch activity data for heatmap on mount
+  useEffect(() => {
+    const fetchActivityData = async () => {
+      try {
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+        
+        const changes = await fetchChanges(
+          oneYearAgo.toISOString(),
+          new Date().toISOString(),
+          1000
+        );
+        
+        // Group changes by date
+        const activityMap = new Map<string, number>();
+        changes.changes.forEach(change => {
+          const date = change.timestamp.split('T')[0];
+          activityMap.set(date, (activityMap.get(date) || 0) + 1);
+        });
+        
+        const activity = Array.from(activityMap.entries()).map(([date, changeCount]) => ({
+          date,
+          changeCount
+        }));
+        
+        setActivityData(activity);
+      } catch (error) {
+        console.error('Failed to fetch activity data:', error);
+      }
+    };
+    
+    fetchActivityData();
+  }, []);
 
   const handleNodeClick = useCallback(async (node: any) => {
     setSelectedNode(node);
@@ -480,12 +589,13 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
         </Box>
       </Paper>
 
+
       {/* Error Toast - Glassmorphic */}
       {dagError && (
         <Paper
           sx={{
             position: 'absolute',
-            top: 24,
+            top: 100,
             left: '50%',
             transform: 'translateX(-50%)',
             px: 3,
@@ -879,8 +989,8 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
             return isCurrent ? 'rgba(148, 163, 184, 0.6)' : 'rgba(148, 163, 184, 0.2)';
           }}
           linkWidth={(link: any) => Math.max(link.strength * 4, 1)}
-          linkDirectionalParticles={3}
-          linkDirectionalParticleWidth={(link: any) => link.is_current === 1 ? 3 : 0}
+          linkDirectionalParticles={(link: any) => link.is_current === 1 ? 3 : 0}
+          linkDirectionalParticleWidth={3}
           onNodeClick={handleNodeClick}
           onNodeHover={handleNodeHover}
           onLinkHover={handleLinkHover}
@@ -1235,6 +1345,12 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
           </Box>
         )}
       </Drawer>
+
+      {/* Floating VCR-style Temporal Controls */}
+      <TemporalControls
+        onTimeChange={handleTimelineChange}
+        activityData={activityData}
+      />
     </Box>
   );
 };

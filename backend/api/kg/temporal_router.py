@@ -323,7 +323,10 @@ async def get_temporal_graph_state(
         logger.info(f"Fetching graph state as of {as_of} for user {user_id}")
         
         # Get nodes that were current at the specified time
-        # A node is current at time T if: valid_from <= T AND (valid_until IS NULL OR valid_until > T)
+        # A node is current at time T if:
+        # - (valid_from IS NULL OR valid_from <= T) - node existed at time T
+        # - AND (valid_until IS NULL OR valid_until > T) - node wasn't deleted yet
+        # Nodes without valid_from are treated as "always existed" (legacy nodes)
         nodes_raw = db_connection.execute(
             """
             SELECT id, user_id, label, properties, confidence, source_text,
@@ -331,7 +334,7 @@ async def get_temporal_graph_state(
                    canonical_id, aliases_json, reason
             FROM kg_nodes 
             WHERE user_id = ? 
-              AND valid_from <= ?
+              AND (valid_from IS NULL OR valid_from <= ?)
               AND (valid_until IS NULL OR valid_until > ?)
             ORDER BY created_at DESC
             LIMIT ?
@@ -360,6 +363,7 @@ async def get_temporal_graph_state(
         
         edges = []
         if request.include_edges:
+            # Same logic for edges - include edges without valid_from (legacy edges)
             edges_raw = db_connection.execute(
                 """
                 SELECT id, source_id, target_id, relation_type, properties,
@@ -367,18 +371,20 @@ async def get_temporal_graph_state(
                        valid_from, valid_until, is_current
                 FROM kg_edges 
                 WHERE user_id = ? 
-                  AND valid_from <= ?
+                  AND (valid_from IS NULL OR valid_from <= ?)
                   AND (valid_until IS NULL OR valid_until > ?)
                 ORDER BY created_at DESC
                 """,
                 [user_id, as_of, as_of]
             ).fetchall()
             
+            logger.info(f"[TEMPORAL_DEBUG] Queried edges at {as_of}: found {len(edges_raw)} raw edges")
+            
             for row in edges_raw:
-                edges.append({
+                edge_data = {
                     "id": row[0],
-                    "source": row[1],
-                    "target": row[2],
+                    "source_id": row[1],
+                    "target_id": row[2],
                     "relation_type": row[3],
                     "properties": json.loads(row[4]) if row[4] else {},
                     "confidence": row[5],
@@ -388,7 +394,11 @@ async def get_temporal_graph_state(
                     "valid_from": row[9],
                     "valid_until": row[10],
                     "is_current": row[11]
-                })
+                }
+                edges.append(edge_data)
+            
+            if len(edges_raw) > 0:
+                logger.info(f"[TEMPORAL_DEBUG] Sample edge: {edges[0]['id']}, valid_from={edges[0]['valid_from']}, valid_until={edges[0]['valid_until']}")
         
         logger.info(f"Found {len(nodes)} nodes and {len(edges)} edges at {as_of}")
         

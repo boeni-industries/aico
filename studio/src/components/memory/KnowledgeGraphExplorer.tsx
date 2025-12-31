@@ -28,7 +28,9 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredNodes, setFilteredNodes] = useState(nodes);
+  const [filteredEdges, setFilteredEdges] = useState(edges);
   const [statusFilter, setStatusFilter] = useState<'all' | 'current' | 'historical'>('current');
+  const [isViewingHistory, setIsViewingHistory] = useState(false);
   
   // Calculate status counts
   const currentCount = nodes.filter(n => n.is_current === 1).length;
@@ -36,26 +38,12 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
   
   // Sync filteredNodes when nodes prop changes
   React.useEffect(() => {
-    setFilteredNodes(nodes);
-    console.log('KG Explorer: Loaded', nodes.length, 'nodes');
-    if (nodes.length > 0) {
-      console.log('Sample node structure:', {
-        id: nodes[0].id,
-        label: nodes[0].label,
-        type: nodes[0].type,
-        properties: nodes[0].properties,
-        hasProperties: !!nodes[0].properties,
-        propertyKeys: nodes[0].properties ? Object.keys(nodes[0].properties) : []
-      });
-      
-      // Show a few more samples to understand the data
-      console.log('First 5 nodes labels:', nodes.slice(0, 5).map(n => ({
-        label: n.label,
-        type: n.type,
-        name: n.properties?.name
-      })));
+    if (!isViewingHistory) {
+      setFilteredNodes(nodes);
+      setFilteredEdges(edges);
+      console.log('KG Explorer: Loaded', nodes.length, 'nodes');
     }
-  }, [nodes]);
+  }, [nodes, edges, isViewingHistory]);
   
   const applyFilters = (query: string, status: 'all' | 'current' | 'historical') => {
     let filtered = nodes;
@@ -209,11 +197,58 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
         <Box>
           <KnowledgeGraphVisualization
             nodes={filteredNodes}
-            edges={edges.filter(edge => 
+            edges={filteredEdges.filter(edge => 
               filteredNodes.some(n => n.id === edge.source) && 
               filteredNodes.some(n => n.id === edge.target)
             )}
             onNodeClick={(node) => setSelectedNode(node)}
+            onTemporalStateChange={(historicalNodes, historicalEdges, isLive) => {
+              if (isLive) {
+                // Return to live view - reapply current filters
+                console.log('[EXPLORER] Returning to live view:', nodes.length, 'nodes,', edges.length, 'edges');
+                setIsViewingHistory(false);
+                applyFilters(searchQuery, statusFilter);
+              } else {
+                // Switch to historical view - apply status filter to historical data
+                console.log('[EXPLORER] Switching to historical view:', historicalNodes.length, 'nodes,', historicalEdges.length, 'edges');
+                
+                setIsViewingHistory(true);
+                
+                // Apply status filter to historical nodes
+                let filtered = historicalNodes;
+                if (statusFilter === 'current') {
+                  filtered = filtered.filter(n => n.is_current === 1);
+                } else if (statusFilter === 'historical') {
+                  filtered = filtered.filter(n => n.is_current === 0);
+                }
+                
+                // Apply search filter if active
+                if (searchQuery.trim()) {
+                  const lowerQuery = searchQuery.toLowerCase();
+                  filtered = filtered.filter(node => {
+                    const displayLabel = (node.label || '').toLowerCase();
+                    const nameProperty = (node.properties?.name || '').toLowerCase();
+                    const typeField = (node.type || '').toLowerCase();
+                    const matchesLabel = displayLabel.includes(lowerQuery) || nameProperty.includes(lowerQuery) || typeField.includes(lowerQuery);
+                    const matchesId = (node.id || '').toLowerCase().includes(lowerQuery);
+                    const matchesProperties = node.properties && Object.values(node.properties).some(value => {
+                      const strValue = String(value).toLowerCase();
+                      return strValue.includes(lowerQuery);
+                    });
+                    return matchesLabel || matchesId || matchesProperties;
+                  });
+                }
+                
+                // Filter edges to only include those connected to visible nodes
+                const nodeIds = new Set(filtered.map(n => n.id));
+                const validEdges = historicalEdges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+                
+                console.log('[EXPLORER] Applied filters - showing', filtered.length, 'nodes,', validEdges.length, 'edges');
+                
+                setFilteredNodes(filtered);
+                setFilteredEdges(validEdges);
+              }
+            }}
           />
         </Box>
       )}
