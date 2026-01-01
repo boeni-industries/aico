@@ -28,8 +28,8 @@ import {
   Error as ErrorIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import { parse } from '@neo4j-cypher/editor-support';
 import { QueryTemplate } from '../../api/kg';
+import { CypherQueryInput } from './CypherQueryInput';
 
 interface TemplateEditorProps {
   open: boolean;
@@ -81,71 +81,8 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
         tags: [],
       });
     }
-    setQueryValidation({ status: 'idle' });
   }, [template, isNew]);
 
-  const validateCypherQuery = useCallback((query: string) => {
-    if (!query.trim()) {
-      return { status: 'idle' as const };
-    }
-
-    try {
-      const parseResult = parse(query) as any;
-      
-      if (!parseResult || !parseResult.errorListener) {
-        return { 
-          status: 'error' as const, 
-          message: 'Failed to parse query' 
-        };
-      }
-      
-      const errors = parseResult.errorListener.errors || [];
-      
-      if (errors.length > 0) {
-        const firstError = errors[0];
-        const errorMsg = firstError.msg || 'Syntax error';
-        const location = firstError.line ? ` at line ${firstError.line}:${firstError.col}` : '';
-        return { 
-          status: 'error' as const, 
-          message: `${errorMsg}${location}` 
-        };
-      }
-      
-      const trimmedQuery = query.trim().toUpperCase();
-      const hasMatch = /\bMATCH\b/.test(trimmedQuery);
-      const hasReturn = /\bRETURN\b/.test(trimmedQuery);
-      
-      if (!hasMatch && !hasReturn) {
-        return { 
-          status: 'warning' as const, 
-          message: 'Query should contain MATCH and RETURN clauses' 
-        };
-      }
-      
-      return { 
-        status: 'valid' as const, 
-        message: 'Query syntax is valid' 
-      };
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Syntax error in query';
-      return { 
-        status: 'error' as const, 
-        message: errorMsg
-      };
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!formData.query.trim()) {
-      setQueryValidation({ status: 'idle' });
-      return;
-    }
-    setQueryValidation({ status: 'validating' });
-    const timer = setTimeout(() => {
-      setQueryValidation(validateCypherQuery(formData.query));
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [formData.query, validateCypherQuery]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -225,37 +162,14 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               </Select>
             </FormControl>
 
-            <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Cypher Query</Typography>
-                <Fade in={queryValidation.status !== 'idle'} timeout={300}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 0.5, borderRadius: '8px', backdropFilter: 'blur(10px)', 
-                    ...(queryValidation.status === 'validating' && { bgcolor: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)' }),
-                    ...(queryValidation.status === 'valid' && { bgcolor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)' }),
-                    ...(queryValidation.status === 'warning' && { bgcolor: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)' }),
-                    ...(queryValidation.status === 'error' && { bgcolor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)' }) }}>
-                    {queryValidation.status === 'validating' && <CircularProgress size={14} sx={{ color: '#8B5CF6' }} />}
-                    {queryValidation.status === 'valid' && <CheckIcon sx={{ fontSize: 16, color: '#10B981' }} />}
-                    {queryValidation.status === 'warning' && <WarningIcon sx={{ fontSize: 16, color: '#FBBF24' }} />}
-                    {queryValidation.status === 'error' && <ErrorIcon sx={{ fontSize: 16, color: '#EF4444' }} />}
-                    <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600,
-                      ...(queryValidation.status === 'validating' && { color: '#8B5CF6' }),
-                      ...(queryValidation.status === 'valid' && { color: '#10B981' }),
-                      ...(queryValidation.status === 'warning' && { color: '#FBBF24' }),
-                      ...(queryValidation.status === 'error' && { color: '#EF4444' }) }}>
-                      {queryValidation.message || 'Validating...'}
-                    </Typography>
-                  </Box>
-                </Fade>
-              </Box>
-              <TextField value={formData.query} onChange={(e) => setFormData({ ...formData, query: e.target.value })} error={!!errors.query || queryValidation.status === 'error'} helperText={errors.query || 'Write your Cypher query here (MATCH, WHERE, RETURN, LIMIT)'} fullWidth multiline rows={10}
-                sx={{ '& textarea': { fontFamily: '"Fira Code", monospace', fontSize: '0.875rem', lineHeight: 1.6 }, '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255, 255, 255, 0.03)', backdropFilter: 'blur(10px)', borderRadius: '20px', '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.1)' }, '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.05)' }, '&:hover fieldset': { borderColor: 'rgba(184, 161, 234, 0.3)' },
-                  '&.Mui-focused': { bgcolor: 'rgba(255, 255, 255, 0.08)' },
-                  ...(queryValidation.status === 'valid' && { '&.Mui-focused fieldset': { borderColor: '#10B981', borderWidth: '2px', boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.1)' } }),
-                  ...(queryValidation.status === 'warning' && { '&.Mui-focused fieldset': { borderColor: '#F59E0B', borderWidth: '2px', boxShadow: '0 0 0 3px rgba(245, 158, 11, 0.1)' } }),
-                  ...(queryValidation.status === 'error' && { '&.Mui-focused fieldset': { borderColor: '#ED7867', borderWidth: '2px', boxShadow: '0 0 0 3px rgba(237, 120, 103, 0.1)' } }),
-                  ...(!queryValidation.status || queryValidation.status === 'idle' || queryValidation.status === 'validating' ? { '&.Mui-focused fieldset': { borderColor: '#B8A1EA', borderWidth: '2px', boxShadow: '0 0 0 3px rgba(184, 161, 234, 0.1)' } } : {}) } }} />
-            </Box>
+            <CypherQueryInput
+              value={formData.query}
+              onChange={(value) => setFormData({ ...formData, query: value })}
+              label="Cypher Query"
+              helperText={errors.query || 'Write your Cypher query here (MATCH, WHERE, RETURN, LIMIT)'}
+              error={!!errors.query}
+              rows={10}
+            />
 
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Tags</Typography>

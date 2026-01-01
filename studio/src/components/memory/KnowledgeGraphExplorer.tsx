@@ -5,7 +5,6 @@ import {
   Code as CodeIcon,
   Analytics as AnalyticsIcon,
   AccountTree as GraphIcon,
-  Info as InfoIcon,
   InfoOutlined as InfoOutlinedIcon,
   CheckCircle as CheckCircleIcon,
   History as HistoryIcon,
@@ -27,7 +26,7 @@ interface KnowledgeGraphExplorerProps {
 }
 
 export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ nodes, edges, stats }) => {
-  const [activeTab, setActiveTab] = useState<'graph' | 'query' | 'analytics' | 'properties'>('graph');
+  const [activeTab, setActiveTab] = useState<'graph' | 'query' | 'analytics'>('graph');
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredNodes, setFilteredNodes] = useState(nodes);
@@ -191,7 +190,6 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
           <Tab icon={<GraphIcon />} label="Graph View" value="graph" sx={{ textTransform: 'none' }} />
           <Tab icon={<CodeIcon />} label="GQL Query" value="query" sx={{ textTransform: 'none' }} />
           <Tab icon={<AnalyticsIcon />} label="Analytics" value="analytics" sx={{ textTransform: 'none' }} />
-          <Tab icon={<InfoIcon />} label="Properties" value="properties" sx={{ textTransform: 'none' }} />
         </Tabs>
       </Box>
 
@@ -567,66 +565,6 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
         </Box>
       )}
 
-      {activeTab === 'properties' && (
-        <Paper sx={{ p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-            Property Schema & Examples
-          </Typography>
-          
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {[
-              {
-                type: 'PROJECT',
-                properties: {
-                  name: 'English Practice',
-                  status: 'active',
-                  progress: 0.6,
-                  deadline: '2025-12-31',
-                  priority: 1,
-                  description: 'Daily English conversation practice',
-                },
-              },
-              {
-                type: 'GOAL',
-                properties: {
-                  name: 'Become Fluent',
-                  type: 'long_term',
-                  status: 'in_progress',
-                  motivation: 'personal_growth',
-                  target_date: '2026-06-01',
-                },
-              },
-              {
-                type: 'PERSON',
-                properties: {
-                  name: 'Michael',
-                  relationship: 'self',
-                  canonical_id: 'person_michael_001',
-                  aliases: ['Michael', 'Mike', 'M'],
-                },
-              },
-            ].map((example) => (
-              <Box key={example.type} sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid', borderColor: 'divider' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#8B5CF6' }}>
-                  {example.type}
-                </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
-                  {Object.entries(example.properties).map(([key, value]) => (
-                    <Box key={key}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        {key}
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', fontFamily: typeof value === 'number' ? 'monospace' : 'inherit' }}>
-                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-            ))}
-          </Box>
-        </Paper>
-      )}
     </Box>
   );
 };

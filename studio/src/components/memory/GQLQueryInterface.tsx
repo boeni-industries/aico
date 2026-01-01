@@ -42,6 +42,7 @@ import {
 } from '@mui/icons-material';
 import { executeGQLQuery, fetchQueryTemplates, updateQueryTemplates, QueryTemplate } from '../../api/kg';
 import { TemplateEditor } from './TemplateEditor';
+import { CypherQueryInput } from './CypherQueryInput';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   exploration: <GraphIcon />,
@@ -447,38 +448,15 @@ export const GQLQueryInterface: React.FC = () => {
           </Box>
         </Box>
 
-        <TextField
-          fullWidth
-          multiline
-          rows={8}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Enter your GQL query here or select a template below..."
-          variant="outlined"
-          sx={{
-            mb: 2,
-            '& .MuiOutlinedInput-root': {
-              fontFamily: '"Fira Code", "JetBrains Mono", monospace',
-              fontSize: '0.9rem',
-              bgcolor: 'rgba(0, 0, 0, 0.3)',
-              borderRadius: '12px',
-              '& fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.1)',
-              },
-              '&:hover fieldset': {
-                borderColor: 'rgba(59, 130, 246, 0.5)',
-              },
-              '&.Mui-focused fieldset': {
-                borderColor: '#3B82F6',
-                borderWidth: '2px',
-              },
-            },
-            '& .MuiInputBase-input': {
-              color: 'rgba(255, 255, 255, 0.95)',
-              lineHeight: 1.6,
-            },
-          }}
-        />
+        <Box sx={{ mb: 2 }}>
+          <CypherQueryInput
+            value={query}
+            onChange={setQuery}
+            label="GQL Query Editor"
+            rows={8}
+            showValidation={true}
+          />
+        </Box>
 
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
