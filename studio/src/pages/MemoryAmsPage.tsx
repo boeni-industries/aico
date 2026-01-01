@@ -13,6 +13,7 @@ import { KnowledgeGraphAnalytics } from '../components/memory/KnowledgeGraphAnal
 import { WorkingMemoryPanel } from '../components/memory/WorkingMemoryPanel';
 import { SemanticMemoryPanel } from '../components/memory/SemanticMemoryPanel';
 import { MemoryAlbumPanel } from '../components/memory/MemoryAlbumPanel';
+import { AMSPanel } from '../components/memory/AMSPanel';
 import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { fetchGraphStats, fetchNodes, fetchEdges, KGNode, KGEdge, GraphStats } from '../api/kg';
@@ -262,16 +263,7 @@ export const MemoryAmsPage: React.FC = () => {
           </>
         )}
 
-        {activeTab === 'ams' && (
-          <Box sx={{ p: 3, textAlign: 'center' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              Adaptive Memory System (AMS)
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              AMS panel content coming soon - adaptive consolidation, memory pruning, and intelligent archival.
-            </Typography>
-          </Box>
-        )}
+        {activeTab === 'ams' && <AMSPanel />}
 
         {activeTab === 'album' && (
           <MemoryAlbumPanel

@@ -1004,6 +1004,7 @@ class BackendLifecycleManager:
         from backend.api.emotion.router import router as emotion_router
         from backend.api.tts.router import router as tts_router
         from backend.api.agency.router import router as agency_router
+        from backend.api.ams.router import router as ams_router
         
         # Mount routers with prefixes
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
@@ -1044,6 +1045,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(agency_router, prefix="/api/v1/agency", tags=["agency"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/agency", "tags": ["agency"]})
+        
+        self.app.include_router(ams_router, prefix="/api/v1", tags=["ams"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1", "tags": ["ams"]})
         
     
     def _display_routes(self) -> None:
