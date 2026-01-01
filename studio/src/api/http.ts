@@ -72,10 +72,27 @@ export async function httpJson<T>(options: HttpRequestOptions): Promise<T> {
       }
     }
     
-    const text = await response.text().catch(() => '');
+    // Try to parse error response as JSON and decrypt if needed
+    let errorMessage = '';
+    try {
+      const errorData = await response.json();
+      // If the error response is encrypted, decrypt it
+      if (errorData.encrypted && isProtected) {
+        const decrypted = unwrapEncryptedResponse<{ detail?: string }>(errorData);
+        errorMessage = decrypted.detail || JSON.stringify(decrypted);
+      } else if (errorData.detail) {
+        errorMessage = errorData.detail;
+      } else {
+        errorMessage = JSON.stringify(errorData);
+      }
+    } catch {
+      // If JSON parsing fails, fall back to text
+      errorMessage = await response.text().catch(() => '');
+    }
+    
     throw new Error(
       `HTTP ${response.status} ${response.statusText} when calling ${url.toString()}` +
-        (text ? `: ${text}` : ''),
+        (errorMessage ? `: ${errorMessage}` : ''),
     );
   }
 

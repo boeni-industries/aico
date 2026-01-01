@@ -221,12 +221,35 @@ class BackendLifecycleManager:
         def create_config_service(container: ServiceContainer):
             return container.config
         
+        # ChromaDB client factory (shared singleton)
+        def create_chromadb_client(container: ServiceContainer):
+            from aico.core.paths import AICOPaths
+            import chromadb
+            from chromadb.config import Settings
+            
+            chromadb_path = AICOPaths.get_semantic_memory_path()
+            # Use consistent settings for all ChromaDB clients
+            return chromadb.PersistentClient(
+                path=str(chromadb_path),
+                settings=Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True  # Match semantic memory settings
+                )
+            )
+        
         # Register services
         self.container.register_service(
             "database",
             create_database_connection,
             dependencies=[],
             priority=5  # Start early, stop late
+        )
+        
+        self.container.register_service(
+            "chromadb_client",
+            create_chromadb_client,
+            dependencies=[],
+            priority=6  # After database
         )
         
         self.container.register_service(
@@ -743,6 +766,10 @@ class BackendLifecycleManager:
         """Configure middleware stack in correct order"""
         if not self.app:
             raise RuntimeError("FastAPI app not created")
+        
+        # Register exception handlers FIRST
+        from backend.core.exception_handlers import register_exception_handlers
+        register_exception_handlers(self.app)
         
         # 1. CORS middleware (outermost)
         self.app.add_middleware(

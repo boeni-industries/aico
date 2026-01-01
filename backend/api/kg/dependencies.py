@@ -113,16 +113,10 @@ def get_kg_storage(request: Request):
         # Get database connection
         db_connection = container.get_service("database")
         
-        # Get ChromaDB client
-        from aico.core.paths import AICOPaths
-        import chromadb
-        from chromadb.config import Settings
-        
-        chromadb_path = AICOPaths.get_semantic_memory_path()
-        chromadb_client = chromadb.PersistentClient(
-            path=str(chromadb_path),
-            settings=Settings(anonymized_telemetry=False, allow_reset=False)
-        )
+        # Get shared ChromaDB client from service container
+        # This ensures all services use the same ChromaDB instance (singleton pattern)
+        chromadb_client = container.get_service("chromadb_client")
+        logger.debug("Retrieved shared ChromaDB client from service container")
         
         # Create storage instance
         from aico.ai.knowledge_graph import PropertyGraphStorage

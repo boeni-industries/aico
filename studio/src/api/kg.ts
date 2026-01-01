@@ -163,6 +163,26 @@ export async function executeGQLQuery(query: string, format: string = 'json'): P
   });
 }
 
+export interface QueryTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: 'exploration' | 'analysis' | 'temporal' | 'relationships';
+  query: string;
+  tags: string[];
+}
+
+export interface QueryTemplatesResponse {
+  templates: QueryTemplate[];
+}
+
+export async function fetchQueryTemplates(): Promise<QueryTemplatesResponse> {
+  return httpJson<QueryTemplatesResponse>({
+    method: 'GET',
+    path: '/kg/query-templates',
+  });
+}
+
 // Temporal API Types
 
 export interface NodeVersion {

@@ -12,6 +12,7 @@ import {
   FilterList as FilterListIcon,
 } from '@mui/icons-material';
 import { KnowledgeGraphVisualization } from './KnowledgeGraphVisualization';
+import { GQLQueryInterface } from './GQLQueryInterface';
 import { StyledTooltip } from '../common/StyledTooltip';
 
 interface KnowledgeGraphExplorerProps {
@@ -254,56 +255,7 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
       )}
 
       {activeTab === 'query' && (
-        <Paper sx={{ p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-            GQL/Cypher Query Interface
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Execute graph queries using ISO standard GQL syntax via GrandCypher
-          </Typography>
-          
-          <TextField
-            fullWidth
-            multiline
-            rows={6}
-            placeholder={`MATCH (p:PERSON)-[:WORKING_ON]->(proj:PROJECT)\nWHERE proj.status = 'active'\nRETURN p.name, proj.name, proj.progress`}
-            variant="outlined"
-            sx={{
-              mb: 2,
-              '& .MuiOutlinedInput-root': {
-                fontFamily: 'monospace',
-                fontSize: '0.9rem',
-              },
-            }}
-          />
-          
-          <Button variant="contained" startIcon={<CodeIcon />} sx={{ textTransform: 'none' }}>
-            Execute Query
-          </Button>
-
-          <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(59, 130, 246, 0.08)', borderRadius: '12px' }}>
-            <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, mb: 1, display: 'block' }}>
-              QUERY CAPABILITIES
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                • Pattern matching with MATCH clauses
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                • Property filtering (WHERE status = 'active')
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                • Multi-hop traversal (MATCH (a)-[*1..3]{'->'} (b))
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                • Temporal queries (WHERE valid_from {'>'} '2024-01-01')
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                • Aggregations (COUNT, AVG, SUM)
-              </Typography>
-            </Box>
-          </Box>
-        </Paper>
+        <GQLQueryInterface />
       )}
 
       {activeTab === 'analytics' && (

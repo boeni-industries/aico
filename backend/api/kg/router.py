@@ -4,6 +4,8 @@ Knowledge Graph API Router.
 Provides REST endpoints for querying and managing the knowledge graph.
 """
 
+import json
+from pathlib import Path
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -114,7 +116,17 @@ async def execute_gql_query(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error executing query: {e}", exc_info=True)
+        # Log full error details at ERROR level for 500 responses
+        # Use exception() method for AICOLogger to include traceback
+        logger.exception(
+            f"CRITICAL: Query execution failed with 500 error for user {user_id}",
+            extra={
+                'user_id': user_id,
+                'query': request.query[:200],
+                'error_type': type(e).__name__,
+                'error_message': str(e)
+            }
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Query execution failed: {str(e)}"
@@ -451,4 +463,51 @@ async def list_edges(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch edges: {str(e)}"
+        )
+
+
+@router.get("/query-templates")
+async def get_query_templates(
+    user: Annotated[dict, Depends(get_current_user)]
+):
+    """
+    Get available GQL query templates.
+    
+    Templates are loaded from the OS-specific AICO data directory:
+    - macOS: ~/Library/Application Support/aico/data/gql_query_templates.json
+    - Linux: ~/.local/share/aico/data/gql_query_templates.json
+    - Windows: %APPDATA%/aico/data/gql_query_templates.json
+    
+    **Authentication required:** Bearer token
+    """
+    try:
+        from aico.core.paths import AICOPaths
+        
+        # Get OS-specific data directory and ensure it exists
+        data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        templates_path = data_dir / "gql_query_templates.json"
+        
+        if not templates_path.exists():
+            logger.warning(f"Query templates file not found at {templates_path}")
+            return {"templates": []}
+        
+        with open(templates_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        logger.info(f"Loaded {len(data.get('templates', []))} query templates from {templates_path} for user {user.get('user_uuid')}")
+        return data
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse query templates JSON: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Query templates file is malformed"
+        )
+    except Exception as e:
+        logger.error(f"Failed to load query templates: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load query templates: {str(e)}"
         )
