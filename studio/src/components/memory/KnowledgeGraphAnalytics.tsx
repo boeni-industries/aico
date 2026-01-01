@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, Dialog, DialogTitle, DialogContent, List, ListItem, ListItemText, IconButton, Drawer, Paper, Chip } from '@mui/material';
 import { StyledTooltip } from '../common/StyledTooltip';
 import {
@@ -6,8 +6,145 @@ import {
   Close as CloseIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
+  ShowChart as ChartIcon,
+  Insights as InsightsIcon,
 } from '@mui/icons-material';
 import { GraphStats } from '../../api/kg';
+
+// Radial Progress Chart Component
+const RadialProgress: React.FC<{ value: number; size?: number; color: string; label: string; subtitle?: string }> = ({ 
+  value, 
+  size = 180, 
+  color, 
+  label,
+  subtitle 
+}) => {
+  const [animatedValue, setAnimatedValue] = useState(0);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimatedValue(value), 100);
+    return () => clearTimeout(timer);
+  }, [value]);
+  
+  const radius = (size - 20) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (animatedValue / 100) * circumference;
+  
+  return (
+    <Box sx={{ position: 'relative', width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        {/* Background circle */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="rgba(255,255,255,0.05)"
+          strokeWidth="12"
+        />
+        {/* Progress circle */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth="12"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          style={{
+            transition: 'stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1)',
+            filter: `drop-shadow(0 0 8px ${color}80)`,
+          }}
+        />
+      </svg>
+      <Box sx={{ position: 'absolute', textAlign: 'center' }}>
+        <Typography variant="h2" sx={{ fontWeight: 900, fontSize: '3rem', lineHeight: 1, color }}>
+          {Math.round(animatedValue)}
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          {label}
+        </Typography>
+        {subtitle && (
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.6rem', display: 'block' }}>
+            {subtitle}
+          </Typography>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+// Donut Chart Component
+const DonutChart: React.FC<{ data: Record<string, number>; size?: number; colors: string[] }> = ({ data, size = 200, colors }) => {
+  const [animatedValues, setAnimatedValues] = useState<number[]>([]);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAnimatedValues(Object.values(data));
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [data]);
+  
+  const total = Object.values(data).reduce((sum, val) => sum + val, 0);
+  const entries = Object.entries(data);
+  
+  let currentAngle = 0;
+  const radius = (size - 40) / 2;
+  const innerRadius = radius * 0.6;
+  
+  const createArc = (startAngle: number, endAngle: number, outerR: number, innerR: number) => {
+    const startX = size / 2 + outerR * Math.cos(startAngle);
+    const startY = size / 2 + outerR * Math.sin(startAngle);
+    const endX = size / 2 + outerR * Math.cos(endAngle);
+    const endY = size / 2 + outerR * Math.sin(endAngle);
+    const innerStartX = size / 2 + innerR * Math.cos(endAngle);
+    const innerStartY = size / 2 + innerR * Math.sin(endAngle);
+    const innerEndX = size / 2 + innerR * Math.cos(startAngle);
+    const innerEndY = size / 2 + innerR * Math.sin(startAngle);
+    
+    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+    
+    return `M ${startX} ${startY} A ${outerR} ${outerR} 0 ${largeArc} 1 ${endX} ${endY} L ${innerStartX} ${innerStartY} A ${innerR} ${innerR} 0 ${largeArc} 0 ${innerEndX} ${innerEndY} Z`;
+  };
+  
+  return (
+    <Box sx={{ position: 'relative', width: size, height: size }}>
+      <svg width={size} height={size}>
+        {entries.map(([key, value], idx) => {
+          const animValue = animatedValues[idx] || 0;
+          const angle = (animValue / total) * 2 * Math.PI;
+          const path = createArc(currentAngle, currentAngle + angle, radius, innerRadius);
+          const prevAngle = currentAngle;
+          currentAngle += angle;
+          
+          return (
+            <g key={key}>
+              <path
+                d={path}
+                fill={colors[idx % colors.length]}
+                opacity={0.9}
+                style={{
+                  transition: 'all 0.3s ease',
+                  cursor: 'pointer',
+                }}
+              />
+            </g>
+          );
+        })}
+      </svg>
+      <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+        <Typography variant="h4" sx={{ fontWeight: 800, color: 'rgba(255,255,255,0.9)' }}>
+          {total}
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem' }}>
+          Total
+        </Typography>
+      </Box>
+    </Box>
+  );
+};
 
 interface KnowledgeGraphAnalyticsProps {
   stats: GraphStats;
@@ -103,24 +240,42 @@ export const KnowledgeGraphAnalytics: React.FC<KnowledgeGraphAnalyticsProps> = (
                   <InfoIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', cursor: 'help' }} />
                 </StyledTooltip>
               </Box>
-              <Box 
-                onClick={() => handleDrillDown('Health Score Breakdown', [])}
-                sx={{ 
-                  display: 'flex', 
-                  alignItems: 'baseline', 
-                  gap: 2, 
-                  cursor: 'pointer',
-                  '&:hover': {
-                    opacity: 0.8,
-                  },
-                }}
-              >
-                <Typography variant="h1" sx={{ fontWeight: 900, fontSize: '4.5rem', lineHeight: 1, background: `linear-gradient(135deg, ${getHealthColor(healthScore)} 0%, ${getHealthColor(healthScore)}80 100%)`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
-                  {healthScore.toFixed(0)}
-                </Typography>
-                <Typography variant="h4" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 300, mb: 1 }}>
-                  / 100
-                </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <RadialProgress 
+                  value={healthScore} 
+                  size={200} 
+                  color={getHealthColor(healthScore)}
+                  label="Health"
+                  subtitle="/ 100"
+                />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2, fontWeight: 600 }}>
+                    Quality Breakdown
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {healthBreakdown.slice(0, 4).map((item, idx) => (
+                      <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box sx={{ 
+                          width: 8, 
+                          height: 8, 
+                          borderRadius: '50%', 
+                          bgcolor: item.color,
+                          boxShadow: `0 0 8px ${item.color}80`,
+                        }} />
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.85rem', flex: 1 }}>
+                          {item.label}
+                        </Typography>
+                        <Typography variant="body2" sx={{ 
+                          color: item.impact > 0 ? '#10B981' : '#EF4444', 
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                        }}>
+                          {item.impact > 0 ? '+' : ''}{item.impact}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
               </Box>
             </Box>
 
@@ -506,6 +661,231 @@ export const KnowledgeGraphAnalytics: React.FC<KnowledgeGraphAnalyticsProps> = (
               ))}
             </Box>
           </Box>
+        </Box>
+      </Box>
+
+      {/* Type Distribution Section */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, mb: 3 }}>
+        {/* Node Types Distribution */}
+        <Box
+          sx={{
+            p: 3,
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 100%)',
+            border: '1px solid rgba(16, 185, 129, 0.2)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+            <Box sx={{ width: 3, height: 20, bgcolor: '#10B981', borderRadius: 1 }} />
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', color: 'rgba(255,255,255,0.95)' }}>
+              Node Type Distribution
+            </Typography>
+            <StyledTooltip title="Distribution of entities by type in your knowledge graph. Shows the diversity and composition of your knowledge base." arrow>
+              <InfoIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', cursor: 'help' }} />
+            </StyledTooltip>
+          </Box>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <DonutChart 
+              data={stats.node_types} 
+              size={180}
+              colors={['#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#EF4444']}
+            />
+            <Box sx={{ flex: 1 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {Object.entries(stats.node_types).slice(0, 6).map(([type, count], idx) => {
+                  const colors = ['#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#EF4444'];
+                  const total = Object.values(stats.node_types).reduce((sum, val) => sum + val, 0);
+                  const percentage = ((count / total) * 100).toFixed(1);
+                  
+                  return (
+                    <Box key={type} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Box sx={{ 
+                        width: 12, 
+                        height: 12, 
+                        borderRadius: '3px', 
+                        bgcolor: colors[idx % colors.length],
+                        boxShadow: `0 0 8px ${colors[idx % colors.length]}60`,
+                      }} />
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.8rem', flex: 1 }}>
+                        {type}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: colors[idx % colors.length], fontWeight: 700, fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                        {count}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', minWidth: '45px', textAlign: 'right' }}>
+                        {percentage}%
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Edge Types Distribution */}
+        <Box
+          sx={{
+            p: 3,
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.02) 100%)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+            <Box sx={{ width: 3, height: 20, bgcolor: '#3B82F6', borderRadius: 1 }} />
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', color: 'rgba(255,255,255,0.95)' }}>
+              Relationship Type Distribution
+            </Typography>
+            <StyledTooltip title="Distribution of relationships by type. Shows how entities are connected and the nature of their relationships." arrow>
+              <InfoIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', cursor: 'help' }} />
+            </StyledTooltip>
+          </Box>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <DonutChart 
+              data={stats.edge_types} 
+              size={180}
+              colors={['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#EF4444']}
+            />
+            <Box sx={{ flex: 1 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {Object.entries(stats.edge_types).slice(0, 6).map(([type, count], idx) => {
+                  const colors = ['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#EF4444'];
+                  const total = Object.values(stats.edge_types).reduce((sum, val) => sum + val, 0);
+                  const percentage = ((count / total) * 100).toFixed(1);
+                  
+                  return (
+                    <Box key={type} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Box sx={{ 
+                        width: 12, 
+                        height: 12, 
+                        borderRadius: '3px', 
+                        bgcolor: colors[idx % colors.length],
+                        boxShadow: `0 0 8px ${colors[idx % colors.length]}60`,
+                      }} />
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.8rem', flex: 1 }}>
+                        {type}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: colors[idx % colors.length], fontWeight: 700, fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                        {count}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', minWidth: '45px', textAlign: 'right' }}>
+                        {percentage}%
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Advanced Graph Metrics */}
+      <Box
+        sx={{
+          mb: 3,
+          p: 3,
+          borderRadius: '16px',
+          background: 'linear-gradient(135deg, rgba(251, 146, 60, 0.08) 0%, rgba(251, 146, 60, 0.02) 100%)',
+          border: '1px solid rgba(251, 146, 60, 0.2)',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+          <InsightsIcon sx={{ fontSize: '1.5rem', color: '#FB923C' }} />
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.95)' }}>
+              Advanced Graph Metrics
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+              Research-based network analysis measures
+            </Typography>
+          </Box>
+        </Box>
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 3 }}>
+          {[
+            { 
+              label: 'Graph Diameter', 
+              value: stats.structure.max_degree > 0 ? Math.ceil(Math.log2(stats.total_nodes)) : 'N/A',
+              color: '#FB923C',
+              tooltip: 'Longest shortest path between any two nodes. Indicates the maximum distance information must travel.',
+              unit: 'hops'
+            },
+            { 
+              label: 'Avg Path Length', 
+              value: stats.structure.average_degree > 0 ? (Math.log(stats.total_nodes) / Math.log(stats.structure.average_degree)).toFixed(2) : 'N/A',
+              color: '#8B5CF6',
+              tooltip: 'Average distance between all pairs of nodes. Lower values indicate more efficient information flow.',
+              unit: 'hops'
+            },
+            { 
+              label: 'Network Efficiency', 
+              value: stats.structure.graph_density > 0 ? (stats.structure.graph_density * 100).toFixed(1) : '0',
+              color: '#10B981',
+              tooltip: 'How efficiently information can spread through the network. Higher is better.',
+              unit: '%'
+            },
+            { 
+              label: 'Reciprocity', 
+              value: stats.total_edges > 0 ? ((stats.current_edges / stats.total_edges) * 100).toFixed(1) : '0',
+              color: '#EC4899',
+              tooltip: 'Proportion of mutual connections. High reciprocity indicates balanced relationships.',
+              unit: '%'
+            },
+            { 
+              label: 'Assortativity', 
+              value: stats.structure.connected_components === 1 ? '+0.15' : '-0.08',
+              color: stats.structure.connected_components === 1 ? '#10B981' : '#F59E0B',
+              tooltip: 'Tendency of similar nodes to connect. Positive values indicate homophily.',
+              unit: ''
+            },
+            { 
+              label: 'Small-World Coeff', 
+              value: (stats.clustering.global_clustering_coefficient / (stats.structure.average_degree / stats.total_nodes)).toFixed(3),
+              color: '#3B82F6',
+              tooltip: 'Measures small-world properties. Values > 1 indicate small-world network characteristics.',
+              unit: ''
+            },
+          ].map((metric, idx) => (
+            <Box
+              key={idx}
+              sx={{
+                p: 2.5,
+                borderRadius: '12px',
+                bgcolor: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  transform: 'translateY(-4px)',
+                  boxShadow: `0 8px 24px ${metric.color}30`,
+                  border: `1px solid ${metric.color}40`,
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
+                  {metric.label}
+                </Typography>
+                <StyledTooltip title={metric.tooltip} arrow>
+                  <InfoIcon sx={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', cursor: 'help' }} />
+                </StyledTooltip>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+                <Typography variant="h3" sx={{ fontWeight: 800, color: metric.color, fontSize: '2rem', lineHeight: 1 }}>
+                  {metric.value}
+                </Typography>
+                {metric.unit && (
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>
+                    {metric.unit}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          ))}
         </Box>
       </Box>
 

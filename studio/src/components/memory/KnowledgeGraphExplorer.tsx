@@ -10,18 +10,20 @@ import {
   CheckCircle as CheckCircleIcon,
   History as HistoryIcon,
   FilterList as FilterListIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  Warning as WarningIcon,
+  Lightbulb as LightbulbIcon,
 } from '@mui/icons-material';
 import { KnowledgeGraphVisualization } from './KnowledgeGraphVisualization';
 import { GQLQueryInterface } from './GQLQueryInterface';
 import { StyledTooltip } from '../common/StyledTooltip';
+import { GraphStats } from '../../api/kg';
 
 interface KnowledgeGraphExplorerProps {
   nodes: any[];
   edges: any[];
-  stats?: {
-    total_node_properties: number;
-    storage_size_mb: number;
-  };
+  stats?: GraphStats | null;
 }
 
 export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ nodes, edges, stats }) => {
@@ -258,103 +260,308 @@ export const KnowledgeGraphExplorer: React.FC<KnowledgeGraphExplorerProps> = ({ 
         <GQLQueryInterface />
       )}
 
-      {activeTab === 'analytics' && (
+      {activeTab === 'analytics' && stats && (
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 3 }}>
-          <Paper sx={{ p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              PageRank Analysis
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '0.85rem' }}>
-              Node importance based on incoming connections
+          {/* PageRank Analysis - REAL DATA */}
+          <Paper 
+            sx={{ 
+              p: 3, 
+              borderRadius: '16px', 
+              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(139, 92, 246, 0.02) 100%)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 12px 32px rgba(139, 92, 246, 0.2)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Box sx={{ width: 3, height: 20, bgcolor: '#8B5CF6', borderRadius: 1 }} />
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                PageRank Analysis
+              </Typography>
+              <StyledTooltip title="Node importance based on incoming connections. Higher scores indicate more influential entities." arrow>
+                <InfoOutlinedIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', cursor: 'help' }} />
+              </StyledTooltip>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, fontSize: '0.8rem' }}>
+              Top {stats.centrality.top_by_pagerank.length} most influential nodes
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              {['Michael', 'English Practice', 'Become Fluent'].map((entity, i) => (
-                <Box key={entity} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, bgcolor: 'rgba(139, 92, 246, 0.08)', borderRadius: '8px' }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {entity}
-                  </Typography>
-                  <Chip
-                    label={`${(1.0 - i * 0.15).toFixed(2)}`}
-                    size="small"
-                    sx={{
-                      bgcolor: 'rgba(139, 92, 246, 0.2)',
-                      color: '#8B5CF6',
-                      fontWeight: 700,
+              {stats.centrality.top_by_pagerank.slice(0, 5).map((item, i) => {
+                const colors = ['#8B5CF6', '#A78BFA', '#C4B5FD', '#DDD6FE', '#EDE9FE'];
+                return (
+                  <Box 
+                    key={item.id} 
+                    sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      p: 1.5, 
+                      bgcolor: `${colors[i]}15`, 
+                      borderRadius: '10px',
+                      border: `1px solid ${colors[i]}30`,
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        bgcolor: `${colors[i]}25`,
+                        transform: 'translateX(4px)',
+                      },
                     }}
-                  />
-                </Box>
-              ))}
+                  >
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', mb: 0.3 }}>
+                        {item.label || item.name || `Node ${item.id.substring(0, 8)}`}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                        ID: {item.id.substring(0, 12)}...
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={(item.score || 0).toFixed(4)}
+                      size="small"
+                      sx={{
+                        bgcolor: colors[i],
+                        color: 'white',
+                        fontWeight: 700,
+                        fontSize: '0.75rem',
+                        fontFamily: 'monospace',
+                      }}
+                    />
+                  </Box>
+                );
+              })}
             </Box>
           </Paper>
 
-          <Paper sx={{ p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              Community Detection
+          {/* Community Detection - REAL DATA */}
+          <Paper 
+            sx={{ 
+              p: 3, 
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 100%)',
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 12px 32px rgba(16, 185, 129, 0.2)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Box sx={{ width: 3, height: 20, bgcolor: '#10B981', borderRadius: 1 }} />
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                Community Detection
+              </Typography>
+              <StyledTooltip title="Detected clusters of related entities. Communities reveal how knowledge naturally groups together." arrow>
+                <InfoOutlinedIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', cursor: 'help' }} />
+              </StyledTooltip>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, fontSize: '0.8rem' }}>
+              {stats.clustering.communities_detected} communities detected
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '0.85rem' }}>
-              Relationship clusters and groups
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: 'rgba(16, 185, 129, 0.1)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                <Box sx={{ textAlign: 'center', flex: 1 }}>
+                  <Typography variant="h3" sx={{ fontWeight: 800, color: '#10B981', fontSize: '2rem', lineHeight: 1 }}>
+                    {stats.clustering.communities_detected}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', textTransform: 'uppercase' }}>
+                    Communities
+                  </Typography>
+                </Box>
+                <Box sx={{ width: 1, height: 40, bgcolor: 'rgba(255,255,255,0.1)' }} />
+                <Box sx={{ textAlign: 'center', flex: 1 }}>
+                  <Typography variant="h3" sx={{ fontWeight: 800, color: '#3B82F6', fontSize: '2rem', lineHeight: 1 }}>
+                    {stats.clustering.modularity_score.toFixed(2)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', textTransform: 'uppercase' }}>
+                    Modularity
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem', display: 'block', mb: 1 }}>
+                  CLUSTERING COEFFICIENT
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 800, color: '#8B5CF6', fontSize: '1.5rem' }}>
+                    {(stats.clustering.global_clustering_coefficient * 100).toFixed(1)}%
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                    nodes cluster together
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          </Paper>
+
+          {/* Temporal Patterns - REAL DATA */}
+          <Paper 
+            sx={{ 
+              p: 3, 
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.02) 100%)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 12px 32px rgba(59, 130, 246, 0.2)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Box sx={{ width: 3, height: 20, bgcolor: '#3B82F6', borderRadius: 1 }} />
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                Temporal Patterns
+              </Typography>
+              <StyledTooltip title="Activity trends showing how your knowledge graph evolves over time." arrow>
+                <InfoOutlinedIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', cursor: 'help' }} />
+              </StyledTooltip>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, fontSize: '0.8rem' }}>
+              Growth and activity insights
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              {[
-                { name: 'Learning Cluster', count: 8, color: '#10B981' },
-                { name: 'Work Projects', count: 12, color: '#3B82F6' },
-                { name: 'Personal Goals', count: 6, color: '#EC4899' },
-              ].map((cluster) => (
-                <Box key={cluster.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, bgcolor: `${cluster.color}15`, borderRadius: '8px', border: '1px solid', borderColor: `${cluster.color}30` }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {cluster.name}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, bgcolor: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px' }}>
+                {stats.temporal.growth_rate_7d > 0 ? (
+                  <TrendingUpIcon sx={{ color: '#10B981', fontSize: 20 }} />
+                ) : (
+                  <TrendingDownIcon sx={{ color: '#EF4444', fontSize: 20 }} />
+                )}
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                    {stats.temporal.growth_rate_7d.toFixed(1)}% growth (7 days)
                   </Typography>
-                  <Typography variant="caption" sx={{ color: cluster.color, fontWeight: 700 }}>
-                    {cluster.count} nodes
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                    {stats.current_nodes - Math.round(stats.current_nodes / (1 + stats.temporal.growth_rate_7d / 100))} new nodes
                   </Typography>
                 </Box>
-              ))}
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, bgcolor: 'rgba(139, 92, 246, 0.1)', borderRadius: '8px' }}>
+                {stats.temporal.growth_rate_30d > 0 ? (
+                  <TrendingUpIcon sx={{ color: '#10B981', fontSize: 20 }} />
+                ) : (
+                  <TrendingDownIcon sx={{ color: '#EF4444', fontSize: 20 }} />
+                )}
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                    {stats.temporal.growth_rate_30d.toFixed(1)}% growth (30 days)
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                    Long-term trend
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
+                  PEAK ACTIVITY
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                  {Object.entries(stats.temporal.activity_by_day).reduce((max, [day, count]) => 
+                    count > max.count ? { day, count } : max, 
+                    { day: 'Unknown', count: 0 }
+                  ).day}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>
+                  Most active day of week
+                </Typography>
+              </Box>
             </Box>
           </Paper>
 
-          <Paper sx={{ p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              Temporal Patterns
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '0.85rem' }}>
-              Activity trends over time
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                • 15 new nodes this week
+          {/* Knowledge Gaps - REAL DATA */}
+          <Paper 
+            sx={{ 
+              p: 3, 
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.02) 100%)',
+              border: '1px solid rgba(245, 158, 11, 0.2)',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 12px 32px rgba(245, 158, 11, 0.2)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Box sx={{ width: 3, height: 20, bgcolor: '#F59E0B', borderRadius: 1 }} />
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                Knowledge Gaps
               </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                • 23 relationships updated
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                • Peak activity: Weekday afternoons
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                • Growing interest: Language learning
-              </Typography>
+              <StyledTooltip title="Areas needing attention: orphaned edges, duplicates, stale data, and isolated nodes." arrow>
+                <InfoOutlinedIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', cursor: 'help' }} />
+              </StyledTooltip>
             </Box>
-          </Paper>
-
-          <Paper sx={{ p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              Knowledge Gaps
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, fontSize: '0.8rem' }}>
+              Data quality issues detected
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '0.85rem' }}>
-              Missing connections and information
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                • 3 projects without deadlines
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                • 5 goals without clear tasks
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                • 2 isolated entity clusters
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                • Missing: Skill proficiency levels
-              </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              {stats.health.orphaned_edges > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, bgcolor: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                  <WarningIcon sx={{ color: '#EF4444', fontSize: 18 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                      {stats.health.orphaned_edges} orphaned edges
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                      Relationships without valid nodes
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+              {stats.health.duplicate_nodes > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, bgcolor: 'rgba(245, 158, 11, 0.1)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                  <WarningIcon sx={{ color: '#F59E0B', fontSize: 18 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                      {stats.health.duplicate_nodes} duplicate nodes
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                      Potential consolidation opportunities
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+              {stats.health.stale_nodes_percent > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, bgcolor: 'rgba(139, 92, 246, 0.1)', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+                  <WarningIcon sx={{ color: '#8B5CF6', fontSize: 18 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                      {stats.health.stale_nodes_percent.toFixed(1)}% stale data
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                      Not updated in 30+ days
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+              {stats.structure.connected_components > 1 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, bgcolor: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                  <LightbulbIcon sx={{ color: '#3B82F6', fontSize: 18 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                      {stats.structure.connected_components} isolated clusters
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                      Disconnected knowledge groups
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+              {stats.health.orphaned_edges === 0 && stats.health.duplicate_nodes === 0 && stats.health.stale_nodes_percent === 0 && stats.structure.connected_components === 1 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                  <CheckCircleIcon sx={{ color: '#10B981', fontSize: 24 }} />
+                  <Box>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#10B981' }}>
+                      Excellent Data Quality!
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem' }}>
+                      No significant issues detected
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
             </Box>
           </Paper>
         </Box>

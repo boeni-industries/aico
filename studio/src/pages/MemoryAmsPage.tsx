@@ -255,10 +255,7 @@ export const MemoryAmsPage: React.FC = () => {
                 <KnowledgeGraphExplorer
                   nodes={transformedNodes}
                   edges={transformedEdges}
-                  stats={graphStats ? {
-                    total_node_properties: graphStats.total_node_properties,
-                    storage_size_mb: graphStats.storage_size_mb,
-                  } : undefined}
+                  stats={graphStats}
                 />
               </>
             )}
