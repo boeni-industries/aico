@@ -28,6 +28,7 @@ import {
   Error as ErrorIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
+import { parse } from '@neo4j-cypher/editor-support';
 import { QueryTemplate } from '../../api/kg';
 
 interface TemplateEditorProps {
@@ -88,35 +89,50 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
       return { status: 'idle' as const };
     }
 
-    const trimmedQuery = query.trim().toUpperCase();
-    
-    const typoPatterns = [
-      { pattern: /\bLIMI\b/, message: 'Did you mean LIMIT?' },
-      { pattern: /\bRETUR\b/, message: 'Did you mean RETURN?' },
-      { pattern: /\bMATH\b/, message: 'Did you mean MATCH?' },
-      { pattern: /\bWHER\b/, message: 'Did you mean WHERE?' },
-    ];
-    
-    for (const typo of typoPatterns) {
-      if (typo.pattern.test(trimmedQuery)) {
-        return { status: 'error' as const, message: typo.message };
+    try {
+      const parseResult = parse(query) as any;
+      
+      if (!parseResult || !parseResult.errorListener) {
+        return { 
+          status: 'error' as const, 
+          message: 'Failed to parse query' 
+        };
       }
+      
+      const errors = parseResult.errorListener.errors || [];
+      
+      if (errors.length > 0) {
+        const firstError = errors[0];
+        const errorMsg = firstError.msg || 'Syntax error';
+        const location = firstError.line ? ` at line ${firstError.line}:${firstError.col}` : '';
+        return { 
+          status: 'error' as const, 
+          message: `${errorMsg}${location}` 
+        };
+      }
+      
+      const trimmedQuery = query.trim().toUpperCase();
+      const hasMatch = /\bMATCH\b/.test(trimmedQuery);
+      const hasReturn = /\bRETURN\b/.test(trimmedQuery);
+      
+      if (!hasMatch && !hasReturn) {
+        return { 
+          status: 'warning' as const, 
+          message: 'Query should contain MATCH and RETURN clauses' 
+        };
+      }
+      
+      return { 
+        status: 'valid' as const, 
+        message: 'Query syntax is valid' 
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Syntax error in query';
+      return { 
+        status: 'error' as const, 
+        message: errorMsg
+      };
     }
-    
-    const hasMatch = /\bMATCH\b/.test(trimmedQuery);
-    const hasReturn = /\bRETURN\b/.test(trimmedQuery);
-    const openParens = (query.match(/\(/g) || []).length;
-    const closeParens = (query.match(/\)/g) || []).length;
-    
-    if (openParens !== closeParens) {
-      return { status: 'error' as const, message: 'Unbalanced parentheses' };
-    }
-    
-    if (!hasMatch && !hasReturn) {
-      return { status: 'warning' as const, message: 'Query should contain MATCH and RETURN' };
-    }
-    
-    return { status: 'valid' as const, message: 'Query syntax looks good' };
   }, []);
 
   useEffect(() => {
