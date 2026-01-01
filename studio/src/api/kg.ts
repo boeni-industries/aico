@@ -183,6 +183,14 @@ export async function fetchQueryTemplates(): Promise<QueryTemplatesResponse> {
   });
 }
 
+export async function updateQueryTemplates(templates: QueryTemplate[]): Promise<{ success: boolean; message: string; templates_count: number }> {
+  return httpJson<{ success: boolean; message: string; templates_count: number }>({
+    method: 'PUT',
+    path: '/kg/query-templates',
+    body: { templates },
+  });
+}
+
 // Temporal API Types
 
 export interface NodeVersion {

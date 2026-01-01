@@ -483,15 +483,20 @@ async def get_query_templates(
     try:
         from aico.core.paths import AICOPaths
         
-        # Get OS-specific data directory and ensure it exists
+        # Get OS-specific data directory
         data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
-        data_dir.mkdir(parents=True, exist_ok=True)
-        
         templates_path = data_dir / "gql_query_templates.json"
         
+        # Templates should be initialized via CLI: aico config init
         if not templates_path.exists():
-            logger.warning(f"Query templates file not found at {templates_path}")
-            return {"templates": []}
+            logger.warning(
+                f"Query templates not found at {templates_path}. "
+                f"Run 'aico config init' to initialize templates from repository defaults."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Query templates not initialized. Run 'aico config init' to set up templates."
+            )
         
         with open(templates_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -505,9 +510,109 @@ async def get_query_templates(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Query templates file is malformed"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to load query templates: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load query templates: {str(e)}"
+        )
+
+
+@router.put("/query-templates", tags=["Knowledge Graph"])
+async def update_query_templates(
+    templates_data: dict,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Update GQL query templates (Studio template editor).
+    
+    Allows users to customize query templates through the Studio UI.
+    Templates are persisted to the OS-specific data directory.
+    
+    **Request Body:**
+    ```json
+    {
+      "templates": [
+        {
+          "id": "custom-query",
+          "title": "My Custom Query",
+          "description": "Description",
+          "category": "exploration",
+          "query": "MATCH (n) RETURN n LIMIT 10",
+          "tags": ["custom"]
+        }
+      ]
+    }
+    ```
+    
+    **Authentication required:** Bearer token
+    """
+    try:
+        from aico.core.paths import AICOPaths
+        
+        # Validate templates structure
+        if 'templates' not in templates_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Request must contain 'templates' array"
+            )
+        
+        templates = templates_data['templates']
+        if not isinstance(templates, list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="'templates' must be an array"
+            )
+        
+        # Validate each template has required fields
+        required_fields = {'id', 'title', 'description', 'category', 'query', 'tags'}
+        for idx, template in enumerate(templates):
+            if not isinstance(template, dict):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Template at index {idx} must be an object"
+                )
+            missing_fields = required_fields - set(template.keys())
+            if missing_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Template '{template.get('id', idx)}' missing fields: {missing_fields}"
+                )
+        
+        # Get target path
+        data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        templates_path = data_dir / "gql_query_templates.json"
+        
+        # Write templates
+        with open(templates_path, 'w', encoding='utf-8') as f:
+            json.dump(templates_data, f, indent=2, ensure_ascii=False)
+        
+        logger.info(
+            f"Updated {len(templates)} query templates at {templates_path} "
+            f"for user {user.get('user_uuid')}"
+        )
+        
+        return {
+            "success": True,
+            "message": f"Updated {len(templates)} query templates",
+            "templates_count": len(templates),
+            "path": str(templates_path)
+        }
+        
+    except HTTPException:
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to encode templates JSON: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON structure in templates"
+        )
+    except Exception as e:
+        logger.error(f"Failed to update query templates: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update query templates: {str(e)}"
         )

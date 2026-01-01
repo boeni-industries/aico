@@ -22,6 +22,7 @@ import {
   MenuItem,
   FormControl,
   Tooltip,
+  Snackbar,
 } from '@mui/material';
 import {
   Code as CodeIcon,
@@ -36,8 +37,11 @@ import {
   CheckCircle as SuccessIcon,
   Error as ErrorIcon,
   Download as DownloadIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
-import { executeGQLQuery, fetchQueryTemplates, QueryTemplate } from '../../api/kg';
+import { executeGQLQuery, fetchQueryTemplates, updateQueryTemplates, QueryTemplate } from '../../api/kg';
+import { TemplateEditor } from './TemplateEditor';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   exploration: <GraphIcon />,
@@ -191,26 +195,32 @@ export const GQLQueryInterface: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [templates, setTemplates] = useState<QueryTemplate[]>(INITIAL_TEMPLATES);
   const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<QueryTemplate | null>(null);
+  const [isNewTemplate, setIsNewTemplate] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Load query templates from API on mount
-  useEffect(() => {
-    const loadTemplates = async () => {
-      try {
-        console.log('[GQL Templates] Fetching templates from backend...');
-        const response = await fetchQueryTemplates();
-        console.log('[GQL Templates] Received response:', response);
-        if (response.templates && response.templates.length > 0) {
-          console.log(`[GQL Templates] Loaded ${response.templates.length} templates from backend`);
-          setTemplates(response.templates);
-        } else {
-          console.log('[GQL Templates] No templates in response, using defaults');
-        }
-      } catch (error) {
-        console.error('[GQL Templates] Failed to load query templates, using defaults:', error);
-      } finally {
-        setTemplatesLoading(false);
+  const loadTemplates = async () => {
+    try {
+      console.log('[GQL Templates] Fetching templates from backend...');
+      const response = await fetchQueryTemplates();
+      console.log('[GQL Templates] Received response:', response);
+      if (response.templates && response.templates.length > 0) {
+        console.log(`[GQL Templates] Loaded ${response.templates.length} templates from backend`);
+        setTemplates(response.templates);
+      } else {
+        console.log('[GQL Templates] No templates in response, using defaults');
       }
-    };
+    } catch (error) {
+      console.error('[GQL Templates] Failed to load query templates, using defaults:', error);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadTemplates();
   }, []);
 
@@ -226,6 +236,71 @@ export const GQLQueryInterface: React.FC = () => {
   const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
+  };
+
+  const handleCreateTemplate = () => {
+    setEditingTemplate(null);
+    setIsNewTemplate(true);
+    setEditorOpen(true);
+  };
+
+  const handleEditTemplate = (template: QueryTemplate) => {
+    setEditingTemplate(template);
+    setIsNewTemplate(false);
+    setEditorOpen(true);
+  };
+
+  const handleSaveTemplate = async (template: QueryTemplate) => {
+    try {
+      setSaveError(null);
+      
+      // Update local state
+      let updatedTemplates: QueryTemplate[];
+      if (isNewTemplate) {
+        // Check for duplicate ID
+        if (templates.some(t => t.id === template.id)) {
+          setSaveError(`Template with ID "${template.id}" already exists`);
+          return;
+        }
+        updatedTemplates = [...templates, template];
+      } else {
+        updatedTemplates = templates.map(t => t.id === template.id ? template : t);
+      }
+      
+      // Save to backend
+      await updateQueryTemplates(updatedTemplates);
+      
+      // Update local state
+      setTemplates(updatedTemplates);
+      setSaveSuccess(true);
+      setEditorOpen(false);
+      
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error('[GQL Templates] Failed to save template:', error);
+      setSaveError(error instanceof Error ? error.message : 'Failed to save template');
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    try {
+      setSaveError(null);
+      
+      const updatedTemplates = templates.filter(t => t.id !== templateId);
+      
+      // Save to backend
+      await updateQueryTemplates(updatedTemplates);
+      
+      // Update local state
+      setTemplates(updatedTemplates);
+      setSaveSuccess(true);
+      setEditorOpen(false);
+      
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error('[GQL Templates] Failed to delete template:', error);
+      setSaveError(error instanceof Error ? error.message : 'Failed to delete template');
+    }
   };
 
   const handleExportCSV = () => {
@@ -743,11 +818,27 @@ export const GQLQueryInterface: React.FC = () => {
 
       {/* Query Templates */}
       <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-          <SparkleIcon sx={{ color: '#EC4899', fontSize: 24 }} />
-          <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
-            Query Templates
-          </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <SparkleIcon sx={{ color: '#EC4899', fontSize: 24 }} />
+            <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+              Query Templates
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={handleCreateTemplate}
+            sx={{
+              bgcolor: '#EC4899',
+              '&:hover': {
+                bgcolor: '#DB2777',
+              },
+            }}
+          >
+            Create Template
+          </Button>
         </Box>
 
         {/* Category Filters */}
@@ -837,6 +928,22 @@ export const GQLQueryInterface: React.FC = () => {
                         {template.description}
                       </Typography>
                     </Box>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditTemplate(template);
+                      }}
+                      sx={{
+                        color: 'rgba(255,255,255,0.5)',
+                        '&:hover': {
+                          color: '#3B82F6',
+                          bgcolor: 'rgba(59, 130, 246, 0.1)',
+                        },
+                      }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -1140,6 +1247,40 @@ export const GQLQueryInterface: React.FC = () => {
           </Box>
         </Box>
       </Paper>
+
+      {/* Template Editor Dialog */}
+      <TemplateEditor
+        open={editorOpen}
+        onClose={() => setEditorOpen(false)}
+        template={editingTemplate}
+        onSave={handleSaveTemplate}
+        onDelete={handleDeleteTemplate}
+        isNew={isNewTemplate}
+      />
+
+      {/* Success Notification */}
+      <Snackbar
+        open={saveSuccess}
+        autoHideDuration={3000}
+        onClose={() => setSaveSuccess(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" sx={{ width: '100%' }}>
+          Template saved successfully!
+        </Alert>
+      </Snackbar>
+
+      {/* Error Notification */}
+      <Snackbar
+        open={!!saveError}
+        autoHideDuration={5000}
+        onClose={() => setSaveError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" sx={{ width: '100%' }}>
+          {saveError}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

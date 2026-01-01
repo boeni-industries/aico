@@ -475,8 +475,9 @@ def init(
         
         # Initialize all platform directories including new frontend paths
         base_data_dir = AICOPaths.get_data_directory()
+        data_subdir = base_data_dir / AICOPaths.get_data_subdirectory_from_config()
         directories = [
-            ("Data Directory", base_data_dir / "data"),
+            ("Data Directory", data_subdir),
             ("Config Directory", config_dir),
             ("Cache Directory", AICOPaths.get_cache_directory()),
             ("Logs Directory", AICOPaths.get_logs_directory()),
@@ -528,6 +529,11 @@ def init(
             else:
                 console.print(f"{chars['cross']} [yellow]Modelfile not found[/yellow]: {source_file}")
         
+        # Initialize GQL query templates
+        templates_created = _initialize_gql_templates(console, chars, force)
+        if templates_created > 0:
+            console.print(f"{chars['check']} [green]Initialized {templates_created} GQL query templates[/green]")
+        
         # Show summary with delta information
         if dirs_created > 0 or files_created > 0 or modelfiles_created > 0 or len(existing_configs) > 0 or len(existing_modelfiles) > 0:
             console.print(f"\n{chars['sparkle']} [bold green]AICO configuration initialized successfully![/bold green]")
@@ -557,4 +563,130 @@ def init(
         
     except Exception as e:
         console.print(f"{chars['cross']} [red]Failed to initialize configuration: {e}[/red]")
+        raise typer.Exit(1)
+
+
+def _initialize_gql_templates(console, chars, force: bool = False) -> int:
+    """Initialize GQL query templates from repo defaults.
+    
+    Returns:
+        int: Number of templates initialized
+    """
+    import shutil
+    
+    # Get target directory
+    data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    target_path = data_dir / "gql_query_templates.json"
+    
+    # Find source templates in repo
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle
+        source_path = Path(sys._MEIPASS) / "backend" / "data" / "gql_query_templates.json"
+    else:
+        # Running in development
+        source_path = Path(__file__).parent.parent.parent / "backend" / "data" / "gql_query_templates.json"
+    
+    if not source_path.exists():
+        console.print(f"{chars['cross']} [yellow]Default GQL templates not found at {source_path}[/yellow]")
+        return 0
+    
+    # Check if target already exists
+    if target_path.exists() and not force:
+        console.print(f"{chars['check']} [dim]GQL templates already exist at {format_smart_path(target_path)}[/dim]")
+        return 0
+    
+    # Copy templates
+    shutil.copy2(source_path, target_path)
+    console.print(f"{chars['check']} [green]Initialized GQL templates[/green]: {format_smart_path(target_path)}")
+    return 1
+
+
+@app.command("sync-templates")
+def sync_templates(
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite user customizations with repo defaults"),
+    merge: bool = typer.Option(True, "--no-merge", help="Don't merge new templates, only overwrite")
+):
+    """Sync GQL query templates from repository defaults.
+    
+    By default, this merges new templates from the repo while preserving user customizations.
+    Use --force to completely overwrite with repo defaults.
+    """
+    from cli.utils.platform import get_platform_chars
+    import shutil
+    
+    chars = get_platform_chars()
+    
+    console.print(f"{chars['sparkle']} [bold cyan]Syncing GQL Query Templates[/bold cyan]\n")
+    
+    try:
+        # Get paths
+        data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        target_path = data_dir / "gql_query_templates.json"
+        
+        # Find source templates in repo
+        if getattr(sys, 'frozen', False):
+            source_path = Path(sys._MEIPASS) / "backend" / "data" / "gql_query_templates.json"
+        else:
+            source_path = Path(__file__).parent.parent.parent / "backend" / "data" / "gql_query_templates.json"
+        
+        if not source_path.exists():
+            console.print(f"{chars['cross']} [red]Default templates not found at {source_path}[/red]")
+            raise typer.Exit(1)
+        
+        # Load source templates
+        with open(source_path, 'r', encoding='utf-8') as f:
+            source_data = json.load(f)
+        source_templates = {t['id']: t for t in source_data.get('templates', [])}
+        
+        if force:
+            # Force overwrite - simple copy
+            shutil.copy2(source_path, target_path)
+            console.print(f"{chars['check']} [green]Overwrote templates with repo defaults[/green]")
+            console.print(f"  {chars['bullet']} Location: {format_smart_path(target_path)}")
+            console.print(f"  {chars['bullet']} Templates: {len(source_templates)}")
+        elif merge:
+            # Merge mode - preserve user customizations, add new templates
+            if target_path.exists():
+                with open(target_path, 'r', encoding='utf-8') as f:
+                    target_data = json.load(f)
+                target_templates = {t['id']: t for t in target_data.get('templates', [])}
+            else:
+                target_templates = {}
+            
+            # Merge: add new templates, preserve existing
+            added = 0
+            preserved = 0
+            for template_id, template in source_templates.items():
+                if template_id not in target_templates:
+                    target_templates[template_id] = template
+                    added += 1
+                else:
+                    preserved += 1
+            
+            # Write merged templates
+            merged_data = {'templates': list(target_templates.values())}
+            with open(target_path, 'w', encoding='utf-8') as f:
+                json.dump(merged_data, f, indent=2, ensure_ascii=False)
+            
+            console.print(f"{chars['check']} [green]Merged templates successfully[/green]")
+            console.print(f"  {chars['bullet']} Added: {added} new templates")
+            console.print(f"  {chars['bullet']} Preserved: {preserved} existing templates")
+            console.print(f"  {chars['bullet']} Total: {len(target_templates)} templates")
+        else:
+            # No merge - just copy if doesn't exist
+            if not target_path.exists():
+                shutil.copy2(source_path, target_path)
+                console.print(f"{chars['check']} [green]Initialized templates from repo[/green]")
+            else:
+                console.print(f"{chars['check']} [yellow]Templates already exist, use --force to overwrite[/yellow]")
+        
+        console.print(f"\n{chars['bullet']} [cyan]Template location:[/cyan] {format_smart_path(target_path)}")
+        
+    except json.JSONDecodeError as e:
+        console.print(f"{chars['cross']} [red]Invalid JSON in templates: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"{chars['cross']} [red]Failed to sync templates: {e}[/red]")
         raise typer.Exit(1)
