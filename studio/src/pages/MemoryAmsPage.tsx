@@ -17,7 +17,7 @@ import { AMSPanel } from '../components/memory/AMSPanel';
 import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { fetchGraphStats, fetchNodes, fetchEdges, KGNode, KGEdge, GraphStats } from '../api/kg';
-import { fetchWorkingMemoryStats, fetchSemanticMemoryStats, fetchMemoryAlbum, WorkingMemoryStats, SemanticMemoryStats, MemoryAlbumEntry } from '../api/memory';
+import { fetchWorkingMemoryStats, fetchSemanticMemoryStats, fetchMemoryAlbum, deleteMemory, deleteMemories, WorkingMemoryStats, SemanticMemoryStats, MemoryAlbumEntry } from '../api/memory';
 
 type MemoryTab = 'working' | 'semantic' | 'knowledge-graph' | 'ams' | 'album';
 
@@ -116,8 +116,8 @@ export const MemoryAmsPage: React.FC = () => {
       key: 'album',
       label: 'Album',
       icon: <AlbumIcon sx={{ fontSize: 20, color: '#EC4899' }} />,
-      count: '127',
-      lastActivity: '3 hours ago',
+      count: `${albumEntries.length}`,
+      lastActivity: albumEntries.length > 0 ? new Date(albumEntries[0].created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No memories',
       health: 'healthy' as const,
       color: '#EC4899',
     },
@@ -158,15 +158,35 @@ export const MemoryAmsPage: React.FC = () => {
   }));
 
   // Transform album entries to conversation format for the panel
-  const albumConversations = albumEntries.map((entry) => ({
-    id: entry.fact_id,
-    title: entry.content.substring(0, 50) + (entry.content.length > 50 ? '...' : ''),
-    timestamp: new Date(entry.created_at).toLocaleString(),
-    person: 'User',
-    sentiment: 'neutral' as const,
-    messageCount: 1,
-    tags: entry.tags || [],
-  }));
+  const albumConversations = albumEntries.map((entry) => {
+    // Format user display: "Full Name (nickname) [user_id]"
+    // Handle cases where user data might be missing
+    const fullName = entry.user_full_name || 'Unknown User';
+    const userUuid = entry.user_uuid || 'unknown';
+    
+    let userDisplay = fullName;
+    if (entry.user_nickname) {
+      userDisplay += ` (${entry.user_nickname})`;
+    }
+    userDisplay += ` [${userUuid.substring(0, 8)}]`;
+
+    return {
+      id: entry.fact_id,
+      title: entry.content,
+      full_content: entry.content,
+      timestamp: new Date(entry.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
+      person: userDisplay,
+      user_uuid: userUuid,
+      user_full_name: fullName,
+      user_nickname: entry.user_nickname || null,
+      sentiment: 'neutral' as const,
+      messageCount: 1,
+      tags: entry.tags || [],
+      contentType: (entry.content_type || 'message') as 'conversation' | 'message',
+      conversationTitle: entry.conversation_id ? `Conv ${entry.conversation_id.substring(0, 8)}` : undefined,
+      turnRange: entry.message_id ? undefined : 'Multi-turn',
+    };
+  });
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -266,9 +286,19 @@ export const MemoryAmsPage: React.FC = () => {
         {activeTab === 'ams' && <AMSPanel />}
 
         {activeTab === 'album' && (
-          <MemoryAlbumPanel
-            conversations={albumConversations}
-            onConversationClick={(conv) => console.log('Open conversation:', conv)}
+          <MemoryAlbumPanel 
+            conversations={albumConversations} 
+            onDelete={async (ids: string[]) => {
+              try {
+                await deleteMemories(ids);
+                // Refresh album data after deletion
+                const albumData = await fetchMemoryAlbum();
+                setAlbumEntries(albumData.memories);
+              } catch (error) {
+                console.error('Failed to delete memories:', error);
+                throw error;
+              }
+            }}
           />
         )}
       </Box>

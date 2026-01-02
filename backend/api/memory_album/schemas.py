@@ -55,6 +55,11 @@ class MemoryResponse(BaseModel):
     created_at: str = Field(..., description="Creation timestamp")
     updated_at: str = Field(..., description="Last update timestamp")
     
+    # User profile fields
+    user_uuid: str = Field(..., description="User UUID")
+    user_full_name: str = Field(..., description="User's full name")
+    user_nickname: Optional[str] = Field(None, description="User's nickname")
+    
     # Conversation-level fields
     conversation_title: Optional[str] = Field(None, description="Title for conversation memory")
     conversation_summary: Optional[str] = Field(None, description="Summary of conversation")

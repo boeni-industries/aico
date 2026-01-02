@@ -53,6 +53,9 @@ export interface MemoryAlbumEntry {
   updated_at: string;
   conversation_id: string | null;
   message_id: string | null;
+  user_uuid: string;
+  user_full_name: string;
+  user_nickname: string | null;
 }
 
 export interface MemoryAlbumListResponse {
@@ -99,4 +102,18 @@ export async function fetchMemoryAlbum(
     path: `/memory-album?${params.toString()}`,
   });
   return response;
+}
+
+export async function deleteMemory(factId: string): Promise<void> {
+  await httpJson<void>({
+    method: 'DELETE',
+    path: `/memory-album/${factId}`,
+  });
+}
+
+export async function deleteMemories(factIds: string[]): Promise<void> {
+  // Delete memories sequentially
+  for (const factId of factIds) {
+    await deleteMemory(factId);
+  }
 }

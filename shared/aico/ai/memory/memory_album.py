@@ -147,7 +147,7 @@ class MemoryAlbumStore:
         
         query = """
             SELECT 
-                fact_id, content, category, fact_type,
+                fact_id, user_id, content, category, fact_type,
                 user_note, tags_json, is_favorite, emotional_tone, memory_type,
                 source_conversation_id, source_message_id,
                 revisit_count, last_revisited,

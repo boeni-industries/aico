@@ -116,7 +116,7 @@ async def get_memories(
         
         memory_store = MemoryAlbumStore(db)
         
-        # Query user-curated facts
+        # Query user-curated facts with user profile information
         facts = await memory_store.get_user_curated_facts(
             user_id=user_uuid,
             category=category,
@@ -124,6 +124,38 @@ async def get_memories(
             limit=limit,
             offset=offset,
         )
+        
+        # Enrich with user profile data
+        enriched_facts = []
+        for fact in facts:
+            # Get user profile for this fact
+            logger.debug(f"Looking up user profile for user_id: {fact.get('user_id')}")
+            
+            user_profile = db.execute("""
+                SELECT uuid, full_name, nickname
+                FROM user_profiles
+                WHERE uuid = ?
+            """, (fact['user_id'],)).fetchone()
+            
+            fact_with_user = dict(fact)
+            if user_profile:
+                logger.debug(f"Found user profile: {user_profile[1]} ({user_profile[2]})")
+                fact_with_user['user_uuid'] = user_profile[0]
+                fact_with_user['user_full_name'] = user_profile[1]
+                fact_with_user['user_nickname'] = user_profile[2]
+            else:
+                logger.warning(f"No user profile found for user_id: {fact.get('user_id')}")
+                # Check if any users exist in the table
+                all_users = db.execute("SELECT uuid, full_name FROM user_profiles LIMIT 5").fetchall()
+                logger.warning(f"Sample users in database: {all_users}")
+                
+                fact_with_user['user_uuid'] = fact['user_id']
+                fact_with_user['user_full_name'] = 'Unknown User'
+                fact_with_user['user_nickname'] = None
+            
+            enriched_facts.append(fact_with_user)
+        
+        facts = enriched_facts
         
         # Convert to response format
         memories = []
@@ -160,6 +192,9 @@ async def get_memories(
                 last_revisited=fact.get('last_revisited'),
                 created_at=fact['created_at'],
                 updated_at=fact['updated_at'],
+                user_uuid=fact.get('user_uuid', fact['user_id']),
+                user_full_name=fact.get('user_full_name', 'Unknown User'),
+                user_nickname=fact.get('user_nickname'),
                 conversation_title=fact.get('conversation_title'),
                 conversation_summary=fact.get('conversation_summary'),
                 turn_range=fact.get('turn_range'),
