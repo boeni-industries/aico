@@ -49,12 +49,26 @@ class PreferenceManager:
             
         Returns:
             PreferenceVector (creates neutral if not exists)
+            
+        Raises:
+            RuntimeError: If ams_context_preference_vectors table doesn't exist
         """
-        row = self.db.execute(
-            """SELECT dimensions, last_updated_at FROM context_preference_vectors
-               WHERE user_id = ? AND context_bucket = ?""",
-            (user_id, context_bucket)
-        ).fetchone()
+        try:
+            row = self.db.execute(
+                """SELECT dimensions, last_updated_at FROM ams_context_preference_vectors
+                   WHERE user_id = ? AND context_bucket = ?""",
+                (user_id, context_bucket)
+            ).fetchone()
+        except Exception as e:
+            if "no such table" in str(e).lower():
+                logger.error(f"CRITICAL: ams_context_preference_vectors table does not exist: {e}")
+                raise RuntimeError(
+                    "ams_context_preference_vectors table does not exist. "
+                    "Run database migration to create missing AMS tables."
+                ) from e
+            else:
+                logger.error(f"Database error querying preference vectors: {e}")
+                raise
         
         if row:
             return PreferenceVector(
@@ -157,23 +171,38 @@ class PreferenceManager:
         return max(0.0, min(1.0, score))
     
     async def _save_preference_vector(self, pref: PreferenceVector) -> None:
-        """Save preference vector to database."""
-        self.db.execute(
-            """INSERT INTO context_preference_vectors (
-                user_id, context_bucket, dimensions, last_updated_at
-            ) VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id, context_bucket)
-            DO UPDATE SET
-                dimensions = excluded.dimensions,
-                last_updated_at = excluded.last_updated_at""",
-            (
-                pref.user_id,
-                pref.context_bucket,
-                json.dumps(pref.dimensions),
-                pref.last_updated_at.isoformat()
+        """Save preference vector to database.
+        
+        Raises:
+            RuntimeError: If ams_context_preference_vectors table doesn't exist
+        """
+        try:
+            self.db.execute(
+                """INSERT INTO ams_context_preference_vectors (
+                    user_id, context_bucket, dimensions, last_updated_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id, context_bucket)
+                DO UPDATE SET
+                    dimensions = excluded.dimensions,
+                    last_updated_at = excluded.last_updated_at""",
+                (
+                    pref.user_id,
+                    pref.context_bucket,
+                    json.dumps(pref.dimensions),
+                    pref.last_updated_at.isoformat()
+                )
             )
-        )
-        self.db.commit()
+            self.db.commit()
+        except Exception as e:
+            if "no such table" in str(e).lower():
+                logger.error(f"CRITICAL: ams_context_preference_vectors table does not exist: {e}")
+                raise RuntimeError(
+                    "ams_context_preference_vectors table does not exist. "
+                    "Run database migration to create missing AMS tables."
+                ) from e
+            else:
+                logger.error(f"Database error saving preference vector: {e}")
+                raise
 
     async def get_user_interests(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Derive user interests from behavioral data for CuriosityEngine.

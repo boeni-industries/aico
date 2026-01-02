@@ -44,11 +44,17 @@ class TestSkillExecutionTracking:
             """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
+            (skill_id, "Test Skill", "base", 
+             '{"intent": ["test"], "time_of_day": "any"}',
+             "test_template",
+             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
-        return skill_id
+        yield skill_id
+        # Cleanup after test
+        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        db.commit()
     
     def test_record_skill_execution_success(self, feedback_service, test_user, test_skill_id):
         """Test recording a successful skill execution."""
@@ -230,11 +236,17 @@ class TestBehavioralFeedback:
             """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
+            (skill_id, "Test Skill", "base",
+             '{"intent": ["test"], "time_of_day": "any"}',
+             "test_template",
+             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
-        return skill_id
+        yield skill_id
+        # Cleanup after test
+        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        db.commit()
     
     def test_record_behavioral_feedback_with_outcome(self, feedback_service, test_user, test_skill_id):
         """Test recording behavioral feedback with outcome."""
@@ -346,11 +358,17 @@ class TestOutcomeDetection:
             """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
+            (skill_id, "Test Skill", "base",
+             '{"intent": ["test"], "time_of_day": "any"}',
+             "test_template",
+             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
-        return skill_id
+        yield skill_id
+        # Cleanup after test
+        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        db.commit()
     
     def test_detect_outcome_from_execution(self, feedback_service, test_user, test_skill_id):
         """Test detecting outcome from execution record."""
@@ -570,11 +588,17 @@ class TestAnalytics:
             """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
+            (skill_id, "Test Skill", "base",
+             '{"intent": ["test"], "time_of_day": "any"}',
+             "test_template",
+             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
-        return skill_id
+        yield skill_id
+        # Cleanup after test
+        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        db.commit()
     
     def test_get_skill_success_rate(self, feedback_service, test_user, test_skill_id, db):
         """Test calculating skill success rate."""
@@ -669,11 +693,17 @@ class TestBehavioralFeedbackIntegration:
             """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
+            (skill_id, "Test Skill", "base",
+             '{"intent": ["test"], "time_of_day": "any"}',
+             "test_template",
+             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
-        return skill_id
+        yield skill_id
+        # Cleanup after test
+        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        db.commit()
     
     def test_complete_feedback_loop(self, feedback_service, test_user, test_skill_id, db):
         """Test complete feedback loop from execution to user feedback."""

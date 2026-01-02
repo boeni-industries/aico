@@ -40,11 +40,17 @@ class TestBehavioralFeedbackCoverage:
             """INSERT OR IGNORE INTO ams_behavioral_skills 
                (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base", "test_context", "test_template", "[]",
+            (skill_id, "Test Skill", "base",
+             '{"intent": ["test"], "time_of_day": "any"}',
+             "test_template",
+             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
         db.commit()
-        return skill_id
+        yield skill_id
+        # Cleanup after test
+        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        db.commit()
     
     # ========================================================================
     # Error Handling Tests

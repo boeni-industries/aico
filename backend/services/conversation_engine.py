@@ -1268,21 +1268,54 @@ class ConversationEngine(BaseService):
         try:
             # Check if behavioral learning is enabled
             memory_manager = ai_registry.get("memory")
-            if not memory_manager or not hasattr(memory_manager, '_behavioral_enabled') or not memory_manager._behavioral_enabled:
+            
+            self.logger.info(f"🎯 [SKILL] Starting skill selection for user {user_context.user_id}")
+            print(f"🎯 [SKILL] Starting skill selection for user {user_context.user_id}")
+            
+            if not memory_manager:
+                self.logger.warning("🎯 [SKILL] No memory manager found in registry")
+                print("🎯 [SKILL] ❌ No memory manager found in registry")
                 return None
             
-            # Get Thompson Sampling selector
-            if not hasattr(memory_manager, '_thompson_sampling') or not memory_manager._thompson_sampling:
+            if not hasattr(memory_manager, '_behavioral_enabled'):
+                self.logger.warning("🎯 [SKILL] Memory manager missing _behavioral_enabled attribute")
+                print("🎯 [SKILL] ❌ Memory manager missing _behavioral_enabled attribute")
                 return None
+                
+            if not memory_manager._behavioral_enabled:
+                self.logger.warning("🎯 [SKILL] Behavioral learning disabled (_behavioral_enabled=False)")
+                print("🎯 [SKILL] ❌ Behavioral learning disabled (_behavioral_enabled=False)")
+                return None
+            
+            print(f"🎯 [SKILL] ✅ Behavioral learning enabled")
+            
+            # Get Thompson Sampling selector
+            if not hasattr(memory_manager, '_thompson_sampling'):
+                self.logger.warning("🎯 [SKILL] Memory manager missing _thompson_sampling attribute")
+                print("🎯 [SKILL] ❌ Memory manager missing _thompson_sampling attribute")
+                return None
+                
+            if not memory_manager._thompson_sampling:
+                self.logger.warning("🎯 [SKILL] Thompson sampling selector is None")
+                print("🎯 [SKILL] ❌ Thompson sampling selector is None")
+                return None
+            
+            print(f"🎯 [SKILL] ✅ Thompson sampling selector available")
             
             thompson_sampling = memory_manager._thompson_sampling
             skill_store = memory_manager._skill_store
             
             # Get available skills
+            print(f"🎯 [SKILL] Fetching available skills...")
             candidate_skills = await skill_store.list_skills(skill_type=None, limit=100)
+            
             if not candidate_skills:
                 self.logger.warning("🎯 [SKILL] No skills available for selection")
+                print("🎯 [SKILL] ❌ No skills available for selection")
                 return None
+            
+            print(f"🎯 [SKILL] ✅ Found {len(candidate_skills)} candidate skills")
+            self.logger.info(f"🎯 [SKILL] Found {len(candidate_skills)} candidate skills")
             
             # Build context for selection (simplified - could be enhanced with intent detection)
             context = {
@@ -1291,6 +1324,7 @@ class ConversationEngine(BaseService):
                 "time_of_day": "any"
             }
             
+            print(f"🎯 [SKILL] Calling Thompson Sampling selector...")
             # Select skill using Thompson Sampling
             selected_skill_id = await thompson_sampling.select_skill(
                 user_id=user_context.user_id,
@@ -1298,10 +1332,20 @@ class ConversationEngine(BaseService):
                 candidate_skills=candidate_skills
             )
             
+            if selected_skill_id:
+                print(f"🎯 [SKILL] ✅ Selected skill: {selected_skill_id}")
+                self.logger.info(f"🎯 [SKILL] Selected skill: {selected_skill_id}")
+            else:
+                print(f"🎯 [SKILL] ⚠️  Thompson Sampling returned None")
+                self.logger.warning(f"🎯 [SKILL] Thompson Sampling returned None")
+            
             return selected_skill_id
             
         except Exception as e:
             self.logger.error(f"🎯 [SKILL] Failed to select skill: {e}")
+            print(f"🎯 [SKILL] ❌ Exception during skill selection: {e}")
+            import traceback
+            print(f"🎯 [SKILL] Traceback: {traceback.format_exc()}")
             return None
     
     async def _log_trajectory(self, user_context: UserContext, user_message: ConversationMessage, ai_response: str, selected_skill_id: Optional[str], agency_data: Optional[Dict[str, Any]] = None) -> None:

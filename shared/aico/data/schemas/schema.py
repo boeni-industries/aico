@@ -515,6 +515,33 @@ V1_SCHEMA = [
     """CREATE INDEX idx_behavioral_skills_status ON "ams_behavioral_skills"(status)""",
     """CREATE INDEX idx_behavioral_skills_type ON "ams_behavioral_skills"(skill_type)""",
 
+    """CREATE TABLE ams_context_preference_vectors (
+        user_id TEXT NOT NULL,
+        context_bucket INTEGER NOT NULL CHECK(context_bucket BETWEEN 0 AND 99),
+        dimensions TEXT NOT NULL,
+        last_updated_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (user_id, context_bucket),
+        FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE
+    )""",
+
+    """CREATE INDEX idx_ams_context_preferences_user ON ams_context_preference_vectors(user_id)""",
+    """CREATE INDEX idx_ams_context_preferences_updated ON ams_context_preference_vectors(last_updated_at DESC)""",
+
+    """CREATE TABLE ams_context_skill_stats (
+        user_id TEXT NOT NULL,
+        context_bucket INTEGER NOT NULL CHECK(context_bucket BETWEEN 0 AND 99),
+        skill_id TEXT NOT NULL,
+        alpha REAL NOT NULL DEFAULT 1.0 CHECK(alpha >= 0.0),
+        beta REAL NOT NULL DEFAULT 1.0 CHECK(beta >= 0.0),
+        last_updated_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (user_id, context_bucket, skill_id),
+        FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE,
+        FOREIGN KEY (skill_id) REFERENCES ams_behavioral_skills(skill_id) ON DELETE CASCADE
+    )""",
+
+    """CREATE INDEX idx_ams_context_skill_stats_user ON ams_context_skill_stats(user_id, context_bucket)""",
+    """CREATE INDEX idx_ams_context_skill_stats_skill ON ams_context_skill_stats(skill_id)""",
+
     """CREATE TABLE "ams_consolidation_state" (
                 id TEXT PRIMARY KEY,
                 state_json TEXT NOT NULL,

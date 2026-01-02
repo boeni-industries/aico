@@ -74,6 +74,50 @@ export interface AMSStats {
   feedback: FeedbackStats;
 }
 
+export interface SkillDetail {
+  skill_id: string;
+  skill_name: string;
+  skill_type: string;
+  status: string;
+  confidence_score: number | null;
+  usage_count: number | null;
+  positive_count: number | null;
+  negative_count: number | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface SkillOverview {
+  total_skills: number;
+  active_skills: number;
+  skills: SkillDetail[];
+}
+
+export interface MemoryMetricsSnapshot {
+  timestamp: string;
+  working_memory_count: number;
+  semantic_facts_count: number;
+  knowledge_graph_entities: number;
+  knowledge_graph_relationships: number;
+  total_conversations: number;
+}
+
+export interface MemoryGrowthStats {
+  period_days: number;
+  facts_added: number;
+  entities_added: number;
+  relationships_added: number;
+  consolidation_sessions: number;
+}
+
+export interface MemoryEvolution {
+  current_metrics: MemoryMetricsSnapshot;
+  growth_7d: MemoryGrowthStats;
+  growth_30d: MemoryGrowthStats;
+  historical_snapshots: MemoryMetricsSnapshot[];
+  insights: string[];
+}
+
 // ============================================================================
 // API Functions
 // ============================================================================
@@ -114,6 +158,22 @@ export async function fetchFeedbackStats(): Promise<FeedbackStats> {
   const response = await httpJson<FeedbackStats>({
     method: 'GET',
     path: '/ams/feedback/stats',
+  });
+  return response;
+}
+
+export async function fetchSkillOverview(): Promise<SkillOverview> {
+  const response = await httpJson<SkillOverview>({
+    method: 'GET',
+    path: '/ams/skills/overview',
+  });
+  return response;
+}
+
+export async function fetchMemoryEvolution(): Promise<MemoryEvolution> {
+  const response = await httpJson<MemoryEvolution>({
+    method: 'GET',
+    path: '/ams/memory/evolution',
   });
   return response;
 }

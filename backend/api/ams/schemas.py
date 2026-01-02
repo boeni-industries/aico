@@ -107,3 +107,60 @@ class AMSStatsResponse(BaseModel):
     behavioral_learning: BehavioralLearningStatsResponse = Field(..., description="Behavioral learning stats")
     user_preferences: UserPreferencesResponse = Field(..., description="User preference profile")
     feedback: FeedbackStatsResponse = Field(..., description="Feedback statistics")
+
+
+# ============================================================================
+# Skill Overview Schemas
+# ============================================================================
+
+class SkillDetailResponse(BaseModel):
+    """Detailed skill information."""
+    skill_id: str = Field(..., description="Unique skill identifier")
+    skill_name: str = Field(..., description="Human-readable skill name")
+    skill_type: str = Field(..., description="Skill type (base, composite, etc.)")
+    status: str = Field(..., description="Skill status (active, inactive, etc.)")
+    confidence_score: Optional[float] = Field(None, description="User confidence score (0-100)")
+    usage_count: Optional[int] = Field(None, description="Number of times used")
+    positive_count: Optional[int] = Field(None, description="Positive feedback count")
+    negative_count: Optional[int] = Field(None, description="Negative feedback count")
+    last_used_at: Optional[str] = Field(None, description="ISO timestamp of last use")
+    created_at: str = Field(..., description="ISO timestamp of skill creation")
+
+
+class SkillOverviewResponse(BaseModel):
+    """Complete skill overview with all available skills."""
+    total_skills: int = Field(..., description="Total number of available skills")
+    active_skills: int = Field(..., description="Number of skills with usage data")
+    skills: List[SkillDetailResponse] = Field(..., description="List of all skills with details")
+
+
+# ============================================================================
+# Memory Evolution Schemas
+# ============================================================================
+
+class MemoryMetricsSnapshot(BaseModel):
+    """Memory metrics at a point in time."""
+    timestamp: str = Field(..., description="ISO timestamp")
+    working_memory_count: int = Field(..., description="Number of working memory items")
+    semantic_facts_count: int = Field(..., description="Number of semantic facts")
+    knowledge_graph_entities: int = Field(..., description="Number of KG entities")
+    knowledge_graph_relationships: int = Field(..., description="Number of KG relationships")
+    total_conversations: int = Field(..., description="Total conversation count")
+
+
+class MemoryGrowthStats(BaseModel):
+    """Memory growth statistics over time."""
+    period_days: int = Field(..., description="Time period in days")
+    facts_added: int = Field(..., description="New facts added in period")
+    entities_added: int = Field(..., description="New entities added in period")
+    relationships_added: int = Field(..., description="New relationships added in period")
+    consolidation_sessions: int = Field(..., description="Number of consolidation sessions")
+
+
+class MemoryEvolutionResponse(BaseModel):
+    """Memory evolution tracking over time."""
+    current_metrics: MemoryMetricsSnapshot = Field(..., description="Current memory state")
+    growth_7d: MemoryGrowthStats = Field(..., description="Growth in last 7 days")
+    growth_30d: MemoryGrowthStats = Field(..., description="Growth in last 30 days")
+    historical_snapshots: List[MemoryMetricsSnapshot] = Field(..., description="Historical data points")
+    insights: List[str] = Field(..., description="Memory evolution insights")

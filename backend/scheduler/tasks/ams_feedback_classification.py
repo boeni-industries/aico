@@ -83,8 +83,8 @@ class FeedbackClassificationTask(BaseTask):
             batch_size = context.get_config("batch_size", 100)
             
             unprocessed_feedback = context.db_connection.execute(
-                """SELECT event_id, user_id, free_text 
-                   FROM feedback_events 
+                """SELECT feedback_id, user_id, free_text 
+                   FROM ams_behavioral_feedback 
                    WHERE processed = FALSE 
                    AND free_text IS NOT NULL 
                    AND free_text != ''
@@ -143,9 +143,9 @@ class FeedbackClassificationTask(BaseTask):
                         
                         # Update feedback event with top category as reason
                         context.db_connection.execute(
-                            """UPDATE feedback_events 
+                            """UPDATE ams_behavioral_feedback 
                                SET reason = ?, processed = TRUE
-                               WHERE event_id = ?""",
+                               WHERE feedback_id = ?""",
                             (top_category, event_id)
                         )
                         
