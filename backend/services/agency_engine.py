@@ -1,14 +1,20 @@
-"""
-Agency Engine - AI Plugin for Autonomous Agency
+"""Agency AI plugin - thin adapter over shared AgencyEngine.
 
-Contract-based autonomous agency plugin that integrates with the conversation engine.
-Provides standardized interface for agency processing without implementation details.
+This plugin exposes a standardized capability contract to the API gateway
+and conversation engine, while delegating all autonomous agency logic to
+the shared/aico/ai/agency/AgencyEngine orchestrator registered in ai_registry.
 """
 
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
+
+from aico.core.logging import get_logger
+from aico.ai import ai_registry
 
 from backend.core.ai_plugin_base import AIProcessingPlugin, ProcessingRequest, ProcessingResponse, CapabilityContract
+
+
+logger = get_logger("backend", "services.agency_plugin")
 
 
 class AgencyPlugin(AIProcessingPlugin):
@@ -21,6 +27,10 @@ class AgencyPlugin(AIProcessingPlugin):
     
     def __init__(self, name: str, container):
         super().__init__(name, container)
+        # Resolve shared AgencyEngine from AI processor registry (Phase 1)
+        self._agency_engine = ai_registry.get("agency")
+        if not self._agency_engine:
+            logger.error("[AGENCY_PLUGIN] AgencyEngine not found in ai_registry under key 'agency'")
     
     def get_capability_contract(self) -> CapabilityContract:
         """Define autonomous agency capabilities contract"""
@@ -56,24 +66,39 @@ class AgencyPlugin(AIProcessingPlugin):
         start_time = datetime.now()
         
         try:
-            # Contract-compliant response structure
-            # Implementation will delegate to shared/aico/ai/agency/ modules
-            
-            result_data = {
-                "proactive_suggestions": [],
-                "autonomous_goals": [],
-                "behavioral_triggers": {},
-                "analysis_timestamp": start_time.isoformat()
-            }
-            
+            if not self._agency_engine:
+                # Fail-safe: engine not available, return empty but successful response
+                logger.warning("[AGENCY_PLUGIN] AgencyEngine not available, returning empty analysis result")
+                result_data = {
+                    "proactive_suggestions": [],
+                    "autonomous_goals": [],
+                    "behavioral_triggers": {},
+                    "analysis_timestamp": start_time.isoformat(),
+                }
+                processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
+                return ProcessingResponse(
+                    request_id=request.request_id,
+                    success=True,
+                    data=result_data,
+                    confidence=0.0,
+                    processing_time_ms=processing_time,
+                )
+
+            # Delegate analysis to shared AgencyEngine
+            engine_result: Dict[str, Any] = await self._agency_engine.analyze_conversation_turn(
+                user_id=request.user_id or "",
+                text=request.text or "",
+                context=request.context or {},
+            )
+
             processing_time = int((datetime.now() - start_time).total_seconds() * 1000)
-            
+
             return ProcessingResponse(
                 request_id=request.request_id,
                 success=True,
-                data=result_data,
-                confidence=0.0,
-                processing_time_ms=processing_time
+                data=engine_result,
+                confidence=float(engine_result.get("confidence", 0.0) or 0.0),
+                processing_time_ms=processing_time,
             )
             
         except Exception as e:

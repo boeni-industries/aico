@@ -98,6 +98,12 @@ class GQLQueryExecutor:
             try:
                 gc = GrandCypher(graph)
                 results = gc.run(query)
+                logger.debug(f"GrandCypher raw results type: {type(results)}")
+                logger.debug(f"GrandCypher raw results keys: {results.keys() if isinstance(results, dict) else 'N/A'}")
+                if isinstance(results, dict) and results:
+                    first_key = list(results.keys())[0]
+                    first_value = results[first_key][0] if results[first_key] else None
+                    logger.debug(f"First result sample - key: {first_key}, value type: {type(first_value)}, value: {first_value}")
             except Exception as e:
                 logger.error(f"GrandCypher execution failed: {e}")
                 return {

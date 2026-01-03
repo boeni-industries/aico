@@ -1,0 +1,84 @@
+{
+  "templates": [
+    {
+      "id": "all-nodes",
+      "title": "All Nodes",
+      "description": "Show all nodes with ALL their properties",
+      "category": "exploration",
+      "query": "MATCH (n)\nRETURN n.id as id, n.label as type, n.name as name, \n       n.confidence as confidence, n.source_text as source_text,\n       n.created_at as created_at, n.updated_at as updated_at,\n       n.valid_from as valid_from, n.valid_until as valid_until,\n       n.is_current as is_current, n.canonical_id as canonical_id,\n       n.language as language, n.reason as reason\nLIMIT 100",
+      "tags": ["basic", "exploration", "all"]
+    },
+    {
+      "id": "all-edges",
+      "title": "All Edges",
+      "description": "Show all edges with ALL their properties",
+      "category": "exploration",
+      "query": "MATCH (a)-[r]->(b)\nRETURN r.id as id, a.name as from_node, r.relation_type as relation_type, b.name as to_node,\n       r.confidence as confidence, r.source_text as source_text,\n       r.created_at as created, r.updated_at as updated,\n       r.valid_from as valid_from, r.valid_until as valid_until,\n       r.is_current as current, r.reason as reason\nLIMIT 100",
+      "tags": ["basic", "exploration", "edges", "relationships"]
+    },
+    {
+      "id": "active-projects",
+      "title": "Active Projects",
+      "description": "Find all active projects and who is working on them",
+      "category": "exploration",
+      "query": "MATCH (p:PERSON)-[:WORKING_ON]->(proj:PROJECT)\nWHERE proj.status = \"active\"\nRETURN p.name, proj.name, proj.progress\nORDER BY proj.progress DESC",
+      "tags": ["projects", "people", "status"]
+    },
+    {
+      "id": "skill-gaps",
+      "title": "Skill Gaps Analysis",
+      "description": "Identify skills needed but not yet acquired",
+      "category": "analysis",
+      "query": "MATCH (goal:GOAL)-[:REQUIRES]->(skill:SKILL)\nWHERE NOT EXISTS {\n  MATCH (p:PERSON)-[:HAS_SKILL]->(skill)\n}\nRETURN goal.name, skill.name\nORDER BY goal.priority DESC",
+      "tags": ["skills", "goals", "gaps"]
+    },
+    {
+      "id": "recent-changes",
+      "title": "Recent Changes",
+      "description": "Show nodes created or updated in the last 7 days",
+      "category": "temporal",
+      "query": "MATCH (n)\nWHERE n.created_at > \"2024-12-24\"\n   OR n.updated_at > \"2024-12-24\"\nRETURN n.label, n.name, n.created_at, n.updated_at\nORDER BY n.updated_at DESC\nLIMIT 20",
+      "tags": ["temporal", "recent", "activity"]
+    },
+    {
+      "id": "connection-strength",
+      "title": "Strongest Connections",
+      "description": "Find the most connected nodes in the graph",
+      "category": "analysis",
+      "query": "MATCH (n)-[r]-(m)\nRETURN n.label, n.name, COUNT(r) as connection_count\nORDER BY connection_count DESC\nLIMIT 10",
+      "tags": ["analysis", "connections", "centrality"]
+    },
+    {
+      "id": "goal-dependencies",
+      "title": "Goal Dependencies",
+      "description": "Show goals and their dependencies",
+      "category": "relationships",
+      "query": "MATCH (g:GOAL)-[:DEPENDS_ON]->(dep:GOAL)\nRETURN g.name as goal, dep.name as depends_on, g.priority\nORDER BY g.priority DESC",
+      "tags": ["goals", "dependencies", "hierarchy"]
+    },
+    {
+      "id": "temporal-evolution",
+      "title": "Temporal Evolution",
+      "description": "Track how entities changed over time",
+      "category": "temporal",
+      "query": "MATCH (n)\nWHERE n.valid_from IS NOT NULL\nRETURN n.label, n.name, n.valid_from, n.valid_until, n.is_current\nORDER BY n.valid_from DESC\nLIMIT 20",
+      "tags": ["temporal", "history", "evolution"]
+    },
+    {
+      "id": "multi-hop-paths",
+      "title": "Multi-Hop Paths",
+      "description": "Find paths between two entities (up to 3 hops)",
+      "category": "relationships",
+      "query": "MATCH path = (start:PERSON {name: \"Michael\"})-[*1..3]-(end:GOAL)\nRETURN start.name, end.name, LENGTH(path) as hops,\n       [rel in relationships(path) | type(rel)] as path_types\nORDER BY hops\nLIMIT 10",
+      "tags": ["paths", "traversal", "connections"]
+    },
+    {
+      "id": "property-aggregation",
+      "title": "Property Aggregation",
+      "description": "Aggregate statistics across node types",
+      "category": "analysis",
+      "query": "MATCH (n)\nRETURN n.label, \n       COUNT(n) as total,\n       AVG(n.confidence) as avg_confidence,\n       COUNT(CASE WHEN n.is_current = 1 THEN 1 END) as current_count\nORDER BY total DESC",
+      "tags": ["aggregation", "statistics", "summary"]
+    }
+  ]
+}

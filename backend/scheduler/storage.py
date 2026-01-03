@@ -23,7 +23,7 @@ class TaskStore:
     
     def verify_tables_exist(self):
         """Verify that the required scheduler tables exist in the database."""
-        required_tables = {"scheduled_tasks", "task_executions", "task_locks"}
+        required_tables = {"scheduler_tasks", "scheduler_task_executions", "scheduler_task_locks"}
         try:
             cursor = self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")
             existing_tables = {row[0] for row in cursor.fetchall()}
@@ -54,7 +54,7 @@ class TaskStore:
             now = datetime.now().isoformat()
             
             self.db.execute("""
-                INSERT INTO scheduled_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
+                INSERT INTO scheduler_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     task_class = excluded.task_class,
@@ -76,7 +76,7 @@ class TaskStore:
         try:
             cursor = self.db.execute(
                 "SELECT task_id, task_class, schedule, config, enabled, created_at, updated_at "
-                "FROM scheduled_tasks WHERE task_id = ?", (task_id,)
+                "FROM scheduler_tasks WHERE task_id = ?", (task_id,)
             )
             row = cursor.fetchone()
             
@@ -102,7 +102,7 @@ class TaskStore:
         try:
             query = """
                 SELECT task_id, task_class, schedule, config, enabled, created_at, updated_at
-                FROM scheduled_tasks
+                FROM scheduler_tasks
             """
             params = ()
             
@@ -135,7 +135,7 @@ class TaskStore:
     def delete_task(self, task_id: str) -> bool:
         """Delete a scheduled task"""
         try:
-            cursor = self.db.execute("DELETE FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+            cursor = self.db.execute("DELETE FROM scheduler_tasks WHERE task_id = ?", (task_id,))
             self.db.commit()
             
             deleted = cursor.rowcount > 0
@@ -155,7 +155,7 @@ class TaskStore:
         try:
             now = datetime.now().isoformat()
             cursor = self.db.execute(
-                "UPDATE scheduled_tasks SET enabled = ?, updated_at = ? WHERE task_id = ?",
+                "UPDATE scheduler_tasks SET enabled = ?, updated_at = ? WHERE task_id = ?",
                 (enabled, now, task_id)
             )
             self.db.commit()
@@ -176,7 +176,7 @@ class TaskStore:
         try:
             now = datetime.now().isoformat()
             self.db.execute("""
-                INSERT INTO task_executions (task_id, execution_id, status, started_at)
+                INSERT INTO scheduler_task_executions (task_id, execution_id, status, started_at)
                 VALUES (?, ?, ?, ?)
             """, (task_id, execution_id, TaskStatus.RUNNING.value, now))
             
@@ -195,7 +195,7 @@ class TaskStore:
             result_json = json.dumps(result.to_dict())
             
             self.db.execute("""
-                UPDATE task_executions 
+                UPDATE scheduler_task_executions 
                 SET status = ?, completed_at = ?, result = ?, error_message = ?, duration_seconds = ?
                 WHERE task_id = ? AND execution_id = ?
             """, (
@@ -213,7 +213,7 @@ class TaskStore:
         try:
             cursor = self.db.execute("""
                 SELECT execution_id, status, started_at, completed_at, result, error_message, duration_seconds
-                FROM task_executions 
+                FROM scheduler_task_executions 
                 WHERE task_id = ?
                 ORDER BY started_at DESC
                 LIMIT ?
@@ -255,38 +255,53 @@ class TaskStore:
                 if os.getenv('AICO_DETACH_MODE') == 'false':
                     print(f"[TASK_STORE] 🔒 About to clean up expired locks...")
                 
-                # Clean up expired locks first
-                deleted = self.db.execute("DELETE FROM task_locks WHERE expires_at < ?", (now.isoformat(),))
-                
+                # Clean up expired locks first (best-effort)
+                deleted = self.db.execute("DELETE FROM scheduler_task_locks WHERE expires_at < ?", (now.isoformat(),))
+
                 if os.getenv('AICO_DETACH_MODE') == 'false':
                     print(f"[TASK_STORE] 🔒 Deleted {deleted.rowcount if hasattr(deleted, 'rowcount') else 0} expired locks")
-                
-                # Also check if there's an existing lock for this task and log it
-                existing = self.db.execute("SELECT execution_id, expires_at FROM task_locks WHERE task_id = ?", (task_id,)).fetchone()
-                if existing and os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 ⚠️  Existing lock found: execution_id={existing[0]}, expires_at={existing[1]}")
-                    # If lock exists but hasn't expired, we should fail
-                    if existing[1] >= now.isoformat():
-                        print(f"[TASK_STORE] 🔒 ❌ Lock is still valid, cannot acquire")
-                        return False
-                
+
                 if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 About to insert lock...")
-                
-                # Try to acquire lock
-                self.db.execute("""
-                    INSERT INTO task_locks (task_id, execution_id, expires_at)
+                    print(f"[TASK_STORE] 🔒 About to insert/update lock atomically...")
+
+                # Atomic acquisition:
+                # - If no lock exists: insert succeeds.
+                # - If lock exists and is expired: update succeeds.
+                # - If lock exists and is still valid: update does NOT happen (WHERE clause), rowcount==0.
+                cursor = self.db.execute(
+                    """
+                    INSERT INTO scheduler_task_locks (task_id, execution_id, expires_at)
                     VALUES (?, ?, ?)
-                """, (task_id, execution_id, expires_at))
-                
+                    ON CONFLICT(task_id) DO UPDATE SET
+                        execution_id = excluded.execution_id,
+                        expires_at = excluded.expires_at
+                    WHERE scheduler_task_locks.expires_at < ?
+                    """,
+                    (task_id, execution_id, expires_at, now.isoformat()),
+                )
+
                 if os.getenv('AICO_DETACH_MODE') == 'false':
                     print(f"[TASK_STORE] 🔒 About to commit...")
-                
+
                 self.db.commit()
-                
+
+                # If a non-expired lock existed, the WHERE clause prevents update.
+                if hasattr(cursor, 'rowcount') and cursor.rowcount == 0:
+                    if os.getenv('AICO_DETACH_MODE') == 'false':
+                        existing = self.db.execute(
+                            "SELECT execution_id, expires_at FROM scheduler_task_locks WHERE task_id = ?",
+                            (task_id,),
+                        ).fetchone()
+                        if existing:
+                            print(
+                                f"[TASK_STORE] 🔒 ⚠️  Existing lock found: execution_id={existing[0]}, expires_at={existing[1]}"
+                            )
+                        print(f"[TASK_STORE] 🔒 ❌ Lock is still valid, cannot acquire")
+                    return False
+
                 if os.getenv('AICO_DETACH_MODE') == 'false':
                     print(f"[TASK_STORE] 🔒 Lock acquired successfully!")
-                
+
                 return True
                 
             except sqlite3.IntegrityError:
@@ -312,7 +327,7 @@ class TaskStore:
         def _sync_release():
             try:
                 cursor = self.db.execute(
-                    "DELETE FROM task_locks WHERE task_id = ? AND execution_id = ?",
+                    "DELETE FROM scheduler_task_locks WHERE task_id = ? AND execution_id = ?",
                     (task_id, execution_id)
                 )
                 self.db.commit()
@@ -331,7 +346,7 @@ class TaskStore:
             cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
             
             cursor = self.db.execute(
-                "DELETE FROM task_executions WHERE started_at < ?", (cutoff_date,)
+                "DELETE FROM scheduler_task_executions WHERE started_at < ?", (cutoff_date,)
             )
             self.db.commit()
             

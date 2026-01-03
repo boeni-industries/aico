@@ -492,7 +492,7 @@ class ConsolidationScheduler:
                 import json
                 db_connection.execute(
                     """
-                    INSERT INTO consolidation_state (id, state_json, updated_at)
+                    INSERT INTO ams_consolidation_state (id, state_json, updated_at)
                     VALUES (?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         state_json = excluded.state_json,

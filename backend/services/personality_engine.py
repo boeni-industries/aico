@@ -6,7 +6,7 @@ Provides standardized interface for personality processing without implementatio
 """
 
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 
 from backend.core.ai_plugin_base import AIProcessingPlugin, ProcessingRequest, ProcessingResponse, CapabilityContract
 

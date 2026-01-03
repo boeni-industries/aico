@@ -1423,7 +1423,7 @@ def role_bootstrap(
 def user_list(
     user_uuid: str = typer.Argument(None, help="Specific user UUID to show (only with --detailed)"),
     user_type: str = typer.Option(None, "--type", "-t", help="Filter by user type"),
-    limit: int = typer.Option(100, "--limit", "-l", help="Maximum number of users to show"),
+    limit: int = typer.Option(None, "--limit", "-l", help="Maximum number of users to show (default: all)"),
     detailed: bool = typer.Option(False, "--detailed", "-d", help="Show detailed information from all user-related tables")
 ):
     """List all users (or show detailed view of specific user)"""
@@ -1543,7 +1543,7 @@ def user_list(
             else:
                 # Show detailed info for all users
                 async def get_all_detailed():
-                    users = await user_service.list_users(user_type=user_type, limit=limit)
+                    users = await user_service.list_users(user_type=user_type, limit=limit or 10000)
                     detailed_users = []
                     
                     for user in users:
@@ -1615,7 +1615,7 @@ def user_list(
         else:
             # Standard list view
             async def list_users():
-                users = await user_service.list_users(user_type=user_type, limit=limit)
+                users = await user_service.list_users(user_type=user_type, limit=limit or 10000)
                 return users
             
             users = asyncio.run(list_users())

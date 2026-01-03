@@ -69,13 +69,18 @@ class ThompsonSamplingSelector:
         Returns:
             skill_id of selected skill
         """
+        print(f"🎲 [THOMPSON] Starting skill selection for user {user_id}")
+        print(f"🎲 [THOMPSON] Candidate skills: {len(candidate_skills)}")
+        print(f"🎲 [THOMPSON] Context: {context}")
+        
         # Hash context into bucket for contextual learning
         context_bucket = self._hash_context(context)
+        print(f"🎲 [THOMPSON] Context bucket: {context_bucket}")
         
         # Get success/failure counts for each skill in this context bucket
         skill_scores = {}
         for skill in candidate_skills:
-            stats = await self._get_skill_stats(user_id, skill.skill_id, context_bucket)
+            stats = await self._get_stats(user_id, skill.skill_id, context_bucket)
             
             # Sample from Beta distribution
             alpha = self.prior_alpha + stats['successes']
@@ -83,9 +88,12 @@ class ThompsonSamplingSelector:
             sampled_score = np.random.beta(alpha, beta)
             
             skill_scores[skill.skill_id] = sampled_score
+            print(f"🎲 [THOMPSON] Skill {skill.skill_id}: alpha={alpha}, beta={beta}, score={sampled_score:.3f}")
         
         # Select skill with highest sampled score
         selected_skill_id = max(skill_scores, key=skill_scores.get)
+        
+        print(f"🎲 [THOMPSON] ✅ Selected skill: {selected_skill_id} (score: {skill_scores[selected_skill_id]:.3f})")
         
         logger.info("Skill selected via Thompson Sampling", extra={
             "user_id": user_id,
@@ -139,7 +147,7 @@ class ThompsonSamplingSelector:
             "beta": self.prior_beta + stats['failures']
         })
     
-    async def _get_skill_stats(
+    async def _get_stats(
         self,
         user_id: str,
         skill_id: str,
@@ -150,12 +158,26 @@ class ThompsonSamplingSelector:
         
         Returns:
             Dict with 'successes' and 'failures' counts
+            
+        Raises:
+            RuntimeError: If ams_context_skill_stats table doesn't exist
         """
-        row = self.db.execute(
-            """SELECT alpha, beta FROM context_skill_stats
-               WHERE user_id = ? AND context_bucket = ? AND skill_id = ?""",
-            (user_id, context_bucket, skill_id)
-        ).fetchone()
+        try:
+            row = self.db.execute(
+                """SELECT alpha, beta FROM ams_context_skill_stats
+                   WHERE user_id = ? AND context_bucket = ? AND skill_id = ?""",
+                (user_id, context_bucket, skill_id)
+            ).fetchone()
+        except Exception as e:
+            if "no such table" in str(e).lower():
+                logger.error(f"CRITICAL: ams_context_skill_stats table does not exist: {e}")
+                raise RuntimeError(
+                    "ams_context_skill_stats table does not exist. "
+                    "Run database migration to create missing AMS tables."
+                ) from e
+            else:
+                logger.error(f"Database error querying skill stats: {e}")
+                raise
         
         if row:
             # Convert Beta parameters back to success/failure counts
@@ -166,34 +188,49 @@ class ThompsonSamplingSelector:
         else:
             return {'successes': 0, 'failures': 0}
     
-    async def _save_skill_stats(
+    async def _save_stats(
         self,
         user_id: str,
         skill_id: str,
         context_bucket: int,
         stats: Dict[str, int]
     ) -> None:
-        """Save success/failure counts for (user, context_bucket, skill) triple."""
+        """Save success/failure counts for (user, context_bucket, skill) triple.
+        
+        Raises:
+            RuntimeError: If ams_context_skill_stats table doesn't exist
+        """
         alpha = self.prior_alpha + stats['successes']
         beta = self.prior_beta + stats['failures']
         
         # Upsert stats
-        self.db.execute(
-            """INSERT INTO context_skill_stats (
-                user_id, context_bucket, skill_id, alpha, beta, last_updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, context_bucket, skill_id)
-            DO UPDATE SET
-                alpha = excluded.alpha,
-                beta = excluded.beta,
-                last_updated_at = excluded.last_updated_at""",
-            (
-                user_id,
-                context_bucket,
-                skill_id,
-                alpha,
-                beta,
-                datetime.utcnow().isoformat()
+        try:
+            self.db.execute(
+                """INSERT INTO ams_context_skill_stats (
+                    user_id, context_bucket, skill_id, alpha, beta, last_updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, context_bucket, skill_id)
+                DO UPDATE SET
+                    alpha = excluded.alpha,
+                    beta = excluded.beta,
+                    last_updated_at = excluded.last_updated_at""",
+                (
+                    user_id,
+                    context_bucket,
+                    skill_id,
+                    alpha,
+                    beta,
+                    datetime.utcnow().isoformat()
+                )
             )
-        )
-        self.db.commit()
+            self.db.commit()
+        except Exception as e:
+            if "no such table" in str(e).lower():
+                logger.error(f"CRITICAL: ams_context_skill_stats table does not exist: {e}")
+                raise RuntimeError(
+                    "ams_context_skill_stats table does not exist. "
+                    "Run database migration to create missing AMS tables."
+                ) from e
+            else:
+                logger.error(f"Database error saving skill stats: {e}")
+                raise

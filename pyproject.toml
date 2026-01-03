@@ -19,6 +19,7 @@ dependencies = [
     "watchdog",
     "pyzmq>=27.0.1",
     "protobuf>=6.32.0,<7.0.0",
+    "grpcio-tools>=1.62.0",
     "platformdirs>=4.0.0",
     "psutil>=6.1.0",
     "passlib[bcrypt]>=1.7.4",
@@ -31,6 +32,10 @@ dependencies = [
     "grand-cypher", # GQL/Cypher query language support for knowledge graph
     "hnswlib", # HNSW approximate nearest neighbor search for entity resolution
     "fast-langdetect>=0.2.1", # Ultra-fast language detection (80x faster, 95% accuracy, 217 languages)
+    "json-repair>=0.30.0", # Robust JSON repair for LLM-generated output (zero dependencies)
+    "typer>=0.12.3,<1.0.0", # CLI framework
+    "rich>=13.7.0,<14.0.0", # Rich terminal output
+    "requests>=2.31.0,<3.0.0", # HTTP client for CLI
 ]
 
 [project.optional-dependencies]
@@ -44,12 +49,7 @@ backend = [
     "uvicorn>=0.35.0",
 ]
 
-cli = [
-    "typer>=0.12.3,<1.0.0",
-    "rich>=13.7.0,<14.0.0",
-    "requests>=2.31.0,<3.0.0",
-    "cron-descriptor>=1.4.3",
-]
+cli = []
 
 modelservice = [
     "transformers==4.50.3", # Fixed version compatible with GLiNER 0.2.22
@@ -64,6 +64,8 @@ modelservice = [
 
 test = [
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=6.0.0",
 ]
 
 [project.scripts]
@@ -88,7 +90,3 @@ override-dependencies = [
 # Specify git source for coqui-tts
 coqui-tts = { git = "https://github.com/idiap/coqui-ai-TTS.git", branch = "dev" }
 
-[dependency-groups]
-test = [
-    "pytest-asyncio>=1.1.0",
-]

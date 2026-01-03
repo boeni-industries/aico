@@ -13,6 +13,74 @@ from contextlib import contextmanager
 
 import libsql
 
+
+class DictRow:
+    """
+    A row wrapper that allows dict-like access to database rows.
+    
+    This provides compatibility with code expecting dict-style row access
+    when the underlying libsql library doesn't support row_factory.
+    """
+    def __init__(self, cursor, row):
+        self._keys = [desc[0] for desc in cursor.description]
+        self._values = row
+    
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        try:
+            index = self._keys.index(key)
+            return self._values[index]
+        except ValueError:
+            raise KeyError(f"Column '{key}' not found")
+    
+    def __iter__(self):
+        return iter(self._values)
+    
+    def keys(self):
+        return self._keys
+    
+    def values(self):
+        return self._values
+    
+    def items(self):
+        return zip(self._keys, self._values)
+    
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+
+class DictCursor:
+    """
+    A cursor wrapper that returns DictRow objects instead of tuples.
+    """
+    def __init__(self, cursor):
+        self._cursor = cursor
+    
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        return DictRow(self._cursor, row)
+    
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        return [DictRow(self._cursor, row) for row in rows]
+    
+    def fetchmany(self, size=None):
+        if size is None:
+            rows = self._cursor.fetchmany()
+        else:
+            rows = self._cursor.fetchmany(size)
+        return [DictRow(self._cursor, row) for row in rows]
+    
+    def __getattr__(self, name):
+        # Delegate all other attributes to the underlying cursor
+        return getattr(self._cursor, name)
+
 # Lazy logger initialization to avoid circular imports
 _logger = None
 
@@ -134,7 +202,7 @@ class LibSQLConnection:
             
         Example:
             with conn.get_connection() as db:
-                result = db.execute("SELECT * FROM users")
+                result = db.execute("SELECT * FROM user_profiles")
         """
         connection = self.connect()
         try:
@@ -189,7 +257,8 @@ class LibSQLConnection:
                     result = self._connection.execute(query)
                 
                 #_get_logger().debug(f"Executed query: {query[:100]}...")
-                return result
+                # Wrap the cursor to return dict-like rows
+                return DictCursor(result)
                     
             except Exception as e:
                 error_msg = str(e).lower()
@@ -299,8 +368,8 @@ class LibSQLConnection:
         
         Example:
             with conn.transaction():
-                conn.execute("INSERT INTO users (name) VALUES (?)", ("Alice",))
-                conn.execute("INSERT INTO users (name) VALUES (?)", ("Bob",))
+                conn.execute("INSERT INTO user_profiles (name) VALUES (?)", ("Alice",))
+                conn.execute("INSERT INTO user_profiles (name) VALUES (?)", ("Bob",))
         """
         try:
             yield self

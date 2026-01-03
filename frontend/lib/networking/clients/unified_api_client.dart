@@ -180,7 +180,7 @@ class UnifiedApiClient {
           : _encryptionService.createEncryptedRequest({});
 
       // Make streaming request using Dio
-      
+      // CRITICAL: Disable receiveTimeout for streaming to prevent timeout during long LLM generation
       final response = await _dio!.request<ResponseBody>(
         endpoint,
         data: requestData,
@@ -189,6 +189,7 @@ class UnifiedApiClient {
           method: method,
           headers: headers,
           responseType: ResponseType.stream, // Enable streaming response
+          receiveTimeout: Duration.zero, // Disable timeout for streaming responses
         ),
       );
 
@@ -355,8 +356,7 @@ class UnifiedApiClient {
       await _performHandshake();
     }
 
-    // Log request start
-    debugPrint('📡 [UnifiedApiClient] Making encrypted request: $method $endpoint');
+    // Silent - only log errors
 
     try {
       // Build headers with authentication
@@ -379,7 +379,7 @@ class UnifiedApiClient {
         ),
       );
 
-      debugPrint('📡 [UnifiedApiClient] Response status: ${response.statusCode}');
+      // Silent - only log errors
 
       // Handle specific status codes manually since we disabled Dio's automatic throwing
       if (response.statusCode == 401 && !skipTokenRefresh) {
@@ -507,7 +507,7 @@ class UnifiedApiClient {
   ) {
     if (responseData == null) return null;
 
-    Map<String, dynamic> data;
+    dynamic data;
     
     // Handle encrypted responses
     if (responseData is Map<String, dynamic> && 
@@ -518,8 +518,8 @@ class UnifiedApiClient {
       data = responseData;
     }
 
-    // Apply JSON transformation if provided
-    if (fromJson != null) {
+    // Apply JSON transformation if provided (only works for Map responses)
+    if (fromJson != null && data is Map<String, dynamic>) {
       return fromJson(data);
     }
 

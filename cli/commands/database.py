@@ -39,7 +39,7 @@ from aico.core.config import ConfigurationManager
 
 # Import schema module to satisfy import chain, but we'll reload it in commands
 # to pick up any schema changes made after this module was first imported
-import aico.data.schemas.core
+import aico.data.schemas.schema
 
 # Import shared utilities using the same pattern as other CLI modules
 from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
@@ -335,7 +335,7 @@ def init(
             
             # Step 3: Fresh import - this will re-run decorators and re-register schemas
             console.print("🔄 Re-importing schema definitions...")
-            import aico.data.schemas.core
+            import aico.data.schemas.schema
             
             # Debug: Check what versions are registered
             core_schemas = SchemaRegistry.get_core_schemas()
@@ -376,11 +376,29 @@ def init(
                         continue
                     
                     try:
+                        # Special handling for migrations that run outside transaction
+                        schema_version = schema.definitions[version]
+                        if hasattr(schema_version, 'run_outside_transaction') and schema_version.run_outside_transaction:
+                            console.print(f"    🔓 Migration requires exclusive access - closing connection...")
+                            conn.close()
+                            
+                            # Reopen connection for the migration
+                            conn = _get_database_connection(str(db_file))
+                            manager = SchemaManager(conn, schema.definitions)
+                        
                         success = manager.apply_schema_version(version)
                         if success:
                             console.print(f"    ✅ Version {version} applied successfully")
                         else:
                             console.print(f"    ❌ Version {version} failed (returned False)")
+                            # Show the actual error if available
+                            if hasattr(manager, '_last_error') and manager._last_error:
+                                console.print(f"    💥 Error: {manager._last_error}", style="red")
+                                if hasattr(manager, '_last_error_traceback') and manager._last_error_traceback:
+                                    console.print(f"    📋 Traceback:", style="yellow")
+                                    for line in manager._last_error_traceback.split('\n'):
+                                        if line.strip():
+                                            console.print(f"       {line}", style="dim")
                             
                             # Special case: Version 11 renames facts_metadata to user_memories
                             # If user_memories already exists, the migration was already applied manually
@@ -475,7 +493,7 @@ def init(
                 del sys.modules[module_name]
             
             # Step 3: Fresh import - this will re-run decorators and re-register schemas
-            import aico.data.schemas.core
+            import aico.data.schemas.schema
             
             # Step 4: Apply schemas (now with fresh definitions)
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
@@ -598,7 +616,7 @@ def status(
             
             # Get latest available version from registry
             # Import core schema to ensure registration
-            import aico.data.schemas.core
+            import aico.data.schemas.schema
             core_schemas = SchemaRegistry.get_core_schemas()
             latest_version = 0
             if core_schemas:
@@ -1272,27 +1290,68 @@ def exec(
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Execute raw SQL query"""
-    conn = _get_db_connection()
+    # CRITICAL: For DROP TABLE operations, we need to ensure no other connections are holding locks
+    query_upper = query.upper().strip()
+    is_drop_table = query_upper.startswith("DROP TABLE")
+    
+    # Clean up any existing CLI logging connections BEFORE getting new connection
+    if is_drop_table:
+        try:
+            from cli.utils.logging import _cli_logging_manager
+            _cli_logging_manager.cleanup()
+        except:
+            pass
+        
+        # For DROP TABLE, use a completely fresh connection without CLI logging
+        # to avoid any lock conflicts
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        key_manager = AICOKeyManager(config)
+        
+        # Get database path
+        db_config = config.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        # Create minimal connection without logging
+        db_key = key_manager.derive_database_key(key_manager._get_cached_session() or key_manager.authenticate(typer.prompt("Enter master password", hide_input=True), interactive=False), "libsql", str(db_path))
+        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+    else:
+        conn = _get_db_connection()
     
     cursor = None
     try:
         # Safety check for destructive operations
-        query_upper = query.upper().strip()
         if any(query_upper.startswith(op) for op in ["DROP", "DELETE", "UPDATE", "INSERT"]):
             if not typer.confirm(f"Execute potentially destructive query: {query}?"):
                 console.print("[yellow]Cancelled[/yellow]")
                 return
         
+        # For DROP TABLE, disable foreign keys temporarily
+        if is_drop_table:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.commit()
+        
         cursor = conn.execute(query)
-        result = cursor.fetchall()
         
         # For non-SELECT queries, commit the transaction and show affected rows
-        query_upper = query.upper().strip()
-        if any(query_upper.startswith(op) for op in ["DELETE", "UPDATE", "INSERT"]):
+        is_mutation = any(query_upper.startswith(op) for op in ["DELETE", "UPDATE", "INSERT", "CREATE", "DROP", "ALTER"])
+        
+        if is_mutation:
             conn.commit()
+            
+            # Re-enable foreign keys if we disabled them
+            if is_drop_table:
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.commit()
+            
             affected_rows = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
-            console.print(f"[green]Query executed successfully. Affected rows: {affected_rows}[/green]")
+            console.print(f"[green]✅ Query executed successfully. Affected rows: {affected_rows}[/green]")
             return
+        
+        # Only fetch results for SELECT queries
+        result = cursor.fetchall()
         
         if not result:
             console.print("[yellow]Query returned no results[/yellow]")
@@ -1315,16 +1374,26 @@ def exec(
                     print(val if val is not None else "")
         else:
             # Table format - use plain print to avoid Rich truncation
-            if result and len(result[0]) > 0:
+            if result:
                 # Get column names
                 try:
                     cursor = conn.execute(query)
                     if hasattr(cursor, 'description') and cursor.description:
                         columns = [desc[0] for desc in cursor.description]
                     else:
-                        columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                        # DictRow objects have keys() method
+                        first_row = result[0]
+                        if hasattr(first_row, 'keys'):
+                            columns = list(first_row.keys())
+                        else:
+                            columns = [f"col_{i+1}" for i in range(len(first_row))]
                 except Exception:
-                    columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                    # Fallback: try to get keys from first row
+                    first_row = result[0]
+                    if hasattr(first_row, 'keys'):
+                        columns = list(first_row.keys())
+                    else:
+                        columns = [f"col_{i+1}" for i in range(len(first_row))]
                 
                 # Print header
                 print()

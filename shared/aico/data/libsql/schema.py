@@ -54,6 +54,7 @@ class SchemaVersion:
     sql_statements: List[str]
     rollback_statements: Optional[List[str]] = None
     created_at: Optional[datetime] = None
+    run_outside_transaction: bool = False  # For migrations that need to drop tables with FKs
 
 
 class SchemaManager:
@@ -102,6 +103,8 @@ class SchemaManager:
         """
         self.connection = connection
         self.schema_definitions = schema_definitions or {}
+        self._last_error = None
+        self._last_error_traceback = None
         
         # Initialize metadata tables
         self._initialize_metadata_tables()
@@ -284,8 +287,9 @@ class SchemaManager:
         schema_version = self.schema_definitions[version]
         
         try:
-            with self.connection.transaction():
-                # Apply SQL statements
+            if schema_version.run_outside_transaction:
+                # Run without transaction for migrations that drop tables with foreign keys
+                _get_logger().info(f"Running migration {version} outside transaction")
                 for sql_statement in schema_version.sql_statements:
                     if sql_statement.strip():
                         _get_logger().debug(f"Executing: {sql_statement[:100]}...")
@@ -310,12 +314,45 @@ class SchemaManager:
                 # Update current version
                 self._set_metadata("schema_version", str(version))
                 self._set_metadata("last_migration", str(datetime.now().isoformat()))
-                
-                _get_logger().info(f"Applied schema version {version}: {schema_version.name}")
-                return True
+            else:
+                # Run with transaction (default behavior)
+                with self.connection.transaction():
+                    # Apply SQL statements
+                    for sql_statement in schema_version.sql_statements:
+                        if sql_statement.strip():
+                            _get_logger().debug(f"Executing: {sql_statement[:100]}...")
+                            self.connection.execute(sql_statement)
+                    
+                    # Record migration
+                    rollback_sql = json.dumps(schema_version.rollback_statements) if schema_version.rollback_statements else None
+                    checksum = self._calculate_checksum(schema_version.sql_statements)
+                    
+                    self.connection.execute("""
+                        INSERT INTO _aico_migration_history 
+                        (version, name, description, rollback_sql, checksum)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (
+                        version,
+                        schema_version.name,
+                        schema_version.description,
+                        rollback_sql,
+                        checksum
+                    ))
+                    
+                    # Update current version
+                    self._set_metadata("schema_version", str(version))
+                    self._set_metadata("last_migration", str(datetime.now().isoformat()))
+            
+            _get_logger().info(f"Applied schema version {version}: {schema_version.name}")
+            return True
                 
         except Exception as e:
             _get_logger().error(f"Failed to apply schema version {version}: {e}")
+            import traceback
+            _get_logger().error(f"Traceback: {traceback.format_exc()}")
+            # Store the error for retrieval
+            self._last_error = str(e)
+            self._last_error_traceback = traceback.format_exc()
             return False
     
     def migrate_to_version(self, target_version: int) -> bool:

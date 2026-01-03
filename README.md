@@ -77,9 +77,11 @@ This isn't just feature development—it's relationship evolution. We start with
     - Betweenness Centrality - Key entity identification
     - GrandCypher - GQL/Cypher query execution
   - **Adaptive Learning:**
-    - Thompson Sampling - Contextual bandit for skill selection (Beta distribution)
+    - Thompson Sampling - Contextual bandit for skill selection and conversation initiation (Beta distribution)
     - RLHF (Reinforcement Learning from Human Feedback) - Behavioral learning
     - Bayesian Optimization - Memory strategy selection
+    - Contextual Multi-Armed Bandits - Proactive conversation timing optimization
+    - Human-Centered PCA Dimensions - Adaptivity and Civility scoring for agent behavior
 
 ## Key Capabilities
 
@@ -185,14 +187,15 @@ Each character maintains its own consistent personality across conversations whi
 - **[PLANNED]** Avatar expression coordination (Phase 4)
 
 ### 🤖 Autonomous Agency
-- **[PLANNED]** Multi-faceted self-directed behavior and initiative
-- **[PLANNED]** Goal generation: self-formulated objectives and hierarchical planning (MCTS)
-- **[PLANNED]** Curiosity-driven learning (RND, ICM) and intrinsic motivation
-- **[PLANNED]** Interest development and autonomous preference formation
-- **[PLANNED]** Planning & reasoning: multi-step strategic thinking and adaptation
-- **[PLANNED]** Meta-cognition: self-awareness of learning progress and capabilities
-- **[PLANNED]** Proactive engagement: reminders, suggestions, conversation starters, and contextual follow-ups
-- **[PLANNED]** Background learning and skill development, even when not actively conversing
+- **[DONE]** Multi-faceted self-directed behavior and initiative (Phases 1-5 complete)
+- **[DONE]** Goal generation: self-formulated objectives and hierarchical planning (LLM-backed with pattern learning)
+- **[DONE]** Curiosity-driven learning and intrinsic motivation (CuriosityEngine with 3 detectors)
+- **[DONE]** Interest development and autonomous preference formation (6 hobby templates)
+- **[DONE]** Planning & reasoning: multi-step strategic thinking and adaptation (Planner with LLM/template/simple fallback)
+- **[DONE]** Meta-cognition: self-awareness of learning progress and capabilities (Self-Reflection Engine, Self-Model)
+- **[DONE]** Proactive engagement: AICO-initiated conversations with state-of-the-art learning (Contextual Bandits + Thompson Sampling)
+- **[DONE]** Background learning and skill development (Behavioral learning with RLHF, lesson application)
+- **[WIP]** Follow-up reminders and contextual suggestions (Phase 6 in progress)
 
 ### 🎭 Embodiment & Presence
 - **[DONE]** Flutter Frontend: Cross-platform UI (macOS, iOS, Android, Linux, Windows)
@@ -250,24 +253,12 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - **Frontend**: v1.0.0 - Flutter UI with encrypted local storage
 - **Studio**: v0.0.1 - React admin dashboard (early development)
 
-**Database Schema**: v17 (core.py)
-- v1: Core tables (logs, events, auth, users)
-- v2: User UUID standardization
-- v3: Session type differentiation
-- v4: Task scheduler tables (scheduled_tasks, task_executions, task_locks)
-- v5: Fact-centric memory system (facts_metadata, fact_relationships, session_metadata)
-- v6: Feedback & Memory Album (feedback_events, extended facts_metadata)
-- v7: Conversation-level memory support (content_type, conversation metadata)
-- v8: Property graph preparation (cleanup unused tables)
-- v9: Property graph foundation (kg_nodes, kg_edges, property indexes, triggers)
-- v10: Temporal model & personal graph (bi-temporal tracking, entity disambiguation)
-- v11: Rename facts_metadata to user_memories (Memory Album clarity)
-- v12: AMS Phase 1 - Temporal metadata support
-- v13: AMS Phase 1 - Consolidation state tracking
-- v14: AMS Phase 3 - Behavioral learning (skills, user_skill_confidence, feedback_events, trajectories, Thompson sampling)
-- v15: AMS Phase 3 - Skill tracking (message_id linkage)
-- v16: AMS Phase 3 - Trajectory cleanup and retention policies
-- v17: Emotion Phase 1 - Emotional state persistence (emotion_state, emotion_history tables)
+**Database Schema**: v33 (core.py)
+- v1-17: Core infrastructure (logs, auth, memory, KG, AMS, emotion)
+- v18: AMS behavioral feedback corrections
+- v19: Historical placeholder (pre-agency schema state)
+- v20-32: Agency system (goals, plans, values/ethics, arbiter, self-reflection, execution)
+- v33: Communication skills - AICO-initiated conversations (aico_conversation_initiations table)
 
 **Production-Ready Subsystems**:
 - ✅ **Message Bus**: CurveZMQ-encrypted broker with protobuf serialization
@@ -287,7 +278,10 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - ✅ **Language Detection**: Ultra-fast detection (217 languages, 95% accuracy)
 - ✅ **Memory Album**: User-curated memories with REST API
 - ✅ **Emotion Simulation**: C-CPM Phase 1 complete with LLM conditioning, database persistence, API endpoints, CLI tools
-- 🚧 **Agency**: Goal generation and planning framework in progress
+- ✅ **Agency Core**: Phases 1-5 complete (Goals, Planning, Curiosity, Values/Ethics, Self-Reflection)
+- ✅ **Agency Phase 6.1-6.4**: Planner, Curiosity, World Model, Scheduler full implementations complete
+- ✅ **Agency Phase 6.11**: Communication skills with state-of-the-art learning (Contextual Bandits, Thompson Sampling, PCA dimensions)
+- 🚧 **Agency Phase 6**: Proactive behaviors (follow-ups/reminders) in progress
 - 🚧 **Avatar**: Three.js integration planned
 - 🚧 **Studio**: React admin dashboard in early development
 - 🚧 **User Emotion Detection**: Text/voice/facial analysis (Phase 2+)

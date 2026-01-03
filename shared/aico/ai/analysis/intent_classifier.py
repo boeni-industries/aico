@@ -84,19 +84,17 @@ class IntentClassificationProcessor(BaseAIProcessor):
         )
         
         # Model configuration (managed by ModelService)
-        self.model_name = "intent_classification"  # Model name in TransformersManager
-        self.embedding_dim = 768  # XLM-RoBERTa embedding dimension
+        self.model_name = "intent_classification"  # Zero-shot NLI model in TransformersManager
         self.supported_languages = [
             'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko',
             'ar', 'hi', 'th', 'vi', 'tr', 'pl', 'nl', 'sv', 'da', 'no'
-            # XLM-RoBERTa supports 100 languages
+            # joeddav/xlm-roberta-large-xnli supports 15+ languages natively, 100+ via XLM-R
         ]
         
-        # Intent prototypes (semantic embeddings)
-        self.intent_embeddings = {}  # Intent name -> embedding
+        # Intent categories for zero-shot classification
+        self.intent_labels = []  # Will be populated in initialize()
         
         # Caching and performance
-        self.embedding_cache = {}
         self.prediction_cache = {}
         self.cache_ttl = timedelta(hours=1)
         
@@ -120,16 +118,13 @@ class IntentClassificationProcessor(BaseAIProcessor):
     async def initialize(self):
         """Initialize the intent classification processor (no direct model loading)"""
         try:
-            logger.info("[INTENT_CLASSIFIER] Initializing processor (models managed by ModelService)")
+            logger.info("[INTENT_CLASSIFIER] Initializing zero-shot NLI processor (models managed by ModelService)")
             
-            # Initialize intent categories
-            await self._load_default_intents()
-            
-            # Create semantic prototypes using ModelService
-            await self._create_semantic_prototypes()
+            # Initialize intent categories for zero-shot classification
+            self.intent_labels = [intent.value for intent in IntentType]
             
             self.is_healthy = True
-            logger.info("[INTENT_CLASSIFIER] ✅ Processor initialized successfully")
+            logger.info(f"[INTENT_CLASSIFIER] ✅ Processor initialized with {len(self.intent_labels)} intent categories")
             
         except Exception as e:
             logger.error(f"[INTENT_CLASSIFIER] Failed to initialize processor: {e}")
@@ -226,9 +221,9 @@ class IntentClassificationProcessor(BaseAIProcessor):
             return False
         
         try:
-            # Check if we have intent embeddings
-            if not self.intent_embeddings:
-                logger.warning("[INTENT_CLASSIFIER] No intent embeddings available")
+            # Check if we have intent labels
+            if not self.intent_labels:
+                logger.warning("[INTENT_CLASSIFIER] No intent labels available")
                 return False
             
             # Quick test with ModelService
@@ -245,94 +240,10 @@ class IntentClassificationProcessor(BaseAIProcessor):
         """Get list of supported operations"""
         return [
             "classify_intent",
-            "add_training_example",
-            "get_intent_confidence",
             "detect_language",
             "analyze_conversation_context"
         ]
 
-    async def _load_default_intents(self):
-        """Initialize intent categories - no hardcoded examples needed with transformer models"""
-        # Define intent categories only - the transformer model handles the semantic understanding
-        self.intent_categories = [intent.value for intent in IntentType]
-        
-        # Create semantic prototypes using the model's understanding
-        await self._create_semantic_prototypes()
-        
-        logger.info(f"[INTENT_CLASSIFIER] Initialized {len(self.intent_categories)} intent categories "
-                   f"using transformer semantic understanding")
-
-    async def _create_semantic_prototypes(self):
-        """Create semantic prototypes for intent categories using the transformer model"""
-        logger.info("[INTENT_CLASSIFIER] Creating semantic prototypes for intent categories...")
-        
-        # Use the model's semantic understanding to create intent prototypes
-        intent_descriptions = {
-            IntentType.GREETING.value: "greeting hello hi welcome",
-            IntentType.QUESTION.value: "question what how why when where",
-            IntentType.REQUEST.value: "request help please can you assist",
-            IntentType.INFORMATION_SHARING.value: "information sharing telling explaining describing",
-            IntentType.CONFIRMATION.value: "confirmation yes correct agree right",
-            IntentType.NEGATION.value: "negation no wrong disagree incorrect",
-            IntentType.COMPLAINT.value: "complaint problem issue frustrated broken",
-            IntentType.FAREWELL.value: "farewell goodbye bye see you later",
-            IntentType.GENERAL.value: "general conversation discussion talk"
-        }
-        
-        # Create embeddings for intent prototypes
-        for intent_name, description in intent_descriptions.items():
-            embedding = await self._get_text_embedding(description)
-            if embedding is not None:
-                self.intent_embeddings[intent_name] = embedding
-        
-        logger.info(f"[INTENT_CLASSIFIER] Created semantic prototypes for {len(self.intent_embeddings)} intents")
-
-    async def _get_text_embedding(self, text: str) -> Optional[np.ndarray]:
-        """Get embedding for text using ModelService"""
-        # Check cache first
-        cache_key = hash(text)
-        if cache_key in self.embedding_cache:
-            cached_entry = self.embedding_cache[cache_key]
-            if datetime.now() - cached_entry['timestamp'] < self.cache_ttl:
-                return cached_entry['embedding']
-        
-        try:
-            # Get ModelService client
-            client = await self._get_modelservice_client()
-            
-            # Request embedding from ModelService
-            response = await client.get_embeddings(
-                model=self.model_name,
-                prompt=text
-            )
-            
-            if response.get('success') and response.get('data', {}).get('embedding'):
-                embedding = np.array(response['data']['embedding'])
-                
-                # Cache the result
-                self.embedding_cache[cache_key] = {
-                    'embedding': embedding,
-                    'timestamp': datetime.now()
-                }
-                
-                # Limit cache size
-                if len(self.embedding_cache) > self.config["cache_size"]:
-                    # Remove oldest entries
-                    oldest_keys = sorted(
-                        self.embedding_cache.keys(),
-                        key=lambda k: self.embedding_cache[k]['timestamp']
-                    )[:100]
-                    for key in oldest_keys:
-                        del self.embedding_cache[key]
-                
-                return embedding
-            else:
-                logger.warning(f"[INTENT_CLASSIFIER] Failed to get embedding from ModelService: {response.get('error')}")
-                return None
-            
-        except Exception as e:
-            logger.error(f"[INTENT_CLASSIFIER] Failed to get embedding via ModelService: {e}")
-            return None
 
     async def _classify_intent(
         self,
@@ -340,41 +251,38 @@ class IntentClassificationProcessor(BaseAIProcessor):
         user_id: Optional[str] = None,
         conversation_context: Optional[List[str]] = None
     ) -> IntentPrediction:
-        """Classify intent of input text"""
+        """Classify intent using zero-shot NLI approach"""
         start_time = time.time()
         
         try:
-            # Get text embedding
-            text_embedding = await self._get_text_embedding(text)
-            if text_embedding is None:
+            # Get ModelService client
+            client = await self._get_modelservice_client()
+            
+            # Use intent classification via ModelService (uses zero-shot NLI internally)
+            response = await client.classify_intent(
+                text=text,
+                model=self.model_name
+            )
+            
+            if not response.get('success'):
+                logger.warning(f"[INTENT_CLASSIFIER] Classification failed: {response.get('error')}")
                 return IntentPrediction(
                     intent=IntentType.GENERAL.value,
                     confidence=0.0,
                     inference_time_ms=(time.time() - start_time) * 1000
                 )
             
-            # Calculate similarities with all intent embeddings
-            similarities = {}
-            for intent_name, intent_embedding in self.intent_embeddings.items():
-                similarity = self._cosine_similarity(text_embedding, intent_embedding)
-                similarities[intent_name] = float(similarity)
+            # Extract results from intent classification response
+            result_data = response.get('data', {})
+            best_intent = result_data.get('predicted_intent', IntentType.GENERAL.value)
+            best_confidence = result_data.get('confidence', 0.0)
             
-            # Find best match
-            best_intent = max(similarities, key=similarities.get)
-            best_confidence = similarities[best_intent]
-            
-            # Apply conversation context boost
-            if user_id and conversation_context:
-                best_intent, best_confidence = await self._apply_context_boost(
-                    best_intent, best_confidence, similarities, user_id, conversation_context
-                )
+            # Get alternatives if available
+            alternatives_data = result_data.get('alternatives', [])
+            alternatives = [(alt[0], alt[1]) for alt in alternatives_data[:3]]
             
             # Detect language (simple heuristic)
             detected_language = self._detect_language(text)
-            
-            # Get alternatives (top 3)
-            sorted_intents = sorted(similarities.items(), key=lambda x: x[1], reverse=True)
-            alternatives = [(intent, conf) for intent, conf in sorted_intents[1:4]]
             
             inference_time = (time.time() - start_time) * 1000
             
@@ -388,55 +296,13 @@ class IntentClassificationProcessor(BaseAIProcessor):
             
         except Exception as e:
             logger.error(f"[INTENT_CLASSIFIER] Classification failed: {e}")
+            import traceback
+            logger.error(f"[INTENT_CLASSIFIER] Traceback: {traceback.format_exc()}")
             return IntentPrediction(
                 intent=IntentType.GENERAL.value,
                 confidence=0.0,
                 inference_time_ms=(time.time() - start_time) * 1000
             )
-
-    async def _apply_context_boost(
-        self,
-        predicted_intent: str,
-        confidence: float,
-        all_similarities: Dict[str, float],
-        user_id: str,
-        conversation_context: List[str]
-    ) -> Tuple[str, float]:
-        """Apply conversation context to boost related intents"""
-        
-        # Context patterns that boost certain intents
-        context_boosts = {
-            IntentType.QUESTION.value: {
-                "follows": [IntentType.GREETING.value, IntentType.INFORMATION_SHARING.value],
-                "boost": 0.1
-            },
-            IntentType.CONFIRMATION.value: {
-                "follows": [IntentType.QUESTION.value, IntentType.REQUEST.value],
-                "boost": 0.15
-            },
-            IntentType.NEGATION.value: {
-                "follows": [IntentType.QUESTION.value, IntentType.REQUEST.value],
-                "boost": 0.15
-            },
-            IntentType.FAREWELL.value: {
-                "follows": [IntentType.CONFIRMATION.value, IntentType.INFORMATION_SHARING.value],
-                "boost": 0.1
-            }
-        }
-        
-        # Apply context boosts
-        boosted_similarities = all_similarities.copy()
-        
-        for intent, boost_config in context_boosts.items():
-            if any(prev_intent in boost_config["follows"] for prev_intent in conversation_context[-3:]):
-                if intent in boosted_similarities:
-                    boosted_similarities[intent] += boost_config["boost"]
-        
-        # Find new best match
-        best_intent = max(boosted_similarities, key=boosted_similarities.get)
-        best_confidence = boosted_similarities[best_intent]
-        
-        return best_intent, min(best_confidence, 1.0)  # Cap at 1.0
 
     def _detect_language(self, text: str) -> Optional[str]:
         """Simple language detection based on character patterns"""
@@ -474,44 +340,6 @@ class IntentClassificationProcessor(BaseAIProcessor):
             recent_intents = recent_intents[-context_window:]
         
         context.shared_state['recent_intents'] = recent_intents
-
-    def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        """Calculate cosine similarity between two vectors"""
-        try:
-            dot_product = np.dot(a, b)
-            norm_a = np.linalg.norm(a)
-            norm_b = np.linalg.norm(b)
-            
-            if norm_a == 0 or norm_b == 0:
-                return 0.0
-            
-            return float(dot_product / (norm_a * norm_b))
-        except Exception as e:
-            logger.error(f"[INTENT_CLASSIFIER] Cosine similarity calculation failed: {e}")
-            return 0.0
-
-    async def add_training_example(self, text: str, intent: str, language: Optional[str] = None):
-        """Add a new training example and update intent embeddings"""
-        try:
-            # Get embedding for the new example
-            embedding = await self._get_text_embedding(text)
-            if embedding is None:
-                logger.warning(f"[INTENT_CLASSIFIER] Failed to get embedding for training example: {text}")
-                return
-            
-            # Update or create intent embedding
-            if intent in self.intent_embeddings:
-                # Average with existing embedding (simple approach)
-                existing_embedding = self.intent_embeddings[intent]
-                self.intent_embeddings[intent] = (existing_embedding + embedding) / 2
-            else:
-                # New intent
-                self.intent_embeddings[intent] = embedding
-            
-            logger.info(f"[INTENT_CLASSIFIER] Added training example for intent '{intent}'")
-            
-        except Exception as e:
-            logger.error(f"[INTENT_CLASSIFIER] Failed to add training example: {e}")
 
 
 # Global processor instance for AICO coordination

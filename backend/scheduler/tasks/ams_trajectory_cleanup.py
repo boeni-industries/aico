@@ -82,11 +82,11 @@ class TrajectoryCleanupTask(BaseTask):
             
             print("   Querying trajectories to archive...")
             archive_result = context.db_connection.execute(
-                """UPDATE trajectories 
+                """UPDATE ams_trajectories 
                    SET archived = TRUE 
                    WHERE timestamp < ? 
                    AND trajectory_id NOT IN (
-                       SELECT DISTINCT trajectory_id FROM feedback_events WHERE trajectory_id IS NOT NULL
+                       SELECT DISTINCT trajectory_id FROM ams_behavioral_feedback WHERE trajectory_id IS NOT NULL
                    )
                    AND archived = FALSE""",
                 (archive_cutoff.isoformat(),)
@@ -100,7 +100,7 @@ class TrajectoryCleanupTask(BaseTask):
             
             print("   Querying archived trajectories to delete...")
             delete_result = context.db_connection.execute(
-                """DELETE FROM trajectories 
+                """DELETE FROM ams_trajectories 
                    WHERE timestamp < ? 
                    AND archived = TRUE""",
                 (delete_cutoff.isoformat(),)
@@ -116,7 +116,7 @@ class TrajectoryCleanupTask(BaseTask):
                     COUNT(*) as total,
                     SUM(CASE WHEN archived = TRUE THEN 1 ELSE 0 END) as archived,
                     SUM(CASE WHEN feedback_reward IS NOT NULL THEN 1 ELSE 0 END) as with_feedback
-                   FROM trajectories"""
+                   FROM ams_trajectories"""
             ).fetchone()
             
             total, archived, with_feedback = stats if stats else (0, 0, 0)

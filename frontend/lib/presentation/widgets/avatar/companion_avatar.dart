@@ -5,7 +5,9 @@ import 'package:aico_frontend/data/models/emotion_model.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
+import 'package:aico_frontend/presentation/providers/agency_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
+import 'package:aico_frontend/presentation/widgets/agency/floating_agency_icon.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/avatar_viewer.dart';
 import 'package:aico_frontend/presentation/widgets/emotion/emotion_color_mapper.dart';
 import 'package:aico_frontend/presentation/widgets/emotion/emotion_formatter.dart';
@@ -254,7 +256,7 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     }
   }
 
-  InlineSpan _buildTooltipContent(AvatarMode avatarMode, EmotionModel? emotion) {
+  InlineSpan _buildTooltipContent(AvatarMode avatarMode, EmotionModel? emotion, AgencyBadgeState agencyState) {
     // Get base status message
     final String statusMessage = switch (avatarMode) {
       AvatarMode.thinking => 'Thinking...',
@@ -276,9 +278,21 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
             },
     };
 
-    // Build rich tooltip with clear hierarchy
-    final spans = <InlineSpan>[
-      // Status (primary info)
+    // Build rich tooltip with clear visual hierarchy and gestalt grouping
+    final spans = <InlineSpan>[];
+
+    // === AVATAR STATE SECTION ===
+    spans.addAll([
+      TextSpan(
+        text: 'AVATAR',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.5),
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+        ),
+      ),
+      const TextSpan(text: '\n'),
       TextSpan(
         text: statusMessage,
         style: TextStyle(
@@ -288,9 +302,9 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
           letterSpacing: 0.02,
         ),
       ),
-    ];
+    ]);
 
-    // Add emotion section if available
+    // === EMOTION SECTION ===
     if (emotion != null) {
       final emotionColor = EmotionColorMapper.getColor(emotion.primary);
       final label = EmotionFormatter.formatLabel(emotion.primary);
@@ -298,6 +312,17 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
       final confidence = (emotion.confidence * 100).round();
 
       spans.addAll([
+        const TextSpan(text: '\n\n'),
+        // Section header
+        TextSpan(
+          text: 'EMOTION',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.5),
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
         const TextSpan(text: '\n'),
         // Emotion indicator with color dot
         WidgetSpan(
@@ -311,49 +336,206 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: emotionColor.withValues(alpha: 0.4),
-                  blurRadius: 4,
-                  spreadRadius: 1,
+                  color: emotionColor.withValues(alpha: 0.5),
+                  blurRadius: 6,
+                  spreadRadius: 2,
                 ),
               ],
             ),
           ),
         ),
-        // Emotion label
         TextSpan(
           text: label,
           style: TextStyle(
             color: emotionColor,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0.03,
           ),
         ),
-        // Confidence percentage
         TextSpan(
           text: ' $confidence%',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
+            color: Colors.white.withValues(alpha: 0.6),
             fontSize: 11,
             fontWeight: FontWeight.w500,
           ),
         ),
         const TextSpan(text: '\n'),
-        // Description (tertiary info)
         TextSpan(
           text: description,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.65),
+            color: Colors.white.withValues(alpha: 0.7),
             fontSize: 11,
             fontWeight: FontWeight.w400,
-            height: 1.3,
-            fontStyle: FontStyle.italic,
+            height: 1.4,
           ),
         ),
       ]);
     }
 
+    // === AGENCY SECTION ===
+    final agencyInfo = _getComprehensiveAgencyInfo(agencyState);
+    
+    spans.addAll([
+      const TextSpan(text: '\n\n'),
+      // Section header
+      TextSpan(
+        text: 'AGENCY',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.5),
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+        ),
+      ),
+      const TextSpan(text: '\n'),
+    ]);
+
+    // Add each agency dimension with refined visual design
+    for (var i = 0; i < agencyInfo.length; i++) {
+      final item = agencyInfo[i];
+      final isLast = i == agencyInfo.length - 1;
+      
+      spans.addAll([
+        // Color dot with refined styling
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            width: 6,
+            height: 6,
+            margin: const EdgeInsets.only(right: 8, top: 2),
+            decoration: BoxDecoration(
+              color: item.color,
+              shape: BoxShape.circle,
+              boxShadow: item.isActive ? [
+                BoxShadow(
+                  color: item.color.withValues(alpha: 0.5),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ] : null,
+            ),
+          ),
+        ),
+        // Label with refined typography
+        TextSpan(
+          text: item.label,
+          style: TextStyle(
+            color: item.isActive 
+              ? item.color 
+              : Colors.white.withValues(alpha: 0.45),
+            fontSize: 11,
+            fontWeight: item.isActive ? FontWeight.w700 : FontWeight.w500,
+            letterSpacing: 0.3,
+          ),
+        ),
+        // Value with improved hierarchy
+        if (item.value != null)
+          TextSpan(
+            text: ' · ${item.value}',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: item.isActive ? 0.8 : 0.4),
+              fontSize: 11,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0.1,
+            ),
+          ),
+        if (!isLast) const TextSpan(text: '\n'),
+      ]);
+    }
+
     return TextSpan(children: spans);
+  }
+
+  List<_AgencyStatusItem> _getComprehensiveAgencyInfo(AgencyBadgeState state) {
+    const purple = Color(0xFFB8A1EA);
+    const amber = Color(0xFFF59E0B);
+    const emerald = Color(0xFF10B981);
+    const gray = Color(0xFF9CA3AF);
+    
+    final items = <_AgencyStatusItem>[];
+    
+    // 1. Current Intention
+    if (state.mode == AgencyBadgeMode.activeIntention && state.intentionSummary != null) {
+      items.add(_AgencyStatusItem(
+        label: 'Intention',
+        value: state.intentionSummary,
+        color: purple,
+        isActive: true,
+      ));
+    } else {
+      items.add(_AgencyStatusItem(
+        label: 'Intention',
+        value: 'None',
+        color: gray,
+        isActive: false,
+      ));
+    }
+    
+    // 2. Active Goals
+    if (state.mode == AgencyBadgeMode.goalProgress) {
+      final percent = (state.intensity * 100).round();
+      final goalName = state.metadata['goalName'] as String?;
+      items.add(_AgencyStatusItem(
+        label: 'Goal',
+        value: goalName != null ? '$goalName ($percent%)' : '$percent% complete',
+        color: purple,
+        isActive: true,
+      ));
+    } else if (state.mode == AgencyBadgeMode.goalCompleted) {
+      final goalName = state.metadata['goalName'] as String?;
+      items.add(_AgencyStatusItem(
+        label: 'Goal',
+        value: goalName != null ? '✓ $goalName' : 'Completed!',
+        color: emerald,
+        isActive: true,
+      ));
+    } else {
+      items.add(_AgencyStatusItem(
+        label: 'Goals',
+        value: 'None active',
+        color: gray,
+        isActive: false,
+      ));
+    }
+    
+    // 3. Pending Lessons
+    if (state.mode == AgencyBadgeMode.lessonPending || 
+        (state.mode == AgencyBadgeMode.multipleItems && state.pendingCount > 0)) {
+      final count = state.pendingCount;
+      items.add(_AgencyStatusItem(
+        label: 'Lessons',
+        value: count > 1 ? '$count ready to review' : '1 ready to review',
+        color: amber,
+        isActive: true,
+      ));
+    } else {
+      items.add(_AgencyStatusItem(
+        label: 'Lessons',
+        value: 'None pending',
+        color: gray,
+        isActive: false,
+      ));
+    }
+    
+    // 4. Proactive Messages (placeholder - will be populated when backend provides data)
+    items.add(_AgencyStatusItem(
+      label: 'Proactive',
+      value: 'Quiet',
+      color: gray,
+      isActive: false,
+    ));
+    
+    // 5. Learning Status (placeholder - will show skill performance when available)
+    items.add(_AgencyStatusItem(
+      label: 'Learning',
+      value: 'Observing',
+      color: gray,
+      isActive: false,
+    ));
+    
+    return items;
   }
 
   double _getPulseMultiplier(AvatarMode mode, double intensity) {
@@ -448,17 +630,18 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
         
         // Watch emotion state to keep provider alive and get updates
         final emotion = ref.watch(emotionStateProvider);
+        final agencyState = ref.watch(agencyBadgeStateProvider);
         
         return Tooltip(
-          richMessage: _buildTooltipContent(avatarState.mode, emotion),
+          richMessage: _buildTooltipContent(avatarState.mode, emotion, agencyState),
           decoration: BoxDecoration(
             // Glassmorphic tooltip matching AICO design
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withValues(alpha: 0.12),
-                Colors.white.withValues(alpha: 0.08),
+                Colors.white.withValues(alpha: 0.22),
+                Colors.white.withValues(alpha: 0.18),
               ],
             ),
             borderRadius: BorderRadius.circular(12),
@@ -513,7 +696,7 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                     clipBehavior: Clip.none, // Allow glow to extend beyond bounds
                     alignment: isWidthConstrained ? Alignment.topCenter : Alignment.center,
                     children: [
-                      // Radial glow behind avatar - extends beyond avatar bounds
+                      // Radial glow behind avatar - pure system state only
                       Positioned(
                         left: -maxWidth * 0.2, // Extend glow beyond left
                         right: -maxWidth * 0.2, // Extend glow beyond right
@@ -544,6 +727,13 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                           child: AvatarViewer(),
                         ),
                       ),
+                      // Floating agency icon - appears above avatar head
+                      // Gaming-inspired indicator for state changes
+                      Positioned(
+                        top: height * 0.04, // Above avatar head
+                        left: width / 2 - 12, // Centered horizontally
+                        child: const FloatingAgencyIcon(),
+                      ),
                     ],
                   );
                 },
@@ -554,6 +744,21 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
       },
     );
   }
+}
+
+/// Helper class for agency status item display in tooltip
+class _AgencyStatusItem {
+  final String label;
+  final String? value;
+  final Color color;
+  final bool isActive;
+
+  _AgencyStatusItem({
+    required this.label,
+    this.value,
+    required this.color,
+    required this.isActive,
+  });
 }
 
 /// Custom color tween that interpolates through HSL color space

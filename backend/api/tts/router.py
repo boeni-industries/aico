@@ -4,11 +4,6 @@ TTS API Router
 REST API endpoints for text-to-speech synthesis via modelservice.
 """
 
-# IMMEDIATE DEBUG - Before any imports
-print("=" * 100)
-print("🔥🔥🔥 TTS ROUTER.PY BEING LOADED - BEFORE IMPORTS")
-print("=" * 100)
-
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -20,14 +15,6 @@ from .schemas import TtsSynthesizeRequest
 
 logger = get_logger("aico.api.tts", "router")
 
-# MODULE LOAD DEBUG - This should print on every module reload
-print("=" * 80)
-print("🔥 TTS ROUTER MODULE LOADED - VERSION 3 - ENVELOPE UNPACKING")
-print("=" * 80)
-import sys
-print(f"Module path: {__file__}")
-print(f"Python: {sys.version}")
-print("=" * 80)
 
 router = APIRouter()
 

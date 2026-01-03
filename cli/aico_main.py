@@ -48,6 +48,14 @@ from rich.console import Console
 # Create Rich console - no special handling needed after stdout fix
 console = Console()
 
+# Initialize CLI logging BEFORE importing any modules that use get_logger()
+# This prevents "Logging not initialized" errors during module imports
+from cli.utils.logging import initialize_cli_logging
+try:
+    initialize_cli_logging()
+except Exception:
+    pass  # Ignore errors if already initialized or database not ready
+
 from cli.commands.config import app as config_app
 from cli.commands.version import app as version_app
 from cli.commands.database import app as database_app
@@ -98,6 +106,22 @@ except ImportError as e:
     # Gateway commands not available
     pass  # Expected when gateway dependencies not installed - CLI continues without gateway commands
 
+# Import and register agency commands
+try:
+    from cli.commands import agency
+    app.add_typer(agency.app, name="agency", help="🎯 Agency system control (intentions, values, policies)")
+except ImportError as e:
+    # Agency commands not available
+    pass
+
+# Import and register studio commands
+try:
+    from cli.commands import studio
+    app.add_typer(studio.app, name="studio", help="🖥️ Studio admin UI (React dashboard)")
+except ImportError:
+    # Studio commands not available (e.g., missing node/npm)
+    pass
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
     """
@@ -129,6 +153,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             ("🌐", "gateway", "API Gateway management and protocol control"),
             ("🤖", "modelservice", "Model service management and control"),
             ("🦙", "ollama", "Ollama model management and operations"),
+            ("🎯", "agency", "Agency system control (intentions, values, policies, lessons)"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")
         ]
         

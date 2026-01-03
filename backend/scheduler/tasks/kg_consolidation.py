@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 from aico.core.logging import get_logger
+from aico.ai.knowledge_graph.models import PropertyGraph
 
 from .base import BaseTask, TaskContext, TaskResult
 
@@ -286,9 +287,37 @@ class KGConsolidationTask(BaseTask):
                     else:
                         print(f"🕸️ [KG_TASK]    No duplicates found (clean extraction)")
                     
-                    # Mark messages as consolidated (get unique conversation IDs)
-                    conversation_ids = list(set([msg.get("conversation_id") for msg in messages if msg.get("conversation_id")]))
-                    await self._mark_messages_consolidated(memory_manager, user_id, conversation_ids)
+                    # Trigger ChromaDB cleanup after deduplication to remove orphaned embeddings
+                    print(f"🕸️ [KG_TASK] 🧹 Running post-deduplication ChromaDB cleanup...")
+                    cleanup_start = time.time()
+                    await memory_manager._kg_storage.save_graph(
+                        PropertyGraph(nodes=[], edges=[]),
+                        superseded_node_ids=set()
+                    )
+                    cleanup_time = time.time() - cleanup_start
+                    print(f"🕸️ [KG_TASK] ✅ ChromaDB cleanup completed in {cleanup_time:.2f}s")
+                    
+                    # Clean up historical embeddings from ChromaDB after deduplication
+                    print(f"\n🕸️ [KG_TASK] 🧹 Cleaning up historical ChromaDB embeddings...")
+                    cleanup_start = time.time()
+                    from .kg_consolidation_chromadb import cleanup_chromadb_historical
+                    cleanup_stats = await cleanup_chromadb_historical(memory_manager)
+                    cleanup_time = time.time() - cleanup_start
+                    print(f"🕸️ [KG_TASK] ✅ ChromaDB cleanup completed in {cleanup_time:.2f}s")
+                    if cleanup_stats.get('nodes_deleted', 0) > 0 or cleanup_stats.get('edges_deleted', 0) > 0:
+                        print(f"🕸️ [KG_TASK]    Deleted {cleanup_stats['nodes_deleted']} historical node embeddings")
+                        print(f"🕸️ [KG_TASK]    Deleted {cleanup_stats['edges_deleted']} historical edge embeddings")
+                    else:
+                        print(f"🕸️ [KG_TASK]    No historical embeddings to clean")
+                    
+                    # Mark messages as consolidated (get message timestamps)
+                    message_timestamps = [msg.get("timestamp") for msg in messages if msg.get("timestamp")]
+                    print(f"🕸️ [KG_TASK] 🏷️  Marking {len(message_timestamps)} messages as consolidated")
+                    if not message_timestamps:
+                        print(f"🕸️ [KG_TASK] ⚠️  WARNING: No timestamps found in messages!")
+                    else:
+                        await self._mark_messages_consolidated(memory_manager, user_id, message_timestamps)
+                        print(f"🕸️ [KG_TASK] ✅ Messages marked as consolidated")
                     
                     total_messages += processed_count
                     user_time = time.time() - user_start
@@ -508,31 +537,183 @@ class KGConsolidationTask(BaseTask):
             # Get database connection
             db = memory_manager._kg_storage.db
             
-            # Mark duplicates as historical
+            # Mark duplicates as historical (only if not already historical)
             for node_id in total_superseded_ids:
-                db.execute(
-                    "UPDATE kg_nodes SET is_current = 0, updated_at = datetime('now') WHERE id = ?",
+                # Check if node exists and is current
+                cursor = db.execute(
+                    "SELECT user_id, label, properties, is_current FROM kg_nodes WHERE id = ?",
                     (node_id,)
                 )
+                row = cursor.fetchone()
+                if not row:
+                    continue
+                
+                user_id_val, label, properties, is_current = row
+                
+                # Skip if already historical
+                if is_current == 0:
+                    continue
+                
+                # Check if a historical version with same (user_id, label, properties, is_current=0) already exists
+                cursor = db.execute(
+                    "SELECT id FROM kg_nodes WHERE user_id = ? AND label = ? AND properties = ? AND is_current = 0 LIMIT 1",
+                    (user_id_val, label, properties)
+                )
+                historical_exists = cursor.fetchone()
+                
+                if historical_exists:
+                    # Historical version already exists - delete this node instead of updating
+                    logger.warning(
+                        f"[POST_DEDUP] Historical node already exists for {label}. "
+                        f"Deleting duplicate node {node_id} instead of marking historical."
+                    )
+                    # First delete edges referencing this node
+                    db.execute("DELETE FROM kg_edges WHERE source_id = ? OR target_id = ?", (node_id, node_id))
+                    # Then delete the node
+                    db.execute("DELETE FROM kg_nodes WHERE id = ?", (node_id,))
+                else:
+                    # Safe to mark as historical
+                    db.execute(
+                        "UPDATE kg_nodes SET is_current = 0, updated_at = datetime('now') WHERE id = ?",
+                        (node_id,)
+                    )
             
             # Update edges to point to canonical nodes
             print(f"🕸️ [KG_TASK] 🔄 Updating edges to point to canonical nodes...")
             for superseded_id, canonical_id in node_mapping.items():
                 # Update edges where superseded node is the source
-                result = db.execute(
-                    "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ? AND user_id = ?",
-                    (canonical_id, superseded_id, user_id)
-                )
-                edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                try:
+                    result = db.execute(
+                        "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ? AND user_id = ?",
+                        (canonical_id, superseded_id, user_id)
+                    )
+                    edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                except Exception as e:
+                    if "UNIQUE constraint failed" in str(e):
+                        # UNIQUE constraint violation - this edge would become a duplicate after update
+                        # Delete the edge instead of updating it
+                        logger.warning(
+                            f"[POST_DEDUP] UNIQUE constraint prevented edge update (source_id). "
+                            f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                        )
+                        result = db.execute(
+                            "DELETE FROM kg_edges WHERE source_id = ? AND user_id = ?",
+                            (superseded_id, user_id)
+                        )
+                        print(f"🕸️ [KG_TASK] 🛡️  Deleted {result.rowcount if hasattr(result, 'rowcount') else 0} duplicate edges (source update)")
+                    else:
+                        raise
                 
                 # Update edges where superseded node is the target
-                result = db.execute(
-                    "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ? AND user_id = ?",
-                    (canonical_id, superseded_id, user_id)
-                )
-                edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                try:
+                    result = db.execute(
+                        "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ? AND user_id = ?",
+                        (canonical_id, superseded_id, user_id)
+                    )
+                    edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                except Exception as e:
+                    if "UNIQUE constraint failed" in str(e):
+                        # UNIQUE constraint violation - this edge would become a duplicate after update
+                        # Delete the edge instead of updating it
+                        logger.warning(
+                            f"[POST_DEDUP] UNIQUE constraint prevented edge update (target_id). "
+                            f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                        )
+                        result = db.execute(
+                            "DELETE FROM kg_edges WHERE target_id = ? AND user_id = ?",
+                            (superseded_id, user_id)
+                        )
+                        print(f"🕸️ [KG_TASK] 🛡️  Deleted {result.rowcount if hasattr(result, 'rowcount') else 0} duplicate edges (target update)")
+                    else:
+                        raise
             
             print(f"🕸️ [KG_TASK] ✅ Updated {edges_updated} edge references")
+            
+            # CRITICAL FIX: Update orphaned edges from previous batches
+            # These are edges pointing to nodes that were merged AFTER the edge was created
+            print(f"🕸️ [KG_TASK] 🔄 Checking for orphaned edges from previous batches...")
+            
+            # Find all current edges pointing to historical nodes
+            cursor = db.execute("""
+                SELECT DISTINCT e.id, e.source_id, e.target_id, e.relation_type,
+                       CASE WHEN ns.is_current = 0 THEN 1 ELSE 0 END as source_historical,
+                       CASE WHEN nt.is_current = 0 THEN 1 ELSE 0 END as target_historical
+                FROM kg_edges e
+                LEFT JOIN kg_nodes ns ON e.source_id = ns.id
+                LEFT JOIN kg_nodes nt ON e.target_id = nt.id
+                WHERE e.is_current = 1 
+                AND e.user_id = ?
+                AND (ns.is_current = 0 OR nt.is_current = 0)
+            """, (user_id,))
+            
+            orphaned_edges = cursor.fetchall()
+            orphaned_fixed = 0
+            orphaned_deleted = 0
+            
+            for edge_id, source_id, target_id, relation_type, source_hist, target_hist in orphaned_edges:
+                # For each orphaned edge, find the canonical node it should point to
+                fixed = False
+                
+                # If source is historical, find its canonical replacement
+                if source_hist:
+                    cursor = db.execute("""
+                        SELECT id FROM kg_nodes 
+                        WHERE user_id = ? 
+                        AND label = (SELECT label FROM kg_nodes WHERE id = ?)
+                        AND properties = (SELECT properties FROM kg_nodes WHERE id = ?)
+                        AND is_current = 1
+                        LIMIT 1
+                    """, (user_id, source_id, source_id))
+                    canonical_source = cursor.fetchone()
+                    if canonical_source:
+                        try:
+                            db.execute(
+                                "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE id = ?",
+                                (canonical_source[0], edge_id)
+                            )
+                            orphaned_fixed += 1
+                            fixed = True
+                        except Exception as e:
+                            if "UNIQUE constraint failed" in str(e):
+                                db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
+                                orphaned_deleted += 1
+                                fixed = True
+                
+                # If target is historical, find its canonical replacement
+                if target_hist and not fixed:
+                    cursor = db.execute("""
+                        SELECT id FROM kg_nodes 
+                        WHERE user_id = ? 
+                        AND label = (SELECT label FROM kg_nodes WHERE id = ?)
+                        AND properties = (SELECT properties FROM kg_nodes WHERE id = ?)
+                        AND is_current = 1
+                        LIMIT 1
+                    """, (user_id, target_id, target_id))
+                    canonical_target = cursor.fetchone()
+                    if canonical_target:
+                        try:
+                            db.execute(
+                                "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE id = ?",
+                                (canonical_target[0], edge_id)
+                            )
+                            orphaned_fixed += 1
+                            fixed = True
+                        except Exception as e:
+                            if "UNIQUE constraint failed" in str(e):
+                                db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
+                                orphaned_deleted += 1
+                                fixed = True
+                
+                # If we couldn't find a canonical node, delete the edge as last resort
+                if not fixed:
+                    db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
+                    orphaned_deleted += 1
+            
+            if orphaned_fixed > 0:
+                print(f"🕸️ [KG_TASK] ✅ Fixed {orphaned_fixed} orphaned edges from previous batches")
+            if orphaned_deleted > 0:
+                print(f"🕸️ [KG_TASK] 🧹 Deleted {orphaned_deleted} orphaned edges (no canonical node found)")
+                logger.warning(f"[POST_DEDUP] Deleted {orphaned_deleted} orphaned edges with no canonical replacement")
             
             db.commit()
             
@@ -543,30 +724,29 @@ class KGConsolidationTask(BaseTask):
             
         except Exception as e:
             print(f"🕸️ [KG_TASK] ⚠️  Post-batch deduplication failed: {e}")
-            logger.error(f"🕸️ [KG_TASK] Post-batch deduplication failed: {e}")
             import traceback
             traceback.print_exc()
-            return {'duplicates_merged': 0, 'edges_updated': 0}
+            return {'nodes_deleted': 0, 'edges_deleted': 0}
     
     async def _mark_messages_consolidated(
         self,
         memory_manager,
         user_id: str,
-        conversation_ids: List[str]
+        message_timestamps: List[str]
     ) -> None:
         """
-        Mark messages as consolidated in working memory.
+        Mark specific messages as consolidated in working memory.
         
         Args:
             memory_manager: Memory manager instance
             user_id: User ID
-            conversation_ids: List of conversation IDs that were processed
+            message_timestamps: List of message timestamps that were processed
         """
         try:
             working_store = memory_manager._working_store
             
             if not working_store or not working_store._initialized:
-                logger.warning("🕸️ [KG_TASK] Working memory store not initialized")
+                logger.info("🕸️ [KG_TASK] Working memory store not yet initialized, skipping consolidation marking")
                 return
             
             db = working_store.dbs.get("session_memory")
@@ -574,33 +754,57 @@ class KGConsolidationTask(BaseTask):
                 logger.warning("🕸️ [KG_TASK] session_memory database not available")
                 return
             
-            # Update messages in LMDB by scanning for matching conversation_ids
-            updated_count = 0
-            with working_store.env.begin(db=db, write=True) as txn:
+            # Update messages in LMDB by scanning for matching timestamps
+            # First pass: collect messages to update (read-only)
+            messages_to_update = []
+            total_scanned = 0
+            matching_timestamps = 0
+            
+            # Convert timestamps to set for O(1) lookup
+            timestamp_set = set(message_timestamps)
+            logger.info(f"🕸️ [KG_TASK] 🔍 Scanning LMDB for {len(timestamp_set)} specific message timestamps")
+            
+            with working_store.env.begin(db=db, write=False) as txn:
                 cursor = txn.cursor()
                 
                 for key, value in cursor:
+                    total_scanned += 1
                     try:
-                        # Check if this message belongs to one of the processed conversations
-                        key_str = key.decode('utf-8')
-                        conv_id = key_str.split(':')[0] if ':' in key_str else None
-                        
-                        if conv_id not in conversation_ids:
-                            continue
-                        
-                        # Parse and update message
+                        # Parse message
                         msg = json.loads(value.decode('utf-8'))
                         
+                        # Check if this is one of the processed messages
+                        msg_timestamp = msg.get('timestamp')
+                        if msg_timestamp not in timestamp_set:
+                            continue
+                        
+                        matching_timestamps += 1
+                        
+                        # Verify it's a user message for this user
                         if msg.get('role') == 'user' and msg.get('user_id') == user_id:
-                            if not msg.get('kg_consolidated', False):
+                            # Check if not consolidated (handle both None and False)
+                            kg_consolidated = msg.get('kg_consolidated')
+                            logger.debug(f"🕸️ [KG_TASK] Message {msg_timestamp}: kg_consolidated={kg_consolidated}")
+                            
+                            if not kg_consolidated:
                                 msg['kg_consolidated'] = True
                                 msg['kg_consolidated_at'] = datetime.utcnow().isoformat()
-                                
-                                # Write back to LMDB
-                                txn.put(key, json.dumps(msg).encode('utf-8'))
-                                updated_count += 1
+                                messages_to_update.append((key, msg))
                     
                     except (json.JSONDecodeError, KeyError, IndexError) as e:
+                        logger.warning(f"🕸️ [KG_TASK] Failed to parse message: {e}")
+                        continue
+            
+            logger.info(f"🕸️ [KG_TASK] Marking {len(messages_to_update)} messages as consolidated (scanned {total_scanned} total, matched {matching_timestamps} timestamps)")
+            
+            # Second pass: write updates
+            updated_count = 0
+            with working_store.env.begin(db=db, write=True) as txn:
+                for key, msg in messages_to_update:
+                    try:
+                        txn.put(key, json.dumps(msg).encode('utf-8'))
+                        updated_count += 1
+                    except Exception as e:
                         logger.warning(f"🕸️ [KG_TASK] Failed to update message: {e}")
                         continue
             

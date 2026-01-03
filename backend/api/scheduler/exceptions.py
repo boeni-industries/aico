@@ -98,6 +98,9 @@ class InsufficientPermissionsError(SchedulerAPIException):
 
 def handle_scheduler_exceptions(func):
     """Decorator to handle scheduler API exceptions"""
+    from functools import wraps
+    
+    @wraps(func)
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)

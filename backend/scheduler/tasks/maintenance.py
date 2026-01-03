@@ -79,7 +79,7 @@ class LogCleanupTask(BaseTask):
             
             # Count logs to be deleted first
             count_cursor = context.db_connection.execute(
-                "SELECT COUNT(*) FROM logs WHERE timestamp < ?", (cutoff_date,)
+                "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?", (cutoff_date,)
             )
             count_to_delete = count_cursor.fetchone()[0]
             self.logger.info(f"Found {count_to_delete} logs older than {cutoff_date} to delete")
@@ -89,13 +89,13 @@ class LogCleanupTask(BaseTask):
             
             # Delete the logs
             cursor = context.db_connection.execute(
-                "DELETE FROM logs WHERE timestamp < ?", (cutoff_date,)
+                "DELETE FROM system_logs WHERE timestamp < ?", (cutoff_date,)
             )
             context.db_connection.commit()
             
             # Verify deletion
             verify_cursor = context.db_connection.execute(
-                "SELECT COUNT(*) FROM logs WHERE timestamp < ?", (cutoff_date,)
+                "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?", (cutoff_date,)
             )
             remaining = verify_cursor.fetchone()[0]
             deleted_count = count_to_delete - remaining

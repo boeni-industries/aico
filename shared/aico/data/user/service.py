@@ -74,7 +74,7 @@ class UserService:
             with self.db.transaction():
                 # Create user profile
                 self.db.execute("""
-                    INSERT INTO users (uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at)
+                    INSERT INTO user_profiles (uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, (user_uuid, full_name, nickname, user_type, True, primary_language))
                 
@@ -84,7 +84,7 @@ class UserService:
                     pin_hash = self.pwd_context.hash(pin)
                     
                     self.db.execute("""
-                        INSERT INTO user_authentication 
+                        INSERT INTO auth_user_credentials 
                         (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
                         VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """, (auth_uuid, user_uuid, pin_hash))
@@ -126,7 +126,7 @@ class UserService:
         try:
             result = self.db.fetch_one("""
                 SELECT uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at
-                FROM users WHERE uuid = ? AND is_active = TRUE
+                FROM user_profiles WHERE uuid = ? AND is_active = TRUE
             """, (user_uuid,))
             
             if not result:
@@ -189,7 +189,7 @@ class UserService:
             
             with self.db.transaction():
                 result = self.db.execute(f"""
-                    UPDATE users 
+                    UPDATE user_profiles 
                     SET {set_clause}, updated_at = CURRENT_TIMESTAMP
                     WHERE uuid = ? AND is_active = TRUE
                 """, values)
@@ -233,7 +233,7 @@ class UserService:
         try:
             with self.db.transaction():
                 result = self.db.execute("""
-                    UPDATE users 
+                    UPDATE user_profiles 
                     SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
                     WHERE uuid = ? AND is_active = TRUE
                 """, (user_uuid,))
@@ -275,15 +275,15 @@ class UserService:
         try:
             with self.db.transaction():
                 # Check if user exists
-                user = self.db.execute("SELECT uuid FROM users WHERE uuid = ?", (user_uuid,)).fetchone()
+                user = self.db.execute("SELECT uuid FROM user_profiles WHERE uuid = ?", (user_uuid,)).fetchone()
                 if not user:
                     return False
                 
                 # Delete in order to respect foreign key constraints
                 self.db.execute("DELETE FROM user_relationships WHERE user_uuid = ? OR related_user_uuid = ?", (user_uuid, user_uuid))
-                self.db.execute("DELETE FROM access_policies WHERE user_uuid = ?", (user_uuid,))
-                self.db.execute("DELETE FROM user_authentication WHERE user_uuid = ?", (user_uuid,))
-                self.db.execute("DELETE FROM users WHERE uuid = ?", (user_uuid,))
+                self.db.execute("DELETE FROM auth_access_policies WHERE user_uuid = ?", (user_uuid,))
+                self.db.execute("DELETE FROM auth_user_credentials WHERE user_uuid = ?", (user_uuid,))
+                self.db.execute("DELETE FROM user_profiles WHERE uuid = ?", (user_uuid,))
                 
                 self.logger.warning("User permanently deleted", extra={
                     "module": "user_service",
@@ -328,7 +328,7 @@ class UserService:
                 
                 # Check if user already has authentication data
                 auth_data = self.db.execute("""
-                    SELECT pin_hash FROM user_authentication WHERE user_uuid = ?
+                    SELECT pin_hash FROM auth_user_credentials WHERE user_uuid = ?
                 """, (user_uuid,)).fetchone()
                 
                 # If user has existing PIN, verify old PIN
@@ -353,7 +353,7 @@ class UserService:
                 # Update or insert authentication data
                 if auth_data:
                     self.db.execute("""
-                        UPDATE user_authentication 
+                        UPDATE auth_user_credentials 
                         SET pin_hash = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE user_uuid = ?
                     """, (pin_hash, user_uuid))
@@ -361,7 +361,7 @@ class UserService:
                     import uuid as uuid_lib
                     auth_uuid = str(uuid_lib.uuid4())
                     self.db.execute("""
-                        INSERT INTO user_authentication (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
+                        INSERT INTO auth_user_credentials (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
                         VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """, (auth_uuid, user_uuid, pin_hash))
                 
@@ -416,7 +416,7 @@ class UserService:
             
             results = self.db.fetch_all(f"""
                 SELECT uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at
-                FROM users 
+                FROM user_profiles 
                 {where_clause}
                 ORDER BY created_at DESC
                 LIMIT ?
@@ -481,7 +481,7 @@ class UserService:
             
             auth_data = self.db.fetch_one("""
                 SELECT uuid, pin_hash, failed_attempts, locked_until, last_login
-                FROM user_authentication WHERE user_uuid = ?
+                FROM auth_user_credentials WHERE user_uuid = ?
             """, (user_uuid,))
             
             if not auth_data:
@@ -507,7 +507,7 @@ class UserService:
                     locked_until = datetime.now() + timedelta(minutes=self.lockout_duration_minutes)
                 
                 self.db.execute("""
-                    UPDATE user_authentication 
+                    UPDATE auth_user_credentials 
                     SET failed_attempts = ?, locked_until = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE user_uuid = ?
                 """, (failed_attempts, locked_until.isoformat() if locked_until else None, user_uuid))
@@ -531,7 +531,7 @@ class UserService:
             
             # Successful authentication - reset failed attempts
             self.db.execute("""
-                UPDATE user_authentication 
+                UPDATE auth_user_credentials 
                 SET failed_attempts = 0, locked_until = NULL, last_login = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
                 WHERE user_uuid = ?
             """, (user_uuid,))
@@ -583,13 +583,13 @@ class UserService:
             with self.db.transaction():
                 # Check if authentication record exists
                 existing = self.db.fetch_one("""
-                    SELECT uuid FROM user_authentication WHERE user_uuid = ?
+                    SELECT uuid FROM auth_user_credentials WHERE user_uuid = ?
                 """, (user_uuid,))
                 
                 if existing:
                     # Update existing
                     self.db.execute("""
-                        UPDATE user_authentication 
+                        UPDATE auth_user_credentials 
                         SET pin_hash = ?, failed_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
                         WHERE user_uuid = ?
                     """, (pin_hash, user_uuid))
@@ -597,7 +597,7 @@ class UserService:
                     # Create new
                     auth_uuid = str(uuid.uuid4())
                     self.db.execute("""
-                        INSERT INTO user_authentication 
+                        INSERT INTO auth_user_credentials 
                         (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
                         VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """, (auth_uuid, user_uuid, pin_hash))
@@ -635,7 +635,7 @@ class UserService:
         """
         try:
             result = self.db.execute("""
-                UPDATE user_authentication 
+                UPDATE auth_user_credentials 
                 SET failed_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
                 WHERE user_uuid = ?
             """, (user_uuid,))
@@ -674,13 +674,13 @@ class UserService:
             stats = {}
             
             # Total users
-            result = self.db.fetch_one("SELECT COUNT(*) as total FROM users WHERE is_active = TRUE")
+            result = self.db.fetch_one("SELECT COUNT(*) as total FROM user_profiles WHERE is_active = TRUE")
             stats['total_users'] = result['total']
             
             # Users by type
             results = self.db.fetch_all("""
                 SELECT user_type, COUNT(*) as count 
-                FROM users WHERE is_active = TRUE 
+                FROM user_profiles WHERE is_active = TRUE 
                 GROUP BY user_type
             """)
             stats['users_by_type'] = {row['user_type']: row['count'] for row in results}
@@ -690,8 +690,8 @@ class UserService:
                 SELECT 
                     COUNT(*) as total_with_auth,
                     SUM(CASE WHEN locked_until IS NOT NULL AND locked_until > datetime('now') THEN 1 ELSE 0 END) as locked_accounts
-                FROM user_authentication ua
-                JOIN users u ON ua.user_uuid = u.uuid
+                FROM auth_user_credentials ua
+                JOIN user_profiles u ON ua.user_uuid = u.uuid
                 WHERE u.is_active = TRUE
             """)
             stats['authentication'] = {
@@ -724,7 +724,7 @@ class UserService:
         try:
             result = self.db.fetch_one("""
                 SELECT pin_hash, failed_attempts, locked_until, last_login, created_at, updated_at
-                FROM user_authentication WHERE user_uuid = ?
+                FROM auth_user_credentials WHERE user_uuid = ?
             """, (user_uuid,))
             
             if not result:
@@ -768,7 +768,7 @@ class UserService:
                     u.full_name as related_user_name,
                     ur.created_at
                 FROM user_relationships ur
-                JOIN users u ON ur.related_user_uuid = u.uuid
+                JOIN user_profiles u ON ur.related_user_uuid = u.uuid
                 WHERE ur.user_uuid = ? AND u.is_active = TRUE
                 ORDER BY ur.created_at DESC
             """, (user_uuid,))

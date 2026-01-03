@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 enum DrawerTab {
   thinking,
   emotions,
+  notifications,
 }
 
 /// Glassmorphic tab switcher for right drawer
@@ -20,20 +21,32 @@ class DrawerTabSwitcher extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        _TabButton(
-          label: 'Thinking',
-          icon: Icons.psychology_outlined,
-          isSelected: selectedTab == DrawerTab.thinking,
-          onTap: () => onTabChanged(DrawerTab.thinking),
+        Expanded(
+          child: _TabButton(
+            label: 'Thinking',
+            icon: Icons.psychology_outlined,
+            isSelected: selectedTab == DrawerTab.thinking,
+            onTap: () => onTabChanged(DrawerTab.thinking),
+          ),
         ),
-        const SizedBox(width: 8),
-        _TabButton(
-          label: 'Emotions',
-          icon: Icons.favorite_outline,
-          isSelected: selectedTab == DrawerTab.emotions,
-          onTap: () => onTabChanged(DrawerTab.emotions),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _TabButton(
+            label: 'Emotions',
+            icon: Icons.favorite_outline,
+            isSelected: selectedTab == DrawerTab.emotions,
+            onTap: () => onTabChanged(DrawerTab.emotions),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _TabButton(
+            label: 'Notify',
+            icon: Icons.chat_bubble_outline,
+            isSelected: selectedTab == DrawerTab.notifications,
+            onTap: () => onTabChanged(DrawerTab.notifications),
+          ),
         ),
       ],
     );
@@ -62,7 +75,7 @@ class _TabButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected
               ? Colors.white.withValues(alpha: 0.08)
@@ -71,6 +84,7 @@ class _TabButton extends StatelessWidget {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
@@ -79,16 +93,20 @@ class _TabButton extends StatelessWidget {
                   ? Colors.white.withValues(alpha: 0.9)
                   : theme.colorScheme.onSurface.withValues(alpha: 0.4),
             ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.9)
-                    : theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                letterSpacing: 0.01,
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  letterSpacing: 0.01,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
           ],

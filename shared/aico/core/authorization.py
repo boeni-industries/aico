@@ -66,7 +66,7 @@ class AuthorizationService:
         try:
             # Check if role assignment already exists
             existing = self.db.execute("""
-                SELECT uuid FROM access_policies 
+                SELECT uuid FROM auth_access_policies 
                 WHERE user_uuid = ? AND resource_type = 'role' AND permission = ? AND is_active = 1
             """, (user_uuid, role)).fetchone()
             
@@ -77,7 +77,7 @@ class AuthorizationService:
             # Create new role assignment
             policy_uuid = str(uuid.uuid4())
             self.db.execute("""
-                INSERT INTO access_policies (uuid, user_uuid, resource_type, permission, is_active, created_at)
+                INSERT INTO auth_access_policies (uuid, user_uuid, resource_type, permission, is_active, created_at)
                 VALUES (?, ?, 'role', ?, 1, ?)
             """, (policy_uuid, user_uuid, role, datetime.utcnow().isoformat()))
             
@@ -110,7 +110,7 @@ class AuthorizationService:
         try:
             # Deactivate role assignment
             result = self.db.execute("""
-                UPDATE access_policies 
+                UPDATE auth_access_policies 
                 SET is_active = 0 
                 WHERE user_uuid = ? AND resource_type = 'role' AND permission = ? AND is_active = 1
             """, (user_uuid, role))
@@ -144,7 +144,7 @@ class AuthorizationService:
         """
         try:
             rows = self.db.execute("""
-                SELECT permission FROM access_policies 
+                SELECT permission FROM auth_access_policies 
                 WHERE user_uuid = ? AND resource_type = 'role' AND is_active = 1
             """, (user_uuid,)).fetchall()
             

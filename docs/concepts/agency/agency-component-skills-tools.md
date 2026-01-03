@@ -191,9 +191,9 @@ For the first usable version of AICO, we likely need at least:
   - `ask_clarifying_question` (LLM-backed).
 
 - **Memory & World Model skills/tools**  
-  - `store_memory_item` (write to AMS).  
-  - `query_relevant_memories` (semantic + structured search).  
-  - `upsert_world_fact` (safe assertion of `WorldStateFact`s via WM APIs).
+  - `store_memory_item` (write to `user_memories` table).  
+  - `query_relevant_memories` (search `user_memories` + AICO conversation initiations).  
+  - `upsert_world_fact` (write to `kg_nodes`/`kg_edges` tables via WM APIs).
 
 - **Social/relationship skills/tools**  
   - `schedule_check_in` (create a reminder/goal).  

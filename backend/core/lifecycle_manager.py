@@ -221,12 +221,35 @@ class BackendLifecycleManager:
         def create_config_service(container: ServiceContainer):
             return container.config
         
+        # ChromaDB client factory (shared singleton)
+        def create_chromadb_client(container: ServiceContainer):
+            from aico.core.paths import AICOPaths
+            import chromadb
+            from chromadb.config import Settings
+            
+            chromadb_path = AICOPaths.get_semantic_memory_path()
+            # Use consistent settings for all ChromaDB clients
+            return chromadb.PersistentClient(
+                path=str(chromadb_path),
+                settings=Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True  # Match semantic memory settings
+                )
+            )
+        
         # Register services
         self.container.register_service(
             "database",
             create_database_connection,
             dependencies=[],
             priority=5  # Start early, stop late
+        )
+        
+        self.container.register_service(
+            "chromadb_client",
+            create_chromadb_client,
+            dependencies=[],
+            priority=6  # After database
         )
         
         self.container.register_service(
@@ -295,10 +318,14 @@ class BackendLifecycleManager:
         from aico.ai import ai_registry
         from aico.ai.memory.manager import MemoryManager
         from backend.services.modelservice_client import get_modelservice_client
+        from aico.ai.agency import AgencyEngine
 
-        # Create and register the MemoryManager
-        # It requires the global config manager and database connection
+        # Shared encrypted database connection for AI processors
         db_connection = self.container.get_service("database")
+
+        # ------------------------------------------------------------------
+        # MemoryManager registration (existing behaviour)
+        # ------------------------------------------------------------------
         memory_manager = MemoryManager(self.config, db_connection=db_connection)
         self.logger.info("✅ Created MemoryManager with shared database connection")
         
@@ -336,6 +363,193 @@ class BackendLifecycleManager:
         
         ai_registry.register("memory", memory_manager)
         self.logger.info("Registered 'memory' processor.")
+
+        # ------------------------------------------------------------------
+        # AgencyEngine registration (Phase 1 goals & planning, Phase 2 context)
+        # ------------------------------------------------------------------
+        try:
+            # Phase 2: Initialize WorldModelService using initialized MemoryManager
+            world_model = None
+            try:
+                from aico.ai.world_model import WorldModelService
+
+                # Reuse KG storage and semantic memory from MemoryManager when available.
+                kg_storage = None
+                semantic_memory = None
+
+                # Knowledge graph components are initialized lazily inside MemoryManager
+                if getattr(memory_manager, "_kg_initialized", False):
+                    kg_storage = getattr(memory_manager, "_kg_storage", None)
+
+                # Semantic memory store (may be disabled via config)
+                semantic_memory = getattr(memory_manager, "_semantic_store", None)
+
+                if not kg_storage or not semantic_memory:
+                    raise RuntimeError(
+                        "Knowledge graph storage or semantic memory not available from MemoryManager"
+                    )
+
+                world_model = WorldModelService(
+                    kg_storage=kg_storage,
+                    semantic_memory=semantic_memory,
+                    memory_manager=memory_manager,
+                )
+                self.logger.info("✅ [AI_PROCESSORS] Created WorldModelService (Phase 2)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create WorldModelService: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will run without world model context")
+            
+            # Phase 2: Initialize PersonalityService
+            personality_service = None
+            try:
+                from aico.ai.personality import PersonalityService
+                
+                personality_service = PersonalityService(db_connection=db_connection)
+                self.logger.info("✅ [AI_PROCESSORS] Created PersonalityService (Phase 2)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create PersonalityService: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will run without personality context")
+            
+            # Phase 3: Initialize CuriosityEngine
+            curiosity_engine = None
+            try:
+                from aico.ai.curiosity import CuriosityEngine
+                
+                # Phase 6.3: Get AMS service for user interest tracking
+                ams_service = None
+                try:
+                    ams_service = ai_registry.get("memory")  # MemoryManager provides AMS access
+                except Exception as e:
+                    logger.debug(f"Could not get AMS service: {e}")
+                curiosity_engine = CuriosityEngine(
+                    world_model=world_model,
+                    personality_service=personality_service,
+                    ams_service=ams_service,
+                )
+                print("✅ [AI_PROCESSORS] Created CuriosityEngine (Phase 6.3 with AMS integration)")
+                self.logger.info("✅ [AI_PROCESSORS] Created CuriosityEngine (Phase 6.3 with AMS integration)")
+            except Exception as e:
+                print(f"❌ [AI_PROCESSORS] Failed to create CuriosityEngine: {e}")
+                import traceback
+                print(f"❌ [AI_PROCESSORS] Traceback: {traceback.format_exc()}")
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create CuriosityEngine: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] Curiosity-driven goals will not be generated")
+            
+            # Create message bus client for Phase 4 intention set publishing
+            # Note: Connection will be established later when message bus broker is ready
+            from aico.core.bus import MessageBusClient
+            message_bus = MessageBusClient("agency_engine", config_manager=self.config)
+            
+            # Create AgencyEngine with Phase 2 services and Phase 4 message bus
+            agency_engine = AgencyEngine(
+                self.config,
+                db_connection=db_connection,
+                world_model=world_model,
+                personality_service=personality_service,
+                message_bus=message_bus,
+                memory_manager=memory_manager,
+            )
+            self.logger.info("✅ Created AgencyEngine with shared database connection and message bus")
+
+            # Initialize AgencyEngine (placeholder hook for future behaviour)
+            self.logger.info("🔧 [AI_PROCESSORS] Initializing AgencyEngine...")
+            await agency_engine.initialize()
+            self.logger.info("✅ [AI_PROCESSORS] AgencyEngine initialized during startup")
+            
+            # Phase 4: Install default policies if configured
+            try:
+                # Validate configuration exists
+                values_ethics_config = self.config.get("core.services.agency.values_ethics", None)
+                if values_ethics_config is None:
+                    raise RuntimeError(
+                        "CRITICAL: core.services.agency.values_ethics configuration not found in core.yaml. "
+                        "Phase 4 requires this configuration section."
+                    )
+                
+                install_policies = self.config.get("core.services.agency.values_ethics.install_default_policies", True)
+                policy_mode = self.config.get("core.services.agency.values_ethics.policy_mode", "enforce")
+                
+                self.logger.info(f"[AI_PROCESSORS] Values/Ethics policy mode: {policy_mode}")
+                
+                if install_policies:
+                    from aico.ai.agency.default_policies import install_default_policies
+                    self.logger.info("[AI_PROCESSORS] Installing default policy rules...")
+                    installed_count = install_default_policies(agency_engine.values_ethics)
+                    if installed_count > 0:
+                        self.logger.info(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules (Phase 4)")
+                        print(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules")
+                    else:
+                        self.logger.info("ℹ️ [AI_PROCESSORS] Default policies already installed (Phase 4)")
+                        print("ℹ️ [AI_PROCESSORS] Default policies already exist")
+                else:
+                    self.logger.warning("⚠️ [AI_PROCESSORS] Default policy installation disabled in configuration")
+                    print("⚠️ [AI_PROCESSORS] Default policy installation disabled")
+            except Exception as e:
+                error_msg = f"CRITICAL: Failed to initialize Phase 4 Values/Ethics policies: {e}"
+                self.logger.error(f"❌ [AI_PROCESSORS] {error_msg}")
+                print(f"❌ [AI_PROCESSORS] {error_msg}")
+                import traceback
+                self.logger.error(f"❌ [AI_PROCESSORS] Traceback: {traceback.format_exc()}")
+                # Re-raise to fail loudly
+                raise RuntimeError(error_msg)
+
+            # Inject modelservice client for goal embeddings (needed for deduplication)
+            try:
+                agency_engine.modelservice_client = modelservice_client
+                self.logger.info("✅ [AI_PROCESSORS] Injected modelservice client into AgencyEngine")
+                
+                # Update SkillMatcher with embedding client for skill gap deduplication
+                agency_engine.update_skill_matcher_embedding_client()
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject modelservice client: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will not generate goal embeddings")
+            
+            # Inject LLM client into Planner for LLM-based plan generation
+            try:
+                agency_engine.set_llm_client(modelservice_client)
+                self.logger.info("✅ [AI_PROCESSORS] Injected LLM client into Planner")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject LLM client: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] Planner will use fallback planning only")
+            
+            # Inject LLM planning helper (Phase 1: templated prompts + hand-authored patterns)
+            try:
+                from backend.services.agency_planner import LLMPlanningHelper
+                
+                llm_helper = LLMPlanningHelper(self.config, modelservice_client)
+                
+                # Create refiner callback that wraps the helper
+                async def llm_refiner_callback(goal, base_plan):
+                    return await llm_helper.refine_plan_with_llm(goal, base_plan)
+                
+                agency_engine.set_llm_plan_refiner(llm_refiner_callback)
+                self.logger.info("✅ [AI_PROCESSORS] Injected LLM planning helper into AgencyEngine")
+            except Exception as e:
+                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject LLM planning helper: {e}")
+                self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will use deterministic planning only")
+
+            ai_registry.register("agency", agency_engine)
+            self.logger.info("Registered 'agency' processor with Phase 2 context services.")
+            
+        except Exception as e:
+            print(f"❌❌❌ [PHASE 4 ERROR] AgencyEngine initialization FAILED: {e}")
+            import traceback
+            print(f"❌❌❌ [PHASE 4 ERROR] Full traceback:\n{traceback.format_exc()}")
+            self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize AgencyEngine during startup: {e}")
+            self.logger.error(f"❌ [AI_PROCESSORS] Full traceback: {traceback.format_exc()}")
+        
+        # Register CuriosityEngine (Phase 3) - outside try/except to ensure it runs
+        try:
+            if curiosity_engine:
+                ai_registry.register("curiosity", curiosity_engine)
+                print("✅ [AI_PROCESSORS] Registered 'curiosity' processor (Phase 3).")
+                self.logger.info("✅ Registered 'curiosity' processor (Phase 3).")
+            else:
+                print("⚠️ [AI_PROCESSORS] CuriosityEngine was not created, skipping registration")
+                self.logger.warning("⚠️ CuriosityEngine was not created, skipping registration")
+        except Exception as e:
+            print(f"❌ [AI_PROCESSORS] Failed to register CuriosityEngine: {e}")
+            self.logger.error(f"❌ Failed to register CuriosityEngine: {e}")
 
         # EmotionEngine is already registered in _register_core_services() (lines 266-275)
         # and will be started automatically by the service container
@@ -529,6 +743,11 @@ class BackendLifecycleManager:
                 app.state.service_container = self.container
                 app.state.lifecycle_manager = self
                 
+                # Store task scheduler for scheduler API endpoints
+                task_scheduler = self.container.get_service('task_scheduler')
+                if task_scheduler:
+                    app.state.task_scheduler = task_scheduler
+                
                 yield
                 
             finally:
@@ -552,6 +771,10 @@ class BackendLifecycleManager:
         """Configure middleware stack in correct order"""
         if not self.app:
             raise RuntimeError("FastAPI app not created")
+        
+        # Register exception handlers FIRST
+        from backend.core.exception_handlers import register_exception_handlers
+        register_exception_handlers(self.app)
         
         # 1. CORS middleware (outermost)
         self.app.add_middleware(
@@ -618,78 +841,6 @@ class BackendLifecycleManager:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0
             }
-        
-        # Container health endpoint
-        @self.app.get("/api/v1/health/detailed")
-        async def detailed_health_check(request: Request):
-            from datetime import datetime, timezone
-            import time
-            import psutil
-            import os
-            
-            container = request.app.state.service_container
-            health_status = await container.health_check()
-            
-            # Add comprehensive system information
-            try:
-                process = psutil.Process(os.getpid())
-                memory_info = process.memory_info()
-                cpu_percent = process.cpu_percent()
-                
-                # System metrics
-                system_memory = psutil.virtual_memory()
-                system_cpu = psutil.cpu_percent(interval=0.1)
-                # Cross-platform disk usage - use root drive
-                import platform
-                if platform.system() == 'Windows':
-                    disk_usage = psutil.disk_usage('C:\\')
-                else:
-                    disk_usage = psutil.disk_usage('/')
-                
-                # Network connections (count) - handle permission issues
-                try:
-                    connections = len(psutil.net_connections())
-                except (psutil.AccessDenied, OSError):
-                    connections = 0
-                
-                enhanced_status = {
-                    **health_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0,
-                    "process": {
-                        "pid": os.getpid(),
-                        "memory_mb": round(memory_info.rss / 1024 / 1024, 2),
-                        "memory_percent": round(process.memory_percent(), 2),
-                        "cpu_percent": cpu_percent,
-                        "threads": process.num_threads(),
-                        "open_files": len(process.open_files()) if hasattr(process, 'open_files') and platform.system() != 'Windows' else 0
-                    },
-                    "system": {
-                        "cpu_percent": system_cpu,
-                        "memory_percent": system_memory.percent,
-                        "memory_available_gb": round(system_memory.available / 1024 / 1024 / 1024, 2),
-                        "disk_percent": disk_usage.percent,
-                        "disk_free_gb": round(disk_usage.free / 1024 / 1024 / 1024, 2),
-                        "network_connections": connections
-                    },
-                    "environment": {
-                        "python_version": f"{platform.python_version()}",
-                        "platform": platform.system(),
-                        "platform_release": platform.release(),
-                        "hostname": platform.node()
-                    }
-                }
-                
-                return enhanced_status
-                
-            except Exception as e:
-                # Fallback if psutil fails
-                return {
-                    **health_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0,
-                    "error": f"Failed to collect system metrics: {str(e)}"
-                }
         
         # Gateway status endpoint (missing route causing 404)
         @self.app.get("/api/v1/gateway/status")
@@ -773,18 +924,28 @@ class BackendLifecycleManager:
     def _mount_domain_routers(self) -> None:
         """Mount domain-specific API routers"""
         # Import routers
+        from backend.api.health.router import router as health_router
         from backend.api.echo.router import router as echo_router
         from backend.api.users.router import router as users_router
         from backend.api.admin.router import router as admin_router
         from backend.api.logs.router import router as logs_router
         from backend.api.conversation.router import router as conversation_router
+        from backend.api.memory.router import router as memory_router
+        from backend.api.system.router import router as system_router
         from backend.api.memory_album import router as memory_album_router
         from backend.api.kg.router import router as kg_router
         from backend.api.behavioral.router import router as behavioral_router
         from backend.api.emotion.router import router as emotion_router
         from backend.api.tts.router import router as tts_router
+        from backend.api.agency.router import router as agency_router
+        from backend.api.ams.router import router as ams_router
+        from backend.api.operations.router import router as operations_router
+        from backend.api.scheduler.router import router as scheduler_router
         
         # Mount routers with prefixes
+        self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/health", "tags": ["health"]})
+        
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/echo", "tags": ["echo"]})
         
@@ -800,6 +961,12 @@ class BackendLifecycleManager:
         self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/conversation", "tags": ["conversation"]})
         
+        self.app.include_router(memory_router, prefix="/api/v1", tags=["memory"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1", "tags": ["memory"]})
+        
+        self.app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system"]})
+        
         self.app.include_router(memory_album_router, prefix="/api/v1/memory-album", tags=["memory-album"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/memory-album", "tags": ["memory-album"]})
         
@@ -814,6 +981,18 @@ class BackendLifecycleManager:
         
         self.app.include_router(tts_router, prefix="/api/v1/tts", tags=["tts"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/tts", "tags": ["tts"]})
+        
+        self.app.include_router(agency_router, prefix="/api/v1/agency", tags=["agency"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/agency", "tags": ["agency"]})
+        
+        self.app.include_router(ams_router, prefix="/api/v1", tags=["ams"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1", "tags": ["ams"]})
+        
+        self.app.include_router(operations_router, prefix="/api/v1/operations", tags=["operations"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/operations", "tags": ["operations"]})
+        
+        self.app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/scheduler", "tags": ["scheduler"]})
         
     
     def _display_routes(self) -> None:

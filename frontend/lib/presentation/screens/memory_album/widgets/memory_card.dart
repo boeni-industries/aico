@@ -35,9 +35,6 @@ class _MemoryCardState extends State<MemoryCard> {
       widget.memory.emotionalTone,
     );
 
-    // Debug: Print favorite status on rebuild
-    debugPrint('🎨 MemoryCard building: ${widget.memory.memoryId.substring(0, 8)}... isFavorite=${widget.memory.isFavorite}');
-
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),

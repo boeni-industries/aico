@@ -1,6 +1,5 @@
 import 'package:aico_frontend/core/providers.dart';
 import 'package:aico_frontend/domain/entities/conversation_audio_settings.dart';
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'conversation_audio_settings_provider.g.dart';
@@ -35,8 +34,6 @@ class ConversationAudioSettingsNotifier extends _$ConversationAudioSettingsNotif
           )
         : ReplyChannel.textOnly;
     
-    debugPrint('[ConversationAudioSettings] Loaded: input=$inputChannel, reply=$replyChannel, silent=$savedSilentMode');
-    
     return ConversationAudioSettings(
       inputChannel: inputChannel,
       replyChannel: replyChannel,
@@ -49,7 +46,6 @@ class ConversationAudioSettingsNotifier extends _$ConversationAudioSettingsNotif
     if (state.inputChannel != channel) {
       state = state.copyWith(inputChannel: channel);
       _persist();
-      debugPrint('[ConversationAudioSettings] Input channel: $channel');
     }
   }
 
@@ -58,7 +54,6 @@ class ConversationAudioSettingsNotifier extends _$ConversationAudioSettingsNotif
     if (state.replyChannel != channel) {
       state = state.copyWith(replyChannel: channel);
       _persist();
-      debugPrint('[ConversationAudioSettings] Reply channel: $channel');
     }
   }
 
@@ -68,8 +63,6 @@ class ConversationAudioSettingsNotifier extends _$ConversationAudioSettingsNotif
         ? ReplyChannel.textAndVoice
         : ReplyChannel.textOnly;
     
-    debugPrint('[ConversationAudioSettings] 🔊 Toggling reply channel: ${state.replyChannel} → $newChannel');
-    
     // When enabling voice replies, also disable silent mode
     if (newChannel == ReplyChannel.textAndVoice && state.isSilent) {
       state = state.copyWith(
@@ -77,10 +70,8 @@ class ConversationAudioSettingsNotifier extends _$ConversationAudioSettingsNotif
         isSilent: false,
       );
       _persist();
-      debugPrint('[ConversationAudioSettings] ✅ Reply channel: $newChannel, Silent mode disabled, shouldPlayTTS: ${state.shouldPlayTTS}');
     } else {
       setReplyChannel(newChannel);
-      debugPrint('[ConversationAudioSettings] ✅ Reply channel: $newChannel, shouldPlayTTS: ${state.shouldPlayTTS}');
     }
   }
 
@@ -89,7 +80,6 @@ class ConversationAudioSettingsNotifier extends _$ConversationAudioSettingsNotif
     if (state.isSilent != silent) {
       state = state.copyWith(isSilent: silent);
       _persist();
-      debugPrint('[ConversationAudioSettings] Silent mode: $silent');
     }
   }
 

@@ -17,7 +17,7 @@ from rich.panel import Panel
 from rich import box
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from cron_descriptor import CasingTypeEnum, ExpressionDescriptor
+# Removed cron_descriptor - using backend cron parser instead
 
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
@@ -33,11 +33,104 @@ from cli.utils.timezone import format_timestamp_local
 shared_path = Path(__file__).parent.parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
+# Add backend path for cron parser
+backend_path = Path(__file__).parent.parent.parent / "backend"
+sys.path.insert(0, str(backend_path))
+
 from aico.core.config import ConfigurationManager
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
+from scheduler.cron import CronParser
 
 console = Console()
+
+def _describe_cron(cron_expr: str) -> str:
+    """Generate natural, human-readable description of cron expression.
+    
+    Examples:
+        */5 * * * *    -> "Every 5 minutes"
+        0 */6 * * *    -> "Every 6 hours"
+        0 3 * * *      -> "Daily at 3:00 AM"
+        30 14 * * 1    -> "Weekly on Monday at 2:30 PM"
+        0 0 1 * *      -> "Monthly on the 1st at midnight"
+    """
+    try:
+        parser = CronParser()
+        if not parser.validate(cron_expr):
+            return cron_expr
+        
+        fields = cron_expr.split()
+        if len(fields) != 5:
+            return cron_expr
+            
+        minute, hour, day, month, weekday = fields
+        
+        # Helper to format time (24-hour format)
+        def format_time(h: str, m: str) -> str:
+            h_int = int(h)
+            m_int = int(m)
+            return f"{h_int:02d}:{m_int:02d}"
+        
+        # Pattern: Every N minutes/hours (most common for tasks)
+        if minute.startswith('*/') and hour == '*' and day == '*' and month == '*' and weekday == '*':
+            interval = minute[2:]
+            return f"Every {interval} minute{'s' if int(interval) > 1 else ''}"
+        
+        if minute.isdigit() and hour.startswith('*/') and day == '*' and month == '*' and weekday == '*':
+            interval = hour[2:]
+            return f"Every {interval} hour{'s' if int(interval) > 1 else ''}"
+        
+        # Pattern: Daily at specific time
+        if day == '*' and month == '*' and weekday == '*' and hour.isdigit() and minute.isdigit():
+            return f"Daily at {format_time(hour, minute)}"
+        
+        # Pattern: Weekly on specific day
+        if day == '*' and month == '*' and weekday.isdigit() and hour.isdigit() and minute.isdigit():
+            days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+            day_name = days[int(weekday)]
+            return f"Weekly on {day_name} at {format_time(hour, minute)}"
+        
+        # Pattern: Monthly on specific day
+        if day.isdigit() and month == '*' and weekday == '*' and hour.isdigit() and minute.isdigit():
+            day_suffix = 'st' if day == '1' else 'nd' if day == '2' else 'rd' if day == '3' else 'th'
+            return f"Monthly on the {day}{day_suffix} at {format_time(hour, minute)}"
+        
+        # Pattern: Yearly on specific month and day
+        if day.isdigit() and month.isdigit() and weekday == '*' and hour.isdigit() and minute.isdigit():
+            months = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                     'July', 'August', 'September', 'October', 'November', 'December']
+            month_name = months[int(month)]
+            day_suffix = 'st' if day == '1' else 'nd' if day == '2' else 'rd' if day == '3' else 'th'
+            return f"Yearly on {month_name} {day}{day_suffix} at {format_time(hour, minute)}"
+        
+        # Fallback: Build generic description
+        parts = []
+        
+        if minute == '*' and hour == '*':
+            parts.append("Every minute")
+        elif minute.startswith('*/'):
+            parts.append(f"Every {minute[2:]} minutes")
+        elif hour.startswith('*/'):
+            parts.append(f"Every {hour[2:]} hours")
+        elif hour.isdigit() and minute.isdigit():
+            parts.append(f"At {format_time(hour, minute)}")
+        
+        if weekday != '*':
+            days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+            if weekday.isdigit():
+                parts.append(f"on {days[int(weekday)]}")
+        elif day != '*':
+            parts.append(f"on day {day}")
+        
+        if month != '*':
+            months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            parts.append(f"in {months[int(month)]}")
+        
+        return ' '.join(parts) if parts else cron_expr
+        
+    except Exception:
+        return cron_expr
 
 def scheduler_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
@@ -94,7 +187,7 @@ def list_tasks(
     try:
         with _get_database_connection() as db:
             # Query tasks from database
-            query = "SELECT task_id, task_class, schedule, enabled, created_at, updated_at FROM scheduled_tasks"
+            query = "SELECT task_id, task_class, schedule, enabled, created_at, updated_at FROM scheduler_tasks"
             params = ()
             
             if enabled_only:
@@ -140,11 +233,8 @@ def list_tasks(
                     status = "Enabled" if task[3] else "[dim]Disabled[/dim]"
                     created_at = format_timestamp_local(task[4]) if task[4] else "Unknown"
                     
-                    try:
-                        descriptor = ExpressionDescriptor(task[2], casing_type=CasingTypeEnum.Sentence)
-                        description = descriptor.get_description()
-                    except:
-                        description = "[dim]Invalid cron[/dim]"
+                    # Generate human-readable description using backend cron parser
+                    description = _describe_cron(task[2])
                     
                     table.add_row(
                         task[0],  # task_id
@@ -176,7 +266,7 @@ def show_task(
             # Get task details
             cursor = db.execute(
                 "SELECT task_id, task_class, schedule, config, enabled, created_at, updated_at "
-                "FROM scheduled_tasks WHERE task_id = ?", (task_id,)
+                "FROM scheduler_tasks WHERE task_id = ?", (task_id,)
             )
             task = cursor.fetchone()
             
@@ -267,7 +357,7 @@ def create_task(
         
         with _get_database_connection() as db:
             # Check if task already exists
-            cursor = db.execute("SELECT task_id FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+            cursor = db.execute("SELECT task_id FROM scheduler_tasks WHERE task_id = ?", (task_id,))
             if cursor.fetchone():
                 console.print(f"[red]Task already exists: {task_id}[/red]")
                 raise typer.Exit(1)
@@ -277,7 +367,7 @@ def create_task(
             config_json = json.dumps(config) if config else None
             
             db.execute("""
-                INSERT INTO scheduled_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
+                INSERT INTO scheduler_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (task_id, task_class, schedule, config_json, enabled, now, now))
             
@@ -307,7 +397,7 @@ def update_task(
         
         with _get_database_connection() as db:
             # Check task exists
-            cursor = db.execute("SELECT * FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+            cursor = db.execute("SELECT * FROM scheduler_tasks WHERE task_id = ?", (task_id,))
             task = cursor.fetchone()
             if not task:
                 console.print(f"[red]Task not found: {task_id}[/red]")
@@ -351,7 +441,7 @@ def update_task(
             params.append(task_id)
             
             # Execute update
-            query = f"UPDATE scheduled_tasks SET {', '.join(updates)} WHERE task_id = ?"
+            query = f"UPDATE scheduler_tasks SET {', '.join(updates)} WHERE task_id = ?"
             db.execute(query, params)
             db.commit()
             
@@ -369,7 +459,7 @@ def enable_task(task_id: str = typer.Argument(..., help="Task ID to enable")):
     try:
         with _get_database_connection() as db:
             cursor = db.execute(
-                "UPDATE scheduled_tasks SET enabled = TRUE, updated_at = ? WHERE task_id = ?",
+                "UPDATE scheduler_tasks SET enabled = TRUE, updated_at = ? WHERE task_id = ?",
                 (datetime.now().isoformat(), task_id)
             )
             
@@ -392,7 +482,7 @@ def disable_task(task_id: str = typer.Argument(..., help="Task ID to disable")):
     try:
         with _get_database_connection() as db:
             cursor = db.execute(
-                "UPDATE scheduled_tasks SET enabled = FALSE, updated_at = ? WHERE task_id = ?",
+                "UPDATE scheduler_tasks SET enabled = FALSE, updated_at = ? WHERE task_id = ?",
                 (datetime.now().isoformat(), task_id)
             )
             
@@ -433,7 +523,7 @@ def trigger_task(
             
             # Check task exists before triggering
             with _get_database_connection() as db:
-                cursor = db.execute("SELECT task_id FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+                cursor = db.execute("SELECT task_id FROM scheduler_tasks WHERE task_id = ?", (task_id,))
                 if not cursor.fetchone():
                     console.print(f"[red]Task not found: {task_id}[/red]")
                     raise typer.Exit(1)
@@ -443,6 +533,9 @@ def trigger_task(
 
         console.print(f"[green]Successfully sent trigger request for task '{task_id}'[/green]")
         console.print("[dim]Note: The task will run on the next scheduler check.[/dim]")
+        console.print(
+            f"[dim]Tip: To see what happened, run [cyan]aico scheduler history {task_id}[/cyan] after it executes.[/dim]"
+        )
 
     except Exception as e:
         console.print(f"[red]Error triggering task: {e}[/red]")
@@ -464,7 +557,7 @@ def delete_task(
                 raise typer.Exit()
         
         with _get_database_connection() as db:
-            cursor = db.execute("DELETE FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+            cursor = db.execute("DELETE FROM scheduler_tasks WHERE task_id = ?", (task_id,))
             
             if cursor.rowcount == 0:
                 console.print(f"[red]Task not found: {task_id}[/red]")
@@ -546,7 +639,7 @@ def _show_single_execution(execution_id: str, format_output: str):
     with _get_database_connection() as db:
         cursor = db.execute("""
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
-            FROM task_executions 
+            FROM scheduler_task_executions 
             WHERE execution_id = ?
         """, (execution_id,))
         
@@ -607,7 +700,7 @@ def _show_single_execution(execution_id: str, format_output: str):
 def _show_task_history(task_id: str, limit: int, format_output: str, status: Optional[str] = None):
     """Show execution history for a specific task."""
     with _get_database_connection() as db:
-        cursor = db.execute("SELECT task_id FROM scheduled_tasks WHERE task_id = ?", (task_id,))
+        cursor = db.execute("SELECT task_id FROM scheduler_tasks WHERE task_id = ?", (task_id,))
         if not cursor.fetchone():
             console.print(f"[red]Task not found: {task_id}[/red]")
             raise typer.Exit(1)
@@ -615,7 +708,7 @@ def _show_task_history(task_id: str, limit: int, format_output: str, status: Opt
         # Build query with optional status filter
         query = """
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
-            FROM task_executions 
+            FROM scheduler_task_executions 
             WHERE task_id = ?
         """
         params = [task_id]
@@ -645,7 +738,7 @@ def _show_recent_history(limit: int, format_output: str, status: Optional[str] =
         # Build query with optional status filter
         query = """
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
-            FROM task_executions
+            FROM scheduler_task_executions
         """
         params = []
         
@@ -744,16 +837,16 @@ def scheduler_status():
     try:
         with _get_database_connection() as db:
             # Get task counts
-            cursor = db.execute("SELECT COUNT(*) FROM scheduled_tasks")
+            cursor = db.execute("SELECT COUNT(*) FROM scheduler_tasks")
             total_tasks = cursor.fetchone()[0]
             
-            cursor = db.execute("SELECT COUNT(*) FROM scheduled_tasks WHERE enabled = TRUE")
+            cursor = db.execute("SELECT COUNT(*) FROM scheduler_tasks WHERE enabled = TRUE")
             enabled_tasks = cursor.fetchone()[0]
             
             # Get recent execution stats
             cursor = db.execute("""
                 SELECT status, COUNT(*) 
-                FROM task_executions 
+                FROM scheduler_task_executions 
                 WHERE started_at > datetime('now', '-24 hours')
                 GROUP BY status
             """)
@@ -837,7 +930,7 @@ def cleanup_history(
             
             # Count what would be deleted
             cursor = db.execute(
-                "SELECT COUNT(*) FROM task_executions WHERE started_at < ?", (cutoff_date,)
+                "SELECT COUNT(*) FROM scheduler_task_executions WHERE started_at < ?", (cutoff_date,)
             )
             count = cursor.fetchone()[0]
             
@@ -851,7 +944,7 @@ def cleanup_history(
                 # Show sample of what would be deleted
                 cursor = db.execute("""
                     SELECT task_id, status, started_at 
-                    FROM task_executions 
+                    FROM scheduler_task_executions 
                     WHERE started_at < ?
                     ORDER BY started_at DESC
                     LIMIT 10
@@ -867,7 +960,7 @@ def cleanup_history(
             else:
                 # Actually delete
                 cursor = db.execute(
-                    "DELETE FROM task_executions WHERE started_at < ?", (cutoff_date,)
+                    "DELETE FROM scheduler_task_executions WHERE started_at < ?", (cutoff_date,)
                 )
                 db.commit()
                 
@@ -881,7 +974,7 @@ def cleanup_history(
 @app.command("cancel")
 @sensitive
 def cancel_stale_runs(
-    max_hours: int = typer.Option(24, "--max-hours", "-m", help="Mark runs older than N hours as failed"),
+    max_hours: float = typer.Option(24.0, "--max-hours", "-m", help="Mark runs older than N hours as failed"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be cancelled without cancelling"),
     help_flag: bool = typer.Option(False, "--help", "-h", help="Show this help message and exit")
 ):
@@ -930,7 +1023,7 @@ def cancel_stale_runs(
             # Find stale running executions
             cursor = db.execute("""
                 SELECT execution_id, task_id, started_at 
-                FROM task_executions 
+                FROM scheduler_task_executions 
                 WHERE status = 'running' AND started_at < ?
                 ORDER BY started_at
             """, (cutoff_time,))
@@ -972,7 +1065,7 @@ def cancel_stale_runs(
             else:
                 # Actually cancel them
                 cursor = db.execute("""
-                    UPDATE task_executions 
+                    UPDATE scheduler_task_executions 
                     SET status = 'failed',
                         error_message = 'Cancelled: stale execution (running > ' || ? || ' hours)',
                         completed_at = CURRENT_TIMESTAMP,

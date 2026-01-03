@@ -80,6 +80,8 @@ class WorkingMemoryStore:
             for db_name in self._named_dbs:
                 self.dbs[db_name] = self.env.open_db(db_name.encode('utf-8'), create=True)
 
+            self._initialized = True
+            logger.info(f"[DEBUG] WorkingMemoryStore: Initialization complete")
 
         except Exception as e:
             logger.error(f"Failed to initialize working memory store: {e}")
@@ -342,21 +344,12 @@ class WorkingMemoryStore:
         expires_at_str = data.get("_expires_at")
         if not expires_at_str:
             return False
+        
         try:
-            # Parse expiration timestamp as UTC (consistent with storage)
-            if expires_at_str.endswith('Z'):
-                expires_at = datetime.fromisoformat(expires_at_str[:-1])
-            elif '+' in expires_at_str:
-                expires_at = datetime.fromisoformat(expires_at_str.replace('+00:00', ''))
-            else:
-                expires_at = datetime.fromisoformat(expires_at_str)
-            
-            now_utc = datetime.utcnow()
-            is_expired = now_utc > expires_at
-            logger.debug(f"Expiration check: now={now_utc} UTC, expires={expires_at} UTC, expired={is_expired}")
-            return is_expired
-        except (ValueError, TypeError):
-            return True
+            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', ''))
+            return datetime.utcnow() > expires_at
+        except (ValueError, AttributeError, TypeError):
+            return False
     
     def _update_temporal_access(self, data: Dict[str, Any]) -> None:
         """Update temporal metadata to record access."""
@@ -368,3 +361,113 @@ class WorkingMemoryStore:
                 data["temporal_metadata"] = temporal_meta.to_dict()
             except Exception as e:
                 logger.debug(f"Failed to update temporal metadata: {e}")
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get working memory statistics."""
+        if not self._initialized:
+            await self.initialize()
+        
+        try:
+            session_db = self.dbs.get("session_memory")
+            if session_db is None:
+                return {
+                    'active_items': 0,
+                    'capacity': 10000,
+                    'utilization_percent': 0.0,
+                    'ttl_utilization_percent': 0.0,
+                    'eviction_rate_per_min': 0.0,
+                    'recent_activity': []
+                }
+            
+            # Count active (non-expired) items and collect activity
+            active_items = 0
+            expired_items = 0
+            recent_activity = []
+            ttl_sum = 0.0
+            ttl_count = 0
+            
+            # Collect all items first for proper sorting
+            all_items = []
+            with self.env.begin(db=session_db) as txn:
+                cursor = txn.cursor()
+                for key, value in cursor:
+                    try:
+                        data = json.loads(value.decode('utf-8'))
+                        key_str = key.decode('utf-8')
+                        stored_at = data.get('_stored_at', 'unknown')
+                        expires_at = data.get('_expires_at')
+                        
+                        if self._is_expired(data):
+                            expired_items += 1
+                        else:
+                            active_items += 1
+                            
+                            # Calculate TTL utilization for this item
+                            if stored_at != 'unknown' and expires_at:
+                                try:
+                                    stored_time = datetime.fromisoformat(stored_at.rstrip('Z'))
+                                    expires_time = datetime.fromisoformat(expires_at.rstrip('Z'))
+                                    now = datetime.utcnow()
+                                    total_ttl = (expires_time - stored_time).total_seconds()
+                                    remaining_ttl = (expires_time - now).total_seconds()
+                                    if total_ttl > 0:
+                                        ttl_used = ((total_ttl - remaining_ttl) / total_ttl) * 100
+                                        ttl_sum += ttl_used
+                                        ttl_count += 1
+                                except:
+                                    pass
+                            
+                            # Extract conversation_id and message info
+                            conv_id = key_str.split(':')[0]
+                            message_role = data.get('role', 'unknown')
+                            # Return full content - frontend will handle truncation
+                            message_preview = data.get('content', '') if isinstance(data.get('content'), str) else ''
+                            
+                            all_items.append({
+                                'key_str': key_str,
+                                'stored_at': stored_at,
+                                'conv_id': conv_id,
+                                'role': message_role,
+                                'preview': message_preview
+                            })
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        continue
+            
+            # Sort by timestamp (most recent first) and take last 10
+            all_items.sort(key=lambda x: x['stored_at'], reverse=True)
+            for item in all_items[:10]:
+                recent_activity.append({
+                    'id': item['key_str'],
+                    'timestamp': item['stored_at'],
+                    'action': 'stored',
+                    'conversation_id': item['conv_id'],
+                    'role': item['role'],
+                    'preview': item['preview']
+                })
+            
+            # Calculate capacity and utilization
+            capacity = max(10000, active_items * 2)
+            utilization_percent = (active_items / capacity) * 100 if capacity > 0 else 0
+            ttl_utilization_percent = (ttl_sum / ttl_count) if ttl_count > 0 else 0.0
+            eviction_rate_per_min = expired_items / 60.0 if expired_items > 0 else 0.0
+            
+            return {
+                'active_items': active_items,
+                'capacity': capacity,
+                'utilization_percent': round(utilization_percent, 2),
+                'ttl_utilization_percent': round(ttl_utilization_percent, 2),
+                'eviction_rate_per_min': round(eviction_rate_per_min, 2),
+                'recent_activity': recent_activity[:10]
+            }
+            
+        except Exception as e:
+            error_msg = f"❌ CRITICAL: Failed to get working memory stats: {e}"
+            logger.error(error_msg, exc_info=True)
+            print(f"\n{'='*80}")
+            print(f"❌ WORKING MEMORY GET_STATS FAILURE")
+            print(f"{'='*80}")
+            print(f"Error: {e}")
+            print(f"Initialized: {self._initialized}")
+            print(f"LMDB env: {self.env}")
+            print(f"{'='*80}\n")
+            raise RuntimeError(error_msg) from e

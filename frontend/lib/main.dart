@@ -29,12 +29,10 @@ void main() async {
   if (!kIsWeb) {
     try {
       await avatarServer.start();
-      debugPrint('[AICO] Avatar localhost server started on port 8779');
       AICOLog.info('Avatar localhost server started', 
         topic: 'app/startup/avatar_server', 
         extra: {'port': 8779});
     } catch (e) {
-      debugPrint('[AICO] Failed to start avatar server: $e');
       AICOLog.error('Failed to start avatar localhost server', 
         topic: 'app/startup/avatar_server', 
         error: e);
@@ -56,7 +54,6 @@ void main() async {
   final windowStateService = WindowStateService(sharedPreferences);
   await windowStateService.initialize();
   
-  debugPrint('[app:${AICOTopics.appStartup}] AICO Flutter application starting');
   AICOLog.info('AICO Flutter application starting', 
     topic: 'app/startup/init', 
     extra: {'startup_topic': AICOTopics.appStartup});
@@ -91,7 +88,6 @@ class _AicoAppState extends ConsumerState<AicoApp> {
       ref.read(aicoLoggerProvider);
     });
     
-    debugPrint('[app:${AICOTopics.appInitialization}] App widget initialized with Riverpod');
     AICOLog.info('App widget initialized with Riverpod', 
       topic: 'app/lifecycle/init', 
       extra: {'initialization_topic': AICOTopics.appInitialization});
@@ -109,7 +105,6 @@ class _AicoAppState extends ConsumerState<AicoApp> {
         _appTitle = 'AICO v${packageInfo.version}';
       });
     } catch (e) {
-      debugPrint('Failed to load version: $e');
       AICOLog.warn('Failed to load package version', 
         topic: 'app/lifecycle/version', 
         error: e);

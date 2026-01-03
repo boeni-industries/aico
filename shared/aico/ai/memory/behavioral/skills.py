@@ -42,7 +42,7 @@ class SkillStore:
             Created skill with timestamps
         """
         self.db.execute(
-            """INSERT INTO skills (
+            """INSERT INTO ams_behavioral_skills (
                 skill_id, skill_name, skill_type, trigger_context,
                 procedure_template, dimension_vector, supported_languages, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -70,24 +70,36 @@ class SkillStore:
     async def get_skill(self, skill_id: str) -> Optional[Skill]:
         """Get skill by ID."""
         row = self.db.execute(
-            "SELECT * FROM skills WHERE skill_id = ?",
+            "SELECT * FROM ams_behavioral_skills WHERE skill_id = ?",
             (skill_id,)
         ).fetchone()
         
         if not row:
             return None
         
-        return Skill(
-            skill_id=row[0],
-            skill_name=row[1],
-            skill_type=row[2],
-            trigger_context=json.loads(row[3]),
-            procedure_template=row[4],
-            dimension_vector=json.loads(row[5]),
-            supported_languages=json.loads(row[6]) if row[6] else ["en"],
-            created_at=datetime.fromisoformat(row[7]),
-            updated_at=datetime.fromisoformat(row[8])
-        )
+        try:
+            trigger_context = json.loads(row[3])
+            
+            dimension_vector = json.loads(row[5])
+            
+            supported_languages = json.loads(row[6]) if row[6] else ["en"]
+            
+            return Skill(
+                skill_id=row[0],
+                skill_name=row[1],
+                skill_type=row[2],
+                trigger_context=trigger_context,
+                procedure_template=row[4],
+                dimension_vector=dimension_vector,
+                supported_languages=supported_languages,
+                created_at=datetime.fromisoformat(row[7]),
+                updated_at=datetime.fromisoformat(row[8])
+            )
+        except json.JSONDecodeError as e:
+            print(f"❌ [SKILL_DEBUG] JSON parsing failed for skill {row[0]}: {e}")
+            print(f"❌ [SKILL_DEBUG] Error at position {e.pos}: {e.msg}")
+            print(f"❌ [SKILL_DEBUG] Full row data: {row}")
+            raise
     
     async def list_skills(
         self,
@@ -106,29 +118,40 @@ class SkillStore:
         """
         if skill_type:
             rows = self.db.execute(
-                "SELECT * FROM skills WHERE skill_type = ? LIMIT ?",
+                "SELECT * FROM ams_behavioral_skills WHERE skill_type = ? LIMIT ?",
                 (skill_type, limit)
             ).fetchall()
         else:
             rows = self.db.execute(
-                "SELECT * FROM skills LIMIT ?",
+                "SELECT * FROM ams_behavioral_skills LIMIT ?",
                 (limit,)
             ).fetchall()
         
-        return [
-            Skill(
-                skill_id=row[0],
-                skill_name=row[1],
-                skill_type=row[2],
-                trigger_context=json.loads(row[3]),
-                procedure_template=row[4],
-                dimension_vector=json.loads(row[5]),
-                supported_languages=json.loads(row[6]) if row[6] else ["en"],
-                created_at=datetime.fromisoformat(row[7]),
-                updated_at=datetime.fromisoformat(row[8])
-            )
-            for row in rows
-        ]
+        skills = []
+        for row in rows:
+            try:
+                skill = Skill(
+                    skill_id=row[0],
+                    skill_name=row[1],
+                    skill_type=row[2],
+                    trigger_context=json.loads(row[3]),
+                    procedure_template=row[4],
+                    dimension_vector=json.loads(row[5]),
+                    supported_languages=json.loads(row[6]) if row[6] else ["en"],
+                    created_at=datetime.fromisoformat(row[7]),
+                    updated_at=datetime.fromisoformat(row[8])
+                )
+                skills.append(skill)
+                print(f"✅ [SKILL_DEBUG] Successfully parsed skill: {row[0]}")
+            except json.JSONDecodeError as e:
+                print(f"❌ [SKILL_DEBUG] JSON parsing failed for skill {row[0]}: {e}")
+                print(f"❌ [SKILL_DEBUG] Error at position {e.pos}: {e.msg}")
+                print(f"❌ [SKILL_DEBUG] Raw data - trigger_context: {repr(row[3])}")
+                print(f"❌ [SKILL_DEBUG] Raw data - dimension_vector: {repr(row[5])}")
+                print(f"❌ [SKILL_DEBUG] Raw data - supported_languages: {repr(row[6])}")
+                raise
+        
+        return skills
     
     async def get_user_confidence(
         self,

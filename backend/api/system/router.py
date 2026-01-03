@@ -1,0 +1,203 @@
+"""
+System Overview API Router
+
+Provides aggregated system metrics for the Studio overview page.
+"""
+
+from typing import Annotated, List
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from datetime import datetime
+import time
+
+from aico.core.logging import get_logger
+from backend.api.system.dependencies import get_current_user, get_db_connection
+
+logger = get_logger("backend", "api.system")
+
+router = APIRouter()
+
+# Track server start time
+start_time = time.time()
+
+
+class SystemEvent(BaseModel):
+    """System event entry"""
+    timestamp: str = Field(..., description="Most recent occurrence timestamp")
+    severity: str = Field(..., description="Event severity (error, warning, info)")
+    title: str = Field(..., description="Event title")
+    description: str = Field(..., description="Event description")
+    domain: str = Field(..., description="Event domain/source")
+    count: int = Field(default=1, description="Number of occurrences")
+
+
+class SystemOverviewResponse(BaseModel):
+    """System overview metrics"""
+    uptime_seconds: float = Field(..., description="System uptime in seconds")
+    uptime_formatted: str = Field(..., description="Formatted uptime (e.g., '3h 42m')")
+    active_conversations: int = Field(..., description="Number of active conversations")
+    active_goals: int = Field(..., description="Number of active goals")
+    system_status: str = Field(..., description="Overall system status")
+    recent_events: List[SystemEvent] = Field(default_factory=list, description="Recent system events")
+
+
+def format_uptime(seconds: float) -> str:
+    """Format uptime seconds to human-readable string"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    else:
+        return f"{minutes}m"
+
+
+@router.get("/overview", response_model=SystemOverviewResponse)
+async def get_system_overview(
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)]
+) -> SystemOverviewResponse:
+    """
+    Get system overview metrics.
+    
+    Returns:
+        - uptime: System uptime
+        - active_conversations: Count of recent conversations
+        - active_goals: Count of active goals from agency
+        - system_status: Overall health status
+    """
+    try:
+        user_id = user.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in token"
+            )
+        
+        # Calculate uptime
+        uptime_seconds = time.time() - start_time
+        uptime_formatted = format_uptime(uptime_seconds)
+        
+        # Get active conversations count from working memory (LMDB)
+        # Conversations are stored in LMDB, not in SQL tables
+        active_conversations = 0
+        try:
+            from aico.ai import ai_registry
+            memory_manager = ai_registry.get("memory")
+            
+            if memory_manager and hasattr(memory_manager, '_working_store'):
+                working_store = memory_manager._working_store
+                
+                # Count unique conversation_ids from LMDB keys in last 24 hours
+                from datetime import datetime, timedelta
+                cutoff_time = datetime.utcnow() - timedelta(days=1)
+                
+                conversation_ids = set()
+                db = working_store.dbs.get("session_memory")
+                if db:
+                    with working_store.env.begin(db=db) as txn:
+                        cursor = txn.cursor()
+                        for key_bytes, _ in cursor:
+                            key_str = key_bytes.decode('utf-8')
+                            # Key format: {conversation_id}:{timestamp}
+                            if ':' in key_str:
+                                conv_id, timestamp_str = key_str.split(':', 1)
+                                try:
+                                    msg_time = datetime.fromisoformat(timestamp_str.rstrip('Z'))
+                                    if msg_time > cutoff_time:
+                                        conversation_ids.add(conv_id)
+                                except:
+                                    pass
+                
+                active_conversations = len(conversation_ids)
+        except Exception as e:
+            logger.debug(f"Conversation count unavailable: {e}")
+        
+        # Get active goals count from agency_goals table
+        active_goals = 0
+        try:
+            result = db_connection.execute(
+                """
+                SELECT COUNT(*) 
+                FROM agency_goals 
+                WHERE user_id = ? 
+                AND status IN ('active', 'in_progress')
+                """,
+                [user_id]
+            ).fetchone()
+            active_goals = result[0] if result else 0
+        except Exception as e:
+            logger.debug(f"Goals count unavailable: {e}")
+        
+        # Get recent system events (errors and warnings from logs)
+        # Group by message to combine duplicates
+        recent_events = []
+        try:
+            # Query system_logs for recent errors and warnings, grouped by message
+            logs_result = db_connection.execute(
+                """
+                SELECT 
+                    MAX(timestamp) as latest_timestamp,
+                    level,
+                    subsystem,
+                    module,
+                    message,
+                    COUNT(*) as occurrence_count
+                FROM system_logs 
+                WHERE level IN ('ERROR', 'WARNING')
+                GROUP BY level, subsystem, module, message
+                ORDER BY latest_timestamp DESC 
+                LIMIT 20
+                """
+            ).fetchall()
+            
+            for log_entry in logs_result:
+                timestamp, level, subsystem, module, message, count = log_entry
+                
+                # Map log level to severity
+                severity = 'error' if level == 'ERROR' else 'warning'
+                
+                # Use subsystem as domain
+                domain = subsystem or 'system'
+                
+                # Create title from module and truncate message for description
+                title = f"{module}: {message[:50]}" if module else message[:50]
+                description = message[:200] if len(message) > 200 else message
+                
+                recent_events.append(SystemEvent(
+                    timestamp=timestamp,
+                    severity=severity,
+                    title=title,
+                    description=description,
+                    domain=domain,
+                    count=count
+                ))
+        except Exception as e:
+            logger.debug(f"Failed to fetch recent events: {e}")
+        
+        # Determine system status based on recent errors
+        error_count = sum(1 for event in recent_events if event.severity == 'error')
+        if error_count >= 3:
+            system_status = "degraded"
+        elif error_count > 0:
+            system_status = "attention"
+        else:
+            system_status = "ok"
+        
+        return SystemOverviewResponse(
+            uptime_seconds=uptime_seconds,
+            uptime_formatted=uptime_formatted,
+            active_conversations=active_conversations,
+            active_goals=active_goals,
+            system_status=system_status,
+            recent_events=recent_events
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get system overview: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve system overview: {str(e)}"
+        )

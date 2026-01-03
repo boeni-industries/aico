@@ -13,6 +13,7 @@ from datetime import datetime
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
+from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
 from .modelservice_client import ModelserviceClient
@@ -714,6 +715,9 @@ class LLMRelationExtractor(ExtractionStrategy):
         # Get LLM timeout from config
         kg_config = config.get("core.memory.semantic.knowledge_graph", {})
         self.llm_timeout = kg_config.get("llm_timeout_seconds", 30.0)
+        
+        # Initialize JSON sanitizer for robust LLM response parsing
+        self.json_sanitizer = LLMJsonSanitizer(strict=False, log_repairs=True)
     
     async def extract(
         self,
@@ -884,24 +888,21 @@ Return valid JSON only, no explanation."""
             return PropertyGraph()
     
     def _parse_llm_response(self, text: str) -> Dict[str, Any]:
-        """Parse LLM JSON response, handling common issues."""
-        try:
-            # Try to extract JSON from response
-            original_text = text
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-                print(f"🔗 [PARSER] Extracted JSON from markdown code block")
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-                print(f"🔗 [PARSER] Extracted from generic code block")
-            
-            parsed = json.loads(text.strip())
-            print(f"🔗 [PARSER] ✅ Successfully parsed JSON")
-            return parsed
-        except Exception as e:
-            print(f"🔗 [PARSER] ❌ Failed to parse LLM response: {e}")
-            print(f"🔗 [PARSER] Raw text (first 500 chars): {original_text[:500]}")
-            logger.warning(f"Failed to parse LLM response: {e}")
+        """Parse LLM JSON response using robust sanitizer with automatic repair."""
+        # Use the JSON sanitizer for robust parsing
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=dict,
+            return_objects=True
+        )
+        
+        if result.success:
+            print(f"🔗 [PARSER] ✅ Successfully parsed JSON (strategy: {result.strategy.value})")
+            return result.data
+        else:
+            print(f"🔗 [PARSER] ❌ Failed to parse LLM response: {result.error}")
+            print(f"🔗 [PARSER] Raw text (first 500 chars): {text[:500]}")
+            logger.warning(f"Failed to parse LLM response after all repair strategies: {result.error}")
             return {"relationships": [], "new_entities": []}
     
     def _find_or_create_node(
@@ -985,7 +986,8 @@ class MultiPassExtractor:
     async def extract(
         self,
         text: str,
-        user_id: str
+        user_id: str,
+        context: Dict[str, Any] = None
     ) -> PropertyGraph:
         """
         Extract knowledge graph from text using multi-pass algorithm.
@@ -993,17 +995,21 @@ class MultiPassExtractor:
         Args:
             text: Text to extract from
             user_id: User ID
+            context: Optional context with existing entities to prevent duplicates
             
         Returns:
             PropertyGraph with extracted entities and relationships
         """
+        if context is None:
+            context = {}
+            
         print(f"\n📚 [MULTIPASS] Starting multi-pass extraction (max_passes={self.max_gleanings + 1})")
         logger.info(f"Starting multi-pass extraction (max_passes={self.max_gleanings + 1})")
         pipeline_start = time.time()
         
-        # Pass 1: Initial extraction
+        # Pass 1: Initial extraction with context
         pass1_start = time.time()
-        graph = await self._initial_extraction(text, user_id)
+        graph = await self._initial_extraction(text, user_id, context)
         pass1_time = time.time() - pass1_start
         initial_count = len(graph)
         
@@ -1035,7 +1041,8 @@ class MultiPassExtractor:
     async def _initial_extraction(
         self,
         text: str,
-        user_id: str
+        user_id: str,
+        context: Dict[str, Any] = None
     ) -> PropertyGraph:
         """
         Pass 1: Initial extraction using GLiNER + LLM.
@@ -1043,10 +1050,13 @@ class MultiPassExtractor:
         Args:
             text: Text to extract from
             user_id: User ID
+            context: Optional context with existing entities
             
         Returns:
             PropertyGraph with initial extraction
         """
+        if context is None:
+            context = {}
         # Step 1: Extract entities using GLiNER (fast)
         print(f"\n  🔍 [ENTITIES] Starting GLiNER entity extraction...")
         entity_start = time.time()
@@ -1061,18 +1071,21 @@ class MultiPassExtractor:
         graph.merge(entity_graph)
         
         # Step 2: Build entity context for relation extraction
-        entity_context = {
-            "entities": [
-                {
-                    "id": node.id,
-                    "label": node.label,
-                    "name": safe_get_name(node)
-                }
-                for node in entity_graph.nodes
-            ]
-        }
+        # Merge newly extracted entities with existing entities from context
+        all_entities = context.get("entities", [])  # Existing entities from DB
+        new_entities = [
+            {
+                "id": node.id,
+                "label": node.label,
+                "name": safe_get_name(node)
+            }
+            for node in entity_graph.nodes
+        ]
+        all_entities.extend(new_entities)
         
-        # Step 3: Extract relations WITH entity context (only one LLM call needed)
+        entity_context = {"entities": all_entities}
+        
+        # Step 3: Extract relations WITH full entity context (existing + new)
         print(f"🔗 [RELATIONS] Starting relation extraction with {len(entity_context['entities'])} known entities")
         logger.debug(f"Starting relation extraction with {len(entity_context['entities'])} known entities")
         

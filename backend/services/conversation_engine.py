@@ -15,7 +15,7 @@ import asyncio
 import logging
 import uuid
 import time
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -26,6 +26,7 @@ from aico.proto.aico_core_envelope_pb2 import AicoMessage
 from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
 from aico.proto.aico_modelservice_pb2 import CompletionsResponse, CompletionsRequest, ConversationMessage as ModelConversationMessage
 from aico.ai import ProcessingContext, ai_registry
+from backend.core.ai_plugin_base import ProcessingRequest
 from backend.core.service_container import BaseService
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -82,6 +83,9 @@ class ConversationEngine(BaseService):
         
         # Message bus client
         self.bus_client: Optional[MessageBusClient] = None
+
+        # Optional agency plugin (wired via feature flag and service container)
+        self.agency_plugin = None
         
         # AI Processing uses global registry
         # Processors registered via: ai_registry.register("emotion", processor_instance)
@@ -95,13 +99,17 @@ class ConversationEngine(BaseService):
         # Configuration - access via core.conversation path (like other services)
         engine_config = self.container.config.get("core.conversation", {})
         features_config = engine_config.get("features", {})
+        plugins_config = self.container.config.get("core.api_gateway.plugins", {})
         
         # Feature flags for gradual implementation
         self.enable_emotion_integration = features_config.get("enable_emotion_integration", False)
         self.enable_personality_integration = features_config.get("enable_personality_integration", False)
         self.enable_memory_integration = features_config.get("enable_memory_integration", True)  # RE-ENABLED - was disabled for test
         self.enable_embodiment = features_config.get("enable_embodiment", False)
-        self.enable_agency = features_config.get("enable_agency", False)
+
+        # Agency is controlled solely by the agency plugin being enabled
+        agency_plugin_config = plugins_config.get("agency", {})
+        self.enable_agency = bool(agency_plugin_config.get("enabled", False))
         
         
         self.max_context_messages = engine_config.get("max_context_messages", 10)
@@ -157,6 +165,17 @@ class ConversationEngine(BaseService):
             
             # AI processors will be registered here when implemented
             # No initialization needed for empty registry
+
+            # Optional: resolve agency plugin from service container when enabled
+            if self.enable_agency:
+                try:
+                    self.agency_plugin = self.container.get_service("agency_plugin")
+                    if self.agency_plugin:
+                        self.logger.info("[AGENCY] Agency plugin resolved and ready for Phase 0 wiring")
+                    else:
+                        self.logger.warning("[AGENCY] enable_agency=True but agency_plugin service not found")
+                except Exception as e:
+                    self.logger.warning(f"[AGENCY] Failed to resolve agency_plugin service: {e}")
             
             # Subscribe to conversation topics
             await self._setup_subscriptions()
@@ -218,10 +237,11 @@ class ConversationEngine(BaseService):
         
         # V2: Direct memory integration - no message bus subscriptions needed
         
-        # Future: Agency proactive triggers
-        if self.enable_agency:
-            # await self.bus_client.subscribe(AICOTopics.AGENCY_PROACTIVE_TRIGGER, ...)
-            pass
+        # Proactive conversation initiations
+        await self.bus_client.subscribe(
+            'conversation/aico/initiate/v1',
+            self._handle_proactive_initiation
+        )
         
         self.logger.info("Message bus subscriptions established")
     
@@ -231,6 +251,7 @@ class ConversationEngine(BaseService):
     
     async def _handle_user_input(self, message) -> None:
         """Handle incoming user input message"""
+        print(f"💬 [CONVERSATION_ENGINE] 🔥🔥🔥 _handle_user_input CALLED!")
         try:
             import time
             timestamp = time.time()
@@ -266,6 +287,29 @@ class ConversationEngine(BaseService):
             # Generate response using semantic memory approach
             print(f"💬 [CONVERSATION_ENGINE] 🎯 Generating response...")
             await self._generate_response(user_context, conv_message)
+            
+            # Phase 6: Async goal extraction (fire-and-forget, no blocking)
+            if self.enable_agency and self.agency_plugin:
+                try:
+                    print(f"🎯 [GOAL_EXTRACTION] ✅ Agency enabled, creating async task...")
+                    message_text = conv_message.message.text
+                    print(f"🎯 [GOAL_EXTRACTION] Message: '{message_text[:50]}...'")
+                    import asyncio
+                    task = asyncio.create_task(
+                        self._extract_user_goal_async(
+                            user_id=user_id,
+                            message_id=conv_message.message_id,
+                            message_text=message_text,
+                            conversation_id=conversation_id
+                        )
+                    )
+                    print(f"🎯 [GOAL_EXTRACTION] ✅ Async task created: {task}")
+                except Exception as task_error:
+                    print(f"🎯 [GOAL_EXTRACTION] ❌ ERROR creating async task: {task_error}")
+                    import traceback
+                    print(f"🎯 [GOAL_EXTRACTION] Traceback: {traceback.format_exc()}")
+            else:
+                print(f"🎯 [GOAL_EXTRACTION] ❌ NOT creating task - enable_agency={self.enable_agency}, agency_plugin={self.agency_plugin}")
             
         except Exception as e:
             self.logger.error(f"Error handling user input: {e}", extra={
@@ -310,7 +354,7 @@ class ConversationEngine(BaseService):
                     relationship_type="user",
                     conversation_style="friendly",
                     conversation_language=user_profile.primary_language or "en",
-                    last_seen=datetime.utcnow()
+                    last_seen=datetime.now(UTC)
                 )
                 self.logger.info(f"Loaded user context from database", extra={
                     "user_id": user_id,
@@ -325,14 +369,14 @@ class ConversationEngine(BaseService):
                     relationship_type="user",
                     conversation_style="friendly",
                     conversation_language="en",
-                    last_seen=datetime.utcnow()
+                    last_seen=datetime.now(UTC)
                 )
                 self.logger.warning(f"Created placeholder user context (database load failed)", extra={
                     "user_id": user_id
                 })
         else:
             # Update last seen
-            self.user_contexts[user_id].last_seen = datetime.utcnow()
+            self.user_contexts[user_id].last_seen = datetime.now(UTC)
         
         return self.user_contexts[user_id]
     
@@ -358,7 +402,7 @@ class ConversationEngine(BaseService):
                 "user_message": user_message,
                 "components_needed": [],
                 "components_ready": {},
-                "started_at": datetime.utcnow()
+                "started_at": datetime.now(UTC)
             }
             print(f"💬 [CONVERSATION_ENGINE] 📋 Total pending requests: {len(self.pending_responses)}")
             
@@ -388,6 +432,42 @@ class ConversationEngine(BaseService):
             else:
                 print(f"💬 [CONVERSATION_ENGINE] ⚠️  Memory integration DISABLED")
                 self.logger.warning(f"🚨 [CONTEXT_TRACE] Memory integration DISABLED - no context will be retrieved")
+
+            # Phase 0: Minimal agency wiring (no behavioural changes yet)
+            if self.enable_agency and self.agency_plugin:
+                try:
+                    self.logger.info(f"[AGENCY] Phase 0: invoking agency plugin for request {request_id}")
+                    agency_context: Dict[str, Any] = {
+                        "memory_context": memory_context,
+                        "user_context": {
+                            "user_id": user_context.user_id,
+                            "conversation_language": user_context.conversation_language,
+                        },
+                    }
+                    agency_request = ProcessingRequest(
+                        request_id=request_id,
+                        user_id=user_context.user_id,
+                        conversation_id=user_message.message.conversation_id,
+                        text=user_message.message.text,
+                        context=agency_context,
+                        timestamp=datetime.now(UTC),
+                    )
+                    agency_response = await self.agency_plugin.process(agency_request)
+                    self.logger.info(
+                        f"[AGENCY] Phase 0: agency plugin completed for {request_id} (success={agency_response.success}, "
+                        f"confidence={agency_response.confidence}, keys={list(agency_response.data.keys())})"
+                    )
+                    # Store agency response in components_ready for future phases
+                    self.pending_responses[request_id]["components_ready"]["agency"] = {
+                        "request_id": agency_response.request_id,
+                        "data": agency_response.data,
+                        "confidence": agency_response.confidence,
+                        "processing_time_ms": agency_response.processing_time_ms,
+                        "success": agency_response.success,
+                        "error": agency_response.error,
+                    }
+                except Exception as e:
+                    self.logger.error(f"[AGENCY] Phase 0: error while invoking agency plugin for {request_id}: {e}")
             
             # Generate LLM response with memory context
             await self._generate_llm_response(request_id, user_context, user_message, memory_context)
@@ -597,7 +677,7 @@ class ConversationEngine(BaseService):
                 print(f"🔍 [MEMORY_DEBUG] recent_context sample: {recent_context[:2] if recent_context else 'empty'}")
                 self.logger.info(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
             
-            system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id)
+            system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id, user_message)
             if system_prompt:
                 self.logger.debug(f"System prompt: {len(system_prompt)} chars")
             
@@ -815,13 +895,15 @@ class ConversationEngine(BaseService):
                 user_context = pending_data.get("user_context")
                 user_message = pending_data.get("user_message")
                 selected_skill_id = pending_data.get("selected_skill_id")
+                agency_data = pending_data.get("components_ready", {}).get("agency")
                 
                 if user_context and user_message:
                     await self._log_trajectory(
                         user_context,
                         user_message,
                         final_content,  # Fixed: use final_content parameter
-                        selected_skill_id
+                        selected_skill_id,
+                        agency_data  # Pass agency context
                     )
             
             # Don't clean up here - let the LLM response handler clean up
@@ -831,7 +913,7 @@ class ConversationEngine(BaseService):
             print(f"💬 [CONVERSATION_ENGINE] ❌ Error finalizing streaming response: {e}")
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
     
-    def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None) -> str:
+    def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None, user_message: Optional[ConversationMessage] = None) -> str:
         """Build system prompt with memory context and optional skill template
         
         NOTE: Character personality is defined in the Modelfile (e.g., Modelfile.eve).
@@ -843,6 +925,22 @@ class ConversationEngine(BaseService):
         # DO NOT define character here - that's in the Modelfile
         # Only add contextual information that helps with the current conversation
         prompt_parts = []
+
+        # Language policy: default to the user's preferred language unless they explicitly ask otherwise
+        effective_language = None
+        if user_context and getattr(user_context, "conversation_language", None):
+            effective_language = user_context.conversation_language
+            self.logger.debug(
+                f"🗣️ [LANG_POLICY] conversation_language from user_context: {effective_language}",
+            )
+        else:
+            self.logger.debug("🗣️ [LANG_POLICY] No conversation_language found on user_context; language will follow model defaults")
+
+        if effective_language:
+            prompt_parts.append(
+                f"The user's preferred language is {effective_language}. You must respond in this language unless the user explicitly asks you in their CURRENT message to reply in a different language. Do not switch languages just because past memories or content are in another language."
+            )
+            self.logger.debug(f"🗣️ [LANG_POLICY] Added language directive to system prompt for language={effective_language}")
         
         # Phase 3: Add skill template if selected
         if skill_id:
@@ -1170,21 +1268,54 @@ class ConversationEngine(BaseService):
         try:
             # Check if behavioral learning is enabled
             memory_manager = ai_registry.get("memory")
-            if not memory_manager or not hasattr(memory_manager, '_behavioral_enabled') or not memory_manager._behavioral_enabled:
+            
+            self.logger.info(f"🎯 [SKILL] Starting skill selection for user {user_context.user_id}")
+            print(f"🎯 [SKILL] Starting skill selection for user {user_context.user_id}")
+            
+            if not memory_manager:
+                self.logger.warning("🎯 [SKILL] No memory manager found in registry")
+                print("🎯 [SKILL] ❌ No memory manager found in registry")
                 return None
             
-            # Get Thompson Sampling selector
-            if not hasattr(memory_manager, '_thompson_sampling') or not memory_manager._thompson_sampling:
+            if not hasattr(memory_manager, '_behavioral_enabled'):
+                self.logger.warning("🎯 [SKILL] Memory manager missing _behavioral_enabled attribute")
+                print("🎯 [SKILL] ❌ Memory manager missing _behavioral_enabled attribute")
                 return None
+                
+            if not memory_manager._behavioral_enabled:
+                self.logger.warning("🎯 [SKILL] Behavioral learning disabled (_behavioral_enabled=False)")
+                print("🎯 [SKILL] ❌ Behavioral learning disabled (_behavioral_enabled=False)")
+                return None
+            
+            print(f"🎯 [SKILL] ✅ Behavioral learning enabled")
+            
+            # Get Thompson Sampling selector
+            if not hasattr(memory_manager, '_thompson_sampling'):
+                self.logger.warning("🎯 [SKILL] Memory manager missing _thompson_sampling attribute")
+                print("🎯 [SKILL] ❌ Memory manager missing _thompson_sampling attribute")
+                return None
+                
+            if not memory_manager._thompson_sampling:
+                self.logger.warning("🎯 [SKILL] Thompson sampling selector is None")
+                print("🎯 [SKILL] ❌ Thompson sampling selector is None")
+                return None
+            
+            print(f"🎯 [SKILL] ✅ Thompson sampling selector available")
             
             thompson_sampling = memory_manager._thompson_sampling
             skill_store = memory_manager._skill_store
             
             # Get available skills
+            print(f"🎯 [SKILL] Fetching available skills...")
             candidate_skills = await skill_store.list_skills(skill_type=None, limit=100)
+            
             if not candidate_skills:
                 self.logger.warning("🎯 [SKILL] No skills available for selection")
+                print("🎯 [SKILL] ❌ No skills available for selection")
                 return None
+            
+            print(f"🎯 [SKILL] ✅ Found {len(candidate_skills)} candidate skills")
+            self.logger.info(f"🎯 [SKILL] Found {len(candidate_skills)} candidate skills")
             
             # Build context for selection (simplified - could be enhanced with intent detection)
             context = {
@@ -1193,6 +1324,7 @@ class ConversationEngine(BaseService):
                 "time_of_day": "any"
             }
             
+            print(f"🎯 [SKILL] Calling Thompson Sampling selector...")
             # Select skill using Thompson Sampling
             selected_skill_id = await thompson_sampling.select_skill(
                 user_id=user_context.user_id,
@@ -1200,13 +1332,23 @@ class ConversationEngine(BaseService):
                 candidate_skills=candidate_skills
             )
             
+            if selected_skill_id:
+                print(f"🎯 [SKILL] ✅ Selected skill: {selected_skill_id}")
+                self.logger.info(f"🎯 [SKILL] Selected skill: {selected_skill_id}")
+            else:
+                print(f"🎯 [SKILL] ⚠️  Thompson Sampling returned None")
+                self.logger.warning(f"🎯 [SKILL] Thompson Sampling returned None")
+            
             return selected_skill_id
             
         except Exception as e:
             self.logger.error(f"🎯 [SKILL] Failed to select skill: {e}")
+            print(f"🎯 [SKILL] ❌ Exception during skill selection: {e}")
+            import traceback
+            print(f"🎯 [SKILL] Traceback: {traceback.format_exc()}")
             return None
     
-    async def _log_trajectory(self, user_context: UserContext, user_message: ConversationMessage, ai_response: str, selected_skill_id: Optional[str]) -> None:
+    async def _log_trajectory(self, user_context: UserContext, user_message: ConversationMessage, ai_response: str, selected_skill_id: Optional[str], agency_data: Optional[Dict[str, Any]] = None) -> None:
         """
         Log conversation trajectory for behavioral learning.
         
@@ -1215,6 +1357,7 @@ class ConversationEngine(BaseService):
             user_message: User message
             ai_response: AI response text
             selected_skill_id: ID of skill that was applied
+            agency_data: Agency plugin response data (intentions, ethics decisions, etc.)
         """
         try:
             # Check if behavioral learning is enabled
@@ -1236,21 +1379,50 @@ class ConversationEngine(BaseService):
             
             # Generate trajectory ID
             import uuid
+            import json
             trajectory_id = str(uuid.uuid4())
             
             # Get turn number (count messages in conversation)
             conversation_id = user_message.message.conversation_id
             turn_number = db.execute(
-                "SELECT COUNT(*) FROM trajectories WHERE user_id = ? AND conversation_id = ?",
+                "SELECT COUNT(*) FROM ams_trajectories WHERE user_id = ? AND conversation_id = ?",
                 (user_context.user_id, conversation_id)
             ).fetchone()[0] + 1
             
+            # Extract agency context for logging
+            agency_context_json = None
+            if agency_data and agency_data.get("success"):
+                agency_context = {
+                    "intention_set": agency_data.get("data", {}).get("intention_set"),
+                    "active_goals": agency_data.get("data", {}).get("active_goals"),
+                    "ethics_decisions": agency_data.get("data", {}).get("ethics_decisions"),
+                    "confidence": agency_data.get("confidence"),
+                    "processing_time_ms": agency_data.get("processing_time_ms")
+                }
+                # Remove None values
+                agency_context = {k: v for k, v in agency_context.items() if v is not None}
+                if agency_context:
+                    agency_context_json = json.dumps(agency_context)
+                    
+                    # Log agency decisions as structured log entry
+                    self.logger.info(
+                        f"🎯 [AGENCY] Turn {turn_number} - Agency context",
+                        extra={
+                            "conversation_id": conversation_id,
+                            "turn_number": turn_number,
+                            "agency_context": agency_context,
+                            "subsystem": "agency",
+                            "module": "conversation_engine"
+                        }
+                    )
+            
             # Insert trajectory with message_id for feedback linking
             db.execute(
-                """INSERT INTO trajectories (
+                """INSERT INTO ams_trajectories (
                     trajectory_id, user_id, conversation_id, turn_number,
-                    user_input, selected_skill_id, ai_response, message_id, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    user_input, selected_skill_id, ai_response, message_id, 
+                    agency_context, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     trajectory_id,
                     user_context.user_id,
@@ -1260,7 +1432,8 @@ class ConversationEngine(BaseService):
                     selected_skill_id,
                     ai_response,
                     user_message.message_id,  # Use message_id from ConversationMessage (not message.id)
-                    datetime.utcnow().isoformat()
+                    agency_context_json,  # Store agency context as JSON
+                    datetime.now(UTC).isoformat()
                 )
             )
             db.commit()
@@ -1316,4 +1489,228 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error during conversation engine stop: {e}")
+    
+    # ============================================================================
+    # GOAL EXTRACTION (Phase 6 - Conversation Integration)
+    # ============================================================================
+    
+    async def _extract_user_goal_async(
+        self,
+        user_id: str,
+        message_id: str,
+        message_text: str,
+        conversation_id: str
+    ) -> None:
+        """
+        Extract user goals from conversation message (async, non-blocking).
+        
+        This runs in the background after the conversation response is sent,
+        using XLM-RoBERTa for fast intent classification and LLM for goal extraction.
+        
+        Args:
+            user_id: User ID
+            message_id: Message ID for provenance
+            message_text: User's message text
+            conversation_id: Conversation ID for context
+        """
+        try:
+            print(f"🎯 [GOAL_EXTRACTION] Starting async extraction for user {user_id[:8]}")
+            print(f"🎯 [GOAL_EXTRACTION] Message: '{message_text[:100]}...'")
+            self.logger.info(f"[GOAL_EXTRACTION] Starting async extraction for message: {message_text[:50]}...")
+            
+            # Get goal extractor with event store for metrics tracking
+            from aico.ai.agency import UserGoalExtractor
+            from aico.ai.processors import ai_registry
+            print(f"🎯 [GOAL_EXTRACTION] Getting goal extractor instance...")
+            
+            # Get agency engine to access event store and database connection
+            agency_engine = ai_registry.get("agency")
+            event_store = agency_engine.event_store if agency_engine else None
+            db_connection = self.container.get_service("database") if hasattr(self, 'container') else None
+            
+            extractor = UserGoalExtractor(event_store=event_store, db_connection=db_connection)
+            print(f"🎯 [GOAL_EXTRACTION] ✅ Goal extractor ready (event_store={'enabled' if event_store else 'disabled'})")
+            
+            # Extract goal (XLM-RoBERTa + LLM, ~500ms total)
+            print(f"🎯 [GOAL_EXTRACTION] Calling extractor.extract_goal_from_message()...")
+            perceptual_event = await extractor.extract_goal_from_message(
+                user_id=user_id,
+                message_id=message_id,
+                message_text=message_text,
+                conversation_id=conversation_id,
+                conversation_context=None  # TODO: Get recent conversation context
+            )
+            
+            if not perceptual_event:
+                print(f"🎯 [GOAL_EXTRACTION] ❌ No goal detected in message (intent not goal-forming or low confidence)")
+                self.logger.info("[GOAL_EXTRACTION] No goal detected in message")
+                return
+            
+            print(f"🎯 [GOAL_EXTRACTION] ✅ Goal detected!")
+            print(f"🎯 [GOAL_EXTRACTION]   Title: '{perceptual_event.candidate_goal_summaries[0]}'")
+            print(f"🎯 [GOAL_EXTRACTION]   Confidence: {perceptual_event.confidence_score:.2f}")
+            # Handle both enum and string values for horizon
+            horizon_value = perceptual_event.candidate_goal_horizon.value if hasattr(perceptual_event.candidate_goal_horizon, 'value') else perceptual_event.candidate_goal_horizon if perceptual_event.candidate_goal_horizon else 'unknown'
+            print(f"🎯 [GOAL_EXTRACTION]   Horizon: {horizon_value}")
+            print(f"🎯 [GOAL_EXTRACTION]   Urgency: {perceptual_event.urgency_score:.2f}")
+            self.logger.info(
+                f"[GOAL_EXTRACTION] Goal detected: '{perceptual_event.candidate_goal_summaries[0]}' "
+                f"(confidence={perceptual_event.confidence_score:.2f})"
+            )
+            
+            # Get agency engine from registry
+            from aico.ai.processors import ai_registry
+            print(f"🎯 [GOAL_EXTRACTION] Getting agency engine from registry...")
+            agency_engine = ai_registry.get("agency")
+            
+            if not agency_engine:
+                print(f"🎯 [GOAL_EXTRACTION] ❌ Agency engine not available in registry")
+                self.logger.warning("[GOAL_EXTRACTION] Agency engine not available in registry")
+                return
+            print(f"🎯 [GOAL_EXTRACTION] ✅ Agency engine ready")
+            
+            # Process perceptual event to create goal
+            print(f"🎯 [GOAL_EXTRACTION] Processing perceptual event to create goal...")
+            goal = await agency_engine.process_perceptual_event(perceptual_event)
+            
+            if goal:
+                print(f"🎯 [GOAL_EXTRACTION] ✅✅✅ SUCCESS! Created user goal:")
+                print(f"🎯 [GOAL_EXTRACTION]   Goal ID: {goal.goal_id}")
+                print(f"🎯 [GOAL_EXTRACTION]   Title: '{goal.title}'")
+                print(f"🎯 [GOAL_EXTRACTION]   Origin: {goal.origin.value}")
+                print(f"🎯 [GOAL_EXTRACTION]   Status: {goal.status.value}")
+                print(f"🎯 [GOAL_EXTRACTION]   Priority: {goal.priority.value}")
+                self.logger.info(
+                    f"[GOAL_EXTRACTION] ✅ Created user goal: '{goal.title}' "
+                    f"(id={goal.goal_id}, origin={goal.origin.value})"
+                )
+                
+                # Frontend will pick up via regular polling of agency endpoints
+                # No WebSocket needed - polling already implemented
+                
+            else:
+                print(f"🎯 [GOAL_EXTRACTION] ❌ Failed to create goal from perceptual event")
+                self.logger.warning("[GOAL_EXTRACTION] Failed to create goal from perceptual event")
+                
+        except Exception as e:
+            # Don't fail conversation flow if goal extraction fails
+            print(f"🎯 [GOAL_EXTRACTION] ❌❌❌ EXCEPTION: {e}")
+            import traceback
+            print(f"🎯 [GOAL_EXTRACTION] Traceback: {traceback.format_exc()}")
+            self.logger.error(f"[GOAL_EXTRACTION] Async goal extraction failed: {e}", exc_info=True)
+    
+    # ============================================================================
+    # PROACTIVE CONVERSATION HANDLER
+    # ============================================================================
+    
+    async def _handle_proactive_initiation(self, message) -> None:
+        """Handle proactive conversation initiation from scheduler.
+        
+        Message format:
+        {
+            'initiation_id': str,
+            'user_id': str,
+            'conversation_id': str,
+            'topic': str,
+            'message': str,
+            'context': str,
+            'urgency': str,
+            'expected_answer_type': str,
+            'initiated_at': str (ISO timestamp),
+            'strategy_id': str,
+            'scores': {...}
+        }
+        """
+        try:
+            print(f"💬 [PROACTIVE] 📨 Received proactive initiation message")
+            self.logger.info("💬 [PROACTIVE] Received proactive initiation message")
+            
+            # Unpack protobuf AicoMessage -> ConversationMessage
+            from aico.proto.aico_conversation_pb2 import ConversationMessage
+            
+            conv_message = ConversationMessage()
+            if not message.any_payload.Unpack(conv_message):
+                print(f"💬 [PROACTIVE] ❌ Failed to unpack ConversationMessage from protobuf")
+                self.logger.error("💬 [PROACTIVE] Failed to unpack ConversationMessage")
+                return
+            
+            print(f"💬 [PROACTIVE] ✅ Unpacked ConversationMessage successfully")
+            
+            # Extract message data from protobuf
+            initiation_id = conv_message.message_id
+            user_id = conv_message.user_id
+            conversation_id = conv_message.message.conversation_id
+            proactive_message = conv_message.message.text
+            topic = None  # Not in ConversationMessage, will need to get from metadata or DB
+            
+            if not all([initiation_id, user_id, conversation_id, proactive_message]):
+                print(f"💬 [PROACTIVE] ⚠️ Missing required fields in initiation message")
+                self.logger.warning("💬 [PROACTIVE] Missing required fields in initiation message")
+                return
+            
+            print(f"💬 [PROACTIVE] 📋 Initiation {initiation_id[:8]} for user {user_id[:8]}")
+            self.logger.info(
+                f"💬 [PROACTIVE] Processing initiation {initiation_id} for user {user_id}"
+            )
+            
+            # Check if user is online/active
+            # For now, we'll store the initiation and let the frontend poll for it
+            # In future: WebSocket push notification
+            
+            # Store initiation in a way the frontend can retrieve it
+            # Option 1: Store in a pending_initiations table/cache
+            # Option 2: Publish to user-specific topic
+            # Option 3: Send via WebSocket if user is connected
+            
+            # For resilience: Store in database (already done by scheduler)
+            # Publish to user-specific notification topic
+            try:
+                notification_topic = f'user/{user_id}/notifications/v1'
+                
+                # Create notification as protobuf ConversationMessage
+                from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
+                from google.protobuf.timestamp_pb2 import Timestamp
+                
+                notification_conv_msg = ConversationMessage()
+                notification_conv_msg.timestamp.CopyFrom(conv_message.timestamp)
+                notification_conv_msg.source = "proactive_engine"
+                notification_conv_msg.message_id = initiation_id
+                notification_conv_msg.user_id = user_id
+                
+                # Build notification message text
+                notification_text = f"[Proactive] {proactive_message}"
+                
+                notification_conv_msg.message.text = notification_text
+                notification_conv_msg.message.type = Message.MessageType.SYSTEM_NOTIFICATION
+                notification_conv_msg.message.conversation_id = conversation_id
+                notification_conv_msg.message.turn_number = 0
+                
+                await self.bus_client.publish(
+                    topic=notification_topic,
+                    payload=notification_conv_msg
+                )
+                
+                print(f"💬 [PROACTIVE] ✅ Published notification to {notification_topic}")
+                self.logger.info(
+                    f"💬 [PROACTIVE] Published notification to user topic {notification_topic}"
+                )
+                
+            except Exception as pub_error:
+                # Don't fail if notification publish fails - user can still see it via polling
+                print(f"💬 [PROACTIVE] ⚠️ Failed to publish notification: {pub_error}")
+                self.logger.warning(
+                    f"💬 [PROACTIVE] Failed to publish notification: {pub_error}"
+                )
+            
+            # Log successful handling
+            print(f"💬 [PROACTIVE] ✅ Initiation {initiation_id[:8]} handled successfully")
+            self.logger.info(
+                f"💬 [PROACTIVE] Successfully handled initiation {initiation_id}"
+            )
+            
+        except Exception as e:
+            print(f"💬 [PROACTIVE] ❌ Error handling proactive initiation: {e}")
+            self.logger.exception(
+                f"💬 [PROACTIVE] Error handling proactive initiation: {e}"
+            )
             raise

@@ -17,6 +17,7 @@ import uuid
 import zmq
 import zmq.asyncio
 import asyncio
+import traceback
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -321,6 +322,9 @@ class AICOLogger:
     def error(self, message: str, **kwargs):
         self._log("ERROR", message, **kwargs)
     
+    def critical(self, message: str, **kwargs):
+        self._log("CRITICAL", message, **kwargs)
+    
     def exception(self, message: str, **kwargs):
         """Log an exception with traceback"""
         kwargs["extra"] = kwargs.get("extra", {})
@@ -614,7 +618,7 @@ class LogRepository:
             session_id = getattr(log_entry, 'session_id', None)
             trace_id = getattr(log_entry, 'trace_id', None)
             self.db.execute("""
-                INSERT INTO logs (
+                INSERT INTO system_logs (
                     timestamp, level, subsystem, module, function_name, 
                     file_path, line_number, topic, message, user_uuid, 
                     session_id, trace_id, extra
@@ -676,7 +680,7 @@ class LogRepository:
             SELECT id, timestamp, level, subsystem, module, function_name,
                    file_path, line_number, topic, message, user_uuid,
                    session_id, trace_id, extra
-            FROM logs 
+            FROM system_logs 
             WHERE {where_sql}
             ORDER BY timestamp DESC 
             LIMIT ?
@@ -717,11 +721,11 @@ class LogRepository:
         where_sql = " AND ".join(where_clauses)
         
         # Get count first
-        count_sql = f"SELECT COUNT(*) FROM logs WHERE {where_sql}"
+        count_sql = f"SELECT COUNT(*) FROM system_logs WHERE {where_sql}"
         count = self.db.execute(count_sql, params).fetchone()[0]
         
         # Delete
-        delete_sql = f"DELETE FROM logs WHERE {where_sql}"
+        delete_sql = f"DELETE FROM system_logs WHERE {where_sql}"
         self.db.execute(delete_sql, params)
         
         return count
@@ -731,12 +735,12 @@ class LogRepository:
         stats = {}
         
         # Total count
-        stats["total_logs"] = self.db.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
+        stats["total_logs"] = self.db.execute("SELECT COUNT(*) FROM system_logs").fetchone()[0]
         
         # Count by level
         level_counts = self.db.execute("""
             SELECT level, COUNT(*) as count 
-            FROM logs 
+            FROM system_logs 
             GROUP BY level 
             ORDER BY count DESC
         """).fetchall()
@@ -745,7 +749,7 @@ class LogRepository:
         # Count by subsystem
         subsystem_counts = self.db.execute("""
             SELECT subsystem, COUNT(*) as count 
-            FROM logs 
+            FROM system_logs 
             GROUP BY subsystem 
             ORDER BY count DESC
         """).fetchall()
@@ -753,7 +757,7 @@ class LogRepository:
         
         # Recent activity (last 24h)
         stats["last_24h"] = self.db.execute("""
-            SELECT COUNT(*) FROM logs 
+            SELECT COUNT(*) FROM system_logs 
             WHERE timestamp >= datetime('now', '-24 hours')
         """).fetchone()[0]
         
@@ -779,7 +783,7 @@ class LogRetentionManager:
         cutoff_date = cutoff_date.replace(day=cutoff_date.day - retention_days)
         
         age_deleted = self.db.execute("""
-            DELETE FROM logs 
+            DELETE FROM system_logs 
             WHERE timestamp < ?
         """, [cutoff_date.isoformat() + "Z"]).rowcount
         
@@ -790,13 +794,13 @@ class LogRetentionManager:
         total_size = self._get_logs_size_mb()
         if total_size > max_size_mb:
             # Delete oldest 20% of logs
-            total_count = self.db.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
+            total_count = self.db.execute("SELECT COUNT(*) FROM system_logs").fetchone()[0]
             delete_count = int(total_count * 0.2)
             
             size_deleted = self.db.execute(f"""
-                DELETE FROM logs 
+                DELETE FROM system_logs 
                 WHERE id IN (
-                    SELECT id FROM logs 
+                    SELECT id FROM system_logs 
                     ORDER BY timestamp ASC 
                     LIMIT {delete_count}
                 )
@@ -811,7 +815,7 @@ class LogRetentionManager:
     def _get_logs_size_mb(self) -> float:
         """Estimate logs table size in MB"""
         # Simplified size estimation
-        row_count = self.db.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
+        row_count = self.db.execute("SELECT COUNT(*) FROM system_logs").fetchone()[0]
         # Rough estimate: ~500 bytes per log entry
         estimated_bytes = row_count * 500
         return estimated_bytes / (1024 * 1024)
@@ -912,7 +916,10 @@ def get_logger(subsystem: str, module: str) -> AICOLogger:
         first_service = next(iter(_logger_factories))
         return _logger_factories[first_service].create_logger(subsystem, module)
     
-    raise RuntimeError("Logging not initialized. Call initialize_logging() or initialize_cli_logging() first.")
+    # Return a no-op logger instead of raising error - allows modules to be imported
+    # before logging is initialized (e.g., during CLI startup)
+    import logging
+    return logging.getLogger(f"{subsystem}.{module}")
 
 
 def _get_zmq_transport() -> Optional[ZMQLogTransport]:

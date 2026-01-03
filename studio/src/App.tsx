@@ -1,25 +1,37 @@
 import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+import { ThemeProvider } from '@mui/material/styles';
+import { CssBaseline } from '@mui/material';
+import { studioLightTheme, studioDarkTheme } from './theme';
+import { StudioLayout } from './layout/StudioLayout';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import { LoginPage } from './auth/LoginPage';
+
+const AppShell: React.FC = () => {
+  const { user } = useAuth();
+  const [mode, setMode] = React.useState<'light' | 'dark'>('dark');
+  const theme = mode === 'dark' ? studioDarkTheme : studioLightTheme;
+
+  const handleToggleTheme = () => {
+    setMode((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      {user ? (
+        <StudioLayout mode={mode} onToggleTheme={handleToggleTheme} />
+      ) : (
+        <LoginPage />
+      )}
+    </ThemeProvider>
+  );
+};
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
 

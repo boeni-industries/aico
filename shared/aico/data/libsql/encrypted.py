@@ -188,7 +188,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             journal_mode = libsql_config.get("journal_mode", "WAL")
             result = connection.execute(f"PRAGMA journal_mode = {journal_mode}")
             actual_mode = result.fetchone()[0] if result else "unknown"
-            _get_logger().info(f"Database journal_mode: {actual_mode} (requested: {journal_mode})")
+            _get_logger().debug(f"Database journal_mode: {actual_mode} (requested: {journal_mode})")
             
             # Apply synchronous mode (default: FULL for crash safety)
             # CRITICAL: FULL prevents corruption on OS crash/restart
@@ -197,7 +197,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             result = connection.execute("PRAGMA synchronous")
             actual_sync = result.fetchone()[0] if result else "unknown"
             sync_names = {0: "OFF", 1: "NORMAL", 2: "FULL", 3: "EXTRA"}
-            _get_logger().info(f"Database synchronous: {sync_names.get(actual_sync, actual_sync)} (requested: {synchronous})")
+            _get_logger().debug(f"Database synchronous: {sync_names.get(actual_sync, actual_sync)} (requested: {synchronous})")
             
             # Apply cache size (default: 2000)
             cache_size = libsql_config.get("cache_size", 2000)
@@ -215,7 +215,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             connection.execute(f"PRAGMA wal_autocheckpoint = {wal_autocheckpoint}")
             _get_logger().debug(f"Set wal_autocheckpoint to {wal_autocheckpoint} pages")
             
-            _get_logger().info("✓ Database configuration applied successfully")
+            _get_logger().debug("✓ Database configuration applied successfully")
             
         except Exception as e:
             _get_logger().warning(f"Failed to apply database settings: {e}")

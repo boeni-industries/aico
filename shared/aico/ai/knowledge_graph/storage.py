@@ -9,6 +9,9 @@ from typing import List, Optional, Dict, Any
 import json
 import asyncio
 from datetime import datetime, timezone
+import time
+import asyncio
+import threading
 
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
@@ -16,6 +19,9 @@ from aico.core.logging import get_logger
 from .models import Node, Edge, PropertyGraph
 
 logger = get_logger("shared", "ai.knowledge_graph.storage")
+
+# Global lock for edge insertion to prevent race conditions in parallel extraction
+_edge_insertion_lock = threading.Lock()
 
 
 class PropertyGraphStorage:
@@ -208,9 +214,10 @@ class PropertyGraphStorage:
         if superseded_node_ids is None:
             superseded_node_ids = set()
         
-        # Mark superseded nodes as historical before saving new ones
+        # Mark superseded nodes as historical (if any from resolution)
         if superseded_node_ids:
-            print(f"\n  💾 [STORAGE] Marking {len(superseded_node_ids)} superseded nodes as historical...")
+            print(f"\n  [STORAGE] Marking {len(superseded_node_ids)} superseded nodes as historical...")
+            
             def _mark_historical():
                 with self.db:
                     for node_id in superseded_node_ids:
@@ -218,54 +225,250 @@ class PropertyGraphStorage:
                             "UPDATE kg_nodes SET is_current = 0, updated_at = ? WHERE id = ?",
                             (datetime.now(timezone.utc).isoformat(), node_id)
                         )
+                        # Also mark edges pointing to/from this node as historical to prevent orphans
+                        self.db.execute(
+                            "UPDATE kg_edges SET is_current = 0, updated_at = ? WHERE (source_id = ? OR target_id = ?) AND is_current = 1",
+                            (datetime.now(timezone.utc).isoformat(), node_id, node_id)
+                        )
                     self.db.commit()
             await asyncio.to_thread(_mark_historical)
-            print(f"  💾 [STORAGE] ✅ Marked {len(superseded_node_ids)} nodes as historical")
+            print(f"  [STORAGE] Marked {len(superseded_node_ids)} nodes as historical")
+        
+        # ALWAYS clean up ALL historical embeddings AND orphaned embeddings from ChromaDB
+        # This ensures ChromaDB stays perfectly in sync with libSQL current nodes/edges
+        print(f"  [STORAGE] Cleaning up ChromaDB embeddings...")
+        
+        def _sync_cleanup_chromadb():
+            # Get all current node IDs from libSQL
+            cursor = self.db.execute("SELECT id FROM kg_nodes WHERE is_current = 1")
+            current_node_ids = set(row[0] for row in cursor.fetchall())
+            
+            # Get all node IDs from ChromaDB
+            try:
+                chroma_nodes = self._node_collection.get()
+                chroma_node_ids = set(chroma_nodes['ids']) if chroma_nodes['ids'] else set()
+            except Exception as e:
+                logger.warning(f"Failed to get ChromaDB node IDs: {e}")
+                chroma_node_ids = set()
+            
+            # Find orphaned node embeddings (in ChromaDB but not in current libSQL nodes)
+            orphaned_node_ids = chroma_node_ids - current_node_ids
+            
+            # Delete orphaned node embeddings
+            if orphaned_node_ids:
+                try:
+                    self._node_collection.delete(ids=list(orphaned_node_ids))
+                    logger.info(f"Deleted {len(orphaned_node_ids)} orphaned node embeddings from ChromaDB")
+                    print(f"  [STORAGE] 🧹 Deleted {len(orphaned_node_ids)} orphaned node embeddings")
+                except Exception as e:
+                    logger.warning(f"Failed to delete orphaned node embeddings: {e}")
+            
+            # Get all current edge IDs from libSQL
+            cursor = self.db.execute("SELECT id FROM kg_edges WHERE is_current = 1")
+            current_edge_ids = set(row[0] for row in cursor.fetchall())
+            
+            # Get all edge IDs from ChromaDB
+            try:
+                chroma_edges = self._edge_collection.get()
+                chroma_edge_ids = set(chroma_edges['ids']) if chroma_edges['ids'] else set()
+            except Exception as e:
+                logger.warning(f"Failed to get ChromaDB edge IDs: {e}")
+                chroma_edge_ids = set()
+            
+            # Find orphaned edge embeddings (in ChromaDB but not in current libSQL edges)
+            orphaned_edge_ids = chroma_edge_ids - current_edge_ids
+            
+            # Delete orphaned edge embeddings
+            if orphaned_edge_ids:
+                try:
+                    self._edge_collection.delete(ids=list(orphaned_edge_ids))
+                    logger.info(f"Deleted {len(orphaned_edge_ids)} orphaned edge embeddings from ChromaDB")
+                    print(f"  [STORAGE] 🧹 Deleted {len(orphaned_edge_ids)} orphaned edge embeddings")
+                except Exception as e:
+                    logger.warning(f"Failed to delete orphaned edge embeddings: {e}")
+            
+            if not orphaned_node_ids and not orphaned_edge_ids:
+                print(f"  [STORAGE] ✅ ChromaDB already in sync")
+            else:
+                print(f"  [STORAGE] ✅ ChromaDB cleanup complete: {len(orphaned_node_ids)} nodes, {len(orphaned_edge_ids)} edges removed")
+        
+        await asyncio.to_thread(_sync_cleanup_chromadb)
         
         # Save to libSQL (structured queries)
         def _sync_save_all():
+            # Track node ID mappings for edge reference updates
+            node_id_mapping = {}  # attempted_id -> actual_id
+            
             with self.db:
-                # Save nodes
+                # Save nodes with UNIQUE constraint handling
                 for node in graph.nodes:
-                    self.db.execute(
-                        """
-                        INSERT OR REPLACE INTO kg_nodes 
-                        (id, user_id, label, properties, confidence, source_text, is_current, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            node.id, node.user_id, node.label,
-                            json.dumps(node.properties), node.confidence, node.source_text,
-                            1, node.created_at, node.updated_at
+                    try:
+                        self.db.execute(
+                            """
+                            INSERT INTO kg_nodes 
+                            (id, user_id, label, properties, confidence, source_text, is_current, created_at, updated_at,
+                             valid_from, valid_until, language, canonical_id, aliases_json)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                node.id, node.user_id, node.label,
+                                json.dumps(node.properties, sort_keys=True), node.confidence, node.source_text,
+                                1, node.created_at, node.updated_at,
+                                node.valid_from, node.valid_until, node.language, node.canonical_id,
+                                json.dumps(node.aliases, sort_keys=True) if node.aliases else None
+                            )
                         )
-                    )
+                        # Node inserted successfully - map to itself
+                        node_id_mapping[node.id] = node.id
+                    except Exception as e:
+                        if "UNIQUE constraint failed" in str(e):
+                            # Node already exists - find it and update confidence if higher
+                            cursor = self.db.execute(
+                                """
+                                SELECT id, confidence FROM kg_nodes 
+                                WHERE user_id = ? AND label = ? AND properties = ? AND is_current = 1
+                                LIMIT 1
+                                """,
+                                (node.user_id, node.label, json.dumps(node.properties, sort_keys=True))
+                            )
+                            existing = cursor.fetchone()
+                            if existing:
+                                existing_id, existing_confidence = existing
+                                # Map attempted ID to existing ID for edge reference updates
+                                node_id_mapping[node.id] = existing_id
+                                logger.info(
+                                    f"[NODE_DEDUP] Node already exists: label={node.label}, "
+                                    f"existing_id={existing_id}, attempted_id={node.id}"
+                                )
+                                # Update confidence if new one is higher
+                                if node.confidence > existing_confidence:
+                                    self.db.execute(
+                                        "UPDATE kg_nodes SET confidence = ?, updated_at = ? WHERE id = ?",
+                                        (node.confidence, node.updated_at, existing_id)
+                                    )
+                                    print(f"  💾 [STORAGE] 🔄 Updated node confidence: {node.label} ({existing_id})")
+                                else:
+                                    print(f"  💾 [STORAGE] ✅ Node exists with higher confidence: {node.label} ({existing_id})")
+                        else:
+                            raise
                 
-                # Save edges
+                # Save edges (lock is now at transaction level, not here)
                 for edge in graph.edges:
-                    # Debug: Check if source_text exists
+                        # Debug: Check if source_text exists
                     if not hasattr(edge, 'source_text') or edge.source_text is None:
                         print(f"  💾 [STORAGE] ⚠️  Edge {edge.id} missing source_text! Edge: {edge}")
                         # Set default source_text to avoid constraint violation
                         edge.source_text = ""
                     
-                    self.db.execute(
+                    # Update edge node references if nodes were deduplicated
+                    actual_source_id = node_id_mapping.get(edge.source_id, edge.source_id)
+                    actual_target_id = node_id_mapping.get(edge.target_id, edge.target_id)
+                    
+                    if actual_source_id != edge.source_id or actual_target_id != edge.target_id:
+                        print(f"  💾 [STORAGE] 🔄 Remapping edge references: source {edge.source_id[:8]}→{actual_source_id[:8]}, target {edge.target_id[:8]}→{actual_target_id[:8]}")
+                    
+                    # Check if duplicate edge already exists (same source, target, relation_type)
+                    cursor = self.db.execute(
                         """
-                        INSERT OR REPLACE INTO kg_edges 
-                        (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        SELECT id FROM kg_edges 
+                        WHERE source_id = ? AND target_id = ? AND relation_type = ? AND is_current = 1
+                        LIMIT 1
                         """,
-                        (
-                            edge.id, edge.source_id, edge.target_id, edge.relation_type,
-                            json.dumps(edge.properties), edge.confidence, edge.user_id,
-                            edge.source_text, 1, edge.created_at, edge.updated_at
-                        )
+                        (actual_source_id, actual_target_id, edge.relation_type)
                     )
+                    existing = cursor.fetchone()
+                    
+                    if existing:
+                        # LAYER 2: SELECT-then-INSERT logic caught duplicate
+                        existing_id = existing[0]
+                        logger.warning(
+                            f"[LAYER 2] Duplicate edge prevented by SELECT check: "
+                            f"relation={edge.relation_type}, source={edge.source_id[:8]}, target={edge.target_id[:8]}, "
+                            f"existing_id={existing_id}, attempted_id={edge.id}"
+                        )
+                        print(f"  💾 [STORAGE] 🔍 [LAYER 2] Duplicate edge detected: {edge.relation_type} (existing: {existing_id}, new: {edge.id})")
+                        self.db.execute(
+                            """
+                            UPDATE kg_edges SET confidence = MAX(confidence, ?), updated_at = ?
+                            WHERE id = ?
+                            """,
+                            (edge.confidence, edge.updated_at, existing_id)
+                        )
+                        print(f"  💾 [STORAGE] ✅ [LAYER 2] Updated existing edge {existing_id} instead of inserting duplicate")
+                    else:
+                        # New edge - insert with UNIQUE constraint protection and remapped node IDs
+                        try:
+                            self.db.execute(
+                                """
+                                INSERT INTO kg_edges 
+                                (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at,
+                                 valid_from, valid_until)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    edge.id, actual_source_id, actual_target_id, edge.relation_type,
+                                    json.dumps(edge.properties, sort_keys=True), edge.confidence, edge.user_id,
+                                    edge.source_text, 1, edge.created_at, edge.updated_at,
+                                    edge.valid_from, edge.valid_until
+                                )
+                            )
+                        except Exception as e:
+                            # LAYER 3: UNIQUE constraint violation - database safety net activated
+                            # This means Layer 1 (lock) and Layer 2 (SELECT) both failed to prevent duplicate
+                            if "UNIQUE constraint failed" in str(e):
+                                logger.error(
+                                    f"[LAYER 3] CRITICAL: Database UNIQUE constraint caught duplicate that bypassed Layers 1 & 2! "
+                                    f"relation={edge.relation_type}, source={edge.source_id[:8]}, target={edge.target_id[:8]}, "
+                                    f"attempted_id={edge.id}. This indicates a race condition or logic bug."
+                                )
+                                print(f"  💾 [STORAGE] 🛡️  [LAYER 3] UNIQUE constraint caught race condition for {edge.relation_type}")
+                                print(f"  💾 [STORAGE] ⚠️  [LAYER 3] WARNING: Layers 1 & 2 failed - investigate race condition!")
+                                
+                                cursor = self.db.execute(
+                                    """
+                                    SELECT id FROM kg_edges 
+                                    WHERE source_id = ? AND target_id = ? AND relation_type = ? AND is_current = 1
+                                    LIMIT 1
+                                    """,
+                                    (actual_source_id, actual_target_id, edge.relation_type)
+                                )
+                                existing = cursor.fetchone()
+                                if existing:
+                                    existing_id = existing[0]
+                                    self.db.execute(
+                                        """
+                                        UPDATE kg_edges SET confidence = MAX(confidence, ?), updated_at = ?
+                                        WHERE id = ?
+                                        """,
+                                        (edge.confidence, edge.updated_at, existing_id)
+                                    )
+                                    logger.info(f"[LAYER 3] Successfully recovered: updated existing edge {existing_id}")
+                                    print(f"  💾 [STORAGE] ✅ [LAYER 3] Database constraint prevented duplicate, updated {existing_id}")
+                                else:
+                                    # Should never happen, but log it
+                                    logger.critical(
+                                        f"[LAYER 3] CRITICAL BUG: UNIQUE constraint failed but edge not found in database! "
+                                        f"relation={edge.relation_type}, source={edge.source_id}, target={edge.target_id}, error={e}"
+                                    )
+                                    print(f"  💾 [STORAGE] ❌ [LAYER 3] UNIQUE constraint error but edge not found: {e}")
+                                    raise
+                            else:
+                                # Different error - re-raise
+                                logger.error(f"[STORAGE] Database error during edge insertion: {e}")
+                                raise
                 
                 self.db.commit()
         
         print(f"\n  💾 [STORAGE] Saving to libSQL: {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
+        logger.info(f"[LAYER 1] Acquiring transaction lock for {len(graph.edges)} edges")
         libsql_start = time.time()
-        await asyncio.to_thread(_sync_save_all)
+        
+        # LAYER 1: Transaction-level lock to prevent race conditions
+        # This ensures only ONE transaction can insert edges at a time
+        with _edge_insertion_lock:
+            logger.debug(f"[LAYER 1] Lock acquired, starting transaction")
+            await asyncio.to_thread(_sync_save_all)
+            logger.debug(f"[LAYER 1] Transaction complete, lock released")
         libsql_time = time.time() - libsql_start
         print(f"  💾 [STORAGE] ✅ libSQL complete in {libsql_time:.2f}s")
         
@@ -301,18 +504,22 @@ class PropertyGraphStorage:
         embedding_time = time.time() - embedding_start
         print(f"  💾 [STORAGE] ✅ Embeddings ready in {embedding_time:.2f}s ({len(nodes_with_embeddings)} cached, {len(nodes_without_embeddings)} generated)")
         
-        chroma_nodes_start = time.time()
-        def _sync_save_nodes_to_chroma():
-            self._node_collection.upsert(
-                ids=[doc["id"] for doc in node_docs],
-                embeddings=embeddings,
-                documents=[doc["document"] for doc in node_docs],
-                metadatas=[doc["metadata"] for doc in node_docs]
-            )
-        
-        await asyncio.to_thread(_sync_save_nodes_to_chroma)
-        chroma_nodes_time = time.time() - chroma_nodes_start
-        print(f"  💾 [STORAGE] ✅ ChromaDB nodes saved in {chroma_nodes_time:.2f}s")
+        # Only save to ChromaDB if we have nodes (avoid empty embeddings list error)
+        if node_docs:
+            chroma_nodes_start = time.time()
+            def _sync_save_nodes_to_chroma():
+                self._node_collection.upsert(
+                    ids=[doc["id"] for doc in node_docs],
+                    embeddings=embeddings,
+                    documents=[doc["document"] for doc in node_docs],
+                    metadatas=[doc["metadata"] for doc in node_docs]
+                )
+            
+            await asyncio.to_thread(_sync_save_nodes_to_chroma)
+            chroma_nodes_time = time.time() - chroma_nodes_start
+            print(f"  💾 [STORAGE] ✅ ChromaDB nodes saved in {chroma_nodes_time:.2f}s")
+        else:
+            print(f"  💾 [STORAGE] ⏭️  No new nodes to save to ChromaDB (edge-only graph)")
         
         # Save edges to ChromaDB
         if graph.edges:

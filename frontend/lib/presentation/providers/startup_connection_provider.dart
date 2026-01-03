@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'startup_connection_provider.g.dart';
@@ -79,7 +78,6 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
   }
 
   void _initializeConnection() {
-    debugPrint('StartupConnection: Initializing connection flow');
     AICOLog.info('Starting startup connection flow', topic: 'startup/connection/init');
 
     // Start the connection attempt after brief initialization
@@ -90,7 +88,6 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
 
   Future<void> _attemptConnection() async {
     try {
-      debugPrint('StartupConnection: Attempting connection (${state.currentAttempt}/${state.maxAttempts})');
       AICOLog.info('Connection attempt ${state.currentAttempt}/${state.maxAttempts}', 
         topic: 'startup/connection/attempt');
 
@@ -154,7 +151,6 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
       
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint('StartupConnection: Connection test failed: $e');
       return false;
     } finally {
       client?.close(force: true);
@@ -163,7 +159,6 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
 
 
   void _handleConnectionSuccess() {
-    debugPrint('StartupConnection: Connection successful!');
     AICOLog.info('Startup connection successful', topic: 'startup/connection/success');
     
     _cancelRetryTimer();
@@ -174,8 +169,6 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
   }
 
   void _handleConnectionFailure(String error) {
-    debugPrint('StartupConnection: Connection failed: $error');
-    
     if (state.currentAttempt < state.maxAttempts) {
       _scheduleRetry(error);
     } else {
@@ -184,13 +177,11 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
   }
 
   void _handleConnectionError(String error) {
-    debugPrint('StartupConnection: Connection error: $error');
     _handleConnectionFailure(error);
   }
 
   void _scheduleRetry(String error) {
     final nextAttempt = state.currentAttempt + 1;
-    debugPrint('StartupConnection: Scheduling retry $nextAttempt/${state.maxAttempts}');
     AICOLog.info('Scheduling retry $nextAttempt/${state.maxAttempts}', 
       topic: 'startup/connection/retry');
 
@@ -203,7 +194,6 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
 
     // Show retry state for guaranteed duration (amber ring)
     final retryDelay = _calculateRetryDelay(nextAttempt - 2);
-    debugPrint('StartupConnection: Retry delay: ${retryDelay.inSeconds}s');
     _retryTimer = Timer(retryDelay, () {
       if (state.phase == StartupConnectionPhase.retryMode) {
         _attemptConnection();
@@ -228,7 +218,6 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
   }
 
   void _handleFinalFailure(String error) {
-    debugPrint('StartupConnection: All connection attempts failed');
     AICOLog.error('All startup connection attempts failed', 
       topic: 'startup/connection/failed', 
       error: error);
@@ -243,7 +232,6 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
   }
 
   void retry() {
-    debugPrint('StartupConnection: Manual retry requested');
     AICOLog.info('Manual retry requested', topic: 'startup/connection/manual_retry');
     
     _cancelRetryTimer();

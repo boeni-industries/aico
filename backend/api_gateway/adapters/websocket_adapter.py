@@ -26,6 +26,7 @@ from aico.core.version import get_backend_version
 __version__ = get_backend_version()
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
+from aico.core.topics import AICOTopics
 from aico.security import SessionService
 
 from ..models.core.auth import AuthenticationManager, AuthorizationManager
@@ -92,6 +93,10 @@ class WebSocketAdapter:
         # Heartbeat task
         self.heartbeat_task = None
         
+        # Message bus client for proactive notifications
+        self.bus_client = None
+        self.bus_subscription_task = None
+        
         self.logger.info("WebSocket adapter initialized", extra={
             "port": self.port,
             "path": self.path,
@@ -116,6 +121,9 @@ class WebSocketAdapter:
             # Start heartbeat task
             self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             
+            # Start message bus subscription for proactive notifications
+            self.bus_subscription_task = asyncio.create_task(self._subscribe_to_proactive_notifications())
+            
             self.logger.info(f"WebSocket server running on ws://{host}:{self.port}{self.path} (Press CTRL+C to quit)")
             
         except Exception as e:
@@ -132,6 +140,21 @@ class WebSocketAdapter:
                     await self.heartbeat_task
                 except asyncio.CancelledError:
                     pass # Expected during shutdown - this is the correct behavior
+            
+            # Stop message bus subscription
+            if self.bus_subscription_task:
+                self.bus_subscription_task.cancel()
+                try:
+                    await self.bus_subscription_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Disconnect message bus client
+            if self.bus_client:
+                try:
+                    await self.bus_client.disconnect()
+                except Exception as e:
+                    self.logger.warning(f"Error disconnecting message bus client: {e}")
             
             # Close all connections
             for connection in list(self.connections.values()):
@@ -541,3 +564,65 @@ class WebSocketAdapter:
                 await self._send_message(connection, broadcast_message)
             
             self.logger.debug(f"Broadcasted to {len(subscribers)} subscribers on topic: {topic}")
+    
+    async def broadcast_to_user(self, user_uuid: str, message: Dict[str, Any]):
+        """Broadcast message to all authenticated connections for a specific user"""
+        user_connections = [
+            conn for conn in self.connections.values()
+            if conn.authenticated and conn.user_uuid == user_uuid
+        ]
+        
+        if user_connections:
+            broadcast_message = {
+                "type": "broadcast",
+                "topic": f"proactive.notifications.{user_uuid}",
+                "data": message
+            }
+            
+            # Send to all user's connections
+            for connection in user_connections:
+                await self._send_message(connection, broadcast_message)
+            
+            self.logger.debug(f"Broadcasted to {len(user_connections)} connections for user {user_uuid[:8]}")
+    
+    async def _subscribe_to_proactive_notifications(self):
+        """Subscribe to message bus for proactive notification events"""
+        try:
+            self.bus_client = MessageBusClient("websocket_gateway_proactive")
+            await self.bus_client.connect()
+            
+            async def handle_proactive_notification(topic: str, message: dict):
+                """Handle incoming proactive notification from message bus"""
+                try:
+                    # Extract user_uuid from topic: proactive.notifications.{user_uuid}
+                    parts = topic.split(".")
+                    if len(parts) >= 3:
+                        user_uuid = parts[2]
+                        
+                        # Broadcast to all authenticated connections for this user
+                        await self.broadcast_to_user(user_uuid, message)
+                        
+                        self.logger.info(
+                            f"Forwarded proactive notification to user {user_uuid[:8]}",
+                            extra={"initiation_id": message.get("initiation_id", "unknown")[:8]}
+                        )
+                except Exception as e:
+                    self.logger.error(f"Error handling proactive notification: {e}")
+            
+            # Subscribe to all proactive notification topics
+            await self.bus_client.subscribe(
+                "proactive.notifications.*",
+                handle_proactive_notification
+            )
+            
+            self.logger.info("Subscribed to proactive notification events on message bus")
+            
+            # Keep subscription alive
+            while True:
+                await asyncio.sleep(60)  # Keep alive
+                
+        except asyncio.CancelledError:
+            self.logger.info("Proactive notification subscription cancelled")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error in proactive notification subscription: {e}")

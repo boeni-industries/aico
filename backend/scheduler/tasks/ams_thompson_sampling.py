@@ -77,12 +77,11 @@ class ThompsonSamplingUpdateTask(BaseTask):
             # Only process events with valid skill_id (not NULL or empty)
             feedback_events = context.db_connection.execute(
                 """SELECT user_id, skill_id, reward, timestamp
-                   FROM feedback_events
+                   FROM ams_behavioral_feedback
                    WHERE reward != 0
                    AND timestamp >= ?
                    AND skill_id IS NOT NULL
-                   AND skill_id != ''
-                   ORDER BY user_id, skill_id""",
+                   AND skill_id != ''""",
                 (lookback_date,)
             ).fetchall()
             
@@ -143,9 +142,9 @@ class ThompsonSamplingUpdateTask(BaseTask):
                 
                 print(f"      New: α={new_alpha:.2f}, β={new_beta:.2f}")
                 
-                # Upsert into context_skill_stats
+                # Upsert into ams_context_skill_stats
                 context.db_connection.execute(
-                    """INSERT INTO context_skill_stats (
+                    """INSERT INTO ams_context_skill_stats (
                         user_id, context_bucket, skill_id, alpha, beta, last_updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(user_id, context_bucket, skill_id)

@@ -90,6 +90,8 @@ api_gateway:
       enabled: true
     encryption:
       enabled: true
+    agency:
+      enabled: true  # Phase 1: goal system, planning, scheduler integration
 
 # Modelservice configuration
 modelservice:
@@ -323,7 +325,6 @@ conversation:
     enable_personality_integration: false
     enable_memory_integration: true
     enable_embodiment: false
-    enable_agency: false
 
 # These features will be implemented in future versions
 # For now, we keep the configuration lean and focused on what's actually used
@@ -379,6 +380,70 @@ services:
   encryption:
     enabled: true
     algorithm: "AES-256-GCM"
+  
+  # Agency service configuration
+  # Note: enabled flag is in api_gateway.plugins.agency.enabled (line 93)
+  agency:
+    # Curiosity Engine settings
+    curiosity:
+      max_signals_per_scan: 10
+      min_signal_score: 0.3  # Minimum score for goal creation
+    
+    # LLM Planning settings
+    planning:
+      llm_temperature: 0.7
+      llm_max_tokens: 1000
+      enable_llm_refinement: true  # Can disable LLM planning globally
+    
+    # Phase 4: Values & Ethics configuration
+    values_ethics:
+      enabled: true  # Enable values/ethics evaluation for goals and plans
+      install_default_policies: true  # Install default policy rules on backend startup (idempotent)
+      policy_mode: "enforce"  # How to handle policy violations: "enforce" (block), "warn_only" (log), "disabled" (skip)
+    
+    # Phase 4: Goal Arbiter configuration
+    arbiter:
+      enabled: true  # Enable goal scoring and intention set management
+      max_active_intentions: 3  # Maximum number of actively pursued goals per user
+      max_background_intentions: 5  # Maximum number of background/proposed goals per user
+      scoring_weights:  # Weights for goal scoring algorithm (must sum to ~1.0)
+        priority: 0.25      # Weight for goal priority (high/normal/low) [was 0.30]
+        origin: 0.25        # Weight for goal origin (user > curiosity > hobby > maintenance) [was 0.20]
+        freshness: 0.10     # Weight for how recently the goal was created [was 0.15]
+        curiosity_score: 0.10  # Weight for curiosity signal score (if applicable) [was 0.15]
+        persistence: 0.15   # Weight for intent frequency/reinforcement [NEW]
+        personality_fit: 0.10  # Weight for personality alignment (Phase 2+)
+        emotion_boost: 0.05    # Weight for emotional state boost (Phase 2+) [was 0.10]
+      update_interval_minutes: 15  # How often to re-evaluate intention set (background task)
+    
+    # Phase 4: Safety & Control configuration
+    safety_control:
+      # Autonomy level - controls how proactive AICO can be with goal creation and actions
+      # - "quiet": Only respond to explicit user requests, no autonomous goals
+      # - "balanced": Create goals from curiosity but require user activation (default)
+      # - "proactive": Autonomously activate goals and send occasional suggestions
+      # - "autonomous": Fully autonomous goal pursuit within safety constraints
+      autonomy_level: "balanced"
+      
+      # Quiet hours - time periods when AICO should not initiate proactive actions
+      quiet_hours:
+        enabled: true  # Enable quiet hours enforcement
+        start_time: "22:00"  # Start of quiet period (24-hour format, local time)
+        end_time: "08:00"    # End of quiet period (24-hour format, local time)
+        timezone: "local"    # Timezone: "local" for system timezone or IANA name like "Europe/Zurich"
+      
+      # Consent requirements - when to require explicit user consent
+      consent:
+        require_for_curiosity: false  # Require consent before creating curiosity-driven goals
+        require_for_hobbies: false    # Require consent before creating hobby goals
+        require_for_sensitive_areas: true  # Require consent for goals touching sensitive life areas
+        consent_timeout_hours: 24     # Hours to wait for consent before dropping the goal
+      
+      # Rate limiting - prevent overwhelming the user with too many goals/messages
+      rate_limits:
+        max_goals_per_day: 10  # Maximum new goals created per day per user
+        max_proactive_messages_per_day: 5  # Maximum proactive messages sent per day
+        min_hours_between_proactive: 2  # Minimum hours between proactive messages
 
 # Memory System Configuration
 memory:

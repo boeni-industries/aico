@@ -6,6 +6,7 @@ while maintaining JSON API compatibility.
 """
 
 import json
+import os
 import asyncio
 from typing import Dict, Any, Optional, Callable
 from fastapi import FastAPI, Request, Response, HTTPException
@@ -63,7 +64,9 @@ class EncryptionMiddleware:
         self.compression_threshold = message_config.get("compression_threshold", 1024)
         
         # Configuration
-        self.require_encryption = True
+        # Encryption is required by default for all protected endpoints.
+        # This can be overridden in configuration with security.transport_encryption.require_encryption.
+        self.require_encryption = config.get("require_encryption", True)
         self.handshake_path = "/api/v1/handshake"
         
         # Initialize channels dictionary for session management
@@ -98,13 +101,22 @@ class EncryptionMiddleware:
             "client_ip": client_ip
         })
         
-        # Handle handshake endpoint directly
+        # Let CORS preflight requests pass through to the underlying app so that
+        # FastAPI's CORSMiddleware can handle them and return proper headers.
+        # This must run BEFORE we short-circuit /handshake so that the
+        # preflight for /api/v1/handshake also gets CORS headers.
+        if request.method == "OPTIONS":
+            self.logger.debug(f"Passing through CORS preflight for path: {path}")
+            await self.app(scope, receive, send)
+            return
+
+        # Handle handshake endpoint directly for non-preflight requests
         if path == self.handshake_path:
             self.logger.info(f"Handling handshake endpoint: {path}")
             response = await self._handle_handshake(request)
             await response(scope, receive, send)
             return
-        
+
         # Skip encryption for health checks only
         if self._should_skip_encryption(request):
             self.logger.debug(f"Skipping encryption for path: {path}")
@@ -138,22 +150,21 @@ class EncryptionMiddleware:
                 except:
                     pass
             
-            # For GET requests, check query parameters and headers for client_id
-            if not channel and request.method == "GET":
-                # Try X-Client-ID header
+            # Check X-Client-ID header for any method
+            if not channel:
                 header_client_id = request.headers.get("x-client-id")
                 if header_client_id:
                     client_id = header_client_id
                     channel = self.channels.get(client_id)
                     self.logger.debug(f"Found client_id in X-Client-ID header: {client_id}")
-                
-                # Try query parameter
-                if not channel:
-                    query_client_id = request.query_params.get("client_id")
-                    if query_client_id:
-                        client_id = query_client_id
-                        channel = self.channels.get(client_id)
-                        self.logger.debug(f"Found client_id in query params: {client_id}")
+            
+            # For GET requests, also allow query parameter as fallback
+            if not channel and request.method == "GET":
+                query_client_id = request.query_params.get("client_id")
+                if query_client_id:
+                    client_id = query_client_id
+                    channel = self.channels.get(client_id)
+                    self.logger.debug(f"Found client_id in query params: {client_id}")
             
             # Fallback to generated client_id if not found in request
             if not channel:
@@ -180,12 +191,28 @@ class EncryptionMiddleware:
                             "status_code": 401
                         }
                     )
+                    # Build a CORS-friendly 401 response so browser clients
+                    # receive proper Access-Control-* headers.
+                    origin = request.headers.get("origin")
+                    headers = {}
+                    if origin:
+                        headers["Access-Control-Allow-Origin"] = origin
+                        headers["Access-Control-Allow-Credentials"] = "true"
+                        # Echo requested headers/methods for robustness
+                        req_headers = request.headers.get("access-control-request-headers")
+                        if req_headers:
+                            headers["Access-Control-Allow-Headers"] = req_headers
+                        headers["Access-Control-Allow-Methods"] = request.headers.get(
+                            "access-control-request-method", request.method
+                        )
+
                     response = JSONResponse(
                         status_code=401,
                         content={
                             "error": "Encryption required",
                             "message": "Perform handshake at /api/v1/handshake first"
-                        }
+                        },
+                        headers=headers or None,
                     )
                     await response(scope, receive, send)
                     return
@@ -397,10 +424,12 @@ class EncryptionMiddleware:
         
         # Public endpoints that don't require encryption
         public_endpoints = [
-            "/api/v1/health",         # Health check endpoint
-            "/api/v1/health/",        # Health check endpoint (with trailing slash)
-            "/api/v1/handshake",      # Encryption session establishment
-            "/api/v1/handshake/"      # Encryption session establishment (with trailing slash)
+            "/api/v1/health",              # Health check endpoint
+            "/api/v1/health/",             # Health check endpoint (with trailing slash)
+            "/api/v1/health/detailed",     # Detailed health check endpoint
+            "/api/v1/health/detailed/",    # Detailed health check endpoint (with trailing slash)
+            "/api/v1/handshake",           # Encryption session establishment
+            "/api/v1/handshake/"           # Encryption session establishment (with trailing slash)
         ]
         
         # Check exact matches for public endpoints
@@ -432,9 +461,12 @@ class EncryptionMiddleware:
         """Handle encryption handshake"""
         try:
             if request.method != "POST":
+                origin = request.headers.get("origin")
+                headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"} if origin else None
                 return JSONResponse(
                     status_code=405,
-                    content={"error": "Method not allowed"}
+                    content={"error": "Method not allowed"},
+                    headers=headers
                 )
             
             # Parse handshake request
@@ -460,24 +492,33 @@ class EncryptionMiddleware:
                 self.logger.info(f"Stored channel for client_id: {client_id}")
                 
                 # Return handshake response in transit security test format
+                origin = request.headers.get("origin")
+                headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"} if origin else None
                 return JSONResponse(
                     status_code=200,
                     content={
                         "status": "session_established",
                         "handshake_response": response_data
-                    }
+                    },
+                    headers=headers
                 )
             
+            origin = request.headers.get("origin")
+            headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"} if origin else None
             return JSONResponse(
                 status_code=400,
-                content={"error": "Invalid handshake format"}
+                content={"error": "Invalid handshake format"},
+                headers=headers
             )
         
         except Exception as e:
             self.logger.error(f"Handshake error: {e}")
+            origin = request.headers.get("origin")
+            headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"} if origin else None
             return JSONResponse(
                 status_code=500,
-                content={"error": "Handshake processing failed"}
+                content={"error": "Handshake processing failed"},
+                headers=headers
             )
     
     async def _decrypt_request(self, request: Request, channel: SecureTransportChannel) -> Request:

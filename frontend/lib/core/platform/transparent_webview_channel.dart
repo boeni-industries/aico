@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Platform channel for making WebView transparent on macOS
@@ -21,13 +22,11 @@ class TransparentWebViewChannel {
     try {
       final result = await _channel.invokeMethod('setTransparentBackground');
       if (result is Map && result['success'] == true) {
-        final count = result['webViewsModified'] ?? 0;
-        print('[TransparentWebViewChannel] Successfully set $count WebView(s) to transparent');
         return true;
       }
       return false;
     } on PlatformException catch (e) {
-      print('[TransparentWebViewChannel] Error: ${e.message}');
+      debugPrint('[TransparentWebViewChannel] Error: ${e.message}');
       return false;
     }
   }

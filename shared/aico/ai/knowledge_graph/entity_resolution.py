@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
+from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
 from .modelservice_client import ModelserviceClient
@@ -114,6 +115,9 @@ class EntityResolver:
         # Map HNSW internal IDs to Node objects
         self.id_to_node: Dict[int, Node] = {}
         self.node_to_id: Dict[str, int] = {}  # Map node.id to HNSW ID
+        
+        # Initialize JSON sanitizer for robust LLM response parsing
+        self.json_sanitizer = LLMJsonSanitizer(strict=False, log_repairs=True)
         self.next_hnsw_id = 0
         
         print(f"🔍 [ENTITY_RESOLVER] Initialized with HNSW index (dim={dim}, max_elements={max_elements})")
@@ -832,14 +836,15 @@ Return valid JSON only."""
         return f"{node.label} {props_text}"
     
     def _parse_json_response(self, text: str) -> Dict[str, Any]:
-        """Parse JSON response from LLM."""
-        try:
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-            
-            return json.loads(text.strip())
-        except Exception as e:
-            logger.warning(f"Failed to parse JSON response: {e}")
+        """Parse JSON response from LLM using robust sanitizer with automatic repair."""
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=dict,
+            return_objects=True
+        )
+        
+        if result.success:
+            return result.data
+        else:
+            logger.warning(f"Failed to parse JSON response after all repair strategies: {result.error}")
             return {}

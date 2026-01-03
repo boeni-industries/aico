@@ -197,7 +197,7 @@ class EncryptionService {
   }
   
   /// Decrypt response payload using X25519 + XSalsa20-Poly1305
-  Map<String, dynamic> decryptPayload(String encryptedPayload) {
+  dynamic decryptPayload(String encryptedPayload) {
     if (!_sessionEstablished || _precalculatedBox == null) {
       throw EncryptionException('No active encryption session');
     }

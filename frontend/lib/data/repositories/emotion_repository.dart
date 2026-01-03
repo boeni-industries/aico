@@ -20,7 +20,6 @@ class EmotionRepository {
         return null;
       }
     } catch (e) {
-      print('[EMOTION_REPO] Error fetching emotion: $e');
       // Silently fail - emotion is non-critical
       return null;
     }
@@ -61,23 +60,17 @@ class EmotionRepository {
           .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
           .join('&');
       
-      print('[EMOTION_REPO] Fetching emotion history: $queryString');
       final data = await _apiClient.get<Map<String, dynamic>>('/emotion/history?$queryString');
-      
-      print('[EMOTION_REPO] History response: ${data?['count']} records');
       
       if (data != null && data['history'] != null) {
         final history = (data['history'] as List)
             .map((item) => EmotionHistoryItem.fromJson(item as Map<String, dynamic>))
             .toList();
-        print('[EMOTION_REPO] Parsed ${history.length} history items');
         return history;
       } else {
-        print('[EMOTION_REPO] No history data in response');
         return [];
       }
     } catch (e) {
-      print('[EMOTION_REPO] Error fetching history: $e');
       return [];
     }
   }

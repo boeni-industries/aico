@@ -1,3 +1,6 @@
+# Keyring service name for macOS Keychain / Windows Credential Manager
+keyring_service_name: "AICO"
+
 encryption:
   algorithm: "AES-256-GCM"
   key_length: 32  # 256-bit keys
