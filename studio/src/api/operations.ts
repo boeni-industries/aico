@@ -24,6 +24,7 @@ export interface ComponentHealth {
   status: string;
   uptime?: number;
   last_check: string;
+  version?: string;
   details?: Record<string, any>;
 }
 
@@ -38,6 +39,8 @@ export interface SchedulerStatus {
   running: boolean;
   registered_tasks: number;
   scheduled_tasks: number;
+  running_tasks: number;
+  next_run_times: Record<string, string>;
 }
 
 // ============================================================================
@@ -50,6 +53,7 @@ export interface DatabaseMetrics {
   size_bytes: number;
   status: string;
   location: string;
+  error_details?: string;
   table_count?: number;
   connection_count?: number;
   wal_size_bytes?: number;

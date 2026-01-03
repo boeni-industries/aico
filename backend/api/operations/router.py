@@ -7,7 +7,7 @@ REST API endpoints for operations monitoring, database metrics, and active sessi
 import os
 import sqlite3
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from datetime import datetime, timedelta
 
 from aico.core.logging import get_logger
@@ -43,6 +43,7 @@ def format_bytes(size_bytes: int) -> str:
 
 @router.get("/databases", response_model=DatabaseStatsResponse)
 async def get_database_stats(
+    request: Request,
     user: Annotated[dict, Depends(get_current_user)],
     db_connection: Annotated[object, Depends(get_db_connection)]
 ) -> DatabaseStatsResponse:
@@ -97,12 +98,12 @@ async def get_database_stats(
         # ChromaDB
         try:
             from aico.core.paths import AICOPaths
-            chroma_path = AICOPaths.get_data_directory() / "chromadb"
+            chroma_path = AICOPaths.get_data_directory() / "data" / "memory" / "semantic"
             
             # Get directory size
             chroma_size = 0
-            if os.path.exists(chroma_path):
-                for dirpath, dirnames, filenames in os.walk(chroma_path):
+            if os.path.exists(str(chroma_path)):
+                for dirpath, dirnames, filenames in os.walk(str(chroma_path)):
                     for filename in filenames:
                         filepath = os.path.join(dirpath, filename)
                         chroma_size += get_file_size(filepath)
@@ -110,10 +111,11 @@ async def get_database_stats(
             # Get collection count
             collection_count = 0
             document_count = 0
+            chroma_error = None
             try:
                 # Try to get ChromaDB client from service container
                 from backend.core.lifecycle_manager import get_service_container
-                container = get_service_container()
+                container = get_service_container(request)
                 if container:
                     chroma_client = container.get_service("chromadb_client")
                     if chroma_client:
@@ -121,15 +123,39 @@ async def get_database_stats(
                         collection_count = len(collections)
                         for collection in collections:
                             document_count += collection.count()
+                    else:
+                        chroma_error = "ChromaDB client not available in service container"
+                        logger.error("ChromaDB client not found in service container")
+                else:
+                    chroma_error = "Service container not available"
+                    logger.error("Service container not available for ChromaDB stats")
             except Exception as e:
-                logger.debug(f"Could not get ChromaDB stats: {e}")
+                chroma_error = f"Failed to query ChromaDB: {str(e)}"
+                logger.exception(f"Could not get ChromaDB stats: {e}")
+            
+            # Determine status and error details
+            if chroma_size == 0 and not os.path.exists(str(chroma_path)):
+                status = "degraded"
+                error_details = "ChromaDB directory does not exist"
+                logger.error(f"ChromaDB directory does not exist: {chroma_path}")
+            elif chroma_size == 0:
+                status = "degraded"
+                error_details = "ChromaDB directory is empty"
+                logger.error(f"ChromaDB directory is empty: {chroma_path}")
+            elif chroma_error:
+                status = "degraded"
+                error_details = chroma_error
+            else:
+                status = "healthy"
+                error_details = None
             
             databases.append(DatabaseMetrics(
                 name="ChromaDB",
                 type="chromadb",
                 size_bytes=chroma_size,
-                status="healthy" if chroma_size > 0 else "degraded",
+                status=status,
                 location=str(chroma_path),
+                error_details=error_details,
                 collection_count=collection_count,
                 document_count=document_count,
                 index_size_bytes=chroma_size,  # Approximate
@@ -142,16 +168,17 @@ async def get_database_stats(
                 size_bytes=0,
                 status="critical",
                 location="unknown",
+                error_details=f"Critical error: {str(e)}",
             ))
         
         # LMDB
         try:
-            lmdb_path = AICOPaths.get_data_directory() / "lmdb"
+            lmdb_path = AICOPaths.get_data_directory() / "data" / "memory" / "working"
             
             # Get directory size
             lmdb_size = 0
-            if os.path.exists(lmdb_path):
-                for dirpath, dirnames, filenames in os.walk(lmdb_path):
+            if os.path.exists(str(lmdb_path)):
+                for dirpath, dirnames, filenames in os.walk(str(lmdb_path)):
                     for filename in filenames:
                         filepath = os.path.join(dirpath, filename)
                         lmdb_size += get_file_size(filepath)
@@ -160,6 +187,7 @@ async def get_database_stats(
             db_count = 0
             key_count = 0
             map_size = 0
+            lmdb_error = None
             try:
                 from aico.ai import ai_registry
                 memory_manager = ai_registry.get("memory")
@@ -172,15 +200,36 @@ async def get_database_stats(
                     for db_name, db in working_store.dbs.items():
                         with working_store.env.begin(db=db) as txn:
                             key_count += txn.stat()['entries']
+                else:
+                    lmdb_error = "Memory manager not available or missing working store"
+                    logger.error("Memory manager not available or missing working store for LMDB stats")
             except Exception as e:
-                logger.debug(f"Could not get LMDB stats: {e}")
+                lmdb_error = f"Failed to query LMDB: {str(e)}"
+                logger.exception(f"Could not get LMDB stats: {e}")
+            
+            # Determine status and error details
+            if lmdb_size == 0 and not os.path.exists(str(lmdb_path)):
+                status = "degraded"
+                error_details = "LMDB directory does not exist"
+                logger.error(f"LMDB directory does not exist: {lmdb_path}")
+            elif lmdb_size == 0:
+                status = "degraded"
+                error_details = "LMDB directory is empty"
+                logger.error(f"LMDB directory is empty: {lmdb_path}")
+            elif lmdb_error:
+                status = "degraded"
+                error_details = lmdb_error
+            else:
+                status = "healthy"
+                error_details = None
             
             databases.append(DatabaseMetrics(
                 name="LMDB",
                 type="lmdb",
                 size_bytes=lmdb_size,
-                status="healthy" if lmdb_size > 0 else "degraded",
+                status=status,
                 location=str(lmdb_path),
+                error_details=error_details,
                 database_count=db_count,
                 key_count=key_count,
                 map_size_bytes=map_size,
@@ -193,6 +242,7 @@ async def get_database_stats(
                 size_bytes=0,
                 status="critical",
                 location="unknown",
+                error_details=f"Critical error: {str(e)}",
             ))
         
         return DatabaseStatsResponse(databases=databases)
@@ -218,24 +268,24 @@ async def get_active_sessions(
     try:
         sessions = []
         
-        # Get active sessions from user_sessions table
+        # Query auth_sessions and user_profiles tables for active sessions
         try:
-            # Query for active sessions (last activity within 1 hour)
+            # Get active sessions (last activity within 1 hour)
             cutoff_time = (datetime.utcnow() - timedelta(hours=1)).isoformat()
             
             result = db_connection.execute(
                 """
                 SELECT 
-                    u.uuid,
-                    u.full_name,
-                    u.nickname,
-                    COUNT(DISTINCT s.session_token) as session_count,
-                    MAX(s.last_activity) as last_activity
-                FROM users u
-                LEFT JOIN user_sessions s ON u.uuid = s.user_uuid
+                    p.uuid,
+                    p.full_name,
+                    p.nickname,
+                    COUNT(DISTINCT s.uuid) as session_count,
+                    MAX(s.created_at) as last_activity
+                FROM user_profiles p
+                LEFT JOIN auth_sessions s ON p.uuid = s.user_uuid
                 WHERE s.is_active = 1 
-                  AND s.last_activity > ?
-                GROUP BY u.uuid, u.full_name, u.nickname
+                  AND s.created_at > ?
+                GROUP BY p.uuid, p.full_name, p.nickname
                 ORDER BY last_activity DESC
                 """,
                 [cutoff_time]
@@ -269,7 +319,7 @@ async def get_active_sessions(
                 ))
         except Exception as e:
             logger.warning(f"Failed to query user sessions: {e}")
-            # Fallback: return current user only
+            # Fallback: return current user from JWT token
             sessions.append(UserSession(
                 user_uuid=user.get("user_uuid", "unknown"),
                 full_name=user.get("full_name", "Current User"),

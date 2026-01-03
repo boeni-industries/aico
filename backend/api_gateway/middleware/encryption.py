@@ -424,10 +424,12 @@ class EncryptionMiddleware:
         
         # Public endpoints that don't require encryption
         public_endpoints = [
-            "/api/v1/health",         # Health check endpoint
-            "/api/v1/health/",        # Health check endpoint (with trailing slash)
-            "/api/v1/handshake",      # Encryption session establishment
-            "/api/v1/handshake/"      # Encryption session establishment (with trailing slash)
+            "/api/v1/health",              # Health check endpoint
+            "/api/v1/health/",             # Health check endpoint (with trailing slash)
+            "/api/v1/health/detailed",     # Detailed health check endpoint
+            "/api/v1/health/detailed/",    # Detailed health check endpoint (with trailing slash)
+            "/api/v1/handshake",           # Encryption session establishment
+            "/api/v1/handshake/"           # Encryption session establishment (with trailing slash)
         ]
         
         # Check exact matches for public endpoints

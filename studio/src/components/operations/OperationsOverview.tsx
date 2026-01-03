@@ -36,6 +36,7 @@ interface DatabaseInfo {
   size: string;
   status: 'healthy' | 'degraded' | 'critical';
   location: string;
+  error_details?: string;
   metrics: {
     label: string;
     value: string | number;
@@ -51,29 +52,37 @@ interface ActiveUser {
 
 interface OperationsOverviewProps {
   onNavigateToTab?: (tab: string) => void;
+  refreshTrigger?: number;
 }
 
-export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNavigateToTab }) => {
+export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNavigateToTab, refreshTrigger }) => {
   const [systemStatus, setSystemStatus] = useState<'healthy' | 'degraded' | 'critical'>('healthy');
   const [components, setComponents] = useState<ComponentStatus[]>([]);
   const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
   const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
-  const [currentActivity, setCurrentActivity] = useState({
-    conversations: 0,
-    goals: 0,
-    runningJobs: 0,
-    recentErrors: 0,
-  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uptime, setUptime] = useState('0m');
   const [systemLoad, setSystemLoad] = useState(0);
-  const [schedulerInfo, setSchedulerInfo] = useState({ registered_tasks: 0, scheduled_tasks: 0 });
+  const [schedulerInfo, setSchedulerInfo] = useState({ 
+    registered_tasks: 0, 
+    scheduled_tasks: 0,
+    running_tasks: 0,
+    next_run_times: {} as Record<string, string>
+  });
 
   useEffect(() => {
     loadOverviewData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reload data when refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger !== undefined && refreshTrigger > 0) {
+      loadOverviewData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTrigger]);
 
   const formatUptime = (seconds: number): string => {
     const days = Math.floor(seconds / 86400);
@@ -109,7 +118,13 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
       const [systemOverview, healthData, schedulerData, databaseStats, activeSessions] = await Promise.all([
         fetchSystemOverview(),
         fetchDetailedHealth(),
-        fetchSchedulerStatus().catch(() => ({ running: false, registered_tasks: 0, scheduled_tasks: 0 })),
+        fetchSchedulerStatus().catch(() => ({ 
+          running: false, 
+          registered_tasks: 0, 
+          scheduled_tasks: 0,
+          running_tasks: 0,
+          next_run_times: {}
+        })),
         fetchDatabaseStats(),
         fetchActiveSessions(),
       ]);
@@ -128,18 +143,12 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
       setUptime(systemOverview.uptime_formatted);
       setSystemLoad(healthData.system_metrics?.cpu_usage ? Math.round(healthData.system_metrics.cpu_usage) : 0);
 
-      // Update current activity
-      setCurrentActivity({
-        conversations: systemOverview.active_conversations,
-        goals: systemOverview.active_goals,
-        runningJobs: schedulerData.scheduled_tasks || 0,
-        recentErrors: systemOverview.recent_events.filter(e => e.severity === 'error').length,
-      });
-
       // Store scheduler info for display
       setSchedulerInfo({
-        registered_tasks: schedulerData.registered_tasks,
-        scheduled_tasks: schedulerData.scheduled_tasks,
+        registered_tasks: schedulerData.registered_tasks || 0,
+        scheduled_tasks: schedulerData.scheduled_tasks || 0,
+        running_tasks: schedulerData.running_tasks || 0,
+        next_run_times: schedulerData.next_run_times || {},
       });
 
       // Build main components array (Gateway, Modelservice, Studio only)
@@ -152,7 +161,7 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
           name: 'Gateway',
           status: gw.status === 'healthy' || gw.status === 'running' ? 'healthy' : gw.status === 'error' ? 'critical' : 'degraded',
           uptime: formatUptime(gw.uptime || 0),
-          version: '0.2.0',
+          version: gw.version || 'unknown',
           host: 'localhost',
           port: 8771,
           metrics: [
@@ -165,7 +174,7 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
           name: 'Gateway',
           status: 'healthy',
           uptime: systemOverview.uptime_formatted,
-          version: '0.2.0',
+          version: 'unknown',
           host: 'localhost',
           port: 8771,
           metrics: [
@@ -181,9 +190,9 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
           name: 'Modelservice',
           status: ms.status === 'healthy' || ms.status === 'running' ? 'healthy' : ms.status === 'error' ? 'critical' : 'degraded',
           uptime: formatUptime(ms.uptime || 0),
-          version: '0.2.0',
+          version: ms.version || 'unknown',
           host: 'localhost',
-          port: 11434,
+          port: 8773,
           metrics: [
             { label: 'Status', value: ms.status },
           ],
@@ -194,7 +203,36 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
           name: 'Modelservice',
           status: 'healthy',
           uptime: systemOverview.uptime_formatted,
-          version: '0.2.0',
+          version: 'unknown',
+          host: 'localhost',
+          port: 8773,
+          metrics: [
+            { label: 'Status', value: 'Running' },
+          ],
+        });
+      }
+
+      // 3. Ollama - LLM backend server
+      if (healthData.components?.ollama) {
+        const ollama = healthData.components.ollama;
+        componentsData.push({
+          name: 'Ollama',
+          status: ollama.status === 'healthy' || ollama.status === 'running' ? 'healthy' : ollama.status === 'error' ? 'critical' : 'degraded',
+          uptime: formatUptime(ollama.uptime || 0),
+          version: ollama.version || 'unknown',
+          host: 'localhost',
+          port: 11434,
+          metrics: [
+            { label: 'Status', value: ollama.status },
+          ],
+        });
+      } else {
+        // Ollama not in health API yet - show as healthy if we can reach it
+        componentsData.push({
+          name: 'Ollama',
+          status: 'healthy',
+          uptime: systemOverview.uptime_formatted,
+          version: 'unknown',
           host: 'localhost',
           port: 11434,
           metrics: [
@@ -203,12 +241,14 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
         });
       }
 
-      // 3. Studio - always show since we're running in it
+      // 4. Studio - always show since we're running in it
       componentsData.push({
         name: 'Studio',
         status: 'healthy',
         uptime: systemOverview.uptime_formatted,
         version: '0.0.1',
+        host: 'localhost',
+        port: 3000,
         metrics: [
           { label: 'Active', value: 'Yes' },
         ],
@@ -241,6 +281,7 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
           size: formatBytes(db.size_bytes),
           status: db.status as 'healthy' | 'degraded' | 'critical',
           location: db.location,
+          error_details: db.error_details,
           metrics,
         };
       });
@@ -295,20 +336,21 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
   };
 
   const getComponentIcon = (name: string) => {
-    if (name.includes('Backend')) return <BackendIcon sx={{ color: '#3B82F6' }} />;
-    if (name.includes('Model')) return <ModelIcon sx={{ color: '#8B5CF6' }} />;
-    if (name.includes('Scheduler')) return <SchedulerIcon sx={{ color: '#F59E0B' }} />;
-    if (name.includes('Bus')) return <BusIcon sx={{ color: '#EC4899' }} />;
-    if (name.includes('Studio')) return <StudioIcon sx={{ color: '#B8A1EA' }} />;
+    if (name.includes('Gateway')) return <BackendIcon sx={{ color: '#3B82F6' }} />;
+    if (name.includes('Modelservice')) return <ModelIcon sx={{ color: '#8B5CF6' }} />;
+    if (name.includes('Ollama')) return <ModelIcon sx={{ color: '#14B8A6' }} />;
+    if (name.includes('Scheduler')) return <SchedulerIcon sx={{ color: '#6366F1' }} />;
+    if (name.includes('Studio')) return <StudioIcon sx={{ color: '#A78BFA' }} />;
     return <BackendIcon sx={{ color: '#3B82F6' }} />;
   };
 
   const getComponentColor = (name: string) => {
-    if (name.includes('Backend')) return '#3B82F6';
-    if (name.includes('Model')) return '#8B5CF6';
-    if (name.includes('Scheduler')) return '#F59E0B';
-    if (name.includes('Bus')) return '#EC4899';
-    if (name.includes('Studio')) return '#B8A1EA';
+    // Component identity colors (neutral, not status indicators)
+    if (name.includes('Gateway')) return '#3B82F6';      // Blue
+    if (name.includes('Modelservice')) return '#8B5CF6'; // Purple
+    if (name.includes('Ollama')) return '#14B8A6';       // Teal
+    if (name.includes('Scheduler')) return '#6366F1';    // Indigo
+    if (name.includes('Studio')) return '#A78BFA';       // Lavender
     return '#3B82F6';
   };
 
@@ -316,18 +358,11 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
     if (name.includes('Scheduler')) return 'scheduler';
     if (name.includes('Bus')) return 'bus';
     if (name.includes('Backend') || name.includes('Gateway')) return 'gateway';
-    if (name.includes('Model')) return 'topology';
+    if (name.includes('Modelservice')) return 'topology';
+    if (name.includes('Ollama')) return 'topology';
     if (name.includes('Studio')) return 'topology';
     return 'topology';
   };
-
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
 
   if (error) {
     return (
@@ -399,8 +434,30 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
         System Components
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, mb: 4 }}>
-        {components.map((component) => (
-          <Paper
+        {loading && components.length === 0 ? (
+          // Show loading skeleton for components
+          Array.from({ length: 4 }).map((_, idx) => (
+            <Paper
+              key={`skeleton-${idx}`}
+              sx={{
+                p: 2.5,
+                borderRadius: '16px',
+                border: '1.5px solid',
+                borderColor: 'divider',
+                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(99, 102, 241, 0.08) 100%)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '120px',
+              }}
+            >
+              <CircularProgress size={24} />
+            </Paper>
+          ))
+        ) : (
+          components.map((component) => (
+            <Paper
             key={component.name}
             onClick={() => onNavigateToTab?.(getComponentNavigationTab(component.name))}
             sx={{
@@ -492,7 +549,8 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
               </Box>
             )}
           </Paper>
-        ))}
+          ))
+        )}
       </Box>
 
       {/* Scheduler Section - Gateway Sub-component */}
@@ -509,15 +567,15 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
             p: 2.5,
             borderRadius: '16px',
             border: '1.5px solid',
-            borderColor: 'rgba(245, 158, 11, 0.4)',
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(245, 158, 11, 0.08) 100%)',
+            borderColor: 'rgba(99, 102, 241, 0.4)',
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(99, 102, 241, 0.08) 100%)',
             backdropFilter: 'blur(8px)',
             transition: 'all 0.2s',
             cursor: 'pointer',
             '&:hover': {
-              borderColor: '#F59E0B',
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.12) 100%)',
-              boxShadow: '0 8px 24px rgba(245, 158, 11, 0.2)',
+              borderColor: '#6366F1',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0.12) 100%)',
+              boxShadow: '0 8px 24px rgba(99, 102, 241, 0.2)',
             },
           }}
         >
@@ -527,20 +585,17 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
                 width: 40,
                 height: 40,
                 borderRadius: '10px',
-                bgcolor: 'rgba(245, 158, 11, 0.15)',
+                bgcolor: 'rgba(99, 102, 241, 0.15)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <SchedulerIcon sx={{ color: '#F59E0B' }} />
+              <SchedulerIcon sx={{ color: '#6366F1' }} />
             </Box>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
                 Task Scheduler
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                v0.2.0
               </Typography>
             </Box>
             <HealthyIcon sx={{ color: '#10B981', fontSize: 20 }} />
@@ -551,10 +606,10 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
               label={`Uptime: ${uptime}`}
               size="small"
               sx={{
-                bgcolor: 'rgba(245, 158, 11, 0.15)',
-                color: '#F59E0B',
+                bgcolor: 'rgba(99, 102, 241, 0.15)',
+                color: '#6366F1',
                 border: '1px solid',
-                borderColor: 'rgba(245, 158, 11, 0.3)',
+                borderColor: 'rgba(99, 102, 241, 0.3)',
                 fontSize: '0.7rem',
                 height: 24,
                 fontWeight: 600,
@@ -562,24 +617,96 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
             />
           </Box>
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="caption" color="text.secondary">
-                Registered Tasks
-              </Typography>
-              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 2 }}>
+            <Box sx={{ textAlign: 'center', p: 1.5, borderRadius: '8px', bgcolor: 'rgba(99, 102, 241, 0.1)' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#6366F1' }}>
                 {schedulerInfo.registered_tasks}
               </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
               <Typography variant="caption" color="text.secondary">
-                Scheduled Tasks
+                Registered
               </Typography>
-              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+            </Box>
+            <Box sx={{ textAlign: 'center', p: 1.5, borderRadius: '8px', bgcolor: 'rgba(99, 102, 241, 0.1)' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#6366F1' }}>
                 {schedulerInfo.scheduled_tasks}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Scheduled
+              </Typography>
+            </Box>
+            <Box sx={{ textAlign: 'center', p: 1.5, borderRadius: '8px', bgcolor: 'rgba(16, 185, 129, 0.1)' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#10B981' }}>
+                {schedulerInfo.running_tasks}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Running Now
               </Typography>
             </Box>
           </Box>
+
+          {Object.keys(schedulerInfo.next_run_times).length > 0 && (
+            <Box>
+              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.primary', display: 'block', mb: 1.5 }}>
+                Next Scheduled Runs:
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {Object.entries(schedulerInfo.next_run_times).slice(0, 3).map(([taskId, nextRun]) => {
+                  // Convert UTC to local time and format
+                  const formatDateTime = (utcString: string) => {
+                    try {
+                      const date = new Date(utcString);
+                      const now = new Date();
+                      const diffMs = date.getTime() - now.getTime();
+                      const diffMins = Math.floor(diffMs / 60000);
+                      
+                      // Format as local time
+                      const timeStr = date.toLocaleTimeString('en-US', { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: false 
+                      });
+                      
+                      // Add relative time if within 24 hours
+                      if (diffMins < 60 && diffMins > 0) {
+                        return `${timeStr} (in ${diffMins}m)`;
+                      } else if (diffMins < 1440 && diffMins > 0) {
+                        const hours = Math.floor(diffMins / 60);
+                        return `${timeStr} (in ${hours}h)`;
+                      }
+                      
+                      return timeStr;
+                    } catch {
+                      return utcString;
+                    }
+                  };
+                  
+                  return (
+                    <Box key={taskId} sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      p: 1,
+                      borderRadius: 1,
+                      bgcolor: 'rgba(99, 102, 241, 0.08)',
+                      '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.12)' }
+                    }}>
+                      <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 500, color: 'rgba(255, 255, 255, 0.9)' }}>
+                        {taskId}
+                      </Typography>
+                      <Typography variant="caption" sx={{ 
+                        fontWeight: 600, 
+                        fontSize: '0.75rem', 
+                        color: '#A5B4FC',
+                        fontFamily: 'monospace'
+                      }}>
+                        {formatDateTime(nextRun)}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
         </Paper>
       </Box>
 
@@ -588,8 +715,30 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
         Databases
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, mb: 4 }}>
-        {databases.map((db) => (
-          <Paper
+        {loading && databases.length === 0 ? (
+          // Show loading skeleton for databases
+          Array.from({ length: 3 }).map((_, idx) => (
+            <Paper
+              key={`db-skeleton-${idx}`}
+              sx={{
+                p: 2.5,
+                borderRadius: '16px',
+                border: '1.5px solid',
+                borderColor: 'divider',
+                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(99, 102, 241, 0.08) 100%)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '140px',
+              }}
+            >
+              <CircularProgress size={24} />
+            </Paper>
+          ))
+        ) : (
+          databases.map((db) => (
+            <Paper
             key={db.name}
             onClick={() => onNavigateToTab?.('database')}
             sx={{
@@ -665,167 +814,129 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
                 </Box>
               ))}
             </Box>
+
+            {/* Show error details for degraded/critical databases */}
+            {(db.status === 'degraded' || db.status === 'critical') && db.error_details && (
+              <Alert 
+                severity={db.status === 'critical' ? 'error' : 'warning'} 
+                sx={{ 
+                  mt: 2, 
+                  fontSize: '0.7rem',
+                  py: 0.5,
+                  '& .MuiAlert-message': { fontSize: '0.7rem' }
+                }}
+              >
+                {db.error_details}
+              </Alert>
+            )}
           </Paper>
-        ))}
+          ))
+        )}
       </Box>
 
-      {/* Active Users & Current Activity */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3 }}>
-        {/* Active Users */}
-        <Paper
-          onClick={() => onNavigateToTab?.('users')}
-          sx={{
-            p: 3,
-            borderRadius: '16px',
-            border: '1.5px solid',
-            borderColor: 'rgba(184, 161, 234, 0.3)',
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(184, 161, 234, 0.06) 100%)',
-            backdropFilter: 'blur(8px)',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            '&:hover': {
-              borderColor: 'rgba(184, 161, 234, 0.5)',
-              boxShadow: '0 8px 24px rgba(184, 161, 234, 0.2)',
-            },
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-            <UserIcon sx={{ color: '#B8A1EA' }} />
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Active Users
-            </Typography>
-          </Box>
-
-          {activeUsers.map((user) => (
+      {/* Active Users Section */}
+      <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, mt: 4 }}>
+        Active Users
+      </Typography>
+      <Paper
+        onClick={() => onNavigateToTab?.('users')}
+        sx={{
+          p: 3,
+          mb: 4,
+          borderRadius: '16px',
+          border: '1.5px solid',
+          borderColor: 'rgba(167, 139, 250, 0.4)',
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(167, 139, 250, 0.08) 100%)',
+          backdropFilter: 'blur(8px)',
+          cursor: 'pointer',
+          transition: 'all 0.2s',
+          '&:hover': {
+            borderColor: '#A78BFA',
+            boxShadow: '0 8px 24px rgba(167, 139, 250, 0.2)',
+          },
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Box
-              key={user.uuid}
               sx={{
+                width: 40,
+                height: 40,
+                borderRadius: '10px',
+                bgcolor: 'rgba(167, 139, 250, 0.15)',
                 display: 'flex',
-                justifyContent: 'space-between',
                 alignItems: 'center',
-                py: 1.5,
-                borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                '&:last-child': { borderBottom: 'none' },
+                justifyContent: 'center',
               }}
             >
-              <Box>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {user.name}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {user.sessionCount} session{user.sessionCount > 1 ? 's' : ''}
-                </Typography>
-              </Box>
-              <Typography variant="caption" color="text.secondary">
-                {user.lastActivity}
-              </Typography>
+              <UserIcon sx={{ color: '#A78BFA' }} />
             </Box>
-          ))}
-        </Paper>
-
-        {/* Current Activity */}
-        <Paper
-          sx={{
-            p: 3,
-            borderRadius: '16px',
-            border: '1.5px solid',
-            borderColor: 'rgba(184, 161, 234, 0.3)',
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(184, 161, 234, 0.06) 100%)',
-            backdropFilter: 'blur(8px)',
-          }}
-        >
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
-            Current Activity
-          </Typography>
-
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
-            <Box 
-              onClick={(e) => { e.stopPropagation(); onNavigateToTab?.('overview'); }}
-              sx={{ 
-                textAlign: 'center',
-                cursor: 'pointer',
-                p: 1.5,
-                borderRadius: '12px',
-                transition: 'all 0.2s',
-                '&:hover': {
-                  bgcolor: 'rgba(184, 161, 234, 0.1)',
-                },
-              }}
-            >
-              <ConversationIcon sx={{ fontSize: 32, color: '#B8A1EA', mb: 1 }} />
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#B8A1EA' }}>
-                {currentActivity.conversations}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                User Sessions
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Conversations
-              </Typography>
-            </Box>
-            <Box 
-              onClick={(e) => { e.stopPropagation(); onNavigateToTab?.('overview'); }}
-              sx={{ 
-                textAlign: 'center',
-                cursor: 'pointer',
-                p: 1.5,
-                borderRadius: '12px',
-                transition: 'all 0.2s',
-                '&:hover': {
-                  bgcolor: 'rgba(16, 185, 129, 0.1)',
-                },
-              }}
-            >
-              <GoalIcon sx={{ fontSize: 32, color: '#10B981', mb: 1 }} />
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#10B981' }}>
-                {currentActivity.goals}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                User Goals
-              </Typography>
-            </Box>
-            <Box 
-              onClick={(e) => { e.stopPropagation(); onNavigateToTab?.('scheduler'); }}
-              sx={{ 
-                textAlign: 'center',
-                cursor: 'pointer',
-                p: 1.5,
-                borderRadius: '12px',
-                transition: 'all 0.2s',
-                '&:hover': {
-                  bgcolor: 'rgba(59, 130, 246, 0.1)',
-                },
-              }}
-            >
-              <SchedulerIcon sx={{ fontSize: 32, color: '#3B82F6', mb: 1 }} />
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#3B82F6' }}>
-                {currentActivity.runningJobs}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Running Jobs
-              </Typography>
-            </Box>
-            <Box 
-              onClick={(e) => { e.stopPropagation(); onNavigateToTab?.('logs'); }}
-              sx={{ 
-                textAlign: 'center',
-                cursor: 'pointer',
-                p: 1.5,
-                borderRadius: '12px',
-                transition: 'all 0.2s',
-                '&:hover': {
-                  bgcolor: 'rgba(239, 68, 68, 0.1)',
-                },
-              }}
-            >
-              <ErrorIcon sx={{ fontSize: 32, color: '#EF4444', mb: 1 }} />
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#EF4444' }}>
-                {currentActivity.recentErrors}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Recent Errors
+                {activeUsers.length} active user{activeUsers.length !== 1 ? 's' : ''}
               </Typography>
             </Box>
           </Box>
-        </Paper>
-      </Box>
+          <Chip
+            label={`Total: ${activeUsers.reduce((sum, u) => sum + u.sessionCount, 0)} sessions`}
+            size="small"
+            sx={{
+              bgcolor: 'rgba(167, 139, 250, 0.15)',
+              color: '#A78BFA',
+              border: '1px solid',
+              borderColor: 'rgba(167, 139, 250, 0.3)',
+              fontSize: '0.7rem',
+              height: 24,
+              fontWeight: 600,
+            }}
+          />
+        </Box>
+
+        {activeUsers.length > 0 ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {activeUsers.map((user) => (
+              <Box
+                key={user.uuid}
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  p: 1.5,
+                  borderRadius: '8px',
+                  bgcolor: 'rgba(167, 139, 250, 0.05)',
+                  border: '1px solid rgba(167, 139, 250, 0.1)',
+                }}
+              >
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {user.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    UUID: {user.uuid.substring(0, 8)}...
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#A78BFA' }}>
+                      {user.sessionCount} session{user.sessionCount > 1 ? 's' : ''}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      Last: {user.lastActivity}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        ) : (
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+            No active users
+          </Typography>
+        )}
+      </Paper>
     </Box>
   );
 };

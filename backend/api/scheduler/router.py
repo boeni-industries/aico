@@ -50,8 +50,8 @@ logger = get_logger("api", "scheduler_router")
 @router.get("/status", response_model=SchedulerStatusResponse)
 @handle_scheduler_exceptions
 async def get_scheduler_status(
-    scheduler = Depends(get_task_scheduler),
-    _auth = Depends(require_admin_access)
+    scheduler: "TaskScheduler" = Depends(get_task_scheduler),
+    _auth: bool = Depends(require_admin_access)
 ) -> SchedulerStatusResponse:
     """Get scheduler status and statistics"""
     try:

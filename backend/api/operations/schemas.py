@@ -15,6 +15,7 @@ class DatabaseMetrics(BaseModel):
     size_bytes: int = Field(..., description="Database size in bytes")
     status: str = Field(..., description="Database status (healthy, degraded, critical)")
     location: str = Field(..., description="Database file path")
+    error_details: Optional[str] = Field(None, description="Error details for degraded/critical status")
     table_count: Optional[int] = Field(None, description="Number of tables (LibSQL)")
     connection_count: Optional[int] = Field(None, description="Active connections (LibSQL)")
     wal_size_bytes: Optional[int] = Field(None, description="WAL size in bytes (LibSQL)")

@@ -35,7 +35,9 @@ export async function httpJson<T>(options: HttpRequestOptions): Promise<T> {
 
   // For protected API routes (everything under /api/v1 except health/handshake),
   // establish a secure session and send encrypted payloads.
-  const isProtected = !path.startsWith('/health') && !path.startsWith('/handshake');
+  // Extract pathname from URL to check if it's a health/handshake endpoint
+  const pathname = path.startsWith('http') ? new URL(path).pathname : path;
+  const isProtected = !pathname.includes('/health') && !pathname.includes('/handshake');
   if (isProtected) {
     const { clientId } = await ensureSecureSession();
     if (clientId) {

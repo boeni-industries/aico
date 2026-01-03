@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Box, Typography, Tabs, Tab } from '@mui/material';
 import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
@@ -8,11 +8,12 @@ type OperationsTab = 'overview' | 'topology' | 'users' | 'scheduler' | 'logs' | 
 
 export const OperationsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<OperationsTab>('overview');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const loadOperationsData = useCallback(async () => {
-    // TODO: Replace with actual API calls per tab
-    console.log('Loading operations data for tab:', activeTab);
-  }, [activeTab]);
+    // Trigger refresh in child components by incrementing counter
+    setRefreshTrigger(prev => prev + 1);
+  }, []);
 
   const { isRefreshing, autoRefreshEnabled, toggleAutoRefresh, refresh } = useAutoRefresh({
     onRefresh: loadOperationsData,
@@ -27,10 +28,6 @@ export const OperationsPage: React.FC = () => {
   const handleNavigateToTab = (tab: string) => {
     setActiveTab(tab as OperationsTab);
   };
-
-  useEffect(() => {
-    loadOperationsData();
-  }, [loadOperationsData]);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -74,7 +71,7 @@ export const OperationsPage: React.FC = () => {
 
       {/* Tab Content */}
       <Box>
-        {activeTab === 'overview' && <OperationsOverview onNavigateToTab={handleNavigateToTab} />}
+        {activeTab === 'overview' && <OperationsOverview onNavigateToTab={handleNavigateToTab} refreshTrigger={refreshTrigger} />}
         {activeTab === 'topology' && <Typography>System Topology - Coming Soon</Typography>}
         {activeTab === 'users' && <Typography>Users & Sessions - Coming Soon</Typography>}
         {activeTab === 'scheduler' && <Typography>Scheduler & Jobs - Coming Soon</Typography>}

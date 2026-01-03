@@ -743,6 +743,11 @@ class BackendLifecycleManager:
                 app.state.service_container = self.container
                 app.state.lifecycle_manager = self
                 
+                # Store task scheduler for scheduler API endpoints
+                task_scheduler = self.container.get_service('task_scheduler')
+                if task_scheduler:
+                    app.state.task_scheduler = task_scheduler
+                
                 yield
                 
             finally:
@@ -837,78 +842,6 @@ class BackendLifecycleManager:
                 "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0
             }
         
-        # Container health endpoint
-        @self.app.get("/api/v1/health/detailed")
-        async def detailed_health_check(request: Request):
-            from datetime import datetime, timezone
-            import time
-            import psutil
-            import os
-            
-            container = request.app.state.service_container
-            health_status = await container.health_check()
-            
-            # Add comprehensive system information
-            try:
-                process = psutil.Process(os.getpid())
-                memory_info = process.memory_info()
-                cpu_percent = process.cpu_percent()
-                
-                # System metrics
-                system_memory = psutil.virtual_memory()
-                system_cpu = psutil.cpu_percent(interval=0.1)
-                # Cross-platform disk usage - use root drive
-                import platform
-                if platform.system() == 'Windows':
-                    disk_usage = psutil.disk_usage('C:\\')
-                else:
-                    disk_usage = psutil.disk_usage('/')
-                
-                # Network connections (count) - handle permission issues
-                try:
-                    connections = len(psutil.net_connections())
-                except (psutil.AccessDenied, OSError):
-                    connections = 0
-                
-                enhanced_status = {
-                    **health_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0,
-                    "process": {
-                        "pid": os.getpid(),
-                        "memory_mb": round(memory_info.rss / 1024 / 1024, 2),
-                        "memory_percent": round(process.memory_percent(), 2),
-                        "cpu_percent": cpu_percent,
-                        "threads": process.num_threads(),
-                        "open_files": len(process.open_files()) if hasattr(process, 'open_files') and platform.system() != 'Windows' else 0
-                    },
-                    "system": {
-                        "cpu_percent": system_cpu,
-                        "memory_percent": system_memory.percent,
-                        "memory_available_gb": round(system_memory.available / 1024 / 1024 / 1024, 2),
-                        "disk_percent": disk_usage.percent,
-                        "disk_free_gb": round(disk_usage.free / 1024 / 1024 / 1024, 2),
-                        "network_connections": connections
-                    },
-                    "environment": {
-                        "python_version": f"{platform.python_version()}",
-                        "platform": platform.system(),
-                        "platform_release": platform.release(),
-                        "hostname": platform.node()
-                    }
-                }
-                
-                return enhanced_status
-                
-            except Exception as e:
-                # Fallback if psutil fails
-                return {
-                    **health_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0,
-                    "error": f"Failed to collect system metrics: {str(e)}"
-                }
-        
         # Gateway status endpoint (missing route causing 404)
         @self.app.get("/api/v1/gateway/status")
         async def gateway_status():
@@ -991,6 +924,7 @@ class BackendLifecycleManager:
     def _mount_domain_routers(self) -> None:
         """Mount domain-specific API routers"""
         # Import routers
+        from backend.api.health.router import router as health_router
         from backend.api.echo.router import router as echo_router
         from backend.api.users.router import router as users_router
         from backend.api.admin.router import router as admin_router
@@ -1006,8 +940,12 @@ class BackendLifecycleManager:
         from backend.api.agency.router import router as agency_router
         from backend.api.ams.router import router as ams_router
         from backend.api.operations.router import router as operations_router
+        from backend.api.scheduler.router import router as scheduler_router
         
         # Mount routers with prefixes
+        self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/health", "tags": ["health"]})
+        
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/echo", "tags": ["echo"]})
         
@@ -1052,6 +990,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(operations_router, prefix="/api/v1/operations", tags=["operations"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/operations", "tags": ["operations"]})
+        
+        self.app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/scheduler", "tags": ["scheduler"]})
         
     
     def _display_routes(self) -> None:
