@@ -122,6 +122,7 @@ message HealthResponse {
   bool success = 1;
   string status = 2;
   optional string error = 3;
+  optional double uptime_seconds = 4;
 }
 
 // Conversation completions response

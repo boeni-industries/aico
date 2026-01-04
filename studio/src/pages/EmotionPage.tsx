@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Paper, Typography, CircularProgress, Alert, Tooltip, Slider, ToggleButton, ToggleButtonGroup, Button, Chip, useTheme, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Box, Paper, Typography, CircularProgress, Alert, Tooltip, Slider, ToggleButton, ToggleButtonGroup, Chip, useTheme, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { fetchEmotionHistory, EmotionHistoryItemDto } from '../api/emotion';

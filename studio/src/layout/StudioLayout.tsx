@@ -35,7 +35,7 @@ import { IntelligencePage } from '../pages/IntelligencePage';
 import { MemoryAmsPage } from '../pages/MemoryAmsPage';
 import { AgencyPage } from '../pages/AgencyPage';
 import { SecurityPage } from '../pages/SecurityPage';
-import { EmotionPage, EmotionPageActions } from '../pages/EmotionPage';
+import { EmotionPage } from '../pages/EmotionPage';
 import { SystemPage } from '../pages/SystemPage';
 import { useAuth } from '../auth/AuthContext';
 

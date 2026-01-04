@@ -3,6 +3,7 @@ import { Box, Typography, Tabs, Tab } from '@mui/material';
 import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { OperationsOverview } from '../components/operations/OperationsOverview';
+import { SystemTopology } from '../components/operations/SystemTopology';
 
 type OperationsTab = 'overview' | 'topology' | 'users' | 'scheduler' | 'logs' | 'bus' | 'gateway' | 'database' | 'metrics';
 
@@ -72,7 +73,7 @@ export const OperationsPage: React.FC = () => {
       {/* Tab Content */}
       <Box>
         {activeTab === 'overview' && <OperationsOverview onNavigateToTab={handleNavigateToTab} refreshTrigger={refreshTrigger} />}
-        {activeTab === 'topology' && <Typography>System Topology - Coming Soon</Typography>}
+        {activeTab === 'topology' && <SystemTopology refreshTrigger={refreshTrigger} />}
         {activeTab === 'users' && <Typography>Users & Sessions - Coming Soon</Typography>}
         {activeTab === 'scheduler' && <Typography>Scheduler & Jobs - Coming Soon</Typography>}
         {activeTab === 'logs' && <Typography>Logs & Events - Coming Soon</Typography>}

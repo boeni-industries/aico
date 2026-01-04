@@ -5,7 +5,7 @@ Data models for operations monitoring endpoints.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 
 
 class DatabaseMetrics(BaseModel):
@@ -45,3 +45,34 @@ class ActiveSessionsResponse(BaseModel):
     """Response model for active user sessions"""
     sessions: list[UserSession] = Field(..., description="List of active user sessions")
     total_sessions: int = Field(..., description="Total number of active sessions")
+
+
+class ServiceNode(BaseModel):
+    """Service node in the topology graph"""
+    id: str = Field(..., description="Unique service identifier")
+    name: str = Field(..., description="Service display name")
+    type: str = Field(..., description="Service type (backend, modelservice, scheduler, etc.)")
+    status: str = Field(..., description="Service status (healthy, degraded, critical, offline)")
+    version: str = Field(..., description="Service version")
+    host: str = Field(..., description="Host address")
+    port: Optional[int] = Field(None, description="Port number")
+    uptime: str = Field(..., description="Service uptime")
+
+
+class ServiceConnection(BaseModel):
+    """Connection between services"""
+    model_config = {"populate_by_name": True}
+    
+    from_service: str = Field(..., alias="from", description="Source service ID")
+    to_service: str = Field(..., alias="to", description="Target service ID")
+    protocol: str = Field(..., description="Communication protocol (HTTP, WebSocket, ZMQ)")
+    port: Optional[int] = Field(None, description="Connection port")
+    status: str = Field(..., description="Connection status (active, inactive)")
+    latency: Optional[float] = Field(None, description="Connection latency in ms")
+
+
+class TopologyResponse(BaseModel):
+    """Response model for system topology"""
+    services: list[ServiceNode] = Field(..., description="List of services in the topology")
+    connections: list[ServiceConnection] = Field(..., description="List of connections between services")
+    deployment_type: str = Field(..., description="Deployment type (localhost, distributed)")

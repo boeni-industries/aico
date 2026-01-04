@@ -352,6 +352,26 @@ class ModelServiceClient:
                             self.logger.error("🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Failed to unpack SentimentResponse")
                             req_data.update({'success': False, 'error': 'Failed to unpack response'})
                             req_event.set()
+                    # Handle Health responses
+                    elif "health" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import HealthResponse
+                        health_response = HealthResponse()
+                        if message.any_payload.Unpack(health_response):
+                            self.logger.debug(f"Successfully unpacked HealthResponse: success={health_response.success}")
+                            req_data.update({
+                                'success': health_response.success,
+                                'error': health_response.error if health_response.HasField('error') else None
+                            })
+                            if health_response.success:
+                                req_data['status'] = health_response.status
+                                if health_response.HasField('uptime_seconds'):
+                                    req_data['uptime_seconds'] = health_response.uptime_seconds
+                                    self.logger.debug(f"Extracted uptime: {health_response.uptime_seconds}s")
+                            req_event.set()
+                        else:
+                            self.logger.error("Failed to unpack HealthResponse")
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     else:
                         # Handle completions/chat responses
                         from aico.proto.aico_modelservice_pb2 import CompletionsResponse

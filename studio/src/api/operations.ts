@@ -87,6 +87,36 @@ export interface ActiveSessionsResponse {
 }
 
 // ============================================================================
+// System Topology
+// ============================================================================
+
+export interface ServiceNode {
+  id: string;
+  name: string;
+  type: string;
+  status: 'healthy' | 'degraded' | 'critical' | 'offline';
+  version: string;
+  host: string;
+  port?: number;
+  uptime: string;
+}
+
+export interface ServiceConnection {
+  from: string;
+  to: string;
+  protocol: string;
+  port?: number;
+  status: 'active' | 'inactive';
+  latency?: number;
+}
+
+export interface TopologyData {
+  services: ServiceNode[];
+  connections: ServiceConnection[];
+  deployment_type: string;
+}
+
+// ============================================================================
 // API Functions
 // ============================================================================
 
@@ -127,5 +157,15 @@ export async function fetchActiveSessions(): Promise<ActiveSessionsResponse> {
   return httpJson<ActiveSessionsResponse>({
     method: 'GET',
     path: `${BASE_URL}/operations/sessions`,
+  });
+}
+
+/**
+ * Fetch system topology data
+ */
+export async function fetchTopologyData(): Promise<TopologyData> {
+  return httpJson<TopologyData>({
+    method: 'GET',
+    path: `${BASE_URL}/operations/topology`,
   });
 }

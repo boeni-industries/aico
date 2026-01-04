@@ -49,6 +49,10 @@ class ModelserviceZMQHandlers:
         self.message_bus_client = message_bus_client
         self.version = get_modelservice_version()
         
+        # Track start time for uptime calculation
+        import time
+        self.start_time = time.time()
+        
         # Store config manager for components that need it
         self.config_manager = config_manager
         
@@ -202,6 +206,10 @@ class ModelserviceZMQHandlers:
             
             response.success = True
             response.status = health_data["status"]
+            
+            # Add uptime in seconds
+            import time
+            response.uptime_seconds = time.time() - self.start_time
             
             self.logger.info(
                 f"Health check completed: {health_data['status']}",

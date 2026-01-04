@@ -11,11 +11,14 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from datetime import datetime, timedelta
 
 from aico.core.logging import get_logger
+from aico.core.version import get_backend_version, get_modelservice_version, get_studio_version
 from backend.api.operations.schemas import (
     DatabaseStatsResponse, DatabaseMetrics,
-    ActiveSessionsResponse, UserSession
+    ActiveSessionsResponse, UserSession,
+    TopologyResponse, ServiceNode, ServiceConnection
 )
 from backend.api.system.dependencies import get_current_user, get_db_connection
+from backend.api.system.router import start_time, format_uptime
 
 logger = get_logger("backend", "api.operations")
 
@@ -339,3 +342,283 @@ async def get_active_sessions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve active sessions: {str(e)}"
         )
+
+
+@router.get("/topology", response_model=TopologyResponse)
+async def get_system_topology(
+    request: Request,
+    user: Annotated[dict, Depends(get_current_user)]
+) -> TopologyResponse:
+    """
+    Get system topology showing service architecture and dependencies.
+    
+    Returns information about all services, their connections, and deployment configuration.
+    """
+    try:
+        from backend.core.lifecycle_manager import get_service_container
+        import time
+        
+        # Get versions from shared version system
+        backend_version = get_backend_version()
+        modelservice_version = get_modelservice_version()
+        studio_version = get_studio_version()
+        
+        # Get health data for service statuses
+        container = get_service_container(request)
+        config = container.config if container else None
+        
+        # Calculate backend uptime (shared by backend, gateway, bus, scheduler)
+        backend_uptime_seconds = time.time() - start_time
+        backend_uptime_str = format_uptime(backend_uptime_seconds)
+        
+        # Get modelservice uptime (separate service via ZMQ health check)
+        modelservice_uptime_str = "N/A"
+        try:
+            from backend.services import get_modelservice_client
+            from aico.core.config import ConfigurationManager
+            
+            config = ConfigurationManager()
+            modelservice_client = get_modelservice_client(config)
+            
+            health_data = await modelservice_client.get_health()
+            if health_data and health_data.get('success') and health_data.get('uptime_seconds'):
+                modelservice_uptime_str = format_uptime(health_data['uptime_seconds'])
+        except Exception as e:
+            logger.debug(f"Could not poll modelservice uptime: {e}")
+            modelservice_uptime_str = "N/A"
+        
+        # Get Ollama uptime and version (separate service)
+        ollama_uptime_str = "N/A"
+        ollama_version = "v0.5.x"
+        ollama_status = "healthy"
+        try:
+            import httpx
+            import logging
+            
+            # Disable httpx logging to prevent console spam
+            logging.getLogger("httpx").setLevel(logging.WARNING)
+            
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                response = await client.get("http://localhost:11434/api/version")
+                if response.status_code == 200:
+                    version_data = response.json()
+                    ollama_version = version_data.get("version", "v0.5.x")
+                    # Ollama doesn't provide uptime in API, use backend uptime as approximation
+                    # (typically started together)
+                    ollama_uptime_str = backend_uptime_str
+                else:
+                    ollama_status = "unavailable"
+        except Exception as e:
+            logger.debug(f"Could not poll Ollama: {e}")
+            ollama_status = "unavailable"
+        
+        # Studio uptime (separate frontend service)
+        studio_uptime_str = "N/A"
+        
+        # Define services
+        services = [
+            ServiceNode(
+                id="backend",
+                name="Backend",
+                type="backend",
+                status="healthy",
+                version=backend_version,
+                host="localhost",
+                port=8771,
+                uptime=backend_uptime_str
+            ),
+            ServiceNode(
+                id="gateway",
+                name="API Gateway",
+                type="gateway",
+                status="healthy",
+                version=backend_version,
+                host="localhost",
+                port=8771,
+                uptime=backend_uptime_str
+            ),
+            ServiceNode(
+                id="studio",
+                name="Studio",
+                type="studio",
+                status="healthy",
+                version=studio_version,
+                host="localhost",
+                port=3000,
+                uptime=studio_uptime_str
+            ),
+            ServiceNode(
+                id="modelservice",
+                name="Model Service",
+                type="modelservice",
+                status="healthy",
+                version=modelservice_version,
+                host="localhost",
+                port=11434,
+                uptime=modelservice_uptime_str
+            ),
+            ServiceNode(
+                id="scheduler",
+                name="Task Scheduler",
+                type="scheduler",
+                status="healthy",
+                version=backend_version,
+                host="localhost",
+                uptime=backend_uptime_str
+            ),
+            ServiceNode(
+                id="bus",
+                name="Message Bus",
+                type="bus",
+                status="healthy",
+                version=backend_version,
+                host="localhost",
+                uptime=backend_uptime_str
+            ),
+            ServiceNode(
+                id="libsql",
+                name="LibSQL",
+                type="database",
+                status="healthy",
+                version="v0.24.0",
+                host="localhost",
+                uptime="N/A"
+            ),
+            ServiceNode(
+                id="chromadb",
+                name="ChromaDB",
+                type="database",
+                status="healthy",
+                version="v0.4.x",
+                host="localhost",
+                uptime="N/A"
+            ),
+            ServiceNode(
+                id="ollama",
+                name="Ollama",
+                type="ollama",
+                status=ollama_status,
+                version=ollama_version,
+                host="localhost",
+                port=11434,
+                uptime=ollama_uptime_str
+            ),
+            ServiceNode(
+                id="lmdb",
+                name="LMDB",
+                type="database",
+                status="healthy",
+                version="v1.4.x",
+                host="localhost",
+                uptime="N/A"
+            ),
+        ]
+        
+        # Define connections
+        connections = [
+            # Studio -> Gateway
+            ServiceConnection(
+                from_service="studio",
+                to_service="gateway",
+                protocol="HTTP/WebSocket",
+                port=8771,
+                status="active"
+            ),
+            # Frontend (Flutter) -> Gateway
+            ServiceConnection(
+                from_service="Frontend",
+                to_service="gateway",
+                protocol="HTTP/WebSocket",
+                port=8771,
+                status="active"
+            ),
+            # CLI -> Gateway
+            ServiceConnection(
+                from_service="CLI",
+                to_service="gateway",
+                protocol="HTTP",
+                port=8771,
+                status="active"
+            ),
+            # Gateway -> Backend
+            ServiceConnection(
+                from_service="gateway",
+                to_service="backend",
+                protocol="HTTP",
+                status="active"
+            ),
+            # Backend -> Model Service
+            ServiceConnection(
+                from_service="backend",
+                to_service="modelservice",
+                protocol="HTTP",
+                port=8773,
+                status="active"
+            ),
+            # Model Service -> Ollama
+            ServiceConnection(
+                from_service="modelservice",
+                to_service="ollama",
+                protocol="HTTP",
+                port=11434,
+                status="active"
+            ),
+            # Backend -> Scheduler
+            ServiceConnection(
+                from_service="backend",
+                to_service="scheduler",
+                protocol="Internal",
+                status="active"
+            ),
+            # Backend -> Message Bus
+            ServiceConnection(
+                from_service="backend",
+                to_service="bus",
+                protocol="ZMQ",
+                status="active"
+            ),
+            # Backend -> LibSQL
+            ServiceConnection(
+                from_service="backend",
+                to_service="libsql",
+                protocol="SQLite",
+                status="active"
+            ),
+            # Backend -> ChromaDB
+            ServiceConnection(
+                from_service="backend",
+                to_service="chromadb",
+                protocol="HTTP",
+                status="active"
+            ),
+            # Backend -> LMDB
+            ServiceConnection(
+                from_service="backend",
+                to_service="lmdb",
+                protocol="Direct",
+                status="active"
+            ),
+            # Scheduler -> Message Bus
+            ServiceConnection(
+                from_service="scheduler",
+                to_service="bus",
+                protocol="ZMQ",
+                status="active"
+            ),
+        ]
+        
+        return TopologyResponse(
+            services=services,
+            connections=connections,
+            deployment_type="localhost"
+        )
+        
+    except Exception as e:
+        logger.exception(f"Failed to get system topology: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve system topology: {str(e)}"
+        )
+
+
+# format_uptime is now imported from backend.api.system.router

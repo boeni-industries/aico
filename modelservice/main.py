@@ -46,6 +46,10 @@ __version__ = get_modelservice_version()
 # Global service instance for signal handling
 _zmq_service = None
 
+# Track service start time for uptime calculation
+import time
+_start_time = time.time()
+
 
 async def initialize_modelservice():
     """Initialize modelservice with Ollama and return configuration."""

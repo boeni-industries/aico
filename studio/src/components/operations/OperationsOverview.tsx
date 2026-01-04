@@ -7,12 +7,9 @@ import {
   Computer as BackendIcon,
   Memory as ModelIcon,
   Schedule as SchedulerIcon,
-  Hub as BusIcon,
   Dashboard as StudioIcon,
   Storage as DatabaseIcon,
   Person as UserIcon,
-  Chat as ConversationIcon,
-  Flag as GoalIcon,
 } from '@mui/icons-material';
 import { fetchSystemOverview } from '../../api/system';
 import { fetchDetailedHealth, fetchSchedulerStatus, fetchDatabaseStats, fetchActiveSessions } from '../../api/operations';
