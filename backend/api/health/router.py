@@ -132,7 +132,7 @@ async def detailed_health():
         details={"note": "Modelservice is a separate process"}
     )
     
-    # Ollama health - external LLM service
+    # Ollama health - managed by modelservice
     # Try to detect Ollama version from its API
     ollama_version = "unknown"
     ollama_status = "healthy"
@@ -148,10 +148,10 @@ async def detailed_health():
     
     components["ollama"] = ComponentHealth(
         status=ollama_status,
-        uptime=uptime if ollama_status == "healthy" else None,
+        uptime=modelservice_uptime if ollama_status == "healthy" else None,
         last_check=current_time.isoformat(),
         version=ollama_version,
-        details={"note": "External LLM service"}
+        details={"note": "Managed by modelservice"}
     )
     
     # Determine overall status
