@@ -5,9 +5,9 @@ REST API endpoints for user and session management.
 """
 
 from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from datetime import datetime, timedelta
-
+import logging
 from aico.core.logging import get_logger
 from backend.api.users_sessions.schemas import (
     UsersListResponse,
@@ -22,6 +22,7 @@ from backend.api.users_sessions.schemas import (
     DeviceInfo,
     SessionStatistics,
 )
+from pydantic import BaseModel
 from backend.api.system.dependencies import get_current_user, get_db_connection
 
 logger = get_logger("backend", "api.users_sessions")
@@ -101,7 +102,7 @@ async def get_users(
                 p.primary_language,
                 p.created_at,
                 p.updated_at,
-                COUNT(DISTINCT CASE WHEN s.is_active = 1 AND s.expires_at > datetime('now') THEN s.uuid END) as active_session_count,
+                COUNT(DISTINCT CASE WHEN s.is_active = 1 AND datetime(s.expires_at) > datetime('now') THEN s.uuid END) as active_session_count,
                 COUNT(DISTINCT s.uuid) as total_session_count,
                 MAX(s.created_at) as last_activity,
                 c.failed_attempts,
@@ -247,16 +248,15 @@ async def get_user_detail(
                 last_login=last_login
             )
         
-        # Get active sessions
+        # Get all sessions (active and expired)
         sessions_result = db_connection.execute(
             """
             SELECT uuid, user_uuid, device_uuid, session_type, 
                    expires_at, created_at, is_active
             FROM auth_sessions
-            WHERE user_uuid = ? 
-              AND is_active = 1 
-              AND expires_at > datetime('now')
+            WHERE user_uuid = ?
             ORDER BY created_at DESC
+            LIMIT 200
             """,
             [user_uuid]
         ).fetchall()
@@ -303,8 +303,8 @@ async def get_user_detail(
             """
             SELECT 
                 COUNT(*) as total_sessions,
-                COUNT(CASE WHEN is_active = 1 AND expires_at > datetime('now') THEN 1 END) as active_sessions,
-                COUNT(CASE WHEN expires_at <= datetime('now') THEN 1 END) as expired_sessions
+                COUNT(CASE WHEN is_active = 1 AND datetime(expires_at) > datetime('now') THEN 1 END) as active_sessions,
+                COUNT(CASE WHEN is_active = 0 OR datetime(expires_at) <= datetime('now') THEN 1 END) as expired_sessions
             FROM auth_sessions
             WHERE user_uuid = ?
             """,
@@ -387,13 +387,16 @@ async def get_sessions(
         
         if is_active is not None:
             if is_active:
-                query += " AND s.is_active = 1 AND s.expires_at > datetime('now')"
+                query += " AND s.is_active = 1 AND datetime(s.expires_at) > datetime('now')"
             else:
-                query += " AND (s.is_active = 0 OR s.expires_at <= datetime('now'))"
+                query += " AND (s.is_active = 0 OR datetime(s.expires_at) <= datetime('now'))"
         
         if device_type:
             query += " AND d.device_type = ?"
             params.append(device_type)
+        
+        # Only show sessions from last 24 hours
+        query += " AND s.created_at > datetime('now', '-24 hours')"
         
         query += " ORDER BY s.created_at DESC LIMIT 1000"
         
@@ -425,8 +428,8 @@ async def get_sessions(
                 user_full_name=full_name,
                 user_nickname=nickname,
                 user_type=user_type_val,
-                device_name=device_name,
-                device_type=device_type_val
+                device_name=device_name or device_uuid or "Unknown",
+                device_type=device_type_val or "web"
             ))
         
         return SessionsListResponse(
@@ -457,8 +460,8 @@ async def get_session_statistics(
             """
             SELECT 
                 COUNT(*) as total_sessions,
-                COUNT(CASE WHEN is_active = 1 AND expires_at > datetime('now') THEN 1 END) as active_sessions,
-                COUNT(CASE WHEN expires_at <= datetime('now') THEN 1 END) as expired_sessions
+                COUNT(CASE WHEN is_active = 1 AND datetime(expires_at) > datetime('now') THEN 1 END) as active_sessions,
+                COUNT(CASE WHEN datetime(expires_at) <= datetime('now') THEN 1 END) as expired_sessions
             FROM auth_sessions
             """
         ).fetchone()
@@ -468,7 +471,7 @@ async def get_session_statistics(
             """
             SELECT session_type, COUNT(*) as count
             FROM auth_sessions
-            WHERE is_active = 1 AND expires_at > datetime('now')
+            WHERE is_active = 1 AND datetime(expires_at) > datetime('now')
             GROUP BY session_type
             """
         ).fetchall()
@@ -481,7 +484,7 @@ async def get_session_statistics(
             SELECT d.device_type, COUNT(DISTINCT s.uuid) as count
             FROM auth_sessions s
             LEFT JOIN auth_devices d ON s.device_uuid = d.uuid
-            WHERE s.is_active = 1 AND s.expires_at > datetime('now')
+            WHERE s.is_active = 1 AND datetime(s.expires_at) > datetime('now')
             GROUP BY d.device_type
             """
         ).fetchall()
@@ -534,4 +537,314 @@ async def get_session_statistics(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve session statistics: {str(e)}"
+        )
+
+
+class RevokeSessionRequest(BaseModel):
+    """Request to revoke a session"""
+    reason: Optional[str] = None
+
+
+class LockUserRequest(BaseModel):
+    """Request to lock/unlock a user account"""
+    lock: bool
+    reason: Optional[str] = None
+    duration_hours: Optional[int] = None  # How long to lock (None = indefinite)
+
+
+@router.post("/sessions/{session_uuid}/revoke")
+async def revoke_session(
+    session_uuid: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)],
+    request: RevokeSessionRequest = Body(default=RevokeSessionRequest()),
+) -> dict:
+    """
+    Revoke a session by marking it as inactive.
+    
+    This will immediately terminate the user's access for this session.
+    """
+    try:
+        # Check if session exists
+        session_result = db_connection.execute(
+            "SELECT uuid, user_uuid, is_active FROM auth_sessions WHERE uuid = ?",
+            [session_uuid]
+        ).fetchone()
+        
+        if not session_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_uuid} not found"
+            )
+        
+        _, session_user_uuid, is_active = session_result
+        
+        if not is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session is already inactive"
+            )
+        
+        # Revoke the session
+        db_connection.execute(
+            "UPDATE auth_sessions SET is_active = 0 WHERE uuid = ?",
+            [session_uuid]
+        )
+        db_connection.commit()
+        
+        logger.info(
+            f"Session revoked: {session_uuid} for user {session_user_uuid} by {user.get('user_uuid')}",
+            extra={
+                "session_uuid": session_uuid,
+                "user_uuid": session_user_uuid,
+                "revoked_by": user.get('user_uuid'),
+                "reason": request.reason
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "Session revoked successfully",
+            "session_uuid": session_uuid
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to revoke session: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to revoke session: {str(e)}"
+        )
+
+
+@router.post("/users/{user_uuid}/revoke-all-sessions")
+async def revoke_all_user_sessions(
+    user_uuid: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)],
+    request: RevokeSessionRequest = Body(default=RevokeSessionRequest()),
+) -> dict:
+    """
+    Revoke all active sessions for a specific user.
+    """
+    try:
+        # Check if user exists
+        user_result = db_connection.execute(
+            "SELECT uuid, full_name FROM user_profiles WHERE uuid = ?",
+            [user_uuid]
+        ).fetchone()
+        
+        if not user_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User {user_uuid} not found"
+            )
+        
+        # Get count of active sessions
+        count_result = db_connection.execute(
+            "SELECT COUNT(*) FROM auth_sessions WHERE user_uuid = ? AND is_active = 1",
+            [user_uuid]
+        ).fetchone()
+        
+        active_count = count_result[0] if count_result else 0
+        
+        if active_count == 0:
+            return {
+                "success": True,
+                "message": "No active sessions to revoke",
+                "revoked_count": 0
+            }
+        
+        # Revoke all active sessions
+        db_connection.execute(
+            "UPDATE auth_sessions SET is_active = 0 WHERE user_uuid = ? AND is_active = 1",
+            [user_uuid]
+        )
+        db_connection.commit()
+        
+        logger.info(
+            f"All sessions revoked for user {user_uuid} by {user.get('user_uuid')}",
+            extra={
+                "user_uuid": user_uuid,
+                "revoked_by": user.get('user_uuid'),
+                "session_count": active_count,
+                "reason": request.reason
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"Revoked {active_count} session(s) successfully",
+            "revoked_count": active_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to revoke all sessions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to revoke all sessions: {str(e)}"
+        )
+
+
+@router.post("/users/{user_uuid}/cleanup-sessions")
+async def cleanup_expired_sessions(
+    user_uuid: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)],
+) -> dict:
+    """
+    Delete all expired sessions for a specific user.
+    """
+    try:
+        # Check if user exists
+        user_result = db_connection.execute(
+            "SELECT uuid, full_name FROM user_profiles WHERE uuid = ?",
+            [user_uuid]
+        ).fetchone()
+        
+        if not user_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User {user_uuid} not found"
+            )
+        
+        # Get count of expired sessions
+        count_result = db_connection.execute(
+            "SELECT COUNT(*) FROM auth_sessions WHERE user_uuid = ? AND (is_active = 0 OR datetime(expires_at) <= datetime('now'))",
+            [user_uuid]
+        ).fetchone()
+        
+        expired_count = count_result[0] if count_result else 0
+        
+        if expired_count == 0:
+            return {
+                "success": True,
+                "message": "No expired sessions to clean up",
+                "deleted_count": 0
+            }
+        
+        # Delete expired sessions
+        db_connection.execute(
+            "DELETE FROM auth_sessions WHERE user_uuid = ? AND (is_active = 0 OR datetime(expires_at) <= datetime('now'))",
+            [user_uuid]
+        )
+        db_connection.commit()
+        
+        logger.info(
+            f"Cleaned up expired sessions for user {user_uuid} by {user.get('user_uuid')}",
+            extra={
+                "user_uuid": user_uuid,
+                "cleaned_by": user.get('user_uuid'),
+                "session_count": expired_count
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"Deleted {expired_count} expired session(s)",
+            "deleted_count": expired_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cleanup expired sessions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup expired sessions: {str(e)}"
+        )
+
+
+@router.post("/users/{user_uuid}/lock")
+async def lock_unlock_user(
+    user_uuid: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)],
+    request: LockUserRequest = Body(...),
+) -> dict:
+    """
+    Lock or unlock a user account.
+    """
+    try:
+        # Check if user exists
+        user_result = db_connection.execute(
+            "SELECT uuid, full_name FROM user_profiles WHERE uuid = ?",
+            [user_uuid]
+        ).fetchone()
+        
+        if not user_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User {user_uuid} not found"
+            )
+        
+        # Check if credentials exist
+        cred_result = db_connection.execute(
+            "SELECT user_uuid FROM auth_user_credentials WHERE user_uuid = ?",
+            [user_uuid]
+        ).fetchone()
+        
+        if not cred_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User credentials not found for {user_uuid}"
+            )
+        
+        if request.lock:
+            # Lock the account
+            if request.duration_hours:
+                locked_until = (datetime.utcnow() + timedelta(hours=request.duration_hours)).isoformat()
+            else:
+                # Lock indefinitely (far future date)
+                locked_until = (datetime.utcnow() + timedelta(days=365*10)).isoformat()
+            
+            db_connection.execute(
+                "UPDATE auth_user_credentials SET locked_until = ? WHERE user_uuid = ?",
+                [locked_until, user_uuid]
+            )
+            
+            # Also revoke all active sessions
+            db_connection.execute(
+                "UPDATE auth_sessions SET is_active = 0 WHERE user_uuid = ? AND is_active = 1",
+                [user_uuid]
+            )
+            
+            message = f"User account locked until {locked_until}" if request.duration_hours else "User account locked indefinitely"
+        else:
+            # Unlock the account
+            db_connection.execute(
+                "UPDATE auth_user_credentials SET locked_until = NULL, failed_attempts = 0 WHERE user_uuid = ?",
+                [user_uuid]
+            )
+            message = "User account unlocked successfully"
+        
+        db_connection.commit()
+        
+        logger.info(
+            f"User {'locked' if request.lock else 'unlocked'}: {user_uuid} by {user.get('user_uuid')}",
+            extra={
+                "user_uuid": user_uuid,
+                "action": "lock" if request.lock else "unlock",
+                "performed_by": user.get('user_uuid'),
+                "reason": request.reason,
+                "duration_hours": request.duration_hours if request.lock else None
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": message,
+            "locked": request.lock
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to lock/unlock user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to lock/unlock user: {str(e)}"
         )

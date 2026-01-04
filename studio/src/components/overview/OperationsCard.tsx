@@ -1,31 +1,22 @@
 import React from 'react';
-import { Box, Typography, LinearProgress, Chip } from '@mui/material';
+import { Box, Typography, Chip } from '@mui/material';
 import {
-  TrendingUp as TrendingUpIcon,
-  Psychology as PsychologyIcon,
-  School as SchoolIcon,
-  Favorite as FavoriteIcon,
+  Settings as SettingsIcon,
+  People as PeopleIcon,
+  Devices as DevicesIcon,
+  Security as SecurityIcon,
+  Speed as SpeedIcon,
 } from '@mui/icons-material';
 
-interface AgencyCardProps {
-  activeGoals: number;
-  primaryFocus?: string;
-  curiosityLevel: 'low' | 'medium' | 'high';
-  lessonsLearned: number;
+interface OperationsCardProps {
+  activeUsers: number;
+  activeSessions: number;
   onClick?: () => void;
 }
 
-const curiosityColors = {
-  low: { bg: 'rgba(148, 163, 184, 0.12)', text: '#94A3B8', border: 'rgba(148, 163, 184, 0.3)' },
-  medium: { bg: 'rgba(245, 158, 11, 0.12)', text: '#F59E0B', border: 'rgba(245, 158, 11, 0.3)' },
-  high: { bg: 'rgba(16, 185, 129, 0.12)', text: '#10B981', border: 'rgba(16, 185, 129, 0.3)' },
-};
-
-export const AgencyCard: React.FC<AgencyCardProps> = ({
-  activeGoals,
-  primaryFocus,
-  curiosityLevel,
-  lessonsLearned,
+export const OperationsCard: React.FC<OperationsCardProps> = ({
+  activeUsers,
+  activeSessions,
   onClick,
 }) => {
   return (
@@ -56,20 +47,20 @@ export const AgencyCard: React.FC<AgencyCardProps> = ({
               width: 40,
               height: 40,
               borderRadius: '12px',
-              bgcolor: 'rgba(139, 92, 246, 0.12)',
+              bgcolor: 'rgba(59, 130, 246, 0.12)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <TrendingUpIcon sx={{ color: '#8B5CF6', fontSize: 24 }} />
+            <SettingsIcon sx={{ color: '#3B82F6', fontSize: 24 }} />
           </Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
-              Agency
+              Operations
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-              Autonomous Behavior
+              System Management
             </Typography>
           </Box>
         </Box>
@@ -88,83 +79,38 @@ export const AgencyCard: React.FC<AgencyCardProps> = ({
         />
       </Box>
 
-      {/* Primary Focus */}
-      {primaryFocus && (
-        <Box
-          sx={{
-            p: 2,
-            mb: 2.5,
-            borderRadius: '12px',
-            bgcolor: 'rgba(139, 92, 246, 0.08)',
-            border: '1px solid',
-            borderColor: 'rgba(139, 92, 246, 0.2)',
-          }}
-        >
-          <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', mb: 0.5, display: 'block' }}>
-            PRIMARY FOCUS
-          </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 600, color: '#8B5CF6', fontSize: '0.9rem' }}>
-            {primaryFocus}
-          </Typography>
-        </Box>
-      )}
-
       {/* Metrics Grid */}
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: 'repeat(2, 1fr)',
           gap: 2,
           mb: 2.5,
         }}
       >
-        {/* Active Goals */}
+        {/* Active Users */}
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <TrendingUpIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+            <PeopleIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-              Goals
+              Active Users
             </Typography>
           </Box>
           <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary' }}>
-            {activeGoals}
+            {activeUsers}
           </Typography>
         </Box>
 
-        {/* Curiosity Level */}
+        {/* Active Sessions */}
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <PsychologyIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+            <DevicesIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-              Curiosity
-            </Typography>
-          </Box>
-          <Chip
-            label={curiosityLevel.toUpperCase()}
-            size="small"
-            sx={{
-              bgcolor: curiosityColors[curiosityLevel].bg,
-              color: curiosityColors[curiosityLevel].text,
-              border: '1px solid',
-              borderColor: curiosityColors[curiosityLevel].border,
-              fontWeight: 700,
-              fontSize: '0.7rem',
-              height: 22,
-              mt: 0.5,
-            }}
-          />
-        </Box>
-
-        {/* Lessons Learned */}
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            <SchoolIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-              Lessons
+              Live Sessions
             </Typography>
           </Box>
           <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary' }}>
-            {lessonsLearned}
+            {activeSessions}
           </Typography>
         </Box>
       </Box>
@@ -174,22 +120,29 @@ export const AgencyCard: React.FC<AgencyCardProps> = ({
         sx={{
           display: 'flex',
           gap: 2,
-          mt: 2.5,
           pt: 2.5,
           borderTop: '1px solid',
           borderColor: 'divider',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          <FavoriteIcon sx={{ fontSize: 14, color: '#EC4899' }} />
+          <Box
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: '#3B82F6',
+              boxShadow: '0 0 8px #3B82F640',
+            }}
+          />
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-            Value-aligned
+            User management
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          <PsychologyIcon sx={{ fontSize: 14, color: '#3B82F6' }} />
+          <SecurityIcon sx={{ fontSize: 14, color: '#10B981' }} />
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-            Learning actively
+            Session control
           </Typography>
         </Box>
       </Box>

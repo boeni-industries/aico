@@ -70,7 +70,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
           </Box>
         </Box>
         <Chip
-          label="ACTIVE"
+          label="LIVE"
           size="small"
           sx={{
             bgcolor: 'rgba(16, 185, 129, 0.12)',

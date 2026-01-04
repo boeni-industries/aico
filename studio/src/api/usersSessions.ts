@@ -176,3 +176,51 @@ export async function fetchSessionStatistics(): Promise<SessionStatsResponse> {
     path: `${BASE_URL}/users-sessions/statistics`,
   });
 }
+
+/**
+ * Revoke a session
+ */
+export async function revokeSession(sessionUuid: string, reason?: string): Promise<{ success: boolean; message: string }> {
+  return httpJson<{ success: boolean; message: string }>({
+    method: 'POST',
+    path: `${BASE_URL}/users-sessions/sessions/${sessionUuid}/revoke`,
+    body: { reason },
+  });
+}
+
+/**
+ * Revoke all sessions for a user
+ */
+export async function revokeAllUserSessions(userUuid: string, reason?: string): Promise<{ success: boolean; message: string; revoked_count: number }> {
+  return httpJson<{ success: boolean; message: string; revoked_count: number }>({
+    method: 'POST',
+    path: `${BASE_URL}/users-sessions/users/${userUuid}/revoke-all-sessions`,
+    body: { reason },
+  });
+}
+
+/**
+ * Lock or unlock a user account
+ */
+export async function lockUnlockUser(
+  userUuid: string,
+  lock: boolean,
+  reason?: string,
+  durationHours?: number
+): Promise<{ success: boolean; message: string; locked: boolean }> {
+  return httpJson<{ success: boolean; message: string; locked: boolean }>({
+    method: 'POST',
+    path: `${BASE_URL}/users-sessions/users/${userUuid}/lock`,
+    body: { lock, reason, duration_hours: durationHours },
+  });
+}
+
+/**
+ * Clean up expired sessions for a user
+ */
+export async function cleanupExpiredSessions(userUuid: string): Promise<{ success: boolean; message: string; deleted_count: number }> {
+  return httpJson<{ success: boolean; message: string; deleted_count: number }>({
+    method: 'POST',
+    path: `${BASE_URL}/users-sessions/users/${userUuid}/cleanup-sessions`,
+  });
+}

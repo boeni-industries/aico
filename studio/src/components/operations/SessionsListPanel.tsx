@@ -20,72 +20,70 @@ import {
   Tooltip,
   SelectChangeEvent,
   Menu,
-  ListItemIcon,
   ListItemText,
 } from '@mui/material';
 import {
   Search as SearchIcon,
-  Person as PersonIcon,
-  AdminPanelSettings as AdminIcon,
-  Computer as SystemIcon,
-  Circle as CircleIcon,
-  Lock as LockIcon,
+  Schedule as ScheduleIcon,
+  Devices as DevicesIcon,
   CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
+  Computer as ComputerIcon,
+  PhoneAndroid as PhoneIcon,
+  DesktopWindows as DesktopIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Download as DownloadIcon,
-  MoreVert as MoreVertIcon,
 } from '@mui/icons-material';
-import { UserWithSessions } from '../../api/usersSessions';
-import { exportUsersToCSV, exportUsersToJSON } from '../../utils/exportData';
+import { SessionWithUser } from '../../api/usersSessions';
+import { exportSessionsToCSV, exportSessionsToJSON } from '../../utils/exportData';
 
-interface UsersListPanelProps {
-  users: UserWithSessions[];
-  onUserClick?: (user: UserWithSessions) => void;
+interface SessionsListPanelProps {
+  sessions: SessionWithUser[];
+  onSessionClick?: (session: SessionWithUser) => void;
   loading?: boolean;
   onInteraction?: () => void;
 }
 
-export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
-  users,
-  onUserClick,
+export const SessionsListPanel: React.FC<SessionsListPanelProps> = React.memo(({
+  sessions,
+  onSessionClick,
   loading = false,
   onInteraction,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [userTypeFilter, setUserTypeFilter] = useState<string>('all');
+  const [sessionTypeFilter, setSessionTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
 
-  // Filter users with useMemo to prevent recalculation on every render
-  const filteredUsers = useMemo(() => users.filter(user => {
+  // Filter sessions with useMemo to prevent recalculation on every render
+  const filteredSessions = useMemo(() => sessions.filter(session => {
     const matchesSearch = 
-      user.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.uuid.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.nickname && user.nickname.toLowerCase().includes(searchQuery.toLowerCase()));
+      session.user_full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      session.uuid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (session.user_nickname && session.user_nickname.toLowerCase().includes(searchQuery.toLowerCase()));
     
-    const matchesType = userTypeFilter === 'all' || user.user_type === userTypeFilter;
+    const matchesType = sessionTypeFilter === 'all' || session.session_type === sessionTypeFilter;
     const matchesStatus = 
       statusFilter === 'all' ||
-      (statusFilter === 'active' && user.is_active) ||
-      (statusFilter === 'inactive' && !user.is_active) ||
-      (statusFilter === 'has_sessions' && user.active_session_count > 0);
+      (statusFilter === 'active' && session.is_active) ||
+      (statusFilter === 'expired' && !session.is_active);
     
     return matchesSearch && matchesType && matchesStatus;
-  }), [users, searchQuery, userTypeFilter, statusFilter]);
+  }), [sessions, searchQuery, sessionTypeFilter, statusFilter]);
 
-  // Paginated users
-  const paginatedUsers = useMemo(
-    () => filteredUsers.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
-    [filteredUsers, page, rowsPerPage]
+  // Paginated sessions
+  const paginatedSessions = useMemo(
+    () => filteredSessions.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [filteredSessions, page, rowsPerPage]
   );
 
   // Reset page when filters change
   React.useEffect(() => {
     setPage(0);
-  }, [searchQuery, userTypeFilter, statusFilter]);
+  }, [searchQuery, sessionTypeFilter, statusFilter]);
 
   const handleChangePage = (newPage: number) => {
     setPage(newPage);
@@ -105,34 +103,36 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
   };
 
   const handleExportCSV = () => {
-    exportUsersToCSV(filteredUsers);
+    exportSessionsToCSV(filteredSessions);
     handleExportClose();
   };
 
   const handleExportJSON = () => {
-    exportUsersToJSON(filteredUsers);
+    exportSessionsToJSON(filteredSessions);
     handleExportClose();
   };
 
-  const getUserTypeIcon = (userType: string) => {
-    switch (userType) {
-      case 'admin':
-        return <AdminIcon sx={{ fontSize: 18, color: '#A78BFA' }} />;
-      case 'system':
-        return <SystemIcon sx={{ fontSize: 18, color: '#60A5FA' }} />;
+  const getDeviceIcon = (deviceType?: string) => {
+    switch (deviceType?.toLowerCase()) {
+      case 'mobile':
+      case 'phone':
+        return <PhoneIcon sx={{ fontSize: 16, color: '#60A5FA' }} />;
+      case 'desktop':
+      case 'computer':
+        return <DesktopIcon sx={{ fontSize: 16, color: '#A78BFA' }} />;
       default:
-        return <PersonIcon sx={{ fontSize: 18, color: '#10B981' }} />;
+        return <ComputerIcon sx={{ fontSize: 16, color: '#10B981' }} />;
     }
   };
 
-  const getUserTypeColor = (userType: string) => {
-    switch (userType) {
+  const getSessionTypeColor = (sessionType: string) => {
+    switch (sessionType) {
       case 'admin':
-        return '#A78BFA';
-      case 'system':
-        return '#60A5FA';
-      default:
+        return '#EF4444';
+      case 'unified':
         return '#10B981';
+      default:
+        return '#60A5FA';
     }
   };
 
@@ -160,17 +160,17 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
               width: 40,
               height: 40,
               borderRadius: '10px',
-              bgcolor: 'rgba(167, 139, 250, 0.15)',
+              bgcolor: 'rgba(96, 165, 250, 0.15)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <PersonIcon sx={{ color: '#A78BFA' }} />
+            <DevicesIcon sx={{ color: '#60A5FA' }} />
           </Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem' }}>
-              Users ({users.length})
+              Sessions ({sessions.length})
             </Typography>
           </Box>
         </Box>
@@ -196,7 +196,7 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
           </MenuItem>
         </Menu>
         <Chip
-          label={`${users.filter(u => u.active_session_count > 0).length} active`}
+          label={`${sessions.filter(s => s.is_active).length} active`}
           size="small"
           sx={{
             bgcolor: 'rgba(16, 185, 129, 0.15)',
@@ -214,7 +214,7 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
       <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
         <TextField
           size="small"
-          placeholder="Search users..."
+          placeholder="Search sessions..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           sx={{
@@ -235,21 +235,20 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel sx={{ fontSize: '0.85rem' }}>Type</InputLabel>
           <Select
-            value={userTypeFilter}
+            value={sessionTypeFilter}
             label="Type"
-            onChange={(e) => setUserTypeFilter(e.target.value)}
+            onChange={(e) => setSessionTypeFilter(e.target.value)}
             sx={{
               bgcolor: 'rgba(255, 255, 255, 0.05)',
               fontSize: '0.85rem',
             }}
           >
             <MenuItem value="all">All</MenuItem>
-            <MenuItem value="person">Person</MenuItem>
+            <MenuItem value="unified">Unified</MenuItem>
             <MenuItem value="admin">Admin</MenuItem>
-            <MenuItem value="system">System</MenuItem>
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 140 }}>
+        <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel sx={{ fontSize: '0.85rem' }}>Status</InputLabel>
           <Select
             value={statusFilter}
@@ -262,13 +261,12 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
           >
             <MenuItem value="all">All</MenuItem>
             <MenuItem value="active">Active</MenuItem>
-            <MenuItem value="inactive">Inactive</MenuItem>
-            <MenuItem value="has_sessions">Has Sessions</MenuItem>
+            <MenuItem value="expired">Expired</MenuItem>
           </Select>
         </FormControl>
       </Box>
 
-      {/* Users Table */}
+      {/* Sessions Table */}
       <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
         <Table size="small" stickyHeader>
           <TableHead>
@@ -277,108 +275,117 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
                 User
               </TableCell>
               <TableCell sx={{ bgcolor: 'rgba(255, 255, 255, 0.02)', fontSize: '0.75rem', fontWeight: 600 }}>
+                Device
+              </TableCell>
+              <TableCell sx={{ bgcolor: 'rgba(255, 255, 255, 0.02)', fontSize: '0.75rem', fontWeight: 600 }}>
                 Type
               </TableCell>
               <TableCell sx={{ bgcolor: 'rgba(255, 255, 255, 0.02)', fontSize: '0.75rem', fontWeight: 600 }}>
                 Status
               </TableCell>
               <TableCell sx={{ bgcolor: 'rgba(255, 255, 255, 0.02)', fontSize: '0.75rem', fontWeight: 600 }}>
-                Sessions
+                Time Remaining
               </TableCell>
               <TableCell sx={{ bgcolor: 'rgba(255, 255, 255, 0.02)', fontSize: '0.75rem', fontWeight: 600 }}>
-                Last Activity
+                Created
               </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Loading users...
+                    Loading sessions...
                   </Typography>
                 </TableCell>
               </TableRow>
-            ) : filteredUsers.length === 0 ? (
+            ) : filteredSessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
-                    No users found
+                    No sessions found
                   </Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedUsers.map((user) => (
+              paginatedSessions.map((session) => (
                 <TableRow
-                  key={user.uuid}
+                  key={session.uuid}
                   hover
-                  onClick={() => onUserClick?.(user)}
+                  onClick={() => onSessionClick?.(session)}
                   sx={{
-                    cursor: onUserClick ? 'pointer' : 'default',
+                    cursor: onSessionClick ? 'pointer' : 'default',
                     '&:hover': {
-                      bgcolor: 'rgba(167, 139, 250, 0.05)',
+                      bgcolor: 'rgba(96, 165, 250, 0.05)',
                     },
                   }}
                 >
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {getUserTypeIcon(user.user_type)}
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                          {user.full_name}
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                        {session.user_full_name}
+                      </Typography>
+                      {session.user_nickname && (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                          @{session.user_nickname}
                         </Typography>
-                        {user.nickname && (
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                            @{user.nickname}
-                          </Typography>
-                        )}
-                      </Box>
+                      )}
                     </Box>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      {getDeviceIcon(session.device_type)}
+                      <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                        {session.device_name || session.device_type || 'Unknown'}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     <Chip
-                      label={user.user_type}
+                      label={session.session_type}
                       size="small"
                       sx={{
-                        bgcolor: `${getUserTypeColor(user.user_type)}15`,
-                        color: getUserTypeColor(user.user_type),
+                        bgcolor: `${getSessionTypeColor(session.session_type)}15`,
+                        color: getSessionTypeColor(session.session_type),
                         fontSize: '0.7rem',
                         height: 20,
                         textTransform: 'capitalize',
                       }}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      {user.is_active ? (
+                      {session.is_active ? (
                         <Tooltip title="Active">
                           <CheckCircleIcon sx={{ fontSize: 16, color: '#10B981' }} />
                         </Tooltip>
                       ) : (
-                        <Tooltip title="Inactive">
-                          <CircleIcon sx={{ fontSize: 16, color: '#6B7280' }} />
-                        </Tooltip>
-                      )}
-                      {user.credentials?.is_locked && (
-                        <Tooltip title="Account Locked">
-                          <LockIcon sx={{ fontSize: 14, color: '#EF4444' }} />
+                        <Tooltip title="Expired">
+                          <CancelIcon sx={{ fontSize: 16, color: '#EF4444' }} />
                         </Tooltip>
                       )}
                     </Box>
                   </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                      <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                        {user.active_session_count} active
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        {user.total_session_count} total
-                      </Typography>
-                    </Box>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontSize: '0.8rem',
+                        color: session.is_active ? 'text.primary' : 'text.secondary',
+                      }}
+                    >
+                      {session.time_remaining || 'Expired'}
+                    </Typography>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                      {user.last_activity || 'Never'}
+                      {new Date(session.created_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -389,7 +396,7 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
       </TableContainer>
 
       {/* Pagination Controls */}
-      {filteredUsers.length > 0 && (
+      {filteredSessions.length > 0 && (
         <Box
           sx={{
             display: 'flex',
@@ -422,8 +429,8 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-              {page * rowsPerPage + 1}-{Math.min((page + 1) * rowsPerPage, filteredUsers.length)} of{' '}
-              {filteredUsers.length}
+              {page * rowsPerPage + 1}-{Math.min((page + 1) * rowsPerPage, filteredSessions.length)} of{' '}
+              {filteredSessions.length}
             </Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               <IconButton
@@ -437,7 +444,7 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
               <IconButton
                 size="small"
                 onClick={() => handleChangePage(page + 1)}
-                disabled={page >= Math.ceil(filteredUsers.length / rowsPerPage) - 1}
+                disabled={page >= Math.ceil(filteredSessions.length / rowsPerPage) - 1}
                 sx={{ bgcolor: 'rgba(255, 255, 255, 0.05)' }}
               >
                 <ChevronRightIcon sx={{ fontSize: 18 }} />
@@ -450,4 +457,4 @@ export const UsersListPanel: React.FC<UsersListPanelProps> = React.memo(({
   );
 });
 
-UsersListPanel.displayName = 'UsersListPanel';
+SessionsListPanel.displayName = 'SessionsListPanel';

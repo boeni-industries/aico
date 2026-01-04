@@ -4,6 +4,7 @@ import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { OperationsOverview } from '../components/operations/OperationsOverview';
 import { SystemTopology } from '../components/operations/SystemTopology';
+import { UsersSessions } from '../components/operations/UsersSessions';
 
 type OperationsTab = 'overview' | 'topology' | 'users' | 'scheduler' | 'logs' | 'bus' | 'gateway' | 'database' | 'metrics';
 
@@ -74,7 +75,7 @@ export const OperationsPage: React.FC = () => {
       <Box>
         {activeTab === 'overview' && <OperationsOverview onNavigateToTab={handleNavigateToTab} refreshTrigger={refreshTrigger} />}
         {activeTab === 'topology' && <SystemTopology refreshTrigger={refreshTrigger} />}
-        {activeTab === 'users' && <Typography>Users & Sessions - Coming Soon</Typography>}
+        {activeTab === 'users' && <UsersSessions refreshTrigger={refreshTrigger} />}
         {activeTab === 'scheduler' && <Typography>Scheduler & Jobs - Coming Soon</Typography>}
         {activeTab === 'logs' && <Typography>Logs & Events - Coming Soon</Typography>}
         {activeTab === 'bus' && <Typography>Message Bus - Coming Soon</Typography>}

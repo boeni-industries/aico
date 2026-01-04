@@ -233,6 +233,7 @@ async def list_users(
 @router.post("/authenticate", response_model=AuthenticationResponse)
 async def authenticate_user(
     request: AuthenticateRequest,
+    request_obj: Request,
     user_service: UserService = Depends(get_user_service),
     auth_manager = Depends(get_auth_manager)
 ) -> AuthenticationResponse:
@@ -272,13 +273,17 @@ async def authenticate_user(
         user_permissions = authz_service.get_user_permissions(user.uuid)
         logger.info(f"User roles: {user_roles}, permissions: {user_permissions}")
         
+        # Extract User-Agent from request headers for device detection
+        user_agent = request_obj.headers.get("user-agent", "")
+        
         # Generate JWT access token with proper roles and permissions
         jwt_token = auth_manager.generate_jwt_token(
             user_uuid=user.uuid,
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
-            device_uuid="web-client"  # Default device for web authentication
+            device_uuid="web-client",
+            user_agent=user_agent
         )
         
         # Generate refresh token for token renewal

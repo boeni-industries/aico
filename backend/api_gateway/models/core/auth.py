@@ -127,7 +127,8 @@ class AuthenticationManager:
         self._initialize_service_accounts()
     
     def generate_jwt_token(self, user_uuid: str, username: str = None, roles: List[str] = None, 
-                          permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None) -> str:
+                          permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None,
+                          user_agent: str = None) -> str:
         """Generate JWT access token for user with session backing (zero-effort security)"""
         import time
         from datetime import datetime, timedelta
@@ -157,7 +158,8 @@ class AuthenticationManager:
                     user_uuid=user_uuid,
                     device_uuid=device_uuid,
                     jwt_token=token,
-                    expires_in_minutes=expires_minutes
+                    expires_in_minutes=expires_minutes,
+                    user_agent=user_agent
                 )
                 self.logger.info("Session created successfully", extra={
                     "user_uuid": user_uuid,
@@ -544,7 +546,7 @@ class AuthenticationManager:
         """Revoke JWT token"""
         self.revoked_tokens.add(token)
     
-    def refresh_token(self, current_token: str, device_uuid: str = None) -> Optional[str]:
+    def refresh_token(self, current_token: str, device_uuid: str = None, user_agent: str = None) -> Optional[str]:
         """Refresh JWT token with session rotation"""
         try:
             # Validate current token first
@@ -572,7 +574,8 @@ class AuthenticationManager:
                 username=payload.get("username"),
                 roles=payload.get("roles", ["user"]),
                 permissions=set(payload.get("permissions", [])),
-                device_uuid=device_uuid or "unknown"
+                device_uuid=device_uuid or "unknown",
+                user_agent=user_agent
             )
             
             return new_token
