@@ -941,6 +941,7 @@ class BackendLifecycleManager:
         from backend.api.ams.router import router as ams_router
         from backend.api.operations.router import router as operations_router
         from backend.api.scheduler.router import router as scheduler_router
+        from backend.api.users_sessions.router import router as users_sessions_router
         
         # Mount routers with prefixes
         self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
@@ -993,6 +994,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/scheduler", "tags": ["scheduler"]})
+        
+        self.app.include_router(users_sessions_router, prefix="/api/v1/users-sessions", tags=["users-sessions"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/users-sessions", "tags": ["users-sessions"]})
         
     
     def _display_routes(self) -> None:
