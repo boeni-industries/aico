@@ -101,7 +101,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
 
         {/* Content */}
         <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
-
+          <Box sx={{ pb: 3 }}>
           {/* Status Badge */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
             {getStatusIcon(execution.status)}
@@ -260,6 +260,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
             )}
           </Box>
         </Box>
+          </Box>
         </Box>
       </Box>
     </Drawer>
