@@ -71,7 +71,7 @@ async def list_tasks(
 ) -> TaskListResponse:
     """List all scheduled tasks"""
     try:
-        tasks = await scheduler.task_store.list_tasks(enabled_only=enabled_only)
+        tasks = scheduler.task_store.list_tasks(enabled_only=enabled_only)
         
         task_responses = [
             TaskConfigResponse(
@@ -135,7 +135,7 @@ async def create_task(
     """Create a new scheduled task"""
     try:
         # Validate task doesn't already exist
-        existing_task = await scheduler.task_store.get_task(task_request.task_id)
+        existing_task = scheduler.task_store.get_task(task_request.task_id)
         if existing_task:
             raise TaskAlreadyExistsError(task_request.task_id)
         
@@ -153,7 +153,7 @@ async def create_task(
             validate_task_config(task_request.config)
         
         # Create task
-        await scheduler.task_store.upsert_task(
+        scheduler.task_store.upsert_task(
             task_id=task_request.task_id,
             task_class=task_request.task_class,
             schedule=task_request.schedule,
@@ -162,7 +162,7 @@ async def create_task(
         )
         
         # Get the created task to return
-        created_task = await scheduler.task_store.get_task(task_request.task_id)
+        created_task = scheduler.task_store.get_task(task_request.task_id)
         
         logger.info(f"Created task: {task_request.task_id}")
         
@@ -195,7 +195,7 @@ async def update_task(
     """Update an existing task configuration"""
     try:
         # Check task exists
-        existing_task = await scheduler.task_store.get_task(task_id)
+        existing_task = scheduler.task_store.get_task(task_id)
         if not existing_task:
             raise TaskNotFoundError(task_id)
         
@@ -212,7 +212,7 @@ async def update_task(
         new_config = task_update.config if task_update.config is not None else existing_task['config']
         new_enabled = task_update.enabled if task_update.enabled is not None else existing_task['enabled']
         
-        await scheduler.task_store.upsert_task(
+        scheduler.task_store.upsert_task(
             task_id=task_id,
             task_class=existing_task['task_class'],
             schedule=new_schedule,
@@ -221,7 +221,7 @@ async def update_task(
         )
         
         # Get updated task
-        updated_task = await scheduler.task_store.get_task(task_id)
+        updated_task = scheduler.task_store.get_task(task_id)
         
         logger.info(f"Updated task: {task_id}")
         
@@ -251,7 +251,7 @@ async def delete_task(
 ) -> ApiResponse:
     """Delete a scheduled task"""
     try:
-        deleted = await scheduler.task_store.delete_task(task_id)
+        deleted = scheduler.task_store.delete_task(task_id)
         if not deleted:
             raise TaskNotFoundError(task_id)
         
@@ -278,7 +278,7 @@ async def enable_task(
 ) -> ApiResponse:
     """Enable a scheduled task"""
     try:
-        updated = await scheduler.task_store.set_task_enabled(task_id, True)
+        updated = scheduler.task_store.set_task_enabled(task_id, True)
         if not updated:
             raise TaskNotFoundError(task_id)
         
@@ -305,7 +305,7 @@ async def disable_task(
 ) -> ApiResponse:
     """Disable a scheduled task"""
     try:
-        updated = await scheduler.task_store.set_task_enabled(task_id, False)
+        updated = scheduler.task_store.set_task_enabled(task_id, False)
         if not updated:
             raise TaskNotFoundError(task_id)
         
@@ -358,12 +358,12 @@ async def get_task_status(
     """Get current status of a task"""
     try:
         # Get task configuration
-        task = await scheduler.task_store.get_task(task_id)
+        task = scheduler.task_store.get_task(task_id)
         if not task:
             raise TaskNotFoundError(task_id)
         
         # Get latest execution
-        history = await scheduler.task_store.get_execution_history(task_id, limit=1)
+        history = scheduler.task_store.get_execution_history(task_id, limit=1)
         last_execution = None
         if history:
             exec_data = history[0]
@@ -415,12 +415,12 @@ async def get_task_history(
             raise TaskValidationError("Limit must be between 1 and 1000")
         
         # Check task exists
-        task = await scheduler.task_store.get_task(task_id)
+        task = scheduler.task_store.get_task(task_id)
         if not task:
             raise TaskNotFoundError(task_id)
         
         # Get execution history
-        history = await scheduler.task_store.get_execution_history(task_id, limit=limit)
+        history = scheduler.task_store.get_execution_history(task_id, limit=limit)
         
         executions = [
             TaskExecutionResponse(
