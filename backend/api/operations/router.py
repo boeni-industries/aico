@@ -387,7 +387,7 @@ async def get_system_topology(
             logger.debug(f"Could not poll modelservice uptime: {e}")
             modelservice_uptime_str = "N/A"
         
-        # Get Ollama uptime and version (separate service)
+        # Get Ollama uptime and version (managed by modelservice)
         ollama_uptime_str = "N/A"
         ollama_version = "v0.5.x"
         ollama_status = "healthy"
@@ -403,9 +403,8 @@ async def get_system_topology(
                 if response.status_code == 200:
                     version_data = response.json()
                     ollama_version = version_data.get("version", "v0.5.x")
-                    # Ollama doesn't provide uptime in API, use backend uptime as approximation
-                    # (typically started together)
-                    ollama_uptime_str = backend_uptime_str
+                    # Ollama is started/stopped by modelservice, so use modelservice uptime
+                    ollama_uptime_str = modelservice_uptime_str
                 else:
                     ollama_status = "unavailable"
         except Exception as e:

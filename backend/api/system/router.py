@@ -45,11 +45,14 @@ def format_uptime(seconds: float) -> str:
     """Format uptime seconds to human-readable string"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
     
     if hours > 0:
         return f"{hours}h {minutes}m"
+    elif minutes > 0:
+        return f"{minutes}m {secs}s"
     else:
-        return f"{minutes}m"
+        return f"{secs}s"
 
 
 @router.get("/overview", response_model=SystemOverviewResponse)
