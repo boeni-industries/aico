@@ -1,16 +1,13 @@
 import React from 'react';
 import {
-  Drawer,
   Box,
   Typography,
-  IconButton,
   Divider,
   Chip,
   Button,
   Alert,
 } from '@mui/material';
 import {
-  Close as CloseIcon,
   Schedule as ScheduleIcon,
   Person as PersonIcon,
   Devices as DevicesIcon,
@@ -18,6 +15,7 @@ import {
   Cancel as CancelIcon,
   Block as BlockIcon,
 } from '@mui/icons-material';
+import { DetailDrawer } from '../common/DetailDrawer';
 import { SessionWithUser } from '../../api/usersSessions';
 
 interface SessionDetailDrawerProps {
@@ -53,40 +51,12 @@ export const SessionDetailDrawer: React.FC<SessionDetailDrawerProps> = ({
   };
 
   return (
-    <Drawer
-      anchor="right"
+    <DetailDrawer
       open={open}
       onClose={onClose}
-      PaperProps={{
-        sx: {
-          width: { xs: '100%', sm: 450 },
-          bgcolor: 'background.default',
-          backgroundImage: 'none',
-        },
-      }}
+      title="Session Details"
+      width={450}
     >
-      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <Box
-          sx={{
-            p: 3,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Session Details
-          </Typography>
-          <IconButton onClick={onClose} size="small">
-            <CloseIcon />
-          </IconButton>
-        </Box>
-
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Session Status */}
             <Box>
@@ -284,8 +254,6 @@ export const SessionDetailDrawer: React.FC<SessionDetailDrawerProps> = ({
               </>
             )}
           </Box>
-        </Box>
-      </Box>
-    </Drawer>
+    </DetailDrawer>
   );
 };

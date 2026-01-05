@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { DetailDrawer } from '../common/DetailDrawer';
 import {
-  Drawer,
   Box,
   Typography,
-  IconButton,
   Divider,
   Chip,
   Button,
@@ -18,7 +17,6 @@ import {
   FormControlLabel,
 } from '@mui/material';
 import {
-  Close as CloseIcon,
   PlayArrow as PlayArrowIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -123,32 +121,50 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   };
 
   return (
-    <Drawer
-      anchor="right"
+    <DetailDrawer
       open={open}
       onClose={onClose}
-      PaperProps={{
-        sx: {
-          width: { xs: '100%', sm: 600 },
-          bgcolor: 'background.default',
-          backgroundImage: 'none',
-        },
-      }}
+      title="Task Details"
+      width={600}
+      headerActions={
+        <>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<PlayArrowIcon />}
+            onClick={() => onTriggerTask(task.task_id)}
+            sx={{
+              bgcolor: '#10B981',
+              '&:hover': { bgcolor: '#059669' },
+            }}
+          >
+            Trigger
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<EditIcon />}
+            sx={{ borderColor: 'rgba(255, 255, 255, 0.2)' }}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleDelete}
+          >
+            Delete
+          </Button>
+        </>
+      }
     >
-      <Box sx={{ p: 3 }}>
-        {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-              Task Details
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-              {task.task_id}
-            </Typography>
-          </Box>
-          <IconButton onClick={onClose} size="small">
-            <CloseIcon />
-          </IconButton>
+        {/* Task ID */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+            {task.task_id}
+          </Typography>
         </Box>
 
         {/* Status Badge */}
@@ -345,7 +361,6 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
             </TableContainer>
           )}
         </Box>
-      </Box>
-    </Drawer>
+    </DetailDrawer>
   );
 };

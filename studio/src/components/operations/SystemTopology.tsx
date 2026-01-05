@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper, Chip, CircularProgress, Alert, Drawer, IconButton } from '@mui/material';
+import { Box, Typography, Paper, Chip, CircularProgress, Alert } from '@mui/material';
+import { DetailDrawer } from '../common/DetailDrawer';
 import {
   CheckCircle as HealthyIcon,
   Warning as WarningIcon,
@@ -567,38 +568,14 @@ export const SystemTopology: React.FC<SystemTopologyProps> = ({ refreshTrigger }
 
 
       {/* Right-side Detail Drawer */}
-      <Drawer
-        anchor="right"
+      <DetailDrawer
         open={!!selectedNode}
         onClose={() => setSelectedNode(null)}
-        sx={{
-          '& .MuiDrawer-paper': {
-            width: { xs: '100%', sm: 400 },
-            background: 'rgba(17, 24, 39, 0.95)',
-            backdropFilter: 'blur(20px)',
-            borderLeft: '1px solid',
-            borderColor: 'rgba(184, 161, 234, 0.2)',
-          },
-        }}
+        title="Service Details"
+        width={400}
       >
         {selectedNode && (
-          <Box sx={{ p: 3, pb: 4 }}>
-            {/* Header */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem' }}>
-                Service Details
-              </Typography>
-              <IconButton
-                onClick={() => setSelectedNode(null)}
-                sx={{
-                  color: 'text.secondary',
-                  '&:hover': { color: '#B8A1EA', bgcolor: 'rgba(184, 161, 234, 0.1)' },
-                }}
-              >
-                <CloseIcon />
-              </IconButton>
-            </Box>
-
+          <Box>
             {/* Service Icon and Name */}
             <Box
               sx={{
@@ -757,7 +734,7 @@ export const SystemTopology: React.FC<SystemTopologyProps> = ({ refreshTrigger }
             </Box>
           </Box>
         )}
-      </Drawer>
+      </DetailDrawer>
     </Box>
   );
 };

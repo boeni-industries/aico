@@ -1,21 +1,19 @@
 import React from 'react';
 import {
-  Drawer,
   Box,
   Typography,
-  IconButton,
   Divider,
   Chip,
   Paper,
 } from '@mui/material';
 import {
-  Close as CloseIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   HourglassEmpty as HourglassEmptyIcon,
   Pause as PauseIcon,
   Cancel as CancelIcon,
 } from '@mui/icons-material';
+import { DetailDrawer } from '../common/DetailDrawer';
 import { type TaskExecution } from '../../api/scheduler';
 
 interface JobDetailDrawerProps {
@@ -58,50 +56,22 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
   };
 
   return (
-    <Drawer
-      anchor="right"
+    <DetailDrawer
       open={open}
       onClose={onClose}
-      PaperProps={{
-        sx: {
-          width: { xs: '100%', sm: 600 },
-          background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(31, 41, 55, 0.95) 100%)',
-          backdropFilter: 'blur(20px)',
-          borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
-        },
-      }}
-    >
-      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <Box
-          sx={{
-            p: 3,
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid',
-            borderColor: 'rgba(255, 255, 255, 0.08)',
-          }}
-        >
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-              Job Execution Details
-            </Typography>
-            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.9rem', mb: 0.5, color: '#60A5FA' }}>
-              {(execution as any).task_id || 'Unknown Task'}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-              {execution.execution_id}
-            </Typography>
-          </Box>
-          <IconButton onClick={onClose} size="small">
-            <CloseIcon />
-          </IconButton>
+      title="Job Execution Details"
+      subtitle={
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.9rem', mb: 0.5, color: '#60A5FA' }}>
+            {(execution as any).task_id || 'Unknown Task'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+            {execution.execution_id}
+          </Typography>
         </Box>
-
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
-          <Box sx={{ pb: 3 }}>
+      }
+      width={600}
+    >
           {/* Status Badge */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
             {getStatusIcon(execution.status)}
@@ -260,9 +230,6 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
             )}
           </Box>
         </Box>
-          </Box>
-        </Box>
-      </Box>
-    </Drawer>
+    </DetailDrawer>
   );
 };

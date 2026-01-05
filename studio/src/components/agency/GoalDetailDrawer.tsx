@@ -1,14 +1,12 @@
 import React from 'react';
 import {
   Box,
-  Drawer,
-  IconButton,
   Typography,
   Chip,
   Divider,
   CircularProgress,
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
+import { DetailDrawer } from '../common/DetailDrawer';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
@@ -85,57 +83,151 @@ export const GoalDetailDrawer: React.FC<GoalDetailDrawerProps> = ({
     : '';
 
   return (
-    <Drawer
-      anchor="right"
+    <DetailDrawer
       open={open}
       onClose={onClose}
-      sx={{
-        '& .MuiDrawer-paper': {
-          width: { xs: '100%', sm: 480 },
-          bgcolor: 'background.default',
-          borderLeft: '1.5px solid',
-          borderColor: 'divider',
-          backdropFilter: 'blur(20px)',
-          borderRadius: 0,
-          margin: 0,
-        },
-      }}
+      title="Goal Details"
+      width={480}
     >
-      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <Box
-          sx={{
-            p: 3,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1.5px solid',
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
-          }}
-        >
-          <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem' }}>
-            Goal Details
-          </Typography>
-          <IconButton 
-            onClick={onClose} 
-            size="small"
-            sx={{
-              bgcolor: 'background.default',
-              '&:hover': {
-                bgcolor: 'action.hover',
-              },
-            }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
         </Box>
-
-        <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 3 }}>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-              <CircularProgress />
+      ) : goal ? (
+        <>
+          <Box sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
+              <Box
+                sx={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  bgcolor: originColors[goal.origin],
+                  mt: 0.5,
+                  mr: 1.5,
+                  flexShrink: 0,
+                }}
+              />
+              <Typography
+                variant="h5"
+                sx={{
+                  fontWeight: 600,
+                  lineHeight: 1.3,
+                  textTransform: 'capitalize',
+                }}
+              >
+                {goal.title}
+              </Typography>
             </Box>
-          ) : goal ? (
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 2,
+                p: 2.5,
+                bgcolor: 'background.paper',
+                borderRadius: '16px',
+                border: '1.5px solid',
+                borderColor: 'divider',
+                backdropFilter: 'blur(12px)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
+              }}
+            >
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 1, display: 'block' }}>
+                  Origin
+                </Typography>
+                <Chip
+                  label={originLabels[goal.origin]}
+                  size="small"
+                  sx={{
+                    bgcolor: originColors[goal.origin].bg,
+                    color: originColors[goal.origin].text,
+                    border: '1px solid',
+                    borderColor: originColors[goal.origin].border,
+                    fontSize: '0.7rem',
+                    height: 22,
+                    fontWeight: 600,
+                  }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 1, display: 'block' }}>
+                  Priority
+                </Typography>
+                <Chip
+                  label={goal.priority.toUpperCase()}
+                  size="small"
+                  sx={{
+                    bgcolor: 'action.hover',
+                    color: 'text.primary',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    fontSize: '0.7rem',
+                    height: 22,
+                    fontWeight: 600,
+                  }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 1, display: 'block' }}>
+                  Status
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 500, textTransform: 'capitalize' }}
+                >
+                  {goal.status}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 1, display: 'block' }}>
+                  Type
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 500, textTransform: 'capitalize' }}
+                >
+                  {goal.goal_type}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 1, display: 'block' }}>
+                  Created
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {createdAge}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mb: 1, display: 'block' }}>
+                  Updated
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {updatedAge}
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 3 }} />
+
+          {goal.description && (
+            <Box sx={{ mb: 3 }}>
+              <Typography
+                variant="subtitle2"
+                sx={{ fontWeight: 600, mb: 1, textTransform: 'uppercase', fontSize: '0.75rem' }}
+              >
+                Description
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                {goal.description}
+              </Typography>
+            </Box>
+          )}
+
+          {goal.metadata?.plan_id && (
             <>
               <Box sx={{ mb: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
@@ -484,9 +576,9 @@ export const GoalDetailDrawer: React.FC<GoalDetailDrawerProps> = ({
                 </>
               )}
             </>
-          ) : null}
-        </Box>
-      </Box>
-    </Drawer>
+          )}
+        </>
+      ) : null}
+    </DetailDrawer>
   );
 };

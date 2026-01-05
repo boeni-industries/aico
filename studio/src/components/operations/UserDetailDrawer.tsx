@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../common/Toast';
+import { DetailDrawer } from '../common/DetailDrawer';
 import {
-  Drawer,
   Box,
   Typography,
-  IconButton,
   Divider,
   Chip,
   Button,
@@ -19,7 +18,6 @@ import {
   Alert,
 } from '@mui/material';
 import {
-  Close as CloseIcon,
   Person as PersonIcon,
   AdminPanelSettings as AdminIcon,
   Computer as SystemIcon,
@@ -136,40 +134,12 @@ export const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({
   };
 
   return (
-    <Drawer
-      anchor="right"
+    <DetailDrawer
       open={open}
       onClose={onClose}
-      PaperProps={{
-        sx: {
-          width: { xs: '100%', sm: 500 },
-          bgcolor: 'background.default',
-          backgroundImage: 'none',
-        },
-      }}
+      title="User Details"
+      width={500}
     >
-      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <Box
-          sx={{
-            p: 3,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            User Details
-          </Typography>
-          <IconButton onClick={onClose} size="small">
-            <CloseIcon />
-          </IconButton>
-        </Box>
-
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
@@ -592,8 +562,6 @@ export const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({
               )}
             </Box>
           ) : null}
-        </Box>
-      </Box>
-    </Drawer>
+    </DetailDrawer>
   );
 };
