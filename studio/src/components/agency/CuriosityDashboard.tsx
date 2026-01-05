@@ -73,7 +73,7 @@ export const CuriosityDashboard: React.FC<CuriosityDashboardProps> = ({
               justifyContent: 'center',
             }}
           >
-            <ExploreIcon sx={{ fontSize: 28, color: levelColors.text }} />
+            <ExploreIcon size={28} color={levelColors.text} />
           </Box>
           <Box sx={{ flexGrow: 1 }}>
             <Typography
@@ -164,7 +164,7 @@ export const CuriosityDashboard: React.FC<CuriosityDashboardProps> = ({
               gap: 1,
             }}
           >
-            <LightbulbIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+            <LightbulbIcon size={20} style={{ color: 'var(--mui-palette-primary-main)' }} />
             Curiosity Opportunities
           </Typography>
 

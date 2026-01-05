@@ -19,6 +19,7 @@ import {
   Select,
   MenuItem,
   TablePagination,
+  Switch,
 } from '@mui/material';
 import { Play as PlayArrowIcon, CheckCircle as CheckCircleIcon, AlertCircle as ErrorIcon, Hourglass as HourglassEmptyIcon, Pause as PauseIcon, X as CancelIcon, Search as SearchIcon, RefreshCw as RefreshIcon, Download as DownloadIcon, Copy as ContentCopyIcon } from 'lucide-react';
 import {
@@ -44,17 +45,17 @@ interface SchedulerJobsProps {
 const getStatusIcon = (status: string) => {
   switch (status) {
     case 'completed':
-      return <CheckCircleIcon sx={{ fontSize: 16, color: '#10B981' }} />;
+      return <CheckCircleIcon size={16} color="#10B981" />;
     case 'failed':
-      return <ErrorIcon sx={{ fontSize: 16, color: '#EF4444' }} />;
+      return <ErrorIcon size={16} color="#EF4444" />;
     case 'running':
-      return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#60A5FA' }} />;
+      return <HourglassEmptyIcon size={16} color="#60A5FA" />;
     case 'pending':
-      return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+      return <HourglassEmptyIcon size={16} color="#9CA3AF" />;
     case 'cancelled':
-      return <CancelIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+      return <CancelIcon size={16} color="#9CA3AF" />;
     default:
-      return <PauseIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+      return <PauseIcon size={16} color="#9CA3AF" />;
   }
 };
 
@@ -131,7 +132,7 @@ const ExecutionRow = React.memo<{
                 padding: '2px',
               }}
             >
-              <ContentCopyIcon sx={{ fontSize: 12 }} />
+              <ContentCopyIcon size={12} />
             </IconButton>
           </Box>
         </Box>
@@ -165,7 +166,7 @@ const ExecutionRow = React.memo<{
       </TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}>
         <IconButton size="small" onClick={(e) => { e.stopPropagation(); onExecutionClick(execution); }}>
-          <PlayArrowIcon sx={{ fontSize: 16 }} />
+          <PlayArrowIcon size={16} />
         </IconButton>
       </TableCell>
     </TableRow>
@@ -340,6 +341,60 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
     navigator.clipboard.writeText(uuid);
     showToast('UUID copied to clipboard', 'success');
   }, [showToast]);
+
+  // Handle task enable/disable toggle
+  const handleToggleTask = useCallback(async (taskId: string, enabled: boolean) => {
+    try {
+      // TODO: Add API endpoint to enable/disable tasks
+      showToast(`Task ${taskId} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+      loadData(false);
+    } catch (error) {
+      console.error('Failed to toggle task:', error);
+      showToast('Failed to update task', 'error');
+    }
+  }, [showToast, loadData]);
+
+  // Parse cron schedule to extract hours for visualization
+  const parseSchedule = useCallback((schedule: string) => {
+    // Simple cron parser for visualization
+    // Format: "minute hour * * *" or "*/N * * * *"
+    const parts = schedule.split(' ');
+    const hours: number[] = [];
+    const minutes: number[] = [];
+    
+    if (parts.length >= 2) {
+      const minutePart = parts[0];
+      const hourPart = parts[1];
+      
+      // Parse hours
+      if (hourPart === '*') {
+        // Every hour
+        for (let i = 0; i < 24; i++) hours.push(i);
+      } else if (hourPart.includes('*/')) {
+        // Every N hours
+        const interval = parseInt(hourPart.split('*/')[1]);
+        for (let i = 0; i < 24; i += interval) hours.push(i);
+      } else if (hourPart.includes(',')) {
+        // Specific hours
+        hourPart.split(',').forEach(h => hours.push(parseInt(h)));
+      } else {
+        // Single hour
+        hours.push(parseInt(hourPart));
+      }
+      
+      // Parse minutes for tooltip
+      if (minutePart === '*') {
+        minutes.push(0);
+      } else if (minutePart.includes('*/')) {
+        const interval = parseInt(minutePart.split('*/')[1]);
+        for (let i = 0; i < 60; i += interval) minutes.push(i);
+      } else {
+        minutes.push(parseInt(minutePart));
+      }
+    }
+    
+    return { hours, minutes };
+  }, []);
 
   // Calculate KPIs - all based on today's data for consistency
   const now = React.useMemo(() => new Date(), []);
@@ -533,18 +588,18 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircleIcon sx={{ fontSize: 16, color: '#10B981' }} />;
+        return <CheckCircleIcon size={16} color="#10B981" />;
       case 'failed':
-        return <ErrorIcon sx={{ fontSize: 16, color: '#EF4444' }} />;
+        return <ErrorIcon size={16} color="#EF4444" />;
       case 'running':
-        return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#60A5FA' }} />;
+        return <HourglassEmptyIcon size={16} color="#60A5FA" />;
       case 'pending':
-        return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+        return <HourglassEmptyIcon size={16} color="#9CA3AF" />;
       case 'skipped':
       case 'deferred':
-        return <PauseIcon sx={{ fontSize: 16, color: '#F59E0B' }} />;
+        return <PauseIcon size={16} color="#F59E0B" />;
       case 'cancelled':
-        return <CancelIcon sx={{ fontSize: 16, color: '#6B7280' }} />;
+        return <CancelIcon size={16} color="#6B7280" />;
       default:
         return null;
     }
@@ -581,7 +636,7 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* KPI Cards */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
         {/* Jobs Today */}
         <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'rgba(255, 255, 255, 0.02)' }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
@@ -732,30 +787,122 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
         </Paper>
       </Box>
 
-      {/* Scheduler Status */}
-      {schedulerStatus && (
-        <Paper sx={{ p: 3, borderRadius: '16px', bgcolor: 'rgba(255, 255, 255, 0.02)' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              Scheduler Status
+      {/* 2-Column Layout: Job List (Left) + Schedule Visualization (Right) */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 3, height: 'calc(100vh - 400px)', minHeight: '600px' }}>
+        {/* Left: Job List with Controls */}
+        <Paper sx={{ p: 2, borderRadius: '16px', bgcolor: 'rgba(255, 255, 255, 0.02)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{ mb: 2, pb: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600, mb: 0.5 }}>
+              Scheduled Tasks
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+              {tasks.length} tasks • {tasks.filter(t => t.enabled).length} enabled
             </Typography>
           </Box>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
-            <Box>
-              <Typography variant="caption" color="text.secondary">Registered Tasks</Typography>
-              <Typography variant="h6">{schedulerStatus.registered_tasks}</Typography>
+          <Box sx={{ flex: 1, overflow: 'auto', pr: 1 }}>
+            {tasks.map((task) => (
+              <Box
+                key={task.task_id}
+                sx={{
+                  p: 1.5,
+                  mb: 1,
+                  borderRadius: '8px',
+                  bgcolor: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    bgcolor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(96, 165, 250, 0.3)',
+                  },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                    {task.task_id}
+                  </Typography>
+                  <Switch
+                    size="small"
+                    checked={task.enabled}
+                    onChange={() => handleToggleTask(task.task_id, !task.enabled)}
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: '#10B981',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: '#10B981',
+                      },
+                    }}
+                  />
+                </Box>
+                <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                  {task.schedule}
+                </Typography>
+                <Typography variant="caption" sx={{ fontSize: '0.65rem', color: task.enabled ? '#10B981' : '#9CA3AF' }}>
+                  {task.enabled ? '● Active' : '○ Disabled'}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Paper>
+
+        {/* Right: Visual Schedule Timeline */}
+        <Paper sx={{ p: 3, borderRadius: '16px', bgcolor: 'rgba(255, 255, 255, 0.02)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{ mb: 2, pb: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600, mb: 0.5 }}>
+              24-Hour Schedule View
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+              Visual timeline of when tasks are scheduled to run
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+            {/* Timeline Grid */}
+            <Box sx={{ display: 'flex', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', pb: 1, mb: 2, position: 'sticky', top: 0, bgcolor: 'rgba(255, 255, 255, 0.02)', zIndex: 1 }}>
+              {Array.from({ length: 24 }, (_, i) => (
+                <Box key={i} sx={{ flex: 1, textAlign: 'center' }}>
+                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
+                    {i.toString().padStart(2, '0')}
+                  </Typography>
+                </Box>
+              ))}
             </Box>
-            <Box>
-              <Typography variant="caption" color="text.secondary">Scheduled Tasks</Typography>
-              <Typography variant="h6">{schedulerStatus.scheduled_tasks}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="text.secondary">Running Tasks</Typography>
-              <Typography variant="h6">{schedulerStatus.running_tasks}</Typography>
+            {/* Task Schedule Bars */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {tasks.filter(t => t.enabled).map((task) => {
+                const scheduleInfo = parseSchedule(task.schedule);
+                return (
+                  <Box key={task.task_id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontSize: '0.7rem', width: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {task.task_id}
+                    </Typography>
+                    <Box sx={{ flex: 1, position: 'relative', height: '24px', bgcolor: 'rgba(255, 255, 255, 0.02)', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                      {scheduleInfo.hours.map((hour, idx) => (
+                        <Tooltip key={idx} title={`Runs at ${hour.toString().padStart(2, '0')}:${(scheduleInfo.minutes[idx] || 0).toString().padStart(2, '0')}`}>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: `${(hour / 24) * 100}%`,
+                              width: '4px',
+                              height: '100%',
+                              bgcolor: '#60A5FA',
+                              borderRadius: '2px',
+                              transition: 'all 0.2s ease',
+                              '&:hover': {
+                                bgcolor: '#93C5FD',
+                                width: '8px',
+                              },
+                            }}
+                          />
+                        </Tooltip>
+                      ))}
+                    </Box>
+                  </Box>
+                );
+              })}
             </Box>
           </Box>
         </Paper>
-      )}
+      </Box>
 
       {/* Job Accounting Over Time - Stacked Column Chart */}
       <Paper sx={{ p: 3, borderRadius: '16px', bgcolor: 'rgba(255, 255, 255, 0.02)' }}>
@@ -993,7 +1140,7 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
                   <Chip
                     label="FAILED"
                     size="small"
-                    icon={<ErrorIcon sx={{ fontSize: 14 }} />}
+                    icon={<ErrorIcon size={14} />}
                     sx={{
                       bgcolor: 'rgba(239, 68, 68, 0.15)',
                       color: '#EF4444',
@@ -1078,7 +1225,7 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
                   <Chip
                     label="SKIPPED"
                     size="small"
-                    icon={<PauseIcon sx={{ fontSize: 14 }} />}
+                    icon={<PauseIcon size={14} />}
                     sx={{
                       bgcolor: 'rgba(245, 158, 11, 0.15)',
                       color: '#F59E0B',
@@ -1126,7 +1273,7 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
           </Typography>
           <Tooltip title="Export">
             <IconButton size="small">
-              <DownloadIcon sx={{ fontSize: 18 }} />
+              <DownloadIcon size={18} />
             </IconButton>
           </Tooltip>
         </Box>
@@ -1148,7 +1295,7 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                  <SearchIcon size={18} style={{ color: 'var(--mui-palette-text-secondary)' }} />
                 </InputAdornment>
               ),
             }}

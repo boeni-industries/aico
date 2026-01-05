@@ -82,7 +82,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({
                 justifyContent: 'center',
               }}
             >
-              <AutoFixHighIcon sx={{ fontSize: 20, color: '#B8A1EA' }} />
+              <AutoFixHighIcon size={20} color="#B8A1EA" />
             </Box>
             <Typography
               variant="caption"
@@ -130,7 +130,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({
                 justifyContent: 'center',
               }}
             >
-              <SchoolIcon sx={{ fontSize: 20, color: '#10B981' }} />
+              <SchoolIcon size={20} color="#10B981" />
             </Box>
             <Typography
               variant="caption"
@@ -178,7 +178,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({
                 justifyContent: 'center',
               }}
             >
-              <LightbulbIcon sx={{ fontSize: 20, color: '#3B82F6' }} />
+              <LightbulbIcon size={20} color="#3B82F6" />
             </Box>
             <Typography
               variant="caption"
@@ -226,7 +226,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({
                 justifyContent: 'center',
               }}
             >
-              <TrendingUpIcon sx={{ fontSize: 20, color: '#F59E0B' }} />
+              <TrendingUpIcon size={20} color="#F59E0B" />
             </Box>
             <Typography
               variant="caption"
@@ -382,7 +382,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({
             textAlign: 'center',
           }}
         >
-          <SchoolIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.5, mb: 2 }} />
+          <SchoolIcon size={48} style={{ color: 'var(--mui-palette-text-secondary)', opacity: 0.5, marginBottom: '16px' }} />
           <Typography variant="body2" color="text.secondary">
             No lessons learned yet. Lessons will appear here as AICO reflects on experiences.
           </Typography>
