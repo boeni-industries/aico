@@ -276,7 +276,7 @@ class TaskStore:
                 if os.getenv('AICO_DETACH_MODE') == 'false':
                     print(f"[TASK_STORE] 🔒 Inside _sync_acquire thread for task {task_id}")
                 
-                now = datetime.now()
+                now = datetime.now(timezone.utc)
                 expires_at = (now + timedelta(seconds=timeout_seconds)).isoformat()
                 
                 if os.getenv('AICO_DETACH_MODE') == 'false':
@@ -370,7 +370,7 @@ class TaskStore:
     def cleanup_old_executions(self, retention_days: int = 30):
         """Clean up old execution records"""
         try:
-            cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
+            cutoff_date = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
             
             cursor = self.db.execute(
                 "DELETE FROM scheduler_task_executions WHERE started_at < ?", (cutoff_date,)

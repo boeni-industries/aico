@@ -673,7 +673,7 @@ class TaskScheduler(BaseService):
                 if is_scheduled and task_id in self.next_run_times:
                     schedule = task_config.get('schedule')
                     if schedule:
-                        next_run = self.cron_parser.next_run_time(schedule, datetime.now())
+                        next_run = self.cron_parser.next_run_time(schedule, datetime.now(timezone.utc))
                         if next_run:
                             self.next_run_times[task_id] = next_run
                 self.logger.debug(
