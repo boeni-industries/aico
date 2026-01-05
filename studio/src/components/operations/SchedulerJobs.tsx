@@ -760,7 +760,7 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
         {/* Hour Headers */}
         <Box sx={{ display: 'flex', mb: 2, pl: '280px' }}>
           {Array.from({ length: 24 }, (_, i) => (
-            <Box key={i} sx={{ flex: 1, textAlign: 'left', minWidth: 0, pl: 0.5 }}>
+            <Box key={i} sx={{ flex: '1 1 0', minWidth: 0, textAlign: 'left' }}>
               <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary', fontWeight: 600 }}>
                 {i.toString().padStart(2, '0')}
               </Typography>
