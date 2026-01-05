@@ -23,6 +23,7 @@ export interface Task {
 }
 
 export interface TaskExecution {
+  task_id: string;
   execution_id: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'skipped' | 'deferred';
   started_at: string;
@@ -190,15 +191,21 @@ export async function deleteTask(taskId: string): Promise<{ success: boolean; me
 /**
  * Enable a task
  */
-export async function enableTask(taskId: string): Promise<Task> {
-  return updateTask(taskId, { enabled: true });
+export async function enableTask(taskId: string): Promise<{ success: boolean; message: string }> {
+  return httpJson<{ success: boolean; message: string }>({
+    method: 'POST',
+    path: `${BASE_URL}/tasks/${taskId}/enable`,
+  });
 }
 
 /**
  * Disable a task
  */
-export async function disableTask(taskId: string): Promise<Task> {
-  return updateTask(taskId, { enabled: false });
+export async function disableTask(taskId: string): Promise<{ success: boolean; message: string }> {
+  return httpJson<{ success: boolean; message: string }>({
+    method: 'POST',
+    path: `${BASE_URL}/tasks/${taskId}/disable`,
+  });
 }
 
 /**

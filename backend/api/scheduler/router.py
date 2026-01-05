@@ -282,7 +282,14 @@ async def enable_task(
         if not updated:
             raise TaskNotFoundError(task_id)
         
-        logger.info(f"Enabled task: {task_id}")
+        # Recalculate next run time for this task immediately
+        task = scheduler.task_store.get_task(task_id)
+        if task and task['schedule']:
+            from datetime import datetime, timezone
+            next_run = scheduler.cron_parser.next_run_time(task['schedule'], datetime.now(timezone.utc))
+            if next_run:
+                scheduler.next_run_times[task_id] = next_run
+                logger.info(f"Enabled task: {task_id}, next run: {next_run}")
         
         return ApiResponse(
             success=True,
@@ -309,7 +316,10 @@ async def disable_task(
         if not updated:
             raise TaskNotFoundError(task_id)
         
-        logger.info(f"Disabled task: {task_id}")
+        # Remove from next_run_times to prevent execution
+        if task_id in scheduler.next_run_times:
+            del scheduler.next_run_times[task_id]
+            logger.info(f"Disabled task: {task_id}, removed from schedule")
         
         return ApiResponse(
             success=True,

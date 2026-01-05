@@ -29,6 +29,8 @@ import {
   fetchExecutionsInRange,
   fetchExpectedRunsToday,
   triggerTask,
+  enableTask,
+  disableTask,
   type Task,
   type TaskExecution,
   type SchedulerStatus,
@@ -185,12 +187,13 @@ ExecutionRow.displayName = 'ExecutionRow';
 const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) => {
   const { showToast } = useToast();
   
-  // State
+  // State - using refs to prevent flickering during updates
   const [loading, setLoading] = useState(true);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [executions, setExecutions] = useState<TaskExecution[]>([]);
-  const [expectedRunsToday, setExpectedRunsToday] = useState<number>(0);
+  const [expectedRunsToday, setExpectedRunsToday] = useState(0);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<'today' | 'last7days'>('today');
@@ -235,28 +238,26 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
       // Sort by started_at descending
       allExecutions.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
 
-      // Always update status, tasks, and expected runs (non-visual)
-      setSchedulerStatus(statusData);
-      setTasks(tasksData.tasks);
-      setExpectedRunsToday(expectedRunsData.total_expected_runs);
-
-      // For executions: intelligently merge to avoid full re-render
-      setExecutions(prev => {
-        // On initial load, just set the data
-        if (!isBackgroundRefresh || prev.length === 0) {
-          return allExecutions;
-        }
-
-        // On background refresh: only add truly new items
-        const existingIds = new Set(prev.map(e => e.execution_id));
+      // Calculate merged executions first
+      let mergedExecutions = allExecutions;
+      if (isBackgroundRefresh && executions.length > 0) {
+        const existingIds = new Set(executions.map(e => e.execution_id));
         const newItems = allExecutions.filter(e => !existingIds.has(e.execution_id));
         
         if (newItems.length === 0) {
-          return prev; // No new items = no re-render
+          mergedExecutions = executions; // No new items = reuse array
+        } else {
+          mergedExecutions = [...newItems, ...executions].slice(0, 1000);
         }
+      }
 
-        // Prepend new items (they'll slide in at top)
-        return [...newItems, ...prev].slice(0, 1000); // Keep max 1000 items
+      // Update all state in a single synchronous batch
+      // Use queueMicrotask to ensure DOM updates happen together
+      queueMicrotask(() => {
+        setSchedulerStatus(statusData);
+        setTasks(tasksData.tasks);
+        setExpectedRunsToday(expectedRunsData.total_expected_runs);
+        setExecutions(mergedExecutions);
       });
 
       setHasPendingUpdate(false);
@@ -345,55 +346,69 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
   // Handle task enable/disable toggle
   const handleToggleTask = useCallback(async (taskId: string, enabled: boolean) => {
     try {
-      // TODO: Add API endpoint to enable/disable tasks
-      showToast(`Task ${taskId} ${enabled ? 'enabled' : 'disabled'}`, 'success');
-      loadData(false);
+      // Call the appropriate backend endpoint
+      const response = enabled 
+        ? await enableTask(taskId)
+        : await disableTask(taskId);
+      
+      if (response.success) {
+        showToast(`Task ${taskId} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+        // Refresh data to show updated state
+        loadData(true);
+      } else {
+        showToast(`Failed to ${enabled ? 'enable' : 'disable'} task: ${response.message}`, 'error');
+      }
     } catch (error) {
       console.error('Failed to toggle task:', error);
-      showToast('Failed to update task', 'error');
+      showToast(`Failed to ${enabled ? 'enable' : 'disable'} task`, 'error');
     }
   }, [showToast, loadData]);
 
-  // Parse cron schedule to extract hours for visualization
+  // Parse cron schedule to extract hours and minutes for visualization
   const parseSchedule = useCallback((schedule: string) => {
-    // Simple cron parser for visualization
-    // Format: "minute hour * * *" or "*/N * * * *"
+    // Cron format: "minute hour day month weekday"
     const parts = schedule.split(' ');
-    const hours: number[] = [];
-    const minutes: number[] = [];
+    const schedulePoints: Array<{ hour: number; minute: number }> = [];
     
     if (parts.length >= 2) {
       const minutePart = parts[0];
       const hourPart = parts[1];
       
       // Parse hours
+      const hours: number[] = [];
       if (hourPart === '*') {
-        // Every hour
         for (let i = 0; i < 24; i++) hours.push(i);
       } else if (hourPart.includes('*/')) {
-        // Every N hours
         const interval = parseInt(hourPart.split('*/')[1]);
         for (let i = 0; i < 24; i += interval) hours.push(i);
       } else if (hourPart.includes(',')) {
-        // Specific hours
         hourPart.split(',').forEach(h => hours.push(parseInt(h)));
       } else {
-        // Single hour
         hours.push(parseInt(hourPart));
       }
       
-      // Parse minutes for tooltip
+      // Parse minutes
+      const minutes: number[] = [];
       if (minutePart === '*') {
         minutes.push(0);
       } else if (minutePart.includes('*/')) {
         const interval = parseInt(minutePart.split('*/')[1]);
         for (let i = 0; i < 60; i += interval) minutes.push(i);
+      } else if (minutePart.includes(',')) {
+        minutePart.split(',').forEach(m => minutes.push(parseInt(m)));
       } else {
         minutes.push(parseInt(minutePart));
       }
+      
+      // Create all combinations of hours and minutes
+      hours.forEach(hour => {
+        minutes.forEach(minute => {
+          schedulePoints.push({ hour, minute });
+        });
+      });
     }
     
-    return { hours, minutes };
+    return { schedulePoints };
   }, []);
 
   // Calculate KPIs - all based on today's data for consistency
@@ -401,15 +416,21 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
   const todayStart = React.useMemo(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()), [now]);
   const last24Hours = React.useMemo(() => new Date(now.getTime() - 24 * 60 * 60 * 1000), [now]);
   
-  const executionsToday = React.useMemo(() => executions.filter(e => {
-    const startDate = new Date(e.started_at);
-    return startDate >= todayStart;
-  }), [executions, todayStart]);
+  const executionsToday = React.useMemo(() => {
+    if (!executions || executions.length === 0) return [];
+    return executions.filter((e: TaskExecution) => {
+      const startDate = new Date(e.started_at);
+      return startDate >= todayStart;
+    });
+  }, [executions, todayStart]);
   
-  const executionsLast24h = React.useMemo(() => executions.filter(e => {
-    const startDate = new Date(e.started_at);
-    return startDate >= last24Hours;
-  }), [executions, last24Hours]);
+  const executionsLast24h = React.useMemo(() => {
+    if (!executions || executions.length === 0) return [];
+    return executions.filter((e: TaskExecution) => {
+      const startDate = new Date(e.started_at);
+      return startDate >= last24Hours;
+    });
+  }, [executions, last24Hours]);
 
   // Helper to check if a job was skipped (check both status and result flag)
   const isJobSkipped = useCallback((exec: TaskExecution): boolean => {
@@ -723,92 +744,55 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
             {successfulJobsToday}/{jobsToday} completed successfully
           </Typography>
         </Paper>
-
-        {/* Active Jobs with Histogram */}
-        <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'rgba(255, 255, 255, 0.02)' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Active Jobs
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 2, mt: 1 }}>
-            <Typography variant="h4" sx={{ fontWeight: 700, color: '#60A5FA' }}>
-              {runningJobs}
-            </Typography>
-            {/* Mini Histogram - Last 24 hours */}
-            <Box sx={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 0.3, height: 32, mb: 0.5 }}>
-              {activeJobsHistogram.map((count, i) => {
-                const maxCount = Math.max(...activeJobsHistogram, 1);
-                const height = (count / maxCount) * 100;
-                return (
-                  <Tooltip 
-                    key={i} 
-                    title={`${count} active ${i === 23 ? 'now' : `${24-i}h ago`}`}
-                    componentsProps={{
-                      tooltip: {
-                        sx: {
-                          bgcolor: 'rgba(17, 24, 39, 0.95)',
-                          backdropFilter: 'blur(20px)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          borderRadius: '8px',
-                          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-                        },
-                      },
-                      arrow: {
-                        sx: {
-                          color: 'rgba(17, 24, 39, 0.95)',
-                          '&::before': {
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                          },
-                        },
-                      },
-                    }}
-                    arrow
-                  >
-                    <Box
-                      sx={{
-                        flex: 1,
-                        height: `${height}%`,
-                        minHeight: count > 0 ? '2px' : '0px',
-                        bgcolor: i === 23 ? '#60A5FA' : 'rgba(96, 165, 250, 0.4)',
-                        borderRadius: '2px',
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          bgcolor: '#60A5FA',
-                        },
-                      }}
-                    />
-                  </Tooltip>
-                );
-              })}
-            </Box>
-          </Box>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', mt: 0.5, display: 'block' }}>
-            Last 24 hours
-          </Typography>
-        </Paper>
       </Box>
 
-      {/* 2-Column Layout: Job List (Left) + Schedule Visualization (Right) */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 3, height: 'calc(100vh - 400px)', minHeight: '600px' }}>
-        {/* Left: Job List with Controls */}
-        <Paper sx={{ p: 2, borderRadius: '16px', bgcolor: 'rgba(255, 255, 255, 0.02)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <Box sx={{ mb: 2, pb: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600, mb: 0.5 }}>
-              Scheduled Tasks
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-              {tasks.length} tasks • {tasks.filter(t => t.enabled).length} enabled
-            </Typography>
-          </Box>
-          <Box sx={{ flex: 1, overflow: 'auto', pr: 1 }}>
-            {tasks.map((task) => (
-              <Box
-                key={task.task_id}
-                sx={{
-                  p: 1.5,
-                  mb: 1,
+      {/* Combined Schedule View */}
+      <Paper sx={{ p: 3, borderRadius: '16px', bgcolor: 'rgba(255, 255, 255, 0.02)', overflow: 'hidden' }}>
+        <Box sx={{ mb: 3, pb: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+          <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600, mb: 0.5 }}>
+            24-Hour Schedule View
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+            {tasks.length} tasks • {tasks.filter(t => t.enabled).length} enabled • Status: 🔵 Pending • 🟢 Success • 🔴 Failed • 🟠 Skipped • 🟣 Over-run • ⚫ Not Run
+          </Typography>
+        </Box>
+
+        {/* Hour Headers */}
+        <Box sx={{ display: 'flex', mb: 2, pl: '280px' }}>
+          {Array.from({ length: 24 }, (_, i) => (
+            <Box key={i} sx={{ flex: 1, textAlign: 'left', minWidth: 0, pl: 0.5 }}>
+              <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary', fontWeight: 600 }}>
+                {i.toString().padStart(2, '0')}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+
+        {/* Task Rows */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, maxHeight: 'calc(100vh - 500px)', overflow: 'auto' }}>
+          {tasks.map((task) => {
+            const scheduleInfo = parseSchedule(task.schedule);
+            
+            // Get executions for this specific task today
+            const taskExecutionsToday = executions.filter(e => {
+              const execDate = new Date(e.started_at);
+              const isToday = execDate.toDateString() === new Date().toDateString();
+              return e.task_id === task.task_id && isToday;
+            });
+            
+            return (
+              <Box 
+                key={task.task_id} 
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 2,
+                  py: 0.75,
+                  px: 1.5,
                   borderRadius: '8px',
-                  bgcolor: 'rgba(255, 255, 255, 0.02)',
+                  bgcolor: task.enabled ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.01)',
                   border: '1px solid rgba(255, 255, 255, 0.05)',
+                  opacity: task.enabled ? 1 : 0.5,
                   transition: 'all 0.2s ease',
                   '&:hover': {
                     bgcolor: 'rgba(255, 255, 255, 0.04)',
@@ -816,93 +800,229 @@ const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }
                   },
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                    {task.task_id}
-                  </Typography>
-                  <Switch
-                    size="small"
-                    checked={task.enabled}
-                    onChange={() => handleToggleTask(task.task_id, !task.enabled)}
-                    sx={{
-                      '& .MuiSwitch-switchBase.Mui-checked': {
-                        color: '#10B981',
-                      },
-                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                        backgroundColor: '#10B981',
-                      },
-                    }}
-                  />
-                </Box>
-                <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', display: 'block', mb: 0.5 }}>
-                  {task.schedule}
-                </Typography>
-                <Typography variant="caption" sx={{ fontSize: '0.65rem', color: task.enabled ? '#10B981' : '#9CA3AF' }}>
-                  {task.enabled ? '● Active' : '○ Disabled'}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </Paper>
-
-        {/* Right: Visual Schedule Timeline */}
-        <Paper sx={{ p: 3, borderRadius: '16px', bgcolor: 'rgba(255, 255, 255, 0.02)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <Box sx={{ mb: 2, pb: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600, mb: 0.5 }}>
-              24-Hour Schedule View
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-              Visual timeline of when tasks are scheduled to run
-            </Typography>
-          </Box>
-          <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-            {/* Timeline Grid */}
-            <Box sx={{ display: 'flex', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', pb: 1, mb: 2, position: 'sticky', top: 0, bgcolor: 'rgba(255, 255, 255, 0.02)', zIndex: 1 }}>
-              {Array.from({ length: 24 }, (_, i) => (
-                <Box key={i} sx={{ flex: 1, textAlign: 'center' }}>
-                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
-                    {i.toString().padStart(2, '0')}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-            {/* Task Schedule Bars */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              {tasks.filter(t => t.enabled).map((task) => {
-                const scheduleInfo = parseSchedule(task.schedule);
-                return (
-                  <Box key={task.task_id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
-                    <Typography variant="caption" sx={{ fontSize: '0.7rem', width: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {/* Task Info - Fixed Width */}
+                <Box sx={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', lineHeight: 1.2 }}>
                       {task.task_id}
                     </Typography>
-                    <Box sx={{ flex: 1, position: 'relative', height: '24px', bgcolor: 'rgba(255, 255, 255, 0.02)', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                      {scheduleInfo.hours.map((hour, idx) => (
-                        <Tooltip key={idx} title={`Runs at ${hour.toString().padStart(2, '0')}:${(scheduleInfo.minutes[idx] || 0).toString().padStart(2, '0')}`}>
-                          <Box
-                            sx={{
-                              position: 'absolute',
-                              left: `${(hour / 24) * 100}%`,
-                              width: '4px',
-                              height: '100%',
-                              bgcolor: '#60A5FA',
-                              borderRadius: '2px',
-                              transition: 'all 0.2s ease',
-                              '&:hover': {
-                                bgcolor: '#93C5FD',
-                                width: '8px',
-                              },
-                            }}
-                          />
-                        </Tooltip>
-                      ))}
-                    </Box>
+                    <Switch
+                      size="small"
+                      checked={task.enabled}
+                      onChange={() => handleToggleTask(task.task_id, !task.enabled)}
+                      sx={{
+                        ml: 'auto',
+                        '& .MuiSwitch-switchBase.Mui-checked': {
+                          color: '#10B981',
+                        },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                          backgroundColor: '#10B981',
+                        },
+                      }}
+                    />
                   </Box>
-                );
-              })}
-            </Box>
-          </Box>
-        </Paper>
-      </Box>
+                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary', lineHeight: 1.2 }}>
+                    {task.schedule}
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontSize: '0.6rem', color: task.enabled ? '#10B981' : '#9CA3AF', lineHeight: 1.2 }}>
+                    {task.enabled ? '● Active' : '○ Disabled'}
+                  </Typography>
+                </Box>
+
+                {/* Timeline - Flex with dot-based visualization */}
+                <Box sx={{ flex: 1, display: 'flex', position: 'relative', height: '32px', minWidth: 0, bgcolor: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                  {Array.from({ length: 24 }, (_, hour) => {
+                    // Get all scheduled times for this hour
+                    const scheduledInHour = scheduleInfo.schedulePoints.filter(s => s.hour === hour);
+                    
+                    // Count runs in this hour (for frequency visualization)
+                    const runsInHour = scheduledInHour.length;
+                    
+                    // Find executions for this hour
+                    const executionsInHour = taskExecutionsToday.filter(e => {
+                      const execHour = new Date(e.started_at).getHours();
+                      return execHour === hour;
+                    });
+                    
+                    // Determine visualization based on frequency and status
+                    let displayMode: 'none' | 'dot' | 'bar' | 'dense' | 'notrun' = 'none';
+                    let color = 'rgba(96, 165, 250, 0.6)'; // Default: pending blue
+                    let tooltipText = '';
+                    
+                    if (runsInHour > 0 && task.enabled) {
+                      // Check if this hour is in the past
+                      const isPastHour = hour < now.getHours() || (hour === now.getHours() && now.getMinutes() > 55);
+                      
+                      // Determine display mode based on frequency
+                      if (runsInHour === 1) {
+                        displayMode = 'dot';
+                        tooltipText = `Scheduled: ${hour.toString().padStart(2, '0')}:${scheduledInHour[0].minute.toString().padStart(2, '0')}`;
+                      } else if (runsInHour <= 6) {
+                        displayMode = 'bar';
+                        tooltipText = `${runsInHour} runs scheduled in hour ${hour}`;
+                      } else {
+                        displayMode = 'dense';
+                        tooltipText = `${runsInHour} runs/hour (every ${Math.floor(60/runsInHour)}min)`;
+                      }
+                      
+                      // Override with execution status if available
+                      if (executionsInHour.length > 0) {
+                        const hasFailure = executionsInHour.some(e => e.status === 'failed');
+                        const hasSkipped = executionsInHour.some(e => e.status === 'skipped' || e.status === 'deferred');
+                        const allCompleted = executionsInHour.every(e => e.status === 'completed');
+                        
+                        const failedCount = executionsInHour.filter(e => e.status === 'failed').length;
+                        const skippedCount = executionsInHour.filter(e => e.status === 'skipped' || e.status === 'deferred').length;
+                        const completedCount = executionsInHour.filter(e => e.status === 'completed').length;
+                        const missingCount = runsInHour - executionsInHour.length;
+                        
+                        if (hasFailure) {
+                          color = '#EF4444'; // Red
+                          tooltipText = `${runsInHour} scheduled - ${completedCount} completed, ${failedCount} failed${missingCount > 0 ? `, ${missingCount} not run` : ''}`;
+                        } else if (hasSkipped) {
+                          color = '#F59E0B'; // Amber
+                          tooltipText = `${runsInHour} scheduled - ${completedCount} completed, ${skippedCount} skipped${missingCount > 0 ? `, ${missingCount} not run` : ''}`;
+                        } else if (allCompleted && executionsInHour.length === runsInHour) {
+                          color = '#10B981'; // Green
+                          tooltipText = `${runsInHour} runs - all completed ✓`;
+                        } else if (executionsInHour.length > runsInHour) {
+                          // Over-execution (duplicate runs or clock issues)
+                          color = '#A855F7'; // Purple (anomaly)
+                          tooltipText = `⚠️ ${executionsInHour.length} runs (expected ${runsInHour}) - ${completedCount} completed`;
+                        } else if (missingCount > 0) {
+                          // Partial execution - some runs didn't happen
+                          const missingPercent = Math.round((missingCount / runsInHour) * 100);
+                          if (missingPercent > 50) {
+                            color = '#6B7280'; // Gray (mostly not run)
+                            tooltipText = `${runsInHour} scheduled - ${completedCount} completed, ${missingCount} not run (system downtime)`;
+                          } else {
+                            color = '#3B82F6'; // Blue (partial)
+                            tooltipText = `${runsInHour} scheduled - ${completedCount} completed, ${missingCount} not run`;
+                          }
+                        } else {
+                          // All runs completed
+                          color = '#10B981'; // Green
+                          tooltipText = `${runsInHour} runs - ${completedCount} completed`;
+                        }
+                      } else if (isPastHour) {
+                        // Past hour with no executions - mark as "not run"
+                        color = '#6B7280'; // Gray
+                        displayMode = 'notrun';
+                        tooltipText = `${runsInHour} scheduled - 0 completed, ${runsInHour} not run (system downtime)`;
+                      }
+                    }
+                    
+                    return (
+                      <Tooltip key={hour} title={tooltipText || ''} arrow placement="top">
+                        <Box
+                          sx={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            position: 'relative',
+                            cursor: displayMode !== 'none' ? 'pointer' : 'default',
+                          }}
+                        >
+                          {displayMode === 'dot' && (
+                            <Box
+                              sx={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                bgcolor: color,
+                                transition: 'all 0.2s ease',
+                                '&:hover': {
+                                  width: '8px',
+                                  height: '8px',
+                                  boxShadow: `0 0 8px ${color}`,
+                                },
+                              }}
+                            />
+                          )}
+                          {displayMode === 'bar' && (
+                            <Box
+                              sx={{
+                                width: '60%',
+                                height: '12px',
+                                borderRadius: '3px',
+                                bgcolor: color,
+                                opacity: 0.7,
+                                transition: 'all 0.2s ease',
+                                '&:hover': {
+                                  opacity: 1,
+                                  height: '16px',
+                                  boxShadow: `0 0 8px ${color}`,
+                                },
+                              }}
+                            />
+                          )}
+                          {displayMode === 'dense' && (
+                            <Box
+                              sx={{
+                                width: '90%',
+                                height: '20px',
+                                borderRadius: '4px',
+                                bgcolor: color,
+                                opacity: 0.8,
+                                position: 'relative',
+                                overflow: 'hidden',
+                                transition: 'all 0.2s ease',
+                                '&:hover': {
+                                  opacity: 1,
+                                  boxShadow: `0 0 12px ${color}`,
+                                },
+                                '&::after': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: `repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 3px)`,
+                                },
+                              }}
+                            />
+                          )}
+                          {displayMode === 'notrun' && (
+                            <Box
+                              sx={{
+                                width: '60%',
+                                height: '12px',
+                                borderRadius: '3px',
+                                border: `2px dashed ${color}`,
+                                bgcolor: 'transparent',
+                                opacity: 0.4,
+                                position: 'relative',
+                                overflow: 'hidden',
+                                transition: 'all 0.2s ease',
+                                '&:hover': {
+                                  opacity: 0.7,
+                                  boxShadow: `0 0 8px ${color}`,
+                                },
+                                '&::after': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: `repeating-linear-gradient(45deg, transparent, transparent 3px, ${color} 3px, ${color} 4px)`,
+                                  opacity: 0.2,
+                                },
+                              }}
+                            />
+                          )}
+                        </Box>
+                      </Tooltip>
+                    );
+                  })}
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      </Paper>
 
       {/* Job Accounting Over Time - Stacked Column Chart */}
       <Paper sx={{ p: 3, borderRadius: '16px', bgcolor: 'rgba(255, 255, 255, 0.02)' }}>
