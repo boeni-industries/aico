@@ -40,52 +40,50 @@ interface SchedulerJobsProps {
   refreshTrigger?: number;
 }
 
-// Memoized table row component to prevent unnecessary re-renders
-const ExecutionRow = React.memo<{
-  execution: TaskExecution & { task_id?: string };
-  onExecutionClick: (execution: TaskExecution) => void;
-  onUserInteraction: () => void;
-  onCopyUuid: (uuid: string, e: React.MouseEvent) => void;
-}>(({ execution, onExecutionClick, onUserInteraction, onCopyUuid }) => {
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircleIcon sx={{ fontSize: 16, color: '#10B981' }} />;
-      case 'failed':
-        return <ErrorIcon sx={{ fontSize: 16, color: '#EF4444' }} />;
-      case 'running':
-        return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#60A5FA' }} />;
-      case 'pending':
-        return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
-      case 'cancelled':
-        return <CancelIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
-      default:
-        return <PauseIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
-    }
-  };
+// Helper functions outside component to prevent recreation
+const getStatusIcon = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return <CheckCircleIcon sx={{ fontSize: 16, color: '#10B981' }} />;
+    case 'failed':
+      return <ErrorIcon sx={{ fontSize: 16, color: '#EF4444' }} />;
+    case 'running':
+      return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#60A5FA' }} />;
+    case 'pending':
+      return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+    case 'cancelled':
+      return <CancelIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+    default:
+      return <PauseIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+  }
+};
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return '#10B981';
-      case 'failed': return '#EF4444';
-      case 'running': return '#60A5FA';
-      case 'pending': return '#9CA3AF';
-      case 'cancelled': return '#9CA3AF';
-      default: return '#9CA3AF';
-    }
-  };
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'completed': return '#10B981';
+    case 'failed': return '#EF4444';
+    case 'running': return '#60A5FA';
+    case 'pending': return '#9CA3AF';
+    case 'cancelled': return '#9CA3AF';
+    default: return '#9CA3AF';
+  }
+};
 
-  const formatDuration = (seconds: number | null) => {
-    if (!seconds) return '-';
-    if (seconds < 60) return `${seconds.toFixed(1)}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}m ${remainingSeconds}s`;
-  };
+const formatDuration = (seconds: number | null) => {
+  if (!seconds) return '-';
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+};
 
-  const formatLocalTime = (utcTimeString: string) => {
-    // Backend sends UTC time, convert to local
-    const date = new Date(utcTimeString + (utcTimeString.includes('Z') ? '' : 'Z'));
+const formatLocalTime = (utcTimeString: string) => {
+  if (!utcTimeString) return 'Invalid Date';
+  
+  try {
+    const date = new Date(utcTimeString);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    
     return date.toLocaleString(undefined, {
       year: 'numeric',
       month: 'short',
@@ -95,8 +93,19 @@ const ExecutionRow = React.memo<{
       second: '2-digit',
       hour12: false
     });
-  };
+  } catch (e) {
+    console.error('Error formatting date:', utcTimeString, e);
+    return 'Invalid Date';
+  }
+};
 
+// Memoized table row component to prevent unnecessary re-renders
+const ExecutionRow = React.memo<{
+  execution: TaskExecution & { task_id?: string };
+  onExecutionClick: (execution: TaskExecution) => void;
+  onUserInteraction: () => void;
+  onCopyUuid: (uuid: string, e: React.MouseEvent) => void;
+}>(({ execution, onExecutionClick, onUserInteraction, onCopyUuid }) => {
   return (
     <TableRow
       hover
@@ -104,9 +113,6 @@ const ExecutionRow = React.memo<{
       onMouseEnter={onUserInteraction}
       sx={{
         cursor: 'pointer',
-        '&:hover': {
-          bgcolor: 'rgba(96, 165, 250, 0.05)',
-        },
       }}
     >
       <TableCell sx={{ whiteSpace: 'nowrap' }}>
@@ -123,7 +129,6 @@ const ExecutionRow = React.memo<{
               onClick={(e) => onCopyUuid(execution.execution_id, e)}
               sx={{ 
                 padding: '2px',
-                '&:hover': { bgcolor: 'rgba(96, 165, 250, 0.1)' }
               }}
             >
               <ContentCopyIcon sx={{ fontSize: 12 }} />
@@ -167,14 +172,16 @@ const ExecutionRow = React.memo<{
   );
 }, (prevProps, nextProps) => {
   // Custom comparison: only re-render if execution data actually changed
+  // Return true to SKIP re-render, false to re-render
   return prevProps.execution.execution_id === nextProps.execution.execution_id &&
          prevProps.execution.status === nextProps.execution.status &&
-         prevProps.execution.started_at === nextProps.execution.started_at;
+         prevProps.execution.started_at === nextProps.execution.started_at &&
+         prevProps.execution.duration_seconds === nextProps.execution.duration_seconds;
 });
 
 ExecutionRow.displayName = 'ExecutionRow';
 
-export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) => {
+const SchedulerJobsComponent: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) => {
   const { showToast } = useToast();
   
   // State
@@ -227,23 +234,32 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
       // Sort by started_at descending
       allExecutions.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
 
-      // If user is interacting, store data for later
-      if (isBackgroundRefresh && isUserInteracting) {
-        pendingDataRef.current = {
-          status: statusData,
-          tasks: tasksData.tasks,
-          executions: allExecutions,
-        };
-        setHasPendingUpdate(true);
-      } else {
-        // Apply updates immediately
-        setSchedulerStatus(statusData);
-        setTasks(tasksData.tasks);
-        setExecutions(allExecutions);
-        setExpectedRunsToday(expectedRunsData.total_expected_runs);
-        setHasPendingUpdate(false);
-        pendingDataRef.current = null;
-      }
+      // Always update status, tasks, and expected runs (non-visual)
+      setSchedulerStatus(statusData);
+      setTasks(tasksData.tasks);
+      setExpectedRunsToday(expectedRunsData.total_expected_runs);
+
+      // For executions: intelligently merge to avoid full re-render
+      setExecutions(prev => {
+        // On initial load, just set the data
+        if (!isBackgroundRefresh || prev.length === 0) {
+          return allExecutions;
+        }
+
+        // On background refresh: only add truly new items
+        const existingIds = new Set(prev.map(e => e.execution_id));
+        const newItems = allExecutions.filter(e => !existingIds.has(e.execution_id));
+        
+        if (newItems.length === 0) {
+          return prev; // No new items = no re-render
+        }
+
+        // Prepend new items (they'll slide in at top)
+        return [...newItems, ...prev].slice(0, 1000); // Keep max 1000 items
+      });
+
+      setHasPendingUpdate(false);
+      pendingDataRef.current = null;
     } catch (error) {
       console.error('Failed to load scheduler data:', error);
       if (!isBackgroundRefresh) {
@@ -256,38 +272,12 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
     }
   }, [showToast, isUserInteracting]);
 
-  // Apply pending updates when user stops interacting (minimal updates only)
+  // No longer needed - updates happen immediately with smart merging
+  // Keeping effect for cleanup
   useEffect(() => {
     if (!isUserInteracting && pendingDataRef.current) {
-      const pending = pendingDataRef.current;
-      
-      // Only update status and tasks (non-intrusive)
-      setSchedulerStatus(pending.status);
-      setTasks(pending.tasks);
-      
-      // For executions: only add truly new items (by checking both ID and timestamp)
-      setExecutions(prev => {
-        if (!pending.executions || pending.executions.length === 0) {
-          return prev;
-        }
-        
-        const existingMap = new Map(prev.map(e => [e.execution_id, e.started_at]));
-        const newItems = pending.executions.filter(e => {
-          const existing = existingMap.get(e.execution_id);
-          return !existing; // Only truly new executions
-        });
-        
-        // Only update if there are actually new items
-        if (newItems.length === 0) {
-          return prev; // No change = no re-render
-        }
-        
-        // Prepend new items and limit total
-        return [...newItems, ...prev].slice(0, 500);
-      });
-      
-      setHasPendingUpdate(false);
       pendingDataRef.current = null;
+      setHasPendingUpdate(false);
     }
   }, [isUserInteracting]);
 
@@ -315,16 +305,16 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
 
   useEffect(() => {
     loadData(false);
-  }, [loadData]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
       loadData(true); // Background refresh - updates are queued if user is interacting
     }
-  }, [refreshTrigger, loadData]);
+  }, [refreshTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle task trigger
-  const handleTriggerTask = async (taskId: string) => {
+  const handleTriggerTask = useCallback(async (taskId: string) => {
     try {
       const response = await triggerTask(taskId);
       if (response.success) {
@@ -337,8 +327,7 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
       console.error('Failed to trigger task:', error);
       showToast('Failed to trigger task', 'error');
     }
-  };
-
+  }, [loadData, showToast]);
 
   // Handle execution click
   const handleExecutionClick = useCallback((execution: TaskExecution) => {
@@ -357,15 +346,15 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
   const todayStart = React.useMemo(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()), [now]);
   const last24Hours = React.useMemo(() => new Date(now.getTime() - 24 * 60 * 60 * 1000), [now]);
   
-  const executionsToday = executions.filter(e => {
+  const executionsToday = React.useMemo(() => executions.filter(e => {
     const startDate = new Date(e.started_at);
     return startDate >= todayStart;
-  });
+  }), [executions, todayStart]);
   
-  const executionsLast24h = executions.filter(e => {
+  const executionsLast24h = React.useMemo(() => executions.filter(e => {
     const startDate = new Date(e.started_at);
     return startDate >= last24Hours;
-  });
+  }), [executions, last24Hours]);
 
   // Helper to check if a job was skipped (check both status and result flag)
   const isJobSkipped = useCallback((exec: TaskExecution): boolean => {
@@ -387,22 +376,37 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
   // - PENDING/CANCELLED: Other states
   
   // Get jobs that were skipped/deferred (not executed)
-  const skippedJobsToday = executionsToday.filter(e => isJobSkipped(e));
+  const skippedJobsToday = React.useMemo(() => 
+    executionsToday.filter(e => isJobSkipped(e)),
+    [executionsToday, isJobSkipped]
+  );
   
   // Get jobs that actually executed (completed or failed, excluding skipped)
-  const executedJobsToday = executionsToday.filter(e => 
-    (e.status === 'completed' || e.status === 'failed') && !isJobSkipped(e)
+  const executedJobsToday = React.useMemo(() => 
+    executionsToday.filter(e => 
+      (e.status === 'completed' || e.status === 'failed') && !isJobSkipped(e)
+    ),
+    [executionsToday, isJobSkipped]
   );
   
   // Calculate metrics based on EXECUTED jobs only
   const totalExecutionsToday = executionsToday.length; // Total executions today (including skipped)
   const jobsToday = executedJobsToday.length; // Actually executed (completed or failed)
-  const successfulJobsToday = executedJobsToday.filter(e => e.status === 'completed').length;
-  const failedJobsToday = executedJobsToday.filter(e => e.status === 'failed').length;
+  const successfulJobsToday = React.useMemo(() => 
+    executedJobsToday.filter(e => e.status === 'completed').length,
+    [executedJobsToday]
+  );
+  const failedJobsToday = React.useMemo(() => 
+    executedJobsToday.filter(e => e.status === 'failed').length,
+    [executedJobsToday]
+  );
   const successRateToday = jobsToday > 0 
     ? Math.round((successfulJobsToday / jobsToday) * 100) 
     : 0;
-  const runningJobs = executions.filter(e => e.status === 'running').length;
+  const runningJobs = React.useMemo(() => 
+    executions.filter(e => e.status === 'running').length,
+    [executions]
+  );
   
   // Calculate hourly active jobs for last 24 hours (for histogram)
   // Only count jobs that were actually running (status='running') at some point during the hour
@@ -495,9 +499,10 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
   // Filter executions (memoized to prevent recalculation on every render)
   const filteredExecutions = React.useMemo(() => {
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const sevenDaysAgo = new Date(todayStart);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    // Get today's start in UTC to match backend's UTC timestamps
+    const todayStartUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const sevenDaysAgoUTC = new Date(todayStartUTC);
+    sevenDaysAgoUTC.setUTCDate(sevenDaysAgoUTC.getUTCDate() - 7);
 
     return executions.filter(execution => {
       const matchesSearch = searchQuery === '' || 
@@ -505,11 +510,12 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
       
       const matchesStatus = statusFilter === 'all' || execution.status === statusFilter;
       
-      // Date filter: only show today by default
-      const executionDate = new Date(execution.started_at + (execution.started_at.includes('Z') ? '' : 'Z'));
+      // Date filter: compare UTC times
+      // Backend sends timestamps like "2026-01-05T14:12:00.838432+00:00"
+      const executionDate = new Date(execution.started_at);
       const matchesDate = dateFilter === 'today' 
-        ? executionDate >= todayStart
-        : executionDate >= sevenDaysAgo;
+        ? executionDate >= todayStartUTC
+        : executionDate >= sevenDaysAgoUTC;
       
       return matchesSearch && matchesStatus && matchesDate;
     });
@@ -1285,3 +1291,6 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
     </Box>
   );
 };
+
+// Memoize the entire component to prevent re-renders when parent re-renders
+export const SchedulerJobs = React.memo(SchedulerJobsComponent);
