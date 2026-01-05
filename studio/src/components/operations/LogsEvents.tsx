@@ -95,7 +95,19 @@ const CopyButton: React.FC<{ event: any; config: any }> = ({ event, config }) =>
   };
 
   return (
-    <Tooltip title={copied ? "Copied!" : "Copy log entry"}>
+    <Tooltip 
+      title={copied ? "Copied!" : "Copy log entry"}
+      slotProps={{
+        tooltip: {
+          sx: {
+            bgcolor: 'rgba(0, 0, 0, 0.9)',
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+          }
+        }
+      }}
+    >
       <IconButton
         size="small"
         onClick={copyToClipboard}
@@ -118,7 +130,7 @@ const CopyButton: React.FC<{ event: any; config: any }> = ({ event, config }) =>
 export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isUserInteracting, setIsUserInteracting] = useState(false);
-  const [severityFilter, setSeverityFilter] = useState<string[]>(['error', 'warning', 'info', 'debug']);
+  const [severityFilter, setSeverityFilter] = useState<string[]>(['error', 'warning', 'info']);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [timeRange, setTimeRange] = useState<'5m' | '1h' | '24h' | '7d'>('1h');
@@ -400,13 +412,35 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
               <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 Error Rate
               </Typography>
-              <Tooltip title={
-                <Box sx={{ p: 0.5 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Error Rate</Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>Percentage of log entries at ERROR level</Typography>
-                  <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.7)' }}>Lower is better. Trend shows change vs last hour.</Typography>
-                </Box>
-              } arrow placement="top">
+              <Tooltip 
+                title={
+                  <Box sx={{ p: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Error Rate</Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>Percentage of log entries at ERROR level</Typography>
+                    <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.7)' }}>Lower is better. Trend shows change vs last hour.</Typography>
+                  </Box>
+                }
+                arrow
+                placement="top"
+                slotProps={{
+                  tooltip: {
+                    sx: {
+                      bgcolor: 'rgba(0, 0, 0, 0.9)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+                    }
+                  },
+                  arrow: {
+                    sx: {
+                      color: 'rgba(0, 0, 0, 0.9)',
+                      '&::before': {
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                      }
+                    }
+                  }
+                }}
+              >
                 <Box component="span" sx={{ display: 'inline-flex', cursor: 'help' }}>
                   <HelpCircle size={14} color="rgba(255,255,255,0.4)" />
                 </Box>
@@ -436,13 +470,35 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
               <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 Volume
               </Typography>
-              <Tooltip title={
-                <Box sx={{ p: 0.5 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Log Volume</Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>Total number of log entries in the system</Typography>
-                  <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.7)' }}>Tracks system activity level. Trend shows growth rate.</Typography>
-                </Box>
-              } arrow placement="top">
+              <Tooltip 
+                title={
+                  <Box sx={{ p: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Log Volume</Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>Total number of log entries in the system</Typography>
+                    <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.7)' }}>Includes all severity levels. Trend shows growth vs last hour.</Typography>
+                  </Box>
+                }
+                arrow
+                placement="top"
+                slotProps={{
+                  tooltip: {
+                    sx: {
+                      bgcolor: 'rgba(0, 0, 0, 0.9)',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                    }
+                  },
+                  arrow: {
+                    sx: {
+                      color: 'rgba(0, 0, 0, 0.9)',
+                      '&::before': {
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                      }
+                    }
+                  }
+                }}
+              >
                 <Box component="span" sx={{ display: 'inline-flex', cursor: 'help' }}>
                   <HelpCircle size={14} color="rgba(255,255,255,0.4)" />
                 </Box>
@@ -468,13 +524,35 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
               <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 Health
               </Typography>
-              <Tooltip title={
-                <Box sx={{ p: 0.5 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Service Health</Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>Percentage of services operating without errors</Typography>
-                  <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.7)' }}>100% means all services are error-free. Based on recent log patterns.</Typography>
-                </Box>
-              } arrow placement="top">
+              <Tooltip 
+                title={
+                  <Box sx={{ p: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Service Health</Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>Percentage of services operating without errors</Typography>
+                    <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.7)' }}>100% means all services are error-free. Based on recent log patterns.</Typography>
+                  </Box>
+                }
+                arrow
+                placement="top"
+                slotProps={{
+                  tooltip: {
+                    sx: {
+                      bgcolor: 'rgba(0, 0, 0, 0.9)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+                    }
+                  },
+                  arrow: {
+                    sx: {
+                      color: 'rgba(0, 0, 0, 0.9)',
+                      '&::before': {
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                      }
+                    }
+                  }
+                }}
+              >
                 <Box component="span" sx={{ display: 'inline-flex', cursor: 'help' }}>
                   <HelpCircle size={14} color="rgba(255,255,255,0.4)" />
                 </Box>
@@ -550,6 +628,24 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
                   </Box>
                 }
                 arrow
+                slotProps={{
+                  tooltip: {
+                    sx: {
+                      bgcolor: 'rgba(0, 0, 0, 0.9)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+                    }
+                  },
+                  arrow: {
+                    sx: {
+                      color: 'rgba(0, 0, 0, 0.9)',
+                      '&::before': {
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                      }
+                    }
+                  }
+                }}
               >
                 <Box
                   sx={{

@@ -149,6 +149,8 @@ class LogsStatsResponse(BaseModel):
     by_level: Dict[str, int] = Field(..., description="Log counts by level")
     by_subsystem: Dict[str, int] = Field(..., description="Log counts by subsystem")
     recent_activity: Dict[str, int] = Field(..., description="Recent activity (last 24h by hour)")
+    error_rate_trend: float = Field(0.0, description="Error rate trend vs 1 hour ago (percentage points)")
+    log_volume_trend: float = Field(0.0, description="Log volume trend vs 1 hour ago (percentage change)")
 
 
 # ============================================================================

@@ -493,6 +493,39 @@ async def get_logs_stats(
     rows = conn.execute("SELECT level, COUNT(*) FROM system_logs GROUP BY level").fetchall()
     by_level = {row[0]: row[1] for row in rows}
     
+    # Calculate trends by comparing with 1 hour ago
+    one_hour_ago = now_dt - timedelta(hours=1)
+    
+    # Get total logs from 1 hour ago
+    result = conn.execute(
+        "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?",
+        (one_hour_ago.isoformat(),)
+    ).fetchone()
+    total_logs_1h_ago = result[0] if result else 0
+    
+    # Get error count from 1 hour ago
+    result = conn.execute(
+        "SELECT COUNT(*) FROM system_logs WHERE level = 'ERROR' AND timestamp < ?",
+        (one_hour_ago.isoformat(),)
+    ).fetchone()
+    errors_1h_ago = result[0] if result else 0
+    
+    # Calculate current error count
+    current_errors = by_level.get('ERROR', 0)
+    
+    # Calculate trends (percentage change)
+    if total_logs_1h_ago > 0:
+        error_rate_1h_ago = (errors_1h_ago / total_logs_1h_ago) * 100
+        current_error_rate = (current_errors / total_logs) * 100 if total_logs > 0 else 0
+        error_rate_trend = round(current_error_rate - error_rate_1h_ago, 2)
+    else:
+        error_rate_trend = 0.0
+    
+    if total_logs_1h_ago > 0:
+        log_volume_trend = round(((total_logs - total_logs_1h_ago) / total_logs_1h_ago) * 100, 2)
+    else:
+        log_volume_trend = 0.0
+    
     # Get top 10 subsystems only
     rows = conn.execute(
         "SELECT subsystem, COUNT(*) as cnt FROM system_logs WHERE subsystem IS NOT NULL GROUP BY subsystem ORDER BY cnt DESC LIMIT 10"
@@ -514,7 +547,9 @@ async def get_logs_stats(
         total_logs=total_logs,
         by_level=by_level,
         by_subsystem=by_subsystem,
-        recent_activity=recent_activity
+        recent_activity=recent_activity,
+        error_rate_trend=error_rate_trend,
+        log_volume_trend=log_volume_trend
     )
     
     # Cache the result

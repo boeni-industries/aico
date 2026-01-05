@@ -103,9 +103,9 @@ export async function getLogKPIs(): Promise<LogKPIs> {
   
   return {
     error_rate: total > 0 ? (errorCount / total) * 100 : 0,
-    error_rate_trend: 0, // Not available from stats endpoint
+    error_rate_trend: stats.error_rate_trend || 0,
     log_volume: total,
-    log_volume_trend: 0, // Not available from stats endpoint
+    log_volume_trend: stats.log_volume_trend || 0,
     error_distribution: {
       error: byLevel.ERROR || 0,
       warning: byLevel.WARNING || 0,
