@@ -6,8 +6,7 @@
 
 import React from 'react';
 import { IconButton, Tooltip, Stack } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import AutorenewIcon from '@mui/icons-material/Autorenew';
+import { RefreshCw as RefreshIcon, RotateCw as AutorenewIcon } from 'lucide-react';
 
 export interface AutoRefreshControlsProps {
   /**

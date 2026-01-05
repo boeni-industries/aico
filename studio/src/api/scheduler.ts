@@ -24,7 +24,7 @@ export interface Task {
 
 export interface TaskExecution {
   execution_id: string;
-  status: 'success' | 'failed' | 'running' | 'pending' | 'cancelled';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'skipped' | 'deferred';
   started_at: string;
   completed_at: string | null;
   result: Record<string, any> | null;
@@ -214,4 +214,20 @@ export async function fetchQueueStats(): Promise<Record<string, number>> {
     background_heavy: 0,
     maintenance: 0,
   };
+}
+
+/**
+ * Get expected number of job runs today based on cron schedules
+ */
+export async function fetchExpectedRunsToday(): Promise<{
+  total_expected_runs: number;
+  task_run_counts: Record<string, number>;
+  calculated_at: string;
+  period_start: string;
+  period_end: string;
+}> {
+  return httpJson({
+    method: 'GET',
+    path: `${BASE_URL}/expected-runs-today`,
+  });
 }

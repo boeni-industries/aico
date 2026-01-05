@@ -1,12 +1,6 @@
 import React from 'react';
 import { Box, Typography, Paper } from '@mui/material';
-import {
-  Refresh as RestartIcon,
-  CloudUpload as DeployIcon,
-  Error as ErrorIcon,
-  CheckCircle as SuccessIcon,
-  Schedule as JobIcon,
-} from '@mui/icons-material';
+import { RefreshCw as RestartIcon, CloudUpload as DeployIcon, AlertCircle as ErrorIcon, CheckCircle as SuccessIcon, Clock as JobIcon } from 'lucide-react';
 
 export const OperationalTimeline: React.FC = () => {
   // Mock data - replace with actual API calls

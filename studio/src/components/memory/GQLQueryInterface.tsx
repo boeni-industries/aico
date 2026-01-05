@@ -24,22 +24,7 @@ import {
   Tooltip,
   Snackbar,
 } from '@mui/material';
-import {
-  Code as CodeIcon,
-  PlayArrow as PlayIcon,
-  ContentCopy as CopyIcon,
-  ExpandMore as ExpandIcon,
-  AutoAwesome as SparkleIcon,
-  TrendingUp as TrendingIcon,
-  Timeline as TimelineIcon,
-  AccountTree as GraphIcon,
-  Search as SearchIcon,
-  CheckCircle as SuccessIcon,
-  Error as ErrorIcon,
-  Download as DownloadIcon,
-  Add as AddIcon,
-  Edit as EditIcon,
-} from '@mui/icons-material';
+import { Code as CodeIcon, Play as PlayIcon, Copy as CopyIcon, ChevronDown as ExpandIcon, Sparkles as SparkleIcon, TrendingUp as TrendingIcon, Clock as TimelineIcon, GitBranch as GraphIcon, Search as SearchIcon, CheckCircle as SuccessIcon, AlertCircle as ErrorIcon, Download as DownloadIcon, Plus as AddIcon, Pencil as EditIcon } from 'lucide-react';
 import { executeGQLQuery, fetchQueryTemplates, updateQueryTemplates, QueryTemplate } from '../../api/kg';
 import { TemplateEditor } from './TemplateEditor';
 import { CypherQueryInput } from './CypherQueryInput';

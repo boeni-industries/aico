@@ -14,19 +14,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import SpeedIcon from '@mui/icons-material/Speed';
-import PsychologyIcon from '@mui/icons-material/Psychology';
-import AutoStoriesIcon from '@mui/icons-material/AutoStories';
-import AutoModeIcon from '@mui/icons-material/AutoMode';
-import SecurityIcon from '@mui/icons-material/Shield';
-import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
-import SettingsIcon from '@mui/icons-material/Settings';
-import MenuIcon from '@mui/icons-material/Menu';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-import LogoutIcon from '@mui/icons-material/Logout';
+import { LayoutDashboard as DashboardIcon, Gauge as SpeedIcon, Brain as PsychologyIcon, BookOpen as AutoStoriesIcon, Sparkles as AutoModeIcon, Shield as SecurityIcon, Smile as EmojiEmotionsIcon, Settings as SettingsIcon, Menu as MenuIcon, Moon as DarkModeIcon, Sun as LightModeIcon, UserCircle as AccountCircleIcon, LogOut as LogoutIcon } from 'lucide-react';
 import { OverviewPage } from '../pages/OverviewPage';
 import { overviewStubData, OverviewMetrics } from '../data/overview';
 import { fetchEmotionHistory } from '../api/emotion';

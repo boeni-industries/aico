@@ -16,14 +16,7 @@ import {
   Switch,
   FormControlLabel,
 } from '@mui/material';
-import {
-  PlayArrow as PlayArrowIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  HourglassEmpty as HourglassEmptyIcon,
-} from '@mui/icons-material';
+import { Play as PlayArrowIcon, Pencil as EditIcon, Trash2 as DeleteIcon, CheckCircle as CheckCircleIcon, AlertCircle as ErrorIcon, Hourglass as HourglassEmptyIcon } from 'lucide-react';
 import {
   fetchTaskExecutions,
   updateTask,

@@ -7,10 +7,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { DetailDrawer } from '../common/DetailDrawer';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
-import PauseCircleIcon from '@mui/icons-material/PauseCircle';
-import CancelIcon from '@mui/icons-material/Cancel';
+import { CheckCircle as CheckCircleIcon, Circle as RadioButtonUncheckedIcon, PauseCircle as PauseCircleIcon, X as CancelIcon } from 'lucide-react';
 import { GoalResponse, GoalOrigin, GoalPriority } from '../../types/agency';
 import { formatDistanceToNow } from 'date-fns';
 

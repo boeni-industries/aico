@@ -1,10 +1,6 @@
 import React from 'react';
 import { Box, Typography, Chip } from '@mui/material';
-import {
-  EmojiEmotions as EmojiEmotionsIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-} from '@mui/icons-material';
+import { Smile as EmojiEmotionsIcon, TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon } from 'lucide-react';
 
 interface EmotionCardProps {
   currentState: string;

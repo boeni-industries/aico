@@ -17,19 +17,7 @@ import {
   CircularProgress,
   Alert,
 } from '@mui/material';
-import {
-  Person as PersonIcon,
-  AdminPanelSettings as AdminIcon,
-  Computer as SystemIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
-  Devices as DevicesIcon,
-  Schedule as ScheduleIcon,
-  Block as BlockIcon,
-  DeleteSweep as DeleteSweepIcon,
-} from '@mui/icons-material';
+import { User as PersonIcon, ShieldCheck as AdminIcon, Monitor as SystemIcon, CheckCircle as CheckCircleIcon, X as CancelIcon, Lock as LockIcon, LockOpen as LockOpenIcon, Smartphone as DevicesIcon, Clock as ScheduleIcon, Ban as BlockIcon, Trash2 as DeleteSweepIcon } from 'lucide-react';
 import { fetchUserDetail, lockUnlockUser, revokeAllUserSessions, cleanupExpiredSessions, UserDetailResponse } from '../../api/usersSessions';
 
 interface UserDetailDrawerProps {

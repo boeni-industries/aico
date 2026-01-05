@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Typography, Paper, Chip, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
-import { Error as ErrorIcon, Warning as WarningIcon, Info as InfoIcon, BugReport as DebugIcon } from '@mui/icons-material';
+import { AlertCircle as ErrorIcon, AlertTriangle as WarningIcon, Info as InfoIcon, Bug as DebugIcon } from 'lucide-react';
 
 export const LogsAlertsPanel: React.FC = () => {
   const [severityFilter, setSeverityFilter] = useState<string>('all');

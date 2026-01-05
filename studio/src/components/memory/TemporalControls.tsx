@@ -1,14 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Box, IconButton, Typography, Slider, Fade, Tooltip } from '@mui/material';
-import { 
-  PlayArrow, 
-  Pause, 
-  SkipPrevious, 
-  SkipNext,
-  FastRewind,
-  FastForward,
-  FiberManualRecord
-} from '@mui/icons-material';
+import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, Circle } from 'lucide-react';
 
 interface TemporalControlsProps {
   onTimeChange: (timestamp: string, isLive: boolean) => void;
@@ -272,7 +264,7 @@ export const TemporalControls: React.FC<TemporalControlsProps> = ({
                     '&:disabled': { color: 'rgba(255,255,255,0.2)' }
                   }}
                 >
-                  <FastRewind sx={{ fontSize: 20 }} />
+                  <Rewind size={20} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -289,7 +281,7 @@ export const TemporalControls: React.FC<TemporalControlsProps> = ({
                     '&:disabled': { color: 'rgba(255,255,255,0.2)' }
                   }}
                 >
-                  <SkipPrevious sx={{ fontSize: 20 }} />
+                  <SkipBack size={20} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -310,7 +302,7 @@ export const TemporalControls: React.FC<TemporalControlsProps> = ({
                     '&:disabled': { color: 'rgba(255,255,255,0.2)' }
                   }}
                 >
-                  {isPlaying ? <Pause sx={{ fontSize: 22 }} /> : <PlayArrow sx={{ fontSize: 22 }} />}
+                  {isPlaying ? <Pause size={22} /> : <Play size={22} />}
                 </IconButton>
               </span>
             </Tooltip>
@@ -327,7 +319,7 @@ export const TemporalControls: React.FC<TemporalControlsProps> = ({
                     '&:disabled': { color: 'rgba(255,255,255,0.2)' }
                   }}
                 >
-                  <SkipNext sx={{ fontSize: 20 }} />
+                  <SkipForward size={20} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -344,7 +336,7 @@ export const TemporalControls: React.FC<TemporalControlsProps> = ({
                     '&:disabled': { color: 'rgba(255,255,255,0.2)' }
                   }}
                 >
-                  <FastForward sx={{ fontSize: 20 }} />
+                  <FastForward size={20} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -453,7 +445,7 @@ export const TemporalControls: React.FC<TemporalControlsProps> = ({
                     transition: 'all 0.2s ease'
                   }}
                 >
-                  <FiberManualRecord sx={{ fontSize: 16 }} />
+                  <Circle size={16} />
                 </IconButton>
               </Tooltip>
             )}

@@ -6,13 +6,7 @@ import {
   Chip,
   Paper,
 } from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  HourglassEmpty as HourglassEmptyIcon,
-  Pause as PauseIcon,
-  Cancel as CancelIcon,
-} from '@mui/icons-material';
+import { CheckCircle as CheckCircleIcon, AlertCircle as ErrorIcon, Hourglass as HourglassEmptyIcon, Pause as PauseIcon, X as CancelIcon } from 'lucide-react';
 import { DetailDrawer } from '../common/DetailDrawer';
 import { type TaskExecution } from '../../api/scheduler';
 
@@ -29,13 +23,16 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
 }) => {
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'success':
+      case 'completed':
         return <CheckCircleIcon sx={{ fontSize: 20, color: '#10B981' }} />;
       case 'failed':
         return <ErrorIcon sx={{ fontSize: 20, color: '#EF4444' }} />;
       case 'running':
         return <HourglassEmptyIcon sx={{ fontSize: 20, color: '#60A5FA' }} />;
       case 'pending':
+        return <HourglassEmptyIcon sx={{ fontSize: 20, color: '#9CA3AF' }} />;
+      case 'skipped':
+      case 'deferred':
         return <PauseIcon sx={{ fontSize: 20, color: '#F59E0B' }} />;
       case 'cancelled':
         return <CancelIcon sx={{ fontSize: 20, color: '#6B7280' }} />;
@@ -46,10 +43,12 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'success': return '#10B981';
+      case 'completed': return '#10B981';
       case 'failed': return '#EF4444';
       case 'running': return '#60A5FA';
-      case 'pending': return '#F59E0B';
+      case 'pending': return '#9CA3AF';
+      case 'skipped':
+      case 'deferred': return '#F59E0B';
       case 'cancelled': return '#6B7280';
       default: return '#6B7280';
     }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { TextField, Box, Typography, Fade, CircularProgress } from '@mui/material';
-import { CheckCircle as CheckIcon, Error as ErrorIcon, Warning as WarningIcon } from '@mui/icons-material';
+import { CheckCircle as CheckIcon, AlertCircle as ErrorIcon, AlertTriangle as WarningIcon } from 'lucide-react';
 import { parse } from '@neo4j-cypher/editor-support';
 
 interface CypherQueryInputProps {

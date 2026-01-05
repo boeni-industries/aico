@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Typography, LinearProgress, Paper, Chip, Select, MenuItem, FormControl, IconButton } from '@mui/material';
-import { AccessTime as TimeIcon, Delete as DeleteIcon, InfoOutlined as InfoIcon, Person as PersonIcon, SmartToy as BotIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon } from '@mui/icons-material';
+import { Clock as TimeIcon, Trash2 as DeleteIcon, Info as InfoIcon, User as PersonIcon, Bot as BotIcon, ChevronDown as ExpandIcon, ChevronUp as CollapseIcon } from 'lucide-react';
 import { StyledTooltip } from '../common/StyledTooltip';
 
 interface WorkingMemoryPanelProps {

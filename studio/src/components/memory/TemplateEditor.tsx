@@ -19,15 +19,7 @@ import {
   Fade,
   CircularProgress,
 } from '@mui/material';
-import {
-  Close as CloseIcon,
-  Save as SaveIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  CheckCircle as CheckIcon,
-  Error as ErrorIcon,
-  Warning as WarningIcon,
-} from '@mui/icons-material';
+import { X as CloseIcon, Save as SaveIcon, Trash2 as DeleteIcon, Plus as AddIcon, CheckCircle as CheckIcon, AlertCircle as ErrorIcon, AlertTriangle as WarningIcon } from 'lucide-react';
 import { QueryTemplate } from '../../api/kg';
 import { CypherQueryInput } from './CypherQueryInput';
 

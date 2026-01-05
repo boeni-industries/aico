@@ -1,13 +1,6 @@
 import React from 'react';
 import { Box, Typography, Chip, Paper } from '@mui/material';
-import {
-  Memory as MemoryIcon,
-  Storage as StorageIcon,
-  AccountTree as GraphIcon,
-  AutoAwesome as AmsIcon,
-  PhotoAlbum as AlbumIcon,
-  ArrowForward as ArrowIcon,
-} from '@mui/icons-material';
+import { HardDrive as MemoryIcon, Database as StorageIcon, GitBranch as GraphIcon, Sparkles as AmsIcon, Album as AlbumIcon, ArrowRight as ArrowIcon } from 'lucide-react';
 
 interface MemoryTier {
   key: string;

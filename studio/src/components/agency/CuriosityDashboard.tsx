@@ -1,8 +1,7 @@
 import React from 'react';
 import { Box, Paper, Typography, LinearProgress, Chip } from '@mui/material';
 import { CuriosityStatusResponse, CuriosityLevel } from '../../types/agency';
-import LightbulbIcon from '@mui/icons-material/Lightbulb';
-import ExploreIcon from '@mui/icons-material/Explore';
+import { Lightbulb as LightbulbIcon, Compass as ExploreIcon } from 'lucide-react';
 
 interface CuriosityDashboardProps {
   curiosityStatus: CuriosityStatusResponse | null;

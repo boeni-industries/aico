@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Typography, Paper, Chip, LinearProgress, IconButton } from '@mui/material';
-import { InfoOutlined as InfoIcon, Search as SearchIcon, Speed as SpeedIcon, Storage as StorageIcon } from '@mui/icons-material';
+import { Info as InfoIcon, Search as SearchIcon, Gauge as SpeedIcon, Database as StorageIcon } from 'lucide-react';
 import { StyledTooltip } from '../common/StyledTooltip';
 
 interface SemanticMemoryPanelProps {

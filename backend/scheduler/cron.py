@@ -227,6 +227,33 @@ class CronParser:
         except ValueError:
             return False
     
+    def count_runs_in_period(self, cron_expr: str, start: datetime, end: datetime) -> int:
+        """Count how many times a cron expression would run in a time period
+        
+        Args:
+            cron_expr: Cron expression to evaluate
+            start: Start of period (inclusive)
+            end: End of period (exclusive)
+            
+        Returns:
+            Number of times the cron expression matches in the period
+        """
+        try:
+            count = 0
+            current = start.replace(second=0, microsecond=0)
+            
+            # Iterate through every minute in the period
+            while current < end:
+                if self.matches(cron_expr, current):
+                    count += 1
+                current += timedelta(minutes=1)
+            
+            return count
+            
+        except Exception as e:
+            self.logger.error(f"Error counting runs for '{cron_expr}': {e}")
+            return 0
+    
     def clear_cache(self):
         """Clear the parsing cache"""
         self._cache.clear()

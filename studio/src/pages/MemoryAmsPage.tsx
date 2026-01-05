@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Typography, Tabs, Tab, CircularProgress } from '@mui/material';
-import {
-  Memory as MemoryIcon,
-  Storage as StorageIcon,
-  AccountTree as GraphIcon,
-  AutoAwesome as AmsIcon,
-  PhotoAlbum as AlbumIcon,
-} from '@mui/icons-material';
+import { HardDrive as MemoryIcon, Database as StorageIcon, GitBranch as GraphIcon, Sparkles as AmsIcon, Album as AlbumIcon } from 'lucide-react';
 import { MemorySystemMap } from '../components/memory/MemorySystemMap';
 import { KnowledgeGraphExplorer } from '../components/memory/KnowledgeGraphExplorer';
 import { KnowledgeGraphAnalytics } from '../components/memory/KnowledgeGraphAnalytics';

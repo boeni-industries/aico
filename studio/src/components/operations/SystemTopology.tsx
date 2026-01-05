@@ -1,19 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Paper, Chip, CircularProgress, Alert } from '@mui/material';
 import { DetailDrawer } from '../common/DetailDrawer';
-import {
-  CheckCircle as HealthyIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  Computer as BackendIcon,
-  Memory as ModelIcon,
-  Schedule as SchedulerIcon,
-  Dashboard as StudioIcon,
-  Storage as DatabaseIcon,
-  Hub as BusIcon,
-  Router as GatewayIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+import { CheckCircle as HealthyIcon, AlertTriangle as WarningIcon, AlertCircle as ErrorIcon, Monitor as BackendIcon, HardDrive as ModelIcon, Clock as SchedulerIcon, LayoutDashboard as StudioIcon, Database as DatabaseIcon, Network as BusIcon, Router as GatewayIcon, X as CloseIcon } from 'lucide-react';
 import { fetchTopologyData } from '../../api/operations';
 
 interface ServiceNode {

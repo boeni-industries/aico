@@ -1,23 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Typography, Paper, Chip, TextField, InputAdornment, IconButton, Dialog, DialogContent, DialogTitle, Divider, Select, MenuItem, FormControl, InputLabel, Button, Checkbox, DialogActions } from '@mui/material';
 import { StyledTooltip } from '../common/StyledTooltip';
-import { 
-  Search as SearchIcon, 
-  FilterList as FilterIcon,
-  Close as CloseIcon,
-  CalendarToday as CalendarIcon,
-  LocalOffer as TagIcon,
-  Star as StarIcon,
-  StarBorder as StarBorderIcon,
-  Info as InfoIcon,
-  Chat as ChatIcon,
-  Delete as DeleteIcon,
-  Download as DownloadIcon,
-  Analytics as AnalyticsIcon,
-  CheckBox as CheckBoxIcon,
-  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
-  Person as PersonIcon
-} from '@mui/icons-material';
+import { Search as SearchIcon, Filter as FilterIcon, X as CloseIcon, Calendar as CalendarIcon, Tag as TagIcon, Star as StarIcon, Star as StarBorderIcon, Info as InfoIcon, MessageCircle as ChatIcon, Trash2 as DeleteIcon, Download as DownloadIcon, BarChart3 as AnalyticsIcon, CheckSquare as CheckBoxIcon, Square as CheckBoxOutlineBlankIcon, User as PersonIcon } from 'lucide-react';
 
 interface Conversation {
   id: string;

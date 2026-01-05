@@ -1,8 +1,7 @@
 import React from 'react';
 import { Box, Paper, Typography, Chip, LinearProgress } from '@mui/material';
 import { ValueProfileResponse } from '../../types/agency';
-import SecurityIcon from '@mui/icons-material/Security';
-import TuneIcon from '@mui/icons-material/Tune';
+import { Shield as SecurityIcon, SlidersHorizontal as TuneIcon } from 'lucide-react';
 
 interface ValueProfileProps {
   valueProfile: ValueProfileResponse | null;

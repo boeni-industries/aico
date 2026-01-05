@@ -1,12 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useToast } from '../common/Toast';
 import { Box, Typography, Paper, CircularProgress, Chip } from '@mui/material';
-import {
-  People as PeopleIcon,
-  Devices as DevicesIcon,
-  TrendingUp as TrendingUpIcon,
-  Update as UpdateIcon,
-} from '@mui/icons-material';
+import { Users as PeopleIcon, Smartphone as DevicesIcon, TrendingUp as TrendingUpIcon, RefreshCw as UpdateIcon } from 'lucide-react';
 import { UsersListPanel } from './UsersListPanel';
 import { SessionsListPanel } from './SessionsListPanel';
 import { UserDetailDrawer } from './UserDetailDrawer';

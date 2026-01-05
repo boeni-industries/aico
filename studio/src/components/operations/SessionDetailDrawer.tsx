@@ -7,14 +7,7 @@ import {
   Button,
   Alert,
 } from '@mui/material';
-import {
-  Schedule as ScheduleIcon,
-  Person as PersonIcon,
-  Devices as DevicesIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Block as BlockIcon,
-} from '@mui/icons-material';
+import { Clock as ScheduleIcon, User as PersonIcon, Smartphone as DevicesIcon, CheckCircle as CheckCircleIcon, X as CancelIcon, Ban as BlockIcon } from 'lucide-react';
 import { DetailDrawer } from '../common/DetailDrawer';
 import { SessionWithUser } from '../../api/usersSessions';
 

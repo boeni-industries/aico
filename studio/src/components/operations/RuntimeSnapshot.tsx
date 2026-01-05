@@ -1,15 +1,6 @@
 import React from 'react';
 import { Box, Typography, Paper, Chip } from '@mui/material';
-import {
-  CheckCircle as HealthyIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  Cloud as CloudIcon,
-  Memory as ModelIcon,
-  Schedule as ScheduleIcon,
-  Message as BusIcon,
-  Dashboard as StudioIcon,
-} from '@mui/icons-material';
+import { CheckCircle as HealthyIcon, AlertTriangle as WarningIcon, AlertCircle as ErrorIcon, Cloud as CloudIcon, HardDrive as ModelIcon, Clock as ScheduleIcon, MessageSquare as BusIcon, LayoutDashboard as StudioIcon } from 'lucide-react';
 
 interface ServiceHealth {
   status: 'healthy' | 'degraded' | 'critical';

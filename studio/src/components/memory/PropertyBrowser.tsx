@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Typography, Paper, TextField, Chip, InputAdornment, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
-import { Search as SearchIcon, ExpandMore as ExpandIcon } from '@mui/icons-material';
+import { Search as SearchIcon, ChevronDown as ExpandIcon } from 'lucide-react';
 
 interface PropertyInfo {
   key: string;

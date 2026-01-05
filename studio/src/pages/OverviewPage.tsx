@@ -7,8 +7,7 @@ import {
   Typography,
   Button,
 } from '@mui/material';
-import CircleIcon from '@mui/icons-material/Circle';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import { Circle as CircleIcon, ArrowRight as ArrowForwardIcon } from 'lucide-react';
 import { OverviewMetrics, OverviewDomainKey } from '../data/overview';
 import { AgencyCard } from '../components/overview/AgencyCard';
 import { EmotionCard } from '../components/overview/EmotionCard';

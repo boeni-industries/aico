@@ -1,6 +1,6 @@
 import React from 'react';
 import { Drawer, Box, Typography, IconButton } from '@mui/material';
-import { Close as CloseIcon } from '@mui/icons-material';
+import { X as CloseIcon } from 'lucide-react';
 
 interface DetailDrawerProps {
   open: boolean;

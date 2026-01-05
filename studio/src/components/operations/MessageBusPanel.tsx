@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography, Paper, Chip } from '@mui/material';
-import { CheckCircle as HealthyIcon, Warning as WarningIcon, TrendingUp as TrendingIcon } from '@mui/icons-material';
+import { CheckCircle as HealthyIcon, AlertTriangle as WarningIcon, TrendingUp as TrendingIcon } from 'lucide-react';
 
 export const MessageBusPanel: React.FC = () => {
   // Mock data - replace with actual API calls

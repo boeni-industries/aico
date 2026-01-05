@@ -1,19 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Typography, Paper, Tabs, Tab, TextField, Button, Chip, IconButton, ToggleButtonGroup, ToggleButton } from '@mui/material';
-import {
-  Search as SearchIcon,
-  Code as CodeIcon,
-  Analytics as AnalyticsIcon,
-  AccountTree as GraphIcon,
-  InfoOutlined as InfoOutlinedIcon,
-  CheckCircle as CheckCircleIcon,
-  History as HistoryIcon,
-  FilterList as FilterListIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  Warning as WarningIcon,
-  Lightbulb as LightbulbIcon,
-} from '@mui/icons-material';
+import { Search as SearchIcon, Code as CodeIcon, BarChart3 as AnalyticsIcon, GitBranch as GraphIcon, Info as InfoOutlinedIcon, CheckCircle as CheckCircleIcon, History as HistoryIcon, Filter as FilterListIcon, TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, AlertTriangle as WarningIcon, Lightbulb as LightbulbIcon } from 'lucide-react';
 import { KnowledgeGraphVisualization } from './KnowledgeGraphVisualization';
 import { GQLQueryInterface } from './GQLQueryInterface';
 import { StyledTooltip } from '../common/StyledTooltip';

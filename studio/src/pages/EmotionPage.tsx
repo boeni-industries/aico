@@ -1,7 +1,6 @@
 import React from 'react';
 import { Box, Paper, Typography, CircularProgress, Alert, Tooltip, Slider, ToggleButton, ToggleButtonGroup, Chip, useTheme, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
-import DownloadIcon from '@mui/icons-material/Download';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
+import { Download as DownloadIcon, MoreVertical as MoreVertIcon } from 'lucide-react';
 import { fetchEmotionHistory, EmotionHistoryItemDto } from '../api/emotion';
 
 function sortHistory(history: EmotionHistoryItemDto[]): EmotionHistoryItemDto[] {

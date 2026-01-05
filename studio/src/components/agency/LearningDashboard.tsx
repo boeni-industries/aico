@@ -1,9 +1,6 @@
 import React from 'react';
 import { Box, Paper, Typography, Chip, LinearProgress } from '@mui/material';
-import SchoolIcon from '@mui/icons-material/School';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import LightbulbIcon from '@mui/icons-material/Lightbulb';
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import { GraduationCap as SchoolIcon, TrendingUp as TrendingUpIcon, Lightbulb as LightbulbIcon, Wand2 as AutoFixHighIcon } from 'lucide-react';
 
 interface Lesson {
   lesson_id: string;

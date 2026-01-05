@@ -1,10 +1,7 @@
 import React from 'react';
 import { Box, Paper, Typography, Chip } from '@mui/material';
 import { formatDistanceToNow } from 'date-fns';
-import CircleIcon from '@mui/icons-material/Circle';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import PauseCircleIcon from '@mui/icons-material/PauseCircle';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
+import { Circle as CircleIcon, CheckCircle as CheckCircleIcon, PauseCircle as PauseCircleIcon, PlusCircle as AddCircleIcon } from 'lucide-react';
 
 interface ActivityEvent {
   id: string;

@@ -446,3 +446,51 @@ async def get_task_history(
     except Exception as e:
         logger.error(f"Failed to get task history {task_id}: {e}")
         raise SchedulerNotAvailableError()
+
+
+@router.get("/expected-runs-today", response_model=dict)
+@handle_scheduler_exceptions
+async def get_expected_runs_today(
+    scheduler = Depends(get_task_scheduler),
+    _auth = Depends(require_admin_access)
+) -> dict:
+    """Calculate expected number of job runs today based on cron schedules"""
+    try:
+        from datetime import datetime, timedelta
+        
+        tasks = scheduler.task_store.list_tasks(enabled_only=True)
+        
+        now = datetime.now()
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        
+        total_expected_runs = 0
+        task_run_counts = {}
+        
+        for task in tasks:
+            schedule = task.get('schedule', '')
+            if not schedule:
+                continue
+                
+            try:
+                # Parse cron and count expected runs for today
+                expected_runs = scheduler.cron_parser.count_runs_in_period(
+                    schedule, day_start, day_end
+                )
+                total_expected_runs += expected_runs
+                task_run_counts[task['task_id']] = expected_runs
+            except Exception as e:
+                logger.warning(f"Failed to calculate runs for task {task['task_id']}: {e}")
+                continue
+        
+        return {
+            'total_expected_runs': total_expected_runs,
+            'task_run_counts': task_run_counts,
+            'calculated_at': now.isoformat(),
+            'period_start': day_start.isoformat(),
+            'period_end': day_end.isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to calculate expected runs: {e}")
+        raise SchedulerNotAvailableError()

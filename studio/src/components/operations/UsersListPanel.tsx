@@ -23,19 +23,7 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
-import {
-  Search as SearchIcon,
-  Person as PersonIcon,
-  AdminPanelSettings as AdminIcon,
-  Computer as SystemIcon,
-  Circle as CircleIcon,
-  Lock as LockIcon,
-  CheckCircle as CheckCircleIcon,
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
-  Download as DownloadIcon,
-  MoreVert as MoreVertIcon,
-} from '@mui/icons-material';
+import { Search as SearchIcon, User as PersonIcon, ShieldCheck as AdminIcon, Monitor as SystemIcon, Circle as CircleIcon, Lock as LockIcon, CheckCircle as CheckCircleIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, Download as DownloadIcon, MoreVertical as MoreVertIcon } from 'lucide-react';
 import { UserWithSessions } from '../../api/usersSessions';
 import { exportUsersToCSV, exportUsersToJSON } from '../../utils/exportData';
 

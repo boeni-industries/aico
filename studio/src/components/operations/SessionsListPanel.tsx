@@ -22,19 +22,7 @@ import {
   Menu,
   ListItemText,
 } from '@mui/material';
-import {
-  Search as SearchIcon,
-  Schedule as ScheduleIcon,
-  Devices as DevicesIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Computer as ComputerIcon,
-  PhoneAndroid as PhoneIcon,
-  DesktopWindows as DesktopIcon,
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
-  Download as DownloadIcon,
-} from '@mui/icons-material';
+import { Search as SearchIcon, Clock as ScheduleIcon, Smartphone as DevicesIcon, CheckCircle as CheckCircleIcon, X as CancelIcon, Monitor as ComputerIcon, Smartphone as PhoneIcon, Monitor as DesktopIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, Download as DownloadIcon } from 'lucide-react';
 import { SessionWithUser } from '../../api/usersSessions';
 import { exportSessionsToCSV, exportSessionsToJSON } from '../../utils/exportData';
 

@@ -1,11 +1,6 @@
 import React from 'react';
 import { Box, Typography, LinearProgress, Chip } from '@mui/material';
-import {
-  TrendingUp as TrendingUpIcon,
-  Psychology as PsychologyIcon,
-  School as SchoolIcon,
-  Favorite as FavoriteIcon,
-} from '@mui/icons-material';
+import { TrendingUp as TrendingUpIcon, Brain as PsychologyIcon, GraduationCap as SchoolIcon, Heart as FavoriteIcon } from 'lucide-react';
 
 interface AgencyCardProps {
   activeGoals: number;

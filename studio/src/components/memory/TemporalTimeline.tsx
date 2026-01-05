@@ -1,10 +1,6 @@
 import React from 'react';
 import { Box, Typography, Paper, Chip } from '@mui/material';
-import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-} from '@mui/icons-material';
+import { Plus as AddIcon, Pencil as EditIcon, Trash2 as DeleteIcon } from 'lucide-react';
 
 interface TimelineEvent {
   id: string;

@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Dialog, DialogTitle, DialogContent, List, ListItem, ListItemText, IconButton, Drawer, Paper, Chip } from '@mui/material';
 import { StyledTooltip } from '../common/StyledTooltip';
-import {
-  InfoOutlined as InfoIcon,
-  Close as CloseIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  ShowChart as ChartIcon,
-  Insights as InsightsIcon,
-} from '@mui/icons-material';
+import { Info as InfoIcon, X as CloseIcon, TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, LineChart as ChartIcon, Lightbulb as InsightsIcon } from 'lucide-react';
 import { GraphStats } from '../../api/kg';
 
 // Radial Progress Chart Component
