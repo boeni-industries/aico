@@ -9,7 +9,7 @@ Phase 6.2: Resource Monitoring
 
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
 from dataclasses import dataclass
 
@@ -75,7 +75,7 @@ class ResourceMonitor:
         if not self.psutil_available:
             # Return default snapshot if psutil not available
             return ResourceSnapshot(
-                timestamp=datetime.now(),
+                timestamp=datetime.now(timezone.utc),
                 cpu_percent=0.0,
                 memory_percent=0.0,
                 disk_percent=0.0,
@@ -110,7 +110,7 @@ class ResourceMonitor:
         user_idle_seconds = self._get_user_idle_time()
         
         snapshot = ResourceSnapshot(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
             cpu_percent=cpu_percent,
             memory_percent=memory_percent,
             disk_percent=disk_percent,

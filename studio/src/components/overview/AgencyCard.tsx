@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, LinearProgress, Chip } from '@mui/material';
+import { Box, Typography, Chip } from '@mui/material';
 import { TrendingUp as TrendingUpIcon, Brain as PsychologyIcon, GraduationCap as SchoolIcon, Heart as FavoriteIcon } from 'lucide-react';
 
 interface AgencyCardProps {

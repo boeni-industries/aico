@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
-  TextField,
   Button,
   Typography,
   Chip,
@@ -180,7 +179,6 @@ export const GQLQueryInterface: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [templates, setTemplates] = useState<QueryTemplate[]>(INITIAL_TEMPLATES);
-  const [templatesLoading, setTemplatesLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<QueryTemplate | null>(null);
   const [isNewTemplate, setIsNewTemplate] = useState(false);
@@ -201,8 +199,6 @@ export const GQLQueryInterface: React.FC = () => {
       }
     } catch (error) {
       console.error('[GQL Templates] Failed to load query templates, using defaults:', error);
-    } finally {
-      setTemplatesLoading(false);
     }
   };
 

@@ -448,6 +448,55 @@ async def get_task_history(
         raise SchedulerNotAvailableError()
 
 
+@router.get("/executions/range", response_model=dict)
+@handle_scheduler_exceptions
+async def get_executions_in_range(
+    start_time: str,
+    end_time: str,
+    scheduler = Depends(get_task_scheduler),
+    _auth = Depends(require_admin_access)
+) -> dict:
+    """Get all task executions within a time range"""
+    try:
+        from datetime import datetime
+        
+        # Validate datetime strings
+        try:
+            datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        except ValueError as e:
+            raise TaskValidationError(f"Invalid datetime format: {e}")
+        
+        executions = scheduler.task_store.get_all_executions_in_range(start_time, end_time)
+        
+        executions_response = [
+            {
+                'task_id': exec_data['task_id'],
+                'execution_id': exec_data['execution_id'],
+                'status': exec_data['status'],
+                'started_at': exec_data['started_at'],
+                'completed_at': exec_data['completed_at'],
+                'result': exec_data['result'],
+                'error_message': exec_data['error_message'],
+                'duration_seconds': exec_data['duration_seconds']
+            }
+            for exec_data in executions
+        ]
+        
+        return {
+            'executions': executions_response,
+            'total_count': len(executions_response),
+            'start_time': start_time,
+            'end_time': end_time
+        }
+        
+    except TaskValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get executions in range: {e}")
+        raise SchedulerNotAvailableError()
+
+
 @router.get("/expected-runs-today", response_model=dict)
 @handle_scheduler_exceptions
 async def get_expected_runs_today(

@@ -7,7 +7,7 @@ or "sleep" phases.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 from aico.ai.agency.engine import AgencyEngine
@@ -51,7 +51,7 @@ class AgencyReflectionTask(BaseTask):
         Returns:
             TaskResult with reflection summary
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             # Get configuration
@@ -133,7 +133,7 @@ class AgencyReflectionTask(BaseTask):
             total_applied = sum(r.get("lessons_applied", 0) for r in results)
             failed_count = sum(1 for r in results if r.get("status") == "failed")
             
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             
             logger.info(
                 f"[REFLECTION] Completed: {len(user_ids)} users, "
@@ -155,7 +155,7 @@ class AgencyReflectionTask(BaseTask):
             )
             
         except Exception as e:
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.exception(f"[REFLECTION] Task failed: {e}")
             
             return TaskResult(
@@ -179,7 +179,7 @@ class AgencyReflectionTask(BaseTask):
         """
         try:
             # Query users with recent activity
-            cutoff_date = datetime.utcnow() - timedelta(days=30)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
             
             rows = context.db_connection.execute(
                 """SELECT DISTINCT user_id 

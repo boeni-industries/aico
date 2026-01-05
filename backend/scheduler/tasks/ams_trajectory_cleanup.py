@@ -11,7 +11,7 @@ Retention Policy:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 from aico.core.logging import get_logger
@@ -48,7 +48,7 @@ class TrajectoryCleanupTask(BaseTask):
         Returns:
             TaskResult with cleanup statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("\n" + "="*60)
@@ -76,7 +76,7 @@ class TrajectoryCleanupTask(BaseTask):
             archive_after_days = context.get_config("archive_after_days", 90)
             delete_after_days = context.get_config("delete_after_days", 365)
             
-            archive_cutoff = datetime.utcnow() - timedelta(days=archive_after_days)
+            archive_cutoff = datetime.now(timezone.utc) - timedelta(days=archive_after_days)
             print(f"\n [AMS_CLEANUP] Archiving trajectories older than {archive_cutoff.date()} ({archive_after_days} days)")
             logger.info(f" [AMS_CLEANUP] Archiving trajectories older than {archive_cutoff.date()} ({archive_after_days} days without feedback)")
             
@@ -94,7 +94,7 @@ class TrajectoryCleanupTask(BaseTask):
             archived_count = archive_result.rowcount if hasattr(archive_result, 'rowcount') else 0
             print(f"   Archived {archived_count} trajectories")
             
-            delete_cutoff = datetime.utcnow() - timedelta(days=delete_after_days)
+            delete_cutoff = datetime.now(timezone.utc) - timedelta(days=delete_after_days)
             print(f"\n [AMS_CLEANUP] Deleting archived trajectories older than {delete_cutoff.date()} ({delete_after_days} days)")
             logger.info(f" [AMS_CLEANUP] Deleting archived trajectories older than {delete_cutoff.date()} ({delete_after_days} days)")
             
@@ -121,7 +121,7 @@ class TrajectoryCleanupTask(BaseTask):
             
             total, archived, with_feedback = stats if stats else (0, 0, 0)
             
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"\n [AMS_CLEANUP] Cleanup complete in {duration:.2f}s")
             print(f"   Archived: {archived_count} trajectories")
             print(f"   Deleted: {deleted_count} archived trajectories")
@@ -143,7 +143,7 @@ class TrajectoryCleanupTask(BaseTask):
             )
             
         except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"🧠 [AMS_CLEANUP] Task execution failed: {e}")
             
             return TaskResult(

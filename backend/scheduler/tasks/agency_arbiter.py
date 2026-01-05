@@ -5,7 +5,7 @@ Periodically evaluates pending goals and updates the active intention set.
 This is the core decision-making loop that converts goals into active intentions.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from backend.scheduler.tasks.base import BaseTask, TaskContext, TaskResult
@@ -46,7 +46,7 @@ class AgencyArbiterTask(BaseTask):
         Returns:
             TaskResult with arbiter statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("🎯 [ARBITER_TASK] Starting arbiter evaluation")
@@ -103,7 +103,7 @@ class AgencyArbiterTask(BaseTask):
                         user_id=user_id,
                         context={
                             "trigger": "scheduled_arbiter",
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(timezone.utc).isoformat()
                         }
                     )
                     
@@ -140,7 +140,7 @@ class AgencyArbiterTask(BaseTask):
             failed = sum(1 for r in results if r.get("status") == "failed")
             total_active = sum(r.get("active_intentions", 0) for r in results)
             
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             
             print(f"🎯 [ARBITER_TASK] Completed: {successful} successful, {failed} failed, {total_active} total active intentions ({duration:.1f}s)")
             logger.info(
@@ -162,7 +162,7 @@ class AgencyArbiterTask(BaseTask):
             )
             
         except Exception as e:
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"🎯 [ARBITER_TASK] ❌ Task failed: {e}")
             import traceback
             print(f"🎯 [ARBITER_TASK] Traceback: {traceback.format_exc()}")

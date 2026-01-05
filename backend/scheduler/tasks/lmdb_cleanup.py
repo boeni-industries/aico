@@ -5,7 +5,7 @@ Periodically removes expired entries from LMDB working memory to prevent
 unbounded growth of stale data.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from backend.scheduler.tasks.base import BaseTask, TaskContext, TaskResult
@@ -77,7 +77,7 @@ class LMDBCleanupTask(BaseTask):
                 message=f"Cleaned up {deleted_count} expired entries",
                 data={
                     "deleted_count": deleted_count,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
             

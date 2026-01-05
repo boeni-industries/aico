@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography, Chip } from '@mui/material';
-import { Settings as SettingsIcon, Users as PeopleIcon, Smartphone as DevicesIcon, Shield as SecurityIcon, Gauge as SpeedIcon } from 'lucide-react';
+import { Settings as SettingsIcon, Users as PeopleIcon, Smartphone as DevicesIcon, Shield as SecurityIcon } from 'lucide-react';
 
 interface OperationsCardProps {
   activeUsers: number;

@@ -10,7 +10,7 @@ import os
 import importlib
 import inspect
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set, Type
 from pathlib import Path
 
@@ -247,7 +247,7 @@ class TaskExecutor:
         # Add to running tasks *after* acquiring lock
         self.running_tasks[task_id] = asyncio.current_task()
 
-        start_time = datetime.now()
+        start_time = datetime.now(timezone.utc)
         task_instance = None
 
         try:
@@ -369,7 +369,7 @@ class TaskExecutor:
             if context.task_id.startswith("agency."):
                 quiet_hours_config = scheduler_config.get("quiet_hours", {})
                 if quiet_hours_config.get("enabled", False):
-                    now = datetime.now().time()
+                    now = datetime.now(timezone.utc).time()
                     start_str = quiet_hours_config.get("start", "22:00")
                     end_str = quiet_hours_config.get("end", "08:00")
                     
@@ -435,7 +435,7 @@ class TaskExecutor:
                                status: TaskStatus, start_time: datetime):
         """Record task completion in database"""
         try:
-            end_time = datetime.now()
+            end_time = datetime.now(timezone.utc)
             result.duration_seconds = (end_time - start_time).total_seconds()
             
             self.task_store.record_execution_result(task_id, execution_id, result, status)
@@ -608,7 +608,7 @@ class TaskScheduler(BaseService):
     async def _check_and_execute_tasks(self):
         """Check for tasks that need to run and execute them (Phase 6.2: Priority Queue)"""
         try:
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             
             # 1. Enqueue scheduled tasks that are due
             for task_id, next_run in list(self.next_run_times.items()):
@@ -743,7 +743,7 @@ class TaskScheduler(BaseService):
                 if task_id in self.next_run_times:
                     schedule = prioritized_task.config.get('schedule')
                     if schedule:
-                        next_run = self.cron_parser.next_run_time(schedule, datetime.now())
+                        next_run = self.cron_parser.next_run_time(schedule, datetime.now(timezone.utc))
                         if next_run:
                             self.next_run_times[task_id] = next_run
                             self.logger.debug(f"Next run for {task_id}: {next_run}")
@@ -792,7 +792,7 @@ class TaskScheduler(BaseService):
         """Calculate next run times for all enabled tasks"""
         try:
             tasks = self.task_store.list_tasks(enabled_only=True)
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             
             for task in tasks:
                 task_id = task['task_id']

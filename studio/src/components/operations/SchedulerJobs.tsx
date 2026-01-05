@@ -25,6 +25,7 @@ import {
   fetchSchedulerStatus,
   fetchTasks,
   fetchTaskExecutions,
+  fetchExecutionsInRange,
   fetchExpectedRunsToday,
   triggerTask,
   type Task,
@@ -39,6 +40,140 @@ interface SchedulerJobsProps {
   refreshTrigger?: number;
 }
 
+// Memoized table row component to prevent unnecessary re-renders
+const ExecutionRow = React.memo<{
+  execution: TaskExecution & { task_id?: string };
+  onExecutionClick: (execution: TaskExecution) => void;
+  onUserInteraction: () => void;
+  onCopyUuid: (uuid: string, e: React.MouseEvent) => void;
+}>(({ execution, onExecutionClick, onUserInteraction, onCopyUuid }) => {
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircleIcon sx={{ fontSize: 16, color: '#10B981' }} />;
+      case 'failed':
+        return <ErrorIcon sx={{ fontSize: 16, color: '#EF4444' }} />;
+      case 'running':
+        return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#60A5FA' }} />;
+      case 'pending':
+        return <HourglassEmptyIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+      case 'cancelled':
+        return <CancelIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+      default:
+        return <PauseIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return '#10B981';
+      case 'failed': return '#EF4444';
+      case 'running': return '#60A5FA';
+      case 'pending': return '#9CA3AF';
+      case 'cancelled': return '#9CA3AF';
+      default: return '#9CA3AF';
+    }
+  };
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return '-';
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}m ${remainingSeconds}s`;
+  };
+
+  const formatLocalTime = (utcTimeString: string) => {
+    // Backend sends UTC time, convert to local
+    const date = new Date(utcTimeString + (utcTimeString.includes('Z') ? '' : 'Z'));
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  };
+
+  return (
+    <TableRow
+      hover
+      onClick={() => onExecutionClick(execution)}
+      onMouseEnter={onUserInteraction}
+      sx={{
+        cursor: 'pointer',
+        '&:hover': {
+          bgcolor: 'rgba(96, 165, 250, 0.05)',
+        },
+      }}
+    >
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem', mb: 0.5 }}>
+            {execution.task_id || 'Unknown Task'}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+              {execution.execution_id}
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={(e) => onCopyUuid(execution.execution_id, e)}
+              sx={{ 
+                padding: '2px',
+                '&:hover': { bgcolor: 'rgba(96, 165, 250, 0.1)' }
+              }}
+            >
+              <ContentCopyIcon sx={{ fontSize: 12 }} />
+            </IconButton>
+          </Box>
+        </Box>
+      </TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {getStatusIcon(execution.status)}
+          <Chip
+            label={execution.status}
+            size="small"
+            sx={{
+              fontSize: '0.7rem',
+              height: '20px',
+              bgcolor: `${getStatusColor(execution.status)}20`,
+              color: getStatusColor(execution.status),
+              fontWeight: 500,
+              textTransform: 'capitalize',
+            }}
+          />
+        </Box>
+      </TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+          {formatLocalTime(execution.started_at)}
+        </Typography>
+      </TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+          {formatDuration(execution.duration_seconds)}
+        </Typography>
+      </TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onExecutionClick(execution); }}>
+          <PlayArrowIcon sx={{ fontSize: 16 }} />
+        </IconButton>
+      </TableCell>
+    </TableRow>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if execution data actually changed
+  return prevProps.execution.execution_id === nextProps.execution.execution_id &&
+         prevProps.execution.status === nextProps.execution.status &&
+         prevProps.execution.started_at === nextProps.execution.started_at;
+});
+
+ExecutionRow.displayName = 'ExecutionRow';
+
 export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) => {
   const { showToast } = useToast();
   
@@ -50,6 +185,7 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
   const [expectedRunsToday, setExpectedRunsToday] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<'today' | 'last7days'>('today');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   
@@ -74,20 +210,19 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
         setLoading(true);
       }
 
-      const [statusData, tasksData, expectedRunsData] = await Promise.all([
+      // Calculate time range for last 7 days
+      const now = new Date();
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const [statusData, tasksData, expectedRunsData, executionsData] = await Promise.all([
         fetchSchedulerStatus(),
         fetchTasks(),
         fetchExpectedRunsToday().catch(() => ({ total_expected_runs: 0, task_run_counts: {}, calculated_at: '', period_start: '', period_end: '' })),
+        fetchExecutionsInRange(sevenDaysAgo.toISOString(), now.toISOString()).catch(() => ({ executions: [], total_count: 0, start_time: '', end_time: '' })),
       ]);
 
-      // Load recent executions for all tasks
-      const executionsPromises = tasksData.tasks.map(task =>
-        fetchTaskExecutions(task.task_id, 5)
-          .then(result => result.executions.map(exec => ({ ...exec, task_id: task.task_id })))
-          .catch(() => [])
-      );
-      const executionsResults = await Promise.all(executionsPromises);
-      const allExecutions = executionsResults.flat();
+      const allExecutions = executionsData.executions;
       
       // Sort by started_at descending
       allExecutions.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
@@ -119,14 +254,38 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
         setLoading(false);
       }
     }
-  }, [showToast]);
+  }, [showToast, isUserInteracting]);
 
-  // Apply pending updates when user stops interacting
+  // Apply pending updates when user stops interacting (minimal updates only)
   useEffect(() => {
     if (!isUserInteracting && pendingDataRef.current) {
-      setSchedulerStatus(pendingDataRef.current.status);
-      setTasks(pendingDataRef.current.tasks);
-      setExecutions(pendingDataRef.current.executions);
+      const pending = pendingDataRef.current;
+      
+      // Only update status and tasks (non-intrusive)
+      setSchedulerStatus(pending.status);
+      setTasks(pending.tasks);
+      
+      // For executions: only add truly new items (by checking both ID and timestamp)
+      setExecutions(prev => {
+        if (!pending.executions || pending.executions.length === 0) {
+          return prev;
+        }
+        
+        const existingMap = new Map(prev.map(e => [e.execution_id, e.started_at]));
+        const newItems = pending.executions.filter(e => {
+          const existing = existingMap.get(e.execution_id);
+          return !existing; // Only truly new executions
+        });
+        
+        // Only update if there are actually new items
+        if (newItems.length === 0) {
+          return prev; // No change = no re-render
+        }
+        
+        // Prepend new items and limit total
+        return [...newItems, ...prev].slice(0, 500);
+      });
+      
       setHasPendingUpdate(false);
       pendingDataRef.current = null;
     }
@@ -160,7 +319,7 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
-      loadData(true);
+      loadData(true); // Background refresh - updates are queued if user is interacting
     }
   }, [refreshTrigger, loadData]);
 
@@ -268,7 +427,7 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
     }
     
     return histogram;
-  }, [executionsLast24h]);
+  }, [executionsLast24h, now]);  // eslint-disable-line react-hooks/exhaustive-deps
   
   // Calculate complete job accounting over time (last 7 days)
   const jobAccountingOverTime = React.useMemo(() => {
@@ -312,7 +471,7 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
     }
     
     return dailyStats;
-  }, [executions, isJobSkipped]);
+  }, [executions, isJobSkipped, now]);  // eslint-disable-line react-hooks/exhaustive-deps
   
   // Get failed jobs with details (status='failed' but NOT skipped)
   const failedJobsDetails = React.useMemo(() => {
@@ -333,21 +492,36 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
     }));
   }, [skippedJobsToday]);
 
-  // Filter executions
-  const filteredExecutions = executions.filter(execution => {
-    const matchesSearch = searchQuery === '' || 
-      execution.execution_id.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || execution.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Filter executions (memoized to prevent recalculation on every render)
+  const filteredExecutions = React.useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const sevenDaysAgo = new Date(todayStart);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  // Paginate
-  const paginatedExecutions = filteredExecutions.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
+    return executions.filter(execution => {
+      const matchesSearch = searchQuery === '' || 
+        execution.execution_id.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'all' || execution.status === statusFilter;
+      
+      // Date filter: only show today by default
+      const executionDate = new Date(execution.started_at + (execution.started_at.includes('Z') ? '' : 'Z'));
+      const matchesDate = dateFilter === 'today' 
+        ? executionDate >= todayStart
+        : executionDate >= sevenDaysAgo;
+      
+      return matchesSearch && matchesStatus && matchesDate;
+    });
+  }, [executions, searchQuery, statusFilter, dateFilter]);
+
+  // Paginate (memoized to prevent recalculation)
+  const paginatedExecutions = React.useMemo(() => {
+    return filteredExecutions.slice(
+      page * rowsPerPage,
+      page * rowsPerPage + rowsPerPage
+    );
+  }, [filteredExecutions, page, rowsPerPage]);
 
   // Get status icon
   const getStatusIcon = (status: string) => {
@@ -405,18 +579,18 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
         {/* Jobs Today */}
         <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'rgba(255, 255, 255, 0.02)' }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Jobs Today
+            Executions Today
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mt: 1 }}>
             <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary' }}>
-              {expectedRunsToday}
+              {totalExecutionsToday}
             </Typography>
             <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', fontWeight: 500 }}>
-              scheduled
+              actual runs
             </Typography>
           </Box>
           <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary', mt: 0.5, display: 'block' }}>
-            {totalExecutionsToday} executions so far
+            of {expectedRunsToday.toLocaleString()} expected
           </Typography>
           <Box sx={{ 
             display: 'flex', 
@@ -468,15 +642,15 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             Failed Today
           </Typography>
-          <Typography variant="h4" sx={{ mt: 1, fontWeight: 700, color: failedJobsToday > 0 ? '#EF4444' : 'inherit' }}>
+          <Typography variant="h4" sx={{ mt: 1, fontWeight: 700, color: failedJobsToday > 0 ? '#EF4444' : 'text.primary' }}>
             {failedJobsToday}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', mt: 0.5, display: 'block' }}>
-            {jobsToday > 0 ? `${Math.round((failedJobsToday / jobsToday) * 100)}% of today` : 'No jobs today'}
+            {jobsToday > 0 ? Math.round((failedJobsToday / jobsToday) * 100) : 0}% of executions
           </Typography>
         </Paper>
 
-        {/* Success Rate Today */}
+        {/* Success Rate */}
         <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'rgba(255, 255, 255, 0.02)' }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             Success Rate
@@ -485,7 +659,7 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
             {successRateToday}%
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', mt: 0.5, display: 'block' }}>
-            {successfulJobsToday}/{jobsToday} successful
+            {successfulJobsToday}/{jobsToday} completed successfully
           </Typography>
         </Paper>
 
@@ -582,10 +756,10 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Box>
             <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              Job Execution Overview (Last 7 Days)
+              Execution History (Last 7 Days)
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-              Complete accounting: scheduled, executed, and skipped jobs
+              Daily runs by status • {tasks.length} active tasks • {expectedRunsToday.toLocaleString()} expected runs/day
             </Typography>
           </Box>
         </Box>
@@ -613,7 +787,7 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
                       </Typography>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         <Typography variant="caption" sx={{ display: 'block', fontSize: '0.75rem', color: '#9CA3AF' }}>
-                          <strong>{day.scheduled}</strong> scheduled jobs
+                          <strong>{day.scheduled}</strong> executions
                         </Typography>
                         <Box sx={{ pl: 1, borderLeft: '2px solid rgba(255, 255, 255, 0.1)', display: 'flex', flexDirection: 'column', gap: 0.3 }}>
                           <Typography variant="caption" sx={{ display: 'block', fontSize: '0.75rem', color: '#10B981' }}>
@@ -836,11 +1010,11 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
                 )}
                 <Box sx={{ display: 'flex', gap: 2, mt: 1.5 }}>
                   <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
-                    Started: {new Date(job.started_at).toLocaleTimeString()}
+                    Started: {new Date(job.started_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
                   </Typography>
                   {job.duration_seconds && (
                     <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
-                      Duration: {job.duration_seconds < 1 ? `${(job.duration_seconds * 1000).toFixed(0)}ms` : `${job.duration_seconds.toFixed(2)}s`}
+                      Duration: {job.duration_seconds.toFixed(2)}s
                     </Typography>
                   )}
                 </Box>
@@ -919,11 +1093,11 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
                 </Box>
                 <Box sx={{ display: 'flex', gap: 2, mt: 1.5 }}>
                   <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
-                    Started: {new Date(job.started_at).toLocaleTimeString()}
+                    Started: {new Date(job.started_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
                   </Typography>
                   {job.duration_seconds && (
                     <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
-                      Duration: {job.duration_seconds < 1 ? `${(job.duration_seconds * 1000).toFixed(0)}ms` : `${job.duration_seconds.toFixed(2)}s`}
+                      Duration: {job.duration_seconds.toFixed(2)}s
                     </Typography>
                   )}
                 </Box>
@@ -944,18 +1118,11 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
           <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600 }}>
             Recent Jobs
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Tooltip title="Refresh">
-              <IconButton size="small" onClick={() => loadData(false)}>
-                <RefreshIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Export">
-              <IconButton size="small">
-                <DownloadIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          </Box>
+          <Tooltip title="Export">
+            <IconButton size="small">
+              <DownloadIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
         </Box>
 
         {/* Filters */}
@@ -996,6 +1163,21 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
               <MenuItem value="failed">Failed</MenuItem>
               <MenuItem value="running">Running</MenuItem>
               <MenuItem value="pending">Pending</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel sx={{ fontSize: '0.85rem' }}>Time Range</InputLabel>
+            <Select
+              value={dateFilter}
+              label="Time Range"
+              onChange={(e) => setDateFilter(e.target.value as 'today' | 'last7days')}
+              sx={{
+                bgcolor: 'rgba(255, 255, 255, 0.05)',
+                fontSize: '0.85rem',
+              }}
+            >
+              <MenuItem value="today">Today</MenuItem>
+              <MenuItem value="last7days">Last 7 Days</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -1041,85 +1223,13 @@ export const SchedulerJobs: React.FC<SchedulerJobsProps> = ({ refreshTrigger }) 
                 </TableRow>
               ) : (
                 paginatedExecutions.map((execution) => (
-                  <TableRow
+                  <ExecutionRow
                     key={execution.execution_id}
-                    hover
-                    onClick={() => handleExecutionClick(execution)}
-                    onMouseEnter={handleUserInteraction}
-                    sx={{
-                      cursor: 'pointer',
-                      '&:hover': {
-                        bgcolor: 'rgba(96, 165, 250, 0.05)',
-                      },
-                    }}
-                  >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem', mb: 0.5 }}>
-                          {(execution as any).task_id || 'Unknown Task'}
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.7rem' }}>
-                            {execution.execution_id}
-                          </Typography>
-                          <IconButton
-                            size="small"
-                            onClick={(e) => handleCopyUuid(execution.execution_id, e)}
-                            sx={{ 
-                              padding: '2px',
-                              '&:hover': { bgcolor: 'rgba(96, 165, 250, 0.1)' }
-                            }}
-                          >
-                            <ContentCopyIcon sx={{ fontSize: 12 }} />
-                          </IconButton>
-                        </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        {getStatusIcon(execution.status)}
-                        <Chip
-                          label={getStatusLabel(execution.status)}
-                          size="small"
-                          sx={{
-                            bgcolor: `${getStatusColor(execution.status)}15`,
-                            color: getStatusColor(execution.status),
-                            fontSize: '0.7rem',
-                            height: 20,
-                          }}
-                        />
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                        {new Date(execution.started_at).toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </Typography>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                        {execution.duration_seconds 
-                          ? `${execution.duration_seconds.toFixed(2)}s`
-                          : execution.status === 'running' 
-                            ? 'Running...' 
-                            : '-'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Tooltip title="View Details">
-                        <IconButton size="small" onClick={(e) => {
-                          e.stopPropagation();
-                          handleExecutionClick(execution);
-                        }}>
-                          <PlayArrowIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
+                    execution={execution as TaskExecution & { task_id?: string }}
+                    onExecutionClick={handleExecutionClick}
+                    onUserInteraction={handleUserInteraction}
+                    onCopyUuid={handleCopyUuid}
+                  />
                 ))
               )}
             </TableBody>

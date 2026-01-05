@@ -5,7 +5,7 @@ Periodically executes pending plan steps for active intentions.
 This is the core execution loop that converts plans into actions.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from backend.scheduler.tasks.base import BaseTask, TaskContext, TaskResult
@@ -48,7 +48,7 @@ class AgencyPlanExecutorTask(BaseTask):
         Returns:
             TaskResult with execution statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             logger.info("🎬 [PLAN_EXECUTOR_TASK] Starting plan execution cycle")
@@ -117,7 +117,7 @@ class AgencyPlanExecutorTask(BaseTask):
                             user_id=plan_info["user_id"],
                             context={
                                 "trigger": "scheduled_executor",
-                                "timestamp": datetime.utcnow().isoformat()
+                                "timestamp": datetime.now(timezone.utc).isoformat()
                             }
                         )
                         active_executions.append({
@@ -201,7 +201,7 @@ class AgencyPlanExecutorTask(BaseTask):
             failed = sum(1 for r in results if r.get("status") == "failed")
             total_steps = sum(r.get("steps_executed", 0) for r in results)
             
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             
             logger.info(
                 f"🎬 [PLAN_EXECUTOR_TASK] Completed: {successful} successful, "
@@ -222,7 +222,7 @@ class AgencyPlanExecutorTask(BaseTask):
             )
             
         except Exception as e:
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.exception(f"🎬 [PLAN_EXECUTOR_TASK] Task failed: {e}")
             
             return TaskResult(

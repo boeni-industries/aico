@@ -10,7 +10,7 @@ User Sharding: 1/7 of users per day to distribute load
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from aico.core.logging import get_logger
@@ -52,7 +52,7 @@ class MemoryConsolidationTask(BaseTask):
         Returns:
             TaskResult with consolidation statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("🧠 [AMS_TASK] ========================================")
@@ -146,7 +146,7 @@ class MemoryConsolidationTask(BaseTask):
             logger.info(f"🧠 [AMS_TASK] Step 2: Getting users for today's shard (1/{user_shard_days})...")
             
             # Get today's shard index (0-6 for 7-day sharding)
-            today_shard = datetime.utcnow().day % user_shard_days
+            today_shard = datetime.now(timezone.utc).day % user_shard_days
             
             # Get database connection from context
             db_connection = context.db_connection
@@ -234,7 +234,7 @@ class MemoryConsolidationTask(BaseTask):
                     logger.error(f"🧠 [AMS_TASK] ❌ User {user_id} consolidation failed: {e}")
             
             # Calculate execution time
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             
             print("🧠 [AMS_TASK] ========================================")
             print(f"🧠 [AMS_TASK] Consolidation complete in {execution_time:.2f}s")
@@ -269,7 +269,7 @@ class MemoryConsolidationTask(BaseTask):
             )
             
         except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"🧠 [AMS_TASK] ❌❌❌ Task execution failed: {e}")
             logger.error(f"🧠 [AMS_TASK] ❌ Task execution failed: {e}")
             import traceback

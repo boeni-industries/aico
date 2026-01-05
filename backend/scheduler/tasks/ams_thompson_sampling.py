@@ -8,7 +8,7 @@ Schedule: Daily at 4 AM (configurable via cron)
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 from aico.core.logging import get_logger
@@ -44,7 +44,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
         Returns:
             TaskResult with update statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("\n" + "="*60)
@@ -71,7 +71,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
             # Get configuration from behavioral config
             min_trajectories = behavioral_config.get("contextual_bandit", {}).get("min_trajectories", 1)
             lookback_days = context.get_config("lookback_days", 7)
-            lookback_date = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
+            lookback_date = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
             
             # Get feedback events from last N days
             # Only process events with valid skill_id (not NULL or empty)
@@ -158,7 +158,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
                         skill_id,
                         new_alpha,
                         new_beta,
-                        datetime.utcnow().isoformat()
+                        datetime.now(timezone.utc).isoformat()
                     )
                 )
                 
@@ -168,7 +168,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
             
             context.db_connection.commit()
             
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"\n [AMS_TS] Updated {updated_count} skill confidences in {duration:.2f}s")
             print(f"   Processed {len(feedback_events)} feedback events")
             print("="*60 + "\n")
@@ -187,7 +187,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
             )
             
         except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"🧠 [AMS_TS] Task execution failed: {e}")
             
             return TaskResult(

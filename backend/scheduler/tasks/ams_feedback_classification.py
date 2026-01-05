@@ -8,7 +8,7 @@ Schedule: Daily at 3 AM (configurable via cron)
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
 
 from aico.core.logging import get_logger
@@ -55,7 +55,7 @@ class FeedbackClassificationTask(BaseTask):
         Returns:
             TaskResult with classification statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("\n" + "="*60)
@@ -166,7 +166,7 @@ class FeedbackClassificationTask(BaseTask):
             
             context.db_connection.commit()
             
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"\n✅ [AMS_FEEDBACK] Classified {classified_count}/{len(unprocessed_feedback)} events in {duration:.2f}s")
             print("="*60 + "\n")
             logger.info(f"🧠 [AMS_FEEDBACK] ✅ Classified {classified_count} feedback events in {duration:.2f}s")
@@ -183,7 +183,7 @@ class FeedbackClassificationTask(BaseTask):
             )
             
         except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"🧠 [AMS_FEEDBACK] Task execution failed: {e}")
             
             return TaskResult(

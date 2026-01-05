@@ -6,7 +6,7 @@ task scheduling.
 """
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass
 
@@ -198,7 +198,7 @@ class CronParser:
             Next datetime when expression matches, or None if error
         """
         if after is None:
-            after = datetime.now()
+            after = datetime.now(timezone.utc)
         
         try:
             # Start from next minute (cron precision is minutes)

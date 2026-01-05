@@ -20,8 +20,8 @@ export const OperationsPage: React.FC = () => {
 
   const { isRefreshing, autoRefreshEnabled, toggleAutoRefresh, refresh } = useAutoRefresh({
     onRefresh: loadOperationsData,
-    interval: 5000,
-    defaultEnabled: true,
+    interval: 5000, // 5 seconds - components handle updates intelligently
+    defaultEnabled: true, // Enabled - components prevent jarring updates
   });
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: OperationsTab) => {

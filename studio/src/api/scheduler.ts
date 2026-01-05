@@ -217,6 +217,21 @@ export async function fetchQueueStats(): Promise<Record<string, number>> {
 }
 
 /**
+ * Get all task executions within a time range
+ */
+export async function fetchExecutionsInRange(startTime: string, endTime: string): Promise<{
+  executions: TaskExecution[];
+  total_count: number;
+  start_time: string;
+  end_time: string;
+}> {
+  return httpJson({
+    method: 'GET',
+    path: `${BASE_URL}/executions/range?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`,
+  });
+}
+
+/**
  * Get expected number of job runs today based on cron schedules
  */
 export async function fetchExpectedRunsToday(): Promise<{
