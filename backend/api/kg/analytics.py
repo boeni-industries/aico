@@ -58,8 +58,7 @@ class KGAnalyticsEngine:
         _, edges = self._load_graph_data()
         adjacency = defaultdict(set)
         
-        from backend.api.kg.router import logger
-        logger.info(f"Building adjacency list from {len(edges)} edges")
+        # Building adjacency list
         
         # Edges are already filtered for is_current=1 in _load_graph_data
         for edge in edges:
@@ -68,7 +67,7 @@ class KGAnalyticsEngine:
             adjacency[source_id].add(target_id)
             adjacency[target_id].add(source_id)  # Undirected
         
-        logger.info(f"Adjacency list built with {len(adjacency)} nodes")
+        # Adjacency list built
         
         self._adjacency_cache = adjacency
         return adjacency
@@ -293,14 +292,11 @@ class KGAnalyticsEngine:
         
         top_by_degree = sorted(node_degrees, key=lambda x: x["degree"], reverse=True)[:10]
         
-        from backend.api.kg.router import logger
-        logger.info(f"Calculated degree centrality for {len(node_degrees)} nodes, top 10: {len(top_by_degree)}")
+        # Degree centrality calculated
         
         # PageRank (simplified iterative algorithm)
-        from backend.api.kg.router import logger
-        logger.info(f"Calculating PageRank with {len(current_nodes)} nodes and {len(edges)} edges")
+        # Calculating PageRank
         pagerank = self._calculate_pagerank(current_nodes, edges)
-        logger.info(f"PageRank calculated, got {len(pagerank)} results")
         top_by_pagerank = sorted(
             [{"id": k, "label": self._get_node_label(k, current_nodes), 
               "name": self._get_node_name(k, current_nodes), "score": v} 
@@ -308,7 +304,7 @@ class KGAnalyticsEngine:
             key=lambda x: x["score"],
             reverse=True
         )[:10]
-        logger.info(f"Top PageRank nodes: {len(top_by_pagerank)}")
+        # PageRank complete
         
         # Betweenness centrality (approximate for large graphs)
         betweenness = self._calculate_betweenness(current_nodes, adjacency)
@@ -320,8 +316,7 @@ class KGAnalyticsEngine:
             reverse=True
         )[:10]
         
-        from backend.api.kg.router import logger
-        logger.info(f"Calculated betweenness centrality, top 10: {len(top_by_betweenness)}")
+        # Betweenness centrality calculated
         
         return {
             "top_by_degree": top_by_degree,
@@ -422,8 +417,7 @@ class KGAnalyticsEngine:
             if edge[10] == 1:  # is_current
                 outgoing[edge[2]].append(edge[3])  # source -> target
         
-        from backend.api.kg.router import logger
-        logger.info(f"Calculating PageRank for {n} nodes")
+        # Calculating PageRank
         
         # Iterative calculation
         for _ in range(iterations):

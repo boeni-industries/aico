@@ -6,6 +6,7 @@ import { OperationsOverview } from '../components/operations/OperationsOverview'
 import { SystemTopology } from '../components/operations/SystemTopology';
 import { UsersSessions } from '../components/operations/UsersSessions';
 import { SchedulerJobs } from '../components/operations/SchedulerJobs';
+import { LogsEvents } from '../components/operations/LogsEvents';
 
 type OperationsTab = 'overview' | 'topology' | 'users' | 'scheduler' | 'logs' | 'bus' | 'gateway' | 'database' | 'metrics';
 
@@ -33,7 +34,7 @@ export const OperationsPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, maxWidth: '1400px', mx: 'auto' }}>
       {/* Page Header */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 3 }}>
         <AutoRefreshControls
@@ -78,7 +79,7 @@ export const OperationsPage: React.FC = () => {
         {activeTab === 'topology' && <SystemTopology refreshTrigger={refreshTrigger} />}
         {activeTab === 'users' && <UsersSessions refreshTrigger={refreshTrigger} />}
         {activeTab === 'scheduler' && <SchedulerJobs refreshTrigger={refreshTrigger} />}
-        {activeTab === 'logs' && <Typography>Logs & Events - Coming Soon</Typography>}
+        {activeTab === 'logs' && <LogsEvents />}
         {activeTab === 'bus' && <Typography>Message Bus - Coming Soon</Typography>}
         {activeTab === 'gateway' && <Typography>API Gateway - Coming Soon</Typography>}
         {activeTab === 'database' && <Typography>Database & Storage - Coming Soon</Typography>}
