@@ -7,8 +7,9 @@ import { SystemTopology } from '../components/operations/SystemTopology';
 import { UsersSessions } from '../components/operations/UsersSessions';
 import { SchedulerJobs } from '../components/operations/SchedulerJobs';
 import { LogsEvents } from '../components/operations/LogsEvents';
+import { DatabaseStorage } from '../components/operations/DatabaseStorage';
 
-type OperationsTab = 'overview' | 'topology' | 'users' | 'scheduler' | 'logs' | 'bus' | 'gateway' | 'database' | 'metrics';
+type OperationsTab = 'overview' | 'topology' | 'users' | 'scheduler' | 'logs' | 'gateway' | 'database' | 'metrics';
 
 export const OperationsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<OperationsTab>('overview');
@@ -66,7 +67,6 @@ export const OperationsPage: React.FC = () => {
           <Tab label="Users & Sessions" value="users" />
           <Tab label="Scheduler & Jobs" value="scheduler" />
           <Tab label="Logs & Events" value="logs" />
-          <Tab label="Message Bus" value="bus" />
           <Tab label="API Gateway" value="gateway" />
           <Tab label="Database & Storage" value="database" />
           <Tab label="System Metrics" value="metrics" />
@@ -80,9 +80,8 @@ export const OperationsPage: React.FC = () => {
         {activeTab === 'users' && <UsersSessions refreshTrigger={refreshTrigger} />}
         {activeTab === 'scheduler' && <SchedulerJobs refreshTrigger={refreshTrigger} />}
         {activeTab === 'logs' && <LogsEvents />}
-        {activeTab === 'bus' && <Typography>Message Bus - Coming Soon</Typography>}
         {activeTab === 'gateway' && <Typography>API Gateway - Coming Soon</Typography>}
-        {activeTab === 'database' && <Typography>Database & Storage - Coming Soon</Typography>}
+        {activeTab === 'database' && <DatabaseStorage refreshTrigger={refreshTrigger} />}
         {activeTab === 'metrics' && <Typography>System Metrics - Coming Soon</Typography>}
       </Box>
     </Box>
