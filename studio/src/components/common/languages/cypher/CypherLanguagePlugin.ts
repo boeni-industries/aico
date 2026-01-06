@@ -18,8 +18,15 @@ import { CYPHER_KEYWORDS, CYPHER_FUNCTIONS, CYPHER_FORBIDDEN_OPERATIONS } from '
 interface CypherSchema {
   nodeLabels: string[];
   relationshipTypes: string[];
-  properties: Record<string, string[]>;
+  nodeProperties: string[];
+  relationshipProperties: string[];
 }
+
+// Static cache shared across all instances to prevent duplicates
+const completionCache = {
+  key: '',
+  items: [] as CompletionItem[]
+};
 
 export class CypherLanguagePlugin implements LanguagePlugin {
   readonly languageId = 'cypher';
@@ -29,7 +36,8 @@ export class CypherLanguagePlugin implements LanguagePlugin {
     return {
       nodeLabels: rawSchema.nodeLabels || rawSchema.nodes || [],
       relationshipTypes: rawSchema.relationshipTypes || rawSchema.relationships || [],
-      properties: rawSchema.properties || {},
+      nodeProperties: rawSchema.nodeProperties || [],
+      relationshipProperties: rawSchema.relationshipProperties || [],
     } as CypherSchema;
   }
 
@@ -38,8 +46,107 @@ export class CypherLanguagePlugin implements LanguagePlugin {
     schema: CompletionSchema | null,
     monaco: typeof monacoType
   ): CompletionItem[] {
+    // Create a unique key for this completion request
+    const completionKey = `${context.position.lineNumber}:${context.position.column}:${context.textBeforeCursor}`;
+    
+    // Return cached results if this is a duplicate call
+    if (completionKey === completionCache.key && completionCache.items.length > 0) {
+      return completionCache.items;
+    }
+    
     const completionItems: CompletionItem[] = [];
     const cypherSchema = schema as CypherSchema | null;
+
+    // Check if we're completing after a dot (property access)
+    const isDotCompletion = context.textBeforeCursor.trim().endsWith('.');
+    
+    if (isDotCompletion && cypherSchema) {
+      // Extract variable name before the dot (e.g., "n" from "n.")
+      const match = context.textBeforeCursor.match(/(\w+)\.\s*$/);
+      if (match) {
+        const varName = match[1];
+        
+        // Determine if this is a node or relationship variable
+        // Use fullText to see the entire query, not just the current line
+        const fullText = context.fullText;
+        
+        // Check if variable is defined in a relationship pattern [varName:TYPE] or [varName]
+        const relPattern = new RegExp(`\\[\\s*${varName}\\s*(?::\\s*[\\w_]+)?\\s*\\]`, 'i');
+        const isRelVar = relPattern.test(fullText);
+        
+        // Check if variable is defined in a node pattern (varName:LABEL) or (varName)
+        const nodePattern = new RegExp(`\\(\\s*${varName}\\s*(?::\\s*[\\w_]+)?\\s*\\)`, 'i');
+        const isNodeVar = !isRelVar && nodePattern.test(fullText);
+        
+        // Add ONLY the appropriate properties based on variable type
+        if (isRelVar && cypherSchema.relationshipProperties) {
+          // Relationship variable - show only relationship properties
+          const seen = new Set<string>();
+          cypherSchema.relationshipProperties.forEach((prop) => {
+            if (!seen.has(prop)) {
+              seen.add(prop);
+              completionItems.push({
+                label: prop,
+                kind: monaco.languages.CompletionItemKind.Property,
+                insertText: prop,
+                detail: 'relationship property',
+                documentation: `Relationship property: ${prop}`,
+                sortText: '0' + prop,
+              });
+            }
+          });
+          // Cache and return
+          completionCache.key = completionKey;
+          completionCache.items = completionItems;
+          return completionItems;
+        }
+        
+        if (isNodeVar && cypherSchema.nodeProperties) {
+          // Node variable - show only node properties
+          const seen = new Set<string>();
+          cypherSchema.nodeProperties.forEach((prop) => {
+            if (!seen.has(prop)) {
+              seen.add(prop);
+              completionItems.push({
+                label: prop,
+                kind: monaco.languages.CompletionItemKind.Property,
+                insertText: prop,
+                detail: 'node property',
+                documentation: `Node property: ${prop}`,
+                sortText: '0' + prop,
+              });
+            }
+          });
+          // Cache and return
+          completionCache.key = completionKey;
+          completionCache.items = completionItems;
+          return completionItems;
+        }
+        
+        // If we can't determine type, show node properties as fallback
+        if (cypherSchema.nodeProperties) {
+          const seen = new Set<string>();
+          cypherSchema.nodeProperties.forEach((prop) => {
+            if (!seen.has(prop)) {
+              seen.add(prop);
+              completionItems.push({
+                label: prop,
+                kind: monaco.languages.CompletionItemKind.Property,
+                insertText: prop,
+                detail: 'property',
+                documentation: `Property: ${prop}`,
+                sortText: '0' + prop,
+              });
+            }
+          });
+        }
+        
+        // Cache and return
+        completionCache.key = completionKey;
+        completionCache.items = completionItems;
+        return completionItems;
+      }
+    }
 
     // Add Cypher keywords
     CYPHER_KEYWORDS.forEach((keyword) => {
@@ -76,20 +183,6 @@ export class CypherLanguagePlugin implements LanguagePlugin {
           documentation: `Node label: ${label}`,
           sortText: '2' + label,
         });
-
-        // Add properties for this node label
-        if (cypherSchema.properties?.[label]) {
-          cypherSchema.properties[label].forEach((prop) => {
-            completionItems.push({
-              label: `${label}.${prop}`,
-              kind: monaco.languages.CompletionItemKind.Property,
-              insertText: prop,
-              detail: 'property',
-              documentation: `Property ${prop} on ${label}`,
-              sortText: '4' + prop,
-            });
-          });
-        }
       });
     }
 
@@ -107,6 +200,9 @@ export class CypherLanguagePlugin implements LanguagePlugin {
       });
     }
 
+    // Cache and return
+    completionCache.key = completionKey;
+    completionCache.items = completionItems;
     return completionItems;
   }
 

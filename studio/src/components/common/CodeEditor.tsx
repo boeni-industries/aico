@@ -106,12 +106,22 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             word,
             textBeforeCursor,
             textAfterCursor,
+            fullText: model.getValue(), // Add full document text
           };
 
           const completionItems = plugin.provideCompletions(context, schema, monaco as any);
 
-          return {
-            suggestions: completionItems.map(item => ({
+          // Deduplicate suggestions by label to prevent Monaco from showing duplicates
+          const seen = new Set<string>();
+          const uniqueSuggestions = completionItems
+            .filter(item => {
+              if (seen.has(item.label)) {
+                return false;
+              }
+              seen.add(item.label);
+              return true;
+            })
+            .map(item => ({
               ...item,
               range: {
                 startLineNumber: position.lineNumber,
@@ -119,7 +129,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 startColumn: word.startColumn,
                 endColumn: word.endColumn,
               },
-            })),
+            }));
+
+          return {
+            suggestions: uniqueSuggestions,
           };
         },
       });

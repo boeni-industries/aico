@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import { X as CloseIcon, Save as SaveIcon, Trash2 as DeleteIcon, Plus as AddIcon, CheckCircle as CheckIcon, AlertCircle as ErrorIcon, AlertTriangle as WarningIcon } from 'lucide-react';
 import { QueryTemplate } from '../../api/kg';
-import { CypherQueryInput } from './CypherQueryInput';
+import { CodeEditor } from '../common/CodeEditor';
 
 interface TemplateEditorProps {
   open: boolean;
@@ -154,14 +154,24 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               </Select>
             </FormControl>
 
-            <CypherQueryInput
-              value={formData.query}
-              onChange={(value) => setFormData({ ...formData, query: value })}
-              label="Cypher Query"
-              helperText={errors.query || 'Write your Cypher query here (MATCH, WHERE, RETURN, LIMIT)'}
-              error={!!errors.query}
-              rows={10}
-            />
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+                Cypher Query
+              </Typography>
+              <CodeEditor
+                value={formData.query}
+                onChange={(value: string) => setFormData({ ...formData, query: value })}
+                language="cypher"
+                height={300}
+                placeholder="Write your Cypher query here (MATCH, WHERE, RETURN, LIMIT)"
+                schemaEndpoint="http://localhost:8771/api/v1/kg/schema"
+              />
+              {errors.query && (
+                <Typography variant="caption" sx={{ color: '#f44336', mt: 0.5, display: 'block' }}>
+                  {errors.query}
+                </Typography>
+              )}
+            </Box>
 
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Tags</Typography>

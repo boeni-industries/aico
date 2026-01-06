@@ -26,7 +26,7 @@ import {
 import { Code as CodeIcon, Play as PlayIcon, Copy as CopyIcon, ChevronDown as ExpandIcon, Sparkles as SparkleIcon, TrendingUp as TrendingIcon, Clock as TimelineIcon, GitBranch as GraphIcon, Search as SearchIcon, CheckCircle as SuccessIcon, AlertCircle as ErrorIcon, Download as DownloadIcon, Plus as AddIcon, Pencil as EditIcon } from 'lucide-react';
 import { executeGQLQuery, fetchQueryTemplates, updateQueryTemplates, QueryTemplate } from '../../api/kg';
 import { TemplateEditor } from './TemplateEditor';
-import { CypherQueryInput } from './CypherQueryInput';
+import { CodeEditor } from '../common/CodeEditor';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   exploration: <GraphIcon />,
@@ -418,7 +418,7 @@ export const GQLQueryInterface: React.FC = () => {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-          <CodeIcon sx={{ color: '#3B82F6', fontSize: 28 }} />
+          <CodeIcon size={28} color="#3B82F6" />
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem', mb: 0.5 }}>
               GQL Query Editor
@@ -430,12 +430,13 @@ export const GQLQueryInterface: React.FC = () => {
         </Box>
 
         <Box sx={{ mb: 2 }}>
-          <CypherQueryInput
+          <CodeEditor
             value={query}
             onChange={setQuery}
-            label="GQL Query Editor"
-            rows={8}
-            showValidation={true}
+            language="cypher"
+            height={300}
+            placeholder="Enter your Cypher/GQL query here..."
+            schemaEndpoint="http://localhost:8771/api/v1/kg/schema"
           />
         </Box>
 
@@ -521,7 +522,7 @@ export const GQLQueryInterface: React.FC = () => {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-            <SuccessIcon sx={{ color: '#10B981', fontSize: 24 }} />
+            <SuccessIcon size={24} color="#10B981" />
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem' }}>
               Query Results
             </Typography>
@@ -779,7 +780,7 @@ export const GQLQueryInterface: React.FC = () => {
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <SparkleIcon sx={{ color: '#EC4899', fontSize: 24 }} />
+            <SparkleIcon size={20} color="#F59E0B" />
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
               Query Templates
             </Typography>
@@ -901,7 +902,7 @@ export const GQLQueryInterface: React.FC = () => {
                         },
                       }}
                     >
-                      <EditIcon fontSize="small" />
+                      <EditIcon size={16} color="#3B82F6" />
                     </IconButton>
                     <IconButton
                       size="small"
@@ -915,7 +916,7 @@ export const GQLQueryInterface: React.FC = () => {
                         transition: 'transform 0.3s',
                       }}
                     >
-                      <ExpandIcon />
+                      <ExpandIcon size={16} color="#3B82F6" />
                     </IconButton>
                   </Box>
 
@@ -983,7 +984,7 @@ export const GQLQueryInterface: React.FC = () => {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-          <CodeIcon sx={{ fontSize: '2rem', color: '#10B981' }} />
+          <CodeIcon size={19} color="#10B981" />
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#10B981', letterSpacing: '-0.02em' }}>
               GQL Query Cheatsheet
@@ -1009,7 +1010,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#3B82F6', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <GraphIcon sx={{ fontSize: '1.2rem' }} />
+              <GraphIcon size={19} color="#3B82F6" />
               Pattern Matching
             </Typography>
             <Box component="code" sx={{ 
@@ -1044,7 +1045,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#A855F7', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SparkleIcon sx={{ fontSize: '1.2rem' }} />
+              <SparkleIcon size={19} color="#A855F7" />
               Filtering
             </Typography>
             <Box component="code" sx={{ 
@@ -1079,7 +1080,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#EC4899', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TimelineIcon sx={{ fontSize: '1.2rem' }} />
+              <TimelineIcon size={19} color="#EC4899" />
               Temporal
             </Typography>
             <Box component="code" sx={{ 
@@ -1114,7 +1115,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#10B981', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TrendingIcon sx={{ fontSize: '1.2rem' }} />
+              <TrendingIcon size={19} color="#10B981" />
               Limiting Results
             </Typography>
             <Box component="code" sx={{ 
@@ -1149,7 +1150,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#FB923C', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SparkleIcon sx={{ fontSize: '1.2rem' }} />
+              <SparkleIcon size={19} />
               Label Matching
             </Typography>
             <Box component="code" sx={{ 
@@ -1184,8 +1185,8 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#22C55E', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <GraphIcon sx={{ fontSize: '1.2rem' }} />
-              Relationships
+              <SearchIcon size={19} />
+              Relationship Types
             </Typography>
             <Box component="code" sx={{ 
               display: 'block', 

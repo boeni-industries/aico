@@ -133,6 +133,79 @@ async def execute_gql_query(
         )
 
 
+@router.get("/schema")
+async def get_kg_schema(
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)]
+) -> dict:
+    """
+    Get knowledge graph schema for autocomplete.
+    
+    **Authentication required:** Bearer token
+    
+    Returns:
+        Schema with node labels, relationship types, and properties
+    """
+    try:
+        user_id = user.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in token"
+            )
+        
+        # Query for distinct node labels
+        node_labels_query = """
+        SELECT DISTINCT label FROM kg_nodes 
+        WHERE user_id = ? AND is_current = 1
+        ORDER BY label
+        """
+        
+        # Query for distinct relationship types
+        rel_types_query = """
+        SELECT DISTINCT relation_type FROM kg_edges 
+        WHERE user_id = ? AND is_current = 1
+        ORDER BY relation_type
+        """
+        
+        # Execute queries
+        node_labels_result = db_connection.execute(node_labels_query, [user_id])
+        rel_types_result = db_connection.execute(rel_types_query, [user_id])
+        
+        node_labels = [row[0] for row in node_labels_result.fetchall() if row[0]]
+        relationship_types = [row[0] for row in rel_types_result.fetchall() if row[0]]
+        
+        # Define standard node properties (available on all nodes)
+        node_properties = [
+            'id', 'label', 'confidence', 'source_text', 
+            'created_at', 'updated_at', 'valid_from', 'valid_until',
+            'is_current', 'canonical_id', 'language', 'reason'
+        ]
+        
+        # Define standard relationship properties (available on all edges)
+        relationship_properties = [
+            'id', 'relation_type', 'confidence', 'source_text',
+            'created_at', 'updated_at', 'valid_from', 'valid_until',
+            'is_current', 'reason'
+        ]
+        
+        return {
+            "nodeLabels": node_labels,
+            "relationshipTypes": relationship_types,
+            "nodeProperties": node_properties,
+            "relationshipProperties": relationship_properties
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch KG schema for user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch schema: {str(e)}"
+        )
+
+
 @router.get("/stats", response_model=GraphStatsResponse)
 async def get_graph_stats(
     user: Annotated[dict, Depends(get_current_user)],

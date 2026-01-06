@@ -14,6 +14,7 @@ export interface CompletionContext {
   word: monacoType.editor.IWordAtPosition;
   textBeforeCursor: string;
   textAfterCursor: string;
+  fullText: string;
 }
 
 export interface ValidationError {
