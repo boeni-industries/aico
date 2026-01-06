@@ -33,6 +33,10 @@ from aico.core.logging_context import create_infrastructure_logger
 config_manager = ConfigurationManager()
 initialize_logging(config_manager, service_name="backend")
 
+# Suppress httpx INFO logging (shows every HTTP request)
+import logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 from core.lifecycle_manager import BackendLifecycleManager
 
 # Import version from shared version system

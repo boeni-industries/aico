@@ -11,6 +11,7 @@ import time
 import json
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
+from queue import Queue
 from aico.core.logging_context import create_infrastructure_logger
 from aico.core.topics import AICOTopics
 from aico.core.bus import MessageBusClient
@@ -41,6 +42,8 @@ class LogConsumerService(BaseService):
         # Runtime state
         self.message_bus_client: Optional[MessageBusClient] = None
         self.message_thread: Optional[threading.Thread] = None
+        self.db_writer_thread: Optional[threading.Thread] = None
+        self.db_write_queue: Queue = Queue(maxsize=10000)
         self.running = False
         
         # Dependencies (resolved during initialization)
@@ -98,7 +101,15 @@ class LogConsumerService(BaseService):
                 self._handle_log_message
             )
             
+            # Start database writer thread (single thread for thread-safe writes)
             self.running = True
+            self.db_writer_thread = threading.Thread(
+                target=self._db_writer_loop,
+                name="LogConsumerDBWriter",
+                daemon=True
+            )
+            self.db_writer_thread.start()
+            
             self.logger.info("Log consumer service started successfully")
             self.state = ServiceState.RUNNING
             
@@ -139,6 +150,11 @@ class LogConsumerService(BaseService):
             
             # Stop message processing
             self.running = False
+            
+            # Signal DB writer to stop and wait
+            self.db_write_queue.put(None)  # Sentinel value
+            if self.db_writer_thread and self.db_writer_thread.is_alive():
+                self.db_writer_thread.join(timeout=5.0)
             
             # Disconnect from message bus
             if self.message_bus_client:
@@ -238,19 +254,39 @@ class LogConsumerService(BaseService):
             if (log_entry.subsystem == "service" and log_entry.module and log_entry.module.startswith("log_consumer")):
                                 return
 
-                        # Insert to database (async to avoid blocking event loop)
-            await self._insert_log_to_database(log_entry)
-            
+            # Queue for database write (non-blocking)
+            try:
+                self.db_write_queue.put_nowait(log_entry)
+            except:
+                # Queue full - drop log to prevent memory issues
+                pass
                             
         except Exception as e:
             self.logger.warning(f"Failed to process log entry: {e}")
     
-    async def _insert_log_to_database(self, log_entry: LogEntry) -> None:
-        """Insert log entry to database with error handling - runs in thread pool"""
-        import asyncio
-        
-        def _sync_db_write():
-            """Synchronous database write - runs in thread pool"""
+    def _db_writer_loop(self) -> None:
+        """Dedicated single-threaded database writer loop - ensures thread safety"""
+        while self.running:
+            try:
+                # Get next log entry from queue (blocking with timeout)
+                log_entry = self.db_write_queue.get(timeout=1.0)
+                
+                # Check for sentinel value (shutdown signal)
+                if log_entry is None:
+                    break
+                
+                # Write to database (single thread, no concurrency issues)
+                self._insert_log_to_database(log_entry)
+                
+            except Exception as e:
+                # Queue timeout or processing error - continue
+                if "Empty" not in str(type(e).__name__):
+                    self.logger.error(f"DB writer error: {e}")
+                continue
+    
+    def _insert_log_to_database(self, log_entry: LogEntry) -> None:
+        """Insert log entry to database - runs in dedicated single thread"""
+        try:
             # Convert protobuf timestamp to ISO8601 string with Z suffix (TEXT column)
             ts_seconds = int(log_entry.timestamp.seconds)
             ts_nanos = int(getattr(log_entry.timestamp, 'nanos', 0))
@@ -272,6 +308,7 @@ class LogConsumerService(BaseService):
             extra_json = json.dumps(extra_payload) if extra_payload else None
 
             # Insert to database using LibSQL execute() method
+            # Safe because this runs in a single dedicated thread
             self.db_connection.execute("""
                 INSERT INTO system_logs (
                     timestamp, level, subsystem, module, function_name, file_path, line_number, topic, message,
@@ -293,13 +330,14 @@ class LogConsumerService(BaseService):
                 extra_json
             ))
             self.db_connection.commit()
-        
-        try:
-            # Run blocking database write in thread pool to avoid event loop blocking
-            await asyncio.to_thread(_sync_db_write)
+            
         except Exception as e:
-            self.logger.error(f"Failed to insert log to database: {e}")
-            # Don't raise - we don't want to crash the consumer for individual log failures
+            # CRITICAL: Print to stderr since our own logs get filtered
+            # This ensures database write failures are visible
+            import sys
+            print(f"[LOG CONSUMER CRITICAL] Database write failed: {e}", file=sys.stderr)
+            print(f"[LOG CONSUMER CRITICAL] Failed log: {log_entry.message[:100]}", file=sys.stderr)
+            # Don't raise - we don't want to crash the writer thread
 
     async def _setup_curve_encryption(self):
         """Setup CurveZMQ encryption for the log consumer"""
