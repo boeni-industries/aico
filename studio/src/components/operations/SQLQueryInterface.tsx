@@ -32,17 +32,13 @@ import {
   Code as CodeIcon,
   Info as InfoIcon,
 } from 'lucide-react';
-import { executeSQLQuery, getSchemaMetadata, QueryRequest, QueryResult } from '../../api/operations';
+import { executeSQLQuery, QueryRequest, QueryResult } from '../../api/operations';
 import { CodeEditor } from '../common/CodeEditor';
 
 interface SQLQueryInterfaceProps {
   databaseName: string;
 }
 
-interface SchemaMetadata {
-  tables: string[];
-  columns: Record<string, string[]>;
-}
 
 export const SQLQueryInterface: React.FC<SQLQueryInterfaceProps> = ({ databaseName }) => {
   const [query, setQuery] = useState('');
@@ -54,20 +50,6 @@ export const SQLQueryInterface: React.FC<SQLQueryInterfaceProps> = ({ databaseNa
   const [allowDestructive, setAllowDestructive] = useState(false);
   const [showDestructiveWarning, setShowDestructiveWarning] = useState(false);
   const [pendingQuery, setPendingQuery] = useState<string | null>(null);
-  const [schema, setSchema] = useState<SchemaMetadata | null>(null);
-
-  // Fetch database schema for autocomplete
-  useEffect(() => {
-    const fetchSchema = async () => {
-      try {
-        const data = await getSchemaMetadata();
-        setSchema(data);
-      } catch (error) {
-        console.error('[SQL] Failed to fetch schema:', error);
-      }
-    };
-    fetchSchema();
-  }, []);
 
   const handleExecuteQuery = async (forceExecute: boolean = false) => {
     if (!query.trim()) return;
@@ -222,10 +204,7 @@ export const SQLQueryInterface: React.FC<SQLQueryInterfaceProps> = ({ databaseNa
             language="sql"
             height={300}
             placeholder="Enter your SQL query here..."
-            suggestions={schema ? {
-              tables: schema.tables,
-              columns: schema.columns,
-            } : undefined}
+            schemaEndpoint="http://localhost:8771/api/v1/operations/databases/libsql/schema"
           />
         </Box>
 
