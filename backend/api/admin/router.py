@@ -494,6 +494,7 @@ async def get_logs_stats(
     by_level = {row[0]: row[1] for row in rows}
     
     # Calculate trends by comparing with 1 hour ago
+    now_dt = datetime.utcnow()
     one_hour_ago = now_dt - timedelta(hours=1)
     
     # Get total logs from 1 hour ago
@@ -533,7 +534,6 @@ async def get_logs_stats(
     by_subsystem = {row[0]: row[1] for row in rows}
     
     # Recent activity - only last 24 hours
-    now_dt = datetime.utcnow()
     start_time = now_dt - timedelta(hours=24)
     rows = conn.execute(
         "SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM system_logs WHERE timestamp >= ? GROUP BY hour ORDER BY hour",

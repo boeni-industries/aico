@@ -70,6 +70,37 @@ export interface DatabaseStatsResponse {
 }
 
 // ============================================================================
+// Stage 1: Database Details - Table/Collection Browser
+// ============================================================================
+
+export interface TableInfo {
+  name: string;
+  row_count: number;
+  size_bytes?: number;
+  columns?: number;
+}
+
+export interface CollectionInfo {
+  name: string;
+  document_count: number;
+  metadata?: Record<string, any>;
+  dimension?: number;
+}
+
+export interface LMDBDatabaseInfo {
+  name: string;
+  key_count: number;
+  size_bytes?: number;
+}
+
+export interface DatabaseDetailsResponse {
+  database_type: string;
+  tables?: TableInfo[];
+  collections?: CollectionInfo[];
+  databases?: LMDBDatabaseInfo[];
+}
+
+// ============================================================================
 // User Sessions
 // ============================================================================
 
@@ -147,6 +178,55 @@ export async function fetchDatabaseStats(): Promise<DatabaseStatsResponse> {
   return httpJson<DatabaseStatsResponse>({
     method: 'GET',
     path: `${BASE_URL}/operations/databases`,
+  });
+}
+
+/**
+ * Fetch detailed database information (tables/collections/databases)
+ */
+export async function fetchDatabaseDetails(databaseType: string): Promise<DatabaseDetailsResponse> {
+  return httpJson<DatabaseDetailsResponse>({
+    method: 'GET',
+    path: `${BASE_URL}/operations/databases/${databaseType}/details`,
+  });
+}
+
+// ============================================================================
+// Stage 2: SQL Query Interface
+// ============================================================================
+
+export interface QueryRequest {
+  query: string;
+  limit?: number;
+  allow_destructive?: boolean;
+}
+
+export interface QueryResult {
+  success: boolean;
+  error?: string;
+  columns: string[];
+  rows: any[][];
+  row_count: number;
+  is_destructive: boolean;
+}
+
+export interface SchemaMetadata {
+  tables: string[];
+  columns: Record<string, string[]>;
+}
+
+export async function getSchemaMetadata(): Promise<SchemaMetadata> {
+  return httpJson<SchemaMetadata>({
+    method: 'GET',
+    path: `${BASE_URL}/operations/databases/libsql/schema`,
+  });
+}
+
+export async function executeSQLQuery(request: QueryRequest): Promise<QueryResult> {
+  return httpJson<QueryResult>({
+    method: 'POST',
+    path: `${BASE_URL}/operations/databases/libsql/query`,
+    body: request,
   });
 }
 

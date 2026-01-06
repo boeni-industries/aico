@@ -5,3 +5,6 @@
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Monaco Editor files (copied from node_modules during build)
+public/monaco-editor/

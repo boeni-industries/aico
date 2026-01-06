@@ -9,12 +9,20 @@ function sortHistory(history: EmotionHistoryItemDto[]): EmotionHistoryItemDto[] 
 
 function formatTooltipTimestamp(timestamp: string): { date: string; time: string } {
   try {
+    // Clean timestamp: remove trailing 'Z' if both +00:00 and Z are present
+    let cleanTimestamp = timestamp;
+    if (timestamp.includes('+00:00Z')) {
+      cleanTimestamp = timestamp.replace('+00:00Z', '+00:00');
+    } else if (timestamp.match(/[+-]\d{2}:\d{2}Z$/)) {
+      // Remove trailing Z if timezone offset is present
+      cleanTimestamp = timestamp.slice(0, -1);
+    }
+    
     // Handle ISO 8601 format with timezone
-    const date = new Date(timestamp);
+    const date = new Date(cleanTimestamp);
     if (isNaN(date.getTime())) {
-      console.warn('Invalid timestamp:', timestamp);
       // Try regex fallback for ISO format
-      const match = timestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+      const match = cleanTimestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
       if (match) {
         const [, year, month, day, hours, minutes, seconds] = match;
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -531,17 +539,24 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
   // Format timestamp for x-axis (short format)
   const formatTimeShort = (timestamp: string) => {
     try {
+      // Clean timestamp: remove trailing 'Z' if both +00:00 and Z are present
+      let cleanTimestamp = timestamp;
+      if (timestamp.includes('+00:00Z')) {
+        cleanTimestamp = timestamp.replace('+00:00Z', '+00:00');
+      } else if (timestamp.match(/[+-]\d{2}:\d{2}Z$/)) {
+        // Remove trailing Z if timezone offset is present
+        cleanTimestamp = timestamp.slice(0, -1);
+      }
+      
       // Parse ISO timestamp from backend
-      const date = new Date(timestamp);
+      const date = new Date(cleanTimestamp);
       if (!date || isNaN(date.getTime())) {
-        console.warn('Invalid timestamp for short format:', timestamp);
         return '';
       }
       const hours = date.getHours().toString().padStart(2, '0');
       const minutes = date.getMinutes().toString().padStart(2, '0');
       return `${hours}:${minutes}`;
     } catch (e) {
-      console.error('Error formatting timestamp short:', timestamp, e);
       return '';
     }
   };
@@ -549,18 +564,26 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
   // Format timestamp for tooltip (readable format)
   const formatTimeFull = (timestamp: string) => {
     try {
+      // Clean timestamp: remove trailing 'Z' if both +00:00 and Z are present
+      let cleanTimestamp = timestamp;
+      if (timestamp.includes('+00:00Z')) {
+        cleanTimestamp = timestamp.replace('+00:00Z', '+00:00');
+      } else if (timestamp.match(/[+-]\d{2}:\d{2}Z$/)) {
+        // Remove trailing Z if timezone offset is present
+        cleanTimestamp = timestamp.slice(0, -1);
+      }
+      
       // Parse ISO timestamp from backend (e.g., "2025-12-27T00:28:00.123456+00:00")
-      const date = new Date(timestamp);
+      const date = new Date(cleanTimestamp);
       if (!date || isNaN(date.getTime())) {
-        console.warn('Invalid timestamp for full format:', timestamp);
         // Fallback: try to extract readable parts from string
-        const match = timestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+        const match = cleanTimestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
         if (match) {
           const [, year, month, day, hours, minutes] = match;
           const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
           return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${hours}:${minutes}`;
         }
-        return timestamp.substring(0, 19).replace('T', ' ');
+        return cleanTimestamp.substring(0, 19).replace('T', ' ');
       }
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const month = months[date.getMonth()];
@@ -569,7 +592,6 @@ const EmotionTimeSeries: React.FC<{ history: EmotionHistoryItemDto[] }> = ({ his
       const minutes = date.getMinutes().toString().padStart(2, '0');
       return `${month} ${day}, ${hours}:${minutes}`;
     } catch (e) {
-      console.error('Error formatting timestamp full:', timestamp, e);
       return timestamp.substring(0, 19).replace('T', ' ');
     }
   };

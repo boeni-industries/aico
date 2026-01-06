@@ -32,6 +32,108 @@ class DatabaseStatsResponse(BaseModel):
     databases: list[DatabaseMetrics] = Field(..., description="List of database metrics")
 
 
+class TableInfo(BaseModel):
+    """Information about a database table"""
+    name: str = Field(..., description="Table name")
+    row_count: int = Field(..., description="Number of rows")
+    size_bytes: Optional[int] = Field(None, description="Table size in bytes")
+    columns: Optional[int] = Field(None, description="Number of columns")
+
+
+class CollectionInfo(BaseModel):
+    """Information about a ChromaDB collection"""
+    name: str = Field(..., description="Collection name")
+    document_count: int = Field(..., description="Number of documents")
+    metadata: Optional[dict] = Field(None, description="Collection metadata")
+    dimension: Optional[int] = Field(None, description="Embedding dimension")
+
+
+class LMDBDatabaseInfo(BaseModel):
+    """Information about an LMDB database"""
+    name: str = Field(..., description="Database name")
+    key_count: int = Field(..., description="Number of keys")
+    size_bytes: Optional[int] = Field(None, description="Database size")
+
+
+class DatabaseDetailsResponse(BaseModel):
+    """Response model for database details"""
+    database_type: str = Field(..., description="Database type (libsql, chromadb, lmdb)")
+    tables: Optional[list[TableInfo]] = Field(None, description="Tables (LibSQL)")
+    collections: Optional[list[CollectionInfo]] = Field(None, description="Collections (ChromaDB)")
+    databases: Optional[list[LMDBDatabaseInfo]] = Field(None, description="Databases (LMDB)")
+
+
+class QueryResult(BaseModel):
+    """Result of a SQL query execution"""
+    success: bool = Field(..., description="Whether query executed successfully")
+    error: Optional[str] = Field(None, description="Error message if query failed")
+    columns: list[str] = Field(default_factory=list, description="Column names")
+    rows: list[list] = Field(default_factory=list, description="Result rows")
+    row_count: int = Field(0, description="Number of rows returned")
+    is_destructive: bool = Field(False, description="Whether query contains destructive operations")
+
+
+class QueryRequest(BaseModel):
+    """Request to execute a SQL query"""
+    query: str = Field(..., description="SQL query to execute")
+    limit: Optional[int] = Field(100, description="Maximum rows to return")
+    allow_destructive: bool = Field(False, description="Allow destructive operations (DELETE, UPDATE, INSERT)")
+
+
+class SchemaMetadata(BaseModel):
+    """Database schema metadata for autocomplete"""
+    tables: list[str] = Field(default_factory=list, description="List of table names")
+    columns: dict[str, list[str]] = Field(default_factory=dict, description="Columns per table")
+
+
+class BackupInfo(BaseModel):
+    """Information about a database backup"""
+    id: str = Field(..., description="Backup ID")
+    database_name: str = Field(..., description="Database name")
+    created_at: str = Field(..., description="Backup creation timestamp")
+    size_bytes: int = Field(..., description="Backup size in bytes")
+    backup_path: str = Field(..., description="Path to backup file")
+    status: str = Field(..., description="Backup status (completed, failed, in_progress)")
+
+
+class BackupResponse(BaseModel):
+    """Response for backup operation"""
+    success: bool = Field(..., description="Whether backup succeeded")
+    backup_info: Optional[BackupInfo] = Field(None, description="Backup information")
+    message: str = Field(..., description="Status message")
+
+
+class BackupHistoryResponse(BaseModel):
+    """Response for backup history"""
+    backups: list[BackupInfo] = Field(..., description="List of backups")
+    total_count: int = Field(..., description="Total number of backups")
+
+
+class RestoreRequest(BaseModel):
+    """Request to restore from backup"""
+    backup_id: str = Field(..., description="Backup ID to restore from")
+
+
+class RestoreResponse(BaseModel):
+    """Response for restore operation"""
+    success: bool = Field(..., description="Whether restore succeeded")
+    message: str = Field(..., description="Status message")
+
+
+class StorageDataPoint(BaseModel):
+    """Storage size at a point in time"""
+    timestamp: str = Field(..., description="Timestamp")
+    size_bytes: int = Field(..., description="Size in bytes")
+
+
+class StorageTrendResponse(BaseModel):
+    """Response model for storage growth trends"""
+    database_name: str = Field(..., description="Database name")
+    data_points: list[StorageDataPoint] = Field(..., description="Historical data points")
+    current_size: int = Field(..., description="Current size in bytes")
+    growth_rate: Optional[float] = Field(None, description="Growth rate (bytes per day)")
+
+
 class UserSession(BaseModel):
     """Active user session information"""
     user_uuid: str = Field(..., description="User UUID")

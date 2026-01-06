@@ -67,15 +67,17 @@ export const AutoRefreshControls: React.FC<AutoRefreshControlsProps> = ({
         </IconButton>
       </Tooltip>
       
-      <Tooltip title="Refresh now">
-        <IconButton
-          size="small"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          sx={{ '&:hover': { bgcolor: 'action.hover' } }}
-        >
-          <RefreshIcon fontSize="small" />
-        </IconButton>
+      <Tooltip title={isRefreshing ? "Refreshing..." : "Refresh now"}>
+        <span>
+          <IconButton
+            size="small"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            sx={{ '&:hover': { bgcolor: 'action.hover' } }}
+          >
+            <RefreshIcon fontSize="small" />
+          </IconButton>
+        </span>
       </Tooltip>
     </Stack>
   );

@@ -6,19 +6,27 @@ REST API endpoints for operations monitoring, database metrics, and active sessi
 
 import os
 import sqlite3
+import time
+import shutil
+import uuid
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from datetime import datetime, timedelta
 
 from aico.core.logging import get_logger
 from aico.core.version import get_backend_version, get_modelservice_version, get_studio_version
 from backend.api.operations.schemas import (
     DatabaseStatsResponse, DatabaseMetrics,
+    DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo,
+    QueryRequest, QueryResult, SchemaMetadata,
+    BackupInfo, BackupResponse, BackupHistoryResponse, RestoreRequest, RestoreResponse,
+    StorageTrendResponse, StorageDataPoint,
     ActiveSessionsResponse, UserSession,
     TopologyResponse, ServiceNode, ServiceConnection
 )
 from backend.api.system.dependencies import get_current_user, get_db_connection
 from backend.api.system.router import start_time, format_uptime
+from backend.api.operations import database_admin
 
 logger = get_logger("backend", "api.operations")
 
@@ -618,6 +626,78 @@ async def get_system_topology(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve system topology: {str(e)}"
         )
+
+
+# ============================================================================
+# Stage 1: Database Details - Table/Collection Browser
+# ============================================================================
+
+@router.get("/databases/{database_type}/details", response_model=DatabaseDetailsResponse)
+async def get_database_details(
+    database_type: str,
+    request: Request,
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)]
+) -> DatabaseDetailsResponse:
+    """
+    Get detailed information about database tables/collections.
+    
+    - **libsql**: Returns list of tables with row counts
+    - **chromadb**: Returns list of collections with document counts
+    - **lmdb**: Returns list of databases with key counts
+    """
+    if database_type == "libsql":
+        return await database_admin.get_libsql_details(db_connection)
+    elif database_type == "chromadb":
+        return await database_admin.get_chromadb_details(request)
+    elif database_type == "lmdb":
+        return await database_admin.get_lmdb_details()
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown database type: {database_type}"
+        )
+
+
+# ============================================================================
+# Stage 2: SQL Query Interface
+# ============================================================================
+
+@router.get("/databases/libsql/schema", response_model=SchemaMetadata)
+async def get_database_schema(
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)]
+) -> SchemaMetadata:
+    """
+    Get database schema metadata for autocomplete.
+    Returns table names and their columns.
+    """
+    return await database_admin.get_schema_metadata(db_connection)
+
+
+@router.post("/databases/libsql/query", response_model=QueryResult)
+async def execute_sql_query(
+    query_request: QueryRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)]
+) -> QueryResult:
+    """
+    Execute a SQL query on LibSQL database.
+    
+    **Security**:
+    - SELECT and PRAGMA queries allowed by default
+    - Destructive operations (DELETE, UPDATE, INSERT) require allow_destructive=true
+    - Forbidden operations (DROP, ALTER, TRUNCATE) always blocked
+    - Auto-adds LIMIT to SELECT queries
+    - Maximum query length: 10,000 characters
+    - Execution timeout: 30 seconds
+    """
+    return await database_admin.execute_sql_query(
+        query_request.query,
+        query_request.limit or 100,
+        db_connection,
+        query_request.allow_destructive
+    )
 
 
 # format_uptime is now imported from backend.api.system.router

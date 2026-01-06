@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Typography, Paper, Chip, Alert, CircularProgress, LinearProgress, Collapse, IconButton } from '@mui/material';
-import { Database, HardDrive, AlertCircle, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Table, FileText, Key, Layers } from 'lucide-react';
-import { fetchDatabaseStats, DatabaseMetrics } from '../../api/operations';
+import { Box, Typography, Paper, Chip, Alert, CircularProgress, LinearProgress, Collapse, IconButton, Divider } from '@mui/material';
+import { Database, HardDrive, AlertCircle, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Table, FileText, Key, Layers, List, Hash, Code } from 'lucide-react';
+import { fetchDatabaseStats, DatabaseMetrics, fetchDatabaseDetails, DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo } from '../../api/operations';
+import { SQLQueryInterface } from './SQLQueryInterface';
 
 interface DatabaseStorageProps {
   refreshTrigger?: number;
@@ -52,6 +53,9 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedDb, setExpandedDb] = useState<string | null>(null);
+  const [databaseDetails, setDatabaseDetails] = useState<Record<string, DatabaseDetailsResponse>>({});
+  const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
+  const [showSQLInterface, setShowSQLInterface] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadDatabaseStats();
@@ -102,8 +106,22 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
     };
   }, [databases]);
 
-  const toggleExpanded = (dbName: string) => {
-    setExpandedDb(expandedDb === dbName ? null : dbName);
+  const toggleExpanded = async (dbName: string, dbType: string) => {
+    const isExpanding = expandedDb !== dbName;
+    setExpandedDb(isExpanding ? dbName : null);
+    
+    // Load database details when expanding if not already loaded
+    if (isExpanding && !databaseDetails[dbName]) {
+      setLoadingDetails(prev => ({ ...prev, [dbName]: true }));
+      try {
+        const details = await fetchDatabaseDetails(dbType);
+        setDatabaseDetails(prev => ({ ...prev, [dbName]: details }));
+      } catch (err: any) {
+        console.error(`Failed to load details for ${dbName}:`, err);
+      } finally {
+        setLoadingDetails(prev => ({ ...prev, [dbName]: false }));
+      }
+    }
   };
 
   const renderDatabaseMetrics = (db: DatabaseMetrics) => {
@@ -281,7 +299,7 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                     justifyContent: 'space-between',
                     cursor: 'pointer',
                   }}
-                  onClick={() => toggleExpanded(db.name)}
+                  onClick={() => toggleExpanded(db.name, db.type)}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
                     <Box
@@ -320,8 +338,11 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                           }}
                         />
                       </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                         {config.description}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'text.secondary', display: 'block' }}>
+                        {db.location}
                       </Typography>
                     </Box>
                   </Box>
@@ -343,80 +364,252 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                 {/* Expanded Details */}
                 <Collapse in={isExpanded}>
                   <Box sx={{ px: 2.5, pb: 2.5, pt: 0 }}>
-                    {/* Location */}
-                    <Box sx={{ mb: 2, p: 1.5, borderRadius: '8px', bgcolor: 'rgba(255, 255, 255, 0.03)' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                        Location
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-all' }}>
-                        {db.location}
-                      </Typography>
-                    </Box>
+                    {loadingDetails[db.name] ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                        <CircularProgress size={24} />
+                      </Box>
+                    ) : (
+                      <>
+                        {/* SQL Query Interface for LibSQL - First */}
+                        {db.type === 'libsql' && (
+                          <Box sx={{ mb: 3 }}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                mb: 1.5,
+                                cursor: 'pointer',
+                                p: 1.5,
+                                borderRadius: '8px',
+                                bgcolor: showSQLInterface[db.name] ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)',
+                                border: '1px solid',
+                                borderColor: showSQLInterface[db.name] ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.15)',
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  bgcolor: 'rgba(59, 130, 246, 0.15)',
+                                  borderColor: 'rgba(59, 130, 246, 0.4)',
+                                },
+                              }}
+                              onClick={() => setShowSQLInterface(prev => ({ ...prev, [db.name]: !prev[db.name] }))}
+                            >
+                              <Code size={16} color="#3B82F6" />
+                              <Typography variant="caption" sx={{ fontWeight: 600, color: '#3B82F6', flex: 1 }}>
+                                SQL Query Interface
+                              </Typography>
+                              <IconButton size="small" sx={{ color: '#3B82F6' }}>
+                                {showSQLInterface[db.name] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                              </IconButton>
+                            </Box>
+                            <Collapse in={showSQLInterface[db.name]}>
+                              <Box sx={{ mb: 2 }}>
+                                <SQLQueryInterface databaseName={db.name} />
+                              </Box>
+                            </Collapse>
+                            <Divider sx={{ mb: 2, borderColor: 'rgba(59, 130, 246, 0.2)' }} />
+                          </Box>
+                        )}
 
-                    {/* Metrics Grid */}
-                    {metrics.length > 0 && (
-                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 1.5, mb: 2 }}>
-                        {metrics.map((metric) => (
-                          <Box
-                            key={metric.label}
+                        {/* Metrics Grid - Above table list */}
+                        {metrics.length > 0 && (
+                          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 1.5, mb: 2 }}>
+                            {metrics.map((metric) => (
+                              <Box
+                                key={metric.label}
+                                sx={{
+                                  p: 1.5,
+                                  borderRadius: '8px',
+                                  bgcolor: `${config.color}08`,
+                                  border: '1px solid',
+                                  borderColor: `${config.color}20`,
+                                }}
+                              >
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                  {metric.label}
+                                </Typography>
+                                <Typography variant="body1" sx={{ fontWeight: 600, color: config.color }}>
+                                  {metric.value}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        )}
+
+                        {/* Storage Utilization for LMDB */}
+                        {db.type === 'lmdb' && db.map_size_bytes && db.size_bytes && (
+                          <Box sx={{ mb: 2 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Storage Utilization
+                              </Typography>
+                              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                {((db.size_bytes / db.map_size_bytes) * 100).toFixed(1)}%
+                              </Typography>
+                            </Box>
+                            <LinearProgress
+                              variant="determinate"
+                              value={(db.size_bytes / db.map_size_bytes) * 100}
+                              sx={{
+                                height: 8,
+                                borderRadius: 4,
+                                bgcolor: `${config.color}15`,
+                                '& .MuiLinearProgress-bar': {
+                                  bgcolor: config.color,
+                                  borderRadius: 4,
+                                },
+                              }}
+                            />
+                          </Box>
+                        )}
+
+                        {/* Table/Collection Browser */}
+                        {databaseDetails[db.name] && (
+                          <Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                              <List size={16} color={config.color} />
+                              <Typography variant="caption" sx={{ fontWeight: 600, color: config.color }}>
+                                {db.type === 'libsql' ? 'Tables' : db.type === 'chromadb' ? 'Collections' : 'Databases'}
+                              </Typography>
+                            </Box>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          {/* LibSQL Tables - Compact */}
+                          {databaseDetails[db.name].tables?.map((table: TableInfo) => (
+                            <Box
+                              key={table.name}
+                              sx={{
+                                p: 1,
+                                borderRadius: '6px',
+                                bgcolor: `${config.color}06`,
+                                border: '1px solid',
+                                borderColor: `${config.color}15`,
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  bgcolor: `${config.color}10`,
+                                  borderColor: `${config.color}30`,
+                                  transform: 'translateX(4px)',
+                                },
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                  <Table size={12} color={config.color} />
+                                  <Typography variant="caption" sx={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                    {table.name}
+                                  </Typography>
+                                  {table.columns && (
+                                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
+                                      ({table.columns} cols)
+                                    </Typography>
+                                  )}
+                                </Box>
+                                <Typography variant="caption" sx={{ color: config.color, fontWeight: 600, fontSize: '0.7rem' }}>
+                                  {formatNumber(table.row_count)} rows
+                                </Typography>
+                              </Box>
+                            </Box>
+                          ))}
+                          {/* ChromaDB Collections */}
+                          {databaseDetails[db.name].collections?.map((collection: CollectionInfo) => (
+                            <Box
+                              key={collection.name}
+                              sx={{
+                                p: 1.5,
+                                borderRadius: '8px',
+                                bgcolor: `${config.color}08`,
+                                border: '1px solid',
+                                borderColor: `${config.color}20`,
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  bgcolor: `${config.color}12`,
+                                  borderColor: `${config.color}40`,
+                                  transform: 'translateX(4px)',
+                                },
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Layers size={14} color={config.color} />
+                                  <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
+                                    {collection.name}
+                                  </Typography>
+                                </Box>
+                                <Chip
+                                  label={`${formatNumber(collection.document_count)} docs`}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: `${config.color}15`,
+                                    color: config.color,
+                                    fontSize: '0.65rem',
+                                    height: 20,
+                                    fontWeight: 600,
+                                  }}
+                                />
+                              </Box>
+                              {collection.dimension && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Dimension: {collection.dimension}
+                                </Typography>
+                              )}
+                            </Box>
+                          ))}
+                          {/* LMDB Databases */}
+                          {databaseDetails[db.name].databases?.map((lmdbDb: LMDBDatabaseInfo) => (
+                            <Box
+                              key={lmdbDb.name}
+                              sx={{
+                                p: 1.5,
+                                borderRadius: '8px',
+                                bgcolor: `${config.color}08`,
+                                border: '1px solid',
+                                borderColor: `${config.color}20`,
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  bgcolor: `${config.color}12`,
+                                  borderColor: `${config.color}40`,
+                                  transform: 'translateX(4px)',
+                                },
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Key size={14} color={config.color} />
+                                  <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: 'monospace' }}>
+                                    {lmdbDb.name}
+                                  </Typography>
+                                </Box>
+                                <Chip
+                                  label={`${formatNumber(lmdbDb.key_count)} keys`}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: `${config.color}15`,
+                                    color: config.color,
+                                    fontSize: '0.65rem',
+                                    height: 20,
+                                    fontWeight: 600,
+                                  }}
+                                />
+                              </Box>
+                            </Box>
+                          ))}
+                        </Box>
+                          </Box>
+                        )}
+                      </>
+                    )}
+
+                        {/* Error Details */}
+                        {db.error_details && (
+                          <Alert
+                            severity={db.status === 'critical' ? 'error' : 'warning'}
                             sx={{
-                              p: 1.5,
-                              borderRadius: '8px',
-                              bgcolor: `${config.color}08`,
-                              border: '1px solid',
-                              borderColor: `${config.color}20`,
+                              mt: 2,
+                              fontSize: '0.75rem',
+                              '& .MuiAlert-message': { fontSize: '0.75rem' },
                             }}
                           >
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                              {metric.label}
-                            </Typography>
-                            <Typography variant="body1" sx={{ fontWeight: 600, color: config.color }}>
-                              {metric.value}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Box>
-                    )}
-
-                    {/* Storage Utilization for LMDB */}
-                    {db.type === 'lmdb' && db.map_size_bytes && db.size_bytes && (
-                      <Box sx={{ mb: 2 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Storage Utilization
-                          </Typography>
-                          <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                            {((db.size_bytes / db.map_size_bytes) * 100).toFixed(1)}%
-                          </Typography>
-                        </Box>
-                        <LinearProgress
-                          variant="determinate"
-                          value={(db.size_bytes / db.map_size_bytes) * 100}
-                          sx={{
-                            height: 8,
-                            borderRadius: 4,
-                            bgcolor: `${config.color}15`,
-                            '& .MuiLinearProgress-bar': {
-                              bgcolor: config.color,
-                              borderRadius: 4,
-                            },
-                          }}
-                        />
-                      </Box>
-                    )}
-
-                    {/* Error Details */}
-                    {db.error_details && (
-                      <Alert
-                        severity={db.status === 'critical' ? 'error' : 'warning'}
-                        sx={{
-                          fontSize: '0.75rem',
-                          '& .MuiAlert-message': { fontSize: '0.75rem' },
-                        }}
-                      >
-                        {db.error_details}
-                      </Alert>
-                    )}
+                            {db.error_details}
+                          </Alert>
+                        )}
                   </Box>
                 </Collapse>
               </Paper>
