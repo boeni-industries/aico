@@ -225,9 +225,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     <Paper
       sx={{
         borderRadius: '12px',
-        overflow: 'hidden',
+        overflow: 'visible', // Allow suggest widget to overflow
         border: '1px solid rgba(59, 130, 246, 0.3)',
         bgcolor: 'rgba(0, 0, 0, 0.4)',
+        position: 'relative',
       }}
     >
       <Editor
@@ -271,9 +272,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             preview: true,
             showIcons: true,
             showStatusBar: true,
+            localityBonus: true,
           },
-          // Fix suggestion widget overflow
-          fixedOverflowWidgets: true,
+          // Allow suggestion widget to overflow container bounds
+          fixedOverflowWidgets: false,
+          scrollbar: {
+            alwaysConsumeMouseWheel: false,
+          },
           placeholder: placeholder,
           bracketPairColorization: {
             enabled: true,
