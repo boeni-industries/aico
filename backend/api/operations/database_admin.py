@@ -6,6 +6,8 @@ Provides advanced database management capabilities:
 - SQL query execution interface
 - Storage growth trends and analytics
 - Backup creation, history, and restore
+- LMDB key-value browsing
+- ChromaDB semantic search
 """
 
 import asyncio
@@ -27,7 +29,13 @@ from backend.api.operations.schemas import (
     QueryResult, SchemaMetadata,
     BackupInfo, BackupResponse, BackupHistoryResponse, RestoreResponse,
     StorageTrendResponse, StorageDataPoint,
+    LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyInfo, LMDBKeyValueResponse,
+    ChromaDBSearchRequest, ChromaDBSearchResponse, ChromaDBDocument,
 )
+
+# Import browser functions
+from backend.api.operations.lmdb_browser import browse_lmdb_keys, get_lmdb_key_value
+from backend.api.operations.chromadb_browser import search_chromadb
 
 logger = get_logger("backend", "api.operations.database_admin")
 

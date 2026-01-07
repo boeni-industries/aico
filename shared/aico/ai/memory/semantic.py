@@ -82,8 +82,8 @@ class SemanticMemoryStore:
         # Hybrid search configuration
         self._fusion_method = memory_config.get("fusion_method", "rrf")
         self._rrf_rank_constant = memory_config.get("rrf_rank_constant", 0)  # 0 = adaptive
-        self._bm25_min_idf = memory_config.get("bm25_min_idf", 0.6)  # IDF filtering threshold
-        self._min_semantic_score = memory_config.get("min_semantic_score", 0.35)  # Relevance threshold
+        self._bm25_min_idf = memory_config.get("bm25_min_idf", 0.3)  # IDF filtering threshold (lowered for small datasets)
+        self._min_semantic_score = memory_config.get("min_semantic_score", 0.0)  # Relevance threshold (disabled for browsing)
         self._semantic_weight = memory_config.get("semantic_weight", 0.7)
         self._bm25_weight = memory_config.get("bm25_weight", 0.3)
         
@@ -319,8 +319,13 @@ class SemanticMemoryStore:
                     min_idf=self._bm25_min_idf
                 )
             
+            logger.info(f"Scored {len(scored_docs)} documents after hybrid scoring")
+            if scored_docs:
+                logger.info(f"Top 3 scores: {[doc['hybrid_score'] for doc in scored_docs[:3]]}")
+            
             # Filter by threshold and format
             similarity_threshold = min_similarity if min_similarity is not None else self._min_similarity
+            logger.info(f"Using similarity threshold: {similarity_threshold}")
             segments = []
             
             for doc in scored_docs:

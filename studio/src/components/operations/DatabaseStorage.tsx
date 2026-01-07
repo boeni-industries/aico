@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Typography, Paper, Chip, Alert, CircularProgress, LinearProgress, Collapse, IconButton, Divider } from '@mui/material';
-import { Database, HardDrive, AlertCircle, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Table, FileText, Key, Layers, List, Hash, Code } from 'lucide-react';
+import { Database, HardDrive, AlertCircle, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Table, FileText, Key, Layers, List, Hash, Code, Search as SearchIcon } from 'lucide-react';
 import { fetchDatabaseStats, DatabaseMetrics, fetchDatabaseDetails, DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo } from '../../api/operations';
 import { SQLQueryInterface } from './SQLQueryInterface';
+import { LMDBBrowser } from './LMDBBrowser';
+import { ChromaDBBrowser } from './ChromaDBBrowser';
 
 interface DatabaseStorageProps {
   refreshTrigger?: number;
@@ -56,6 +58,8 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
   const [databaseDetails, setDatabaseDetails] = useState<Record<string, DatabaseDetailsResponse>>({});
   const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
   const [showSQLInterface, setShowSQLInterface] = useState<Record<string, boolean>>({});
+  const [showLMDBBrowser, setShowLMDBBrowser] = useState<Record<string, boolean>>({});
+  const [showChromaDBBrowser, setShowChromaDBBrowser] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadDatabaseStats();
@@ -370,7 +374,7 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                       </Box>
                     ) : (
                       <>
-                        {/* SQL Query Interface for LibSQL - First */}
+                        {/* SQL Query Interface for LibSQL */}
                         {db.type === 'libsql' && (
                           <Box sx={{ mb: 3 }}>
                             <Box
@@ -407,6 +411,86 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                               </Box>
                             </Collapse>
                             <Divider sx={{ mb: 2, borderColor: 'rgba(59, 130, 246, 0.2)' }} />
+                          </Box>
+                        )}
+
+                        {/* LMDB Browser */}
+                        {db.type === 'lmdb' && (
+                          <Box sx={{ mb: 3 }}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                mb: 1.5,
+                                cursor: 'pointer',
+                                p: 1.5,
+                                borderRadius: '8px',
+                                bgcolor: showLMDBBrowser[db.name] ? `${config.color}15` : `${config.color}08`,
+                                border: '1px solid',
+                                borderColor: showLMDBBrowser[db.name] ? `${config.color}30` : `${config.color}15`,
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  bgcolor: `${config.color}15`,
+                                  borderColor: `${config.color}40`,
+                                },
+                              }}
+                              onClick={() => setShowLMDBBrowser(prev => ({ ...prev, [db.name]: !prev[db.name] }))}
+                            >
+                              <SearchIcon size={16} color={config.color} />
+                              <Typography variant="caption" sx={{ fontWeight: 600, color: config.color, flex: 1 }}>
+                                Browse Data
+                              </Typography>
+                              <IconButton size="small" sx={{ color: config.color }}>
+                                {showLMDBBrowser[db.name] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                              </IconButton>
+                            </Box>
+                            <Collapse in={showLMDBBrowser[db.name]}>
+                              <Box sx={{ mb: 2 }}>
+                                <LMDBBrowser databaseName="session_memory" color={config.color} />
+                              </Box>
+                            </Collapse>
+                            <Divider sx={{ mb: 2, borderColor: `${config.color}20` }} />
+                          </Box>
+                        )}
+
+                        {/* ChromaDB Browser */}
+                        {db.type === 'chromadb' && (
+                          <Box sx={{ mb: 3 }}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                mb: 1.5,
+                                cursor: 'pointer',
+                                p: 1.5,
+                                borderRadius: '8px',
+                                bgcolor: showChromaDBBrowser[db.name] ? `${config.color}15` : `${config.color}08`,
+                                border: '1px solid',
+                                borderColor: showChromaDBBrowser[db.name] ? `${config.color}30` : `${config.color}15`,
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  bgcolor: `${config.color}15`,
+                                  borderColor: `${config.color}40`,
+                                },
+                              }}
+                              onClick={() => setShowChromaDBBrowser(prev => ({ ...prev, [db.name]: !prev[db.name] }))}
+                            >
+                              <SearchIcon size={16} color={config.color} />
+                              <Typography variant="caption" sx={{ fontWeight: 600, color: config.color, flex: 1 }}>
+                                Semantic Search
+                              </Typography>
+                              <IconButton size="small" sx={{ color: config.color }}>
+                                {showChromaDBBrowser[db.name] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                              </IconButton>
+                            </Box>
+                            <Collapse in={showChromaDBBrowser[db.name]}>
+                              <Box sx={{ mb: 2 }}>
+                                <ChromaDBBrowser collectionName="conversation_segments" color={config.color} />
+                              </Box>
+                            </Collapse>
+                            <Divider sx={{ mb: 2, borderColor: `${config.color}20` }} />
                           </Box>
                         )}
 

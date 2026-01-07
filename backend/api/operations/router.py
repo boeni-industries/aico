@@ -27,10 +27,14 @@ from backend.api.operations.schemas import (
 from backend.api.system.dependencies import get_current_user, get_db_connection
 from backend.api.system.router import start_time, format_uptime
 from backend.api.operations import database_admin
+from backend.api.operations import database_routes
 
 logger = get_logger("backend", "api.operations")
 
 router = APIRouter()
+
+# Include database routes (LMDB/ChromaDB browsing, SQL queries, backups)
+router.include_router(database_routes.router, tags=["databases"])
 
 
 def get_file_size(path: str) -> int:

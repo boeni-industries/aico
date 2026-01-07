@@ -55,6 +55,65 @@ class LMDBDatabaseInfo(BaseModel):
     size_bytes: Optional[int] = Field(None, description="Database size")
 
 
+class LMDBKeyInfo(BaseModel):
+    """Information about an LMDB key-value pair"""
+    key: str = Field(..., description="Key name")
+    value_preview: str = Field(..., description="Preview of value (truncated)")
+    size_bytes: int = Field(..., description="Value size in bytes")
+    timestamp: Optional[str] = Field(None, description="Timestamp if available in value")
+
+
+class LMDBBrowseRequest(BaseModel):
+    """Request to browse LMDB keys"""
+    database_name: str = Field(..., description="LMDB database name (e.g., session_memory)")
+    key_prefix: Optional[str] = Field(None, description="Filter by key prefix")
+    user_id: Optional[str] = Field(None, description="Filter by user_id in value")
+    limit: int = Field(50, description="Maximum keys to return")
+    offset: int = Field(0, description="Offset for pagination")
+
+
+class LMDBBrowseResponse(BaseModel):
+    """Response for LMDB browse operation"""
+    database_name: str = Field(..., description="Database name")
+    keys: list[LMDBKeyInfo] = Field(..., description="List of keys")
+    total_count: int = Field(..., description="Total matching keys")
+    has_more: bool = Field(..., description="Whether more results exist")
+
+
+class LMDBKeyValueResponse(BaseModel):
+    """Response for getting a specific LMDB key value"""
+    key: str = Field(..., description="Key name")
+    value: dict = Field(..., description="Full value as JSON")
+    size_bytes: int = Field(..., description="Value size in bytes")
+    database_name: str = Field(..., description="Database name")
+
+
+class ChromaDBSearchRequest(BaseModel):
+    """Request to search ChromaDB"""
+    collection_name: str = Field(..., description="Collection name")
+    query_text: str = Field(..., description="Search query text")
+    user_id: Optional[str] = Field(None, description="Filter by user_id")
+    conversation_id: Optional[str] = Field(None, description="Filter by conversation_id")
+    min_similarity: float = Field(0.4, description="Minimum similarity score")
+    limit: int = Field(10, description="Maximum results to return")
+
+
+class ChromaDBDocument(BaseModel):
+    """ChromaDB document result"""
+    id: str = Field(..., description="Document ID")
+    content: str = Field(..., description="Document content")
+    metadata: dict = Field(..., description="Document metadata")
+    similarity_score: float = Field(..., description="Similarity score")
+    distance: float = Field(..., description="Vector distance")
+
+
+class ChromaDBSearchResponse(BaseModel):
+    """Response for ChromaDB search"""
+    collection_name: str = Field(..., description="Collection name")
+    documents: list[ChromaDBDocument] = Field(..., description="Matching documents")
+    total_count: int = Field(..., description="Number of results")
+
+
 class DatabaseDetailsResponse(BaseModel):
     """Response model for database details"""
     database_type: str = Field(..., description="Database type (libsql, chromadb, lmdb)")

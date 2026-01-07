@@ -13,6 +13,8 @@ from backend.api.operations.schemas import (
     QueryRequest, QueryResult,
     BackupResponse, BackupHistoryResponse, RestoreRequest, RestoreResponse,
     StorageTrendResponse,
+    LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyValueResponse,
+    ChromaDBSearchRequest, ChromaDBSearchResponse,
 )
 from backend.api.operations import database_admin
 
@@ -132,3 +134,59 @@ async def restore_backup(
     A pre-restore backup of the current database will be created automatically.
     """
     return await database_admin.restore_from_backup(restore_request.backup_id)
+
+
+# ============================================================================
+# LMDB Browsing
+# ============================================================================
+
+@router.post("/databases/lmdb/browse", response_model=LMDBBrowseResponse)
+async def browse_lmdb_keys(
+    browse_request: LMDBBrowseRequest,
+    user: Annotated[dict, Depends(get_current_user)]
+) -> LMDBBrowseResponse:
+    """
+    Browse LMDB keys with filtering and pagination.
+    
+    Supports filtering by:
+    - Key prefix
+    - User ID (searches in value JSON)
+    - Pagination (limit/offset)
+    """
+    return await database_admin.browse_lmdb_keys(browse_request)
+
+
+@router.get("/databases/lmdb/{database_name}/key/{key}", response_model=LMDBKeyValueResponse)
+async def get_lmdb_key_value(
+    database_name: str,
+    key: str,
+    user: Annotated[dict, Depends(get_current_user)]
+) -> LMDBKeyValueResponse:
+    """
+    Get the full value for a specific LMDB key.
+    
+    Returns the complete JSON value for the key.
+    """
+    return await database_admin.get_lmdb_key_value(database_name, key)
+
+
+# ============================================================================
+# ChromaDB Browsing
+# ============================================================================
+
+@router.post("/databases/chromadb/search", response_model=ChromaDBSearchResponse)
+async def search_chromadb(
+    search_request: ChromaDBSearchRequest,
+    request: Request,
+    user: Annotated[dict, Depends(get_current_user)]
+) -> ChromaDBSearchResponse:
+    """
+    Search ChromaDB using semantic similarity.
+    
+    Supports:
+    - Natural language queries
+    - Filtering by user_id, conversation_id
+    - Minimum similarity threshold
+    - Result limit
+    """
+    return await database_admin.search_chromadb(search_request, request)

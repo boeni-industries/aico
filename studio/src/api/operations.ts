@@ -192,6 +192,98 @@ export async function fetchDatabaseDetails(databaseType: string): Promise<Databa
 }
 
 // ============================================================================
+// LMDB Browsing
+// ============================================================================
+
+export interface LMDBKeyInfo {
+  key: string;
+  value_preview: string;
+  size_bytes: number;
+  timestamp?: string;
+}
+
+export interface LMDBBrowseRequest {
+  database_name: string;
+  key_prefix?: string;
+  user_id?: string;
+  limit: number;
+  offset: number;
+}
+
+export interface LMDBBrowseResponse {
+  database_name: string;
+  keys: LMDBKeyInfo[];
+  total_count: number;
+  has_more: boolean;
+}
+
+export interface LMDBKeyValueResponse {
+  key: string;
+  value: Record<string, any>;
+  size_bytes: number;
+  database_name: string;
+}
+
+/**
+ * Browse LMDB keys with filtering and pagination
+ */
+export async function browseLMDBKeys(request: LMDBBrowseRequest): Promise<LMDBBrowseResponse> {
+  return httpJson<LMDBBrowseResponse>({
+    method: 'POST',
+    path: `${BASE_URL}/operations/databases/lmdb/browse`,
+    body: request,
+  });
+}
+
+/**
+ * Get full value for a specific LMDB key
+ */
+export async function getLMDBKeyValue(databaseName: string, key: string): Promise<LMDBKeyValueResponse> {
+  return httpJson<LMDBKeyValueResponse>({
+    method: 'GET',
+    path: `${BASE_URL}/operations/databases/lmdb/${databaseName}/key/${encodeURIComponent(key)}`,
+  });
+}
+
+// ============================================================================
+// ChromaDB Browsing
+// ============================================================================
+
+export interface ChromaDBSearchRequest {
+  collection_name: string;
+  query_text: string;
+  user_id?: string;
+  conversation_id?: string;
+  min_similarity: number;
+  limit: number;
+}
+
+export interface ChromaDBDocument {
+  id: string;
+  content: string;
+  metadata: Record<string, any>;
+  similarity_score: number;
+  distance: number;
+}
+
+export interface ChromaDBSearchResponse {
+  collection_name: string;
+  documents: ChromaDBDocument[];
+  total_count: number;
+}
+
+/**
+ * Search ChromaDB using semantic similarity
+ */
+export async function searchChromaDB(request: ChromaDBSearchRequest): Promise<ChromaDBSearchResponse> {
+  return httpJson<ChromaDBSearchResponse>({
+    method: 'POST',
+    path: `${BASE_URL}/operations/databases/chromadb/search`,
+    body: request,
+  });
+}
+
+// ============================================================================
 // Stage 2: SQL Query Interface
 // ============================================================================
 
