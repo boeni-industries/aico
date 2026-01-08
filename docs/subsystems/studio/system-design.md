@@ -4,9 +4,10 @@
 
 The System section gives a **structural view of AICO as a product**:
 
+- Configuration management and validation.
+- Plugins and extensions.
 - Versions and compatibility.
 - Database schema and migrations.
-- Plugins and extensions.
 - Developer tooling.
 
 The design principle is **"product cockpit"**:
@@ -16,18 +17,75 @@ The design principle is **"product cockpit"**:
 
 ## 2. Page Layout
 
-### 2.1 Main Layout
+The System page uses a **tab-based layout** with the following tabs:
 
+### 2.1 Configuration Tab (Default)
+
+**Purpose:** Unified configuration management and validation.
+
+**Layout:**
+- **Top row – Configuration domains**
+  - Cards for each domain (Core, Database, Security, Service Auth).
+  - Each card: validation status, source hierarchy, last modified.
+
+- **Middle – Configuration editor**
+  - Left: Domain selector and key browser.
+  - Right: Live YAML/JSON editor with schema validation.
+
+- **Bottom – Actions**
+  - Export/Import buttons, Reload configuration, Validate all domains.
+
+### 2.2 Plugins & Extensions Tab
+
+**Purpose:** Plugin registry and lifecycle management.
+
+**Layout:**
+- **Top row – Plugin statistics**
+  - Active plugins count, disabled count, health status.
+
+- **Middle – Plugin list**
+  - Table/cards showing all registered plugins.
+  - Columns: Name, Version, Status, Priority, Dependencies, Health.
+  - Enable/disable toggles, reload buttons.
+
+- **Bottom – Plugin execution order**
+  - Visual dependency graph showing startup sequence.
+
+### 2.3 Versions Tab
+
+**Purpose:** Component versions and compatibility.
+
+**Layout:**
 - **Top row – Version overview**
   - Cards for Backend, Modelservice, Shared Library, Frontend, Studio.
   - Each card: version, build date, status vs latest recommended.
 
-- **Middle – Schema & Migrations / Plugins**
-  - Left: Database schema panel.
-  - Right: Plugins & Extensions panel.
+- **Middle – Compatibility matrix**
+  - Shows version dependencies and compatibility warnings.
 
-- **Bottom – Developer tools**
-  - Links to CLI commands, schema generation, test suites.
+### 2.4 Schema & Migrations Tab
+
+**Purpose:** Database schema version and migration history.
+
+**Layout:**
+- **Top – Current schema version**
+  - Schema version, migrations applied, pending migrations.
+
+- **Middle – Migration timeline**
+  - Timeline or stepper of major schema milestones.
+
+- **Bottom – Migration actions**
+  - Run pending migrations, rollback options (with warnings).
+
+### 2.5 Developer Tools Tab
+
+**Purpose:** Developer utilities and shortcuts.
+
+**Layout:**
+- **CLI shortcuts** – Quick access to common CLI commands.
+- **Test suites** – Links to run test suites.
+- **Schema generation** – Tools for schema validation and generation.
+- **Documentation links** – Quick access to subsystem docs.
 
 ## 3. Content Design
 

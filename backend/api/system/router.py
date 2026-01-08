@@ -17,6 +17,10 @@ logger = get_logger("backend", "api.system")
 
 router = APIRouter()
 
+# Include metrics router
+from backend.api.system.metrics import router as metrics_router
+router.include_router(metrics_router)
+
 # Track server start time
 start_time = time.time()
 

@@ -8,6 +8,7 @@ import { UsersSessions } from '../components/operations/UsersSessions';
 import { SchedulerJobs } from '../components/operations/SchedulerJobs';
 import { LogsEvents } from '../components/operations/LogsEvents';
 import { DatabaseStorage } from '../components/operations/DatabaseStorage';
+import { MetricsPage } from './MetricsPage';
 
 type OperationsTab = 'overview' | 'topology' | 'users' | 'scheduler' | 'logs' | 'database' | 'metrics';
 
@@ -80,7 +81,7 @@ export const OperationsPage: React.FC = () => {
         {activeTab === 'scheduler' && <SchedulerJobs refreshTrigger={refreshTrigger} />}
         {activeTab === 'logs' && <LogsEvents />}
         {activeTab === 'database' && <DatabaseStorage refreshTrigger={refreshTrigger} />}
-        {activeTab === 'metrics' && <Typography>System Metrics - Coming Soon</Typography>}
+        {activeTab === 'metrics' && <MetricsPage />}
       </Box>
     </Box>
   );
