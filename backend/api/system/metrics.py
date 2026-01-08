@@ -146,68 +146,146 @@ def get_metric_status(value: float, thresholds: Dict[str, float]) -> str:
 # API Endpoints
 @router.get("/gateway", response_model=GatewayMetrics)
 async def get_gateway_metrics(request: Request):
-    """Get API Gateway performance metrics."""
+    """Get API Gateway performance metrics from real OpenTelemetry data."""
     db_connection = get_db_connection(request)
     
-    # TODO: Implement actual metrics collection from API Gateway
-    # For now, return realistic stub data
+    # Time window: last 24 hours
+    cutoff_time = time.time() - (24 * 3600)
+    
+    with db_connection.get_connection() as conn:
+        # Total requests in last 24h
+        result = conn.execute(
+            "SELECT COUNT(*) FROM otel_api_requests WHERE timestamp > ?",
+            (cutoff_time,)
+        ).fetchone()
+        total_requests = result[0] if result else 0
+        
+        # Calculate requests per second (last 5 minutes for real-time metric)
+        recent_cutoff = time.time() - 300  # 5 minutes
+        result = conn.execute(
+            "SELECT COUNT(*) FROM otel_api_requests WHERE timestamp > ?",
+            (recent_cutoff,)
+        ).fetchone()
+        recent_requests = result[0] if result else 0
+        requests_per_second = recent_requests / 300.0
+        
+        # Average response time
+        result = conn.execute(
+            "SELECT AVG(latency_ms) FROM otel_api_requests WHERE timestamp > ?",
+            (cutoff_time,)
+        ).fetchone()
+        avg_response_time = result[0] if result and result[0] else 0.0
+        
+        # P95 and P99 response times
+        result = conn.execute(
+            """SELECT latency_ms FROM otel_api_requests 
+               WHERE timestamp > ? 
+               ORDER BY latency_ms""",
+            (cutoff_time,)
+        ).fetchall()
+        latencies = [row[0] for row in result] if result else [0]
+        p95_idx = int(len(latencies) * 0.95)
+        p99_idx = int(len(latencies) * 0.99)
+        p95_response_time = latencies[p95_idx] if latencies else 0.0
+        p99_response_time = latencies[p99_idx] if latencies else 0.0
+        
+        # Status code distribution
+        result = conn.execute(
+            """SELECT 
+                CASE 
+                    WHEN status_code BETWEEN 200 AND 299 THEN '2xx'
+                    WHEN status_code BETWEEN 300 AND 399 THEN '3xx'
+                    WHEN status_code BETWEEN 400 AND 499 THEN '4xx'
+                    WHEN status_code BETWEEN 500 AND 599 THEN '5xx'
+                    ELSE 'other'
+                END as status_group,
+                COUNT(*) as count
+               FROM otel_api_requests 
+               WHERE timestamp > ?
+               GROUP BY status_group""",
+            (cutoff_time,)
+        ).fetchall()
+        status_distribution = {row[0]: row[1] for row in result} if result else {}
+        
+        # Calculate error rate
+        total_2xx = status_distribution.get('2xx', 0)
+        error_rate = ((total_requests - total_2xx) / total_requests * 100) if total_requests > 0 else 0.0
+        success_rate = 100.0 - error_rate
+        
+        # Top endpoints
+        result = conn.execute(
+            """SELECT path, 
+                      COUNT(*) as requests,
+                      AVG(latency_ms) as avg_latency,
+                      SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as error_rate
+               FROM otel_api_requests 
+               WHERE timestamp > ?
+               GROUP BY path
+               ORDER BY requests DESC
+               LIMIT 5""",
+            (cutoff_time,)
+        ).fetchall()
+        top_endpoints = [
+            {
+                "path": row[0],
+                "requests": row[1],
+                "avg_latency": round(row[2], 2),
+                "error_rate": round(row[3], 2)
+            }
+            for row in result
+        ] if result else []
+        
+        # Protocol distribution
+        result = conn.execute(
+            """SELECT protocol, COUNT(*) as count
+               FROM otel_api_requests 
+               WHERE timestamp > ?
+               GROUP BY protocol""",
+            (cutoff_time,)
+        ).fetchall()
+        protocol_distribution = {row[0]: row[1] for row in result} if result else {}
     
     return GatewayMetrics(
         requests_per_second=MetricValue(
-            value=127.5,
+            value=round(requests_per_second, 2),
             unit="req/s",
-            trend=12.3,
-            status="healthy"
+            trend=0.0,  # TODO: Calculate trend from previous period
+            status="healthy" if requests_per_second < 1000 else "warning"
         ),
         avg_response_time=MetricValue(
-            value=45.2,
+            value=round(avg_response_time, 2),
             unit="ms",
-            trend=-5.1,
-            status="healthy"
+            trend=0.0,
+            status=get_metric_status(avg_response_time, {"warning": 500, "critical": 1000})
         ),
         p95_response_time=MetricValue(
-            value=156.8,
+            value=round(p95_response_time, 2),
             unit="ms",
-            trend=-2.3,
-            status="healthy"
+            trend=0.0,
+            status=get_metric_status(p95_response_time, {"warning": 1000, "critical": 2000})
         ),
         p99_response_time=MetricValue(
-            value=342.1,
+            value=round(p99_response_time, 2),
             unit="ms",
-            trend=8.7,
-            status="warning"
+            trend=0.0,
+            status=get_metric_status(p99_response_time, {"warning": 2000, "critical": 5000})
         ),
         error_rate=MetricValue(
-            value=0.8,
+            value=round(error_rate, 2),
             unit="%",
-            trend=-15.2,
-            status="healthy"
+            trend=0.0,
+            status=get_metric_status(error_rate, {"warning": 5, "critical": 10})
         ),
         success_rate=MetricValue(
-            value=99.2,
+            value=round(success_rate, 2),
             unit="%",
-            trend=0.5,
-            status="healthy"
+            trend=0.0,
+            status="healthy" if success_rate > 95 else "warning"
         ),
-        total_requests_24h=1_847_293,
-        status_code_distribution={
-            "2xx": 1_832_451,
-            "3xx": 2_134,
-            "4xx": 10_892,
-            "5xx": 1_816
-        },
-        top_endpoints=[
-            {"path": "/api/v1/conversation/message", "requests": 523_441, "avg_latency": 38.2, "error_rate": 0.3},
-            {"path": "/api/v1/memory/semantic/query", "requests": 312_887, "avg_latency": 67.5, "error_rate": 0.5},
-            {"path": "/api/v1/emotion/current", "requests": 198_234, "avg_latency": 12.1, "error_rate": 0.1},
-            {"path": "/api/v1/agency/goals", "requests": 145_992, "avg_latency": 89.3, "error_rate": 1.2},
-            {"path": "/api/v1/users/sessions", "requests": 98_765, "avg_latency": 23.4, "error_rate": 0.2}
-        ],
-        protocol_distribution={
-            "REST": 1_523_441,
-            "WebSocket": 298_234,
-            "ZeroMQ": 25_618
-        }
+        total_requests_24h=total_requests,
+        status_code_distribution=status_distribution,
+        top_endpoints=top_endpoints,
+        protocol_distribution=protocol_distribution
     )
 
 

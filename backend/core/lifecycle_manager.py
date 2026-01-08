@@ -107,8 +107,11 @@ class BackendLifecycleManager:
         """Complete backend startup sequence"""
         self.logger.info("Starting AICO backend components...")
         
-        # 1. Initialize service container
+        # 1. Initialize service container first (needed for database connection)
         await self._initialize_container()
+        
+        # 2. Initialize OpenTelemetry instrumentation (now has database access)
+        await self._initialize_telemetry()
         
         # 2. Create FastAPI app
         self.app = self._create_fastapi_app()
@@ -118,6 +121,9 @@ class BackendLifecycleManager:
         
         # 4. Mount API routers
         self._mount_routers()
+        
+        # 5. Instrument FastAPI with OpenTelemetry
+        self._instrument_fastapi()
         
         # Start all services
         await self.container.start_all()
@@ -150,6 +156,9 @@ class BackendLifecycleManager:
         # Stop protocol adapters first
         await self._stop_protocol_adapters()
         
+        # Shutdown telemetry
+        await self._shutdown_telemetry()
+        
         # Stop service container
         if self.container:
             services = list(self.container._definitions.keys())
@@ -164,6 +173,72 @@ class BackendLifecycleManager:
         print("[+] All services stopped gracefully")
         
         self.logger.info("Backend shutdown complete")
+    
+    async def _initialize_telemetry(self) -> None:
+        """Initialize OpenTelemetry instrumentation"""
+        try:
+            from backend.core.telemetry import initialize_telemetry
+            
+            print("[+] Initializing OpenTelemetry instrumentation...")
+            
+            # Get encrypted database connection from container (will be available after container init)
+            db_connection = None
+            if hasattr(self, 'container') and self.container:
+                try:
+                    db_connection = self.container.get_service("database")
+                except:
+                    self.logger.warning("Database connection not yet available for telemetry")
+            
+            # Get instrumentation config
+            config_dict = {
+                'instrumentation': self.config.get('instrumentation', {
+                    'mode': 'dev',  # Default to dev mode for now
+                    'opentelemetry': {'enabled': True},
+                    'exporters': {
+                        'prometheus': {'enabled': False},
+                        'otlp': {'enabled': False}
+                    }
+                })
+            }
+            
+            initialize_telemetry(config_dict, db_connection=db_connection)
+            
+            mode = config_dict['instrumentation'].get('mode', 'dev')
+            print(f"[✓] OpenTelemetry initialized (mode: {mode})")
+            print(f"[✓] Auto-instrumentation: FastAPI, SQLite, HTTP")
+            print(f"[✓] Local metrics storage: {'Enabled (encrypted)' if db_connection else 'Deferred'}")
+            
+            self.logger.info("OpenTelemetry instrumentation initialized")
+            
+        except Exception as e:
+            print(f"[✗] OpenTelemetry initialization failed: {e}")
+            self.logger.warning(f"Failed to initialize telemetry: {e}")
+    
+    def _instrument_fastapi(self) -> None:
+        """Instrument FastAPI app with OpenTelemetry"""
+        if not self.app:
+            self.logger.warning("Cannot instrument FastAPI - app not created")
+            return
+        
+        try:
+            from backend.core.telemetry import instrument_fastapi
+            instrument_fastapi(self.app)
+            print("[✓] FastAPI instrumented - automatic request tracing enabled")
+            self.logger.info("FastAPI instrumented with OpenTelemetry")
+            
+        except Exception as e:
+            print(f"[✗] FastAPI instrumentation failed: {e}")
+            self.logger.warning(f"Failed to instrument FastAPI: {e}")
+    
+    async def _shutdown_telemetry(self) -> None:
+        """Shutdown OpenTelemetry and flush pending data"""
+        try:
+            from backend.core.telemetry import shutdown_telemetry
+            shutdown_telemetry()
+            print("  [-] OpenTelemetry shutdown")
+            
+        except Exception as e:
+            self.logger.warning(f"Error during telemetry shutdown: {e}")
     
     async def _initialize_container(self) -> None:
         """Initialize service container with all services"""
@@ -785,7 +860,11 @@ class BackendLifecycleManager:
             allow_headers=["*"],
         )
         
-        # 2. Request logging middleware (before encryption)
+        # 2. Metrics middleware (collect request metrics)
+        from backend.api_gateway.middleware.metrics import MetricsMiddleware
+        self.app.add_middleware(MetricsMiddleware)
+        
+        # 3. Request logging middleware (before encryption)
         @self.app.middleware("http")
         async def log_requests(request: Request, call_next):
             if request.url.path.startswith("/api/v1/"):

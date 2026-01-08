@@ -100,6 +100,35 @@ export const MetricsPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 4 }}>
+      {/* Mock Data Disclaimer */}
+      <Paper
+        sx={{
+          p: 2,
+          mb: 3,
+          borderRadius: '12px',
+          bgcolor: 'rgba(251, 191, 36, 0.1)',
+          border: '1px solid rgba(251, 191, 36, 0.3)',
+        }}
+      >
+        <Typography
+          variant="body2"
+          sx={{
+            color: '#F59E0B',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}
+        >
+          <span style={{ fontSize: '18px' }}>⚠️</span>
+          <span>
+            <strong>Development Notice:</strong> This dashboard currently displays mock data for demonstration purposes. 
+            Metrics are being migrated to real telemetry data using OpenTelemetry instrumentation. 
+            Real data will be available incrementally as each subsystem is instrumented.
+          </span>
+        </Typography>
+      </Paper>
+
       {/* Hero Section - System Health */}
       <Paper
         sx={{

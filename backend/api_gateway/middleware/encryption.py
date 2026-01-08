@@ -74,6 +74,16 @@ class EncryptionMiddleware:
         
         self.logger.info("Encryption middleware initialized")
     
+    def build_middleware_stack(self):
+        """
+        Compatibility shim for OpenTelemetry FastAPI instrumentation.
+        
+        This is a pure ASGI middleware (not BaseHTTPMiddleware) to avoid
+        Content-Length calculation bugs. OpenTelemetry's introspection expects
+        this method, so we provide a no-op that returns self.
+        """
+        return self
+    
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """ASGI middleware entry point"""
         if scope["type"] != "http":
