@@ -81,11 +81,40 @@ class LMDBBrowseResponse(BaseModel):
 
 
 class LMDBKeyValueResponse(BaseModel):
-    """Response for getting a specific LMDB key value"""
+    """Response model for LMDB key value"""
     key: str = Field(..., description="Key name")
-    value: dict = Field(..., description="Full value as JSON")
-    size_bytes: int = Field(..., description="Value size in bytes")
+    value: dict = Field(..., description="Full value")
+    size_bytes: int = Field(..., description="Size in bytes")
     database_name: str = Field(..., description="Database name")
+    metadata: Optional[dict] = Field(None, description="Additional metadata")
+
+
+class LMDBDeleteRequest(BaseModel):
+    """Request to delete LMDB keys"""
+    database_name: str = Field(..., description="Database name")
+    keys: list[str] = Field(..., description="Keys to delete")
+
+
+class LMDBDeleteResponse(BaseModel):
+    """Response for LMDB delete operation"""
+    deleted_count: int = Field(..., description="Number of keys deleted")
+    failed_count: int = Field(..., description="Number of keys that failed to delete")
+    failed_keys: list[str] = Field(..., description="Keys that failed to delete")
+
+
+class OrphanedEntry(BaseModel):
+    """Orphaned LMDB entry information"""
+    key: str = Field(..., description="Entry key")
+    user_id: str = Field(..., description="Referenced user ID that doesn't exist")
+    preview: str = Field(..., description="Value preview")
+
+
+class OrphanedEntriesResponse(BaseModel):
+    """Response for orphaned entries query"""
+    total_entries: int = Field(..., description="Total entries in database")
+    orphaned_count: int = Field(..., description="Number of orphaned entries")
+    orphaned_entries: list[OrphanedEntry] = Field(..., description="List of orphaned entries")
+    valid_user_count: int = Field(..., description="Number of valid users in system")
 
 
 class ChromaDBSearchRequest(BaseModel):

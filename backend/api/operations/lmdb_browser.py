@@ -5,7 +5,7 @@ Provides browsing and querying capabilities for LMDB key-value store.
 """
 
 import json
-from typing import Optional
+from typing import Optional, List
 from fastapi import HTTPException, status
 from aico.core.logging import get_logger
 from backend.api.operations.schemas import (
@@ -171,4 +171,143 @@ async def get_lmdb_key_value(database_name: str, key: str) -> LMDBKeyValueRespon
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve key: {str(e)}"
+        )
+
+
+async def delete_lmdb_keys(database_name: str, keys: List[str]) -> dict:
+    """
+    Delete multiple keys from LMDB database.
+    
+    Args:
+        database_name: LMDB database name
+        keys: List of keys to delete
+        
+    Returns:
+        Dict with deletion results
+    """
+    try:
+        from aico.ai import ai_registry
+        memory_manager = ai_registry.get("memory")
+        
+        if not memory_manager or not hasattr(memory_manager, '_working_store'):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Memory manager not available"
+            )
+        
+        working_store = memory_manager._working_store
+        db = working_store.dbs.get(database_name)
+        
+        if not db:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{database_name}' not found"
+            )
+        
+        deleted_count = 0
+        failed_keys = []
+        
+        with working_store.env.begin(db=db, write=True) as txn:
+            for key in keys:
+                try:
+                    if txn.delete(key.encode('utf-8')):
+                        deleted_count += 1
+                    else:
+                        failed_keys.append(key)
+                except Exception as e:
+                    logger.warning(f"Failed to delete key {key}: {e}")
+                    failed_keys.append(key)
+        
+        logger.info(f"Deleted {deleted_count} keys from {database_name}")
+        
+        return {
+            "deleted_count": deleted_count,
+            "failed_count": len(failed_keys),
+            "failed_keys": failed_keys
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete LMDB keys: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete keys: {str(e)}"
+        )
+
+
+async def find_orphaned_lmdb_entries(database_name: str, db_connection) -> dict:
+    """
+    Find LMDB entries that reference non-existent users.
+    
+    Args:
+        database_name: LMDB database name
+        
+    Returns:
+        Dict with orphaned entry information
+    """
+    try:
+        from aico.ai import ai_registry
+        memory_manager = ai_registry.get("memory")
+        
+        if not memory_manager or not hasattr(memory_manager, '_working_store'):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Memory manager not available"
+            )
+        
+        working_store = memory_manager._working_store
+        db = working_store.dbs.get(database_name)
+        
+        if not db:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{database_name}' not found"
+            )
+        
+        # Get all valid user UUIDs from database using injected connection
+        cursor = db_connection.execute("SELECT uuid FROM user_profiles")
+        valid_user_ids = {row[0] for row in cursor.fetchall()}
+        
+        # Find entries with invalid user_ids
+        orphaned_entries = []
+        total_entries = 0
+        
+        with working_store.env.begin(db=db, write=False) as txn:
+            cursor = txn.cursor()
+            
+            for key_bytes, value_bytes in cursor:
+                try:
+                    total_entries += 1
+                    key = key_bytes.decode('utf-8')
+                    value = json.loads(value_bytes.decode('utf-8'))
+                    
+                    user_id = value.get('user_id') or value.get('userId')
+                    if user_id and user_id not in valid_user_ids:
+                        orphaned_entries.append({
+                            "key": key,
+                            "user_id": user_id,
+                            "preview": json.dumps(value)[:100]
+                        })
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to process key for orphan check: {e}")
+                    continue
+        
+        logger.info(f"Found {len(orphaned_entries)} orphaned entries out of {total_entries} total")
+        
+        return {
+            "total_entries": total_entries,
+            "orphaned_count": len(orphaned_entries),
+            "orphaned_entries": orphaned_entries[:100],  # Limit to first 100
+            "valid_user_count": len(valid_user_ids)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to find orphaned entries: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to find orphaned entries: {str(e)}"
         )

@@ -14,6 +14,7 @@ from backend.api.operations.schemas import (
     BackupResponse, BackupHistoryResponse, RestoreRequest, RestoreResponse,
     StorageTrendResponse,
     LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyValueResponse,
+    LMDBDeleteRequest, LMDBDeleteResponse, OrphanedEntriesResponse,
     ChromaDBSearchRequest, ChromaDBSearchResponse,
     ChromaDBDeleteRequest, ChromaDBDeleteResponse,
     ChromaDBBrowseResponse,
@@ -217,3 +218,32 @@ async def browse_chromadb_collection(
     Browse all documents in a ChromaDB collection.
     """
     return await database_admin.browse_chromadb_collection(collection_name, request, limit)
+
+
+# ============================================================================
+# LMDB Delete & Orphaned Entries
+# ============================================================================
+
+@router.delete("/databases/lmdb/keys", response_model=LMDBDeleteResponse)
+async def delete_lmdb_keys(
+    delete_request: LMDBDeleteRequest,
+    user: Annotated[dict, Depends(get_current_user)]
+) -> LMDBDeleteResponse:
+    """
+    Delete multiple keys from LMDB database.
+    """
+    return await database_admin.delete_lmdb_keys(delete_request)
+
+
+@router.get("/databases/lmdb/{database_name}/orphaned", response_model=OrphanedEntriesResponse)
+async def find_orphaned_entries(
+    database_name: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)]
+) -> OrphanedEntriesResponse:
+    """
+    Find LMDB entries that reference non-existent users.
+    
+    This helps identify and clean up orphaned data from deleted users.
+    """
+    return await database_admin.find_orphaned_lmdb_entries(database_name, db_connection)

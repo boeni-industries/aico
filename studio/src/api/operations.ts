@@ -222,6 +222,7 @@ export interface LMDBKeyValueResponse {
   value: Record<string, any>;
   size_bytes: number;
   database_name: string;
+  metadata?: Record<string, any>;
 }
 
 /**
@@ -242,6 +243,45 @@ export async function getLMDBKeyValue(databaseName: string, key: string): Promis
   return httpJson<LMDBKeyValueResponse>({
     method: 'GET',
     path: `${BASE_URL}/operations/databases/lmdb/${databaseName}/key/${encodeURIComponent(key)}`,
+  });
+}
+
+export interface LMDBDeleteRequest {
+  database_name: string;
+  keys: string[];
+}
+
+export interface LMDBDeleteResponse {
+  deleted_count: number;
+  failed_count: number;
+  failed_keys: string[];
+}
+
+export async function deleteLMDBKeys(request: LMDBDeleteRequest): Promise<LMDBDeleteResponse> {
+  return httpJson<LMDBDeleteResponse>({
+    method: 'DELETE',
+    path: `${BASE_URL}/operations/databases/lmdb/keys`,
+    body: request,
+  });
+}
+
+export interface OrphanedEntry {
+  key: string;
+  user_id: string;
+  preview: string;
+}
+
+export interface OrphanedEntriesResponse {
+  total_entries: number;
+  orphaned_count: number;
+  orphaned_entries: OrphanedEntry[];
+  valid_user_count: number;
+}
+
+export async function findOrphanedLMDBEntries(databaseName: string): Promise<OrphanedEntriesResponse> {
+  return httpJson<OrphanedEntriesResponse>({
+    method: 'GET',
+    path: `${BASE_URL}/operations/databases/lmdb/${databaseName}/orphaned`,
   });
 }
 

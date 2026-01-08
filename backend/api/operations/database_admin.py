@@ -37,7 +37,9 @@ from backend.api.operations.schemas import (
 )
 
 # Import browser functions
-from backend.api.operations.lmdb_browser import browse_lmdb_keys, get_lmdb_key_value
+from backend.api.operations.lmdb_browser import (
+    browse_lmdb_keys, get_lmdb_key_value, delete_lmdb_keys, find_orphaned_lmdb_entries
+)
 from backend.api.operations.chromadb_browser import search_chromadb, delete_chromadb_documents, browse_chromadb_collection
 
 logger = get_logger("backend", "api.operations.database_admin")
