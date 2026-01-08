@@ -15,6 +15,8 @@ from backend.api.operations.schemas import (
     StorageTrendResponse,
     LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyValueResponse,
     ChromaDBSearchRequest, ChromaDBSearchResponse,
+    ChromaDBDeleteRequest, ChromaDBDeleteResponse,
+    ChromaDBBrowseResponse,
 )
 from backend.api.operations import database_admin
 
@@ -190,3 +192,28 @@ async def search_chromadb(
     - Result limit
     """
     return await database_admin.search_chromadb(search_request, request)
+
+
+@router.delete("/databases/chromadb/documents", response_model=ChromaDBDeleteResponse)
+async def delete_chromadb_documents(
+    delete_request: ChromaDBDeleteRequest,
+    request: Request,
+    user: Annotated[dict, Depends(get_current_user)]
+) -> ChromaDBDeleteResponse:
+    """
+    Delete documents from ChromaDB collection.
+    """
+    return await database_admin.delete_chromadb_documents(delete_request, request)
+
+
+@router.get("/databases/chromadb/collections/{collection_name}/browse", response_model=ChromaDBBrowseResponse)
+async def browse_chromadb_collection(
+    collection_name: str,
+    request: Request,
+    user: Annotated[dict, Depends(get_current_user)],
+    limit: int = 100
+) -> ChromaDBBrowseResponse:
+    """
+    Browse all documents in a ChromaDB collection.
+    """
+    return await database_admin.browse_chromadb_collection(collection_name, request, limit)

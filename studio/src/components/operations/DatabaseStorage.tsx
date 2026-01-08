@@ -5,6 +5,7 @@ import { fetchDatabaseStats, DatabaseMetrics, fetchDatabaseDetails, DatabaseDeta
 import { SQLQueryInterface } from './SQLQueryInterface';
 import { LMDBBrowser } from './LMDBBrowser';
 import { ChromaDBBrowser } from './ChromaDBBrowser';
+import { ChromaDBCollectionBrowser } from './ChromaDBCollectionBrowser';
 
 interface DatabaseStorageProps {
   refreshTrigger?: number;
@@ -60,6 +61,7 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
   const [showSQLInterface, setShowSQLInterface] = useState<Record<string, boolean>>({});
   const [showLMDBBrowser, setShowLMDBBrowser] = useState<Record<string, boolean>>({});
   const [showChromaDBBrowser, setShowChromaDBBrowser] = useState<Record<string, boolean>>({});
+  const [selectedChromaCollection, setSelectedChromaCollection] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadDatabaseStats();
@@ -475,11 +477,16 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                                   borderColor: `${config.color}40`,
                                 },
                               }}
-                              onClick={() => setShowChromaDBBrowser(prev => ({ ...prev, [db.name]: !prev[db.name] }))}
+                              onClick={() => {
+                                setShowChromaDBBrowser(prev => ({ ...prev, [db.name]: !prev[db.name] }));
+                                if (!selectedChromaCollection[db.name]) {
+                                  setSelectedChromaCollection(prev => ({ ...prev, [db.name]: 'conversation_segments' }));
+                                }
+                              }}
                             >
                               <SearchIcon size={16} color={config.color} />
                               <Typography variant="caption" sx={{ fontWeight: 600, color: config.color, flex: 1 }}>
-                                Semantic Search
+                                Browse Collections
                               </Typography>
                               <IconButton size="small" sx={{ color: config.color }}>
                                 {showChromaDBBrowser[db.name] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
@@ -487,7 +494,43 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                             </Box>
                             <Collapse in={showChromaDBBrowser[db.name]}>
                               <Box sx={{ mb: 2 }}>
-                                <ChromaDBBrowser collectionName="conversation_segments" color={config.color} />
+                                {/* Collection Selector */}
+                                <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                                  {['conversation_segments', 'kg_nodes', 'kg_edges'].map((collection) => (
+                                    <Chip
+                                      key={collection}
+                                      label={collection === 'conversation_segments' ? 'Conversations' : collection === 'kg_nodes' ? 'KG Entities' : 'KG Relations'}
+                                      onClick={() => setSelectedChromaCollection(prev => ({ ...prev, [db.name]: collection }))}
+                                      sx={{
+                                        bgcolor: selectedChromaCollection[db.name] === collection ? `${config.color}30` : `${config.color}10`,
+                                        color: selectedChromaCollection[db.name] === collection ? config.color : 'text.secondary',
+                                        fontWeight: selectedChromaCollection[db.name] === collection ? 600 : 400,
+                                        fontSize: '0.7rem',
+                                        cursor: 'pointer',
+                                        '&:hover': {
+                                          bgcolor: `${config.color}20`,
+                                        },
+                                      }}
+                                    />
+                                  ))}
+                                </Box>
+                                
+                                {/* Render appropriate browser based on selection */}
+                                {selectedChromaCollection[db.name] === 'conversation_segments' && (
+                                  <ChromaDBBrowser collectionName="conversation_segments" color={config.color} />
+                                )}
+                                {selectedChromaCollection[db.name] === 'kg_nodes' && (
+                                  <ChromaDBCollectionBrowser 
+                                    collectionName="kg_nodes" 
+                                    color={config.color}
+                                  />
+                                )}
+                                {selectedChromaCollection[db.name] === 'kg_edges' && (
+                                  <ChromaDBCollectionBrowser 
+                                    collectionName="kg_edges" 
+                                    color={config.color}
+                                  />
+                                )}
                               </Box>
                             </Collapse>
                             <Divider sx={{ mb: 2, borderColor: `${config.color}20` }} />

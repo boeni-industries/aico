@@ -114,6 +114,33 @@ class ChromaDBSearchResponse(BaseModel):
     total_count: int = Field(..., description="Number of results")
 
 
+class ChromaDBDeleteRequest(BaseModel):
+    """Request to delete ChromaDB documents"""
+    collection_name: str = Field(..., description="Collection name")
+    document_ids: list[str] = Field(..., description="List of document IDs to delete")
+
+
+class ChromaDBDeleteResponse(BaseModel):
+    """Response for ChromaDB delete operation"""
+    collection_name: str = Field(..., description="Collection name")
+    deleted_count: int = Field(..., description="Number of documents deleted")
+    success: bool = Field(..., description="Whether operation succeeded")
+
+
+class ChromaDBBrowseDocument(BaseModel):
+    """ChromaDB document for browsing"""
+    id: str = Field(..., description="Document ID")
+    document: str = Field(..., description="Document content")
+    metadata: dict = Field(..., description="Document metadata")
+
+
+class ChromaDBBrowseResponse(BaseModel):
+    """Response for ChromaDB browse operation"""
+    collection_name: str = Field(..., description="Collection name")
+    documents: list[ChromaDBBrowseDocument] = Field(..., description="Documents")
+    total_count: int = Field(..., description="Total documents")
+
+
 class DatabaseDetailsResponse(BaseModel):
     """Response model for database details"""
     database_type: str = Field(..., description="Database type (libsql, chromadb, lmdb)")

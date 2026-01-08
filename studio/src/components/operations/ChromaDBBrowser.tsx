@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
-import { Box, Typography, TextField, Button, CircularProgress, Alert, Chip, Slider, Collapse, IconButton } from '@mui/material';
-import { Search, Eye, Copy, ChevronDown, ChevronUp } from 'lucide-react';
-import { searchChromaDB, ChromaDBDocument } from '../../api/operations';
+import React, { useState, memo } from 'react';
+import { Box, Typography, TextField, Button, CircularProgress, Alert, Chip, Slider, Collapse, IconButton, Checkbox } from '@mui/material';
+import { Search, Eye, Copy, ChevronDown, ChevronUp, Trash2, List } from 'lucide-react';
+import { searchChromaDB, ChromaDBDocument, deleteChromaDBDocuments, browseChromaDBCollection } from '../../api/operations';
 
 interface ChromaDBBrowserProps {
   collectionName: string;
   color: string;
 }
 
-export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName, color }) => {
+const ChromaDBBrowserComponent: React.FC<ChromaDBBrowserProps> = ({ collectionName, color }) => {
   const [queryText, setQueryText] = useState('');
   const [userId, setUserId] = useState('');
   const [conversationId, setConversationId] = useState('');
@@ -17,6 +17,8 @@ export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const handleSearch = async () => {
     if (!queryText.trim()) {
@@ -27,7 +29,7 @@ export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName
     try {
       setLoading(true);
       setError(null);
-      
+      setSelectedDocs(new Set()); // Clear selection on new search
       const response = await searchChromaDB({
         collection_name: collectionName,
         query_text: queryText,
@@ -36,12 +38,79 @@ export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName
         min_similarity: minSimilarity,
         limit: 10,
       });
-
       setDocuments(response.documents);
-    } catch (err: any) {
-      setError(err.message || 'Failed to search ChromaDB');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to search');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBrowseAll = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setSelectedDocs(new Set());
+      const response = await browseChromaDBCollection(collectionName, 100);
+      setDocuments(response.documents.map(doc => ({
+        id: doc.id,
+        content: doc.document,
+        metadata: doc.metadata,
+        distance: 0,
+        similarity: 1.0,
+        similarity_score: 1.0,
+        bm25_score: 0,
+        hybrid_score: 1.0,
+      })));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to browse documents');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (selectedDocs.size === 0) return;
+
+    if (!window.confirm(`Delete ${selectedDocs.size} document(s)? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setError(null);
+      await deleteChromaDBDocuments({
+        collection_name: collectionName,
+        document_ids: Array.from(selectedDocs),
+      });
+      
+      // Remove deleted docs from display
+      setDocuments(docs => docs.filter(doc => !selectedDocs.has(doc.id)));
+      setSelectedDocs(new Set());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete documents');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleDocSelection = (docId: string) => {
+    setSelectedDocs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(docId)) {
+        newSet.delete(docId);
+      } else {
+        newSet.add(docId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedDocs.size === documents.length) {
+      setSelectedDocs(new Set());
+    } else {
+      setSelectedDocs(new Set(documents.map(doc => doc.id)));
     }
   };
 
@@ -68,13 +137,21 @@ export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName
         <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: 'block', color }}>
           Semantic Search
         </Typography>
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', mb: 1.5, display: 'block', fontStyle: 'italic' }}>
+          Browsing: {collectionName} collection (conversation history with embeddings)
+        </Typography>
         <TextField
           fullWidth
           size="small"
           placeholder="Enter natural language query (e.g., 'AI projects and memory systems')..."
           value={queryText}
           onChange={(e) => setQueryText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && queryText.trim() && !loading) {
+              e.preventDefault();
+              handleSearch();
+            }
+          }}
           sx={{
             mb: 1.5,
             '& .MuiOutlinedInput-root': {
@@ -151,6 +228,20 @@ export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName
             Search
           </Button>
           <Button
+            variant="contained"
+            size="small"
+            startIcon={loading ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : <List size={16} />}
+            onClick={handleBrowseAll}
+            disabled={loading}
+            sx={{
+              textTransform: 'none',
+              bgcolor: color,
+              '&:hover': { bgcolor: color, opacity: 0.9 },
+            }}
+          >
+            Browse All
+          </Button>
+          <Button
             variant="outlined"
             size="small"
             onClick={() => {
@@ -181,9 +272,38 @@ export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName
       {/* Results */}
       {documents.length > 0 && (
         <Box>
-          <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: 'block', color }}>
-            Results: {documents.length} documents (sorted by relevance)
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Checkbox
+                size="small"
+                checked={selectedDocs.size === documents.length && documents.length > 0}
+                indeterminate={selectedDocs.size > 0 && selectedDocs.size < documents.length}
+                onChange={toggleSelectAll}
+                sx={{ color, '&.Mui-checked': { color } }}
+              />
+              <Typography variant="caption" sx={{ fontWeight: 600, color }}>
+                Results: {documents.length} documents {selectedDocs.size > 0 && `(${selectedDocs.size} selected)`}
+              </Typography>
+            </Box>
+            {selectedDocs.size > 0 && (
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={deleting ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <Trash2 size={14} />}
+                onClick={handleDelete}
+                disabled={deleting}
+                sx={{
+                  textTransform: 'none',
+                  bgcolor: '#EF4444',
+                  '&:hover': { bgcolor: '#DC2626' },
+                  fontSize: '0.7rem',
+                  py: 0.5,
+                }}
+              >
+                Delete Selected
+              </Button>
+            )}
+          </Box>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {documents.map((doc) => {
@@ -207,7 +327,17 @@ export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName
                     },
                   }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                    <Checkbox
+                      size="small"
+                      checked={selectedDocs.has(doc.id)}
+                      onChange={() => toggleDocSelection(doc.id)}
+                      sx={{ 
+                        color, 
+                        '&.Mui-checked': { color },
+                        mt: -0.5,
+                      }}
+                    />
                     <Box sx={{ flex: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                         <Box
@@ -331,3 +461,5 @@ export const ChromaDBBrowser: React.FC<ChromaDBBrowserProps> = ({ collectionName
     </Box>
   );
 };
+
+export const ChromaDBBrowser = memo(ChromaDBBrowserComponent);

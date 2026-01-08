@@ -278,8 +278,50 @@ export interface ChromaDBSearchResponse {
 export async function searchChromaDB(request: ChromaDBSearchRequest): Promise<ChromaDBSearchResponse> {
   return httpJson<ChromaDBSearchResponse>({
     method: 'POST',
-    path: `${BASE_URL}/operations/databases/chromadb/search`,
+    path: '/operations/databases/chromadb/search',
     body: request,
+  });
+}
+
+export interface ChromaDBDeleteRequest {
+  collection_name: string;
+  document_ids: string[];
+}
+
+export interface ChromaDBDeleteResponse {
+  collection_name: string;
+  deleted_count: number;
+  success: boolean;
+}
+
+export async function deleteChromaDBDocuments(request: ChromaDBDeleteRequest): Promise<ChromaDBDeleteResponse> {
+  return httpJson<ChromaDBDeleteResponse>({
+    method: 'DELETE',
+    path: '/operations/databases/chromadb/documents',
+    body: request,
+  });
+}
+
+export interface ChromaDBBrowseDocument {
+  id: string;
+  document: string;
+  metadata: Record<string, any>;
+}
+
+export interface ChromaDBBrowseResponse {
+  collection_name: string;
+  documents: ChromaDBBrowseDocument[];
+  total_count: number;
+}
+
+export async function browseChromaDBCollection(collectionName: string, limit: number = 100, offset: number = 0): Promise<ChromaDBBrowseResponse> {
+  return httpJson<ChromaDBBrowseResponse>({
+    method: 'GET',
+    path: `/operations/databases/chromadb/collections/${collectionName}/browse`,
+    query: { 
+      limit: limit.toString(),
+      offset: offset.toString(),
+    },
   });
 }
 

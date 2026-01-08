@@ -26,16 +26,19 @@ from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths, get_default_database_path
 from backend.api.operations.schemas import (
     DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo,
-    QueryResult, SchemaMetadata,
-    BackupInfo, BackupResponse, BackupHistoryResponse, RestoreResponse,
-    StorageTrendResponse, StorageDataPoint,
+    QueryRequest, QueryResult,
+    BackupResponse, BackupHistoryResponse, RestoreRequest, RestoreResponse,
+    StorageTrendResponse,
     LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyInfo, LMDBKeyValueResponse,
     ChromaDBSearchRequest, ChromaDBSearchResponse, ChromaDBDocument,
+    ChromaDBDeleteRequest, ChromaDBDeleteResponse,
+    ChromaDBBrowseResponse,
+    SchemaMetadata,
 )
 
 # Import browser functions
 from backend.api.operations.lmdb_browser import browse_lmdb_keys, get_lmdb_key_value
-from backend.api.operations.chromadb_browser import search_chromadb
+from backend.api.operations.chromadb_browser import search_chromadb, delete_chromadb_documents, browse_chromadb_collection
 
 logger = get_logger("backend", "api.operations.database_admin")
 
