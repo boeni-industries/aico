@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Typography, Tooltip } from '@mui/material';
 import { TrendingUp, TrendingDown, Info } from 'lucide-react';
+import { Sparkline } from './Sparkline';
 
 interface MetricCardProps {
   label: string;
@@ -11,6 +12,9 @@ interface MetricCardProps {
   color?: string;
   tooltip?: string;
   size?: 'small' | 'medium' | 'large';
+  dataSource?: 'real' | 'mock';
+  sparklineData?: number[];
+  invertSparkline?: boolean;
 }
 
 export const MetricCard: React.FC<MetricCardProps> = ({
@@ -22,6 +26,9 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   color,
   tooltip,
   size = 'medium',
+  dataSource = 'mock',
+  sparklineData,
+  invertSparkline = false,
 }) => {
   const statusColors = {
     healthy: '#10B981',
@@ -57,48 +64,88 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         },
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            fontSize: '0.7rem',
-            fontWeight: 600,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            color: 'text.secondary',
-          }}
-        >
-          {label}
-        </Typography>
-        {tooltip && (
-          <Tooltip title={tooltip} arrow>
-            <Info size={12} style={{ color: 'rgba(255, 255, 255, 0.3)', cursor: 'help' }} />
-          </Tooltip>
-        )}
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-        <Typography
-          variant="h4"
-          sx={{
-            fontSize: sizeConfig[size].fontSize,
-            fontWeight: 700,
-            color: displayColor,
-            lineHeight: 1,
-          }}
-        >
-          {value}
-        </Typography>
-        {unit && (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Typography
             variant="caption"
             sx={{
-              fontSize: '0.85rem',
+              fontSize: '0.7rem',
               fontWeight: 600,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
               color: 'text.secondary',
             }}
           >
-            {unit}
+            {label}
           </Typography>
+          {tooltip && (
+            <Tooltip title={tooltip} arrow>
+              <Info size={12} style={{ color: 'rgba(255, 255, 255, 0.3)', cursor: 'help' }} />
+            </Tooltip>
+          )}
+        </Box>
+        <Box
+          sx={{
+            px: 1,
+            py: 0.25,
+            borderRadius: '4px',
+            bgcolor: dataSource === 'real' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(251, 191, 36, 0.15)',
+            border: '1px solid',
+            borderColor: dataSource === 'real' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(251, 191, 36, 0.3)',
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              fontSize: '0.6rem',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              color: dataSource === 'real' ? '#10B981' : '#F59E0B',
+            }}
+          >
+            {dataSource === 'real' ? 'REAL' : 'MOCK'}
+          </Typography>
+        </Box>
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: sparklineData ? 0.5 : 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+          <Typography
+            variant="h4"
+            sx={{
+              fontSize: sizeConfig[size].fontSize,
+              fontWeight: 700,
+              color: displayColor,
+              lineHeight: 1,
+            }}
+          >
+            {value}
+          </Typography>
+          {unit && (
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                color: 'text.secondary',
+              }}
+            >
+              {unit}
+            </Typography>
+          )}
+        </Box>
+        {sparklineData && sparklineData.length > 1 && (
+          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
+            <Sparkline
+              data={sparklineData}
+              color={displayColor}
+              width={size === 'small' ? 60 : size === 'large' ? 100 : 80}
+              height={size === 'small' ? 20 : size === 'large' ? 28 : 24}
+              strokeWidth={size === 'small' ? 1.5 : 2}
+              showGradient={true}
+              invertY={invertSparkline}
+              unit={unit}
+            />
+          </Box>
         )}
       </Box>
       {trend !== undefined && (

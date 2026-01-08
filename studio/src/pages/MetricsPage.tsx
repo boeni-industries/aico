@@ -370,6 +370,8 @@ export const MetricsPage: React.FC = () => {
             unit="req/s"
             trend={gateway.requests_per_second.trend}
             color="#00D9FF"
+            dataSource="real"
+            sparklineData={gateway.requests_per_second.sparkline_data}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -380,6 +382,8 @@ export const MetricsPage: React.FC = () => {
             trend={gateway.avg_response_time.trend}
             color="#A78BFA"
             status={gateway.avg_response_time.status}
+            dataSource="real"
+            sparklineData={gateway.avg_response_time.sparkline_data}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -390,6 +394,8 @@ export const MetricsPage: React.FC = () => {
             trend={gateway.error_rate.trend}
             color="#F59E0B"
             status={gateway.error_rate.status}
+            dataSource="real"
+            sparklineData={gateway.error_rate.sparkline_data}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -399,6 +405,9 @@ export const MetricsPage: React.FC = () => {
             unit="%"
             trend={gateway.success_rate.trend}
             color="#10B981"
+            dataSource="real"
+            sparklineData={gateway.success_rate.sparkline_data}
+            invertSparkline={true}
           />
         </Box>
       </Box>
@@ -424,6 +433,7 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.active_models.value}
             unit="models"
             color="#A78BFA"
+            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -433,6 +443,7 @@ export const MetricsPage: React.FC = () => {
             unit="tokens/s"
             trend={modelservice.inference_throughput.trend}
             color="#00D9FF"
+            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -442,6 +453,7 @@ export const MetricsPage: React.FC = () => {
             unit="s"
             trend={modelservice.avg_inference_time.trend}
             color="#F59E0B"
+            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -452,6 +464,7 @@ export const MetricsPage: React.FC = () => {
             trend={modelservice.cpu_utilization.trend}
             color="#3B82F6"
             status={modelservice.cpu_utilization.status}
+            dataSource="mock"
           />
         </Box>
       </Box>
@@ -478,6 +491,7 @@ export const MetricsPage: React.FC = () => {
             unit="entries"
             trend={memory.working_memory_size.trend}
             color="#00D9FF"
+            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -487,6 +501,7 @@ export const MetricsPage: React.FC = () => {
             unit="queries/s"
             trend={memory.semantic_queries_per_second.trend}
             color="#A78BFA"
+            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -496,6 +511,7 @@ export const MetricsPage: React.FC = () => {
             unit="nodes"
             trend={memory.kg_nodes.trend}
             color="#EC4899"
+            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -505,6 +521,7 @@ export const MetricsPage: React.FC = () => {
             unit="edges"
             trend={memory.kg_relationships.trend}
             color="#10B981"
+            dataSource="mock"
           />
         </Box>
       </Box>
@@ -596,6 +613,7 @@ export const MetricsPage: React.FC = () => {
                   trend={scheduler.jobs_today.trend}
                   color="#00D9FF"
                   size="small"
+                  dataSource="mock"
                 />
               </Box>
               <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 140, minHeight: 100 }}>
@@ -606,6 +624,7 @@ export const MetricsPage: React.FC = () => {
                   trend={scheduler.success_rate.trend}
                   color="#10B981"
                   size="small"
+                  dataSource="mock"
                 />
               </Box>
             </Box>
@@ -664,6 +683,7 @@ export const MetricsPage: React.FC = () => {
                   trend={message_bus.messages_per_second.trend}
                   color="#00D9FF"
                   size="small"
+                  dataSource="mock"
                 />
               </Box>
               <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 140, minHeight: 100 }}>
@@ -675,6 +695,7 @@ export const MetricsPage: React.FC = () => {
                   color="#F59E0B"
                   status={message_bus.backlog_depth.status}
                   size="small"
+                  dataSource="mock"
                 />
               </Box>
             </Box>
