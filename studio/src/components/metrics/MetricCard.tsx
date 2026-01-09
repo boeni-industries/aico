@@ -17,6 +17,9 @@ interface MetricCardProps {
   invertSparkline?: boolean;
   isNeutralMetric?: boolean;
   lowerIsBetter?: boolean;
+  avg_1h?: number | null;
+  avg_24h?: number | null;
+  avg_7d?: number | null;
 }
 
 export const MetricCard: React.FC<MetricCardProps> = ({
@@ -33,6 +36,9 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   invertSparkline = false,
   isNeutralMetric = false,
   lowerIsBetter = false,
+  avg_1h,
+  avg_24h,
+  avg_7d,
 }) => {
   const statusColors = {
     healthy: '#10B981',
@@ -154,41 +160,97 @@ export const MetricCard: React.FC<MetricCardProps> = ({
           </Box>
         )}
       </Box>
-      {trend !== undefined && (
+      {(avg_1h !== undefined || avg_24h !== undefined || avg_7d !== undefined) && (
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
-            gap: 0.5,
-            mt: 1,
+            justifyContent: 'center',
+            gap: 2,
+            mt: 2,
+            mb: 0.5,
+            px: 1,
+            flexWrap: 'nowrap',
           }}
         >
-          {trend > 0 ? (
-            <TrendingUp size={14} style={{ color: '#10B981' }} />
-          ) : trend < 0 ? (
-            <TrendingDown size={14} style={{ color: '#EF4444' }} />
-          ) : null}
-          <Typography
-            variant="caption"
-            sx={{
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              color: trend > 0 ? '#10B981' : trend < 0 ? '#EF4444' : 'text.secondary',
-            }}
-          >
-            {trend > 0 ? '+' : ''}
-            {trend.toFixed(1)}%
-          </Typography>
-          <Typography
-            variant="caption"
-            sx={{
-              fontSize: '0.7rem',
-              color: 'text.disabled',
-              ml: 0.5,
-            }}
-          >
-            7d
-          </Typography>
+          {avg_1h !== undefined && (
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.4, whiteSpace: 'nowrap' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.6rem',
+                  fontWeight: 600,
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                1h
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  color: avg_1h !== null ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.3)',
+                }}
+              >
+                {avg_1h !== null ? `${avg_1h.toFixed(1)}${unit}` : 'no data'}
+              </Typography>
+            </Box>
+          )}
+          {avg_24h !== undefined && (
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.4, whiteSpace: 'nowrap' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.6rem',
+                  fontWeight: 600,
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                24h
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  color: avg_24h !== null ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.3)',
+                }}
+              >
+                {avg_24h !== null ? `${avg_24h.toFixed(1)}${unit}` : 'no data'}
+              </Typography>
+            </Box>
+          )}
+          {avg_7d !== undefined && (
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.4, whiteSpace: 'nowrap' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.6rem',
+                  fontWeight: 600,
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                7d
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  color: avg_7d !== null ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.3)',
+                }}
+              >
+                {avg_7d !== null ? `${avg_7d.toFixed(1)}${unit}` : 'no data'}
+              </Typography>
+            </Box>
+          )}
         </Box>
       )}
     </Box>

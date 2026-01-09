@@ -373,6 +373,9 @@ export const MetricsPage: React.FC = () => {
             dataSource="real"
             sparklineData={gateway.requests_per_second.sparkline_data}
             isNeutralMetric={true}
+            avg_1h={gateway.requests_per_second.avg_1h}
+            avg_24h={gateway.requests_per_second.avg_24h}
+            avg_7d={gateway.requests_per_second.avg_7d}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -386,6 +389,9 @@ export const MetricsPage: React.FC = () => {
             dataSource="real"
             sparklineData={gateway.avg_response_time.sparkline_data}
             lowerIsBetter={true}
+            avg_1h={gateway.avg_response_time.avg_1h}
+            avg_24h={gateway.avg_response_time.avg_24h}
+            avg_7d={gateway.avg_response_time.avg_7d}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -399,6 +405,9 @@ export const MetricsPage: React.FC = () => {
             dataSource="real"
             sparklineData={gateway.error_rate.sparkline_data}
             lowerIsBetter={true}
+            avg_1h={gateway.error_rate.avg_1h}
+            avg_24h={gateway.error_rate.avg_24h}
+            avg_7d={gateway.error_rate.avg_7d}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -411,6 +420,9 @@ export const MetricsPage: React.FC = () => {
             dataSource="real"
             sparklineData={gateway.success_rate.sparkline_data}
             invertSparkline={true}
+            avg_1h={gateway.success_rate.avg_1h}
+            avg_24h={gateway.success_rate.avg_24h}
+            avg_7d={gateway.success_rate.avg_7d}
           />
         </Box>
       </Box>

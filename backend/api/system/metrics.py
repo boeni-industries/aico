@@ -35,6 +35,9 @@ class MetricValue(BaseModel):
     trend: Optional[float] = None  # Percentage change
     status: str = "healthy"  # healthy, warning, critical
     sparkline_data: Optional[List[float]] = None  # Historical data points for visualization
+    avg_1h: Optional[float] = None  # 1-hour average
+    avg_24h: Optional[float] = None  # 24-hour average
+    avg_7d: Optional[float] = None  # 7-day average
 
 
 class GatewayMetrics(BaseModel):
@@ -152,6 +155,7 @@ async def get_gateway_metrics(request: Request):
     
     # Time windows
     now = time.time()
+    cutoff_1h = now - 3600
     cutoff_24h = now - (24 * 3600)
     cutoff_7d = now - (7 * 24 * 3600)
     cutoff_14d = now - (14 * 24 * 3600)
@@ -164,14 +168,14 @@ async def get_gateway_metrics(request: Request):
         ).fetchone()
         total_requests = result[0] if result else 0
         
-        # Calculate requests per second (last 5 minutes for real-time metric)
-        recent_cutoff = now - 300  # 5 minutes
+        # Calculate requests per second (last 1 minute to match sparkline's rightmost point)
+        recent_cutoff = now - 60  # 1 minute
         result = conn.execute(
-            "SELECT COUNT(*) FROM otel_api_requests WHERE timestamp > ?",
-            (recent_cutoff,)
+            "SELECT COUNT(*) FROM otel_api_requests WHERE timestamp BETWEEN ? AND ?",
+            (recent_cutoff, now)
         ).fetchone()
         recent_requests = result[0] if result else 0
-        requests_per_second = recent_requests / 300.0
+        requests_per_second = recent_requests / 60.0
         
         # Get historical requests per second for sparkline (last 12 minutes, 12 data points = 1-minute intervals)
         rps_sparkline = []
@@ -194,10 +198,29 @@ async def get_gateway_metrics(request: Request):
         prev_week_rps = prev_week_requests / (7 * 24 * 3600)
         rps_trend = calculate_trend(requests_per_second, prev_week_rps)
         
-        # Average response time (current)
+        # Calculate 1h, 24h, 7d averages for requests per second
         result = conn.execute(
-            "SELECT AVG(latency_ms) FROM otel_api_requests WHERE timestamp > ?",
+            "SELECT COUNT(*) FROM otel_api_requests WHERE timestamp > ?",
+            (cutoff_1h,)
+        ).fetchone()
+        rps_avg_1h = (result[0] / 3600.0) if result and result[0] > 0 else None
+        
+        result = conn.execute(
+            "SELECT COUNT(*) FROM otel_api_requests WHERE timestamp > ?",
             (cutoff_24h,)
+        ).fetchone()
+        rps_avg_24h = (result[0] / (24 * 3600)) if result and result[0] > 0 else None
+        
+        result = conn.execute(
+            "SELECT COUNT(*) FROM otel_api_requests WHERE timestamp > ?",
+            (cutoff_7d,)
+        ).fetchone()
+        rps_avg_7d = (result[0] / (7 * 24 * 3600)) if result and result[0] > 0 else None
+        
+        # Average response time (last 1 minute to match sparkline's rightmost point)
+        result = conn.execute(
+            "SELECT AVG(latency_ms) FROM otel_api_requests WHERE timestamp BETWEEN ? AND ?",
+            (recent_cutoff, now)
         ).fetchone()
         avg_response_time = result[0] if result and result[0] else 0.0
         
@@ -219,6 +242,25 @@ async def get_gateway_metrics(request: Request):
         ).fetchone()
         prev_week_avg_latency = result[0] if result and result[0] else avg_response_time
         avg_latency_trend = calculate_trend(avg_response_time, prev_week_avg_latency)
+        
+        # Calculate 1h, 24h, 7d averages for response time
+        result = conn.execute(
+            "SELECT AVG(latency_ms) FROM otel_api_requests WHERE timestamp > ?",
+            (cutoff_1h,)
+        ).fetchone()
+        latency_avg_1h = result[0] if result and result[0] else None
+        
+        result = conn.execute(
+            "SELECT AVG(latency_ms) FROM otel_api_requests WHERE timestamp > ?",
+            (cutoff_24h,)
+        ).fetchone()
+        latency_avg_24h = result[0] if result and result[0] else None
+        
+        result = conn.execute(
+            "SELECT AVG(latency_ms) FROM otel_api_requests WHERE timestamp > ?",
+            (cutoff_7d,)
+        ).fetchone()
+        latency_avg_7d = result[0] if result and result[0] else None
         
         # P95 and P99 response times
         result = conn.execute(
@@ -251,9 +293,19 @@ async def get_gateway_metrics(request: Request):
         ).fetchall()
         status_distribution = {row[0]: row[1] for row in result} if result else {}
         
-        # Calculate error rate
-        total_2xx = status_distribution.get('2xx', 0)
-        error_rate = ((total_requests - total_2xx) / total_requests * 100) if total_requests > 0 else 0.0
+        # Calculate error rate (last 1 minute to match sparkline's rightmost point)
+        result = conn.execute(
+            """SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+               FROM otel_api_requests 
+               WHERE timestamp BETWEEN ? AND ?""",
+            (recent_cutoff, now)
+        ).fetchone()
+        if result and result[0] > 0:
+            error_rate = ((result[0] - result[1]) / result[0] * 100)
+        else:
+            error_rate = 0.0
         success_rate = 100.0 - error_rate
         
         # Error rate sparkline (last 12 minutes, 12 data points = 1-minute intervals)
@@ -289,6 +341,37 @@ async def get_gateway_metrics(request: Request):
         else:
             prev_week_error_rate = error_rate
         error_rate_trend = calculate_trend(error_rate, prev_week_error_rate)
+        
+        # Calculate 1h, 24h, 7d averages for error rate
+        result = conn.execute(
+            """SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+               FROM otel_api_requests 
+               WHERE timestamp > ?""",
+            (cutoff_1h,)
+        ).fetchone()
+        error_rate_avg_1h = ((result[0] - result[1]) / result[0] * 100) if result and result[0] > 0 else None
+        
+        result = conn.execute(
+            """SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+               FROM otel_api_requests 
+               WHERE timestamp > ?""",
+            (cutoff_24h,)
+        ).fetchone()
+        error_rate_avg_24h = ((result[0] - result[1]) / result[0] * 100) if result and result[0] > 0 else None
+        
+        result = conn.execute(
+            """SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+               FROM otel_api_requests 
+               WHERE timestamp > ?""",
+            (cutoff_7d,)
+        ).fetchone()
+        error_rate_avg_7d = ((result[0] - result[1]) / result[0] * 100) if result and result[0] > 0 else None
         
         # Top endpoints
         result = conn.execute(
@@ -329,14 +412,20 @@ async def get_gateway_metrics(request: Request):
             unit="req/s",
             trend=round(rps_trend, 1),
             status="healthy" if requests_per_second < 1000 else "warning",
-            sparkline_data=rps_sparkline
+            sparkline_data=rps_sparkline,
+            avg_1h=round(rps_avg_1h, 2) if rps_avg_1h else None,
+            avg_24h=round(rps_avg_24h, 2) if rps_avg_24h else None,
+            avg_7d=round(rps_avg_7d, 2) if rps_avg_7d else None
         ),
         avg_response_time=MetricValue(
             value=round(avg_response_time, 2),
             unit="ms",
             trend=round(avg_latency_trend, 1),
             status=get_metric_status(avg_response_time, {"warning": 500, "critical": 1000}),
-            sparkline_data=avg_latency_sparkline
+            sparkline_data=avg_latency_sparkline,
+            avg_1h=round(latency_avg_1h, 2) if latency_avg_1h else None,
+            avg_24h=round(latency_avg_24h, 2) if latency_avg_24h else None,
+            avg_7d=round(latency_avg_7d, 2) if latency_avg_7d else None
         ),
         p95_response_time=MetricValue(
             value=round(p95_response_time, 2),
@@ -355,14 +444,20 @@ async def get_gateway_metrics(request: Request):
             unit="%",
             trend=round(error_rate_trend, 1),
             status=get_metric_status(error_rate, {"warning": 5, "critical": 10}),
-            sparkline_data=error_rate_sparkline
+            sparkline_data=error_rate_sparkline,
+            avg_1h=round(error_rate_avg_1h, 2) if error_rate_avg_1h else None,
+            avg_24h=round(error_rate_avg_24h, 2) if error_rate_avg_24h else None,
+            avg_7d=round(error_rate_avg_7d, 2) if error_rate_avg_7d else None
         ),
         success_rate=MetricValue(
             value=round(success_rate, 2),
             unit="%",
             trend=round(-error_rate_trend, 1),  # Inverse of error rate trend
             status="healthy" if success_rate > 95 else "warning",
-            sparkline_data=[100 - x for x in error_rate_sparkline]  # Inverse of error rate
+            sparkline_data=[100 - x for x in error_rate_sparkline],  # Inverse of error rate
+            avg_1h=round(100 - error_rate_avg_1h, 2) if error_rate_avg_1h else None,
+            avg_24h=round(100 - error_rate_avg_24h, 2) if error_rate_avg_24h else None,
+            avg_7d=round(100 - error_rate_avg_7d, 2) if error_rate_avg_7d else None
         ),
         total_requests_24h=total_requests,
         status_code_distribution=status_distribution,
