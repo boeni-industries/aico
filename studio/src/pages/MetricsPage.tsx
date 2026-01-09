@@ -372,6 +372,7 @@ export const MetricsPage: React.FC = () => {
             color="#00D9FF"
             dataSource="real"
             sparklineData={gateway.requests_per_second.sparkline_data}
+            isNeutralMetric={true}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -384,6 +385,7 @@ export const MetricsPage: React.FC = () => {
             status={gateway.avg_response_time.status}
             dataSource="real"
             sparklineData={gateway.avg_response_time.sparkline_data}
+            lowerIsBetter={true}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -396,6 +398,7 @@ export const MetricsPage: React.FC = () => {
             status={gateway.error_rate.status}
             dataSource="real"
             sparklineData={gateway.error_rate.sparkline_data}
+            lowerIsBetter={true}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>

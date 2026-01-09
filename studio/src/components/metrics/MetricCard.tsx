@@ -15,6 +15,8 @@ interface MetricCardProps {
   dataSource?: 'real' | 'mock';
   sparklineData?: number[];
   invertSparkline?: boolean;
+  isNeutralMetric?: boolean;
+  lowerIsBetter?: boolean;
 }
 
 export const MetricCard: React.FC<MetricCardProps> = ({
@@ -29,6 +31,8 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   dataSource = 'mock',
   sparklineData,
   invertSparkline = false,
+  isNeutralMetric = false,
+  lowerIsBetter = false,
 }) => {
   const statusColors = {
     healthy: '#10B981',
@@ -144,6 +148,8 @@ export const MetricCard: React.FC<MetricCardProps> = ({
               showGradient={true}
               invertY={invertSparkline}
               unit={unit}
+              isNeutralMetric={isNeutralMetric}
+              lowerIsBetter={lowerIsBetter}
             />
           </Box>
         )}

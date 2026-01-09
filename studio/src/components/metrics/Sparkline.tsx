@@ -11,6 +11,8 @@ interface SparklineProps {
   invertY?: boolean;
   unit?: string;
   formatValue?: (value: number) => string;
+  isNeutralMetric?: boolean;
+  lowerIsBetter?: boolean;
 }
 
 export const Sparkline: React.FC<SparklineProps> = ({
@@ -23,6 +25,8 @@ export const Sparkline: React.FC<SparklineProps> = ({
   invertY = false,
   unit = '',
   formatValue,
+  isNeutralMetric = false,
+  lowerIsBetter = false,
 }) => {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -111,14 +115,15 @@ export const Sparkline: React.FC<SparklineProps> = ({
   const absoluteChange = lastValue - firstValue;
   const percentChange = firstValue !== 0 ? ((absoluteChange / firstValue) * 100) : 0;
   
-  // For inverted metrics (lower is better), we need to reverse the "good/bad" interpretation
-  // but keep the arrow direction matching the actual data direction
+  // Arrow direction always matches actual data movement
   const isIncreasing = absoluteChange > 0;
   const isDecreasing = absoluteChange < 0;
   
   // Determine if this change is good or bad based on metric type
-  const isGoodChange = invertY ? isDecreasing : isIncreasing; // For invertY metrics, decrease is good
-  const isBadChange = invertY ? isIncreasing : isDecreasing;  // For invertY metrics, increase is bad
+  // lowerIsBetter: for metrics like response time, error rate (decrease = good)
+  // !lowerIsBetter: for metrics like requests/sec, success rate (increase = good)
+  const isGoodChange = lowerIsBetter ? isDecreasing : isIncreasing;
+  const isBadChange = lowerIsBetter ? isIncreasing : isDecreasing;
   
   const isNoChange = Math.abs(percentChange) <= 5; // Less than 5% is considered no significant change
   const hasChange = true; // Always show indicator
@@ -243,17 +248,21 @@ export const Sparkline: React.FC<SparklineProps> = ({
               px: 1,
               py: 0.5,
               borderRadius: '6px',
-              bgcolor: isNoChange 
-                ? 'rgba(100, 116, 139, 0.15)' 
-                : isGoodChange 
-                  ? 'rgba(16, 185, 129, 0.15)' 
-                  : 'rgba(239, 68, 68, 0.15)',
+              bgcolor: isNeutralMetric
+                ? 'rgba(59, 130, 246, 0.15)' // Blue for neutral metrics
+                : isNoChange 
+                  ? 'rgba(100, 116, 139, 0.15)' 
+                  : isGoodChange 
+                    ? 'rgba(16, 185, 129, 0.15)' 
+                    : 'rgba(239, 68, 68, 0.15)',
               border: '1px solid',
-              borderColor: isNoChange
-                ? 'rgba(100, 116, 139, 0.3)'
-                : isGoodChange 
-                  ? 'rgba(16, 185, 129, 0.3)' 
-                  : 'rgba(239, 68, 68, 0.3)',
+              borderColor: isNeutralMetric
+                ? 'rgba(59, 130, 246, 0.3)'
+                : isNoChange
+                  ? 'rgba(100, 116, 139, 0.3)'
+                  : isGoodChange 
+                    ? 'rgba(16, 185, 129, 0.3)' 
+                    : 'rgba(239, 68, 68, 0.3)',
               display: 'flex',
               alignItems: 'center',
               gap: 0.5,
@@ -268,7 +277,13 @@ export const Sparkline: React.FC<SparklineProps> = ({
               sx={{
                 fontSize: '0.65rem',
                 fontWeight: 700,
-                color: isNoChange ? '#64748B' : isGoodChange ? '#10B981' : '#EF4444',
+                color: isNeutralMetric
+                  ? '#3B82F6' // Blue for neutral
+                  : isNoChange 
+                    ? '#64748B' 
+                    : isGoodChange 
+                      ? '#10B981' 
+                      : '#EF4444',
                 lineHeight: 1,
               }}
             >
@@ -278,7 +293,13 @@ export const Sparkline: React.FC<SparklineProps> = ({
               sx={{
                 fontSize: '0.6rem',
                 fontWeight: 700,
-                color: isNoChange ? '#64748B' : isGoodChange ? '#10B981' : '#EF4444',
+                color: isNeutralMetric
+                  ? '#3B82F6'
+                  : isNoChange 
+                    ? '#64748B' 
+                    : isGoodChange 
+                      ? '#10B981' 
+                      : '#EF4444',
                 letterSpacing: '0.02em',
                 lineHeight: 1,
               }}
@@ -289,11 +310,13 @@ export const Sparkline: React.FC<SparklineProps> = ({
               sx={{
                 fontSize: '0.55rem',
                 fontWeight: 500,
-                color: isNoChange 
-                  ? 'rgba(100, 116, 139, 0.8)' 
-                  : isGoodChange 
-                    ? 'rgba(16, 185, 129, 0.8)' 
-                    : 'rgba(239, 68, 68, 0.8)',
+                color: isNeutralMetric
+                  ? 'rgba(59, 130, 246, 0.8)'
+                  : isNoChange 
+                    ? 'rgba(100, 116, 139, 0.8)' 
+                    : isGoodChange 
+                      ? 'rgba(16, 185, 129, 0.8)' 
+                      : 'rgba(239, 68, 68, 0.8)',
                 letterSpacing: '0.01em',
                 lineHeight: 1,
               }}
