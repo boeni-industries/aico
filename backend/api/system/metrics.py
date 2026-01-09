@@ -327,20 +327,10 @@ async def get_gateway_metrics(request: Request):
             else:
                 error_rate_sparkline.append(0.0)
         
-        # Calculate 7-day trend for error rate
-        result = conn.execute(
-            """SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
-               FROM otel_api_requests 
-               WHERE timestamp BETWEEN ? AND ?""",
-            (cutoff_14d, cutoff_7d)
-        ).fetchone()
-        if result and result[0] > 0:
-            prev_week_error_rate = ((result[0] - result[1]) / result[0] * 100)
-        else:
-            prev_week_error_rate = error_rate
-        error_rate_trend = calculate_trend(error_rate, prev_week_error_rate)
+        # Calculate trend for error rate (compare current to first sparkline point)
+        # Use first sparkline point as baseline since we may not have 7-14 day historical data yet
+        first_sparkline_error_rate = error_rate_sparkline[0] if error_rate_sparkline else error_rate
+        error_rate_trend = calculate_trend(error_rate, first_sparkline_error_rate)
         
         # Calculate 1h, 24h, 7d averages for error rate
         result = conn.execute(

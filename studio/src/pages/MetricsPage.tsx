@@ -419,7 +419,6 @@ export const MetricsPage: React.FC = () => {
             color="#10B981"
             dataSource="real"
             sparklineData={gateway.success_rate.sparkline_data}
-            invertSparkline={true}
             avg_1h={gateway.success_rate.avg_1h}
             avg_24h={gateway.success_rate.avg_24h}
             avg_7d={gateway.success_rate.avg_7d}

@@ -125,8 +125,8 @@ export const Sparkline: React.FC<SparklineProps> = ({
   const isGoodChange = lowerIsBetter ? isDecreasing : isIncreasing;
   const isBadChange = lowerIsBetter ? isIncreasing : isDecreasing;
   
-  const isNoChange = Math.abs(percentChange) <= 5; // Less than 5% is considered no significant change
-  const hasChange = true; // Always show indicator
+  const isNoChange = Math.abs(percentChange) <= 1; // Less than 1% is considered no significant change
+  const hasChange = firstValue !== 0; // Only show indicator if we have valid baseline data
 
   return (
     <>
@@ -289,40 +289,64 @@ export const Sparkline: React.FC<SparklineProps> = ({
             >
               {isNoChange ? '→' : isIncreasing ? '↑' : '↓'}
             </Box>
-            <Box
-              sx={{
-                fontSize: '0.6rem',
-                fontWeight: 700,
-                color: isNeutralMetric
-                  ? '#3B82F6'
-                  : isNoChange 
-                    ? '#64748B' 
-                    : isGoodChange 
-                      ? '#10B981' 
-                      : '#EF4444',
-                letterSpacing: '0.02em',
-                lineHeight: 1,
-              }}
-            >
-              {Math.abs(percentChange).toFixed(0)}%
-            </Box>
-            <Box
-              sx={{
-                fontSize: '0.55rem',
-                fontWeight: 500,
-                color: isNeutralMetric
-                  ? 'rgba(59, 130, 246, 0.8)'
-                  : isNoChange 
-                    ? 'rgba(100, 116, 139, 0.8)' 
-                    : isGoodChange 
-                      ? 'rgba(16, 185, 129, 0.8)' 
-                      : 'rgba(239, 68, 68, 0.8)',
-                letterSpacing: '0.01em',
-                lineHeight: 1,
-              }}
-            >
-              ({formatValue ? formatValue(Math.abs(absoluteChange)) : `${Math.abs(absoluteChange).toFixed(1)}${unit}`})
-            </Box>
+            {unit === '%' ? (
+              // For percentage metrics, show only absolute change (more intuitive)
+              <Box
+                sx={{
+                  fontSize: '0.6rem',
+                  fontWeight: 700,
+                  color: isNeutralMetric
+                    ? '#3B82F6'
+                    : isNoChange 
+                      ? '#64748B' 
+                      : isGoodChange 
+                        ? '#10B981' 
+                        : '#EF4444',
+                  letterSpacing: '0.02em',
+                  lineHeight: 1,
+                }}
+              >
+                {Math.abs(absoluteChange).toFixed(1)}%
+              </Box>
+            ) : (
+              // For non-percentage metrics, show relative % and absolute change
+              <>
+                <Box
+                  sx={{
+                    fontSize: '0.6rem',
+                    fontWeight: 700,
+                    color: isNeutralMetric
+                      ? '#3B82F6'
+                      : isNoChange 
+                        ? '#64748B' 
+                        : isGoodChange 
+                          ? '#10B981' 
+                          : '#EF4444',
+                    letterSpacing: '0.02em',
+                    lineHeight: 1,
+                  }}
+                >
+                  {Math.abs(percentChange).toFixed(0)}%
+                </Box>
+                <Box
+                  sx={{
+                    fontSize: '0.55rem',
+                    fontWeight: 500,
+                    color: isNeutralMetric
+                      ? 'rgba(59, 130, 246, 0.8)'
+                      : isNoChange 
+                        ? 'rgba(100, 116, 139, 0.8)' 
+                        : isGoodChange 
+                          ? 'rgba(16, 185, 129, 0.8)' 
+                          : 'rgba(239, 68, 68, 0.8)',
+                    letterSpacing: '0.01em',
+                    lineHeight: 1,
+                  }}
+                >
+                  ({formatValue ? formatValue(Math.abs(absoluteChange)) : `${Math.abs(absoluteChange).toFixed(1)}${unit}`})
+                </Box>
+              </>
+            )}
           </Box>
         )}
       </Box>
