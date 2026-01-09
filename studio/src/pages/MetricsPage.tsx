@@ -438,7 +438,7 @@ export const MetricsPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Modelservice Metrics */}
+      {/* LLM Inference Metrics */}
       <Typography
         variant="h6"
         sx={{
@@ -450,47 +450,309 @@ export const MetricsPage: React.FC = () => {
           color: 'text.secondary',
         }}
       >
-        Modelservice Metrics
+        LLM Inference (Ollama)
       </Typography>
       <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap' }}>
-        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
             label="Active Models"
-            value={modelservice.active_models.value}
+            value={modelservice.llm?.active_models?.value || 0}
             unit="models"
             color="#A78BFA"
-            dataSource="mock"
+            dataSource="real"
           />
         </Box>
-        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
-            label="Inference Throughput"
-            value={modelservice.inference_throughput.value.toFixed(1)}
-            unit="tokens/s"
-            trend={modelservice.inference_throughput.trend}
-            color="#00D9FF"
-            dataSource="mock"
-          />
-        </Box>
-        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
-          <MetricCard
-            label="Avg Inference Time"
-            value={modelservice.avg_inference_time.value.toFixed(2)}
+            label="TTFT"
+            value={modelservice.llm?.ttft?.value || 0}
             unit="s"
-            trend={modelservice.avg_inference_time.trend}
-            color="#F59E0B"
-            dataSource="mock"
+            trend={modelservice.llm?.ttft?.trend || 0}
+            color="#EC4899"
+            dataSource="real"
+            tooltip="Time to First Token - latency until first token appears"
+            lowerIsBetter={true}
           />
         </Box>
-        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
-            label="CPU Utilization"
-            value={modelservice.cpu_utilization.value.toFixed(1)}
+            label="TPS"
+            value={modelservice.llm?.tps?.value || 0}
+            unit="t/s"
+            trend={modelservice.llm?.tps?.trend || 0}
+            color="#00D9FF"
+            dataSource="real"
+            tooltip="Tokens Per Second - output generation speed"
+            avg_1h={modelservice.llm?.tps?.avg_1h}
+            avg_24h={modelservice.llm?.tps?.avg_24h}
+            avg_7d={modelservice.llm?.tps?.avg_7d}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="E2E Latency"
+            value={modelservice.llm?.e2e_latency?.value || 0}
+            unit="s"
+            trend={modelservice.llm?.e2e_latency?.trend || 0}
+            color="#F59E0B"
+            dataSource="real"
+            tooltip="End-to-end request completion time"
+            lowerIsBetter={true}
+            avg_1h={modelservice.llm?.e2e_latency?.avg_1h}
+            avg_24h={modelservice.llm?.e2e_latency?.avg_24h}
+            avg_7d={modelservice.llm?.e2e_latency?.avg_7d}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="RPS"
+            value={modelservice.llm?.rps?.value || 0}
+            unit="req/s"
+            trend={modelservice.llm?.rps?.trend || 0}
+            color="#10B981"
+            dataSource="real"
+            tooltip="Requests Per Second - throughput for concurrent users"
+            avg_1h={modelservice.llm?.rps?.avg_1h}
+            avg_24h={modelservice.llm?.rps?.avg_24h}
+            avg_7d={modelservice.llm?.rps?.avg_7d}
+          />
+        </Box>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap' }}>
+        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Success Rate"
+            value={modelservice.llm?.success_rate?.value || 0}
             unit="%"
-            trend={modelservice.cpu_utilization.trend}
-            color="#3B82F6"
-            status={modelservice.cpu_utilization.status}
-            dataSource="mock"
+            color="#10B981"
+            dataSource="real"
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Tokens (24h)"
+            value={modelservice.llm?.total_tokens_24h || 0}
+            unit="tokens"
+            color="#8B5CF6"
+            dataSource="real"
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Avg Prompt"
+            value={modelservice.llm?.avg_prompt_length?.value || 0}
+            unit="tokens"
+            color="#06B6D4"
+            dataSource="real"
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Avg Response"
+            value={modelservice.llm?.avg_response_length?.value || 0}
+            unit="tokens"
+            color="#14B8A6"
+            dataSource="real"
+          />
+        </Box>
+      </Box>
+
+      {/* Specialized Inference Models */}
+      <Typography
+        variant="h6"
+        sx={{
+          mb: 2,
+          mt: 3,
+          fontWeight: 600,
+          fontSize: '0.85rem',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'text.secondary',
+        }}
+      >
+        Specialized Inference Models
+      </Typography>
+      
+      {/* NER Metrics */}
+      <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary', fontWeight: 500 }}>Named Entity Recognition</Typography>
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Rate"
+            value={modelservice.ner?.inference_rate?.value || 0}
+            unit="req/s"
+            trend={modelservice.ner?.inference_rate?.trend || 0}
+            color="#F59E0B"
+            dataSource="real"
+            avg_1h={modelservice.ner?.inference_rate?.avg_1h}
+            avg_24h={modelservice.ner?.inference_rate?.avg_24h}
+            avg_7d={modelservice.ner?.inference_rate?.avg_7d}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Latency"
+            value={modelservice.ner?.avg_latency?.value || 0}
+            unit="s"
+            trend={modelservice.ner?.avg_latency?.trend || 0}
+            color="#EF4444"
+            dataSource="real"
+            lowerIsBetter={true}
+            avg_1h={modelservice.ner?.avg_latency?.avg_1h}
+            avg_24h={modelservice.ner?.avg_latency?.avg_24h}
+            avg_7d={modelservice.ner?.avg_latency?.avg_7d}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="P99"
+            value={modelservice.ner?.p99_latency || 0}
+            unit="s"
+            color="#DC2626"
+            dataSource="real"
+            tooltip="99th percentile latency"
+            lowerIsBetter={true}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Entities (24h)"
+            value={modelservice.ner?.total_entities_24h || 0}
+            unit="entities"
+            color="#F97316"
+            dataSource="real"
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Success Rate"
+            value={modelservice.ner?.success_rate?.value || 0}
+            unit="%"
+            color="#10B981"
+            dataSource="real"
+          />
+        </Box>
+      </Box>
+
+      {/* Sentiment Analysis Metrics */}
+      <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary', fontWeight: 500 }}>Sentiment Analysis</Typography>
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Rate"
+            value={modelservice.sentiment?.inference_rate?.value || 0}
+            unit="req/s"
+            trend={modelservice.sentiment?.inference_rate?.trend || 0}
+            color="#8B5CF6"
+            dataSource="real"
+            avg_1h={modelservice.sentiment?.inference_rate?.avg_1h}
+            avg_24h={modelservice.sentiment?.inference_rate?.avg_24h}
+            avg_7d={modelservice.sentiment?.inference_rate?.avg_7d}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Latency"
+            value={modelservice.sentiment?.avg_latency?.value || 0}
+            unit="s"
+            trend={modelservice.sentiment?.avg_latency?.trend || 0}
+            color="#A855F7"
+            dataSource="real"
+            lowerIsBetter={true}
+            avg_1h={modelservice.sentiment?.avg_latency?.avg_1h}
+            avg_24h={modelservice.sentiment?.avg_latency?.avg_24h}
+            avg_7d={modelservice.sentiment?.avg_latency?.avg_7d}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="P99"
+            value={modelservice.sentiment?.p99_latency || 0}
+            unit="s"
+            color="#9333EA"
+            dataSource="real"
+            tooltip="99th percentile latency"
+            lowerIsBetter={true}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Analyses (24h)"
+            value={modelservice.sentiment?.total_analyses_24h || 0}
+            unit="analyses"
+            color="#C084FC"
+            dataSource="real"
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Avg Confidence"
+            value={modelservice.sentiment?.avg_confidence?.value || 0}
+            unit=""
+            color="#D946EF"
+            dataSource="real"
+          />
+        </Box>
+      </Box>
+
+      {/* Embeddings Metrics */}
+      <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary', fontWeight: 500 }}>Embeddings</Typography>
+      <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap' }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Rate"
+            value={modelservice.embeddings?.inference_rate?.value || 0}
+            unit="req/s"
+            trend={modelservice.embeddings?.inference_rate?.trend || 0}
+            color="#06B6D4"
+            dataSource="real"
+            avg_1h={modelservice.embeddings?.inference_rate?.avg_1h}
+            avg_24h={modelservice.embeddings?.inference_rate?.avg_24h}
+            avg_7d={modelservice.embeddings?.inference_rate?.avg_7d}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Latency"
+            value={modelservice.embeddings?.avg_latency?.value || 0}
+            unit="s"
+            trend={modelservice.embeddings?.avg_latency?.trend || 0}
+            color="#0891B2"
+            dataSource="real"
+            lowerIsBetter={true}
+            avg_1h={modelservice.embeddings?.avg_latency?.avg_1h}
+            avg_24h={modelservice.embeddings?.avg_latency?.avg_24h}
+            avg_7d={modelservice.embeddings?.avg_latency?.avg_7d}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="P99"
+            value={modelservice.embeddings?.p99_latency || 0}
+            unit="s"
+            color="#0E7490"
+            dataSource="real"
+            tooltip="99th percentile latency"
+            lowerIsBetter={true}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Throughput"
+            value={modelservice.embeddings?.throughput?.value || 0}
+            unit="t/s"
+            color="#14B8A6"
+            dataSource="real"
+            tooltip="Input tokens processed per second"
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
+            label="Embeddings (24h)"
+            value={modelservice.embeddings?.total_embeddings_24h || 0}
+            unit="embeddings"
+            color="#2DD4BF"
+            dataSource="real"
           />
         </Box>
       </Box>

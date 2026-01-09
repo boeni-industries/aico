@@ -225,6 +225,8 @@ class ModelserviceZMQHandlers:
         return response
     
     async def handle_chat_request(self, request_payload, correlation_id=None) -> CompletionsResponse:
+        from modelservice.core.metrics import track_inference
+
         """Handle chat requests via Protocol Buffers (conversational with message arrays)."""
         response = CompletionsResponse()
         
@@ -292,144 +294,159 @@ class ModelserviceZMQHandlers:
                     # Stream response from Ollama and forward chunks immediately
                     accumulated_content = ""
                     accumulated_thinking = ""
+                    first_token_time = None
+                    start_time = time.perf_counter()
                     from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
                     
-                    async with client.stream("POST", f"{ollama_url}/api/chat", json=request_data) as stream_response:
-                        if stream_response.status_code != 200:
-                            error_text = await stream_response.aread()
-                            raise Exception(f"Ollama error: {stream_response.status_code} - {error_text.decode()}")
-                        
-                        self.logger.info(f"[CHAT] Streaming response started, forwarding chunks...")
-                        
-                        async for line in stream_response.aiter_lines():
-                            if not line.strip():
-                                continue
+                    # Track inference metrics for streaming chat
+                    with track_inference(model, task_type="chat_streaming") as tracker:
+                        async with client.stream("POST", f"{ollama_url}/api/chat", json=request_data) as stream_response:
+                            if stream_response.status_code != 200:
+                                error_text = await stream_response.aread()
+                                tracker.set_success(False)
+                                tracker.set_error(f"HTTP {stream_response.status_code}")
+                                raise Exception(f"Ollama error: {stream_response.status_code} - {error_text.decode()}")
                             
-                            try:
-                                chunk = json.loads(line)
+                            self.logger.info(f"[CHAT] Streaming response started, forwarding chunks...")
+                            
+                            async for line in stream_response.aiter_lines():
+                                if not line.strip():
+                                    continue
                                 
-                                # Ollama 0.12+ returns thinking in separate field
-                                chunk_thinking = chunk.get("message", {}).get("thinking", "")
-                                chunk_content = chunk.get("message", {}).get("content", "")
-                                
-                                # Handle thinking chunks
-                                if chunk_thinking:
-                                    accumulated_thinking += chunk_thinking
+                                try:
+                                    chunk = json.loads(line)
                                     
-                                    # Publish thinking chunk
-                                    if self.message_bus_client and correlation_id:
-                                        from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                        from aico.core.topics import AICOTopics
-                                        import time
+                                    # Ollama 0.12+ returns thinking in separate field
+                                    chunk_thinking = chunk.get("message", {}).get("thinking", "")
+                                    chunk_content = chunk.get("message", {}).get("content", "")
+                                    
+                                    # Handle thinking chunks
+                                    if chunk_thinking:
+                                        accumulated_thinking += chunk_thinking
                                         
-                                        streaming_chunk = StreamingChunk()
-                                        streaming_chunk.request_id = correlation_id
-                                        streaming_chunk.content = chunk_thinking
-                                        streaming_chunk.accumulated_content = accumulated_thinking
-                                        streaming_chunk.done = False
-                                        streaming_chunk.model = model
-                                        streaming_chunk.timestamp = int(time.time() * 1000)
-                                        streaming_chunk.content_type = "thinking"
+                                        # Publish thinking chunk
+                                        if self.message_bus_client and correlation_id:
+                                            from aico.proto.aico_modelservice_pb2 import StreamingChunk
+                                            from aico.core.topics import AICOTopics
+                                            import time
+                                            
+                                            streaming_chunk = StreamingChunk()
+                                            streaming_chunk.request_id = correlation_id
+                                            streaming_chunk.content = chunk_thinking
+                                            streaming_chunk.accumulated_content = accumulated_thinking
+                                            streaming_chunk.done = False
+                                            streaming_chunk.model = model
+                                            streaming_chunk.timestamp = int(time.time() * 1000)
+                                            streaming_chunk.content_type = "thinking"
+                                            
+                                            await self.message_bus_client.publish(
+                                                AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
+                                                streaming_chunk,
+                                                correlation_id=correlation_id
+                                            )
+                                            # Commented out to reduce log volume
+                                            # self.logger.debug(f"[CHAT] Published thinking chunk for {correlation_id}")
+                                    
+                                    # Handle response content chunks
+                                    if chunk_content:
+                                        # Track TTFT (time to first token) on first content chunk
+                                        if not accumulated_content and not first_token_time:
+                                            first_token_time = time.perf_counter()
+                                            ttft = first_token_time - start_time
+                                            tracker.set_ttft(ttft)
                                         
-                                        await self.message_bus_client.publish(
-                                            AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
-                                            streaming_chunk,
-                                            correlation_id=correlation_id
-                                        )
+                                        accumulated_content += chunk_content
+                                        
+                                        # Publish response chunk
+                                        if self.message_bus_client and correlation_id:
+                                            from aico.proto.aico_modelservice_pb2 import StreamingChunk
+                                            from aico.core.topics import AICOTopics
+                                            import time
+                                            
+                                            streaming_chunk = StreamingChunk()
+                                            streaming_chunk.request_id = correlation_id
+                                            streaming_chunk.content = chunk_content
+                                            streaming_chunk.accumulated_content = accumulated_content
+                                            streaming_chunk.done = False
+                                            streaming_chunk.model = model
+                                            streaming_chunk.timestamp = int(time.time() * 1000)
+                                            streaming_chunk.content_type = "response"
+                                            
+                                            await self.message_bus_client.publish(
+                                                AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
+                                                streaming_chunk,
+                                                correlation_id=correlation_id
+                                            )
+                                            # Commented out to reduce log volume
+                                            # self.logger.debug(f"[CHAT] Published response chunk for {correlation_id}")
+                                    
+                                    # Check if this is the final chunk
+                                    if chunk.get("done", False):
                                         # Commented out to reduce log volume
-                                        # self.logger.debug(f"[CHAT] Published thinking chunk for {correlation_id}")
-                                
-                                # Handle response content chunks
-                                if chunk_content:
-                                    accumulated_content += chunk_content
-                                    
-                                    # Publish response chunk
-                                    if self.message_bus_client and correlation_id:
-                                        from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                        from aico.core.topics import AICOTopics
-                                        import time
+                                        # self.logger.info(f"[CHAT] Streaming complete, thinking length: {len(accumulated_thinking)}, response length: {len(accumulated_content)}")
                                         
-                                        streaming_chunk = StreamingChunk()
-                                        streaming_chunk.request_id = correlation_id
-                                        streaming_chunk.content = chunk_content
-                                        streaming_chunk.accumulated_content = accumulated_content
-                                        streaming_chunk.done = False
-                                        streaming_chunk.model = model
-                                        streaming_chunk.timestamp = int(time.time() * 1000)
-                                        streaming_chunk.content_type = "response"
+                                        # Publish final completion signal
+                                        if self.message_bus_client and correlation_id:
+                                            from aico.proto.aico_modelservice_pb2 import StreamingChunk
+                                            from aico.core.topics import AICOTopics
+                                            import time
+                                            
+                                            # Create final streaming chunk
+                                            final_chunk = StreamingChunk()
+                                            final_chunk.request_id = correlation_id
+                                            final_chunk.content = ""  # No new content in final chunk
+                                            final_chunk.accumulated_content = accumulated_content
+                                            final_chunk.done = True
+                                            final_chunk.model = model
+                                            final_chunk.timestamp = int(time.time() * 1000)
+                                            final_chunk.content_type = "response"  # Final chunk is always response type
+                                            
+                                            # Publish final chunk
+                                            await self.message_bus_client.publish(
+                                                AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
+                                                final_chunk,
+                                                correlation_id=correlation_id
+                                            )
                                         
-                                        await self.message_bus_client.publish(
-                                            AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
-                                            streaming_chunk,
-                                            correlation_id=correlation_id
-                                        )
-                                        # Commented out to reduce log volume
-                                        # self.logger.debug(f"[CHAT] Published response chunk for {correlation_id}")
-                                
-                                # Check if this is the final chunk
-                                if chunk.get("done", False):
-                                    # Commented out to reduce log volume
-                                    # self.logger.info(f"[CHAT] Streaming complete, thinking length: {len(accumulated_thinking)}, response length: {len(accumulated_content)}")
-                                    
-                                    # Publish final completion signal
-                                    if self.message_bus_client and correlation_id:
-                                        from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                        from aico.core.topics import AICOTopics
-                                        import time
+                                        # Create final Protocol Buffer response for ZMQ
+                                        result = CompletionResult()
+                                        result.model = model
+                                        result.done = True
                                         
-                                        # Create final streaming chunk
-                                        final_chunk = StreamingChunk()
-                                        final_chunk.request_id = correlation_id
-                                        final_chunk.content = ""  # No new content in final chunk
-                                        final_chunk.accumulated_content = accumulated_content
-                                        final_chunk.done = True
-                                        final_chunk.model = model
-                                        final_chunk.timestamp = int(time.time() * 1000)
-                                        final_chunk.content_type = "response"  # Final chunk is always response type
+                                        # Store thinking separately in result
+                                        if accumulated_thinking:
+                                            result.thinking = accumulated_thinking
+                                            self.logger.info(f"[CHAT] Extracted thinking: {len(accumulated_thinking)} chars")
                                         
-                                        # Publish final chunk
-                                        await self.message_bus_client.publish(
-                                            AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
-                                            final_chunk,
-                                            correlation_id=correlation_id
-                                        )
-                                    
-                                    # Create final Protocol Buffer response for ZMQ
-                                    result = CompletionResult()
-                                    result.model = model
-                                    result.done = True
-                                    
-                                    # Store thinking separately in result
-                                    if accumulated_thinking:
-                                        result.thinking = accumulated_thinking
-                                        self.logger.info(f"[CHAT] Extracted thinking: {len(accumulated_thinking)} chars")
-                                    
-                                    response_msg = ConversationMessage()
-                                    response_msg.role = "assistant"
-                                    response_msg.content = accumulated_content  # Clean response without thinking tags
-                                    result.message.CopyFrom(response_msg)
-                                    
-                                    # Optional timing fields from final chunk
-                                    if "total_duration" in chunk:
-                                        result.total_duration = chunk["total_duration"]
-                                    if "load_duration" in chunk:
-                                        result.load_duration = chunk["load_duration"]
-                                    if "prompt_eval_count" in chunk:
-                                        result.prompt_eval_count = chunk["prompt_eval_count"]
-                                    if "prompt_eval_duration" in chunk:
-                                        result.prompt_eval_duration = chunk["prompt_eval_duration"]
-                                    if "eval_count" in chunk:
-                                        result.eval_count = chunk["eval_count"]
-                                    if "eval_duration" in chunk:
-                                        result.eval_duration = chunk["eval_duration"]
-                                    
-                                    response.success = True
-                                    response.result.CopyFrom(result)
-                                    break
-                                    
-                            except json.JSONDecodeError as je:
-                                self.logger.warning(f"[CHAT] Failed to parse chunk: {line[:100]}... - {je}")
-                                continue
+                                        response_msg = ConversationMessage()
+                                        response_msg.role = "assistant"
+                                        response_msg.content = accumulated_content  # Clean response without thinking tags
+                                        result.message.CopyFrom(response_msg)
+                                        
+                                        # Optional timing fields from final chunk
+                                        if "total_duration" in chunk:
+                                            result.total_duration = chunk["total_duration"]
+                                        if "load_duration" in chunk:
+                                            result.load_duration = chunk["load_duration"]
+                                        if "prompt_eval_count" in chunk:
+                                            result.prompt_eval_count = chunk["prompt_eval_count"]
+                                            tracker.set_prompt_tokens(chunk["prompt_eval_count"])
+                                        if "prompt_eval_duration" in chunk:
+                                            result.prompt_eval_duration = chunk["prompt_eval_duration"]
+                                        if "eval_count" in chunk:
+                                            result.eval_count = chunk["eval_count"]
+                                            tracker.set_tokens(chunk["eval_count"])
+                                        if "eval_duration" in chunk:
+                                            result.eval_duration = chunk["eval_duration"]
+                                        
+                                        tracker.set_success(True)
+                                        response.success = True
+                                        response.result.CopyFrom(result)
+                                        break
+                                        
+                                except json.JSONDecodeError as je:
+                                    self.logger.warning(f"[CHAT] Failed to parse chunk: {line[:100]}... - {je}")
+                                    continue
                     
                     self.logger.info(f"[CHAT] ✅ Success! Streamed chat response for model {model}")
                     self.logger.info(f"[CHAT] Final response length: {len(accumulated_content)} characters")
@@ -672,6 +689,8 @@ class ModelserviceZMQHandlers:
     
     async def handle_embeddings_request(self, request: EmbeddingsRequest) -> EmbeddingsResponse:
         """Handle embeddings generation request using transformer models."""
+        from modelservice.core.metrics import track_inference
+        
         start_time = time.time()
         response = EmbeddingsResponse()
         
@@ -705,75 +724,80 @@ class ModelserviceZMQHandlers:
                 return response
             
             # Generate embedding using transformer model from TransformersManager
-            try:
-                # Check if this is a SentenceTransformer model (for paraphrase-multilingual)
-                if hasattr(transformer_model, 'encode'):
-                    # This is a SentenceTransformer model - use .encode() method
-                    encode_start = time.time()
-                    
-                    # Run in thread pool to avoid blocking event loop and match warmup execution context
-                    import asyncio
-                    embedding = await asyncio.to_thread(transformer_model.encode, prompt, normalize_embeddings=True)
-                    encode_time = time.time() - encode_start
-                    
-                    # Convert to list if it's a numpy array
-                    if hasattr(embedding, 'tolist'):
-                        embedding = embedding.tolist()
-                    
-                    embedding_dim = len(embedding)
-                    response.embedding.extend(embedding)
-                    response.success = True
-                    
-                    total_time = time.time() - start_time
-                    # Log slow embeddings (>100ms)
-                    if total_time > 0.1:
-                        self.logger.debug(f"Embedding generated in {total_time*1000:.0f}ms (encode={encode_time*1000:.0f}ms, dim={embedding_dim})")
+            # Track inference metrics
+            with track_inference(model, task_type="embedding") as tracker:
+                try:
+                    # Check if this is a SentenceTransformer model (for paraphrase-multilingual)
+                    if hasattr(transformer_model, 'encode'):
+                        # This is a SentenceTransformer model - use .encode() method
+                        encode_start = time.time()
+                        
+                        # Run in thread pool to avoid blocking event loop and match warmup execution context
+                        import asyncio
+                        embedding = await asyncio.to_thread(transformer_model.encode, prompt, normalize_embeddings=True)
+                        encode_time = time.time() - encode_start
+                        
+                        # Convert to list if it's a numpy array
+                        if hasattr(embedding, 'tolist'):
+                            embedding = embedding.tolist()
+                        
+                        embedding_dim = len(embedding)
+                        response.embedding.extend(embedding)
+                        response.success = True
+                        
+                        total_time = time.time() - start_time
+                        # Log slow embeddings (>100ms)
+                        if total_time > 0.1:
+                            self.logger.debug(f"Embedding generated in {total_time*1000:.0f}ms (encode={encode_time*1000:.0f}ms, dim={embedding_dim})")
+                        else:
+                            self.logger.debug(f"Embedding: {total_time*1000:.0f}ms, dim={embedding_dim}")
+                        
+                    elif hasattr(transformer_model, 'tokenizer') and hasattr(transformer_model, 'model'):
+                        # This is a standard transformer model with tokenizer/model components
+                        self.logger.debug(f"Using standard transformer tokenizer/model for {model}")
+                        
+                        import torch
+                        import numpy as np
+                        
+                        tokenizer = transformer_model.tokenizer
+                        transformer = transformer_model.model
+                        
+                        # Tokenize and get embeddings
+                        inputs = tokenizer(
+                            prompt,
+                            return_tensors="pt",
+                            max_length=512,
+                            truncation=True,
+                            padding=True
+                        )
+                        
+                        with torch.no_grad():
+                            outputs = transformer(**inputs)
+                            # Use [CLS] token embedding (first token)
+                            embedding = outputs.last_hidden_state[:, 0, :].numpy().flatten()
+                        
+                        # Add embeddings to response
+                        response.embedding.extend(embedding.tolist())
+                        response.success = True
+                        
                     else:
-                        self.logger.debug(f"Embedding: {total_time*1000:.0f}ms, dim={embedding_dim}")
+                        response.success = False
+                        response.error = f"Model '{model}' type not supported for embeddings"
+                        self.logger.error(f"Model '{model}' does not have expected interface (encode() or tokenizer/model)")
+                        return response
                     
-                elif hasattr(transformer_model, 'tokenizer') and hasattr(transformer_model, 'model'):
-                    # This is a standard transformer model with tokenizer/model components
-                    self.logger.debug(f"Using standard transformer tokenizer/model for {model}")
-                    
-                    import torch
-                    import numpy as np
-                    
-                    tokenizer = transformer_model.tokenizer
-                    transformer = transformer_model.model
-                    
-                    # Tokenize and get embeddings
-                    inputs = tokenizer(
-                        prompt,
-                        return_tensors="pt",
-                        max_length=512,
-                        truncation=True,
-                        padding=True
+                    tracker.set_success(True)
+                    self.logger.info(
+                        f"Generated transformer embeddings for model {model}",
+                        extra={"topic": AICOTopics.LOGS_ENTRY}
                     )
                     
-                    with torch.no_grad():
-                        outputs = transformer(**inputs)
-                        # Use [CLS] token embedding (first token)
-                        embedding = outputs.last_hidden_state[:, 0, :].numpy().flatten()
-                    
-                    # Add embeddings to response
-                    response.embedding.extend(embedding.tolist())
-                    response.success = True
-                    
-                else:
+                except Exception as transformer_error:
+                    tracker.set_success(False)
+                    tracker.set_error(str(transformer_error))
                     response.success = False
-                    response.error = f"Model '{model}' type not supported for embeddings"
-                    self.logger.error(f"Model '{model}' does not have expected interface (encode() or tokenizer/model)")
-                    return response
-                
-                self.logger.info(
-                    f"Generated transformer embeddings for model {model}",
-                    extra={"topic": AICOTopics.LOGS_ENTRY}
-                )
-                
-            except Exception as transformer_error:
-                response.success = False
-                response.error = f"Transformer embedding failed: {str(transformer_error)}"
-                self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+                    response.error = f"Transformer embedding failed: {str(transformer_error)}"
+                    self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
                 
         except Exception as e:
             response.success = False
@@ -958,6 +982,8 @@ class ModelserviceZMQHandlers:
     
     async def handle_sentiment_request(self, request_payload) -> Any:
         """Handle sentiment analysis requests via Protocol Buffers."""
+        from modelservice.core.metrics import track_inference
+        
         try:
             self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] ✅ Sentiment request received!")
             response = SentimentResponse()
@@ -1001,62 +1027,80 @@ class ModelserviceZMQHandlers:
             
             self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] ✅ Sentiment pipeline obtained successfully")
             
-            # Analyze sentiment
-            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Running sentiment pipeline on text...")
-            result = sentiment_pipeline(text)
-            
-            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Raw pipeline result: {result}")
-            
-            # Extract sentiment and confidence
-            if result and len(result) > 0:
-                # Handle different result formats
-                if isinstance(result, list) and isinstance(result[0], list):
-                    # Format: [[{'label': '3 stars', 'score': 0.268}]]
-                    sentiment_result = result[0][0]
-                elif isinstance(result, list) and isinstance(result[0], dict):
-                    # Format: [{'label': '3 stars', 'score': 0.268}]
-                    sentiment_result = result[0]
-                else:
-                    self.logger.error(f"🔍 [SENTIMENT_HANDLER_DEBUG] ❌ Unexpected result format: {type(result)}")
-                    response.success = False
-                    response.error = f"Unexpected result format: {type(result)}"
-                    return response
+            # Analyze sentiment with metrics tracking
+            with track_inference("sentiment_multilingual", task_type="sentiment") as tracker:
+                try:
+                    self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Running sentiment pipeline on text...")
+                    result = sentiment_pipeline(text)
                     
-                label = sentiment_result['label'].lower()
-                confidence = sentiment_result['score']
-                
-                self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Extracted - Label: '{label}', Confidence: {confidence}")
-                
-                # Map model labels to standard format
-                # nlptown/bert-base-multilingual-uncased-sentiment uses star ratings
-                if label in ['5 stars', '4 stars']:
-                    sentiment = 'positive'
-                elif label in ['1 star', '2 stars']:
-                    sentiment = 'negative'
-                elif label in ['3 stars']:
-                    sentiment = 'neutral'
-                else:
-                    # Fallback for other models that might use different labels
-                    if label in ['positive', 'pos']:
-                        sentiment = 'positive'
-                    elif label in ['negative', 'neg']:
-                        sentiment = 'negative'
+                    self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Raw pipeline result: {result}")
+                    
+                    # Extract sentiment and confidence
+                    if result and len(result) > 0:
+                        # Handle different result formats
+                        if isinstance(result, list) and isinstance(result[0], list):
+                            # Format: [[{'label': '3 stars', 'score': 0.268}]]
+                            sentiment_result = result[0][0]
+                        elif isinstance(result, list) and isinstance(result[0], dict):
+                            # Format: [{'label': '3 stars', 'score': 0.268}]
+                            sentiment_result = result[0]
+                        else:
+                            self.logger.error(f"🔍 [SENTIMENT_HANDLER_DEBUG] ❌ Unexpected result format: {type(result)}")
+                            tracker.set_success(False)
+                            tracker.set_error(f"Unexpected result format: {type(result)}")
+                            response.success = False
+                            response.error = f"Unexpected result format: {type(result)}"
+                            return response
+                            
+                        label = sentiment_result['label'].lower()
+                        confidence = sentiment_result['score']
+                        
+                        self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Extracted - Label: '{label}', Confidence: {confidence}")
+                        
+                        # Map model labels to standard format
+                        # nlptown/bert-base-multilingual-uncased-sentiment uses star ratings
+                        if label in ['5 stars', '4 stars']:
+                            sentiment = 'positive'
+                        elif label in ['1 star', '2 stars']:
+                            sentiment = 'negative'
+                        elif label in ['3 stars']:
+                            sentiment = 'neutral'
+                        else:
+                            # Fallback for other models that might use different labels
+                            if label in ['positive', 'pos']:
+                                sentiment = 'positive'
+                            elif label in ['negative', 'neg']:
+                                sentiment = 'negative'
+                            else:
+                                sentiment = 'neutral'
+                        
+                        self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] ✅ Mapped sentiment: '{sentiment}' (confidence: {confidence})")
+                        
+                        # Record metrics
+                        tracker.set_confidence(confidence)
+                        tracker.set_sentiment(sentiment)
+                        tracker.set_success(True)
+                        
+                        response.success = True
+                        response.sentiment = sentiment
+                        response.confidence = confidence
+                        
+                        self.logger.info(
+                            f"Sentiment analysis complete: {sentiment} (confidence: {confidence:.3f})",
+                            extra={"topic": AICOTopics.LOGS_ENTRY}
+                        )
                     else:
-                        sentiment = 'neutral'
-                
-                self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] ✅ Mapped sentiment: '{sentiment}' (confidence: {confidence})")
-                
-                response.success = True
-                response.sentiment = sentiment
-                response.confidence = confidence
-                
-                self.logger.info(
-                    f"Sentiment analysis complete: {sentiment} (confidence: {confidence:.3f})",
-                    extra={"topic": AICOTopics.LOGS_ENTRY}
-                )
-            else:
-                response.success = False
-                response.error = "No sentiment result returned"
+                        tracker.set_success(False)
+                        tracker.set_error("No sentiment result returned")
+                        response.success = False
+                        response.error = "No sentiment result returned"
+                    
+                except Exception as sentiment_error:
+                    tracker.set_success(False)
+                    tracker.set_error(str(sentiment_error))
+                    response.success = False
+                    response.error = f"Sentiment analysis failed: {str(sentiment_error)}"
+                    self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
             
             return response
             
@@ -1204,21 +1248,41 @@ class ModelserviceZMQHandlers:
             status.ollama_version = "unknown"
             status.loaded_models_count = 0
             
-            # Check Ollama status
+            # Check Ollama status and get available Ollama models
             ollama_status = await self._check_ollama_status()
+            ollama_models_count = 0
             if ollama_status.get("available", False):
                 status.ollama_running = True
-                # Get models count
+                # Get Ollama models count from /api/tags (all available models)
                 try:
-                    models_response = await self.handle_models_request(None)
-                    if models_response.success:
-                        status.loaded_models_count = len(models_response.models)
-                        for model in models_response.models:
-                            status.loaded_models.append(model.name)
-                except:
-                    pass
+                    import httpx
+                    ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
+                    async with httpx.AsyncClient(timeout=2.0) as client:
+                        tags_response = await client.get(f"{ollama_url}/api/tags")
+                        if tags_response.status_code == 200:
+                            tags_data = tags_response.json()
+                            ollama_models = tags_data.get("models", [])
+                            ollama_models_count = len(ollama_models)
+                            for model in ollama_models:
+                                status.loaded_models.append(model.get("name", "unknown"))
+                except Exception as e:
+                    self.logger.debug(f"Could not query Ollama models: {e}")
             else:
                 status.ollama_running = False
+            
+            # Add TransformersManager loaded models
+            transformers_models_count = 0
+            if self.transformers_manager is not None:
+                try:
+                    loaded_transformers = list(self.transformers_manager.loaded_models.keys())
+                    transformers_models_count = len(loaded_transformers)
+                    for model_name in loaded_transformers:
+                        status.loaded_models.append(model_name)
+                except Exception as e:
+                    self.logger.debug(f"Could not query TransformersManager models: {e}")
+            
+            # Total loaded models = Ollama + Transformers
+            status.loaded_models_count = ollama_models_count + transformers_models_count
             
             response.success = True
             response.status.CopyFrom(status)

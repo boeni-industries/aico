@@ -89,12 +89,57 @@ async def initialize_modelservice():
         print("✅ Backend is available")
         logger.info("Backend confirmed available at startup")
     
-    # Start ZMQ service EARLY to capture all subsequent logs
+    # Initialize ZMQ service EARLY to capture all subsequent logs
     print("🔌 Starting ZMQ logging service...")
     logger.info("Starting ZMQ service early for log capture")
     
     zmq_service = ModelserviceZMQService(cfg, None)  # No ollama_manager yet
     await zmq_service.start_early()  # New method for early startup
+    
+    # Initialize database connection for metrics persistence
+    print("📊 Initializing metrics database connection...")
+    logger.info("Initializing database connection for metrics")
+    try:
+        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.core.paths import get_default_database_path
+        
+        db_path = get_default_database_path()
+        db_connection = EncryptedLibSQLConnection(str(db_path))
+        
+        # Initialize OpenTelemetry MeterProvider with storage exporter
+        from opentelemetry import metrics as otel_metrics
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        from opentelemetry.sdk.resources import Resource
+        from backend.core.otel_storage_adapter import OTelStorageExporter
+        
+        # Create resource for modelservice
+        resource = Resource.create({
+            "service.name": "modelservice",
+            "service.version": __version__
+        })
+        
+        # Create storage exporter with database connection
+        storage_exporter = OTelStorageExporter(db_connection=db_connection)
+        
+        # Wrap exporter in periodic reader (exports every 5 seconds)
+        storage_reader = PeriodicExportingMetricReader(
+            exporter=storage_exporter,
+            export_interval_millis=5000,  # 5 seconds
+        )
+        
+        # Create and set meter provider
+        meter_provider = MeterProvider(
+            resource=resource,
+            metric_readers=[storage_reader]
+        )
+        otel_metrics.set_meter_provider(meter_provider)
+        
+        print("✅ Metrics database connection and OTel exporter ready")
+        logger.info("Metrics database connection and OTel MeterProvider initialized successfully")
+    except Exception as e:
+        print(f"⚠️  Metrics initialization failed: {e}")
+        logger.warning(f"Metrics initialization failed: {e}")
     
     # Initialize ZMQ logging transport - but don't try to connect yet
     # Connection will happen automatically when mark_broker_ready() is called

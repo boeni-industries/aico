@@ -212,10 +212,10 @@ class ModelServiceClient:
             request_proto.text = data.get("text", "")
         elif "health" in request_topic:
             request_proto = HealthRequest()
-        elif "models" in request_topic:
-            request_proto = ModelsRequest()
         elif "status" in request_topic:
             request_proto = StatusRequest()
+        elif "models" in request_topic:
+            request_proto = ModelsRequest()
         else:
             # Fallback to HealthRequest for unknown types
             request_proto = HealthRequest()
@@ -350,6 +350,27 @@ class ModelServiceClient:
                             req_event.set()
                         else:
                             self.logger.error("🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Failed to unpack SentimentResponse")
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
+                    # Handle Status responses
+                    elif "status" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import StatusResponse
+                        status_response = StatusResponse()
+                        if message.any_payload.Unpack(status_response):
+                            self.logger.debug(f"Successfully unpacked StatusResponse: success={status_response.success}")
+                            req_data.update({
+                                'success': status_response.success,
+                                'error': status_response.error if status_response.HasField('error') else None
+                            })
+                            if status_response.success and status_response.HasField('status'):
+                                req_data['loaded_models_count'] = status_response.status.loaded_models_count
+                                req_data['loaded_models'] = list(status_response.status.loaded_models)
+                                req_data['ollama_running'] = status_response.status.ollama_running
+                                req_data['version'] = status_response.status.version
+                                self.logger.debug(f"Extracted status: {status_response.status.loaded_models_count} loaded models")
+                            req_event.set()
+                        else:
+                            self.logger.error("Failed to unpack StatusResponse")
                             req_data.update({'success': False, 'error': 'Failed to unpack response'})
                             req_event.set()
                     # Handle Health responses

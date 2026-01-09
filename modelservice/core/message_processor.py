@@ -178,6 +178,8 @@ class MessageProcessor:
         processed_prompt: str
     ) -> Dict[str, Any]:
         """Generate completion using Ollama."""
+        from modelservice.core.metrics import track_inference
+        
         # Prepare Ollama request payload
         ollama_payload = {
             "model": request.model,
@@ -202,17 +204,34 @@ class MessageProcessor:
             if params.stop is not None:
                 ollama_payload["options"]["stop"] = params.stop
         
-        # Send request to Ollama
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self.ollama_url}/api/generate",
-                json=ollama_payload
-            )
-            
-            if response.status_code != 200:
-                raise RuntimeError(f"Ollama error: {response.text}")
-                
-            return response.json()
+        # Track inference metrics
+        with track_inference(request.model, task_type="completion") as tracker:
+            try:
+                # Send request to Ollama
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    response = await client.post(
+                        f"{self.ollama_url}/api/generate",
+                        json=ollama_payload
+                    )
+                    
+                    if response.status_code != 200:
+                        tracker.set_success(False)
+                        tracker.set_error(f"HTTP {response.status_code}")
+                        raise RuntimeError(f"Ollama error: {response.text}")
+                    
+                    result = response.json()
+                    
+                    # Extract token count from response if available
+                    if "eval_count" in result:
+                        tracker.set_tokens(result["eval_count"])
+                    
+                    tracker.set_success(True)
+                    return result
+                    
+            except Exception as e:
+                tracker.set_success(False)
+                tracker.set_error(str(e))
+                raise
     
     async def _postprocess_response(
         self,

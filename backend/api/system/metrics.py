@@ -22,6 +22,15 @@ from pydantic import BaseModel, Field
 
 from backend.api.system.dependencies import get_db_connection
 from backend.core.service_container import ServiceContainer
+from backend.api.system.metrics_helpers import (
+    calculate_llm_metrics,
+    calculate_ner_metrics,
+    calculate_sentiment_metrics,
+    calculate_embeddings_metrics
+)
+from aico.core.logging import get_logger
+
+logger = get_logger("backend", "api.system.metrics")
 
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -54,16 +63,67 @@ class GatewayMetrics(BaseModel):
     protocol_distribution: Dict[str, int]
 
 
-class ModelserviceMetrics(BaseModel):
-    """Modelservice inference metrics."""
+class LLMMetrics(BaseModel):
+    """LLM (Ollama) inference metrics."""
     active_models: MetricValue
-    inference_throughput: MetricValue  # tokens/sec
-    avg_inference_time: MetricValue
-    gpu_utilization: Optional[MetricValue] = None
-    cpu_utilization: MetricValue
-    total_inferences_24h: int
-    model_usage: Dict[str, int]
-    latency_distribution: Dict[str, int]
+    ttft: MetricValue  # Time to First Token
+    tps: MetricValue  # Tokens Per Second
+    e2e_latency: MetricValue  # End-to-end latency
+    rps: MetricValue  # Requests Per Second
+    success_rate: MetricValue
+    total_tokens_24h: int
+    total_requests_24h: int
+    avg_prompt_length: MetricValue
+    avg_response_length: MetricValue
+    model_usage: Dict[str, int]  # Distribution of model usage
+    p95_latency: Optional[float] = None
+    p99_latency: Optional[float] = None
+
+
+class NERMetrics(BaseModel):
+    """Named Entity Recognition metrics."""
+    inference_rate: MetricValue  # Requests per second
+    avg_latency: MetricValue
+    p95_latency: Optional[float] = None
+    p99_latency: Optional[float] = None
+    total_entities_24h: int
+    total_requests_24h: int
+    avg_entities_per_request: MetricValue
+    success_rate: MetricValue
+    entity_type_distribution: Dict[str, int]  # PERSON, ORG, LOC, etc.
+
+
+class SentimentMetrics(BaseModel):
+    """Sentiment Analysis metrics."""
+    inference_rate: MetricValue  # Requests per second
+    avg_latency: MetricValue
+    p95_latency: Optional[float] = None
+    p99_latency: Optional[float] = None
+    total_analyses_24h: int
+    avg_confidence: MetricValue
+    success_rate: MetricValue
+    sentiment_distribution: Dict[str, int]  # positive, negative, neutral
+
+
+class EmbeddingsMetrics(BaseModel):
+    """Embeddings generation metrics."""
+    inference_rate: MetricValue  # Embeddings per second
+    avg_latency: MetricValue
+    p95_latency: Optional[float] = None
+    p99_latency: Optional[float] = None
+    throughput: MetricValue  # Input tokens per second
+    total_embeddings_24h: int
+    avg_input_length: MetricValue
+    success_rate: MetricValue
+    vector_dimension: int
+
+
+class ModelserviceMetrics(BaseModel):
+    """Comprehensive modelservice metrics."""
+    llm: LLMMetrics
+    ner: NERMetrics
+    sentiment: SentimentMetrics
+    embeddings: EmbeddingsMetrics
 
 
 class MemoryMetrics(BaseModel):
@@ -774,16 +834,234 @@ async def get_all_metrics(request: Request):
     # Call the real gateway metrics function to get live data from OpenTelemetry
     gateway_metrics = await get_gateway_metrics(request)
     
-    modelservice_metrics = ModelserviceMetrics(
-        active_models=MetricValue(value=2, unit="models", trend=0.0, status="healthy"),
-        inference_throughput=MetricValue(value=1847.3, unit="tokens/s", trend=8.5, status="healthy"),
-        avg_inference_time=MetricValue(value=2.34, unit="s", trend=-3.2, status="healthy"),
-        gpu_utilization=None,
-        cpu_utilization=MetricValue(value=cpu_percent, unit="%", trend=2.1, status="healthy" if cpu_percent < 80 else "warning"),
-        total_inferences_24h=45_892,
-        model_usage={"qwen3-abliterated:8b": 38_234, "paraphrase-multilingual-mpnet": 7_658},
-        latency_distribution={"0-1s": 12_345, "1-2s": 18_234, "2-3s": 10_892, "3-5s": 3_421, "5s+": 1_000}
+    # Get real modelservice metrics from otel_model_inferences
+    now = time.time()
+    cutoff_1m = now - 60
+    cutoff_1h = now - 3600
+    cutoff_24h = now - 86400
+    cutoff_7d = now - 604800
+    
+    # Query active models count
+    active_models = 0
+    try:
+        logger.info(f"[METRICS DEBUG] Querying for active/loaded models...")
+        
+        # Query Ollama's /api/tags for all available Ollama models
+        try:
+            import httpx
+            ollama_url = "http://127.0.0.1:11434"
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                tags_response = await client.get(f"{ollama_url}/api/tags")
+                if tags_response.status_code == 200:
+                    tags_data = tags_response.json()
+                    ollama_models = len(tags_data.get("models", []))
+                    logger.info(f"[METRICS DEBUG] Ollama /api/tags: {ollama_models} available models")
+                    active_models = ollama_models
+        except Exception as ollama_err:
+            logger.warning(f"[METRICS DEBUG] Could not query Ollama /api/tags: {ollama_err}")
+        
+        # Query modelservice status for complete model count (Ollama + Transformers)
+        try:
+            from backend.services.modelservice_client import ModelServiceClient
+            from aico.core.config import ConfigurationManager
+            config_manager = ConfigurationManager()
+            modelservice = ModelServiceClient(config_manager)
+            status_response = await modelservice.get_status()
+            if status_response and status_response.get('success') and 'loaded_models_count' in status_response:
+                active_models = status_response['loaded_models_count']
+                logger.info(f"[METRICS DEBUG] Modelservice status: {active_models} total loaded models")
+        except Exception as ms_err:
+            logger.warning(f"[METRICS DEBUG] Could not query modelservice status: {ms_err}")
+        
+        # Calculate metrics for each model type using helper functions
+        logger.info(f"[METRICS DEBUG] Calculating LLM metrics...")
+        llm_data = calculate_llm_metrics(db_connection, cutoff_1h, cutoff_24h, cutoff_7d)
+        
+        logger.info(f"[METRICS DEBUG] Calculating NER metrics...")
+        ner_data = calculate_ner_metrics(db_connection, cutoff_1h, cutoff_24h, cutoff_7d)
+        
+        logger.info(f"[METRICS DEBUG] Calculating Sentiment metrics...")
+        sentiment_data = calculate_sentiment_metrics(db_connection, cutoff_1h, cutoff_24h, cutoff_7d)
+        
+        logger.info(f"[METRICS DEBUG] Calculating Embeddings metrics...")
+        embeddings_data = calculate_embeddings_metrics(db_connection, cutoff_1h, cutoff_24h, cutoff_7d)
+        
+    except Exception as e:
+        # Fallback to zeros if table doesn't exist or query fails
+        logger.exception(f"[METRICS DEBUG] Exception querying modelservice metrics: {e}")
+        llm_data = {
+            "tps": 0.0, "rps": 0.0, "e2e_latency": 0.0, "ttft": 0.0,
+            "success_rate": 0.0, "total_tokens_24h": 0, "total_requests_24h": 0,
+            "avg_prompt_length": 0.0, "avg_response_length": 0.0,
+            "model_usage": {}, "p95_latency": None, "p99_latency": None,
+            "tps_1h": None, "tps_24h": None, "tps_7d": None,
+            "rps_1h": None, "rps_24h": None, "rps_7d": None,
+            "e2e_1h": None, "e2e_24h": None, "e2e_7d": None,
+        }
+        ner_data = {
+            "inference_rate": 0.0, "avg_latency": 0.0,
+            "p95_latency": None, "p99_latency": None,
+            "total_entities_24h": 0, "total_requests_24h": 0,
+            "avg_entities_per_request": 0.0, "success_rate": 0.0,
+            "entity_type_distribution": {},
+            "rate_1h": None, "rate_24h": None, "rate_7d": None,
+            "lat_1h": None, "lat_24h": None, "lat_7d": None,
+        }
+        sentiment_data = {
+            "inference_rate": 0.0, "avg_latency": 0.0,
+            "p95_latency": None, "p99_latency": None,
+            "total_analyses_24h": 0, "avg_confidence": 0.0,
+            "success_rate": 0.0, "sentiment_distribution": {},
+            "rate_1h": None, "rate_24h": None, "rate_7d": None,
+            "lat_1h": None, "lat_24h": None, "lat_7d": None,
+        }
+        embeddings_data = {
+            "inference_rate": 0.0, "avg_latency": 0.0,
+            "p95_latency": None, "p99_latency": None,
+            "throughput": 0.0, "total_embeddings_24h": 0,
+            "avg_input_length": 0.0, "success_rate": 0.0,
+            "vector_dimension": 768,
+            "rate_1h": None, "rate_24h": None, "rate_7d": None,
+            "lat_1h": None, "lat_24h": None, "lat_7d": None,
+        }
+    
+    # Build structured metrics response
+    llm_metrics = LLMMetrics(
+        active_models=MetricValue(value=active_models, unit="models", trend=0.0, status="healthy"),
+        ttft=MetricValue(
+            value=round(llm_data["ttft"], 3),
+            unit="s",
+            trend=0.0,
+            status="healthy"
+        ),
+        tps=MetricValue(
+            value=round(llm_data["tps"], 2),
+            unit="tokens/s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(llm_data["tps_1h"], 2) if llm_data["tps_1h"] else None,
+            avg_24h=round(llm_data["tps_24h"], 2) if llm_data["tps_24h"] else None,
+            avg_7d=round(llm_data["tps_7d"], 2) if llm_data["tps_7d"] else None
+        ),
+        e2e_latency=MetricValue(
+            value=round(llm_data["e2e_latency"], 2),
+            unit="s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(llm_data["e2e_1h"], 2) if llm_data["e2e_1h"] else None,
+            avg_24h=round(llm_data["e2e_24h"], 2) if llm_data["e2e_24h"] else None,
+            avg_7d=round(llm_data["e2e_7d"], 2) if llm_data["e2e_7d"] else None
+        ),
+        rps=MetricValue(
+            value=round(llm_data["rps"], 2),
+            unit="req/s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(llm_data["rps_1h"], 2) if llm_data["rps_1h"] else None,
+            avg_24h=round(llm_data["rps_24h"], 2) if llm_data["rps_24h"] else None,
+            avg_7d=round(llm_data["rps_7d"], 2) if llm_data["rps_7d"] else None
+        ),
+        success_rate=MetricValue(value=round(llm_data["success_rate"], 1), unit="%", trend=0.0, status="healthy"),
+        total_tokens_24h=llm_data["total_tokens_24h"],
+        total_requests_24h=llm_data["total_requests_24h"],
+        avg_prompt_length=MetricValue(value=round(llm_data["avg_prompt_length"], 0), unit="tokens", trend=0.0, status="healthy"),
+        avg_response_length=MetricValue(value=round(llm_data["avg_response_length"], 0), unit="tokens", trend=0.0, status="healthy"),
+        model_usage=llm_data["model_usage"],
+        p95_latency=round(llm_data["p95_latency"], 2) if llm_data["p95_latency"] else None,
+        p99_latency=round(llm_data["p99_latency"], 2) if llm_data["p99_latency"] else None
     )
+    
+    ner_metrics = NERMetrics(
+        inference_rate=MetricValue(
+            value=round(ner_data["inference_rate"], 2),
+            unit="req/s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(ner_data["rate_1h"], 2) if ner_data["rate_1h"] else None,
+            avg_24h=round(ner_data["rate_24h"], 2) if ner_data["rate_24h"] else None,
+            avg_7d=round(ner_data["rate_7d"], 2) if ner_data["rate_7d"] else None
+        ),
+        avg_latency=MetricValue(
+            value=round(ner_data["avg_latency"], 3),
+            unit="s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(ner_data["lat_1h"], 3) if ner_data["lat_1h"] else None,
+            avg_24h=round(ner_data["lat_24h"], 3) if ner_data["lat_24h"] else None,
+            avg_7d=round(ner_data["lat_7d"], 3) if ner_data["lat_7d"] else None
+        ),
+        p95_latency=round(ner_data["p95_latency"], 3) if ner_data["p95_latency"] else None,
+        p99_latency=round(ner_data["p99_latency"], 3) if ner_data["p99_latency"] else None,
+        total_entities_24h=ner_data["total_entities_24h"],
+        total_requests_24h=ner_data["total_requests_24h"],
+        avg_entities_per_request=MetricValue(value=round(ner_data["avg_entities_per_request"], 1), unit="entities", trend=0.0, status="healthy"),
+        success_rate=MetricValue(value=round(ner_data["success_rate"], 1), unit="%", trend=0.0, status="healthy"),
+        entity_type_distribution=ner_data["entity_type_distribution"]
+    )
+    
+    sentiment_metrics = SentimentMetrics(
+        inference_rate=MetricValue(
+            value=round(sentiment_data["inference_rate"], 2),
+            unit="req/s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(sentiment_data["rate_1h"], 2) if sentiment_data["rate_1h"] else None,
+            avg_24h=round(sentiment_data["rate_24h"], 2) if sentiment_data["rate_24h"] else None,
+            avg_7d=round(sentiment_data["rate_7d"], 2) if sentiment_data["rate_7d"] else None
+        ),
+        avg_latency=MetricValue(
+            value=round(sentiment_data["avg_latency"], 3),
+            unit="s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(sentiment_data["lat_1h"], 3) if sentiment_data["lat_1h"] else None,
+            avg_24h=round(sentiment_data["lat_24h"], 3) if sentiment_data["lat_24h"] else None,
+            avg_7d=round(sentiment_data["lat_7d"], 3) if sentiment_data["lat_7d"] else None
+        ),
+        p95_latency=round(sentiment_data["p95_latency"], 3) if sentiment_data["p95_latency"] else None,
+        p99_latency=round(sentiment_data["p99_latency"], 3) if sentiment_data["p99_latency"] else None,
+        total_analyses_24h=sentiment_data["total_analyses_24h"],
+        avg_confidence=MetricValue(value=round(sentiment_data["avg_confidence"], 2), unit="score", trend=0.0, status="healthy"),
+        success_rate=MetricValue(value=round(sentiment_data["success_rate"], 1), unit="%", trend=0.0, status="healthy"),
+        sentiment_distribution=sentiment_data["sentiment_distribution"]
+    )
+    
+    embeddings_metrics = EmbeddingsMetrics(
+        inference_rate=MetricValue(
+            value=round(embeddings_data["inference_rate"], 2),
+            unit="req/s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(embeddings_data["rate_1h"], 2) if embeddings_data["rate_1h"] else None,
+            avg_24h=round(embeddings_data["rate_24h"], 2) if embeddings_data["rate_24h"] else None,
+            avg_7d=round(embeddings_data["rate_7d"], 2) if embeddings_data["rate_7d"] else None
+        ),
+        avg_latency=MetricValue(
+            value=round(embeddings_data["avg_latency"], 3),
+            unit="s",
+            trend=0.0,
+            status="healthy",
+            avg_1h=round(embeddings_data["lat_1h"], 3) if embeddings_data["lat_1h"] else None,
+            avg_24h=round(embeddings_data["lat_24h"], 3) if embeddings_data["lat_24h"] else None,
+            avg_7d=round(embeddings_data["lat_7d"], 3) if embeddings_data["lat_7d"] else None
+        ),
+        p95_latency=round(embeddings_data["p95_latency"], 3) if embeddings_data["p95_latency"] else None,
+        p99_latency=round(embeddings_data["p99_latency"], 3) if embeddings_data["p99_latency"] else None,
+        throughput=MetricValue(value=round(embeddings_data["throughput"], 2), unit="tokens/s", trend=0.0, status="healthy"),
+        total_embeddings_24h=embeddings_data["total_embeddings_24h"],
+        avg_input_length=MetricValue(value=round(embeddings_data["avg_input_length"], 0), unit="tokens", trend=0.0, status="healthy"),
+        success_rate=MetricValue(value=round(embeddings_data["success_rate"], 1), unit="%", trend=0.0, status="healthy"),
+        vector_dimension=embeddings_data["vector_dimension"]
+    )
+    
+    modelservice_metrics = ModelserviceMetrics(
+        llm=llm_metrics,
+        ner=ner_metrics,
+        sentiment=sentiment_metrics,
+        embeddings=embeddings_metrics
+    )
+    
+    logger.info(f"[METRICS DEBUG] Returning modelservice metrics: active_models={active_models}, LLM TPS={llm_data['tps']:.2f}, NER rate={ner_data['inference_rate']:.2f}")
     
     memory_metrics = MemoryMetrics(
         working_memory_size=MetricValue(value=float(lmdb_count), unit="entries", trend=5.2, status="healthy"),

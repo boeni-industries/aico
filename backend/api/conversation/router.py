@@ -212,12 +212,17 @@ async def send_message_with_auto_thread(
                     # Process chunks from queue as they arrive - truly event-driven
                     timeout_start = asyncio.get_event_loop().time()
                     logger.info(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
+                    logger.info(f"🔍 [API_STREAMING] streaming_complete.is_set() = {streaming_complete.is_set()}")
+                    logger.info(f"🔍 [API_STREAMING] chunk_queue.qsize() = {chunk_queue.qsize()}")
                     
+                    chunk_count = 0
+                    timeout_count = 0
                     while not streaming_complete.is_set():
                         try:
                             # Wait for chunk with short timeout to check completion
                             chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
-                            logger.info(f"🔍 [API_STREAMING] 🎯 Got chunk from queue: {chunk}")
+                            chunk_count += 1
+                            logger.info(f"🔍 [API_STREAMING] 🎯 Got chunk #{chunk_count} from queue: {chunk}")
                             
                             if "type" in chunk and chunk["type"] == "error":
                                 logger.info(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
@@ -239,13 +244,13 @@ async def send_message_with_auto_thread(
                                 yield json.dumps(chunk_data) + "\n"
                                 
                         except asyncio.TimeoutError:
-                            # No chunk received, check overall timeout
-                            if asyncio.get_event_loop().time() - timeout_start > 30.0:
-                                yield json.dumps({
-                                    "type": "error",
-                                    "error": "Streaming timeout"
-                                }) + "\n"
-                                break
+                            # No chunk received, continue waiting
+                            timeout_count += 1
+                            if timeout_count % 50 == 0:  # Log every 5 seconds
+                                logger.info(f"🔍 [API_STREAMING] ⏱️ Still waiting for chunks... (timeout #{timeout_count}, elapsed: {asyncio.get_event_loop().time() - timeout_start:.1f}s)")
+                    
+                    # Log why loop exited
+                    logger.info(f"🔍 [API_STREAMING] Loop exited: streaming_complete={streaming_complete.is_set()}, chunks_received={chunk_count}, timeouts={timeout_count}")
                     
                     # Unsubscribe
                     try:

@@ -1269,8 +1269,15 @@ V1_SCHEMA = [
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL NOT NULL,
                 model_name TEXT NOT NULL,
+                task_type TEXT NOT NULL DEFAULT 'unknown',
                 inference_time_ms REAL NOT NULL,
                 tokens_generated INTEGER,
+                prompt_tokens INTEGER,
+                entities_count INTEGER,
+                entity_types TEXT,
+                confidence_score REAL,
+                sentiment_result TEXT,
+                ttft REAL,
                 success INTEGER NOT NULL,
                 error_message TEXT,
                 created_at TIMESTAMP DEFAULT (datetime('now', 'utc'))
@@ -1278,6 +1285,7 @@ V1_SCHEMA = [
 
     """CREATE INDEX idx_otel_model_inferences_timestamp ON otel_model_inferences(timestamp)""",
     """CREATE INDEX idx_otel_model_inferences_model ON otel_model_inferences(model_name)""",
+    """CREATE INDEX idx_otel_model_inferences_task_type ON otel_model_inferences(task_type)""",
     """CREATE INDEX idx_otel_model_inferences_success ON otel_model_inferences(success)""",
 
     """CREATE TABLE otel_memory_queries (

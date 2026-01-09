@@ -25,6 +25,10 @@ router.include_router(metrics_router)
 from backend.api.system.metrics_drilldown import router as metrics_drilldown_router
 router.include_router(metrics_drilldown_router)
 
+# Include modelservice metrics router
+from backend.api.system.modelservice_metrics import router as modelservice_metrics_router
+router.include_router(modelservice_metrics_router)
+
 # Track server start time
 start_time = time.time()
 

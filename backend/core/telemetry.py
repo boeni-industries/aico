@@ -52,8 +52,6 @@ class TelemetryManager:
         self.tracer_provider: Optional[TracerProvider] = None
         self.meter_provider: Optional[MeterProvider] = None
         self._exporters: list = []
-        
-        logger.info("TelemetryManager created")
     
     def initialize(self, config: Dict[str, Any], db_connection=None) -> None:
         """
@@ -69,8 +67,6 @@ class TelemetryManager:
         
         self.config = config.get('instrumentation', {})
         self.mode = self.config.get('mode', 'casual')
-        
-        logger.info(f"Initializing OpenTelemetry in {self.mode} mode")
         
         # Create resource with service information
         resource = Resource.create({
@@ -89,7 +85,6 @@ class TelemetryManager:
         self._initialize_exporters()
         
         self._initialized = True
-        logger.info("OpenTelemetry initialization complete")
     
     def _initialize_tracing(self, resource: Resource) -> None:
         """Initialize trace provider and processors"""
@@ -101,7 +96,6 @@ class TelemetryManager:
             self.tracer_provider.add_span_processor(console_processor)
         
         trace.set_tracer_provider(self.tracer_provider)
-        logger.info("Trace provider initialized")
     
     def _initialize_metrics(self, resource: Resource, db_connection=None) -> None:
         """Initialize meter provider and readers"""
@@ -123,7 +117,6 @@ class TelemetryManager:
         )
         
         metrics.set_meter_provider(self.meter_provider)
-        logger.info("Meter provider initialized with local storage (5s export interval)")
     
     def _initialize_exporters(self) -> None:
         """Initialize optional exporters based on mode and configuration"""
@@ -160,9 +153,7 @@ class TelemetryManager:
             
             # Start Prometheus HTTP server
             start_http_server(port)
-            
             self._exporters.append('prometheus')
-            logger.info(f"Prometheus exporter started on port {port}")
             
         except ImportError:
             logger.warning("Prometheus exporter not available (install with: pip install opentelemetry-exporter-prometheus)")
@@ -190,7 +181,6 @@ class TelemetryManager:
                 self.tracer_provider.add_span_processor(otlp_processor)
             
             self._exporters.append('otlp')
-            logger.info(f"OTLP exporter initialized (endpoint: {endpoint})")
             
         except ImportError:
             logger.warning("OTLP exporter not available (install with: pip install opentelemetry-exporter-otlp)")
@@ -210,7 +200,6 @@ class TelemetryManager:
         
         try:
             FastAPIInstrumentor.instrument_app(app)
-            logger.info("FastAPI instrumented with OpenTelemetry")
         except Exception as e:
             logger.error(f"Failed to instrument FastAPI: {e}")
     
@@ -228,8 +217,6 @@ class TelemetryManager:
             self.tracer_provider.shutdown()
         if self.meter_provider:
             self.meter_provider.shutdown()
-        
-        logger.info("OpenTelemetry shutdown complete")
     
     @property
     def is_initialized(self) -> bool:
