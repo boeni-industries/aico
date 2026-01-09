@@ -11,6 +11,34 @@ system:
     frontend_subdirectory: "frontend"  # Frontend state persistence and cache
   log_level: "INFO"
 
+# Core database configuration (LibSQL today, Postgres/Timescale target)
+database:
+  # Legacy encrypted LibSQL database (to be removed after migration)
+  libsql:
+    filename: "aico.db"
+    directory_mode: "auto"  # Reuse existing path resolution via AICOPaths
+
+  postgres:
+    # Logical database name and schemas inside a single Postgres cluster
+    db_name: "aico"
+    core_schema: "aico_core"
+
+    # Connection settings for local/remote Postgres
+    host: "127.0.0.1"
+    port: 5432
+    user: "postgres"
+    # Password / credentials are derived and stored via AICOKeyManager,
+    # not kept in this config file.
+    sslmode: "prefer"
+
+  # Time-series / telemetry backend (InfluxDB)
+  influx:
+    # Base URL for the InfluxDB HTTP API (v2 or later)
+    url: "http://127.0.0.1:8086"
+    # Logical organization and bucket used for AICO telemetry data
+    org: "aico"
+    bucket: "aico_telemetry"
+
 # Telemetry / instrumentation configuration
 instrumentation:
   enabled: false  # Global kill switch for OpenTelemetry (tracing + metrics)

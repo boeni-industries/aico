@@ -1,8 +1,8 @@
-# AICO Database Architecture Refactor (Postgres + Timescale)
+# AICO Database Architecture Refactor (Postgres + InfluxDB)
 
 **Date:** 2026-01-09  
-**Status:** Draft architecture for implementation  
-**Goal:** Replace LibSQL/SQLite with a Postgres + Timescale architecture that works on a single local machine *and* scales to multi-system deployments, while preserving AICO's local-first, privacy-first guarantees.
+**Status:** Draft architecture for implementation (updated for Postgres + InfluxDB)  
+**Goal:** Replace LibSQL/SQLite with a Postgres core database and an InfluxDB time-series store that work in a containerized setup *and* scale to multi-system deployments, while preserving AICO's local-first, privacy-first guarantees.
 
 ---
 
@@ -38,23 +38,22 @@ Conclusion: **LibSQL/SQLite is no longer suitable as the central multi-writer st
   - Conversations/messages, AMS
   - Knowledge graph metadata
   - Scheduler/task data
-- **Local single-machine path:**
-  - Postgres data dir lives under:  
-    `~/Library/Application Support/aico/data/postgres/`
-  - This follows existing AICO data-folder patterns.
-- **Multi-system / scale-out:**
-  - Same schema, but `DATABASE_URL` can point to any Postgres instance:
-    - Managed service (RDS/Aiven/Timescale Cloud),
+- **Deployment model (now container-first):**
+  - For development and "aico local": Postgres runs as a **containerized service**, started via Docker (docker-compose) together with other stack components.
+  - For multi-system / scale-out: the same schema, but `DATABASE_URL` can point to any Postgres instance:
+    - Managed service (RDS/Aiven, etc.),
     - Self-hosted VM,
-    - Containerized deployment.
+    - Kubernetes/containers.
 
-### 2.2 Telemetry: Timescale (metrics + logs)
+### 2.2 Telemetry: InfluxDB (metrics + logs)
 
-- Use **TimescaleDB extension on Postgres** for all time-series telemetry:
-  - OTel metrics from backend and modelservice.
-  - System logs and event streams (currently written to `system_logs` / `system_events`).
-- Implement **hypertables** with retention policies instead of writing to SQLite tables.
-- OTel exporters (backend + modelservice) and the log consumer write **only** to Timescale hypertables, not to the OLTP tables.
+- Use **InfluxDB OSS** as the dedicated time-series store for telemetry:
+  - OTel-style metrics from backend and modelservice.
+  - System logs and event-like telemetry.
+- Telemetry is **not** stored in Postgres anymore; instead it lives in InfluxDB:
+  - Organization: `aico`
+  - Bucket: `aico_telemetry`
+- OTel exporters (backend + modelservice) and the log consumer send telemetry data to InfluxDB over its HTTP API.
 
 **Readers:**
 - **Studio** (React web app) - via backend API
@@ -445,262 +444,165 @@ T+15.2s: User receives response (15+ second delay)
 
 ## Recommended Architecture
 
-### 7.1 Immediate Fix (Phase 1: This Week)
+### 7.1 Target End-State (Single-Step Migration)
 
-**Separate Metrics Database**
+We move **directly** from LibSQL/SQLite to a **Postgres + TimescaleDB** architecture, without intermediate SQLite tweaks or external time-series systems.
 
-**Goal:** Eliminate cross-service deadlock
+**Core decisions:**
+- **Postgres** replaces LibSQL as the **only relational database**.
+- **TimescaleDB** (extension on the same Postgres instance) handles **all time-series telemetry** (metrics + logs + events).
+- **ChromaDB** and **LMDB** remain as-is.
 
-**Implementation:**
-1. Create `modelservice_metrics.db` for modelservice OTel exports
-2. Keep `aico.db` for backend OTel exports
-3. Update modelservice to use separate connection
-4. No schema changes required
-
-**Benefits:**
-- ✅ Eliminates backend ↔ modelservice deadlock
-- ✅ Each service writes independently
-- ✅ Minimal code changes (1-2 hours)
-- ✅ Immediate relief from current crisis
-
-**Limitations:**
-- ⚠️ Still SQLite single-writer per database
-- ⚠️ Scales to ~10-20 users
-- ⚠️ Log persistence still contends with backend
-
-**Files to Change:**
+**High-level layout:**
 ```
-modelservice/main.py - Use separate DB path
-backend/api/system/metrics.py - Query both databases
-studio/src/api/metrics.ts - Aggregate from both sources
-```
+Postgres (single instance, local or remote)
+  - OLTP schema: users, auth, conversations, agency, KG metadata, config
+  - Telemetry schema: metrics (hypertables), logs (hypertables), events (hypertables)
 
-### 7.2 Near-Term Fix (Phase 2: Next Sprint)
-
-**Async Export + Separate Logs Database**
-
-**Goal:** Remove blocking writes from critical path
-
-**Implementation:**
-1. Move OTel export to background thread (both services)
-2. Create `system_logs.db` for log consumer
-3. Batch metrics writes (30-second interval instead of 5s)
-4. Implement write queue with graceful degradation
-
-**Benefits:**
-- ✅ Request processing never blocked by DB writes
-- ✅ Log writes don't contend with application data
-- ✅ Larger batches = fewer lock acquisitions
-- ✅ Scales to 50-100 users
-
-**Limitations:**
-- ⚠️ Still SQLite limitations
-- ⚠️ Increased memory usage (buffering)
-- ⚠️ Metrics delayed by 30 seconds
-
-**Implementation:**
-```python
-# Async export pattern
-class AsyncOTelExporter:
-    def __init__(self):
-        self.queue = asyncio.Queue()
-        self.worker = asyncio.create_task(self._export_worker())
-    
-    async def export(self, metrics):
-        await self.queue.put(metrics)  # Non-blocking
-    
-    async def _export_worker(self):
-        while True:
-            batch = []
-            # Collect metrics for 30 seconds
-            deadline = time.time() + 30
-            while time.time() < deadline:
-                try:
-                    metric = await asyncio.wait_for(
-                        self.queue.get(), 
-                        timeout=deadline - time.time()
-                    )
-                    batch.append(metric)
-                except asyncio.TimeoutError:
-                    break
-            
-            # Write batch to database
-            if batch:
-                await self._write_batch(batch)
-```
-
-### 7.3 Production Solution (Phase 3: Before Launch)
-
-**Time-Series Database for Telemetry**
-
-**Goal:** True production scalability
-
-**Recommended:** InfluxDB (easiest) or TimescaleDB (PostgreSQL-based)
-
-**Architecture:**
-```
-Application Data (LibSQL):
-  - User profiles, auth, conversations
-  - Agency goals, plans, intentions
-  - Knowledge graph metadata
-  
-Telemetry Data (InfluxDB):
-  - OTel metrics (all services)
-  - System logs
-  - Performance metrics
-  - Usage analytics
-  
-Vector Data (ChromaDB):
+ChromaDB
   - Semantic memory embeddings
-  - Knowledge graph embeddings
-  
-Working Memory (LMDB):
-  - Active conversation cache
-  - Session state
+  - KG embeddings
+
+LMDB
+  - Working memory / active conversation cache
 ```
 
-**Benefits:**
-- ✅ Designed for high-frequency time-series writes
-- ✅ Concurrent writes without locks
-- ✅ Built-in aggregation, downsampling, retention
-- ✅ Scales to 1000+ users
-- ✅ Production-grade observability
+### 7.2 Postgres Deployment Model
 
-**InfluxDB Advantages:**
-- Single binary, no dependencies
-- Native OTel support
-- Excellent query language (Flux)
-- Built-in dashboards
-- Free tier sufficient for development
+- **Local single-machine (default):**
+  - Postgres data dir: `~/Library/Application Support/aico/data/postgres/`
+  - Postgres is managed as a **native binary**, started/stopped by the backend or a small launcher, **no Docker required**.
+  - Connection string derived from local socket/port with credentials from the existing key-derivation/encryption system.
 
-**Implementation Effort:**
-- Setup: 2-4 hours
-- OTel exporter swap: 1-2 hours
-- Log consumer update: 2-4 hours
-- Testing: 4-8 hours
-- **Total: 1-2 days**
+- **Multi-system / distributed deployment:**
+  - Same application code and schema.
+  - `DATABASE_URL` points to an external Postgres/Timescale instance (managed service or self-hosted).
+  - No code changes, only configuration.
 
-**OTel Exporter Change:**
-```python
-# Before (SQLite)
-from backend.core.otel_storage_adapter import OTelStorageExporter
-exporter = OTelStorageExporter(db_connection)
+### 7.3 Schema Split: OLTP vs Telemetry
 
-# After (InfluxDB)
-from opentelemetry.exporter.influxdb import InfluxDBMetricsExporter
-exporter = InfluxDBMetricsExporter(
-    url="http://localhost:8086",
-    token=influx_token,
-    org="aico",
-    bucket="metrics"
-)
-```
+**OLTP schema (schema `core`):**
+- `core.users`, `core.auth_sessions`, `core.auth_credentials`
+- `core.conversations`, `core.conversation_messages`
+- `core.ams_*` (goals, plans, trajectories, feedback)
+- `core.kg_entities`, `core.kg_relationships`, `core.kg_entity_metadata`
+- Configuration / feature flags tables
 
-### 7.4 Alternative: PostgreSQL
+**Telemetry schema (schema `telemetry`, Timescale hypertables):**
+- `telemetry.metrics_model_inferences`
+- `telemetry.metrics_api_requests`
+- `telemetry.metrics_memory`
+- `telemetry.system_logs`
+- `telemetry.system_events`
 
-**If you need ACID transactions + scalability:**
+Each telemetry table becomes a **hypertable** with retention and optional compression policies configured at the DB level.
 
-**Architecture:**
-```
-PostgreSQL:
-  - All application data
-  - Logs (with partitioning)
-  - Metrics (with TimescaleDB extension)
-  
-ChromaDB:
-  - Vector embeddings (unchanged)
-  
-LMDB:
-  - Working memory cache (unchanged)
-```
+### 7.4 Access Patterns
 
-**Benefits:**
-- ✅ True concurrent writes
-- ✅ ACID transactions
-- ✅ Rich query capabilities
-- ✅ Mature ecosystem
-- ✅ Scales to enterprise level
+- **Backend:**
+  - Uses a pooled Postgres connection (via async or sync driver, depending on current stack) for **both** OLTP and telemetry reads/writes.
+  - All log writes go to `telemetry.system_logs` instead of SQLite.
+  - All metrics export goes to `telemetry.*` hypertables.
 
-**Drawbacks:**
-- ❌ Requires PostgreSQL server
-- ❌ More complex deployment
-- ❌ Higher resource usage
-- ❌ Overkill for current scale
+- **Modelservice:**
+  - Does **not** write to LibSQL anymore.
+  - Its OTel exporter writes directly to `telemetry.metrics_model_inferences` (Timescale hypertable) via a Postgres client.
 
-**Recommendation:** Only if you need ACID + scale beyond 1000 users
+- **CLI:**
+  - Uses Postgres for administrative and inspection tasks (OLTP + telemetry where needed).
+
+- **Studio/frontend:**
+  - Continue to call backend APIs only.
+  - Backend aggregates from Postgres/Timescale and exposes the same or improved JSON contracts.
 
 ---
 
 ## Migration Strategy
 
-### 8.1 Phase 1: Immediate (This Week)
+### 8.1 Scope and Constraints
 
-**Separate Metrics Databases**
+- **Single-step** migration from LibSQL to Postgres + Timescale.
+- Must run on a **single local machine** with minimal overhead (native Postgres binary under `~/Library/Application Support/aico/data/postgres/`).
+- Must also support **remote Postgres/Timescale** via configuration for multi-system deployments.
+- All data at rest must remain **encrypted**, using the existing key-derivation/encryption model.
 
-**Steps:**
-1. Create `modelservice_metrics.db` path configuration
-2. Update modelservice OTel initialization
-3. Update metrics API to query both databases
-4. Update Studio to aggregate metrics
-5. Test with concurrent load
+### 8.2 High-Level Steps
 
-**Rollback Plan:**
-- Keep old code path
-- Feature flag for separate DB
-- Can revert in minutes
+1. **Introduce Postgres configuration & connection layer**
+   - Add `core.database` config section in `config/defaults/core.yaml` for Postgres DSN, schema names, Timescale options, and backend selector (`libsql` vs `postgres`).
+   - Implement a shared Postgres connection/pool abstraction in `shared/aico/data/postgres` (or equivalent), mirroring the current LibSQL abstraction.
+   - Wire backend, CLI, and any direct DB consumers to obtain a Postgres connection from this layer.
 
-**Success Criteria:**
-- ✅ No "database locked" errors in modelservice
-- ✅ Metrics export succeeds consistently
-- ✅ Request processing not blocked
-- ✅ System stable under normal load
+2. **Define Postgres schema (OLTP + telemetry)**
+   - Create SQL migration(s) defining `core.*` and `telemetry.*` schemas.
+   - Mark telemetry tables as Timescale **hypertables** with retention/compression policies.
+   - Keep table semantics close to existing LibSQL schema to simplify data migration.
 
-### 8.2 Phase 2: Near-Term (Next Sprint)
+3. **Implement data migration tool**
+   - A one-shot CLI command (e.g. `aico db migrate-libsql-to-postgres`) that:
+     - Opens the encrypted LibSQL database using the existing `EncryptedLibSQLConnection`.
+     - Connects to Postgres with proper credentials.
+     - Copies data table-by-table into the new schema, preserving IDs and timestamps.
+   - This runs **offline** (services stopped) on a user’s machine during upgrade.
 
-**Async Export + Separate Logs**
+4. **Integrate Postgres lifecycle into the CLI**
+   - Add a new CLI command group `pg` (e.g. `aico pg ...`) alongside `aico db`:
+     - `aico pg install` / `aico pg setup`: download and install the Postgres native binary into `~/Library/Application Support/aico/data/postgres/` (or platform-specific equivalent).
+     - `aico pg init`: initialize the Postgres cluster, create the `aico` database, and apply all `core.*` and `telemetry.*` schemas, indices, and Timescale hypertables.
+     - `aico pg status`: show Postgres cluster/database status, paths, and encryption configuration.
+   - Reuse and extend the existing CLI UX patterns from `cli/commands/database.py` (rich output, help formatter, safety prompts).
 
-**Steps:**
-1. Implement async OTel export worker
-2. Create `system_logs.db` for log consumer
-3. Increase export interval to 30 seconds
-4. Add write queue with overflow handling
-5. Load testing with 20-50 simulated users
+5. **Switch read/write paths to Postgres**
+   - Backend:
+     - Replace LibSQL connection usage in repositories/services with the Postgres abstraction.
+     - Update log consumer to write to `telemetry.system_logs` in Postgres instead of LibSQL.
+     - Update any metrics/OTel exporters to use a Postgres-based exporter that writes to Timescale hypertables.
+   - Modelservice:
+     - Replace LibSQL-based `OTelStorageExporter` with a Postgres/Timescale-backed exporter.
+   - CLI:
+     - Point admin commands and inspectors at Postgres instead of LibSQL.
 
-**Rollback Plan:**
-- Feature flags for each component
-- Can disable async export
-- Can revert to single database
+6. **Remove LibSQL as a runtime dependency (after verification)**
+   - Once all consumers read/write from Postgres and the migration has been tested:
+     - Stop creating/using `aico.db` for new installs.
+     - Keep a read-only path for older `aico.db` **only** for migration/backup tooling.
 
-**Success Criteria:**
-- ✅ No blocking writes in request path
-- ✅ System handles 50 concurrent users
-- ✅ Metrics delayed max 30 seconds
-- ✅ Graceful degradation under extreme load
+### 8.3 Rollout Plan
 
-### 8.3 Phase 3: Production (Before Launch)
+- **Step 1: Dual-DB compatibility (development only)**
+  - Code can talk to both LibSQL and Postgres, controlled by config feature flags (e.g. `database.backend = "libsql" | "postgres"`).
+  - Allows us to write tests against Postgres without breaking existing LibSQL installs during development.
 
-**Time-Series Database**
+- **Step 2: Data migration & cutover**
+  - On upgrade:
+    - Stop backend and modelservice.
+    - Run the migration CLI to populate Postgres from `aico.db`.
+    - Reconfigure backend/modelservice to use Postgres as the only DB backend.
+  - Instrument with clear logs + progress reporting.
 
-**Steps:**
-1. Set up InfluxDB instance
-2. Create OTel exporter configuration
-3. Migrate log consumer to InfluxDB
-4. Update metrics API to query InfluxDB
-5. Update Studio dashboards
-6. Parallel run for 1 week (dual write)
-7. Cutover to InfluxDB primary
-8. Remove SQLite metrics tables
+- **Step 3: Clean-up**
+  - After a stable period:
+    - Deprecate LibSQL connection usage from runtime code paths.
+    - Keep a separate, optional tool to read/inspect old `aico.db` backups.
 
-**Rollback Plan:**
-- Dual write during transition
-- Can switch back to SQLite
-- No data loss
+### 8.5 Cryptography & Key Management Alignment
 
-**Success Criteria:**
-- ✅ System handles 100+ concurrent users
-- ✅ Metrics export never fails
-- ✅ Sub-second query performance
-- ✅ Production-ready observability
+- Reuse the existing **AICOKeyManager** and master password flow used for LibSQL (`aico db init`, `aico db status`) as the foundation for Postgres:
+  - Derive a **Postgres-specific key** from the master key (different KDF context than `"libsql"`).
+  - Use this key to:
+    - Protect credentials / DSNs stored locally (e.g. encrypted config or keyring entries).
+    - Optionally feed into Postgres-level or filesystem-level encryption mechanisms.
+- Ensure the new `aico pg` commands enforce the same security guarantees as `aico db`:
+  - No plain-text credentials on disk.
+  - Strong KDF parameters, non-empty passwords, and clear diagnostics.
+
+### 8.4 Success Criteria
+
+- ✅ No LibSQL writes in normal operation; all relational data is in Postgres.
+- ✅ All telemetry (metrics, logs, events) written to Timescale hypertables.
+- ✅ System runs on a single local machine with a managed Postgres binary.
+- ✅ Switching to remote Postgres/Timescale only requires config changes.
+- ✅ No database-locked errors; concurrency handled by Postgres.
 
 ---
 
