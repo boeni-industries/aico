@@ -84,10 +84,11 @@ class OTelStorageExporter(MetricExporter):
                             for metric in scope_metric.metrics:
                                 self._process_metric(conn, metric)
                                 metrics_count += 1
-                    
-                    self.db_connection.commit()
-                    logger.info(f"Successfully exported {metrics_count} metrics to database")
-                    return MetricExportResult.SUCCESS
+                
+                # Commit after cursor is closed (outside context manager)
+                self.db_connection.commit()
+                logger.info(f"Successfully exported {metrics_count} metrics to database")
+                return MetricExportResult.SUCCESS
                     
             except Exception as e:
                 logger.error(f"Error writing metrics to database: {e}", exc_info=True)
@@ -133,15 +134,17 @@ class OTelStorageExporter(MetricExporter):
                         avg_latency_seconds = data_point.sum / data_point.count
                         conn.execute("""
                             INSERT INTO otel_api_requests 
-                            (timestamp, method, path, status_code, latency_ms, protocol)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                            (timestamp, method, path, status_code, latency_ms, protocol, service, category)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             data_point.time_unix_nano / 1e9,
                             attributes.get('http.method', 'GET'),
                             attributes.get('http.target', '/'),
                             attributes.get('http.status_code', 200),
                             avg_latency_seconds * 1000,  # Convert to ms
-                            attributes.get('http.scheme', 'REST').upper()
+                            attributes.get('http.scheme', 'REST').upper(),
+                            attributes.get('service', 'unknown'),
+                            attributes.get('category', 'other')
                         ))
     
     def _process_modelservice_metric(self, conn, metric) -> None:

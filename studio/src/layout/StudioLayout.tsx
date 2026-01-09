@@ -182,14 +182,13 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({ mode, onToggleTheme 
           px: { xs: 2, md: 4, xl: 6 },
           pt: { xs: 4, md: 6 },
           pb: { xs: 4, md: 6 },
-          display: 'flex',
-          justifyContent: 'center',
         }}
       >
         <Box
           sx={{
             width: '100%',
             maxWidth: 1440,
+            mx: 'auto',
             display: 'flex',
             flexDirection: 'column',
             gap: 3,

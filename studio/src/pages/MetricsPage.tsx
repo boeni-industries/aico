@@ -4,6 +4,7 @@ import { CircularGauge } from '../components/metrics/CircularGauge';
 import { DonutChart } from '../components/metrics/DonutChart';
 import { MetricCard } from '../components/metrics/MetricCard';
 import { MetricsSkeleton } from '../components/metrics/MetricsSkeleton';
+import { MetricDetailDrawer } from '../components/metrics/MetricDetailDrawer';
 import { httpJson } from '../api/http';
 
 interface MetricsData {
@@ -16,10 +17,18 @@ interface MetricsData {
   system_health: any;
 }
 
+type DrillDownMetric = {
+  type: 'requests' | 'latency' | 'errors';
+  label: string;
+  unit: string;
+  color: string;
+} | null;
+
 export const MetricsPage: React.FC = () => {
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [drillDownMetric, setDrillDownMetric] = useState<DrillDownMetric>(null);
 
   const fetchMetrics = async () => {
     try {
@@ -376,6 +385,7 @@ export const MetricsPage: React.FC = () => {
             avg_1h={gateway.requests_per_second.avg_1h}
             avg_24h={gateway.requests_per_second.avg_24h}
             avg_7d={gateway.requests_per_second.avg_7d}
+            onClick={() => setDrillDownMetric({ type: 'requests', label: 'Requests/sec', unit: 'req/s', color: '#00D9FF' })}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -392,6 +402,7 @@ export const MetricsPage: React.FC = () => {
             avg_1h={gateway.avg_response_time.avg_1h}
             avg_24h={gateway.avg_response_time.avg_24h}
             avg_7d={gateway.avg_response_time.avg_7d}
+            onClick={() => setDrillDownMetric({ type: 'latency', label: 'Avg Response Time', unit: 'ms', color: '#A78BFA' })}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -408,6 +419,7 @@ export const MetricsPage: React.FC = () => {
             avg_1h={gateway.error_rate.avg_1h}
             avg_24h={gateway.error_rate.avg_24h}
             avg_7d={gateway.error_rate.avg_7d}
+            onClick={() => setDrillDownMetric({ type: 'errors', label: 'Error Rate', unit: '%', color: '#F59E0B' })}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -742,6 +754,18 @@ export const MetricsPage: React.FC = () => {
           </Paper>
         </Box>
       </Box>
+
+      {/* Metric Detail Drawer */}
+      {drillDownMetric && (
+        <MetricDetailDrawer
+          open={drillDownMetric !== null}
+          onClose={() => setDrillDownMetric(null)}
+          metricType={drillDownMetric.type}
+          metricLabel={drillDownMetric.label}
+          metricUnit={drillDownMetric.unit}
+          metricColor={drillDownMetric.color}
+        />
+      )}
     </Box>
   );
 };

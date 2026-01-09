@@ -36,7 +36,13 @@ export const OperationsPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: '1400px', mx: 'auto' }}>
+    <Box sx={{ 
+      p: 3, 
+      width: '100%',
+      maxWidth: '1400px', 
+      mx: 'auto',
+      minHeight: '100vh'
+    }}>
       {/* Page Header */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 3 }}>
         <AutoRefreshControls

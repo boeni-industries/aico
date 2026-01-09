@@ -1252,6 +1252,8 @@ V1_SCHEMA = [
                 status_code INTEGER NOT NULL,
                 latency_ms REAL NOT NULL,
                 protocol TEXT DEFAULT 'REST',
+                service TEXT,
+                category TEXT,
                 client_id TEXT,
                 error_message TEXT,
                 created_at TIMESTAMP DEFAULT (datetime('now', 'utc'))
@@ -1260,6 +1262,8 @@ V1_SCHEMA = [
     """CREATE INDEX idx_otel_api_requests_timestamp ON otel_api_requests(timestamp)""",
     """CREATE INDEX idx_otel_api_requests_path ON otel_api_requests(path)""",
     """CREATE INDEX idx_otel_api_requests_status ON otel_api_requests(status_code)""",
+    """CREATE INDEX idx_otel_api_requests_service ON otel_api_requests(service)""",
+    """CREATE INDEX idx_otel_api_requests_category ON otel_api_requests(category)""",
 
     """CREATE TABLE otel_model_inferences (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

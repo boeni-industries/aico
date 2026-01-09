@@ -21,6 +21,10 @@ router = APIRouter()
 from backend.api.system.metrics import router as metrics_router
 router.include_router(metrics_router)
 
+# Include metrics drilldown router
+from backend.api.system.metrics_drilldown import router as metrics_drilldown_router
+router.include_router(metrics_drilldown_router)
+
 # Track server start time
 start_time = time.time()
 

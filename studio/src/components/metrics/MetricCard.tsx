@@ -20,6 +20,7 @@ interface MetricCardProps {
   avg_1h?: number | null;
   avg_24h?: number | null;
   avg_7d?: number | null;
+  onClick?: () => void;
 }
 
 export const MetricCard: React.FC<MetricCardProps> = ({
@@ -39,6 +40,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   avg_1h,
   avg_24h,
   avg_7d,
+  onClick,
 }) => {
   const statusColors = {
     healthy: '#10B981',
@@ -56,6 +58,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
 
   return (
     <Box
+      onClick={onClick}
       sx={{
         height: '100%',
         display: 'flex',
@@ -67,9 +70,10 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         border: '1px solid',
         borderColor: 'rgba(255, 255, 255, 0.08)',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        cursor: onClick ? 'pointer' : 'default',
         '&:hover': {
           borderColor: `${displayColor}40`,
-          transform: 'translateY(-2px)',
+          transform: onClick ? 'translateY(-2px)' : 'none',
           boxShadow: `0 8px 32px ${displayColor}20`,
         },
       }}
