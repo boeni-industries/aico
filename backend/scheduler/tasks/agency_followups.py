@@ -6,7 +6,7 @@ or reminders should be sent. This is the backbone for Phase 1 proactive behaviou
 """
 
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .base import BaseTask, TaskContext, TaskResult
 from aico.ai import ai_registry
@@ -54,7 +54,7 @@ class AgencyFollowUpTask(BaseTask):
             db = context.db_connection
             
             # Find active goals that haven't had a follow-up recently
-            cutoff_time = (datetime.utcnow() - timedelta(hours=min_hours)).isoformat()
+            cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=min_hours)).isoformat()
             
             rows = db.execute(
                 """
@@ -114,7 +114,7 @@ class AgencyFollowUpTask(BaseTask):
                             "followup_candidate_identified",
                             "agency_followup_task",
                             f'{{"title": "{candidate["title"]}"}}',
-                            datetime.utcnow().isoformat(),
+                            datetime.now(timezone.utc).isoformat(),
                         )
                     )
                     
@@ -133,7 +133,7 @@ class AgencyFollowUpTask(BaseTask):
                             "proactive_followup_sent",
                             "agency_followup_task",
                             f'{{"message": "{followup_message}", "title": "{candidate["title"]}"}}',
-                            datetime.utcnow().isoformat(),
+                            datetime.now(timezone.utc).isoformat(),
                         )
                     )
                     

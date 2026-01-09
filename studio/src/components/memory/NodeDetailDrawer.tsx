@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
 import { Drawer, Box, Typography, IconButton, Tabs, Tab, Chip, Paper, Divider, Button } from '@mui/material';
-import {
-  Close as CloseIcon,
-  Timeline as TimelineIcon,
-  AccountTree as GraphIcon,
-  Analytics as AnalyticsIcon,
-  Code as CodeIcon,
-  History as HistoryIcon,
-} from '@mui/icons-material';
+import { X as CloseIcon, Timeline as TimelineIcon, GitBranch as GraphIcon, BarChart3 as AnalyticsIcon, Code as CodeIcon, History as HistoryIcon } from 'lucide-react';
 
 interface NodeDetailDrawerProps {
   open: boolean;

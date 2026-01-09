@@ -11,6 +11,16 @@ system:
     frontend_subdirectory: "frontend"  # Frontend state persistence and cache
   log_level: "INFO"
 
+# Telemetry / instrumentation configuration
+instrumentation:
+  enabled: false  # Global kill switch for OpenTelemetry (tracing + metrics)
+  mode: "dev"  # dev | test | prod
+  exporters:
+    prometheus:
+      enabled: false
+    otlp:
+      enabled: false
+
 # Unified logging configuration - single source of truth for all subsystems
 logging:
   # Log levels and filtering

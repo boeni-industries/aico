@@ -14,19 +14,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import SpeedIcon from '@mui/icons-material/Speed';
-import PsychologyIcon from '@mui/icons-material/Psychology';
-import AutoStoriesIcon from '@mui/icons-material/AutoStories';
-import AutoModeIcon from '@mui/icons-material/AutoMode';
-import SecurityIcon from '@mui/icons-material/Shield';
-import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
-import SettingsIcon from '@mui/icons-material/Settings';
-import MenuIcon from '@mui/icons-material/Menu';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-import LogoutIcon from '@mui/icons-material/Logout';
+import { LayoutDashboard as DashboardIcon, Gauge as SpeedIcon, Brain as PsychologyIcon, BookOpen as AutoStoriesIcon, Sparkles as AutoModeIcon, Shield as SecurityIcon, Smile as EmojiEmotionsIcon, Settings as SettingsIcon, Menu as MenuIcon, Moon as DarkModeIcon, Sun as LightModeIcon, UserCircle as AccountCircleIcon, LogOut as LogoutIcon } from 'lucide-react';
 import { OverviewPage } from '../pages/OverviewPage';
 import { overviewStubData, OverviewMetrics } from '../data/overview';
 import { fetchEmotionHistory } from '../api/emotion';
@@ -35,7 +23,7 @@ import { IntelligencePage } from '../pages/IntelligencePage';
 import { MemoryAmsPage } from '../pages/MemoryAmsPage';
 import { AgencyPage } from '../pages/AgencyPage';
 import { SecurityPage } from '../pages/SecurityPage';
-import { EmotionPage, EmotionPageActions } from '../pages/EmotionPage';
+import { EmotionPage } from '../pages/EmotionPage';
 import { SystemPage } from '../pages/SystemPage';
 import { useAuth } from '../auth/AuthContext';
 
@@ -194,14 +182,13 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({ mode, onToggleTheme 
           px: { xs: 2, md: 4, xl: 6 },
           pt: { xs: 4, md: 6 },
           pb: { xs: 4, md: 6 },
-          display: 'flex',
-          justifyContent: 'center',
         }}
       >
         <Box
           sx={{
             width: '100%',
             maxWidth: 1440,
+            mx: 'auto',
             display: 'flex',
             flexDirection: 'column',
             gap: 3,

@@ -75,7 +75,7 @@ class LogCleanupTask(BaseTask):
         """Clean up old log entries from database"""
         try:
             # Format to match database timestamp format: ISO 8601 UTC with Z suffix
-            cutoff_date = (datetime.utcnow() - timedelta(days=retention_days)).replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
+            cutoff_date = (datetime.now(timezone.utc) - timedelta(days=retention_days)).replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
             
             # Count logs to be deleted first
             count_cursor = context.db_connection.execute(
@@ -121,7 +121,7 @@ class LogCleanupTask(BaseTask):
             if not os.path.exists(log_dir):
                 return 0.0
             
-            cutoff_date = datetime.now() - timedelta(days=retention_days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
             total_cleaned = 0.0
             
             for filename in os.listdir(log_dir):

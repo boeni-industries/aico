@@ -5,7 +5,7 @@ Periodically checks if AICO should initiate conversations with users based on
 learned patterns and contextual features using state-of-the-art learning algorithms.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 import uuid
 
@@ -76,7 +76,7 @@ class ProactiveConversationTask(BaseTask):
         Returns:
             TaskResult with initiation statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             logger.info("🗣️ [PROACTIVE] Starting proactive conversation check")
@@ -201,7 +201,7 @@ class ProactiveConversationTask(BaseTask):
                         
                         # LAYER 3: Check in-memory cache first (fastest)
                         question_prefix = message[:50]
-                        now = datetime.utcnow()
+                        now = datetime.now(timezone.utc)
                         cache_hit = False
                         
                         if user_id in self._recent_initiations_cache:
@@ -256,7 +256,7 @@ class ProactiveConversationTask(BaseTask):
                         
                         # Create initiation record
                         initiation_id = str(uuid.uuid4())
-                        conversation_id = f"{user_id}_{int(datetime.utcnow().timestamp())}"
+                        conversation_id = f"{user_id}_{int(datetime.now(timezone.utc).timestamp())}"
                         
                         db.execute(
                             """INSERT INTO conversation_initiations (
@@ -275,9 +275,9 @@ class ProactiveConversationTask(BaseTask):
                                 f"Adaptivity: {adaptivity:.2f}, Civility: {civility:.2f}, Strategy: {strategy_id}",
                                 "medium",
                                 "text",
-                                datetime.utcnow().isoformat(),
+                                datetime.now(timezone.utc).isoformat(),
                                 "pending",
-                                datetime.utcnow().isoformat()
+                                datetime.now(timezone.utc).isoformat()
                             )
                         )
                         db.commit()
@@ -303,7 +303,7 @@ class ProactiveConversationTask(BaseTask):
                                 user_id=user_id,
                                 initiation_id=initiation_id,
                                 question=message,
-                                initiated_at=datetime.utcnow().isoformat(),
+                                initiated_at=datetime.now(timezone.utc).isoformat(),
                                 trigger_reason=f"proactive_check_strategy_{strategy_id}"
                             )
                         except Exception as ws_error:
@@ -325,7 +325,7 @@ class ProactiveConversationTask(BaseTask):
                                 'context': f"Adaptivity: {adaptivity:.2f}, Civility: {civility:.2f}, Strategy: {strategy_id}",
                                 'urgency': 'medium',
                                 'expected_answer_type': 'text',
-                                'initiated_at': datetime.utcnow().isoformat(),
+                                'initiated_at': datetime.now(timezone.utc).isoformat(),
                                 'strategy_id': strategy_id,
                                 'scores': {
                                     'adaptivity': adaptivity,
@@ -358,7 +358,7 @@ class ProactiveConversationTask(BaseTask):
                     logger.error(f"🗣️ [PROACTIVE] Error checking user {user_id[:8]}: {e}")
                     continue
             
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             
             message = (
                 f"Checked {users_checked} users, created {initiations_created} initiations"
@@ -378,7 +378,7 @@ class ProactiveConversationTask(BaseTask):
             )
             
         except Exception as e:
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"🗣️ [PROACTIVE] Task failed: {e}", exc_info=True)
             
             return TaskResult(

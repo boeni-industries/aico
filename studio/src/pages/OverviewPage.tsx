@@ -6,21 +6,17 @@ import {
   Stack,
   Typography,
   Button,
-  Grid,
-  IconButton,
-  Tooltip,
 } from '@mui/material';
-import CircleIcon from '@mui/icons-material/Circle';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import AutorenewIcon from '@mui/icons-material/Autorenew';
+import { Circle as CircleIcon, ArrowRight as ArrowForwardIcon } from 'lucide-react';
 import { OverviewMetrics, OverviewDomainKey } from '../data/overview';
 import { AgencyCard } from '../components/overview/AgencyCard';
 import { EmotionCard } from '../components/overview/EmotionCard';
 import { MemoryCard } from '../components/overview/MemoryCard';
+import { OperationsCard } from '../components/overview/OperationsCard';
 import { fetchGraphStats } from '../api/kg';
 import { fetchWorkingMemoryStats, fetchSemanticMemoryStats } from '../api/memory';
 import { fetchSystemOverview, SystemOverview } from '../api/system';
+import { fetchUsers, fetchSessions, fetchSessionStatistics } from '../api/usersSessions';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 
@@ -44,13 +40,17 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
   const [systemOverview, setSystemOverview] = useState<SystemOverview | null>(null);
   const [eventFilter, setEventFilter] = useState<'all' | 'error' | 'warning'>('all');
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
+  const [activeUsers, setActiveUsers] = useState<number>(0);
+  const [activeSessions, setActiveSessions] = useState<number>(0);
 
   const loadAllStats = useCallback(async () => {
-    const [kgStats, workingStats, semanticStats, sysOverview] = await Promise.all([
+    const [kgStats, workingStats, semanticStats, sysOverview, usersData, sessionsData] = await Promise.all([
       fetchGraphStats(),
       fetchWorkingMemoryStats(),
       fetchSemanticMemoryStats(),
       fetchSystemOverview(),
+      fetchUsers(),
+      fetchSessions({ is_active: true }),
     ]);
     
     setKgNodeCount(kgStats.total_nodes);
@@ -59,6 +59,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
     setSemanticVectors(semanticStats.total_vectors);
     setRetrievalQuality(Math.round(semanticStats.retrieval_quality_percent));
     setSystemOverview(sysOverview);
+    setActiveUsers(usersData.users.filter(u => u.active_session_count > 0).length);
+    setActiveSessions(sessionsData.sessions.filter(s => s.is_active).length);
   }, []);
 
   const { autoRefreshEnabled, toggleAutoRefresh, refresh, isRefreshing } = useAutoRefresh({
@@ -186,6 +188,18 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
                 knowledgeGraphEdges={kgEdgeCount}
                 retrievalQuality={retrievalQuality}
                 onClick={() => onOpenDomain('memory')}
+              />
+            );
+          }
+
+          // Special handling for Operations domain
+          if (domain.key === 'operations') {
+            return (
+              <OperationsCard
+                key={domain.key}
+                activeUsers={activeUsers}
+                activeSessions={activeSessions}
+                onClick={() => onOpenDomain('operations')}
               />
             );
           }
@@ -353,8 +367,15 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ data, onOpenDomain }
                 />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 'fit-content' }}>
-                      {new Date(event.timestamp).toLocaleTimeString()}
+                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 'fit-content', fontFamily: 'monospace' }}>
+                      {new Date(event.timestamp).toLocaleString('en-US', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
+                      })}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.875rem', flex: 1 }}>
                       {event.title}

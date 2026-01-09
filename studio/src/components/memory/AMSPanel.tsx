@@ -1,19 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Paper, LinearProgress, Chip, IconButton, Divider, Alert, CircularProgress } from '@mui/material';
-import {
-  AutoAwesome as AmsIcon,
-  Schedule as ScheduleIcon,
-  Psychology as BrainIcon,
-  TrendingUp as TrendingIcon,
-  Refresh as RefreshIcon,
-  InfoOutlined as InfoIcon,
-  CheckCircle as CheckIcon,
-  Timeline as TimelineIcon,
-  EmojiObjects as LightbulbIcon,
-  ThumbUp as ThumbUpIcon,
-  ThumbDown as ThumbDownIcon,
-  Warning as WarningIcon,
-} from '@mui/icons-material';
+import { Sparkles as AmsIcon, Clock as ScheduleIcon, Brain as BrainIcon, TrendingUp as TrendingIcon, RefreshCw as RefreshIcon, Info as InfoIcon, CheckCircle as CheckIcon, Clock as TimelineIcon, Lightbulb as LightbulbIcon, ThumbsUp as ThumbUpIcon, ThumbsDown as ThumbDownIcon, AlertTriangle as WarningIcon } from 'lucide-react';
 import { StyledTooltip } from '../common/StyledTooltip';
 import { fetchAMSStats } from '../../api/ams';
 import type { AMSStats } from '../../api/ams';

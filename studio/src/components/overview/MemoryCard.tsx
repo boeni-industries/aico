@@ -1,11 +1,6 @@
 import React from 'react';
 import { Box, Typography, LinearProgress, Chip } from '@mui/material';
-import {
-  Memory as MemoryIcon,
-  Storage as StorageIcon,
-  AccountTree as GraphIcon,
-  Speed as SpeedIcon,
-} from '@mui/icons-material';
+import { HardDrive as MemoryIcon, Database as StorageIcon, GitBranch as GraphIcon, Gauge as SpeedIcon } from 'lucide-react';
 
 interface MemoryCardProps {
   workingMemoryItems: number;
@@ -70,7 +65,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
           </Box>
         </Box>
         <Chip
-          label="ACTIVE"
+          label="LIVE"
           size="small"
           sx={{
             bgcolor: 'rgba(16, 185, 129, 0.12)',

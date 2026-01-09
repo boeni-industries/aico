@@ -12,7 +12,7 @@ Architecture: Aligns with AMS design - fast hippocampal capture, slow cortical c
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 from aico.core.logging import get_logger
@@ -52,7 +52,7 @@ class KGConsolidationTask(BaseTask):
         Returns:
             TaskResult with consolidation statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("🕸️ [KG_TASK] ========================================")
@@ -332,7 +332,7 @@ class KGConsolidationTask(BaseTask):
                     errors.append(error_msg)
             
             # Summary
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print("\n🕸️ [KG_TASK] ════════════════════════════════════════════════════════")
             print(f"🕸️ [KG_TASK] 🎉 CONSOLIDATION COMPLETE")
             print(f"🕸️ [KG_TASK] ════════════════════════════════════════════════════════")
@@ -788,7 +788,7 @@ class KGConsolidationTask(BaseTask):
                             
                             if not kg_consolidated:
                                 msg['kg_consolidated'] = True
-                                msg['kg_consolidated_at'] = datetime.utcnow().isoformat()
+                                msg['kg_consolidated_at'] = datetime.now(timezone.utc).isoformat()
                                 messages_to_update.append((key, msg))
                     
                     except (json.JSONDecodeError, KeyError, IndexError) as e:

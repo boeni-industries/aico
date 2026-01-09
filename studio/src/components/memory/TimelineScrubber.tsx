@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Typography, Slider, IconButton, ButtonGroup, Button, Tooltip } from '@mui/material';
-import { PlayArrow, Pause, SkipPrevious, SkipNext } from '@mui/icons-material';
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
 interface TimelineScrubberProps {
   onTimeChange: (timestamp: string) => void;

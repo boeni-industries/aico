@@ -107,8 +107,11 @@ class BackendLifecycleManager:
         """Complete backend startup sequence"""
         self.logger.info("Starting AICO backend components...")
         
-        # 1. Initialize service container
+        # 1. Initialize service container first (needed for database connection)
         await self._initialize_container()
+        
+        # 2. Initialize OpenTelemetry instrumentation (now has database access)
+        await self._initialize_telemetry()
         
         # 2. Create FastAPI app
         self.app = self._create_fastapi_app()
@@ -118,6 +121,9 @@ class BackendLifecycleManager:
         
         # 4. Mount API routers
         self._mount_routers()
+        
+        # 5. Instrument FastAPI with OpenTelemetry
+        self._instrument_fastapi()
         
         # Start all services
         await self.container.start_all()
@@ -150,6 +156,9 @@ class BackendLifecycleManager:
         # Stop protocol adapters first
         await self._stop_protocol_adapters()
         
+        # Shutdown telemetry
+        await self._shutdown_telemetry()
+        
         # Stop service container
         if self.container:
             services = list(self.container._definitions.keys())
@@ -164,6 +173,77 @@ class BackendLifecycleManager:
         print("[+] All services stopped gracefully")
         
         self.logger.info("Backend shutdown complete")
+    
+    async def _initialize_telemetry(self) -> None:
+        """Initialize OpenTelemetry instrumentation"""
+        try:
+            from backend.core.telemetry import initialize_telemetry
+            
+            # Read instrumentation config directly from core config
+            instrumentation_cfg = self.config.get("instrumentation", {})
+            enabled = instrumentation_cfg.get("enabled", False)
+            mode = instrumentation_cfg.get("mode", "dev")
+
+            if not enabled:
+                # Kill switch is OFF – log clearly to console and logs
+                print("[⏹] OpenTelemetry instrumentation DISABLED via config (core.instrumentation.enabled = false)")
+                self.logger.info(
+                    "OpenTelemetry instrumentation disabled via config (core.instrumentation.enabled = false); "
+                    "skipping telemetry setup"
+                )
+                return
+
+            print("[+] Initializing OpenTelemetry instrumentation...")
+            print(f"[>] Telemetry mode: {mode}")
+            self.logger.info(f"Initializing OpenTelemetry instrumentation (enabled, mode={mode})")
+
+            # Get encrypted database connection from container (will be available after container init)
+            db_connection = None
+            if hasattr(self, 'container') and self.container:
+                try:
+                    db_connection = self.container.get_service("database")
+                except Exception:
+                    self.logger.warning("Database connection not yet available for telemetry")
+            
+            # Build config dict expected by initialize_telemetry
+            config_dict = {'instrumentation': instrumentation_cfg}
+            
+            initialize_telemetry(config_dict, db_connection=db_connection)
+            
+            print(f"[✓] OpenTelemetry initialized (mode: {mode})")
+            print(f"[✓] Local metrics storage: {'Enabled (encrypted)' if db_connection else 'Deferred'}")
+            
+            self.logger.info("OpenTelemetry instrumentation initialized")
+            
+        except Exception as e:
+            print(f"[✗] OpenTelemetry initialization failed: {e}")
+            self.logger.warning(f"Failed to initialize telemetry: {e}")
+    
+    def _instrument_fastapi(self) -> None:
+        """Instrument FastAPI app with OpenTelemetry"""
+        if not self.app:
+            self.logger.warning("Cannot instrument FastAPI - app not created")
+            return
+        
+        try:
+            from backend.core.telemetry import instrument_fastapi
+            instrument_fastapi(self.app)
+            print("[✓] FastAPI instrumented - automatic request tracing enabled")
+            self.logger.info("FastAPI instrumented with OpenTelemetry")
+            
+        except Exception as e:
+            print(f"[✗] FastAPI instrumentation failed: {e}")
+            self.logger.warning(f"Failed to instrument FastAPI: {e}")
+    
+    async def _shutdown_telemetry(self) -> None:
+        """Shutdown OpenTelemetry and flush pending data"""
+        try:
+            from backend.core.telemetry import shutdown_telemetry
+            shutdown_telemetry()
+            print("  [-] OpenTelemetry shutdown")
+            
+        except Exception as e:
+            self.logger.warning(f"Error during telemetry shutdown: {e}")
     
     async def _initialize_container(self) -> None:
         """Initialize service container with all services"""
@@ -785,7 +865,11 @@ class BackendLifecycleManager:
             allow_headers=["*"],
         )
         
-        # 2. Request logging middleware (before encryption)
+        # 2. Metrics middleware (collect request metrics)
+        from backend.api_gateway.middleware.metrics import MetricsMiddleware
+        self.app.add_middleware(MetricsMiddleware)
+        
+        # 3. Request logging middleware (before encryption)
         @self.app.middleware("http")
         async def log_requests(request: Request, call_next):
             if request.url.path.startswith("/api/v1/"):
@@ -941,6 +1025,7 @@ class BackendLifecycleManager:
         from backend.api.ams.router import router as ams_router
         from backend.api.operations.router import router as operations_router
         from backend.api.scheduler.router import router as scheduler_router
+        from backend.api.users_sessions.router import router as users_sessions_router
         
         # Mount routers with prefixes
         self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
@@ -993,6 +1078,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/scheduler", "tags": ["scheduler"]})
+        
+        self.app.include_router(users_sessions_router, prefix="/api/v1/users-sessions", tags=["users-sessions"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/users-sessions", "tags": ["users-sessions"]})
         
     
     def _display_routes(self) -> None:

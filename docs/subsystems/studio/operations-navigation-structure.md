@@ -2,7 +2,12 @@
 
 ## Executive Summary
 
-The Operations page provides real-time visibility into AICO's runtime health, performance, and infrastructure activity. It follows a **glanceable-first, progressive-disclosure** pattern inspired by industry leaders like Grafana, Datadog, and Kubernetes Dashboard, while maintaining Studio's award-winning glassmorphic aesthetic.
+The Operations page provides real-time visibility into AICO's runtime health, performance, and infrastructure activity through two main tabs:
+
+1. **Operations Tab** - Service health, logs, scheduler, message bus monitoring
+2. **Metrics Tab** - Comprehensive performance metrics, charts, gauges, and analytics
+
+The design follows a **glanceable-first, progressive-disclosure** pattern inspired by industry leaders like Grafana, Datadog, and Kubernetes Dashboard, while maintaining Studio's award-winning glassmorphic aesthetic.
 
 ---
 

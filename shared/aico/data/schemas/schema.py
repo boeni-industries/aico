@@ -1243,6 +1243,93 @@ V1_SCHEMA = [
     """CREATE INDEX idx_user_time_preferences_user ON user_time_preferences(user_id, active)""",
     """CREATE INDEX idx_user_time_preferences_active ON user_time_preferences(active) WHERE active = 1""",
 
+    # OpenTelemetry metrics tables
+    """CREATE TABLE otel_api_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                method TEXT NOT NULL,
+                path TEXT NOT NULL,
+                status_code INTEGER NOT NULL,
+                latency_ms REAL NOT NULL,
+                protocol TEXT DEFAULT 'REST',
+                service TEXT,
+                category TEXT,
+                client_id TEXT,
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT (datetime('now', 'utc'))
+            )""",
+
+    """CREATE INDEX idx_otel_api_requests_timestamp ON otel_api_requests(timestamp)""",
+    """CREATE INDEX idx_otel_api_requests_path ON otel_api_requests(path)""",
+    """CREATE INDEX idx_otel_api_requests_status ON otel_api_requests(status_code)""",
+    """CREATE INDEX idx_otel_api_requests_service ON otel_api_requests(service)""",
+    """CREATE INDEX idx_otel_api_requests_category ON otel_api_requests(category)""",
+
+    """CREATE TABLE otel_model_inferences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                model_name TEXT NOT NULL,
+                task_type TEXT NOT NULL DEFAULT 'unknown',
+                inference_time_ms REAL NOT NULL,
+                tokens_generated INTEGER,
+                prompt_tokens INTEGER,
+                entities_count INTEGER,
+                entity_types TEXT,
+                confidence_score REAL,
+                sentiment_result TEXT,
+                ttft REAL,
+                success INTEGER NOT NULL,
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT (datetime('now', 'utc'))
+            )""",
+
+    """CREATE INDEX idx_otel_model_inferences_timestamp ON otel_model_inferences(timestamp)""",
+    """CREATE INDEX idx_otel_model_inferences_model ON otel_model_inferences(model_name)""",
+    """CREATE INDEX idx_otel_model_inferences_task_type ON otel_model_inferences(task_type)""",
+    """CREATE INDEX idx_otel_model_inferences_success ON otel_model_inferences(success)""",
+
+    """CREATE TABLE otel_memory_queries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                query_type TEXT NOT NULL,
+                query_time_ms REAL NOT NULL,
+                results_count INTEGER,
+                success INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT (datetime('now', 'utc'))
+            )""",
+
+    """CREATE INDEX idx_otel_memory_queries_timestamp ON otel_memory_queries(timestamp)""",
+    """CREATE INDEX idx_otel_memory_queries_type ON otel_memory_queries(query_type)""",
+
+    """CREATE TABLE otel_scheduler_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                job_type TEXT NOT NULL,
+                queue_name TEXT NOT NULL,
+                duration_ms REAL NOT NULL,
+                success INTEGER NOT NULL,
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT (datetime('now', 'utc'))
+            )""",
+
+    """CREATE INDEX idx_otel_scheduler_jobs_timestamp ON otel_scheduler_jobs(timestamp)""",
+    """CREATE INDEX idx_otel_scheduler_jobs_type ON otel_scheduler_jobs(job_type)""",
+    """CREATE INDEX idx_otel_scheduler_jobs_success ON otel_scheduler_jobs(success)""",
+
+    """CREATE TABLE otel_message_bus_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                topic TEXT NOT NULL,
+                message_count INTEGER DEFAULT 1,
+                processing_time_ms REAL,
+                backlog_depth INTEGER,
+                consumer_count INTEGER,
+                created_at TIMESTAMP DEFAULT (datetime('now', 'utc'))
+            )""",
+
+    """CREATE INDEX idx_otel_message_bus_events_timestamp ON otel_message_bus_events(timestamp)""",
+    """CREATE INDEX idx_otel_message_bus_events_topic ON otel_message_bus_events(topic)""",
+
 ]
 
 # Alias for compatibility

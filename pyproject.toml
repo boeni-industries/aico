@@ -36,6 +36,12 @@ dependencies = [
     "typer>=0.12.3,<1.0.0", # CLI framework
     "rich>=13.7.0,<14.0.0", # Rich terminal output
     "requests>=2.31.0,<3.0.0", # HTTP client for CLI
+    # OpenTelemetry - Core instrumentation (always installed)
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-instrumentation-fastapi>=0.41b0",
+    "opentelemetry-instrumentation-sqlite3>=0.41b0",
+    "opentelemetry-instrumentation-requests>=0.41b0",
 ]
 
 [project.optional-dependencies]
@@ -66,6 +72,13 @@ test = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.0.0",
+]
+
+dev = [
+    # OpenTelemetry exporters for dev/production modes
+    "opentelemetry-exporter-prometheus>=0.41b0",
+    "opentelemetry-exporter-otlp>=1.20.0",
+    "prometheus-client>=0.19.0",
 ]
 
 [project.scripts]

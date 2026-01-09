@@ -1,8 +1,5 @@
 import React, { useCallback } from 'react';
-import { Box, Typography, Tabs, Tab, IconButton, Tooltip, CircularProgress, Alert } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import AutorenewIcon from '@mui/icons-material/Autorenew';
-import SyncIcon from '@mui/icons-material/Sync';
+import { Box, Typography, Tabs, Tab, CircularProgress, Alert } from '@mui/material';
 import { IntentionBar } from '../components/agency/IntentionBar';
 import { GoalBoard } from '../components/agency/GoalBoard';
 import { GoalDetailDrawer } from '../components/agency/GoalDetailDrawer';

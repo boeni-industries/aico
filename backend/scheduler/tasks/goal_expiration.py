@@ -5,7 +5,7 @@ Automatically expires old pending hobby goals that haven't been activated.
 Prevents accumulation of stale curiosity-generated goals.
 """
 
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 from .base import BaseTask, TaskContext, TaskResult

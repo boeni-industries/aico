@@ -1,19 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Paper, Chip, CircularProgress, Alert } from '@mui/material';
-import {
-  CheckCircle as HealthyIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  Computer as BackendIcon,
-  Memory as ModelIcon,
-  Schedule as SchedulerIcon,
-  Hub as BusIcon,
-  Dashboard as StudioIcon,
-  Storage as DatabaseIcon,
-  Person as UserIcon,
-  Chat as ConversationIcon,
-  Flag as GoalIcon,
-} from '@mui/icons-material';
+import { CheckCircle as HealthyIcon, AlertTriangle as WarningIcon, AlertCircle as ErrorIcon, Monitor as BackendIcon, HardDrive as ModelIcon, Clock as SchedulerIcon, LayoutDashboard as StudioIcon, Database as DatabaseIcon, User as UserIcon } from 'lucide-react';
 import { fetchSystemOverview } from '../../api/system';
 import { fetchDetailedHealth, fetchSchedulerStatus, fetchDatabaseStats, fetchActiveSessions } from '../../api/operations';
 
@@ -324,24 +311,24 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'healthy':
-        return <HealthyIcon sx={{ color: '#10B981', fontSize: 20 }} />;
+        return <HealthyIcon color="#10B981" size={20} />;
       case 'degraded':
-        return <WarningIcon sx={{ color: '#F59E0B', fontSize: 20 }} />;
+        return <WarningIcon color="#F59E0B" size={20} />;
       case 'critical':
       case 'offline':
-        return <ErrorIcon sx={{ color: '#EF4444', fontSize: 20 }} />;
+        return <ErrorIcon color="#EF4444" size={20} />;
       default:
-        return <HealthyIcon sx={{ color: '#6B7280', fontSize: 20 }} />;
+        return <HealthyIcon color="#6B7280" size={20} />;
     }
   };
 
   const getComponentIcon = (name: string) => {
-    if (name.includes('Gateway')) return <BackendIcon sx={{ color: '#3B82F6' }} />;
-    if (name.includes('Modelservice')) return <ModelIcon sx={{ color: '#8B5CF6' }} />;
-    if (name.includes('Ollama')) return <ModelIcon sx={{ color: '#14B8A6' }} />;
-    if (name.includes('Scheduler')) return <SchedulerIcon sx={{ color: '#6366F1' }} />;
-    if (name.includes('Studio')) return <StudioIcon sx={{ color: '#A78BFA' }} />;
-    return <BackendIcon sx={{ color: '#3B82F6' }} />;
+    if (name.includes('Gateway')) return <BackendIcon color="#3B82F6" />;
+    if (name.includes('Modelservice')) return <ModelIcon color="#8B5CF6" />;
+    if (name.includes('Ollama')) return <ModelIcon color="#14B8A6" />;
+    if (name.includes('Scheduler')) return <SchedulerIcon color="#6366F1" />;
+    if (name.includes('Studio')) return <StudioIcon color="#A78BFA" />;
+    return <BackendIcon color="#3B82F6" />;
   };
 
   const getComponentColor = (name: string) => {
@@ -356,7 +343,6 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
 
   const getComponentNavigationTab = (name: string): string => {
     if (name.includes('Scheduler')) return 'scheduler';
-    if (name.includes('Bus')) return 'bus';
     if (name.includes('Backend') || name.includes('Gateway')) return 'gateway';
     if (name.includes('Modelservice')) return 'topology';
     if (name.includes('Ollama')) return 'topology';
@@ -591,14 +577,14 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
                 justifyContent: 'center',
               }}
             >
-              <SchedulerIcon sx={{ color: '#6366F1' }} />
+              <SchedulerIcon color="#6366F1" />
             </Box>
             <Box sx={{ flex: 1 }}>
               <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
                 Task Scheduler
               </Typography>
             </Box>
-            <HealthyIcon sx={{ color: '#10B981', fontSize: 20 }} />
+            <HealthyIcon color="#10B981" size={20} />
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
@@ -869,7 +855,7 @@ export const OperationsOverview: React.FC<OperationsOverviewProps> = ({ onNaviga
                 justifyContent: 'center',
               }}
             >
-              <UserIcon sx={{ color: '#A78BFA' }} />
+              <UserIcon color="#A78BFA" />
             </Box>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>

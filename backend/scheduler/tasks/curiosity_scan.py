@@ -5,7 +5,7 @@ Periodically scans for curiosity opportunities and creates hobby goals.
 Based on agency-component-curiosity-engine.md Section 4.4.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from .base import BaseTask, TaskContext, TaskResult
@@ -54,7 +54,7 @@ class CuriosityScanTask(BaseTask):
         Returns:
             TaskResult with scan statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             _get_logger().info("[CURIOSITY_SCAN] Starting curiosity scan")
@@ -170,7 +170,7 @@ class CuriosityScanTask(BaseTask):
                     _get_logger().error(f"[CURIOSITY_SCAN] Failed to scan for user {user_id}: {e}")
             
             # Calculate execution time
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             
             # Build result
             result = TaskResult(
@@ -206,7 +206,7 @@ class CuriosityScanTask(BaseTask):
             return result
             
         except Exception as e:
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             _get_logger().error(f"[CURIOSITY_SCAN] Task failed: {e}")
             
             return TaskResult(
@@ -251,7 +251,7 @@ class CuriosityScanTask(BaseTask):
             # Check quiet hours (if configured)
             quiet_hours = context.get("quiet_hours", {})
             if quiet_hours.get("enabled", False):
-                current_hour = datetime.utcnow().hour
+                current_hour = datetime.now(timezone.utc).hour
                 start_hour = quiet_hours.get("start_hour", 22)
                 end_hour = quiet_hours.get("end_hour", 7)
                 

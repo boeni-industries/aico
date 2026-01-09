@@ -12,6 +12,7 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
 from ..data.libsql.connection import LibSQLConnection
+from .device_service import DeviceService
 
 
 @dataclass
@@ -39,6 +40,7 @@ class SessionService:
     
     def __init__(self, db_connection: LibSQLConnection):
         self.db = db_connection
+        self.device_service = DeviceService(db_connection)
     
     def create_session(
         self,
@@ -46,21 +48,32 @@ class SessionService:
         device_uuid: str,
         jwt_token: str,
         expires_in_minutes: int = 15,
-        session_type: str = "unified"
+        session_type: str = "unified",
+        user_agent: Optional[str] = None,
+        device_name: Optional[str] = None
     ) -> SessionInfo:
         """
-        Create a new authentication session.
+        Create a new authentication session with automatic device registration.
     
         Args:
             user_uuid: User identifier
-            device_uuid: Device identifier
+            device_uuid: Device identifier (will be registered if not exists)
             jwt_token: JWT token to associate with session
             expires_in_minutes: Token expiration time in minutes
             session_type: Session type (e.g., 'rest', 'websocket', or 'unified')
+            user_agent: User-Agent string for device detection (optional)
+            device_name: Override device name (optional)
     
         Returns:
             SessionInfo: Created session information
         """
+        # Register or update device before creating session
+        device_uuid = self.device_service.register_or_update_device(
+            device_uuid=device_uuid,
+            user_agent=user_agent,
+            device_name=device_name
+        )
+        
         session_uuid = str(uuid.uuid4())
         jwt_token_hash = self._hash_token(jwt_token)
         expires_at = datetime.utcnow() + timedelta(minutes=expires_in_minutes)

@@ -8,7 +8,7 @@ Phase 6.2: Production Scheduler
 """
 
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 from aico.core.logging import get_logger
@@ -124,7 +124,7 @@ class RetryManager:
             return None
         
         delay_seconds = RetryManager.calculate_delay(retry_count, retry_config)
-        next_retry = datetime.now() + timedelta(seconds=delay_seconds)
+        next_retry = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
         
         logger.info(
             f"Next retry scheduled for {next_retry.isoformat()} "
@@ -171,7 +171,7 @@ class RetryTracker:
             reason: Failure reason
         """
         self.retry_counts[task_id] = self.retry_counts.get(task_id, 0) + 1
-        self.last_failure[task_id] = datetime.now()
+        self.last_failure[task_id] = datetime.now(timezone.utc)
         
         if task_id not in self.failure_reasons:
             self.failure_reasons[task_id] = []
@@ -236,7 +236,7 @@ class RetryTracker:
         if task_id not in self.last_failure:
             return False
         
-        time_since_failure = (datetime.now() - self.last_failure[task_id]).total_seconds()
+        time_since_failure = (datetime.now(timezone.utc) - self.last_failure[task_id]).total_seconds()
         return time_since_failure < within_seconds
     
     def clear(self, task_id: Optional[str] = None):

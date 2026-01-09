@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography, Paper, Chip } from '@mui/material';
-import { ArrowForward as ArrowIcon } from '@mui/icons-material';
+import { ArrowRight as ArrowIcon } from 'lucide-react';
 
 interface PathNode {
   id: string;

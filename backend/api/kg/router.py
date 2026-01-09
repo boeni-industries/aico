@@ -84,7 +84,7 @@ async def execute_gql_query(
                 detail="User ID not found in token"
             )
         
-        logger.info(f"Executing GQL query for user {user_id}: {request.query[:100]}...")
+        # Removed excessive logging
         
         # Create query executor
         max_results = request.limit or 1000
@@ -109,7 +109,7 @@ async def execute_gql_query(
                 detail=result["error"]
             )
         
-        logger.info(f"Query executed successfully: {result['metadata'].get('row_count', 0)} rows")
+        # Query executed successfully
         
         return GQLQueryResponse(**result)
         
@@ -130,6 +130,79 @@ async def execute_gql_query(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Query execution failed: {str(e)}"
+        )
+
+
+@router.get("/schema")
+async def get_kg_schema(
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)]
+) -> dict:
+    """
+    Get knowledge graph schema for autocomplete.
+    
+    **Authentication required:** Bearer token
+    
+    Returns:
+        Schema with node labels, relationship types, and properties
+    """
+    try:
+        user_id = user.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID not found in token"
+            )
+        
+        # Query for distinct node labels
+        node_labels_query = """
+        SELECT DISTINCT label FROM kg_nodes 
+        WHERE user_id = ? AND is_current = 1
+        ORDER BY label
+        """
+        
+        # Query for distinct relationship types
+        rel_types_query = """
+        SELECT DISTINCT relation_type FROM kg_edges 
+        WHERE user_id = ? AND is_current = 1
+        ORDER BY relation_type
+        """
+        
+        # Execute queries
+        node_labels_result = db_connection.execute(node_labels_query, [user_id])
+        rel_types_result = db_connection.execute(rel_types_query, [user_id])
+        
+        node_labels = [row[0] for row in node_labels_result.fetchall() if row[0]]
+        relationship_types = [row[0] for row in rel_types_result.fetchall() if row[0]]
+        
+        # Define standard node properties (available on all nodes)
+        node_properties = [
+            'id', 'label', 'confidence', 'source_text', 
+            'created_at', 'updated_at', 'valid_from', 'valid_until',
+            'is_current', 'canonical_id', 'language', 'reason'
+        ]
+        
+        # Define standard relationship properties (available on all edges)
+        relationship_properties = [
+            'id', 'relation_type', 'confidence', 'source_text',
+            'created_at', 'updated_at', 'valid_from', 'valid_until',
+            'is_current', 'reason'
+        ]
+        
+        return {
+            "nodeLabels": node_labels,
+            "relationshipTypes": relationship_types,
+            "nodeProperties": node_properties,
+            "relationshipProperties": relationship_properties
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch KG schema for user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch schema: {str(e)}"
         )
 
 
@@ -157,7 +230,7 @@ async def get_graph_stats(
                 detail="User ID not found in token"
             )
         
-        logger.info(f"Fetching comprehensive graph stats for user {user_id}")
+        # Fetching graph stats
         
         # Import analytics engine
         from backend.api.kg.analytics import KGAnalyticsEngine
@@ -235,29 +308,14 @@ async def get_graph_stats(
         storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.3
         
         # Calculate comprehensive metrics using analytics engine
-        logger.info("Calculating health metrics...")
         health_metrics = analytics.calculate_health_metrics()
-        
-        logger.info("Calculating structure metrics...")
         structure_metrics = analytics.calculate_structure_metrics()
-        
-        logger.info("Calculating temporal metrics...")
         temporal_metrics = analytics.calculate_temporal_metrics()
-        
-        logger.info("Calculating centrality metrics...")
         centrality_metrics = analytics.calculate_centrality_metrics()
-        logger.info(f"Centrality metrics calculated: {centrality_metrics}")
-        logger.info(f"Top by degree count: {len(centrality_metrics.get('top_by_degree', []))}")
-        logger.info(f"Top by pagerank count: {len(centrality_metrics.get('top_by_pagerank', []))}")
-        logger.info(f"Top by betweenness count: {len(centrality_metrics.get('top_by_betweenness', []))}")
-        
-        logger.info("Calculating clustering metrics...")
         clustering_metrics = analytics.calculate_clustering_metrics()
         
         # Detect actual duplicate pairs
-        logger.info("Detecting duplicate node pairs...")
         duplicate_pairs = analytics.detect_duplicate_pairs()
-        logger.info(f"Found {len(duplicate_pairs)} duplicate pairs")
         
         # Convert to schema format
         from backend.api.kg.schemas import DuplicateNodePair
@@ -293,7 +351,7 @@ async def get_graph_stats(
             centrality=centrality_metrics,
             clustering=clustering_metrics
         )
-        logger.info(f"Response centrality data: {response.centrality}")
+        # Response prepared
         return response
         
     except HTTPException:
@@ -338,7 +396,7 @@ async def list_nodes(
         # Clamp limit
         limit = min(limit, 1000)
         
-        logger.info(f"Fetching nodes for user {user_id} (limit={limit}, offset={offset})")
+        # Fetching nodes
         
         # Fetch nodes (all nodes, not just current versions)
         nodes_raw = db_connection.execute(
@@ -374,7 +432,7 @@ async def list_nodes(
                 "aliases": json.loads(row[12]) if row[12] else []
             })
         
-        logger.info(f"Returning {len(nodes)} nodes")
+        # Nodes fetched
         return {"nodes": nodes, "total": len(nodes), "limit": limit, "offset": offset}
         
     except HTTPException:
@@ -417,7 +475,7 @@ async def list_edges(
         # Clamp limit
         limit = min(limit, 1000)
         
-        logger.info(f"Fetching edges for user {user_id} (limit={limit}, offset={offset})")
+        # Fetching edges
         
         # Fetch edges (all edges, not just current versions)
         edges_raw = db_connection.execute(
@@ -453,7 +511,7 @@ async def list_edges(
                 "is_current": row[12]
             })
         
-        logger.info(f"Returning {len(edges)} edges")
+        # Edges fetched
         return {"edges": edges, "total": len(edges), "limit": limit, "offset": offset}
         
     except HTTPException:
@@ -501,7 +559,7 @@ async def get_query_templates(
         with open(templates_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        logger.info(f"Loaded {len(data.get('templates', []))} query templates from {templates_path} for user {user.get('user_uuid')}")
+        # Templates loaded
         return data
         
     except json.JSONDecodeError as e:
@@ -590,10 +648,7 @@ async def update_query_templates(
         with open(templates_path, 'w', encoding='utf-8') as f:
             json.dump(templates_data, f, indent=2, ensure_ascii=False)
         
-        logger.info(
-            f"Updated {len(templates)} query templates at {templates_path} "
-            f"for user {user.get('user_uuid')}"
-        )
+        # Templates updated
         
         return {
             "success": True,

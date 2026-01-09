@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
-  TextField,
   Button,
   Typography,
   Chip,
@@ -24,25 +23,9 @@ import {
   Tooltip,
   Snackbar,
 } from '@mui/material';
-import {
-  Code as CodeIcon,
-  PlayArrow as PlayIcon,
-  ContentCopy as CopyIcon,
-  ExpandMore as ExpandIcon,
-  AutoAwesome as SparkleIcon,
-  TrendingUp as TrendingIcon,
-  Timeline as TimelineIcon,
-  AccountTree as GraphIcon,
-  Search as SearchIcon,
-  CheckCircle as SuccessIcon,
-  Error as ErrorIcon,
-  Download as DownloadIcon,
-  Add as AddIcon,
-  Edit as EditIcon,
-} from '@mui/icons-material';
+import { Code as CodeIcon, Play as PlayIcon, Copy as CopyIcon, ChevronDown as ExpandIcon, Sparkles as SparkleIcon, TrendingUp as TrendingIcon, Clock as TimelineIcon, GitBranch as GraphIcon, Search as SearchIcon, CheckCircle as SuccessIcon, AlertCircle as ErrorIcon, Download as DownloadIcon, Plus as AddIcon, Pencil as EditIcon, Save as SaveIcon, X as CancelIcon, BookmarkPlus as TemplateIcon } from 'lucide-react';
 import { executeGQLQuery, fetchQueryTemplates, updateQueryTemplates, QueryTemplate } from '../../api/kg';
-import { TemplateEditor } from './TemplateEditor';
-import { CypherQueryInput } from './CypherQueryInput';
+import { CodeEditor } from '../common/CodeEditor';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   exploration: <GraphIcon />,
@@ -195,12 +178,17 @@ export const GQLQueryInterface: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [templates, setTemplates] = useState<QueryTemplate[]>(INITIAL_TEMPLATES);
-  const [templatesLoading, setTemplatesLoading] = useState(true);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<QueryTemplate | null>(null);
-  const [isNewTemplate, setIsNewTemplate] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  
+  // Unified editor state
+  const [editorMode, setEditorMode] = useState<'query' | 'template'>('query');
+  const [editingTemplate, setEditingTemplate] = useState<QueryTemplate | null>(null);
+  const [templateName, setTemplateName] = useState('');
+  const [templateDescription, setTemplateDescription] = useState('');
+  const [templateCategory, setTemplateCategory] = useState<'exploration' | 'analysis' | 'temporal' | 'relationships'>('exploration');
+  const [templateTags, setTemplateTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState('');
 
   // Load query templates from API on mount
   const loadTemplates = async () => {
@@ -216,8 +204,6 @@ export const GQLQueryInterface: React.FC = () => {
       }
     } catch (error) {
       console.error('[GQL Templates] Failed to load query templates, using defaults:', error);
-    } finally {
-      setTemplatesLoading(false);
     }
   };
 
@@ -239,42 +225,61 @@ export const GQLQueryInterface: React.FC = () => {
     setPage(0);
   };
 
+  // Switch to template mode for creating new template
   const handleCreateTemplate = () => {
     setEditingTemplate(null);
-    setIsNewTemplate(true);
-    setEditorOpen(true);
+    setTemplateName('');
+    setTemplateDescription('');
+    setTemplateCategory('exploration');
+    setTemplateTags([]);
+    setEditorMode('template');
   };
 
+  // Load template into editor for editing
   const handleEditTemplate = (template: QueryTemplate) => {
     setEditingTemplate(template);
-    setIsNewTemplate(false);
-    setEditorOpen(true);
+    setQuery(template.query);
+    setTemplateName(template.title);
+    setTemplateDescription(template.description);
+    setTemplateCategory(template.category);
+    setTemplateTags(template.tags || []);
+    setEditorMode('template');
   };
 
-  const handleSaveTemplate = async (template: QueryTemplate) => {
+  // Save template (create or update)
+  const handleSaveTemplate = async () => {
     try {
       setSaveError(null);
       
-      // Update local state
+      const templateData: QueryTemplate = {
+        id: editingTemplate?.id || `template-${Date.now()}`,
+        title: templateName,
+        description: templateDescription,
+        category: templateCategory,
+        query: query,
+        tags: templateTags,
+      };
+      
       let updatedTemplates: QueryTemplate[];
-      if (isNewTemplate) {
-        // Check for duplicate ID
-        if (templates.some(t => t.id === template.id)) {
-          setSaveError(`Template with ID "${template.id}" already exists`);
+      if (editingTemplate) {
+        // Update existing
+        updatedTemplates = templates.map(t => t.id === templateData.id ? templateData : t);
+      } else {
+        // Create new
+        if (templates.some(t => t.id === templateData.id)) {
+          setSaveError(`Template with ID "${templateData.id}" already exists`);
           return;
         }
-        updatedTemplates = [...templates, template];
-      } else {
-        updatedTemplates = templates.map(t => t.id === template.id ? template : t);
+        updatedTemplates = [...templates, templateData];
       }
       
-      // Save to backend
       await updateQueryTemplates(updatedTemplates);
-      
-      // Update local state
       setTemplates(updatedTemplates);
       setSaveSuccess(true);
-      setEditorOpen(false);
+      
+      // Return to query mode
+      setEditorMode('query');
+      setEditingTemplate(null);
       
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
@@ -283,25 +288,44 @@ export const GQLQueryInterface: React.FC = () => {
     }
   };
 
+  // Delete template
   const handleDeleteTemplate = async (templateId: string) => {
     try {
       setSaveError(null);
-      
       const updatedTemplates = templates.filter(t => t.id !== templateId);
-      
-      // Save to backend
       await updateQueryTemplates(updatedTemplates);
-      
-      // Update local state
       setTemplates(updatedTemplates);
       setSaveSuccess(true);
-      setEditorOpen(false);
-      
+      setEditorMode('query');
+      setEditingTemplate(null);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error('[GQL Templates] Failed to delete template:', error);
       setSaveError(error instanceof Error ? error.message : 'Failed to delete template');
     }
+  };
+
+  // Cancel template editing
+  const handleCancelTemplate = () => {
+    setEditorMode('query');
+    setEditingTemplate(null);
+    setTemplateName('');
+    setTemplateDescription('');
+    setTemplateCategory('exploration');
+    setTemplateTags([]);
+  };
+
+  // Add tag
+  const handleAddTag = () => {
+    if (newTag.trim() && !templateTags.includes(newTag.trim())) {
+      setTemplateTags([...templateTags, newTag.trim()]);
+      setNewTag('');
+    }
+  };
+
+  // Remove tag
+  const handleRemoveTag = (tag: string) => {
+    setTemplateTags(templateTags.filter(t => t !== tag));
   };
 
   const handleExportCSV = () => {
@@ -436,34 +460,224 @@ export const GQLQueryInterface: React.FC = () => {
           boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.4)',
         }}
       >
+        {/* Header with Mode Toggle */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-          <CodeIcon sx={{ color: '#3B82F6', fontSize: 28 }} />
+          <CodeIcon size={28} color="#3B82F6" />
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem', mb: 0.5 }}>
               GQL Query Editor
+              {editingTemplate && (
+                <Chip 
+                  label={`Editing: ${editingTemplate.title}`}
+                  size="small"
+                  sx={{ ml: 2, bgcolor: 'rgba(251, 146, 60, 0.2)', color: '#FB923C', fontWeight: 600 }}
+                />
+              )}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>
-              Execute graph queries using ISO standard GQL syntax via GrandCypher
+              {editorMode === 'query' ? 'Execute graph queries using ISO standard GQL syntax via GrandCypher' : 'Configure template metadata and save'}
             </Typography>
+          </Box>
+          
+          {/* Mode Toggle */}
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            {editorMode === 'query' ? (
+              <Button
+                variant="outlined"
+                startIcon={<TemplateIcon size={18} />}
+                onClick={handleCreateTemplate}
+                sx={{
+                  textTransform: 'none',
+                  borderColor: 'rgba(184, 161, 234, 0.3)',
+                  color: '#B8A1EA',
+                  '&:hover': {
+                    borderColor: '#B8A1EA',
+                    bgcolor: 'rgba(184, 161, 234, 0.1)',
+                  },
+                }}
+              >
+                Save as Template
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outlined"
+                  startIcon={<CancelIcon size={18} />}
+                  onClick={handleCancelTemplate}
+                  sx={{
+                    textTransform: 'none',
+                    borderColor: 'rgba(239, 68, 68, 0.3)',
+                    color: '#EF4444',
+                    '&:hover': {
+                      borderColor: '#EF4444',
+                      bgcolor: 'rgba(239, 68, 68, 0.1)',
+                    },
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<SaveIcon size={18} />}
+                  onClick={handleSaveTemplate}
+                  disabled={!templateName.trim() || !query.trim()}
+                  sx={{
+                    textTransform: 'none',
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                    },
+                  }}
+                >
+                  {editingTemplate ? 'Update Template' : 'Save Template'}
+                </Button>
+              </>
+            )}
           </Box>
         </Box>
 
+        {/* Template Metadata Form - Shown in Template Mode */}
+        <Collapse in={editorMode === 'template'}>
+          <Paper sx={{ 
+            p: 3, 
+            mb: 2, 
+            bgcolor: 'rgba(184, 161, 234, 0.05)',
+            border: '1px solid rgba(184, 161, 234, 0.2)',
+            borderRadius: '12px',
+          }}>
+            <Typography variant="subtitle2" sx={{ color: '#B8A1EA', fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TemplateIcon size={18} />
+              Template Metadata
+            </Typography>
+            
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Template Name */}
+              <FormControl fullWidth>
+                <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 600 }}>Template Name *</Typography>
+                <input
+                  type="text"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="e.g., All Active Projects"
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    color: '#fff',
+                    fontSize: '0.9rem',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </FormControl>
+
+              {/* Description */}
+              <FormControl fullWidth>
+                <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 600 }}>Description</Typography>
+                <input
+                  type="text"
+                  value={templateDescription}
+                  onChange={(e) => setTemplateDescription(e.target.value)}
+                  placeholder="Brief description of what this query does"
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    color: '#fff',
+                    fontSize: '0.9rem',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </FormControl>
+
+              {/* Category */}
+              <FormControl fullWidth>
+                <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 600 }}>Category</Typography>
+                <Select
+                  value={templateCategory}
+                  onChange={(e) => setTemplateCategory(e.target.value as any)}
+                  sx={{
+                    bgcolor: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '8px',
+                    '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.1)' },
+                  }}
+                >
+                  <MenuItem value="exploration">Exploration</MenuItem>
+                  <MenuItem value="analysis">Analysis</MenuItem>
+                  <MenuItem value="temporal">Temporal</MenuItem>
+                  <MenuItem value="relationships">Relationships</MenuItem>
+                </Select>
+              </FormControl>
+
+              {/* Tags */}
+              <FormControl fullWidth>
+                <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 600 }}>Tags</Typography>
+                <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                  {templateTags.map((tag) => (
+                    <Chip
+                      key={tag}
+                      label={tag}
+                      onDelete={() => handleRemoveTag(tag)}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(236, 72, 153, 0.2)', color: '#EC4899' }}
+                    />
+                  ))}
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <input
+                    type="text"
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
+                    placeholder="Add tag..."
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      color: '#fff',
+                      fontSize: '0.85rem',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleAddTag}
+                    disabled={!newTag.trim()}
+                    startIcon={<AddIcon size={16} />}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Add
+                  </Button>
+                </Box>
+              </FormControl>
+            </Box>
+          </Paper>
+        </Collapse>
+
+        {/* Code Editor */}
         <Box sx={{ mb: 2 }}>
-          <CypherQueryInput
+          <CodeEditor
             value={query}
             onChange={setQuery}
-            label="GQL Query Editor"
-            rows={8}
-            showValidation={true}
+            language="cypher"
+            height={300}
+            placeholder="Enter your Cypher/GQL query here..."
+            schemaEndpoint="http://localhost:8771/api/v1/kg/schema"
           />
         </Box>
 
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="contained"
-            startIcon={isExecuting ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : <PlayIcon />}
-            disabled={!query.trim() || isExecuting}
-            onClick={handleExecuteQuery}
+        {/* Action Buttons - Only show Execute in Query Mode */}
+        {editorMode === 'query' && (
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={isExecuting ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : <PlayIcon />}
+              disabled={!query.trim() || isExecuting}
+              onClick={handleExecuteQuery}
             sx={{
               textTransform: 'none',
               fontWeight: 600,
@@ -501,7 +715,8 @@ export const GQLQueryInterface: React.FC = () => {
           >
             Copy
           </Button>
-        </Box>
+          </Box>
+        )}
       </Paper>
 
       {/* Query Results */}
@@ -540,7 +755,7 @@ export const GQLQueryInterface: React.FC = () => {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-            <SuccessIcon sx={{ color: '#10B981', fontSize: 24 }} />
+            <SuccessIcon size={24} color="#10B981" />
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem' }}>
               Query Results
             </Typography>
@@ -798,7 +1013,7 @@ export const GQLQueryInterface: React.FC = () => {
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <SparkleIcon sx={{ color: '#EC4899', fontSize: 24 }} />
+            <SparkleIcon size={20} color="#F59E0B" />
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
               Query Templates
             </Typography>
@@ -920,7 +1135,7 @@ export const GQLQueryInterface: React.FC = () => {
                         },
                       }}
                     >
-                      <EditIcon fontSize="small" />
+                      <EditIcon size={16} color="#3B82F6" />
                     </IconButton>
                     <IconButton
                       size="small"
@@ -934,7 +1149,7 @@ export const GQLQueryInterface: React.FC = () => {
                         transition: 'transform 0.3s',
                       }}
                     >
-                      <ExpandIcon />
+                      <ExpandIcon size={16} color="#3B82F6" />
                     </IconButton>
                   </Box>
 
@@ -1002,7 +1217,7 @@ export const GQLQueryInterface: React.FC = () => {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-          <CodeIcon sx={{ fontSize: '2rem', color: '#10B981' }} />
+          <CodeIcon size={19} color="#10B981" />
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#10B981', letterSpacing: '-0.02em' }}>
               GQL Query Cheatsheet
@@ -1028,7 +1243,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#3B82F6', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <GraphIcon sx={{ fontSize: '1.2rem' }} />
+              <GraphIcon size={19} color="#3B82F6" />
               Pattern Matching
             </Typography>
             <Box component="code" sx={{ 
@@ -1063,7 +1278,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#A855F7', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SparkleIcon sx={{ fontSize: '1.2rem' }} />
+              <SparkleIcon size={19} color="#A855F7" />
               Filtering
             </Typography>
             <Box component="code" sx={{ 
@@ -1098,7 +1313,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#EC4899', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TimelineIcon sx={{ fontSize: '1.2rem' }} />
+              <TimelineIcon size={19} color="#EC4899" />
               Temporal
             </Typography>
             <Box component="code" sx={{ 
@@ -1133,7 +1348,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#10B981', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TrendingIcon sx={{ fontSize: '1.2rem' }} />
+              <TrendingIcon size={19} color="#10B981" />
               Limiting Results
             </Typography>
             <Box component="code" sx={{ 
@@ -1168,7 +1383,7 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#FB923C', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SparkleIcon sx={{ fontSize: '1.2rem' }} />
+              <SparkleIcon size={19} />
               Label Matching
             </Typography>
             <Box component="code" sx={{ 
@@ -1203,8 +1418,8 @@ export const GQLQueryInterface: React.FC = () => {
             }
           }}>
             <Typography variant="subtitle2" sx={{ color: '#22C55E', fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <GraphIcon sx={{ fontSize: '1.2rem' }} />
-              Relationships
+              <SearchIcon size={19} />
+              Relationship Types
             </Typography>
             <Box component="code" sx={{ 
               display: 'block', 
@@ -1226,15 +1441,6 @@ export const GQLQueryInterface: React.FC = () => {
         </Box>
       </Paper>
 
-      {/* Template Editor Dialog */}
-      <TemplateEditor
-        open={editorOpen}
-        onClose={() => setEditorOpen(false)}
-        template={editingTemplate}
-        onSave={handleSaveTemplate}
-        onDelete={handleDeleteTemplate}
-        isNew={isNewTemplate}
-      />
 
       {/* Success Notification */}
       <Snackbar

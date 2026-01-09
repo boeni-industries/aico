@@ -1,11 +1,6 @@
 import React from 'react';
-import { Box, Typography, LinearProgress, Chip } from '@mui/material';
-import {
-  TrendingUp as TrendingUpIcon,
-  Psychology as PsychologyIcon,
-  School as SchoolIcon,
-  Favorite as FavoriteIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Chip } from '@mui/material';
+import { TrendingUp as TrendingUpIcon, Brain as PsychologyIcon, GraduationCap as SchoolIcon, Heart as FavoriteIcon } from 'lucide-react';
 
 interface AgencyCardProps {
   activeGoals: number;
@@ -74,7 +69,7 @@ export const AgencyCard: React.FC<AgencyCardProps> = ({
           </Box>
         </Box>
         <Chip
-          label="ACTIVE"
+          label="LIVE"
           size="small"
           sx={{
             bgcolor: 'rgba(16, 185, 129, 0.12)',

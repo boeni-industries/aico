@@ -107,17 +107,32 @@ async def detailed_health():
         details={"note": "Message bus is part of backend process"}
     )
     
-    # Modelservice health - report as healthy with version from VERSIONS
-    # Note: Modelservice is a separate process, we assume it's running
+    # Modelservice health - poll via ZMQ for actual uptime
+    modelservice_uptime = None
+    modelservice_status = "healthy"
+    try:
+        from backend.services import get_modelservice_client
+        from aico.core.config import ConfigurationManager
+        
+        config = ConfigurationManager()
+        modelservice_client = get_modelservice_client(config)
+        
+        health_data = await modelservice_client.get_health()
+        if health_data and health_data.get('success') and health_data.get('uptime_seconds'):
+            modelservice_uptime = health_data['uptime_seconds']
+    except Exception as e:
+        logger.debug(f"Could not poll modelservice uptime: {e}")
+        modelservice_status = "unavailable"
+    
     components["modelservice"] = ComponentHealth(
-        status="healthy",
-        uptime=uptime,
+        status=modelservice_status,
+        uptime=modelservice_uptime,
         last_check=current_time.isoformat(),
         version=MODELSERVICE_VERSION,
         details={"note": "Modelservice is a separate process"}
     )
     
-    # Ollama health - external LLM service
+    # Ollama health - managed by modelservice
     # Try to detect Ollama version from its API
     ollama_version = "unknown"
     ollama_status = "healthy"
@@ -133,10 +148,10 @@ async def detailed_health():
     
     components["ollama"] = ComponentHealth(
         status=ollama_status,
-        uptime=uptime if ollama_status == "healthy" else None,
+        uptime=modelservice_uptime if ollama_status == "healthy" else None,
         last_check=current_time.isoformat(),
         version=ollama_version,
-        details={"note": "External LLM service"}
+        details={"note": "Managed by modelservice"}
     )
     
     # Determine overall status

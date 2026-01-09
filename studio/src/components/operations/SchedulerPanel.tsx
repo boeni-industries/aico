@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography, Paper, Chip, LinearProgress } from '@mui/material';
-import { Schedule as ScheduleIcon, CheckCircle as SuccessIcon, Error as ErrorIcon, Pending as PendingIcon } from '@mui/icons-material';
+import { Clock as ScheduleIcon, CheckCircle as SuccessIcon, AlertCircle as ErrorIcon, Pending as PendingIcon } from 'lucide-react';
 
 export const SchedulerPanel: React.FC = () => {
   // Mock data - replace with actual API calls

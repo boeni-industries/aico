@@ -9,7 +9,7 @@ Phase 6.2: Production Scheduler
 
 import heapq
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -111,7 +111,7 @@ class PriorityTaskQueue:
         # Create prioritized task
         task = PrioritizedTask(
             priority=priority.value,
-            enqueued_at=datetime.now(),
+            enqueued_at=datetime.now(timezone.utc),
             task_id=task_id,
             task_class=task_class,
             config=config or {},
@@ -158,7 +158,7 @@ class PriorityTaskQueue:
         
         task = heapq.heappop(self.queues[queue_name])
         self.queue_sizes[queue_name] -= 1
-        self.last_execution[queue_name] = datetime.now()
+        self.last_execution[queue_name] = datetime.now(timezone.utc)
         self._enqueued_task_ids.discard(task.task_id)
         
         logger.debug(
@@ -184,7 +184,7 @@ class PriorityTaskQueue:
         
         # Weighted selection for background queues
         candidates = []
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         
         for queue_name in [
             TaskQueue.BACKGROUND_LIGHT.value,

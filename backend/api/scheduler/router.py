@@ -71,7 +71,7 @@ async def list_tasks(
 ) -> TaskListResponse:
     """List all scheduled tasks"""
     try:
-        tasks = await scheduler.task_store.list_tasks(enabled_only=enabled_only)
+        tasks = scheduler.task_store.list_tasks(enabled_only=enabled_only)
         
         task_responses = [
             TaskConfigResponse(
@@ -135,7 +135,7 @@ async def create_task(
     """Create a new scheduled task"""
     try:
         # Validate task doesn't already exist
-        existing_task = await scheduler.task_store.get_task(task_request.task_id)
+        existing_task = scheduler.task_store.get_task(task_request.task_id)
         if existing_task:
             raise TaskAlreadyExistsError(task_request.task_id)
         
@@ -153,7 +153,7 @@ async def create_task(
             validate_task_config(task_request.config)
         
         # Create task
-        await scheduler.task_store.upsert_task(
+        scheduler.task_store.upsert_task(
             task_id=task_request.task_id,
             task_class=task_request.task_class,
             schedule=task_request.schedule,
@@ -162,7 +162,7 @@ async def create_task(
         )
         
         # Get the created task to return
-        created_task = await scheduler.task_store.get_task(task_request.task_id)
+        created_task = scheduler.task_store.get_task(task_request.task_id)
         
         logger.info(f"Created task: {task_request.task_id}")
         
@@ -195,7 +195,7 @@ async def update_task(
     """Update an existing task configuration"""
     try:
         # Check task exists
-        existing_task = await scheduler.task_store.get_task(task_id)
+        existing_task = scheduler.task_store.get_task(task_id)
         if not existing_task:
             raise TaskNotFoundError(task_id)
         
@@ -212,7 +212,7 @@ async def update_task(
         new_config = task_update.config if task_update.config is not None else existing_task['config']
         new_enabled = task_update.enabled if task_update.enabled is not None else existing_task['enabled']
         
-        await scheduler.task_store.upsert_task(
+        scheduler.task_store.upsert_task(
             task_id=task_id,
             task_class=existing_task['task_class'],
             schedule=new_schedule,
@@ -221,7 +221,7 @@ async def update_task(
         )
         
         # Get updated task
-        updated_task = await scheduler.task_store.get_task(task_id)
+        updated_task = scheduler.task_store.get_task(task_id)
         
         logger.info(f"Updated task: {task_id}")
         
@@ -251,7 +251,7 @@ async def delete_task(
 ) -> ApiResponse:
     """Delete a scheduled task"""
     try:
-        deleted = await scheduler.task_store.delete_task(task_id)
+        deleted = scheduler.task_store.delete_task(task_id)
         if not deleted:
             raise TaskNotFoundError(task_id)
         
@@ -278,11 +278,18 @@ async def enable_task(
 ) -> ApiResponse:
     """Enable a scheduled task"""
     try:
-        updated = await scheduler.task_store.set_task_enabled(task_id, True)
+        updated = scheduler.task_store.set_task_enabled(task_id, True)
         if not updated:
             raise TaskNotFoundError(task_id)
         
-        logger.info(f"Enabled task: {task_id}")
+        # Recalculate next run time for this task immediately
+        task = scheduler.task_store.get_task(task_id)
+        if task and task['schedule']:
+            from datetime import datetime, timezone
+            next_run = scheduler.cron_parser.next_run_time(task['schedule'], datetime.now(timezone.utc))
+            if next_run:
+                scheduler.next_run_times[task_id] = next_run
+                logger.info(f"Enabled task: {task_id}, next run: {next_run}")
         
         return ApiResponse(
             success=True,
@@ -305,11 +312,14 @@ async def disable_task(
 ) -> ApiResponse:
     """Disable a scheduled task"""
     try:
-        updated = await scheduler.task_store.set_task_enabled(task_id, False)
+        updated = scheduler.task_store.set_task_enabled(task_id, False)
         if not updated:
             raise TaskNotFoundError(task_id)
         
-        logger.info(f"Disabled task: {task_id}")
+        # Remove from next_run_times to prevent execution
+        if task_id in scheduler.next_run_times:
+            del scheduler.next_run_times[task_id]
+            logger.info(f"Disabled task: {task_id}, removed from schedule")
         
         return ApiResponse(
             success=True,
@@ -358,12 +368,12 @@ async def get_task_status(
     """Get current status of a task"""
     try:
         # Get task configuration
-        task = await scheduler.task_store.get_task(task_id)
+        task = scheduler.task_store.get_task(task_id)
         if not task:
             raise TaskNotFoundError(task_id)
         
         # Get latest execution
-        history = await scheduler.task_store.get_execution_history(task_id, limit=1)
+        history = scheduler.task_store.get_execution_history(task_id, limit=1)
         last_execution = None
         if history:
             exec_data = history[0]
@@ -415,12 +425,12 @@ async def get_task_history(
             raise TaskValidationError("Limit must be between 1 and 1000")
         
         # Check task exists
-        task = await scheduler.task_store.get_task(task_id)
+        task = scheduler.task_store.get_task(task_id)
         if not task:
             raise TaskNotFoundError(task_id)
         
         # Get execution history
-        history = await scheduler.task_store.get_execution_history(task_id, limit=limit)
+        history = scheduler.task_store.get_execution_history(task_id, limit=limit)
         
         executions = [
             TaskExecutionResponse(
@@ -445,4 +455,101 @@ async def get_task_history(
         raise
     except Exception as e:
         logger.error(f"Failed to get task history {task_id}: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.get("/executions/range", response_model=dict)
+@handle_scheduler_exceptions
+async def get_executions_in_range(
+    start_time: str,
+    end_time: str,
+    scheduler = Depends(get_task_scheduler),
+    _auth = Depends(require_admin_access)
+) -> dict:
+    """Get all task executions within a time range"""
+    try:
+        from datetime import datetime
+        
+        # Validate datetime strings
+        try:
+            datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        except ValueError as e:
+            raise TaskValidationError(f"Invalid datetime format: {e}")
+        
+        executions = scheduler.task_store.get_all_executions_in_range(start_time, end_time)
+        
+        executions_response = [
+            {
+                'task_id': exec_data['task_id'],
+                'execution_id': exec_data['execution_id'],
+                'status': exec_data['status'],
+                'started_at': exec_data['started_at'],
+                'completed_at': exec_data['completed_at'],
+                'result': exec_data['result'],
+                'error_message': exec_data['error_message'],
+                'duration_seconds': exec_data['duration_seconds']
+            }
+            for exec_data in executions
+        ]
+        
+        return {
+            'executions': executions_response,
+            'total_count': len(executions_response),
+            'start_time': start_time,
+            'end_time': end_time
+        }
+        
+    except TaskValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get executions in range: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.get("/expected-runs-today", response_model=dict)
+@handle_scheduler_exceptions
+async def get_expected_runs_today(
+    scheduler = Depends(get_task_scheduler),
+    _auth = Depends(require_admin_access)
+) -> dict:
+    """Calculate expected number of job runs today based on cron schedules"""
+    try:
+        from datetime import datetime, timedelta
+        
+        tasks = scheduler.task_store.list_tasks(enabled_only=True)
+        
+        now = datetime.now()
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        
+        total_expected_runs = 0
+        task_run_counts = {}
+        
+        for task in tasks:
+            schedule = task.get('schedule', '')
+            if not schedule:
+                continue
+                
+            try:
+                # Parse cron and count expected runs for today
+                expected_runs = scheduler.cron_parser.count_runs_in_period(
+                    schedule, day_start, day_end
+                )
+                total_expected_runs += expected_runs
+                task_run_counts[task['task_id']] = expected_runs
+            except Exception as e:
+                logger.warning(f"Failed to calculate runs for task {task['task_id']}: {e}")
+                continue
+        
+        return {
+            'total_expected_runs': total_expected_runs,
+            'task_run_counts': task_run_counts,
+            'calculated_at': now.isoformat(),
+            'period_start': day_start.isoformat(),
+            'period_end': day_end.isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to calculate expected runs: {e}")
         raise SchedulerNotAvailableError()

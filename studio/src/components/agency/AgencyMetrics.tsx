@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Paper, Typography, CircularProgress } from '@mui/material';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import { TrendingUp as TrendingUpIcon } from 'lucide-react';
 import { AgencyMetrics as AgencyMetricsType } from '../../types/agency';
 
 interface AgencyMetricsProps {

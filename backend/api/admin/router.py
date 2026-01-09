@@ -7,11 +7,11 @@ session control, security operations, and system configuration.
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 
-from .dependencies import verify_admin_token
+from .dependencies import verify_admin_token, get_log_repository, get_config_manager
 from .schemas import (
     AdminHealthResponse,
     GatewayStatusResponse,
@@ -358,7 +358,8 @@ async def remove_route_mapping(external_topic: str):
 @router.get("/logs", response_model=LogsListResponse)
 @handle_admin_service_exceptions
 async def list_logs(
-    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+    request: Request,
+    user: dict = Depends(verify_admin_token),
     limit: Optional[int] = 50,
     offset: Optional[int] = 0,
     level: Optional[str] = None,
@@ -370,53 +371,88 @@ async def list_logs(
     utc: Optional[bool] = False
 ):
     """List logs with filtering and pagination"""
-    # Verify admin token
-    user = verify_admin_token(credentials)
     
-    if not log_repository:
-        raise LogsServiceError("Log repository not initialized")
+    import json
+    from backend.api.system.dependencies import get_db_connection
     
-    # Validate log level if provided
+    conn = get_db_connection(request)
+    
+    # Validate and parse log levels if provided (supports comma-separated values)
+    levels = []
     if level:
         from .dependencies import validate_log_level
-        level = validate_log_level(level)
+        # Split by comma and validate each level
+        level_parts = [l.strip() for l in level.split(',')]
+        for level_part in level_parts:
+            validated = validate_log_level(level_part)
+            levels.append(validated)
     
-    # Query logs with filters
-    logs = log_repository.query_logs(
-        limit=limit,
-        offset=offset,
-        level=level,
-        subsystem=subsystem,
-        module=module,
-        since=since,
-        until=until,
-        search=search
-    )
+    # Build WHERE clause
+    where_conditions = []
+    params = []
+    
+    if levels:
+        # Use IN clause for multiple levels
+        placeholders = ','.join(['?' for _ in levels])
+        where_conditions.append(f"level IN ({placeholders})")
+        params.extend(levels)
+    if subsystem:
+        where_conditions.append("subsystem = ?")
+        params.append(subsystem)
+    if module:
+        where_conditions.append("module LIKE ?")
+        params.append(f"%{module}%")
+    if search:
+        where_conditions.append("message LIKE ?")
+        params.append(f"%{search}%")
+    if since:
+        where_conditions.append("timestamp >= ?")
+        params.append(since.isoformat())
+    if until:
+        where_conditions.append("timestamp <= ?")
+        params.append(until.isoformat())
+    
+    where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+    
+    # Query logs with filters - get data first
+    query = f"""
+        SELECT id, timestamp, level, subsystem, module, function_name, message, topic, extra
+        FROM system_logs
+        WHERE {where_clause}
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+    """
+    rows = conn.execute(query, params + [limit, offset]).fetchall()
+    
+    # Approximate total - just use last ID from first result
+    if offset == 0 and len(rows) > 0:
+        total = rows[0][0]  # Use first row's ID as approximate total
+    else:
+        total = offset + len(rows) + (limit if len(rows) == limit else 0)
     
     # Convert to response format
     log_entries = []
-    for log in logs:
+    for row in rows:
+        extra_data = None
+        if row[8]:  # extra field
+            try:
+                extra_data = json.loads(row[8])
+            except:
+                pass
+        
         log_entries.append(LogEntryResponse(
-            id=log.get("id"),
-            timestamp=log.get("timestamp"),
-            level=log.get("level"),
-            subsystem=log.get("subsystem"),
-            module=log.get("module"),
-            function=log.get("function"),
-            message=log.get("message"),
-            topic=log.get("topic"),
-            extra_data=log.get("extra_data")
+            id=str(row[0]),
+            timestamp=row[1],
+            level=row[2],
+            subsystem=row[3] or "unknown",
+            module=row[4] or "unknown",
+            function=row[5] or "",
+            message=row[6],
+            topic=row[7],
+            extra_data=extra_data
         ))
     
-    # Get total count for pagination
-    total = log_repository.count_logs(
-        level=level,
-        subsystem=subsystem,
-        module=module,
-        since=since,
-        until=until,
-        search=search
-    )
+    conn.close()
     
     return LogsListResponse(
         logs=log_entries,
@@ -426,33 +462,143 @@ async def list_logs(
     )
 
 
+# Cache for stats to avoid repeated slow queries
+_stats_cache = {"data": None, "timestamp": 0}
+_STATS_CACHE_TTL = 30  # 30 seconds
+
+@router.get("/logs/stats", response_model=LogsStatsResponse)
+@handle_admin_service_exceptions
+async def get_logs_stats(
+    request: Request,
+    user: dict = Depends(verify_admin_token)
+):
+    """Get log statistics and metrics - cached for performance"""
+    
+    from datetime import datetime, timedelta
+    import time
+    from backend.api.system.dependencies import get_db_connection
+    
+    # Check cache first
+    now = time.time()
+    if _stats_cache["data"] and (now - _stats_cache["timestamp"]) < _STATS_CACHE_TTL:
+        return _stats_cache["data"]
+    
+    conn = get_db_connection(request)
+    
+    # Get actual count of logs
+    result = conn.execute("SELECT COUNT(*) FROM system_logs").fetchone()
+    total_logs = result[0] if result else 0
+    
+    # Get level distribution
+    rows = conn.execute("SELECT level, COUNT(*) FROM system_logs GROUP BY level").fetchall()
+    by_level = {row[0]: row[1] for row in rows}
+    
+    # Calculate trends by comparing with 1 hour ago
+    now_dt = datetime.utcnow()
+    one_hour_ago = now_dt - timedelta(hours=1)
+    
+    # Get total logs from 1 hour ago
+    result = conn.execute(
+        "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?",
+        (one_hour_ago.isoformat(),)
+    ).fetchone()
+    total_logs_1h_ago = result[0] if result else 0
+    
+    # Get error count from 1 hour ago
+    result = conn.execute(
+        "SELECT COUNT(*) FROM system_logs WHERE level = 'ERROR' AND timestamp < ?",
+        (one_hour_ago.isoformat(),)
+    ).fetchone()
+    errors_1h_ago = result[0] if result else 0
+    
+    # Calculate current error count
+    current_errors = by_level.get('ERROR', 0)
+    
+    # Calculate trends (percentage change)
+    if total_logs_1h_ago > 0:
+        error_rate_1h_ago = (errors_1h_ago / total_logs_1h_ago) * 100
+        current_error_rate = (current_errors / total_logs) * 100 if total_logs > 0 else 0
+        error_rate_trend = round(current_error_rate - error_rate_1h_ago, 2)
+    else:
+        error_rate_trend = 0.0
+    
+    if total_logs_1h_ago > 0:
+        log_volume_trend = round(((total_logs - total_logs_1h_ago) / total_logs_1h_ago) * 100, 2)
+    else:
+        log_volume_trend = 0.0
+    
+    # Get top 10 subsystems only
+    rows = conn.execute(
+        "SELECT subsystem, COUNT(*) as cnt FROM system_logs WHERE subsystem IS NOT NULL GROUP BY subsystem ORDER BY cnt DESC LIMIT 10"
+    ).fetchall()
+    by_subsystem = {row[0]: row[1] for row in rows}
+    
+    # Recent activity - only last 24 hours
+    start_time = now_dt - timedelta(hours=24)
+    rows = conn.execute(
+        "SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM system_logs WHERE timestamp >= ? GROUP BY hour ORDER BY hour",
+        (start_time.isoformat(),)
+    ).fetchall()
+    recent_activity = {row[0]: row[1] for row in rows}
+    
+    conn.close()
+    
+    response = LogsStatsResponse(
+        total_logs=total_logs,
+        by_level=by_level,
+        by_subsystem=by_subsystem,
+        recent_activity=recent_activity,
+        error_rate_trend=error_rate_trend,
+        log_volume_trend=log_volume_trend
+    )
+    
+    # Cache the result
+    _stats_cache["data"] = response
+    _stats_cache["timestamp"] = now
+    
+    return response
+
+
 @router.get("/logs/{log_id}", response_model=LogEntryResponse)
 @handle_admin_service_exceptions
 async def get_log_entry(
     log_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+    request: Request,
+    user: dict = Depends(verify_admin_token)
 ):
     """Get specific log entry by ID"""
-    # Verify admin token
-    user = verify_admin_token(credentials)
     
-    if not log_repository:
-        raise LogsServiceError("Log repository not initialized")
+    import json
+    from backend.api.system.dependencies import get_db_connection
     
-    log = log_repository.get_log_by_id(log_id)
-    if not log:
+    conn = get_db_connection(request)
+    
+    row = conn.execute(
+        "SELECT id, timestamp, level, subsystem, module, function_name, message, topic, extra FROM system_logs WHERE id = ?",
+        (log_id,)
+    ).fetchone()
+    conn.close()
+    
+    if not row:
         raise LogsServiceError(f"Log entry {log_id} not found", 404)
     
+    extra_data = None
+    if row[8]:
+        try:
+            extra_data = json.loads(row[8])
+        except:
+            pass
+    
     return LogEntryResponse(
-        id=log.get("id"),
-        timestamp=log.get("timestamp"),
-        level=log.get("level"),
-        subsystem=log.get("subsystem"),
-        module=log.get("module"),
-        function=log.get("function"),
-        message=log.get("message"),
-        topic=log.get("topic"),
-        extra_data=log.get("extra_data")
+        id=str(row[0]),
+        timestamp=row[1],
+        level=row[2],
+        subsystem=row[3] or "unknown",
+        module=row[4] or "unknown",
+        function=row[5] or "",
+        message=row[6],
+        topic=row[7],
+        extra_data=extra_data
     )
 
 
@@ -491,28 +637,6 @@ async def delete_logs(
         success=True,
         message=f"Deleted {deleted_count} log entries",
         details={"deleted_count": deleted_count}
-    )
-
-
-@router.get("/logs/stats", response_model=LogsStatsResponse)
-@handle_admin_service_exceptions
-async def get_logs_stats(
-    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
-):
-    """Get log statistics and metrics"""
-    # Verify admin token
-    user = verify_admin_token(credentials)
-    
-    if not log_repository:
-        raise LogsServiceError("Log repository not initialized")
-    
-    stats = log_repository.get_log_statistics()
-    
-    return LogsStatsResponse(
-        total_logs=stats.get("total_logs", 0),
-        by_level=stats.get("by_level", {}),
-        by_subsystem=stats.get("by_subsystem", {}),
-        recent_activity=stats.get("recent_activity", {})
     )
 
 

@@ -93,7 +93,7 @@ class AgencyEngine(BaseAIProcessor):
         
         # Phase 4: Values & Ethics service
         self.values_ethics = ValuesEthicsService(db_connection, logger=logger)
-        logger.debug("[AGENCY_ENGINE] Values & Ethics service initialized (Phase 4)")
+        # Values & Ethics initialized
         
         # Phase 4: Goal Arbiter with configuration
         self.arbiter = GoalArbiter(
@@ -102,7 +102,7 @@ class AgencyEngine(BaseAIProcessor):
             message_bus=message_bus, 
             logger=logger
         )
-        logger.debug("[AGENCY_ENGINE] Goal Arbiter initialized (Phase 4)")
+        # Goal Arbiter initialized
         
         # Phase 5: Self-Reflection Engine
         from .reflection import SelfReflectionEngine
@@ -111,7 +111,7 @@ class AgencyEngine(BaseAIProcessor):
             db_connection=db_connection,
             llm_client=None  # Will be set later if available
         )
-        logger.debug("[AGENCY_ENGINE] Self-Reflection Engine initialized (Phase 5)")
+        # Self-Reflection Engine initialized
         
         # Initialize modelservice client for embeddings (needed for goal deduplication)
         self.modelservice_client = None  # Will be set via set_modelservice_client() if available
@@ -147,9 +147,7 @@ class AgencyEngine(BaseAIProcessor):
         self.skill_registry.register(AskUserSkill(db=db_connection, message_bus=message_bus))
         self.skill_registry.register(InitiateConversationSkill(db=db_connection, message_bus=message_bus))
         
-        logger.debug(
-            f"[AGENCY_ENGINE] Skill Registry initialized with {len(self.skill_registry)} skills"
-        )
+        # Skill Registry initialized
         
         # Initialize PlanStore with skill_registry for auto-fixing old plans
         self.plan_store = PlanStore(db_connection, skill_registry=self.skill_registry)
@@ -164,7 +162,7 @@ class AgencyEngine(BaseAIProcessor):
             embedding_client=None,  # Will be updated via update_skill_matcher_embedding_client()
             db_connection=db_connection
         )
-        logger.debug("[AGENCY_ENGINE] Planner configured with skill registry and SkillMatcher for robust skill assignment")
+        # Planner configured
         
         self.skill_invoker = SkillInvoker(
             db=db_connection,
@@ -181,7 +179,7 @@ class AgencyEngine(BaseAIProcessor):
             skill_invoker=self.skill_invoker,
             logger=logger
         )
-        logger.debug("[AGENCY_ENGINE] Plan Executor initialized (Phase 6.10)")
+        # Plan Executor initialized
         
         # Optional backend hook for LLM-based plan refinement (injected by backend)
         self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner
@@ -189,16 +187,16 @@ class AgencyEngine(BaseAIProcessor):
         # Phase 2: World Model integration
         self.world_model = world_model
         if world_model and WORLD_MODEL_AVAILABLE:
-            logger.debug("[AGENCY_ENGINE] World Model integration enabled (Phase 2)")
+            pass  # World Model enabled
         else:
-            logger.debug("[AGENCY_ENGINE] Running without World Model (Phase 1 mode)")
+            pass  # No World Model
         
         # Phase 2: Personality integration
         self.personality = personality_service
         if personality_service and PERSONALITY_AVAILABLE:
-            logger.debug("[AGENCY_ENGINE] Personality integration enabled (Phase 2)")
+            pass  # Personality enabled
         else:
-            logger.debug("[AGENCY_ENGINE] Running without Personality (Phase 1 mode)")
+            pass  # No Personality
 
     async def initialize(self) -> None:  # type: ignore[override]
         """Placeholder for future initialization hooks."""
@@ -211,7 +209,7 @@ class AgencyEngine(BaseAIProcessor):
         introducing backend dependencies into the shared agency code.
         """
         self._llm_plan_refiner = refiner
-        logger.info("[AGENCY_ENGINE] LLM plan refiner injected")
+        # LLM plan refiner injected
     
     def set_llm_client(self, llm_client: Any) -> None:
         """Inject LLM client into Planner for LLM-based plan generation.
@@ -220,7 +218,7 @@ class AgencyEngine(BaseAIProcessor):
             llm_client: LLM client (e.g., ModelServiceClient) for plan generation
         """
         self.planner.llm_client = llm_client
-        logger.info("[AGENCY_ENGINE] LLM client injected into Planner")
+        # LLM client injected
     
     def update_skill_matcher_embedding_client(self) -> None:
         """Update SkillMatcher's embedding client after modelservice_client is injected.
@@ -230,7 +228,7 @@ class AgencyEngine(BaseAIProcessor):
         """
         if self.modelservice_client and self.planner.skill_matcher:
             self.planner.skill_matcher.embedding_client = self.modelservice_client
-            logger.info("[AGENCY_ENGINE] Modelservice client injected into SkillMatcher for embedding-based gap deduplication")
+            pass  # Modelservice client injected
         else:
             logger.warning("[AGENCY_ENGINE] Cannot update SkillMatcher embedding client - modelservice_client or skill_matcher not available")
 
@@ -292,7 +290,7 @@ class AgencyEngine(BaseAIProcessor):
         
         if ethics_result.decision == PolicyEffect.ALLOW_WITH_WARNING:
             goal.metadata["ethics_warning"] = ethics_result.user_message
-            logger.info(f"[AGENCY_ENGINE] Goal allowed with warning: {title}")
+            pass  # Goal allowed with warning
 
         goal = await self.goal_store.create_goal(goal)
 
@@ -397,7 +395,7 @@ class AgencyEngine(BaseAIProcessor):
         """
         # If world model not available, fall back to basic creation
         if not self.world_model or not WORLD_MODEL_AVAILABLE:
-            logger.debug("[AGENCY_ENGINE] World model not available, using basic goal creation")
+            pass  # Using basic goal creation
             return await self.create_goal_with_optional_plan(
                 user_id=user_id,
                 title=title,
@@ -428,12 +426,7 @@ class AgencyEngine(BaseAIProcessor):
                 'retrieved_at': world_context.retrieved_at.isoformat(),
             }
             
-            logger.info(
-                f"[AGENCY_ENGINE] Enriched goal with world context: "
-                f"{len(world_context.projects)} projects, "
-                f"{len(world_context.entities)} entities, "
-                f"{len(world_context.open_loops)} open loops"
-            )
+            pass  # Enriched goal with world context
             
             # Create goal with enriched metadata
             return await self.create_goal_with_optional_plan(
@@ -496,7 +489,7 @@ class AgencyEngine(BaseAIProcessor):
         """
         # If neither world model nor personality available, fall back to basic
         if not self.world_model and not self.personality:
-            logger.debug("[AGENCY_ENGINE] No Phase 2 services available, using basic goal creation")
+            pass  # Using basic goal creation
             return await self.create_goal_with_optional_plan(
                 user_id=user_id,
                 title=title,
@@ -513,7 +506,7 @@ class AgencyEngine(BaseAIProcessor):
             
             # Step 1: Get personality context and adjust priority
             if self.personality:
-                logger.debug(f"[AGENCY_ENGINE] Retrieving personality context for user {user_id}")
+                pass  # Retrieving personality context
                 personality_context = await self.personality.get_personality_context(user_id)
                 
                 # Adjust priority based on personality traits
@@ -541,18 +534,14 @@ class AgencyEngine(BaseAIProcessor):
                     'original_priority': priority.value,
                 }
                 
-                logger.info(
-                    f"[AGENCY_ENGINE] Personality adjustment: "
-                    f"priority {priority.value} → {adjusted_priority.value}, "
-                    f"proactivity={proactivity:.2f}"
-                )
+                pass  # Personality adjustment applied
                 
                 # Use adjusted priority
                 priority = adjusted_priority
             
             # Step 2: Get world model context
             if self.world_model:
-                logger.debug(f"[AGENCY_ENGINE] Retrieving world context for user {user_id}")
+                pass  # Retrieving world context
                 world_context = await self.world_model.get_world_context(
                     user_id=user_id,
                     include_entities=True,
@@ -568,11 +557,7 @@ class AgencyEngine(BaseAIProcessor):
                     'retrieved_at': world_context.retrieved_at.isoformat(),
                 }
                 
-                logger.info(
-                    f"[AGENCY_ENGINE] World context: "
-                    f"{len(world_context.projects)} projects, "
-                    f"{len(world_context.entities)} entities"
-                )
+                pass  # World context retrieved
             
             # Step 3: Create goal with enriched metadata and adjusted priority
             return await self.create_goal_with_optional_plan(
@@ -621,7 +606,7 @@ class AgencyEngine(BaseAIProcessor):
             Tuple of (created goal, optional plan)
         """
         try:
-            logger.info(f"[AGENCY_ENGINE] Creating goal from curiosity signal: {signal.topic}")
+            pass  # Creating goal from curiosity signal
             
             # Phase 4: Values & Ethics gate - evaluate curiosity signal
             ethics_result = self.values_ethics.evaluate_curiosity_signal(signal, user_id)

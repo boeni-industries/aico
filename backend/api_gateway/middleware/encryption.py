@@ -74,6 +74,16 @@ class EncryptionMiddleware:
         
         self.logger.info("Encryption middleware initialized")
     
+    def build_middleware_stack(self):
+        """
+        Compatibility shim for OpenTelemetry FastAPI instrumentation.
+        
+        This is a pure ASGI middleware (not BaseHTTPMiddleware) to avoid
+        Content-Length calculation bugs. OpenTelemetry's introspection expects
+        this method, so we provide a no-op that returns self.
+        """
+        return self
+    
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """ASGI middleware entry point"""
         if scope["type"] != "http":
@@ -92,14 +102,7 @@ class EncryptionMiddleware:
         path = request.url.path
         client_ip = request.client.host if request.client else "unknown"
         
-        # Log all requests that reach encryption middleware
-        self.logger.debug(f"Processing request: {request.method} {path}")
-        self.logger.info(f"ENCRYPTION MIDDLEWARE: {request.method} {path} from {client_ip}", extra={
-            "event_type": "encryption_middleware_entry",
-            "method": request.method,
-            "path": path,
-            "client_ip": client_ip
-        })
+        # Removed excessive logging - was generating 5M+ logs per week
         
         # Let CORS preflight requests pass through to the underlying app so that
         # FastAPI's CORSMiddleware can handle them and return proper headers.
@@ -112,21 +115,16 @@ class EncryptionMiddleware:
 
         # Handle handshake endpoint directly for non-preflight requests
         if path == self.handshake_path:
-            self.logger.info(f"Handling handshake endpoint: {path}")
             response = await self._handle_handshake(request)
             await response(scope, receive, send)
             return
 
         # Skip encryption for health checks only
         if self._should_skip_encryption(request):
-            self.logger.debug(f"Skipping encryption for path: {path}")
             await self.app(scope, receive, send)
             return
         
-        self.logger.info(f"Enforcing encryption for protected endpoint: {path}")
-        
         # Handle encrypted requests
-        self.logger.info(f"Processing encrypted request for: {path}")
         await self._handle_encrypted_request(scope, receive, send)
     
     async def _handle_encrypted_request(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -146,7 +144,6 @@ class EncryptionMiddleware:
                     if "client_id" in request_data:
                         client_id = request_data["client_id"]
                         channel = self.channels.get(client_id)
-                        self.logger.debug(f"Found client_id in request body: {client_id}")
                 except:
                     pass
             
@@ -339,13 +336,9 @@ class EncryptionMiddleware:
                     if request_data.get("encrypted") and "payload" in request_data:
                         # Decrypt the payload
                         encrypted_payload = request_data["payload"]
-                        self.logger.info(f"Attempting to decrypt payload for client_id: {client_id}")
-                        self.logger.info(f"Channel session valid: {channel.is_session_valid()}")
-                        self.logger.info(f"Encrypted payload length: {len(encrypted_payload)}")
                         
                         try:
                             decrypted_data = channel.decrypt_json_payload(encrypted_payload)
-                            self.logger.debug(f"Successfully decrypted request payload: {decrypted_data}")
                             
                             # Replace the request body with decrypted data
                             decrypted_body = json.dumps(decrypted_data).encode()
@@ -434,7 +427,6 @@ class EncryptionMiddleware:
         
         # Check exact matches for public endpoints
         if path in public_endpoints:
-            self.logger.debug(f"Skipping encryption for public endpoint: {path}")
             return True
         
         # NEVER skip encryption for admin endpoints - they contain sensitive data
@@ -443,7 +435,6 @@ class EncryptionMiddleware:
             
         # All other /api/v1/ endpoints require encryption by default
         if path.startswith("/api/v1/"):
-            self.logger.debug(f"Requiring encryption for API endpoint: {path}")
             return False
             
         # Non-API paths can skip encryption (static files, etc.)

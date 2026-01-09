@@ -1,23 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Typography, Paper, Chip, TextField, InputAdornment, IconButton, Dialog, DialogContent, DialogTitle, Divider, Select, MenuItem, FormControl, InputLabel, Button, Checkbox, DialogActions } from '@mui/material';
 import { StyledTooltip } from '../common/StyledTooltip';
-import { 
-  Search as SearchIcon, 
-  FilterList as FilterIcon,
-  Close as CloseIcon,
-  CalendarToday as CalendarIcon,
-  LocalOffer as TagIcon,
-  Star as StarIcon,
-  StarBorder as StarBorderIcon,
-  Info as InfoIcon,
-  Chat as ChatIcon,
-  Delete as DeleteIcon,
-  Download as DownloadIcon,
-  Analytics as AnalyticsIcon,
-  CheckBox as CheckBoxIcon,
-  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
-  Person as PersonIcon
-} from '@mui/icons-material';
+import { Search as SearchIcon, Filter as FilterIcon, X as CloseIcon, Calendar as CalendarIcon, Tag as TagIcon, Info as InfoIcon, MessageCircle as ChatIcon, Trash2 as DeleteIcon, Download as DownloadIcon, BarChart3 as AnalyticsIcon } from 'lucide-react';
 
 interface Conversation {
   id: string;
@@ -57,7 +41,7 @@ export const MemoryAlbumPanel: React.FC<MemoryAlbumPanelProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [memoryToDelete, setMemoryToDelete] = useState<string | null>(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
-  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [deletedIds] = useState<Set<string>>(new Set());
 
   // Get unique users from conversations (by user_uuid)
   const uniqueUserMap = new Map<string, { uuid: string; display: string; full_name: string }>();
@@ -109,11 +93,6 @@ export const MemoryAlbumPanel: React.FC<MemoryAlbumPanelProps> = ({
       newSelected.add(id);
     }
     setSelectedMemories(newSelected);
-  };
-
-  const handleDeleteMemory = (id: string) => {
-    setMemoryToDelete(id);
-    setDeleteConfirmOpen(true);
   };
 
   const confirmDelete = async () => {

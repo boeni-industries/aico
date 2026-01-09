@@ -17,6 +17,18 @@ logger = get_logger("backend", "api.system")
 
 router = APIRouter()
 
+# Include metrics router
+from backend.api.system.metrics import router as metrics_router
+router.include_router(metrics_router)
+
+# Include metrics drilldown router
+from backend.api.system.metrics_drilldown import router as metrics_drilldown_router
+router.include_router(metrics_drilldown_router)
+
+# Include modelservice metrics router
+from backend.api.system.modelservice_metrics import router as modelservice_metrics_router
+router.include_router(modelservice_metrics_router)
+
 # Track server start time
 start_time = time.time()
 
@@ -45,11 +57,14 @@ def format_uptime(seconds: float) -> str:
     """Format uptime seconds to human-readable string"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
     
     if hours > 0:
         return f"{hours}h {minutes}m"
+    elif minutes > 0:
+        return f"{minutes}m {secs}s"
     else:
-        return f"{minutes}m"
+        return f"{secs}s"
 
 
 @router.get("/overview", response_model=SystemOverviewResponse)

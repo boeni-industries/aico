@@ -6,7 +6,7 @@ Provides database operations for scheduled tasks using AICO's encrypted libSQL.
 
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import asdict
 
@@ -51,7 +51,7 @@ class TaskStore:
         """Insert or update a scheduled task"""
         try:
             config_json = json.dumps(config) if config else None
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             
             self.db.execute("""
                 INSERT INTO scheduler_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
@@ -153,7 +153,7 @@ class TaskStore:
     def set_task_enabled(self, task_id: str, enabled: bool) -> bool:
         """Enable or disable a task"""
         try:
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             cursor = self.db.execute(
                 "UPDATE scheduler_tasks SET enabled = ?, updated_at = ? WHERE task_id = ?",
                 (enabled, now, task_id)
@@ -174,7 +174,7 @@ class TaskStore:
     def record_execution_start(self, task_id: str, execution_id: str) -> bool:
         """Record the start of a task execution"""
         try:
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat()  # Use UTC with timezone info
             self.db.execute("""
                 INSERT INTO scheduler_task_executions (task_id, execution_id, status, started_at)
                 VALUES (?, ?, ?, ?)
@@ -191,7 +191,7 @@ class TaskStore:
                                     result: TaskResult, status: TaskStatus):
         """Record the completion of a task execution"""
         try:
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat()  # Use UTC with timezone info
             result_json = json.dumps(result.to_dict())
             
             self.db.execute("""
@@ -208,6 +208,30 @@ class TaskStore:
         except Exception as e:
             self.logger.error(f"Failed to record execution result for {task_id}: {e}")
     
+    def _parse_execution_row(self, row: tuple, include_task_id: bool = False) -> Dict[str, Any]:
+        """Parse execution row from database (DRY helper)"""
+        if include_task_id:
+            return {
+                'task_id': row[0],
+                'execution_id': row[1],
+                'status': row[2],
+                'started_at': row[3],
+                'completed_at': row[4],
+                'result': json.loads(row[5]) if row[5] else None,
+                'error_message': row[6],
+                'duration_seconds': row[7]
+            }
+        else:
+            return {
+                'execution_id': row[0],
+                'status': row[1],
+                'started_at': row[2],
+                'completed_at': row[3],
+                'result': json.loads(row[4]) if row[4] else None,
+                'error_message': row[5],
+                'duration_seconds': row[6]
+            }
+    
     def get_execution_history(self, task_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Get execution history for a task"""
         try:
@@ -219,24 +243,27 @@ class TaskStore:
                 LIMIT ?
             """, (task_id, limit))
             
-            rows = cursor.fetchall()
-            history = []
-            
-            for row in rows:
-                history.append({
-                    'execution_id': row[0],
-                    'status': row[1],
-                    'started_at': row[2],
-                    'completed_at': row[3],
-                    'result': json.loads(row[4]) if row[4] else None,
-                    'error_message': row[5],
-                    'duration_seconds': row[6]
-                })
-            
-            return history
+            return [self._parse_execution_row(row) for row in cursor.fetchall()]
             
         except Exception as e:
             self.logger.error(f"Failed to get execution history for {task_id}: {e}")
+            return []
+    
+    def get_all_executions_in_range(self, start_time: str, end_time: str, limit: int = 10000) -> List[Dict[str, Any]]:
+        """Get all task executions within a time range across all tasks"""
+        try:
+            cursor = self.db.execute("""
+                SELECT task_id, execution_id, status, started_at, completed_at, result, error_message, duration_seconds
+                FROM scheduler_task_executions 
+                WHERE started_at >= ? AND started_at < ?
+                ORDER BY started_at DESC
+                LIMIT ?
+            """, (start_time, end_time, limit))
+            
+            return [self._parse_execution_row(row, include_task_id=True) for row in cursor.fetchall()]
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get executions in range: {e}")
             return []
     
     async def acquire_lock(self, task_id: str, execution_id: str, timeout_seconds: int = 3600) -> bool:
@@ -249,7 +276,7 @@ class TaskStore:
                 if os.getenv('AICO_DETACH_MODE') == 'false':
                     print(f"[TASK_STORE] 🔒 Inside _sync_acquire thread for task {task_id}")
                 
-                now = datetime.now()
+                now = datetime.now(timezone.utc)
                 expires_at = (now + timedelta(seconds=timeout_seconds)).isoformat()
                 
                 if os.getenv('AICO_DETACH_MODE') == 'false':
@@ -343,7 +370,7 @@ class TaskStore:
     def cleanup_old_executions(self, retention_days: int = 30):
         """Clean up old execution records"""
         try:
-            cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
+            cutoff_date = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
             
             cursor = self.db.execute(
                 "DELETE FROM scheduler_task_executions WHERE started_at < ?", (cutoff_date,)

@@ -5,6 +5,7 @@ import { studioLightTheme, studioDarkTheme } from './theme';
 import { StudioLayout } from './layout/StudioLayout';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { LoginPage } from './auth/LoginPage';
+import { ToastProvider } from './components/common/Toast';
 
 const AppShell: React.FC = () => {
   const { user } = useAuth();
@@ -18,11 +19,13 @@ const AppShell: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      {user ? (
-        <StudioLayout mode={mode} onToggleTheme={handleToggleTheme} />
-      ) : (
-        <LoginPage />
-      )}
+      <ToastProvider>
+        {user ? (
+          <StudioLayout mode={mode} onToggleTheme={handleToggleTheme} />
+        ) : (
+          <LoginPage />
+        )}
+      </ToastProvider>
     </ThemeProvider>
   );
 };

@@ -1,14 +1,7 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
-import { Box, Typography, Chip, IconButton, Tooltip, Paper, Select, MenuItem, FormControl, InputLabel, Drawer, styled, CircularProgress } from '@mui/material';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { Box, Typography, Chip, IconButton, Tooltip, Paper, Drawer, styled, CircularProgress } from '@mui/material';
 import { fetchNodeHistory, NodeHistoryResponse, fetchTemporalGraphState, fetchChanges } from '../../api/kg';
-import {
-  ZoomIn as ZoomInIcon,
-  ZoomOut as ZoomOutIcon,
-  CenterFocusStrong as CenterIcon,
-  Refresh as RefreshIcon,
-  Close as CloseIcon,
-  AccountTree as LayoutIcon,
-} from '@mui/icons-material';
+import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Focus as CenterIcon, X as CloseIcon, GitBranch as LayoutIcon } from 'lucide-react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { TemporalControls } from './TemporalControls';
 
@@ -108,7 +101,6 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
   const [hoveredLegendType, setHoveredLegendType] = useState<string | null>(null);
   const [nodeHistory, setNodeHistory] = useState<NodeHistoryResponse | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [selectedTimestamp, setSelectedTimestamp] = useState<string | null>(null);
   const [activityData, setActivityData] = useState<Array<{ date: string; changeCount: number }>>([]);
   
   // Cache graphData to prevent re-renders
@@ -199,7 +191,6 @@ export const KnowledgeGraphVisualization: React.FC<KnowledgeGraphVisualizationPr
 
   // Handle timeline scrubber changes
   const handleTimelineChange = useCallback(async (timestamp: string, isLive: boolean) => {
-    setSelectedTimestamp(isLive ? null : timestamp);
     
     if (isLive) {
       console.log('Returning to live view');
