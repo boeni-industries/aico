@@ -11,6 +11,7 @@ interface BreakdownItem {
   percentage: number;
   avg_latency?: number;
   error_rate?: number;
+  error_distribution?: number;
 }
 
 interface MetricBreakdown {
@@ -235,56 +236,117 @@ export const MetricDetailDrawer: React.FC<MetricDetailDrawerProps> = ({
                     },
                   }}
                 >
-                  {/* Header */}
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  {/* Header with Service Name */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.9)' }}>
                       {item.name}
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem', color: metricColor }}>
-                      {formatValue(item.value)}
-                    </Typography>
+                    {metricType === 'errors' && item.error_rate !== undefined && (
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem', color: metricColor, lineHeight: 1 }}>
+                          {item.error_rate.toFixed(2)}%
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'rgba(255, 255, 255, 0.4)', fontWeight: 500 }}>
+                          error rate
+                        </Typography>
+                      </Box>
+                    )}
+                    {metricType !== 'errors' && (
+                      <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem', color: metricColor }}>
+                        {formatValue(item.value)}
+                      </Typography>
+                    )}
                   </Box>
 
-                  {/* Progress Bar */}
-                  <Box
-                    sx={{
-                      width: '100%',
-                      height: '6px',
-                      bgcolor: 'rgba(255, 255, 255, 0.05)',
-                      borderRadius: '3px',
-                      overflow: 'hidden',
-                      mb: 1,
-                    }}
-                  >
+                  {/* Hybrid Display for Errors: Error Distribution + Impact Badge */}
+                  {metricType === 'errors' && item.error_distribution !== undefined && (
+                    <Box sx={{ mb: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'rgba(255, 255, 255, 0.5)' }}>
+                          {item.count.toLocaleString()} errors
+                        </Typography>
+                        <Box sx={{ 
+                          px: 1, 
+                          py: 0.25, 
+                          borderRadius: '4px',
+                          bgcolor: `${metricColor}20`,
+                          border: `1px solid ${metricColor}40`
+                        }}>
+                          <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 700, color: metricColor }}>
+                            {item.error_distribution.toFixed(1)}% of total
+                          </Typography>
+                        </Box>
+                      </Box>
+                      {/* Progress Bar showing error distribution */}
+                      <Box
+                        sx={{
+                          width: '100%',
+                          height: '6px',
+                          bgcolor: 'rgba(255, 255, 255, 0.05)',
+                          borderRadius: '3px',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: `${item.error_distribution}%`,
+                            height: '100%',
+                            bgcolor: metricColor,
+                            borderRadius: '3px',
+                            transition: 'width 0.3s ease',
+                            boxShadow: `0 0 8px ${metricColor}60`,
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Standard Progress Bar for non-error metrics */}
+                  {metricType !== 'errors' && (
                     <Box
                       sx={{
-                        width: `${barWidth}%`,
-                        height: '100%',
-                        bgcolor: metricColor,
+                        width: '100%',
+                        height: '6px',
+                        bgcolor: 'rgba(255, 255, 255, 0.05)',
                         borderRadius: '3px',
-                        transition: 'width 0.3s ease',
+                        overflow: 'hidden',
+                        mb: 1,
                       }}
-                    />
-                  </Box>
+                    >
+                      <Box
+                        sx={{
+                          width: `${barWidth}%`,
+                          height: '100%',
+                          bgcolor: metricColor,
+                          borderRadius: '3px',
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </Box>
+                  )}
 
-                  {/* Stats */}
+                  {/* Stats - Simplified for errors, full for others */}
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    <Box>
-                      <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.65rem' }}>
-                        Requests
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.8)' }}>
-                        {item.count.toLocaleString()}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.65rem' }}>
-                        % of Total
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.8)' }}>
-                        {item.percentage.toFixed(1)}%
-                      </Typography>
-                    </Box>
+                    {metricType !== 'errors' && (
+                      <>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.65rem' }}>
+                            Requests
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.8)' }}>
+                            {item.count.toLocaleString()}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.65rem' }}>
+                            % of Total
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.8)' }}>
+                            {item.percentage.toFixed(1)}%
+                          </Typography>
+                        </Box>
+                      </>
+                    )}
                     {item.avg_latency !== undefined && item.avg_latency !== null && (
                       <Box>
                         <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.65rem' }}>
@@ -292,23 +354,6 @@ export const MetricDetailDrawer: React.FC<MetricDetailDrawerProps> = ({
                         </Typography>
                         <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.8)' }}>
                           {item.avg_latency.toFixed(1)}ms
-                        </Typography>
-                      </Box>
-                    )}
-                    {item.error_rate !== undefined && item.error_rate !== null && (
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.65rem' }}>
-                          Error Rate
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontWeight: 600,
-                            fontSize: '0.8rem',
-                            color: item.error_rate > 5 ? '#EF4444' : 'rgba(255, 255, 255, 0.8)',
-                          }}
-                        >
-                          {item.error_rate.toFixed(2)}%
                         </Typography>
                       </Box>
                     )}

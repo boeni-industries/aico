@@ -33,6 +33,7 @@ class BreakdownItem(BaseModel):
     percentage: float
     avg_latency: Optional[float] = None
     error_rate: Optional[float] = None
+    error_distribution: Optional[float] = None  # Percentage of total errors from this source
 
 
 class MetricBreakdown(BaseModel):
@@ -335,13 +336,17 @@ async def get_errors_breakdown(
                 count = errors
                 error_rate = (errors / total * 100) if total > 0 else 0.0
             
+            # Calculate error distribution (percentage of total errors)
+            error_distribution = (count / total_errors * 100) if total_errors > 0 else 0.0
+            
             items.append(BreakdownItem(
                 name=name,
                 value=error_rate,
                 count=count,
                 percentage=(count / total_errors * 100) if total_errors > 0 else 0.0,
                 avg_latency=round(avg_latency, 2) if avg_latency else None,
-                error_rate=round(error_rate, 2)
+                error_rate=round(error_rate, 2),
+                error_distribution=round(error_distribution, 1)
             ))
         
         return MetricBreakdown(
