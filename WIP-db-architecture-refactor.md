@@ -585,24 +585,72 @@ Each telemetry table becomes a **hypertable** with retention and optional compre
     - Deprecate LibSQL connection usage from runtime code paths.
     - Keep a separate, optional tool to read/inspect old `aico.db` backups.
 
-### 8.5 Cryptography & Key Management Alignment
+### 8.5 Cryptography & Secret Management Alignment
 
-- Reuse the existing **AICOKeyManager** and master password flow used for LibSQL (`aico db init`, `aico db status`) as the foundation for Postgres:
-  - Derive a **Postgres-specific key** from the master key (different KDF context than `"libsql"`).
-  - Use this key to:
-    - Protect credentials / DSNs stored locally (e.g. encrypted config or keyring entries).
-    - Optionally feed into Postgres-level or filesystem-level encryption mechanisms.
-- Ensure the new `aico pg` commands enforce the same security guarantees as `aico db`:
-  - No plain-text credentials on disk.
-  - Strong KDF parameters, non-empty passwords, and clear diagnostics.
+We keep secrets/password handling **fully automated** and consistent across LibSQL (legacy), Postgres, and InfluxDB, and across bare‑metal and containerized deployments.
+
+**Core principles:**
+
+- No passwords, tokens, or API keys are ever committed to git (YAML, compose, code).
+- Docker/Kubernetes handle **injection** of raw secrets via env/secrets; AICO handles **derivation, encryption, and local storage**.
+- Every backend has a **distinct key namespace** under the master key (LibSQL, Postgres, Influx, etc.).
+
+**Master key, config, & AICOKeyManager:**
+
+- Reuse the existing **AICOKeyManager** and master password flow used for LibSQL (`aico db init`, `aico db status`) as the foundation for all backends.
+- Keep **non-secret connection parameters** (host, port, database name, username, schema, URL, org, bucket) in configuration (`core.yaml` + env overrides) where they can differ per environment and be safely versioned.
+- Use AICOKeyManager **only for secret material**:
+  - Derive a **Postgres-specific key** from the master key (different KDF context than `"libsql"`) to protect the Postgres **password** (or full DSN when provided as an opaque secret by a managed service).
+  - Derive an **Influx-specific key** from the master key (e.g. context `"influx"`) to protect the Influx **API token**.
+  - Optionally feed these keys into DB‑level or filesystem‑level encryption mechanisms if needed later.
+
+**Postgres secrets (containerized and bare-metal):**
+
+- Postgres **passwords are never written to config files** (`core.yaml`, compose).
+- For local/containerized deployments:
+  - `docker compose` injects a password via environment (e.g. `AICO_PG_PASSWORD`) or Docker secrets.
+  - Backend/modelservice read this env var on startup and hand it to **AICOKeyManager**.
+  - AICOKeyManager encrypts and stores it in its own secure store if long‑term reuse is required.
+- For remote/managed Postgres:
+  - Passwords or connection strings are injected via env/secret store (Docker, k8s, system keychain).
+  - The same AICOKeyManager flow is used; nothing is ever committed to disk in plain text.
+
+**InfluxDB secrets (tokens instead of passwords):**
+
+- InfluxDB v2 uses **API tokens** for auth rather than per‑request username/password.
+- Initial bootstrap (local dev / docker‑compose):
+  - Influx container is configured once at startup via env (`DOCKER_INFLUXDB_INIT_*`) or a one‑time admin script.
+  - An **admin or app token** is generated for the `aico` org / `aico_telemetry` bucket.
+- Runtime secret handling:
+  - The token is injected to backend/modelservice as an env var (e.g. `AICO_INFLUX_TOKEN`) or via Docker/k8s secret volume.
+  - AICOKeyManager reads, encrypts, and optionally persists this token if needed; it is never written to YAML or compose.
+  - Telemetry writers (OTel exporters, log consumer) read from AICOKeyManager or the configured env var, not from config files.
+
+**CI/CD & k8s alignment:**
+
+- CI pipelines and Kubernetes manifests treat Postgres passwords and Influx tokens as **opaque secrets**:
+  - Defined in CI secret stores / k8s `Secret` objects.
+  - Passed into containers as env vars or secret files.
+- Application code and CLI (`aico pg doctor`, `aico influx doctor`) only ever see resolved connection parameters at runtime, never hard‑coded credentials.
+
+**Minimum guarantees enforced by tooling and CLI:**
+
+- `aico db` / `aico pg` / `aico influx` / `aico security` commands must:
+  - Refuse obviously weak or empty master passwords.
+  - Never echo secrets to logs or Rich output.
+  - Provide clear diagnostics when required env secrets are missing (e.g. "AICO_INFLUX_TOKEN not set").
+  - Offer explicit, well-named subcommands for managing backend secrets:
+    - `aico security pg-set` / `aico security pg-env` for Postgres.
+    - `aico security influx-set` / `aico security influx-env` for InfluxDB.
 
 ### 8.4 Success Criteria
 
 - ✅ No LibSQL writes in normal operation; all relational data is in Postgres.
-- ✅ All telemetry (metrics, logs, events) written to Timescale hypertables.
-- ✅ System runs on a single local machine with a managed Postgres binary.
-- ✅ Switching to remote Postgres/Timescale only requires config changes.
+- ✅ All telemetry (metrics, logs, events) written to InfluxDB (`aico_telemetry` bucket).
+- ✅ System runs locally as a fully containerized stack (Postgres + InfluxDB + services).
+- ✅ Switching to remote Postgres/InfluxDB only requires config/secret changes.
 - ✅ No database-locked errors; concurrency handled by Postgres.
+- ✅ No plaintext credentials or tokens in git‑tracked files; all secrets injected via env/secrets and managed by AICOKeyManager.
 
 ---
 

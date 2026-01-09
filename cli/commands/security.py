@@ -54,6 +54,10 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("session", "Show CLI session status and timeout information"),
             ("clear", "Clear cached master key (forces password re-entry)"),
             ("test", "Performance diagnostics and key derivation benchmarking"),
+            ("pg-set", "Store Postgres password securely via AICOKeyManager"),
+            ("pg-env", "Export Postgres env vars for CI/CD and docker-compose"),
+            ("influx-set", "Store InfluxDB API token securely via AICOKeyManager"),
+            ("influx-env", "Export InfluxDB env vars for CI/CD and docker-compose"),
             ("user-create", "Create a new user with optional PIN authentication"),
             ("user-list", "List all users with filtering options"),
             ("user-update", "Update user profile information"),
@@ -76,6 +80,9 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             "aico security session",
             "aico security test",
             "aico security passwd",
+            "aico security pg-set",
+            "aico security influx-set",
+            "aico security pg-env --ci --format env --include-secrets",
             "aico security role-bootstrap <user-uuid>",
             "aico security role-assign <user-uuid> admin",
             "aico security role-list <user-uuid>"
@@ -97,6 +104,24 @@ app = typer.Typer(
     context_settings={"help_option_names": []}
 )
 console = Console()
+
+
+def _load_postgres_config():
+    """Lightweight helper to read core.database.postgres from config."""
+    from aico.core.config import ConfigurationManager
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    return config.get("core.database.postgres", {}) or {}
+
+
+def _load_influx_config():
+    """Lightweight helper to read core.database.influx from config."""
+    from aico.core.config import ConfigurationManager
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    return config.get("core.database.influx", {}) or {}
 
 
 @app.command(
@@ -302,6 +327,226 @@ def passwd():
     except Exception as e:
         console.print(f"❌ [red]Failed to change master password: {e}[/red]")
         raise typer.Exit(1)
+
+
+@app.command("pg-set", help="Store Postgres password securely via AICOKeyManager")
+@sensitive("stores Postgres database password in system keyring")
+def pg_set():
+    """Interactively store the Postgres password in the key manager.
+
+    This reads non-secret connection parameters (host, port, db_name, user)
+    from configuration and prompts only for the password, which is stored via
+    AICOKeyManager.store_database_password.
+    """
+
+    pg_cfg = _load_postgres_config()
+    if not pg_cfg:
+        console.print("❌ [red]No core.database.postgres configuration found in core.yaml[/red]")
+        raise typer.Exit(1)
+
+    host = pg_cfg.get("host", "127.0.0.1")
+    port = pg_cfg.get("port", 5432)
+    db_name = pg_cfg.get("db_name", "aico")
+    user = pg_cfg.get("user", "postgres")
+
+    console.print("\n✨ [bold cyan]Postgres Connection (from config)[/bold cyan]")
+    console.print(f"Host: [green]{host}[/green]")
+    console.print(f"Port: [green]{port}[/green]")
+    console.print(f"Database: [green]{db_name}[/green]")
+    console.print(f"User: [green]{user}[/green]")
+
+    password = typer.prompt("Enter Postgres password", hide_input=True)
+    confirm = typer.prompt("Confirm Postgres password", hide_input=True)
+
+    if not password or not password.strip():
+        console.print("❌ [red]Password cannot be empty[/red]")
+        raise typer.Exit(1)
+
+    if password != confirm:
+        console.print("❌ [red]Passwords do not match[/red]")
+        raise typer.Exit(1)
+
+    key_manager = _get_key_manager()
+    key_manager.store_database_password(password=password, database_type="postgres", username=user)
+
+    console.print("✅ [green]Postgres password stored securely[/green]")
+    console.print("🔐 Use 'aico security pg-env' to export env vars for CI/CD or docker-compose.")
+
+
+@app.command("pg-env", help="Export Postgres env vars for CI/CD and docker-compose")
+def pg_env(
+    format: str = typer.Option("env", "--format", "-f", help="Output format: env or json"),
+    include_secrets: bool = typer.Option(
+        False,
+        "--include-secrets",
+        help="Include real secrets in output (for CI/CD). By default secrets are redacted.",
+    ),
+    ci: bool = typer.Option(
+        False,
+        "--ci",
+        help="Non-interactive mode: suitable for CI. Fails if required secrets are missing.",
+    ),
+):
+    """Print Postgres-related environment variables.
+
+    This reads non-secret parameters from config and the password from the
+    key manager. It is designed for use in CI/CD pipelines and local shell
+    setups (e.g., generating .env files or eval-ing exports).
+    """
+
+    fmt = format.lower()
+    if fmt not in {"env", "json"}:
+        console.print("❌ [red]Invalid format. Use 'env' or 'json'.[/red]")
+        raise typer.Exit(1)
+
+    pg_cfg = _load_postgres_config()
+    if not pg_cfg:
+        console.print("❌ [red]No core.database.postgres configuration found in core.yaml[/red]")
+        raise typer.Exit(1)
+
+    host = str(pg_cfg.get("host", "127.0.0.1"))
+    port = str(pg_cfg.get("port", 5432))
+    db_name = str(pg_cfg.get("db_name", "aico"))
+    user = str(pg_cfg.get("user", "postgres"))
+
+    key_manager = _get_key_manager()
+    password = key_manager.get_database_password("postgres", username=user)
+
+    if ci and include_secrets and not password:
+        console.print(
+            "❌ [red]Postgres password not set in key manager. "
+            "Run 'aico security pg-set' or configure secrets before using --ci/--include-secrets.[/red]"
+        )
+        raise typer.Exit(1)
+
+    env_vars = {
+        "AICO_PG_HOST": host,
+        "AICO_PG_PORT": port,
+        "AICO_PG_DB": db_name,
+        "AICO_PG_USER": user,
+    }
+
+    if include_secrets and password:
+        env_vars["AICO_PG_PASSWORD"] = password
+    elif password:
+        env_vars["AICO_PG_PASSWORD"] = "********"
+
+    if fmt == "env":
+        for k, v in env_vars.items():
+            # Always print, even if redacted; caller decides how to use it.
+            console.print(f"{k}={v}")
+    else:  # json
+        import json as _json
+
+        console.print(_json.dumps(env_vars))
+
+
+@app.command("influx-set", help="Store InfluxDB API token securely via AICOKeyManager")
+@sensitive("stores InfluxDB API token in system keyring")
+def influx_set():
+    """Interactively store the InfluxDB API token in the key manager.
+
+    This reads non-secret connection parameters (url, org, bucket) from
+    configuration and prompts only for the token, which is stored via
+    AICOKeyManager.store_database_password using database_type="influx".
+    """
+
+    influx_cfg = _load_influx_config()
+    if not influx_cfg:
+        console.print("❌ [red]No core.database.influx configuration found in core.yaml[/red]")
+        raise typer.Exit(1)
+
+    url = influx_cfg.get("url", "http://127.0.0.1:8086")
+    org = influx_cfg.get("org", "aico")
+    bucket = influx_cfg.get("bucket", "aico_telemetry")
+
+    console.print("\n✨ [bold cyan]InfluxDB Configuration (from config)[/bold cyan]")
+    console.print(f"URL: [green]{url}[/green]")
+    console.print(f"Org: [green]{org}[/green]")
+    console.print(f"Bucket: [green]{bucket}[/green]")
+
+    token = typer.prompt("Enter InfluxDB API token", hide_input=True)
+    confirm = typer.prompt("Confirm InfluxDB API token", hide_input=True)
+
+    if not token or not token.strip():
+        console.print("❌ [red]Token cannot be empty[/red]")
+        raise typer.Exit(1)
+
+    if token != confirm:
+        console.print("❌ [red]Tokens do not match[/red]")
+        raise typer.Exit(1)
+
+    key_manager = _get_key_manager()
+    # Treat the Influx token as a database password under the "influx" namespace
+    key_manager.store_database_password(password=token, database_type="influx", username=None)
+
+    console.print("✅ [green]InfluxDB API token stored securely[/green]")
+    console.print("🔐 Use 'aico security influx-env' to export env vars for CI/CD or docker-compose.")
+
+
+@app.command("influx-env", help="Export InfluxDB env vars for CI/CD and docker-compose")
+def influx_env(
+    format: str = typer.Option("env", "--format", "-f", help="Output format: env or json"),
+    include_secrets: bool = typer.Option(
+        False,
+        "--include-secrets",
+        help="Include real secrets in output (for CI/CD). By default secrets are redacted.",
+    ),
+    ci: bool = typer.Option(
+        False,
+        "--ci",
+        help="Non-interactive mode: suitable for CI. Fails if required secrets are missing.",
+    ),
+):
+    """Print InfluxDB-related environment variables.
+
+    This reads non-secret parameters from config and the API token from the
+    key manager. It is designed for use in CI/CD pipelines and local shell
+    setups (e.g., generating .env files or eval-ing exports).
+    """
+
+    fmt = format.lower()
+    if fmt not in {"env", "json"}:
+        console.print("❌ [red]Invalid format. Use 'env' or 'json'.[/red]")
+        raise typer.Exit(1)
+
+    influx_cfg = _load_influx_config()
+    if not influx_cfg:
+        console.print("❌ [red]No core.database.influx configuration found in core.yaml[/red]")
+        raise typer.Exit(1)
+
+    url = str(influx_cfg.get("url", "http://127.0.0.1:8086"))
+    org = str(influx_cfg.get("org", "aico"))
+    bucket = str(influx_cfg.get("bucket", "aico_telemetry"))
+
+    key_manager = _get_key_manager()
+    token = key_manager.get_database_password("influx", username=None)
+
+    if ci and include_secrets and not token:
+        console.print(
+            "❌ [red]InfluxDB token not set in key manager. "
+            "Run 'aico security influx-set' or configure secrets before using --ci/--include-secrets.[/red]"
+        )
+        raise typer.Exit(1)
+
+    env_vars = {
+        "AICO_INFLUX_URL": url,
+        "AICO_INFLUX_ORG": org,
+        "AICO_INFLUX_BUCKET": bucket,
+    }
+
+    if include_secrets and token:
+        env_vars["AICO_INFLUX_TOKEN"] = token
+    elif token:
+        env_vars["AICO_INFLUX_TOKEN"] = "********"
+
+    if fmt == "env":
+        for k, v in env_vars.items():
+            console.print(f"{k}={v}")
+    else:  # json
+        import json as _json
+
+        console.print(_json.dumps(env_vars))
 
 
 @app.command(
