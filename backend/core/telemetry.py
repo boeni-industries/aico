@@ -2,11 +2,11 @@
 OpenTelemetry Telemetry Bootstrap Module
 
 Initializes and configures OpenTelemetry instrumentation for AICO.
-Supports multiple modes: casual, pro, dev, and production.
+Supports multiple modes: dev, test, and prod.
 
 Design Principles:
-- Local-first by default (casual/pro modes)
-- Optional exporters for dev/production modes
+- Local-first by default
+- Optional exporters for dev/test/prod modes
 - Configuration-driven behavior
 - Privacy-first with automatic PII redaction
 - Minimal performance overhead
@@ -32,7 +32,8 @@ class TelemetryManager:
     Manages OpenTelemetry instrumentation lifecycle.
     
     Singleton pattern ensures only one telemetry instance exists.
-    Configuration determines which exporters are enabled.
+    Configuration determines which exporters are enabled for the
+    selected environment mode (dev, test, prod).
     """
     
     _instance: Optional['TelemetryManager'] = None
@@ -66,6 +67,14 @@ class TelemetryManager:
             return
         
         self.config = config.get('instrumentation', {})
+
+        # Global kill switch: allow instrumentation to be turned off entirely
+        if not self.config.get('enabled', False):
+            logger.info("Telemetry instrumentation disabled via configuration; skipping OpenTelemetry setup")
+            # Leave tracer/meter providers at their default no-op implementations
+            self._initialized = False
+            return
+
         self.mode = self.config.get('mode', 'casual')
         
         # Create resource with service information

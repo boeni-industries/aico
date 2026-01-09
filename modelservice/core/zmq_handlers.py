@@ -5,15 +5,18 @@ This module implements ZMQ request/response handlers that work directly with
 Protocol Buffer messages, providing type-safe message handling.
 """
 
+import sys
+import os
 import asyncio
 import json
+import logging
 import time
-import httpx
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional, List
+import httpx
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
-from aico.core.topics import AICOTopics as AICOTopics
+from aico.core.topics import AICOTopics
 # SpaCy removed - now using GLiNER for entity extraction
 from .ollama_manager import OllamaManager
 from .transformers_manager import TransformersManager
@@ -327,8 +330,6 @@ class ModelserviceZMQHandlers:
                                         # Publish thinking chunk
                                         if self.message_bus_client and correlation_id:
                                             from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                            from aico.core.topics import AICOTopics
-                                            import time
                                             
                                             streaming_chunk = StreamingChunk()
                                             streaming_chunk.request_id = correlation_id
@@ -360,8 +361,6 @@ class ModelserviceZMQHandlers:
                                         # Publish response chunk
                                         if self.message_bus_client and correlation_id:
                                             from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                            from aico.core.topics import AICOTopics
-                                            import time
                                             
                                             streaming_chunk = StreamingChunk()
                                             streaming_chunk.request_id = correlation_id
@@ -388,8 +387,6 @@ class ModelserviceZMQHandlers:
                                         # Publish final completion signal
                                         if self.message_bus_client and correlation_id:
                                             from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                            from aico.core.topics import AICOTopics
-                                            import time
                                             
                                             # Create final streaming chunk
                                             final_chunk = StreamingChunk()

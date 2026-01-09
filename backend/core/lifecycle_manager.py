@@ -179,33 +179,38 @@ class BackendLifecycleManager:
         try:
             from backend.core.telemetry import initialize_telemetry
             
+            # Read instrumentation config directly from core config
+            instrumentation_cfg = self.config.get("instrumentation", {})
+            enabled = instrumentation_cfg.get("enabled", False)
+            mode = instrumentation_cfg.get("mode", "dev")
+
+            if not enabled:
+                # Kill switch is OFF – log clearly to console and logs
+                print("[⏹] OpenTelemetry instrumentation DISABLED via config (core.instrumentation.enabled = false)")
+                self.logger.info(
+                    "OpenTelemetry instrumentation disabled via config (core.instrumentation.enabled = false); "
+                    "skipping telemetry setup"
+                )
+                return
+
             print("[+] Initializing OpenTelemetry instrumentation...")
-            
+            print(f"[>] Telemetry mode: {mode}")
+            self.logger.info(f"Initializing OpenTelemetry instrumentation (enabled, mode={mode})")
+
             # Get encrypted database connection from container (will be available after container init)
             db_connection = None
             if hasattr(self, 'container') and self.container:
                 try:
                     db_connection = self.container.get_service("database")
-                except:
+                except Exception:
                     self.logger.warning("Database connection not yet available for telemetry")
             
-            # Get instrumentation config
-            config_dict = {
-                'instrumentation': self.config.get('instrumentation', {
-                    'mode': 'dev',  # Default to dev mode for now
-                    'opentelemetry': {'enabled': True},
-                    'exporters': {
-                        'prometheus': {'enabled': False},
-                        'otlp': {'enabled': False}
-                    }
-                })
-            }
+            # Build config dict expected by initialize_telemetry
+            config_dict = {'instrumentation': instrumentation_cfg}
             
             initialize_telemetry(config_dict, db_connection=db_connection)
             
-            mode = config_dict['instrumentation'].get('mode', 'dev')
             print(f"[✓] OpenTelemetry initialized (mode: {mode})")
-            print(f"[✓] Auto-instrumentation: FastAPI, SQLite, HTTP")
             print(f"[✓] Local metrics storage: {'Enabled (encrypted)' if db_connection else 'Deferred'}")
             
             self.logger.info("OpenTelemetry instrumentation initialized")

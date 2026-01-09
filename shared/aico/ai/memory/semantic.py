@@ -299,6 +299,13 @@ class SemanticMemoryStore:
                     'distance': results['distances'][0][i] if 'distances' in results else 0.0
                 })
             
+            # Convert distance to similarity (cosine)
+            similarity = 1.0 - documents[-1]['distance'] if documents[-1]['distance'] is not None else 0.0
+            documents[-1]['similarity'] = similarity
+            
+            # Add BM25 score placeholder (will be populated in hybrid scoring)
+            documents[-1]['bm25_score'] = 0.0
+            
             # Calculate hybrid scores using configured fusion method
             if self._fusion_method == "rrf":
                 # Use adaptive k if config value is 0, otherwise use config value
