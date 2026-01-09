@@ -148,6 +148,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             (chars["database"], "lmdb", "LMDB working memory management"),
             (chars["database"], "chroma", "ChromaDB semantic memory management"),
             (chars["database"], "pg", "Postgres/Timescale backend management (experimental)"),
+            (chars["database"], "influx", "InfluxDB time-series database management (experimental)"),
             ("💡", "kg", "Knowledge graph management and inspection"),
             (chars["security"], "security", "Master password setup and security management"),
             (chars["config"], "config", "Configuration management and validation"),
@@ -166,6 +167,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             "aico version show",
             "aico security setup", 
             "aico db init",
+            "aico influx status",
             "aico scheduler ls",
             "aico emotion status",
             "aico config list"
