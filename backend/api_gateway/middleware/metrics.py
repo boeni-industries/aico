@@ -19,35 +19,42 @@ logger = get_logger("backend", "api_gateway.metrics")
 
 
 def classify_service(path: str) -> str:
-    """Classify request by service based on path pattern."""
-    if not path or not path.startswith('/api/'):
+    """Classify request by service based on path pattern.
+    
+    All API paths follow the pattern: /api/v1/{service}/...
+    """
+    if not path or not path.startswith('/api/v1/'):
         return 'unknown'
     
-    # Extract service from path: /api/{service}/...
+    # Extract service from path: /api/v1/{service}/...
     parts = path.split('/')
-    if len(parts) >= 3:
-        service = parts[2]
-        
-        # Map to standardized service names
-        service_map = {
-            'conversation': 'Conversation',
-            'agency': 'Agency',
-            'memory': 'Memory',
-            'operations': 'Operations',
-            'system': 'System',
-            'admin': 'Admin',
-            'security': 'Security',
-            'auth': 'Authentication',
-            'modelservice': 'Modelservice',
-            'metrics': 'Metrics',
-            'users': 'Users',
-            'goals': 'Agency',
-            'tasks': 'Operations',
-        }
-        
-        return service_map.get(service.lower(), service.capitalize())
+    if len(parts) >= 4:
+        service = parts[3]
+    else:
+        return 'unknown'
     
-    return 'unknown'
+    # Map to standardized service names
+    service_map = {
+        'conversation': 'Conversation',
+        'agency': 'Agency',
+        'memory': 'Memory',
+        'operations': 'Operations',
+        'system': 'System',
+        'admin': 'Admin',
+        'security': 'Security',
+        'auth': 'Authentication',
+        'modelservice': 'Modelservice',
+        'metrics': 'Metrics',
+        'users': 'Users',
+        'goals': 'Agency',
+        'tasks': 'Operations',
+        'health': 'System',
+        'echo': 'System',
+        'logs': 'System',
+        'handshake': 'System',
+    }
+    
+    return service_map.get(service.lower(), service.capitalize())
 
 
 def classify_category(path: str) -> str:

@@ -293,17 +293,17 @@ async def get_gateway_metrics(request: Request):
         ).fetchall()
         status_distribution = {row[0]: row[1] for row in result} if result else {}
         
-        # Calculate error rate (last 1 minute to match sparkline's rightmost point)
+        # Error rate (last 1 minute)
         result = conn.execute(
             """SELECT 
                 COUNT(*) as total,
-                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+                SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as errors
                FROM otel_api_requests 
                WHERE timestamp BETWEEN ? AND ?""",
             (recent_cutoff, now)
         ).fetchone()
         if result and result[0] > 0:
-            error_rate = ((result[0] - result[1]) / result[0] * 100)
+            error_rate = (result[1] / result[0] * 100)
         else:
             error_rate = 0.0
         success_rate = 100.0 - error_rate
@@ -316,13 +316,13 @@ async def get_gateway_metrics(request: Request):
             result = conn.execute(
                 """SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+                    SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as errors
                    FROM otel_api_requests 
                    WHERE timestamp BETWEEN ? AND ?""",
                 (interval_start, interval_end)
             ).fetchone()
             if result and result[0] > 0:
-                interval_error_rate = ((result[0] - result[1]) / result[0] * 100)
+                interval_error_rate = (result[1] / result[0] * 100)
                 error_rate_sparkline.append(interval_error_rate)
             else:
                 error_rate_sparkline.append(0.0)
@@ -336,32 +336,32 @@ async def get_gateway_metrics(request: Request):
         result = conn.execute(
             """SELECT 
                 COUNT(*) as total,
-                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+                SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as errors
                FROM otel_api_requests 
                WHERE timestamp > ?""",
             (cutoff_1h,)
         ).fetchone()
-        error_rate_avg_1h = ((result[0] - result[1]) / result[0] * 100) if result and result[0] > 0 else None
+        error_rate_avg_1h = (result[1] / result[0] * 100) if result and result[0] > 0 else None
         
         result = conn.execute(
             """SELECT 
                 COUNT(*) as total,
-                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+                SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as errors
                FROM otel_api_requests 
                WHERE timestamp > ?""",
             (cutoff_24h,)
         ).fetchone()
-        error_rate_avg_24h = ((result[0] - result[1]) / result[0] * 100) if result and result[0] > 0 else None
+        error_rate_avg_24h = (result[1] / result[0] * 100) if result and result[0] > 0 else None
         
         result = conn.execute(
             """SELECT 
                 COUNT(*) as total,
-                SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as success
+                SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as errors
                FROM otel_api_requests 
                WHERE timestamp > ?""",
             (cutoff_7d,)
         ).fetchone()
-        error_rate_avg_7d = ((result[0] - result[1]) / result[0] * 100) if result and result[0] > 0 else None
+        error_rate_avg_7d = (result[1] / result[0] * 100) if result and result[0] > 0 else None
         
         # Top endpoints
         result = conn.execute(
