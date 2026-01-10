@@ -368,6 +368,52 @@ def doctor():
         )
         tcp_ok = False
 
+    # 3) Database authentication using stored credentials
+    if tcp_ok:
+        from aico.security.key_manager import AICOKeyManager
+        key_manager = AICOKeyManager(config)
+        password = key_manager.get_database_password("postgres", username=user)
+        
+        if password:
+            try:
+                cmd = [
+                    "docker", "exec", "-i",
+                    "-e", f"PGPASSWORD={password}",
+                    "aico-postgres",
+                    "psql", "-U", user, "-d", db_name, "-c", "SELECT version();"
+                ]
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    version_line = result.stdout.split('\n')[2].strip() if len(result.stdout.split('\n')) > 2 else "Connected"
+                    table.add_row(
+                        "Database Auth",
+                        "[green]OK[/green]",
+                        f"Authenticated successfully: {version_line[:50]}",
+                    )
+                else:
+                    table.add_row(
+                        "Database Auth",
+                        "[red]FAILED[/red]",
+                        "Authentication failed with stored credentials",
+                    )
+            except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+                table.add_row(
+                    "Database Auth",
+                    "[yellow]SKIPPED[/yellow]",
+                    f"Could not test: {e}",
+                )
+        else:
+            table.add_row(
+                "Database Auth",
+                "[yellow]SKIPPED[/yellow]",
+                "No credentials in keyring - run 'aico deploy pg'",
+            )
+
     console.print(table)
 
     console.print(

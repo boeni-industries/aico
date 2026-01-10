@@ -78,7 +78,10 @@ def _get_or_create_postgres_password() -> str:
     # Generate deterministic password from master key
     # Use purpose-specific derivation for Postgres
     derived_key = key_manager.derive_purpose_key(master_key, "postgres-password")
-    password = secrets.token_urlsafe(32)  # Generate from derived key entropy
+    
+    # Convert derived key to base64 URL-safe string for use as password
+    import base64
+    password = base64.urlsafe_b64encode(derived_key[:32]).decode('utf-8').rstrip('=')
     
     # Store in keyring
     key_manager.store_database_password(password, "postgres", username="postgres")
@@ -119,8 +122,10 @@ def _get_or_create_influx_credentials() -> Tuple[str, str]:
     password_key = key_manager.derive_purpose_key(master_key, "influx-admin-password")
     token_key = key_manager.derive_purpose_key(master_key, "influx-admin-token")
     
-    password = secrets.token_urlsafe(32)
-    token = secrets.token_urlsafe(64)  # Longer token for API access
+    # Convert derived keys to base64 URL-safe strings for use as credentials
+    import base64
+    password = base64.urlsafe_b64encode(password_key[:32]).decode('utf-8').rstrip('=')
+    token = base64.urlsafe_b64encode(token_key[:64]).decode('utf-8').rstrip('=')
     
     # Store in keyring
     key_manager.store_database_password(password, "influx", username="admin")
@@ -714,16 +719,13 @@ def deploy_influx(
 
     console.print("⏳ [cyan]Waiting for InfluxDB to be ready...[/cyan]")
     import time
-    time.sleep(5)  # Give InfluxDB time to initialize
-
-    console.print("🔧 [cyan]Setting up org/bucket/retention (idempotent)...[/cyan]")
-    # Call init with the auto-generated credentials
-    influx_cli.init(admin_password=admin_password, admin_token=admin_token)
+    time.sleep(8)  # Give InfluxDB time to auto-initialize with DOCKER_INFLUXDB_INIT_* env vars
 
     console.print("🩺 [cyan]Verifying deployment health...[/cyan]")
     influx_cli.doctor()
 
-    console.print("\n" + format_success("✅ InfluxDB deployment completed successfully!"))
+    console.print("")
+    console.print(format_success("✅ InfluxDB deployment completed successfully!"))
     console.print(format_info("💡 Credentials stored in system keyring (derived from master key)"))
     console.print(format_info("💡 Backend components will auto-retrieve credentials from keyring at runtime"))
     console.print("")

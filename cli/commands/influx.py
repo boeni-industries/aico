@@ -420,24 +420,68 @@ def doctor():
                     "[green]OK[/green]",
                     f"{health_url} responded with 200",
                 )
+                http_ok = True
             else:
                 table.add_row(
                     "HTTP /health",
                     "[red]FAILED[/red]",
                     f"{health_url} responded with HTTP {resp.status_code}",
                 )
+                http_ok = False
         except Exception as exc:  # pragma: no cover - best-effort diagnostic
             table.add_row(
                 "HTTP /health",
                 "[red]ERROR[/red]",
                 f"Error calling {health_url}: {exc}",
             )
+            http_ok = False
     else:
         table.add_row(
             "HTTP /health",
             "[yellow]SKIPPED[/yellow]",
             "Requires TCP connectivity first.",
         )
+        http_ok = False
+
+    # 4) API authentication using stored credentials
+    if http_ok:
+        from aico.security.key_manager import AICOKeyManager
+        config_manager = ConfigurationManager()
+        config_manager.initialize(lightweight=True)
+        key_manager = AICOKeyManager(config_manager)
+        
+        admin_token = key_manager.get_database_password("influx", username="admin_token")
+        
+        if admin_token:
+            try:
+                headers = {"Authorization": f"Token {admin_token}"}
+                response = requests.get(f"{url}/api/v2/me", headers=headers, timeout=3)
+                if response.status_code == 200:
+                    user_data = response.json()
+                    username = user_data.get("name", "unknown")
+                    table.add_row(
+                        "API Auth",
+                        "[green]OK[/green]",
+                        f"Authenticated as '{username}' using stored token",
+                    )
+                else:
+                    table.add_row(
+                        "API Auth",
+                        "[red]FAILED[/red]",
+                        f"Authentication failed with status {response.status_code}",
+                    )
+            except Exception as e:
+                table.add_row(
+                    "API Auth",
+                    "[yellow]ERROR[/yellow]",
+                    f"Could not test: {str(e)[:50]}",
+                )
+        else:
+            table.add_row(
+                "API Auth",
+                "[yellow]SKIPPED[/yellow]",
+                "No credentials in keyring - run 'aico deploy influx'",
+            )
 
     console.print(table)
 
@@ -586,43 +630,8 @@ def init(
             )
         )
 
-    # Set retention policy for the bucket (30 days as per schema.lp)
-    console.print("🔧 [cyan]Setting retention policy for bucket...[/cyan]")
-    retention_cmd = [
-        "docker", "exec", "-i", "aico-influxdb",
-        "influx", "bucket", "update",
-        "--name", bucket,
-        "--org", org,
-        "--retention", "720h",  # 30 days
-        "--token", admin_token
-    ]
-
-    try:
-        result = subprocess.run(
-            retention_cmd,
-            capture_output=True,
-            text=True,
-            check=False
-        )
-
-        if result.returncode != 0:
-            console.print(
-                format_warning(
-                    f"Could not update retention policy (exit code {result.returncode}).\n"
-                    f"STDERR: {result.stderr}\n"
-                    "This is non-fatal; you can set retention manually via the InfluxDB UI."
-                )
-            )
-        else:
-            console.print(format_success("✅ Retention policy set to 30 days."))
-
-    except Exception as exc:
-        console.print(
-            format_warning(
-                f"Could not update retention policy: {exc}\n"
-                "This is non-fatal; you can set retention manually via the InfluxDB UI."
-            )
-        )
+    # Retention policy is now set automatically via DOCKER_INFLUXDB_INIT_RETENTION
+    # in docker-compose.local.yml (720h = 30 days)
 
     # Final instructions
     console.print(

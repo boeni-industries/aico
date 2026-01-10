@@ -12,7 +12,7 @@ services:
       POSTGRES_DB: aico
       POSTGRES_USER: postgres
       # Secret is provided via environment (AICO_PG_PASSWORD), never hardcoded
-      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD}
+      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD:-}
     ports:
       # Expose to host so aico CLI / psql can connect (matches core.yaml defaults)
       - "5432:5432"
@@ -38,9 +38,15 @@ services:
     image: influxdb:2
     container_name: aico-influxdb
     restart: unless-stopped
-    # For now we do not use DOCKER_INFLUXDB_INIT_* here to avoid hardcoding
-    # any credentials. Initial setup (org/bucket/token) can be done via the
-    # Influx UI or automated later using the AICO CLI once the container is up.
+    environment:
+      # InfluxDB initial setup credentials (provided via environment, never hardcoded)
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: aico-admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
+      DOCKER_INFLUXDB_INIT_ORG: aico
+      DOCKER_INFLUXDB_INIT_BUCKET: aico_telemetry
+      DOCKER_INFLUXDB_INIT_RETENTION: 720h
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
     ports:
       - "8086:8086"
     volumes:
