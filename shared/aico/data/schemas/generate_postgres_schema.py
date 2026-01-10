@@ -213,9 +213,10 @@ def convert_to_postgres(stmt: str) -> str:
     # Convert BLOB to BYTEA
     stmt = re.sub(r'\bBLOB\b', 'BYTEA', stmt, flags=re.IGNORECASE)
     
-    # Convert JSON type to JSONB (only when used as a column type, not in comments or function calls)
-    # Match pattern: column_name JSON (with optional NOT NULL, DEFAULT, etc.)
-    stmt = re.sub(r'(\s+)JSON(\s+(?:NOT\s+NULL|DEFAULT|,|\)))', r'\1JSONB\2', stmt, flags=re.IGNORECASE)
+    # Convert JSON type to JSONB
+    # Match: whitespace + JSON + (whitespace or comma or closing paren)
+    # This catches: "field JSON,", "field JSON)", "field JSON NOT NULL", etc.
+    stmt = re.sub(r'(\s+)JSON(\s|,|\))', r'\1JSONB\2', stmt, flags=re.IGNORECASE)
     
     # Convert TEXT columns that store JSON to JSONB for better performance
     # Look for columns with _json suffix or json in name

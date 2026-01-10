@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS agency_events (
                 plan_id TEXT,
                 event_type TEXT NOT NULL,              -- decision, plan_update, trigger, error, metric
                 source TEXT NOT NULL,                  -- which component emitted this event (engine, planner, arbiter, etc.)
-                payload_json JSONB NOT NULL,            -- JSON payload with structured details
+                payload_json JSONB NOT NULL,            -- JSONB payload with structured details
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS agency_goals (
                 description TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',  -- pending, active, paused, completed, retired
                 priority TEXT DEFAULT 'normal',          -- low, normal, high
-                metadata_json JSONB,                      -- JSON BYTEA for future extensions
+                metadata_json JSONB,                      -- JSONB BYTEA for future extensions
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS "agency_intention_set" (
                 status TEXT NOT NULL DEFAULT 'proposed',  -- proposed, active, paused, dropped, completed
                 arbiter_score DOUBLE PRECISION NOT NULL,       -- Computed score from arbiter
                 priority_band TEXT NOT NULL,       -- urgent, normal, background
-                reasons_json JSONB,                 -- JSON array of reason codes/explanations
+                reasons_json JSONB,                 -- JSONB array of reason codes/explanations
                 activated_at TIMESTAMPTZ,
                 deactivated_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -225,9 +225,9 @@ CREATE TABLE IF NOT EXISTS agency_lessons (
                 evidence_window_start TIMESTAMPTZ,
                 evidence_window_end TIMESTAMPTZ,
                 -- Links to related entities
-                related_goal_ids TEXT,         -- JSON array of goal_ids
-                related_trajectory_ids TEXT,   -- JSON array of trajectory_ids
-                related_event_ids TEXT,        -- JSON array of agency_event_ids
+                related_goal_ids TEXT,         -- JSONB array of goal_ids
+                related_trajectory_ids TEXT,   -- JSONB array of trajectory_ids
+                related_event_ids TEXT,        -- JSONB array of agency_event_ids
                 -- Audit trail
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -279,7 +279,7 @@ CREATE TABLE IF NOT EXISTS agency_plans (
                 plan_id TEXT PRIMARY KEY,
                 goal_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'draft',    -- draft, active, completed, abandoned
-                steps_json JSONB NOT NULL,                -- JSON array of steps for early phases
+                steps_json JSONB NOT NULL,                -- JSONB array of steps for early phases
                 metadata_json JSONB,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -409,7 +409,7 @@ CREATE INDEX IF NOT EXISTS idx_self_model_window ON agency_self_model(window_sta
 CREATE TABLE IF NOT EXISTS agency_skill_gaps (
                 gap_id TEXT PRIMARY KEY,
                 step_description TEXT NOT NULL,
-                llm_suggested_skills TEXT,           -- JSON array of skill names suggested by LLM
+                llm_suggested_skills TEXT,           -- JSONB array of skill names suggested by LLM
                 step_metadata TEXT,                  -- JSON: full step context (goal_id, plan_id, etc.)
                 pattern_embedding TEXT,              -- JSON: 768-dim embedding for similarity matching
                 frequency_count INTEGER DEFAULT 1,
@@ -572,7 +572,7 @@ CREATE TABLE IF NOT EXISTS "ams_user_memories" (
                 valid_until TIMESTAMPTZ,
                 -- Content and extraction
                 content TEXT NOT NULL,
-                entities_json JSONB,  -- JSON array of extracted entities
+                entities_json JSONB,  -- JSONB array of extracted entities
                 extraction_method TEXT NOT NULL,
                 -- Provenance
                 source_conversation_id TEXT NOT NULL,
@@ -717,7 +717,7 @@ CREATE INDEX IF NOT EXISTS idx_consent_audit_user ON consent_audit_log(user_id);
 CREATE TABLE IF NOT EXISTS "consent_records" (
                 consent_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
-                consent_scope TEXT NOT NULL,       -- JSON object describing what was consented to
+                consent_scope TEXT NOT NULL,       -- JSONB object describing what was consented to
                 decision TEXT NOT NULL,            -- granted, denied
                 context_json JSONB,                 -- Optional context (goal_id, plan_id, etc.)
                 granted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -836,7 +836,7 @@ CREATE TABLE IF NOT EXISTS ethics_gate_audit (
                 target_id TEXT NOT NULL,
                 decision TEXT NOT NULL,
                 reasoning TEXT,
-                policy_rules_applied TEXT,  -- JSON
+                policy_rules_applied TEXT,  -- JSONB
                 check_level INTEGER DEFAULT 1,  -- 1 = basic, 2 = detailed, 3 = comprehensive
                 cached INTEGER DEFAULT 0,
                 processing_time_ms INTEGER,
@@ -855,7 +855,7 @@ CREATE TABLE IF NOT EXISTS "ethics_policy_rules" (
                 rule_id TEXT PRIMARY KEY,
                 rule_name TEXT NOT NULL,
                 target_type TEXT NOT NULL,         -- goal, plan, skill, curiosity_signal, world_model_update
-                conditions_json JSONB NOT NULL,     -- JSON object with predicates
+                conditions_json JSONB NOT NULL,     -- JSONB object with predicates
                 effect TEXT NOT NULL,              -- allow, allow_with_warning, needs_consent, block
                 user_message_template TEXT,        -- Optional NL explanation
                 priority INTEGER DEFAULT 100,      -- Lower = higher priority
@@ -873,11 +873,11 @@ CREATE INDEX IF NOT EXISTS idx_policy_rules_target ON "ethics_policy_rules"(targ
 CREATE TABLE IF NOT EXISTS "ethics_value_profiles" (
                 profile_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL UNIQUE,
-                sensitive_life_areas TEXT,         -- JSON array of LifeArea IDs
-                allowed_curiosity_domains TEXT,    -- JSON array of allowed domains
+                sensitive_life_areas TEXT,         -- JSONB array of LifeArea IDs
+                allowed_curiosity_domains TEXT,    -- JSONB array of allowed domains
                 curiosity_intensity DOUBLE PRECISION DEFAULT 0.5,  -- 0.0-1.0 scale
                 proactive_behavior_level TEXT DEFAULT 'balanced',  -- quiet, balanced, proactive
-                storage_preferences TEXT,          -- JSON object with storage rules
+                storage_preferences TEXT,          -- JSONB object with storage rules
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
@@ -1003,7 +1003,7 @@ CREATE TABLE IF NOT EXISTS "scheduler_task_executions" (
                 status TEXT NOT NULL,
                 started_at TIMESTAMPTZ NOT NULL,
                 completed_at TIMESTAMPTZ,
-                result TEXT,  -- JSON TaskResult
+                result TEXT,  -- JSONB TaskResult
                 error_message TEXT,
                 duration_seconds DOUBLE PRECISION
             );
@@ -1025,7 +1025,7 @@ CREATE TABLE IF NOT EXISTS "scheduler_tasks" (
                 task_id TEXT PRIMARY KEY,
                 task_class TEXT NOT NULL,
                 schedule TEXT NOT NULL,
-                config TEXT,  -- JSON configuration
+                config TEXT,  -- JSONB configuration
                 enabled BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -1041,7 +1041,7 @@ CREATE TABLE IF NOT EXISTS "system_event_metrics" (
                 bucket_start TEXT NOT NULL,
                 value DOUBLE PRECISION NOT NULL,
                 count INTEGER DEFAULT 1,
-                metadata TEXT,  -- JSON
+                metadata TEXT,  -- JSONB
                 created_at TEXT NOT NULL,
                 UNIQUE(metric_name, event_type, time_bucket, bucket_start)
             );
@@ -1081,7 +1081,7 @@ CREATE TABLE IF NOT EXISTS "system_events" (
                 priority INTEGER DEFAULT 1,
                 correlation_id TEXT,
                 payload BYTEA,
-                metadata JSON,
+                metadata JSONB,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -1229,8 +1229,8 @@ CREATE TABLE IF NOT EXISTS workflow_stages (
                 status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed, skipped
                 started_at TEXT,
                 completed_at TEXT,
-                input_data TEXT,  -- JSON
-                output_data TEXT,  -- JSON
+                input_data TEXT,  -- JSONB
+                output_data TEXT,  -- JSONB
                 error_message TEXT,
                 retry_count INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL
