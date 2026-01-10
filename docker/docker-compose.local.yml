@@ -51,6 +51,7 @@ services:
       - "8086:8086"
     volumes:
       - aico-influxdata:/var/lib/influxdb2
+      - aico-influxconfig:/etc/influxdb2
     labels:
       # Project identification
       com.aico.project: "aico"
@@ -80,4 +81,12 @@ volumes:
       com.aico.project: "aico"
       com.aico.component: "influxdb"
       com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-influxconfig:
+    name: aico-influxconfig
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "influxdb"
+      com.aico.volume.type: "config"
       com.aico.managed-by: "aico-cli"

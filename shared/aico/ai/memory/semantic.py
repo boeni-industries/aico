@@ -35,6 +35,7 @@ from aico.core.paths import AICOPaths
 from aico.core.logging import get_logger
 from .fusion import calculate_rrf_scores, calculate_weighted_scores
 from .temporal import TemporalMetadata
+from .metrics import track_query
 
 logger = get_logger("shared", "ai.memory.semantic")
 
@@ -161,75 +162,81 @@ class SemanticMemoryStore:
             logger.warning("ModelService not available - cannot generate embeddings")
             return False
         
-        try:
-            # Create segment
-            segment = ConversationSegment(
-                segment_id=str(uuid.uuid4()),
-                user_id=user_id,
-                conversation_id=conversation_id,
-                role=role,
-                content=content,
-                timestamp=datetime.utcnow()
-            )
-            
-            # Generate embedding
-            embedding_result = await self._modelservice.get_embeddings(
-                model=self._embedding_model,
-                prompt=content
-            )
-            if not embedding_result.get("success", False):
-                logger.error(f"Failed to generate embedding: {embedding_result.get('error')}")
-                return False
-            
-            embedding = embedding_result.get("data", {}).get("embedding", [])
-            if not embedding:
-                logger.error("No embedding returned from modelservice")
-                return False
-            
-            # Create temporal metadata (AMS)
-            temporal_meta = None
-            if self._temporal_enabled:
-                temporal_meta = TemporalMetadata(
-                    created_at=segment.timestamp,
-                    last_updated=segment.timestamp,
-                    last_accessed=segment.timestamp,
-                    access_count=0,
-                    confidence=1.0,
-                    version=1
+        with track_query("semantic_memory_store", memory_layer="semantic") as tracker:
+            try:
+                # Create segment
+                segment = ConversationSegment(
+                    segment_id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    role=role,
+                    content=content,
+                    timestamp=datetime.utcnow()
                 )
-            
-            # Store in ChromaDB with temporal metadata
-            metadata = {
-                'user_id': user_id,
-                'conversation_id': conversation_id,
-                'role': role,
-                'language': language,
-                'timestamp': segment.timestamp.isoformat()
-            }
-            
-            # Add temporal fields to metadata
-            if temporal_meta:
-                metadata.update({
-                    'created_at': temporal_meta.created_at.isoformat(),
-                    'confidence': temporal_meta.confidence,
-                    'version': temporal_meta.version,
-                    'last_accessed': temporal_meta.last_accessed.isoformat(),
-                    'access_count': temporal_meta.access_count
-                })
-            
-            self._collection.add(
-                ids=[segment.segment_id],
-                embeddings=[embedding],
-                documents=[content],
-                metadatas=[metadata]
-            )
-            
-            logger.info(f"✅ Stored segment: {role} message ({len(content)} chars)")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to store segment: {e}")
-            return False
+                
+                # Generate embedding
+                embedding_result = await self._modelservice.get_embeddings(
+                    model=self._embedding_model,
+                    prompt=content
+                )
+                if not embedding_result.get("success", False):
+                    logger.error(f"Failed to generate embedding: {embedding_result.get('error')}")
+                    tracker.set_success(False)
+                    return False
+                
+                embedding = embedding_result.get("data", {}).get("embedding", [])
+                if not embedding:
+                    logger.error("No embedding returned from modelservice")
+                    tracker.set_success(False)
+                    return False
+                
+                # Create temporal metadata (AMS)
+                temporal_meta = None
+                if self._temporal_enabled:
+                    temporal_meta = TemporalMetadata(
+                        created_at=segment.timestamp,
+                        last_updated=segment.timestamp,
+                        last_accessed=segment.timestamp,
+                        access_count=0,
+                        confidence=1.0,
+                        version=1
+                    )
+                
+                # Store in ChromaDB with temporal metadata
+                metadata = {
+                    'user_id': user_id,
+                    'conversation_id': conversation_id,
+                    'role': role,
+                    'language': language,
+                    'timestamp': segment.timestamp.isoformat()
+                }
+                
+                # Add temporal fields to metadata
+                if temporal_meta:
+                    metadata.update({
+                        'created_at': temporal_meta.created_at.isoformat(),
+                        'confidence': temporal_meta.confidence,
+                        'version': temporal_meta.version,
+                        'last_accessed': temporal_meta.last_accessed.isoformat(),
+                        'access_count': temporal_meta.access_count
+                    })
+                
+                self._collection.add(
+                    ids=[segment.segment_id],
+                    embeddings=[embedding],
+                    documents=[content],
+                    metadatas=[metadata]
+                )
+                
+                logger.info(f"✅ Stored segment: {role} message ({len(content)} chars)")
+                tracker.set_results_count(1)
+                tracker.set_success(True)
+                return True
+                
+            except Exception as e:
+                logger.error(f"Failed to store segment: {e}")
+                tracker.set_success(False)
+                return False
     
     async def query_segments(
         self,
@@ -257,110 +264,122 @@ class SemanticMemoryStore:
             logger.warning("ModelService not available - cannot query")
             return []
         
-        try:
-            # Generate query embedding
-            embedding_result = await self._modelservice.get_embeddings(
-                model=self._embedding_model,
-                prompt=query_text
-            )
-            if not embedding_result.get("success", False):
-                logger.error(f"Failed to generate query embedding: {embedding_result.get('error')}")
-                return []
-            
-            query_embedding = embedding_result.get("data", {}).get("embedding", [])
-            if not query_embedding:
-                logger.error("No embedding returned for query")
-                return []
-            
-            # Build filter
-            where_filter = {"user_id": user_id} if user_id else None
-            
-            # Get ALL documents for proper BM25 IDF calculation
-            # Note: If user_id filter is set, we get all docs for that user
-            collection_count = self._collection.count()
-            
-            results = self._collection.query(
-                query_embeddings=[query_embedding],
-                n_results=collection_count,  # Fetch ALL documents for proper BM25
-                where=where_filter
-            )
-            
-            # Prepare documents for hybrid scoring
-            if not results or not results.get('ids') or not results['ids'][0]:
-                return []
-            
-            # Build document list
-            documents = []
-            for i in range(len(results['ids'][0])):
-                documents.append({
-                    'id': results['ids'][0][i],
-                    'document': results['documents'][0][i],
-                    'metadata': results['metadatas'][0][i],
-                    'distance': results['distances'][0][i] if 'distances' in results else 0.0
-                })
-            
-            # Convert distance to similarity (cosine)
-            similarity = 1.0 - documents[-1]['distance'] if documents[-1]['distance'] is not None else 0.0
-            documents[-1]['similarity'] = similarity
-            
-            # Add BM25 score placeholder (will be populated in hybrid scoring)
-            documents[-1]['bm25_score'] = 0.0
-            
-            # Calculate hybrid scores using configured fusion method
-            if self._fusion_method == "rrf":
-                # Use adaptive k if config value is 0, otherwise use config value
-                k = None if self._rrf_rank_constant == 0 else self._rrf_rank_constant
-                scored_docs = calculate_rrf_scores(
-                    documents=documents,
-                    query_text=query_text,
-                    k=k,
-                    min_idf=self._bm25_min_idf,
-                    min_semantic_score=self._min_semantic_score
+        # Track query metrics
+        with track_query("semantic_search", memory_layer="semantic", user_id=user_id or "unknown") as tracker:
+            try:
+                # Generate query embedding
+                embedding_result = await self._modelservice.get_embeddings(
+                    model=self._embedding_model,
+                    prompt=query_text
                 )
-            else:  # weighted (legacy)
-                scored_docs = calculate_weighted_scores(
-                    documents=documents,
-                    query_text=query_text,
-                    semantic_weight=self._semantic_weight,
-                    bm25_weight=self._bm25_weight,
-                    min_idf=self._bm25_min_idf
+                if not embedding_result.get("success", False):
+                    logger.error(f"Failed to generate query embedding: {embedding_result.get('error')}")
+                    tracker.set_success(False)
+                    return []
+                
+                query_embedding = embedding_result.get("data", {}).get("embedding", [])
+                if not query_embedding:
+                    logger.error("No embedding returned for query")
+                    tracker.set_success(False)
+                    return []
+                
+                # Build filter
+                where_filter = {"user_id": user_id} if user_id else None
+                
+                # Get ALL documents for proper BM25 IDF calculation
+                # Note: If user_id filter is set, we get all docs for that user
+                collection_count = self._collection.count()
+                
+                results = self._collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=collection_count,  # Fetch ALL documents for proper BM25
+                    where=where_filter
                 )
-            
-            logger.info(f"Scored {len(scored_docs)} documents after hybrid scoring")
-            if scored_docs:
-                logger.info(f"Top 3 scores: {[doc['hybrid_score'] for doc in scored_docs[:3]]}")
-            
-            # Filter by threshold and format
-            similarity_threshold = min_similarity if min_similarity is not None else self._min_similarity
-            logger.info(f"Using similarity threshold: {similarity_threshold}")
-            segments = []
-            
-            for doc in scored_docs:
-                if doc['hybrid_score'] >= similarity_threshold:
-                    # Apply confidence decay (AMS)
-                    metadata = doc['metadata']
-                    if self._temporal_enabled and 'confidence' in metadata and 'last_accessed' in metadata:
-                        metadata = self._apply_confidence_decay(metadata)
-                    
-                    segments.append({
-                        'segment_id': doc['id'],
-                        'content': doc['document'],
-                        'metadata': metadata,
-                        'distance': doc['distance'],
-                        'similarity': doc['semantic_score'],
-                        'bm25_score': doc['bm25_score'],
-                        'hybrid_score': doc['hybrid_score']
+                
+                # Prepare documents for hybrid scoring
+                if not results or not results.get('ids') or not results['ids'][0]:
+                    tracker.set_results_count(0)
+                    tracker.set_success(True)
+                    return []
+                
+                # Build document list
+                documents = []
+                for i in range(len(results['ids'][0])):
+                    documents.append({
+                        'id': results['ids'][0][i],
+                        'document': results['documents'][0][i],
+                        'metadata': results['metadatas'][0][i],
+                        'distance': results['distances'][0][i] if 'distances' in results else 0.0
                     })
-            
-            # Limit results
-            segments = segments[:max_results or self._max_results]
-            
-            logger.info(f"Found {len(segments)} matching segments (hybrid search)")
-            return segments
-            
-        except Exception as e:
-            logger.error(f"Failed to query segments: {e}")
-            return []
+                
+                # Convert distance to similarity (cosine)
+                similarity = 1.0 - documents[-1]['distance'] if documents[-1]['distance'] is not None else 0.0
+                documents[-1]['similarity'] = similarity
+                
+                # Add BM25 score placeholder (will be populated in hybrid scoring)
+                documents[-1]['bm25_score'] = 0.0
+                
+                # Calculate hybrid scores using configured fusion method
+                if self._fusion_method == "rrf":
+                    # Use adaptive k if config value is 0, otherwise use config value
+                    k = None if self._rrf_rank_constant == 0 else self._rrf_rank_constant
+                    scored_docs = calculate_rrf_scores(
+                        documents=documents,
+                        query_text=query_text,
+                        k=k,
+                        min_idf=self._bm25_min_idf,
+                        min_semantic_score=self._min_semantic_score
+                    )
+                else:  # weighted (legacy)
+                    scored_docs = calculate_weighted_scores(
+                        documents=documents,
+                        query_text=query_text,
+                        semantic_weight=self._semantic_weight,
+                        bm25_weight=self._bm25_weight,
+                        min_idf=self._bm25_min_idf
+                    )
+                
+                logger.info(f"Scored {len(scored_docs)} documents after hybrid scoring")
+                if scored_docs:
+                    logger.info(f"Top 3 scores: {[doc['hybrid_score'] for doc in scored_docs[:3]]}")
+                
+                # Filter by threshold and format
+                similarity_threshold = min_similarity if min_similarity is not None else self._min_similarity
+                logger.info(f"Using similarity threshold: {similarity_threshold}")
+                segments = []
+                
+                for doc in scored_docs:
+                    if doc['hybrid_score'] >= similarity_threshold:
+                        # Apply confidence decay (AMS)
+                        metadata = doc['metadata']
+                        if self._temporal_enabled and 'confidence' in metadata and 'last_accessed' in metadata:
+                            metadata = self._apply_confidence_decay(metadata)
+                        
+                        segments.append({
+                            'segment_id': doc['id'],
+                            'content': doc['document'],
+                            'metadata': metadata,
+                            'distance': doc['distance'],
+                            'similarity': doc['semantic_score'],
+                            'bm25_score': doc['bm25_score'],
+                            'hybrid_score': doc['hybrid_score']
+                        })
+                
+                # Limit results
+                segments = segments[:max_results or self._max_results]
+                
+                logger.info(f"Found {len(segments)} matching segments (hybrid search)")
+                
+                # Record metrics
+                tracker.set_results_count(len(segments))
+                tracker.set_success(True)
+                
+                return segments
+                
+            except Exception as e:
+                logger.error(f"Failed to query segments: {e}")
+                tracker.set_success(False)
+                return []
     
     async def get_recent_segments(
         self,

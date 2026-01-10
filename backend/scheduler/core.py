@@ -15,12 +15,44 @@ from typing import Any, Dict, List, Optional, Set, Type
 from pathlib import Path
 
 from aico.core.logging import get_logger
-from backend.core.service_container import BaseService
-from .tasks.base import BaseTask, TaskContext, TaskResult, TaskStatus, TaskPriority, TaskQueue
-from .storage import TaskStore
-from .cron import CronParser
-from .priority_queue import PriorityTaskQueue
-from .retry_manager import RetryManager, RetryTracker
+
+# Use try/except to handle both backend and CLI import contexts
+try:
+    # When imported as backend.scheduler (backend context)
+    from backend.scheduler.tasks.base import BaseTask, TaskContext, TaskResult, TaskStatus
+    from backend.scheduler.storage import TaskStore
+    from backend.scheduler.cron import CronParser
+    from backend.scheduler.priority_queue import PriorityTaskQueue
+    from backend.scheduler.retry_manager import RetryManager, RetryTracker
+except ImportError:
+    # When imported as scheduler (CLI context with backend in sys.path)
+    from scheduler.tasks.base import BaseTask, TaskContext, TaskResult, TaskStatus
+    from scheduler.storage import TaskStore
+    from scheduler.cron import CronParser
+    from scheduler.priority_queue import PriorityTaskQueue
+    from scheduler.retry_manager import RetryManager, RetryTracker
+
+# Optional imports for backend-specific features (only available when running in backend)
+try:
+    from backend.core.service_container import ServiceContainer, BaseService
+    from backend.services.scheduler.metrics import track_job
+    BACKEND_AVAILABLE = True
+except ImportError:
+    from contextlib import contextmanager
+    from abc import ABC
+    
+    # Stub classes for CLI context
+    ServiceContainer = None
+    BaseService = ABC  # Use ABC as a placeholder base class
+    BACKEND_AVAILABLE = False
+    
+    # No-op context manager when metrics aren't available
+    @contextmanager
+    def track_job(*args, **kwargs):
+        class NoOpTracker:
+            def set_success(self, success): pass
+            def set_error(self, error): pass
+        yield NoOpTracker()
 
 
 class TaskRegistry:
@@ -239,71 +271,82 @@ class TaskExecutor:
         start_time = datetime.now(timezone.utc)
         task_instance = None
 
-        try:
-            # Record execution start
-            self.task_store.record_execution_start(task_id, execution_id)
-            
-            # Create task instance and context
-            task_instance = task_class()
-            
-            context = TaskContext(
-                task_id=task_id,
-                config_manager=self.config_manager,
-                db_connection=self.db_connection,
-                instance_config=task_config.get('config', {}),
-                execution_id=execution_id,
-                service_container=self.container,
-                retry_count=retry_count  # Phase 6.2: Pass retry count to context
-            )
-            
-            # Apply task defaults to context for config resolution
-            context.task_defaults = task_instance.get_default_config()
-            
-            # Check resource constraints
-            if not await self._check_resource_constraints(context):
-                result = TaskResult(success=False, message="Resource constraints not met", skipped=True)
-                await self._record_completion(task_id, execution_id, result, TaskStatus.SKIPPED, start_time)
-                return result
-            
-            # Execute task with timeout
-            scheduler_config = self.get_config("scheduler", {})
-            timeout = scheduler_config.get("task_timeout", 3600)  # 1 hour default
-            
+        # Track job execution metrics
+        with track_job(task_id, queue_name=task_config.get('queue', 'default')) as tracker:
             try:
-                result = await asyncio.wait_for(task_instance.execute(context), timeout=timeout)
-                status = TaskStatus.COMPLETED if result.success else TaskStatus.FAILED
+                # Record execution start
+                self.task_store.record_execution_start(task_id, execution_id)
                 
-            except asyncio.TimeoutError:
-                result = TaskResult(success=False, error="Task execution timed out")
-                status = TaskStatus.FAILED
-                self.logger.error(f"Task {task_id} timed out after {timeout} seconds")
-            
-            # Record completion
-            await self._record_completion(task_id, execution_id, result, status, start_time)
-            
-            self.logger.info(f"Task {task_id} completed: {result.message}")
-            return result
-            
-        except Exception as e:
-            error_msg = f"Task execution failed: {str(e)}"
-            result = TaskResult(success=False, error=error_msg)
-            await self._record_completion(task_id, execution_id, result, TaskStatus.FAILED, start_time)
-            
-            self.logger.error(f"Task {task_id} failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return result
-            
-        finally:
-            # Cleanup
-            if task_instance:
+                # Create task instance and context
+                task_instance = task_class()
+                
+                context = TaskContext(
+                    task_id=task_id,
+                    config_manager=self.config_manager,
+                    db_connection=self.db_connection,
+                    instance_config=task_config.get('config', {}),
+                    execution_id=execution_id,
+                    service_container=self.container,
+                    retry_count=retry_count  # Phase 6.2: Pass retry count to context
+                )
+                
+                # Apply task defaults to context for config resolution
+                context.task_defaults = task_instance.get_default_config()
+                
+                # Check resource constraints
+                if not await self._check_resource_constraints(context):
+                    result = TaskResult(success=False, message="Resource constraints not met", skipped=True)
+                    await self._record_completion(task_id, execution_id, result, TaskStatus.SKIPPED, start_time)
+                    tracker.set_success(False)
+                    return result
+                
+                # Execute task with timeout
+                scheduler_config = self.get_config("scheduler", {})
+                timeout = scheduler_config.get("task_timeout", 3600)  # 1 hour default
+                
                 try:
-                    await task_instance.cleanup()
-                except Exception as e:
-                    self.logger.warning(f"Task cleanup failed for {task_id}: {e}")
-            
-            # Release lock
-            await self.task_store.release_lock(task_id, execution_id)
+                    result = await asyncio.wait_for(task_instance.execute(context), timeout=timeout)
+                    status = TaskStatus.COMPLETED if result.success else TaskStatus.FAILED
+                    
+                except asyncio.TimeoutError:
+                    result = TaskResult(success=False, error="Task execution timed out")
+                    status = TaskStatus.FAILED
+                    self.logger.error(f"Task {task_id} timed out after {timeout} seconds")
+                
+                # Record completion
+                await self._record_completion(task_id, execution_id, result, status, start_time)
+                
+                # Record metrics
+                tracker.set_success(result.success)
+                if not result.success and result.error:
+                    tracker.set_error(result.error)
+                
+                self.logger.info(f"Task {task_id} completed: {result.message}")
+                return result
+                
+            except Exception as e:
+                error_msg = f"Task execution failed: {str(e)}"
+                result = TaskResult(success=False, error=error_msg)
+                await self._record_completion(task_id, execution_id, result, TaskStatus.FAILED, start_time)
+                
+                tracker.set_success(False)
+                tracker.set_error(error_msg)
+                
+                self.logger.error(f"Task {task_id} failed: {e}")
+                import traceback
+                traceback.print_exc()
+                return result
+                
+            finally:
+                # Cleanup
+                if task_instance:
+                    try:
+                        await task_instance.cleanup()
+                    except Exception as e:
+                        self.logger.warning(f"Task cleanup failed for {task_id}: {e}")
+                
+                # Release lock
+                await self.task_store.release_lock(task_id, execution_id)
 
             # Remove from running tasks
             try:

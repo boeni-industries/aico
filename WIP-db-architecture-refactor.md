@@ -876,7 +876,98 @@ SQLite is excellent for application data but fundamentally incompatible with hig
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2026-01-09  
+## CRITICAL: Logging System Refactor Required
+
+**Date Added:** 2026-01-10  
+**Priority:** HIGH - Must be completed before moving logs to InfluxDB
+
+### Current Logging System Issues
+
+**Architecture Problems:**
+- Logs currently write to LibSQL `system_logs` table
+- High-frequency writes from all services (backend, modelservice, CLI, log consumer)
+- Extensive workarounds and patchwork to handle SQLite concurrency
+- Complex retry logic with busy timeouts (10-30 seconds)
+- Blocking writes in critical request paths
+- Database locked errors under normal load
+
+**Technical Debt:**
+- `shared/aico/core/logging.py` - Complex buffering and retry mechanisms
+- `backend/plugins/log_consumer_plugin.py` - Workarounds for write contention
+- `shared/aico/data/libsql/connection.py` - Busy timeout pragmas and retry logic
+- Protobuf message pipeline with ZMQ transport - works but adds complexity
+- Multiple layers of error handling to prevent log write failures from crashing services
+
+**Performance Impact:**
+- Log writes compete with metrics writes for SQLite lock
+- Can cause 1-5 second stalls during high-frequency logging
+- Contributes to overall system deadlock issues
+- Not suitable for production scale (100+ users)
+
+### Required Refactor Scope
+
+**Phase 1: Architecture Redesign**
+1. **Remove SQLite dependency for logs**
+   - Stop writing to `system_logs` table in LibSQL
+   - Remove all SQLite-specific retry and timeout logic
+   - Clean up busy timeout workarounds
+
+2. **Implement async buffering**
+   - In-memory log buffer with configurable size
+   - Batch writes to reduce I/O overhead
+   - Non-blocking log calls in critical paths
+   - Graceful overflow handling (drop oldest or write to disk)
+
+3. **Direct InfluxDB integration**
+   - Write logs directly to InfluxDB `system_logs` measurement
+   - Use line protocol for efficient writes
+   - Leverage InfluxDB's native time-series capabilities
+   - Remove intermediate protobuf/ZMQ complexity for logs
+
+**Phase 2: Implementation**
+1. Create new `InfluxDBLogHandler` in `shared/aico/core/logging.py`
+2. Replace `ZMQLogTransport` with direct InfluxDB writes
+3. Update log consumer to read from InfluxDB instead of message bus
+4. Remove `system_logs` table from LibSQL schema
+5. Update CLI log commands to query InfluxDB
+
+**Phase 3: Migration**
+1. Dual-write period (SQLite + InfluxDB) for verification
+2. Parallel run for 1 week to ensure data consistency
+3. Cutover to InfluxDB as primary log store
+4. Remove SQLite logging code and workarounds
+5. Update documentation and deployment guides
+
+### Success Criteria
+
+- ✅ No SQLite writes for logs
+- ✅ Log writes never block request processing
+- ✅ Sub-millisecond log call latency
+- ✅ Handle 10,000+ logs/minute without degradation
+- ✅ No database locked errors related to logging
+- ✅ Clean, maintainable codebase without workarounds
+
+### Estimated Effort
+
+- **Design & Planning:** 1-2 days
+- **Implementation:** 3-5 days
+- **Testing & Migration:** 2-3 days
+- **Total:** 1-2 weeks
+
+### Dependencies
+
+- ✅ InfluxDB operational (DONE)
+- ✅ InfluxDB credentials and connection working (DONE)
+- ⚠️ Metrics system fully instrumented (IN PROGRESS)
+- ❌ Logging system refactor (TODO)
+
+### Notes
+
+This refactor is **critical** and should be completed before attempting to scale beyond 20-30 concurrent users. The current logging system is a major contributor to the overall database contention issues and cannot be fixed with SQLite optimizations alone.
+
+---
+
+**Document Version:** 1.1  
+**Last Updated:** 2026-01-10  
 **Author:** Cascade AI Assistant  
-**Status:** Ready for Review
+**Status:** In Progress - Logging refactor documented

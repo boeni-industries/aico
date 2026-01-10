@@ -19,6 +19,34 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message as ProtobufMessage
 
+# Optional metrics import
+# Note: We have both bus.py (this file) and bus/ (directory) in aico.core
+# To avoid naming conflicts, we import using importlib
+try:
+    import importlib.util
+    import os
+    import sys
+    
+    # Load metrics module directly from the bus directory
+    metrics_path = os.path.join(os.path.dirname(__file__), 'bus', 'metrics.py')
+    spec = importlib.util.spec_from_file_location("bus_metrics", metrics_path)
+    metrics_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(metrics_module)
+    track_message = metrics_module.track_message
+    METRICS_AVAILABLE = True
+except Exception as e:
+    from contextlib import contextmanager
+    METRICS_AVAILABLE = False
+    
+    # No-op context manager when metrics aren't available
+    @contextmanager
+    def track_message(*args, **kwargs):
+        class NoOpTracker:
+            def set_success(self, success): pass
+            def set_message_count(self, count): pass
+            def set_processing_time(self, time_ms): pass
+        yield NoOpTracker()
+
 # Windows compatibility fix for ZeroMQ
 if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -289,51 +317,56 @@ class MessageBusClient:
         if not self.running:
             raise MessageBusError("Client not connected")
         
-        # Create message metadata
-        metadata = _create_message_metadata(
-            message_id=str(uuid.uuid4()),
-            source=self.client_id,
-            message_type=topic
-        )
-        
-        # Add optional attributes
-        if correlation_id:
-            metadata.attributes["correlation_id"] = correlation_id
-        if reply_to:
-            metadata.attributes["reply_to"] = reply_to
-        if attributes:
-            metadata.attributes.update(attributes)
-        
-        # Create AICO message envelope
-        from ..proto.aico_core_envelope_pb2 import AicoMessage
-        message = AicoMessage()
-        message.metadata.CopyFrom(metadata)
-        
-        # Pack payload into Any field
-        any_payload = ProtoAny()
-        any_payload.Pack(payload)
-        message.any_payload.CopyFrom(any_payload)
-        
-        # Serialize message
-        message_data = message.SerializeToString()
-        
-        # Send the message
-        await self.publisher.send_multipart([topic.encode('utf-8'), message_data])
-        
-        # Security logging: Message publication (disabled to prevent feedback loop)
-        # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
-        # self.logger.debug(f"Published {encryption_status} protobuf message to topic '{topic}': {metadata.message_id}")
-        # self.logger.debug(f"Message data length: {len(message_data)} bytes")
-        # Skip security warnings for infrastructure components to prevent feedback loops
-        if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
-            self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
-        
-        # Encrypted message logging disabled to prevent log spam
-        # Messages are encrypted and working - no need to log every single one at DEBUG level
-        
-        # Persist message if enabled
-        if self.persistence_enabled:
-            await self._persist_message(message)
+        # Track message publication metrics with client context
+        with track_message(topic, client_id=self.client_id, direction="publish") as tracker:
+            # Create message metadata
+            metadata = _create_message_metadata(
+                message_id=str(uuid.uuid4()),
+                source=self.client_id,
+                message_type=topic
+            )
+            
+            # Add optional attributes
+            if correlation_id:
+                metadata.attributes["correlation_id"] = correlation_id
+            if reply_to:
+                metadata.attributes["reply_to"] = reply_to
+            if attributes:
+                metadata.attributes.update(attributes)
+            
+            # Create AICO message envelope
+            from ..proto.aico_core_envelope_pb2 import AicoMessage
+            message = AicoMessage()
+            message.metadata.CopyFrom(metadata)
+            
+            # Pack payload into Any field
+            any_payload = ProtoAny()
+            any_payload.Pack(payload)
+            message.any_payload.CopyFrom(any_payload)
+            
+            # Serialize message
+            message_data = message.SerializeToString()
+            
+            # Send the message
+            await self.publisher.send_multipart([topic.encode('utf-8'), message_data])
+            
+            # Metrics are automatically recorded by track_message context manager
+            # (duration and count are tracked automatically)
+            
+            # Security logging: Message publication (disabled to prevent feedback loop)
+            # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
+            # self.logger.debug(f"Published {encryption_status} protobuf message to topic '{topic}': {metadata.message_id}")
+            # self.logger.debug(f"Message data length: {len(message_data)} bytes")
+            # Skip security warnings for infrastructure components to prevent feedback loops
+            if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
+                self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
+            
+            # Encrypted message logging disabled to prevent log spam
+            # Messages are encrypted and working - no need to log every single one at DEBUG level
+            
+            # Persist message if enabled
+            if self.persistence_enabled:
+                await self._persist_message(message)
     
     async def subscribe(self, topic_pattern: str, callback: Callable[[AicoMessage], None]):
         """Subscribe to messages matching a topic pattern"""
@@ -412,29 +445,31 @@ class MessageBusClient:
     
     async def _invoke_callback(self, callback, message):
         """Invoke callback with proper error handling"""
-        # Use infrastructure logging context for logging transport components
-        context = get_logging_context()
+        # Extract topic from message metadata for metrics
+        topic = message.metadata.message_type if message.metadata else "unknown"
+        source = message.metadata.source if message.metadata else "unknown"
         
-        # Check if this is an infrastructure component based on logger type
-        is_infrastructure = hasattr(self.logger, '__class__') and 'InfrastructureLogger' in str(type(self.logger))
-        
-        if is_infrastructure:
-            with context.infrastructure_logging(self.client_id):
-                try:
+        # Track message processing metrics with context
+        with track_message(topic, client_id=self.client_id, direction="consume", source=source) as tracker:
+            # Use infrastructure logging context for logging transport components
+            context = get_logging_context()
+            
+            # Check if this is an infrastructure component based on logger type
+            is_infrastructure = hasattr(self.logger, '__class__') and 'InfrastructureLogger' in str(type(self.logger))
+            
+            if is_infrastructure:
+                with context.infrastructure_logging(self.client_id):
                     if asyncio.iscoroutinefunction(callback):
                         await callback(message)
                     else:
                         callback(message)
-                except Exception as e:
-                    self.logger.exception(f"Error in message callback: {e}")
-        else:
-            try:
+            else:
                 if asyncio.iscoroutinefunction(callback):
                     await callback(message)
                 else:
                     callback(message)
-            except Exception as e:
-                self.logger.exception(f"Error in message callback: {e}")
+            
+            # Metrics are automatically recorded by track_message context manager
     
     async def _persist_message(self, message: AicoMessage):
         """Persist message using the provided handler (if persistence enabled)"""

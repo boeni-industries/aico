@@ -48,6 +48,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.data.lmdb import get_lmdb_path, initialize_lmdb_env
 from aico.ai.memory.temporal import TemporalMetadata
+from .metrics import track_query
 
 logger = get_logger("shared", "ai.memory.working")
 
@@ -95,50 +96,54 @@ class WorkingMemoryStore:
         logger.info(f"💾 [WORKING_MEMORY] Storing message for conversation {conversation_id}")
         logger.info(f"💾 [WORKING_MEMORY] Message type: {message.get('message_type', 'unknown')}")
 
-        try:
-            db = self.dbs.get("session_memory")
-            if db is None:
-                raise ConnectionError("session_memory database not open.")
+        with track_query("working_memory_store", memory_layer="working") as tracker:
+            try:
+                db = self.dbs.get("session_memory")
+                if db is None:
+                    raise ConnectionError("session_memory database not open.")
 
-            timestamp = datetime.utcnow()
-            # Use conversation_id as primary key with timestamp for ordering
-            key_str = f"{conversation_id}:{timestamp.isoformat()}Z"
-            key = key_str.encode('utf-8')
+                timestamp = datetime.utcnow()
+                # Use conversation_id as primary key with timestamp for ordering
+                key_str = f"{conversation_id}:{timestamp.isoformat()}Z"
+                key = key_str.encode('utf-8')
 
-            # Convert datetime objects to ISO format strings for JSON serialization
-            serializable_message = {}
-            for msg_key, msg_value in message.items():
-                if isinstance(msg_value, datetime):
-                    serializable_message[msg_key] = msg_value.isoformat() + "Z"
-                else:
-                    serializable_message[msg_key] = msg_value
-            
-            # Create temporal metadata for this message
-            temporal_meta = TemporalMetadata(
-                created_at=timestamp,
-                last_updated=timestamp,
-                last_accessed=timestamp,
-                access_count=0,
-                confidence=1.0,
-                version=1
-            )
-            
-            storage_data = {
-                **serializable_message,
-                "_stored_at": timestamp.isoformat() + "Z",
-                "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat() + "Z",
-                "temporal_metadata": temporal_meta.to_dict()
-            }
+                # Convert datetime objects to ISO format strings for JSON serialization
+                serializable_message = {}
+                for msg_key, msg_value in message.items():
+                    if isinstance(msg_value, datetime):
+                        serializable_message[msg_key] = msg_value.isoformat() + "Z"
+                    else:
+                        serializable_message[msg_key] = msg_value
+                
+                # Create temporal metadata for this message
+                temporal_meta = TemporalMetadata(
+                    created_at=timestamp,
+                    last_updated=timestamp,
+                    last_accessed=timestamp,
+                    access_count=0,
+                    confidence=1.0,
+                    version=1
+                )
+                
+                storage_data = {
+                    **serializable_message,
+                    "_stored_at": timestamp.isoformat() + "Z",
+                    "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat() + "Z",
+                    "temporal_metadata": temporal_meta.to_dict()
+                }
 
-            with self.env.begin(write=True, db=db) as txn:
-                txn.put(key, json.dumps(storage_data).encode('utf-8'))
+                with self.env.begin(write=True, db=db) as txn:
+                    txn.put(key, json.dumps(storage_data).encode('utf-8'))
 
-            logger.info(f"💾 [WORKING_MEMORY] ✅ Message stored successfully")
-            return True
+                logger.info(f"💾 [WORKING_MEMORY] ✅ Message stored successfully")
+                tracker.set_results_count(1)
+                tracker.set_success(True)
+                return True
 
-        except Exception as e:
-            logger.error(f"💾 [WORKING_MEMORY] ❌ Failed to store message: {e}")
-            return False
+            except Exception as e:
+                logger.error(f"💾 [WORKING_MEMORY] ❌ Failed to store message: {e}")
+                tracker.set_success(False)
+                return False
 
     async def retrieve_conversation_history(self, conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Retrieve recent messages for a given conversation_id."""
@@ -147,45 +152,49 @@ class WorkingMemoryStore:
 
         logger.info(f"🔍 [WORKING_MEMORY] Retrieving history for conversation {conversation_id} (limit: {limit})")
 
-        history = []
-        try:
-            db = self.dbs.get("session_memory")
-            if db is None:
-                raise ConnectionError("session_memory database not open.")
+        with track_query("working_memory_retrieve", memory_layer="working") as tracker:
+            history = []
+            try:
+                db = self.dbs.get("session_memory")
+                if db is None:
+                    raise ConnectionError("session_memory database not open.")
 
-            logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for conversation {conversation_id}.")
-            with self.env.begin(db=db) as txn:
-                cursor = txn.cursor()
-                # Seek to the start of the desired conversation
-                prefix = f"{conversation_id}:".encode('utf-8')
-                if cursor.set_range(prefix):
-                    for key, value in cursor:
-                        if not key.startswith(prefix):
-                            break  # Moved past the desired conversation
+                logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for conversation {conversation_id}.")
+                with self.env.begin(db=db) as txn:
+                    cursor = txn.cursor()
+                    # Seek to the start of the desired conversation
+                    prefix = f"{conversation_id}:".encode('utf-8')
+                    if cursor.set_range(prefix):
+                        for key, value in cursor:
+                            if not key.startswith(prefix):
+                                break  # Moved past the desired conversation
 
-                        data = json.loads(value.decode('utf-8'))
-                        if self._is_expired(data):
-                            # Optional: could delete expired entries here in a separate write txn
-                            continue
+                            data = json.loads(value.decode('utf-8'))
+                            if self._is_expired(data):
+                                # Optional: could delete expired entries here in a separate write txn
+                                continue
 
-                        # Update temporal metadata on access
-                        self._update_temporal_access(data)
-                        history.append(data)
-                        # Don't break early - collect ALL messages for this conversation
+                            # Update temporal metadata on access
+                            self._update_temporal_access(data)
+                            history.append(data)
+                            # Don't break early - collect ALL messages for this conversation
 
-            # CRITICAL: Sort by timestamp FIRST, then limit
-            # LMDB iterates in lexicographical key order, not timestamp order
-            history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
-            
-            # Now take the most recent N messages after sorting
-            history = history[:limit]
-            
-            logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from conversation history")
-            return history
+                # CRITICAL: Sort by timestamp FIRST, then limit
+                # LMDB iterates in lexicographical key order, not timestamp order
+                history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
+                
+                # Now take the most recent N messages after sorting
+                history = history[:limit]
+                
+                logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from conversation history")
+                tracker.set_results_count(len(history))
+                tracker.set_success(True)
+                return history
 
-        except Exception as e:
-            logger.error(f"🔍 [WORKING_MEMORY] ❌ Failed to retrieve conversation history: {e}")
-            return []
+            except Exception as e:
+                logger.error(f"🔍 [WORKING_MEMORY] ❌ Failed to retrieve conversation history: {e}")
+                tracker.set_success(False)
+                return []
 
     async def retrieve_user_history(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Retrieve recent messages for a given user_id across all conversations."""
