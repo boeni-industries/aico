@@ -1109,6 +1109,8 @@ CREATE TABLE IF NOT EXISTS "system_logs" (
 
 CREATE INDEX IF NOT EXISTS idx_logs_level ON "system_logs"(level);
 
+CREATE INDEX IF NOT EXISTS idx_logs_level_timestamp ON "system_logs"(level, timestamp DESC);
+
 CREATE INDEX IF NOT EXISTS idx_logs_module ON "system_logs"(module);
 
 CREATE INDEX IF NOT EXISTS idx_logs_session_id ON "system_logs"(session_id);

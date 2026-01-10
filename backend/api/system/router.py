@@ -17,17 +17,9 @@ logger = get_logger("backend", "api.system")
 
 router = APIRouter()
 
-# Include metrics router
-from backend.api.system.metrics import router as metrics_router
+# Include new modular metrics router (InfluxDB-based, zero LibSQL dependencies)
+from backend.api.metrics import router as metrics_router
 router.include_router(metrics_router)
-
-# Include metrics drilldown router
-from backend.api.system.metrics_drilldown import router as metrics_drilldown_router
-router.include_router(metrics_drilldown_router)
-
-# Include modelservice metrics router
-from backend.api.system.modelservice_metrics import router as modelservice_metrics_router
-router.include_router(modelservice_metrics_router)
 
 # Track server start time
 start_time = time.time()
@@ -81,18 +73,26 @@ async def get_system_overview(
         - active_goals: Count of active goals from agency
         - system_status: Overall health status
     """
+    from backend.api.system.profiler import PerformanceTimer
+    timer = PerformanceTimer("get_system_overview")
+    
     try:
+        timer.start("auth_check")
         user_id = user.get("user_id")
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User ID not found in token"
             )
+        timer.stop("auth_check")
         
+        timer.start("uptime_calc")
         # Calculate uptime
         uptime_seconds = time.time() - start_time
         uptime_formatted = format_uptime(uptime_seconds)
+        timer.stop("uptime_calc")
         
+        timer.start("lmdb_conversation_scan")
         # Get active conversations count from working memory (LMDB)
         # Conversations are stored in LMDB, not in SQL tables
         active_conversations = 0
@@ -127,7 +127,9 @@ async def get_system_overview(
                 active_conversations = len(conversation_ids)
         except Exception as e:
             logger.debug(f"Conversation count unavailable: {e}")
+        timer.stop("lmdb_conversation_scan")
         
+        timer.start("db_goals_query")
         # Get active goals count from agency_goals table
         active_goals = 0
         try:
@@ -143,12 +145,19 @@ async def get_system_overview(
             active_goals = result[0] if result else 0
         except Exception as e:
             logger.debug(f"Goals count unavailable: {e}")
+        timer.stop("db_goals_query")
         
+        timer.start("db_system_logs_query")
         # Get recent system events (errors and warnings from logs)
         # Group by message to combine duplicates
         recent_events = []
         try:
+            # Calculate 24-hour cutoff for recent logs
+            from datetime import datetime, timedelta, timezone
+            cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            
             # Query system_logs for recent errors and warnings, grouped by message
+            # Filter by timestamp first to reduce dataset before GROUP BY
             logs_result = db_connection.execute(
                 """
                 SELECT 
@@ -160,10 +169,12 @@ async def get_system_overview(
                     COUNT(*) as occurrence_count
                 FROM system_logs 
                 WHERE level IN ('ERROR', 'WARNING')
+                AND timestamp >= ?
                 GROUP BY level, subsystem, module, message
                 ORDER BY latest_timestamp DESC 
                 LIMIT 20
-                """
+                """,
+                [cutoff_24h]
             ).fetchall()
             
             for log_entry in logs_result:
@@ -189,7 +200,9 @@ async def get_system_overview(
                 ))
         except Exception as e:
             logger.debug(f"Failed to fetch recent events: {e}")
+        timer.stop("db_system_logs_query")
         
+        timer.start("status_calculation")
         # Determine system status based on recent errors
         error_count = sum(1 for event in recent_events if event.severity == 'error')
         if error_count >= 3:
@@ -198,8 +211,10 @@ async def get_system_overview(
             system_status = "attention"
         else:
             system_status = "ok"
+        timer.stop("status_calculation")
         
-        return SystemOverviewResponse(
+        timer.start("response_construction")
+        response = SystemOverviewResponse(
             uptime_seconds=uptime_seconds,
             uptime_formatted=uptime_formatted,
             active_conversations=active_conversations,
@@ -207,6 +222,10 @@ async def get_system_overview(
             system_status=system_status,
             recent_events=recent_events
         )
+        timer.stop("response_construction")
+        
+        timer.report(log_threshold_ms=500)
+        return response
         
     except HTTPException:
         raise
