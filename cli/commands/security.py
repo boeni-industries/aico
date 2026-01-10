@@ -54,6 +54,8 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("session", "Show CLI session status and timeout information"),
             ("clear", "Clear cached master key (forces password re-entry)"),
             ("test", "Performance diagnostics and key derivation benchmarking"),
+            ("list-keys", "List all AICO keys stored in system keyring"),
+            ("get-key", "Retrieve value of a specific key from keyring"),
             ("pg-set", "Store Postgres password securely via AICOKeyManager"),
             ("pg-env", "Export Postgres env vars for CI/CD and docker-compose"),
             ("influx-set", "Store InfluxDB API token securely via AICOKeyManager"),
@@ -80,6 +82,9 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             "aico security session",
             "aico security test",
             "aico security passwd",
+            "aico security list-keys",
+            "aico security get-key influx_admin_password",
+            "aico security get-key influx_admin_token_password --show",
             "aico security pg-set",
             "aico security influx-set",
             "aico security pg-env --ci --format env --include-secrets",
@@ -482,6 +487,183 @@ def influx_set():
 
     console.print("✅ [green]InfluxDB API token stored securely[/green]")
     console.print("🔐 Use 'aico security influx-env' to export env vars for CI/CD or docker-compose.")
+
+
+@app.command("list-keys", help="List all AICO keys stored in system keyring")
+def list_keys(
+    show_values: bool = typer.Option(False, "--show", "-s", help="Show actual key values (redacted by default)")
+):
+    """List all AICO keys stored in the system keyring.
+    
+    Shows all keys managed by AICO including database passwords, tokens, and secrets.
+    Values are redacted by default for security.
+    """
+    import keyring
+    import subprocess
+    
+    key_manager = _get_key_manager()
+    service_name = key_manager.service_name
+    
+    console.print(f"\n🔑 [bold cyan]AICO Keyring Entries[/bold cyan] (service: {service_name})\n")
+    
+    # Get all keyring entries for AICO service
+    try:
+        # Use security command to list all AICO keyring entries
+        result = subprocess.run(
+            ["security", "dump-keychain"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        
+        # Parse the output to find AICO entries
+        # Format: "acct" comes before "svce" in each entry block
+        entries = []
+        current_entry = {}
+        
+        for line in result.stdout.split('\n'):
+            # Look for account name first
+            if '"acct"<blob>=' in line:
+                try:
+                    account = line.split('"acct"<blob>="')[1].split('"')[0]
+                    current_entry = {'account': account}
+                except (IndexError, ValueError):
+                    continue
+            # Then look for service name
+            elif '"svce"<blob>=' in line and current_entry.get('account'):
+                if '"AICO"' in line or '"AICO_Test"' in line:
+                    service = 'AICO' if '"AICO"' in line and 'Test' not in line else 'AICO_Test'
+                    current_entry['service'] = service
+                    entries.append(current_entry)
+                current_entry = {}
+        
+        # Remove duplicates based on account name
+        seen = set()
+        unique_entries = []
+        for entry in entries:
+            if entry['account'] not in seen:
+                seen.add(entry['account'])
+                unique_entries.append(entry)
+        entries = unique_entries
+        
+        # Create table
+        table = Table(
+            title="Stored Keys",
+            show_header=True,
+            header_style="bold yellow",
+            border_style="bright_blue",
+            box=box.SIMPLE_HEAD
+        )
+        table.add_column("Key Name", style="bold white", justify="left")
+        table.add_column("Type", style="cyan", justify="left")
+        table.add_column("Value", style="dim", justify="left")
+        
+        # Categorize and display entries
+        for entry in entries:
+            account = entry['account']
+            
+            # Determine key type
+            if 'password' in account:
+                key_type = "Database Password"
+            elif 'token' in account:
+                key_type = "API Token"
+            elif 'secret' in account:
+                key_type = "Secret"
+            elif account == 'master_key':
+                key_type = "Master Key"
+            elif account == 'salt':
+                key_type = "Salt"
+            else:
+                key_type = "Other"
+            
+            # Get value if requested
+            if show_values:
+                try:
+                    value = keyring.get_password(entry['service'], account)
+                    if value:
+                        # Show first 8 and last 4 characters for security
+                        if len(value) > 20:
+                            display_value = f"{value[:8]}...{value[-4:]}"
+                        else:
+                            display_value = value[:8] + "..."
+                    else:
+                        display_value = "[red]Not found[/red]"
+                except Exception as e:
+                    display_value = f"[red]Error: {e}[/red]"
+            else:
+                display_value = "********"
+            
+            table.add_row(account, key_type, display_value)
+        
+        console.print(table)
+        console.print(f"\n📊 Total: {len(entries)} keys stored\n")
+        
+        if not show_values:
+            console.print("💡 [dim]Use --show to display actual values (use with caution)[/dim]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to list keyring entries: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("get-key", help="Retrieve value of a specific key from keyring")
+@sensitive("retrieves sensitive key value from system keyring")
+def get_key(
+    key_name: str = typer.Argument(..., help="Name of the key to retrieve"),
+    show: bool = typer.Option(False, "--show", "-s", help="Show the full value (copies to clipboard by default)"),
+    copy: bool = typer.Option(True, "--copy/--no-copy", "-c", help="Copy value to clipboard")
+):
+    """Retrieve value of a specific key from the system keyring.
+    
+    By default, copies the value to clipboard without displaying it.
+    Use --show to display the value in the terminal.
+    
+    Examples:
+        aico security get-key influx_admin_password
+        aico security get-key influx_admin_token_password --show
+        aico security get-key postgres_postgres_password --no-copy --show
+    """
+    import keyring
+    import subprocess
+    
+    key_manager = _get_key_manager()
+    service_name = key_manager.service_name
+    
+    try:
+        # Try to get the value from keyring
+        value = keyring.get_password(service_name, key_name)
+        
+        if not value:
+            console.print(f"❌ [red]Key '{key_name}' not found in keyring[/red]")
+            console.print(f"\n💡 Use 'aico security list-keys' to see available keys")
+            raise typer.Exit(1)
+        
+        # Copy to clipboard if requested
+        if copy:
+            try:
+                process = subprocess.Popen(
+                    ['pbcopy'],
+                    stdin=subprocess.PIPE,
+                    close_fds=True
+                )
+                process.communicate(value.encode('utf-8'))
+                console.print(f"✅ [green]Value copied to clipboard[/green]")
+            except Exception as e:
+                console.print(f"⚠️ [yellow]Failed to copy to clipboard: {e}[/yellow]")
+        
+        # Show value if requested
+        if show:
+            console.print(f"\n🔑 [bold cyan]Key:[/bold cyan] {key_name}")
+            console.print(f"🔐 [bold yellow]Value:[/bold yellow]\n")
+            console.print(f"[green]{value}[/green]\n")
+        elif not copy:
+            # If not showing and not copying, just confirm it exists
+            console.print(f"✅ [green]Key '{key_name}' found[/green]")
+            console.print(f"💡 Use --show to display the value")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to retrieve key: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command("influx-env", help="Export InfluxDB env vars for CI/CD and docker-compose")
