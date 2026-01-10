@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS agency_arbiter_adjustments (
                 notes TEXT                          -- Optional explanation
             );
 
-CREATE INDEX IF NOT EXISTS idx_arbiter_adjustments_active ON agency_arbiter_adjustments(active) WHERE active IS TRUE;
+CREATE INDEX IF NOT EXISTS idx_arbiter_adjustments_active ON agency_arbiter_adjustments(active) WHERE active = TRUE;
 
 CREATE INDEX IF NOT EXISTS idx_arbiter_adjustments_lesson ON agency_arbiter_adjustments(lesson_id);
 
@@ -483,7 +483,7 @@ CREATE TABLE IF NOT EXISTS "ams_behavioral_feedback" (
             skill_id TEXT,
             reward INTEGER,
             reason TEXT,
-            TIMESTAMPTZ TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
             processed INTEGER DEFAULT 0,
             outcome TEXT,
             execution_time_ms INTEGER,
@@ -545,7 +545,7 @@ CREATE TABLE IF NOT EXISTS "ams_trajectories" (
             selected_skill_id TEXT,
             context_bucket TEXT,
             feedback_reward INTEGER,
-            TIMESTAMPTZ TIMESTAMPTZ NOT NULL,
+            timestamp TIMESTAMPTZ NOT NULL,
             archived BOOLEAN DEFAULT FALSE,
             agency_context TEXT,
             message_id TEXT,
@@ -588,7 +588,7 @@ CREATE INDEX IF NOT EXISTS idx_facts_confidence ON "ams_user_memories"(confidenc
 
 CREATE INDEX IF NOT EXISTS idx_facts_content_type ON "ams_user_memories"(user_id, content_type) WHERE extraction_method = 'user_curated';
 
-CREATE INDEX IF NOT EXISTS idx_facts_favorite ON "ams_user_memories"(user_id, is_favorite) WHERE is_favorite IS TRUE;
+CREATE INDEX IF NOT EXISTS idx_facts_favorite ON "ams_user_memories"(user_id, is_favorite) WHERE is_favorite = TRUE;
 
 CREATE INDEX IF NOT EXISTS idx_facts_immutable ON "ams_user_memories"(is_immutable);
 
@@ -599,10 +599,6 @@ CREATE INDEX IF NOT EXISTS idx_facts_user_curated ON "ams_user_memories"(user_id
 CREATE INDEX IF NOT EXISTS idx_facts_user_type ON "ams_user_memories"(user_id, fact_type);
 
 CREATE INDEX IF NOT EXISTS idx_facts_validity ON "ams_user_memories"(valid_from, valid_until);
-
-;
-
-;
 
 CREATE TABLE IF NOT EXISTS arbiter_ab_tests (
                 test_id TEXT PRIMARY KEY,
@@ -779,7 +775,7 @@ CREATE INDEX IF NOT EXISTS idx_initiations_user_id ON "conversation_initiations"
 CREATE TABLE IF NOT EXISTS emotion_history (
                 id BIGSERIAL PRIMARY KEY,
                 user_id TEXT NOT NULL DEFAULT 'system',
-                TIMESTAMPTZ TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
                 feeling TEXT NOT NULL,
                 valence DOUBLE PRECISION NOT NULL,
                 arousal DOUBLE PRECISION NOT NULL,
@@ -789,12 +785,12 @@ CREATE TABLE IF NOT EXISTS emotion_history (
 
 CREATE INDEX IF NOT EXISTS idx_emotion_history_feeling ON emotion_history(feeling);
 
-CREATE INDEX IF NOT EXISTS idx_emotion_history_user_time ON emotion_history(user_id, TIMESTAMPTZ DESC);
+CREATE INDEX IF NOT EXISTS idx_emotion_history_user_time ON emotion_history(user_id, timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS emotion_state (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 user_id TEXT NOT NULL DEFAULT 'system',
-                TIMESTAMPTZ TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
                 subjective_feeling TEXT NOT NULL,
                 mood_valence DOUBLE PRECISION NOT NULL,
                 mood_arousal DOUBLE PRECISION NOT NULL,
@@ -1073,7 +1069,7 @@ CREATE INDEX IF NOT EXISTS idx_replay_sessions_user ON "system_event_replay_sess
 
 CREATE TABLE IF NOT EXISTS "system_events" (
                 id BIGSERIAL PRIMARY KEY,
-                TIMESTAMPTZ TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
                 topic TEXT NOT NULL,
                 source TEXT NOT NULL,
                 message_type TEXT NOT NULL,
@@ -1091,11 +1087,11 @@ CREATE INDEX IF NOT EXISTS idx_events_message_id ON "system_events"(message_id);
 
 CREATE INDEX IF NOT EXISTS idx_events_source ON "system_events"(source);
 
-CREATE INDEX IF NOT EXISTS idx_events_topic_timestamp ON "system_events"(topic, TIMESTAMPTZ);
+CREATE INDEX IF NOT EXISTS idx_events_topic_timestamp ON "system_events"(topic, timestamp);
 
 CREATE TABLE IF NOT EXISTS "system_logs" (
                 id BIGSERIAL PRIMARY KEY,
-                TIMESTAMPTZ TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
                 level TEXT NOT NULL,
                 subsystem TEXT NOT NULL,
                 module TEXT NOT NULL,
@@ -1119,11 +1115,11 @@ CREATE INDEX IF NOT EXISTS idx_logs_session_id ON "system_logs"(session_id);
 
 CREATE INDEX IF NOT EXISTS idx_logs_subsystem ON "system_logs"(subsystem);
 
-CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON "system_logs"(TIMESTAMPTZ);
+CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON "system_logs"(timestamp);
 
 CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON "system_logs"(trace_id);
 
-CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON "system_logs"(user_uuid, TIMESTAMPTZ);
+CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON "system_logs"(user_uuid, timestamp);
 
 CREATE TABLE IF NOT EXISTS "user_feedback_requests" (
             request_id TEXT PRIMARY KEY,
@@ -1253,104 +1249,7 @@ CREATE TABLE IF NOT EXISTS user_time_preferences (
 
 CREATE INDEX IF NOT EXISTS idx_user_time_preferences_user ON user_time_preferences(user_id, active);
 
-CREATE INDEX IF NOT EXISTS idx_user_time_preferences_active ON user_time_preferences(active) WHERE active IS TRUE;
-
-CREATE TABLE IF NOT EXISTS otel_api_requests (
-                id BIGSERIAL PRIMARY KEY,
-                TIMESTAMPTZ DOUBLE PRECISION NOT NULL,
-                method TEXT NOT NULL,
-                path TEXT NOT NULL,
-                status_code INTEGER NOT NULL,
-                latency_ms DOUBLE PRECISION NOT NULL,
-                protocol TEXT DEFAULT 'REST',
-                service TEXT,
-                category TEXT,
-                client_id TEXT,
-                error_message TEXT,
-                created_at TIMESTAMPTZ DEFAULT (CURRENT_TIMESTAMP)
-            );
-
-CREATE INDEX IF NOT EXISTS idx_otel_api_requests_timestamp ON otel_api_requests(TIMESTAMPTZ);
-
-CREATE INDEX IF NOT EXISTS idx_otel_api_requests_path ON otel_api_requests(path);
-
-CREATE INDEX IF NOT EXISTS idx_otel_api_requests_status ON otel_api_requests(status_code);
-
-CREATE INDEX IF NOT EXISTS idx_otel_api_requests_service ON otel_api_requests(service);
-
-CREATE INDEX IF NOT EXISTS idx_otel_api_requests_category ON otel_api_requests(category);
-
-CREATE TABLE IF NOT EXISTS otel_model_inferences (
-                id BIGSERIAL PRIMARY KEY,
-                TIMESTAMPTZ DOUBLE PRECISION NOT NULL,
-                model_name TEXT NOT NULL,
-                task_type TEXT NOT NULL DEFAULT 'unknown',
-                inference_time_ms DOUBLE PRECISION NOT NULL,
-                tokens_generated INTEGER,
-                prompt_tokens INTEGER,
-                entities_count INTEGER,
-                entity_types TEXT,
-                confidence_score DOUBLE PRECISION,
-                sentiment_result TEXT,
-                ttft DOUBLE PRECISION,
-                success INTEGER NOT NULL,
-                error_message TEXT,
-                created_at TIMESTAMPTZ DEFAULT (CURRENT_TIMESTAMP)
-            );
-
-CREATE INDEX IF NOT EXISTS idx_otel_model_inferences_timestamp ON otel_model_inferences(TIMESTAMPTZ);
-
-CREATE INDEX IF NOT EXISTS idx_otel_model_inferences_model ON otel_model_inferences(model_name);
-
-CREATE INDEX IF NOT EXISTS idx_otel_model_inferences_task_type ON otel_model_inferences(task_type);
-
-CREATE INDEX IF NOT EXISTS idx_otel_model_inferences_success ON otel_model_inferences(success);
-
-CREATE TABLE IF NOT EXISTS otel_memory_queries (
-                id BIGSERIAL PRIMARY KEY,
-                TIMESTAMPTZ DOUBLE PRECISION NOT NULL,
-                query_type TEXT NOT NULL,
-                query_time_ms DOUBLE PRECISION NOT NULL,
-                results_count INTEGER,
-                success INTEGER NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT (CURRENT_TIMESTAMP)
-            );
-
-CREATE INDEX IF NOT EXISTS idx_otel_memory_queries_timestamp ON otel_memory_queries(TIMESTAMPTZ);
-
-CREATE INDEX IF NOT EXISTS idx_otel_memory_queries_type ON otel_memory_queries(query_type);
-
-CREATE TABLE IF NOT EXISTS otel_scheduler_jobs (
-                id BIGSERIAL PRIMARY KEY,
-                TIMESTAMPTZ DOUBLE PRECISION NOT NULL,
-                job_type TEXT NOT NULL,
-                queue_name TEXT NOT NULL,
-                duration_ms DOUBLE PRECISION NOT NULL,
-                success INTEGER NOT NULL,
-                error_message TEXT,
-                created_at TIMESTAMPTZ DEFAULT (CURRENT_TIMESTAMP)
-            );
-
-CREATE INDEX IF NOT EXISTS idx_otel_scheduler_jobs_timestamp ON otel_scheduler_jobs(TIMESTAMPTZ);
-
-CREATE INDEX IF NOT EXISTS idx_otel_scheduler_jobs_type ON otel_scheduler_jobs(job_type);
-
-CREATE INDEX IF NOT EXISTS idx_otel_scheduler_jobs_success ON otel_scheduler_jobs(success);
-
-CREATE TABLE IF NOT EXISTS otel_message_bus_events (
-                id BIGSERIAL PRIMARY KEY,
-                TIMESTAMPTZ DOUBLE PRECISION NOT NULL,
-                topic TEXT NOT NULL,
-                message_count INTEGER DEFAULT 1,
-                processing_time_ms DOUBLE PRECISION,
-                backlog_depth INTEGER,
-                consumer_count INTEGER,
-                created_at TIMESTAMPTZ DEFAULT (CURRENT_TIMESTAMP)
-            );
-
-CREATE INDEX IF NOT EXISTS idx_otel_message_bus_events_timestamp ON otel_message_bus_events(TIMESTAMPTZ);
-
-CREATE INDEX IF NOT EXISTS idx_otel_message_bus_events_topic ON otel_message_bus_events(topic);
+CREATE INDEX IF NOT EXISTS idx_user_time_preferences_active ON user_time_preferences(active) WHERE active = TRUE;
 
 
 -- Foreign key constraints added after all tables are created

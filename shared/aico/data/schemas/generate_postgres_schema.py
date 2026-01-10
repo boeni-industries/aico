@@ -120,7 +120,9 @@ def convert_to_postgres(stmt: str) -> str:
     )
     stmt = re.sub(r'\bDATETIME\b', 'TIMESTAMPTZ', stmt, flags=re.IGNORECASE)
     
-    # TIMESTAMP -> TIMESTAMPTZ
+    # TIMESTAMP -> TIMESTAMPTZ (only when used as a type, not as a field name)
+    # Match: field_name TIMESTAMP [constraints]
+    # Don't match: timestamp TEXT (where timestamp is the field name)
     stmt = re.sub(
         r"TIMESTAMP\s+DEFAULT\s+CURRENT_TIMESTAMP",
         "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
@@ -133,7 +135,14 @@ def convert_to_postgres(stmt: str) -> str:
         stmt,
         flags=re.IGNORECASE
     )
-    stmt = re.sub(r'\bTIMESTAMP\b', 'TIMESTAMPTZ', stmt, flags=re.IGNORECASE)
+    # Only convert TIMESTAMP when it's followed by a comma, closing paren, or constraint keyword
+    # This avoids converting field names like "timestamp"
+    stmt = re.sub(
+        r'\bTIMESTAMP\b(\s*[,)]|\s+(?:DEFAULT|CHECK|UNIQUE|REFERENCES))',
+        r'TIMESTAMPTZ\1',
+        stmt,
+        flags=re.IGNORECASE
+    )
     
     # Convert SQLite TIMESTAMPTZ('now', 'utc') to PostgreSQL CURRENT_TIMESTAMP
     stmt = re.sub(
@@ -258,10 +267,23 @@ def main():
         if not stmt:
             continue
         
-        # Convert to PostgreSQL syntax
-        stmt = convert_to_postgres(stmt)
+        # Skip otel_* tables - they're OpenTelemetry metrics that go to InfluxDB
+        if 'CREATE TABLE' in stmt.upper():
+            table_name = extract_table_name(stmt)
+            if table_name and table_name.startswith('otel_'):
+                continue
+        
+        # Skip indices on otel_* tables
+        if 'CREATE INDEX' in stmt.upper() and 'otel_' in stmt:
+            continue
+        
+        # Skip indices with json_extract - they're replaced by PostgreSQL-compatible versions
+        if 'CREATE INDEX' in stmt.upper() and 'json_extract' in stmt.lower():
+            continue
         
         if 'CREATE TABLE' in stmt.upper():
+            # Convert to PostgreSQL syntax (type conversions, etc.)
+            stmt = convert_to_postgres(stmt)
             # Remove foreign keys and collect them
             modified_stmt, fk_constraints = remove_foreign_keys(stmt)
             all_fk_constraints.extend(fk_constraints)
@@ -270,8 +292,36 @@ def main():
                 modified_stmt = modified_stmt.rstrip() + ';'
             output_lines.append(modified_stmt)
             output_lines.append("")
+        elif 'CREATE INDEX' in stmt.upper():
+            # Add IF NOT EXISTS to CREATE INDEX (but don't apply type conversions)
+            stmt = re.sub(
+                r'CREATE INDEX\s+',
+                'CREATE INDEX IF NOT EXISTS ',
+                stmt,
+                flags=re.IGNORECASE
+            )
+            # Fix partial index predicates for BOOLEAN columns
+            # Convert WHERE field = 1 to WHERE field = TRUE
+            # Convert WHERE field = 0 to WHERE field = FALSE
+            stmt = re.sub(
+                r'WHERE\s+(\w+)\s*=\s*1\b',
+                r'WHERE \1 = TRUE',
+                stmt,
+                flags=re.IGNORECASE
+            )
+            stmt = re.sub(
+                r'WHERE\s+(\w+)\s*=\s*0\b',
+                r'WHERE \1 = FALSE',
+                stmt,
+                flags=re.IGNORECASE
+            )
+            # Ensure statement ends with semicolon
+            if not stmt.rstrip().endswith(';'):
+                stmt = stmt.rstrip() + ';'
+            output_lines.append(stmt)
+            output_lines.append("")
         else:
-            # Index or other statement - add as-is
+            # Other statement - add as-is
             # Ensure statement ends with semicolon
             if not stmt.rstrip().endswith(';'):
                 stmt = stmt.rstrip() + ';'
@@ -286,6 +336,44 @@ def main():
     alter_statements = generate_alter_table_statements(all_fk_constraints)
     for alter_stmt in alter_statements:
         output_lines.append(alter_stmt)
+    
+    # Add PostgreSQL-specific JSONB functions and indexes
+    output_lines.append("-- Immutable wrapper functions for JSONB extraction (required for functional indexes)")
+    output_lines.append("CREATE OR REPLACE FUNCTION jsonb_extract_text_immutable(data TEXT, path TEXT)")
+    output_lines.append("RETURNS TEXT AS $$")
+    output_lines.append("BEGIN")
+    output_lines.append("  RETURN (data::jsonb)->>path;")
+    output_lines.append("END;")
+    output_lines.append("$$ LANGUAGE plpgsql IMMUTABLE;")
+    output_lines.append("")
+    output_lines.append("CREATE OR REPLACE FUNCTION jsonb_extract_timestamptz_immutable(data TEXT, path TEXT)")
+    output_lines.append("RETURNS TIMESTAMPTZ AS $$")
+    output_lines.append("BEGIN")
+    output_lines.append("  RETURN ((data::jsonb)->>path)::timestamptz;")
+    output_lines.append("END;")
+    output_lines.append("$$ LANGUAGE plpgsql IMMUTABLE;")
+    output_lines.append("")
+    output_lines.append("CREATE OR REPLACE FUNCTION jsonb_extract_double_immutable(data TEXT, path TEXT)")
+    output_lines.append("RETURNS DOUBLE PRECISION AS $$")
+    output_lines.append("BEGIN")
+    output_lines.append("  RETURN ((data::jsonb)->>path)::double precision;")
+    output_lines.append("END;")
+    output_lines.append("$$ LANGUAGE plpgsql IMMUTABLE;")
+    output_lines.append("")
+    output_lines.append("-- PostgreSQL-compatible indexes for ams_user_memories JSON fields")
+    output_lines.append("-- These replace the 2 skipped json_extract() indexes from SQLite")
+    output_lines.append("")
+    output_lines.append("CREATE INDEX IF NOT EXISTS idx_user_memories_superseded ")
+    output_lines.append("  ON ams_user_memories(jsonb_extract_text_immutable(temporal_metadata, 'superseded_by'))")
+    output_lines.append("  WHERE temporal_metadata IS NOT NULL;")
+    output_lines.append("")
+    output_lines.append("CREATE INDEX IF NOT EXISTS idx_user_memories_temporal ")
+    output_lines.append("  ON ams_user_memories(")
+    output_lines.append("    jsonb_extract_timestamptz_immutable(temporal_metadata, 'last_accessed'),")
+    output_lines.append("    jsonb_extract_double_immutable(temporal_metadata, 'confidence')")
+    output_lines.append("  )")
+    output_lines.append("  WHERE temporal_metadata IS NOT NULL;")
+    output_lines.append("")
     
     # Write to file
     output_file = "../postgres/schema.sql"
