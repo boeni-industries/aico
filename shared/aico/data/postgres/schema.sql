@@ -1427,3 +1427,38 @@ ALTER TABLE user_skill_confidence ADD CONSTRAINT fk_user_skill_confidence_user_i
 ALTER TABLE workflow_executions ADD CONSTRAINT fk_workflow_executions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE workflow_stages ADD CONSTRAINT fk_workflow_stages_execution_id_workflow_executions FOREIGN KEY (execution_id) REFERENCES workflow_executions(execution_id) ON DELETE CASCADE;
 ALTER TABLE user_time_preferences ADD CONSTRAINT fk_user_time_preferences_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+-- Immutable wrapper functions for JSONB extraction (required for functional indexes)
+CREATE OR REPLACE FUNCTION jsonb_extract_text_immutable(data TEXT, path TEXT)
+RETURNS TEXT AS $$
+BEGIN
+  RETURN (data::jsonb)->>path;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION jsonb_extract_timestamptz_immutable(data TEXT, path TEXT)
+RETURNS TIMESTAMPTZ AS $$
+BEGIN
+  RETURN ((data::jsonb)->>path)::timestamptz;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION jsonb_extract_double_immutable(data TEXT, path TEXT)
+RETURNS DOUBLE PRECISION AS $$
+BEGIN
+  RETURN ((data::jsonb)->>path)::double precision;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- PostgreSQL-compatible indexes for ams_user_memories JSON fields
+-- These replace the 2 skipped json_extract() indexes from SQLite
+
+CREATE INDEX IF NOT EXISTS idx_user_memories_superseded 
+  ON ams_user_memories(jsonb_extract_text_immutable(temporal_metadata, 'superseded_by'))
+  WHERE temporal_metadata IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_user_memories_temporal 
+  ON ams_user_memories(
+    jsonb_extract_timestamptz_immutable(temporal_metadata, 'last_accessed'),
+    jsonb_extract_double_immutable(temporal_metadata, 'confidence')
+  )
+  WHERE temporal_metadata IS NOT NULL;
