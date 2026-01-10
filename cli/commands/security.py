@@ -581,11 +581,7 @@ def list_keys(
                 try:
                     value = keyring.get_password(entry['service'], account)
                     if value:
-                        # Show first 8 and last 4 characters for security
-                        if len(value) > 20:
-                            display_value = f"{value[:8]}...{value[-4:]}"
-                        else:
-                            display_value = value[:8] + "..."
+                        display_value = value
                     else:
                         display_value = "[red]Not found[/red]"
                 except Exception as e:
