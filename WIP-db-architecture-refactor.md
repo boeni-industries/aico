@@ -642,6 +642,10 @@ We keep secrets/password handling **fully automated** and consistent across LibS
   - Offer explicit, well-named subcommands for managing backend secrets:
     - `aico security pg-set` / `aico security pg-env` for Postgres.
     - `aico security influx-set` / `aico security influx-env` for InfluxDB.
+  - Provide clear orchestration commands for deployment and lifecycle:
+    - `aico pg init` / `aico influx init` for idempotent schema/bootstrap.
+    - `aico deploy pg` / `aico deploy influx` for full provisioning (optionally with `--nuke` to wipe volumes and start fresh).
+    - `aico pg start|stop|status` and `aico influx start|stop|status` for local container lifecycle.
 
 ### 8.4 Success Criteria
 

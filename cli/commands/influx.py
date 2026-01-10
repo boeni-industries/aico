@@ -10,6 +10,7 @@ not installation.
 
 import sys
 import socket
+import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -35,6 +36,8 @@ from cli.utils.help_formatter import format_subcommand_help
 from cli.utils.formatting import (
     format_error,
     format_info,
+    format_success,
+    format_warning,
 )
 
 console = Console()
@@ -49,11 +52,17 @@ def influx_callback(
         subcommands = [
             ("status", "Show InfluxDB configuration and basic reachability"),
             ("doctor", "Run detailed environment checks for InfluxDB"),
+            ("init", "Initialize or update the InfluxDB org/bucket (idempotent)"),
+            ("start", "Start the InfluxDB container (docker-compose local)"),
+            ("stop", "Stop the InfluxDB container (docker-compose local)"),
         ]
 
         examples = [
             "aico influx status",
             "aico influx doctor",
+            "aico influx init",
+            "aico influx start",
+            "aico influx stop",
         ]
 
         format_subcommand_help(
@@ -88,52 +97,248 @@ def _get_influx_config() -> dict:
         return {}
 
 
-@app.command(help="Show InfluxDB configuration and basic reachability")
+def _get_compose_file() -> Path:
+    """Return path to the local docker-compose file for DB services."""
+    root = Path(__file__).parent.parent.parent
+    return root / "docker" / "docker-compose.local.yml"
+
+
+def _run_compose(args: list[str]) -> int:
+    """Run docker compose with the given args, handling basic errors.
+
+    Returns the subprocess return code.
+    """
+
+    compose_file = _get_compose_file()
+    if not compose_file.exists():
+        console.print(
+            format_error(
+                f"Docker compose file not found: {compose_file}. "
+                "Ensure local docker configuration is present."
+            )
+        )
+        return 1
+
+    cmd = [
+        "docker",
+        "compose",
+        "-f",
+        str(compose_file),
+    ] + args
+
+    try:
+        result = subprocess.run(cmd, check=False)
+        if result.returncode != 0:
+            console.print(
+                format_error(
+                    f"docker compose command failed with exit code {result.returncode}:\n"
+                    + " ".join(cmd)
+                )
+            )
+        return result.returncode
+    except FileNotFoundError:
+        console.print(
+            format_error(
+                "'docker' command not found. Install Docker and ensure it is on your PATH."
+            )
+        )
+        return 1
+
+
+@app.command(help="Show InfluxDB backend status with comprehensive health checks")
 def status():
-    """Show configured InfluxDB endpoint and perform a TCP reachability check."""
+    """Show configuration and perform comprehensive health checks.
+    
+    Checks:
+    - Configuration presence
+    - Container status (if using docker-compose)
+    - TCP connectivity
+    - HTTP API health endpoint
+    - Authentication with token
+    - Org/bucket existence
+    - Credential availability
+    """
 
     cfg = _get_influx_config()
 
-    table = Table(
-        title="✨ [bold cyan]InfluxDB Backend Status[/bold cyan]",
-        title_justify="left",
-        border_style="bright_blue",
-        header_style="bold yellow",
-        box=box.SIMPLE_HEAD,
-        padding=(0, 1),
-    )
-    table.add_column("Property", style="cyan", justify="left")
-    table.add_column("Value", style="green", justify="left")
+    console.rule("[bold cyan]InfluxDB Backend Status[/bold cyan]")
 
     if not cfg:
-        table.add_row(
-            "Configuration",
-            "[red]No core.database.influx configuration found in core.yaml[/red]",
-        )
-        console.print(table)
-        return
+        console.print(format_error("No core.database.influx configuration found in core.yaml"))
+        raise typer.Exit(code=1)
 
+    # Extract config
     url = cfg.get("url", "http://127.0.0.1:8086")
     org = cfg.get("org", "aico")
     bucket = cfg.get("bucket", "aico_telemetry")
-
-    table.add_row("URL", url)
-    table.add_row("Org", org)
-    table.add_row("Bucket", bucket)
 
     parsed = urlparse(url)
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or (443 if parsed.scheme == "https" else 8086)
 
+    # Configuration table
+    config_table = Table(
+        title="📋 Configuration",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1),
+    )
+    config_table.add_column("Property", style="cyan")
+    config_table.add_column("Value", style="white")
+    config_table.add_row("URL", url)
+    config_table.add_row("Org", org)
+    config_table.add_row("Bucket", bucket)
+    console.print(config_table)
+    console.print()
+
+    # Health checks table
+    health_table = Table(
+        title="🏥 Health Checks",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1),
+    )
+    health_table.add_column("Check", style="cyan", justify="left")
+    health_table.add_column("Status", justify="left")
+    health_table.add_column("Details", style="dim", justify="left")
+
+    # 1. Container status check
     try:
-        with socket.create_connection((host, port), timeout=2.0):
-            reachable = "[green]reachable (TCP connect OK)[/green]"
-    except OSError as exc:  # pragma: no cover - best-effort diagnostic
-        reachable = f"[red]unreachable ({exc.__class__.__name__}: {exc})[/red]"
+        result = subprocess.run(
+            ["docker", "ps", "--filter", "name=aico-influxdb", "--format", "{{.Status}}"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            container_status = result.stdout.strip()
+            if "Up" in container_status:
+                health_table.add_row("Container", "[green]✓ Running[/green]", container_status)
+            else:
+                health_table.add_row("Container", "[yellow]⚠ Not running[/yellow]", container_status)
+        else:
+            health_table.add_row("Container", "[yellow]⚠ Not found[/yellow]", "Run 'aico deploy influx' to start")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        health_table.add_row("Container", "[dim]○ Unknown[/dim]", "Docker not available")
 
-    table.add_row("Network Reachability", reachable)
+    # 2. TCP connectivity
+    try:
+        with socket.create_connection((host, port), timeout=3.0):
+            health_table.add_row("TCP Connectivity", "[green]✓ Connected[/green]", f"{host}:{port}")
+            tcp_ok = True
+    except OSError as exc:
+        health_table.add_row("TCP Connectivity", "[red]✗ Failed[/red]", f"{exc.__class__.__name__}")
+        tcp_ok = False
 
-    console.print(table)
+    # 3. HTTP health endpoint
+    if tcp_ok:
+        try:
+            response = requests.get(f"{url}/health", timeout=3)
+            if response.status_code == 200:
+                health_table.add_row("HTTP Health", "[green]✓ Healthy[/green]", "API responding")
+                http_ok = True
+            else:
+                health_table.add_row("HTTP Health", "[yellow]⚠ Unhealthy[/yellow]", f"Status {response.status_code}")
+                http_ok = False
+        except requests.RequestException as e:
+            health_table.add_row("HTTP Health", "[red]✗ Failed[/red]", str(e)[:50])
+            http_ok = False
+    else:
+        health_table.add_row("HTTP Health", "[dim]○ Skipped[/dim]", "TCP not connected")
+        http_ok = False
+
+    # 4. Credential availability
+    from aico.security.key_manager import AICOKeyManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize(lightweight=True)
+    key_manager = AICOKeyManager(config_manager)
+    
+    admin_token = key_manager.get_database_password("influx", username="admin_token")
+    
+    if admin_token:
+        health_table.add_row("Credentials", "[green]✓ Available[/green]", "Token stored in keyring")
+        has_token = True
+    else:
+        health_table.add_row("Credentials", "[yellow]⚠ Missing[/yellow]", "Run 'aico deploy influx'")
+        has_token = False
+
+    # 5. Authentication check (only if HTTP works and we have token)
+    if http_ok and has_token:
+        try:
+            headers = {"Authorization": f"Token {admin_token}"}
+            response = requests.get(f"{url}/api/v2/me", headers=headers, timeout=3)
+            if response.status_code == 200:
+                health_table.add_row("Authentication", "[green]✓ Authenticated[/green]", "Token valid")
+                auth_ok = True
+            else:
+                health_table.add_row("Authentication", "[red]✗ Failed[/red]", f"Status {response.status_code}")
+                auth_ok = False
+        except requests.RequestException as e:
+            health_table.add_row("Authentication", "[yellow]⚠ Error[/yellow]", str(e)[:50])
+            auth_ok = False
+    else:
+        health_table.add_row("Authentication", "[dim]○ Skipped[/dim]", "Prerequisites not met")
+        auth_ok = False
+
+    # 6. Org existence check (only if authenticated)
+    if auth_ok:
+        try:
+            headers = {"Authorization": f"Token {admin_token}"}
+            response = requests.get(f"{url}/api/v2/orgs", headers=headers, timeout=3)
+            if response.status_code == 200:
+                orgs = response.json().get("orgs", [])
+                org_exists = any(o.get("name") == org for o in orgs)
+                if org_exists:
+                    health_table.add_row("Org Exists", "[green]✓ Found[/green]", f"Org '{org}' exists")
+                    org_ok = True
+                else:
+                    health_table.add_row("Org Exists", "[yellow]⚠ Not found[/yellow]", "Run 'aico influx init'")
+                    org_ok = False
+            else:
+                health_table.add_row("Org Exists", "[yellow]⚠ Error[/yellow]", f"Status {response.status_code}")
+                org_ok = False
+        except requests.RequestException as e:
+            health_table.add_row("Org Exists", "[dim]○ Unknown[/dim]", str(e)[:50])
+            org_ok = False
+    else:
+        health_table.add_row("Org Exists", "[dim]○ Skipped[/dim]", "Not authenticated")
+        org_ok = False
+
+    # 7. Bucket existence check (only if org exists)
+    if org_ok:
+        try:
+            headers = {"Authorization": f"Token {admin_token}"}
+            response = requests.get(f"{url}/api/v2/buckets", headers=headers, params={"org": org}, timeout=3)
+            if response.status_code == 200:
+                buckets = response.json().get("buckets", [])
+                bucket_exists = any(b.get("name") == bucket for b in buckets)
+                if bucket_exists:
+                    health_table.add_row("Bucket Exists", "[green]✓ Found[/green]", f"Bucket '{bucket}' exists")
+                else:
+                    health_table.add_row("Bucket Exists", "[yellow]⚠ Not found[/yellow]", "Run 'aico influx init'")
+            else:
+                health_table.add_row("Bucket Exists", "[yellow]⚠ Error[/yellow]", f"Status {response.status_code}")
+        except requests.RequestException as e:
+            health_table.add_row("Bucket Exists", "[dim]○ Unknown[/dim]", str(e)[:50])
+    else:
+        health_table.add_row("Bucket Exists", "[dim]○ Skipped[/dim]", "Org not found")
+
+    console.print(health_table)
+    console.print()
+
+    # Summary
+    if tcp_ok and http_ok and has_token and auth_ok and org_ok:
+        console.print(format_success("✅ InfluxDB is healthy and ready"))
+    elif tcp_ok and http_ok and has_token and auth_ok:
+        console.print(format_warning("⚠️  InfluxDB is accessible but org/bucket may need initialization"))
+    elif tcp_ok and http_ok and has_token:
+        console.print(format_warning("⚠️  InfluxDB is accessible but authentication failed"))
+    elif tcp_ok and http_ok:
+        console.print(format_warning("⚠️  InfluxDB is accessible but credentials are missing"))
+    else:
+        console.print(format_error("❌ InfluxDB is not accessible. Run 'aico deploy influx' to set up."))
 
 
 @app.command(help="Run detailed environment checks for InfluxDB")
@@ -242,3 +447,213 @@ def doctor():
         "checks pass, you can enable instrumentation to start writing "
         "telemetry data to InfluxDB."
     )
+
+
+@app.command(help="Initialize or update InfluxDB org/bucket (idempotent)")
+def init(
+    admin_password: str = typer.Option(
+        ...,
+        "--admin-password",
+        envvar="AICO_INFLUX_ADMIN_PASSWORD",
+        prompt=True,
+        hide_input=True,
+        help="Admin password for initial InfluxDB setup (or set AICO_INFLUX_ADMIN_PASSWORD)"
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="AICO_INFLUX_ADMIN_TOKEN",
+        prompt=True,
+        hide_input=True,
+        help="Admin API token for InfluxDB (or set AICO_INFLUX_ADMIN_TOKEN)"
+    ),
+):
+    """Initialize or update the InfluxDB org/bucket.
+
+    This command performs initial InfluxDB setup:
+    - Creates org 'aico' and bucket 'aico_telemetry' if they don't exist.
+    - Generates an admin API token.
+    - Sets retention policy for the bucket (30 days as per schema.lp).
+
+    It is idempotent: if the org/bucket already exist, the command will skip
+    creation and only update retention if needed.
+
+    Required secrets:
+    - AICO_INFLUX_ADMIN_PASSWORD: Admin password for initial setup.
+    - AICO_INFLUX_ADMIN_TOKEN: API token to use (will be created if setup is fresh).
+
+    After running this, store the token via 'aico security influx-set'.
+    """
+
+    console.rule("[bold cyan]InfluxDB Init[/bold cyan]")
+
+    cfg = _get_influx_config()
+    if not cfg:
+        console.print(
+            format_error(
+                "No core.database.influx configuration found in core.yaml. "
+                "Please configure url/org/bucket before running 'aico influx init'."
+            )
+        )
+        raise typer.Exit(code=1)
+
+    url = cfg.get("url", "http://127.0.0.1:8086")
+    org = cfg.get("org", "aico")
+    bucket = cfg.get("bucket", "aico_telemetry")
+
+    parsed = urlparse(url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or (443 if parsed.scheme == "https" else 8086)
+
+    # Connectivity check
+    try:
+        with socket.create_connection((host, port), timeout=3.0):
+            console.print(
+                format_success(f"InfluxDB reachable at {host}:{port}; proceeding with init.")
+            )
+    except OSError as exc:
+        console.print(
+            format_error(
+                f"Cannot connect to InfluxDB at {host}:{port} ({exc.__class__.__name__}: {exc}). "
+                "Start the server/container before running 'aico influx init'."
+            )
+        )
+        raise typer.Exit(code=1)
+
+    # Check if InfluxDB is already set up by querying /api/v2/setup
+    try:
+        setup_url = url.rstrip("/") + "/api/v2/setup"
+        resp = requests.get(setup_url, timeout=3.0)
+        if resp.status_code == 200:
+            setup_data = resp.json()
+            already_setup = not setup_data.get("allowed", True)
+        else:
+            already_setup = False
+    except Exception:
+        already_setup = False
+
+    if not already_setup:
+        console.print("🔧 [cyan]Running initial InfluxDB setup...[/cyan]")
+        # Perform initial setup via docker exec influx setup
+        cmd = [
+            "docker", "exec", "-i", "aico-influxdb",
+            "influx", "setup",
+            "--org", org,
+            "--bucket", bucket,
+            "--username", "aico-admin",
+            "--password", admin_password,
+            "--token", admin_token,
+            "--force"
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            if result.returncode != 0:
+                console.print(
+                    format_error(
+                        f"Failed to run influx setup (exit code {result.returncode}).\n"
+                        f"STDERR: {result.stderr}"
+                    )
+                )
+                raise typer.Exit(code=1)
+
+            console.print(format_success(f"✅ InfluxDB setup complete: org '{org}', bucket '{bucket}' created."))
+            if result.stdout.strip():
+                console.print(f"[dim]influx setup output:[/dim]\n{result.stdout}")
+
+        except FileNotFoundError:
+            console.print(
+                format_error(
+                    "'docker' command not found. Install Docker and ensure it is on your PATH."
+                )
+            )
+            raise typer.Exit(code=1)
+        except Exception as exc:
+            console.print(
+                format_error(f"Unexpected error during InfluxDB setup: {exc}")
+            )
+            raise typer.Exit(code=1)
+    else:
+        console.print(
+            format_warning(
+                f"ℹ️  InfluxDB already set up. Org '{org}' and bucket '{bucket}' should exist."
+            )
+        )
+
+    # Set retention policy for the bucket (30 days as per schema.lp)
+    console.print("🔧 [cyan]Setting retention policy for bucket...[/cyan]")
+    retention_cmd = [
+        "docker", "exec", "-i", "aico-influxdb",
+        "influx", "bucket", "update",
+        "--name", bucket,
+        "--org", org,
+        "--retention", "720h",  # 30 days
+        "--token", admin_token
+    ]
+
+    try:
+        result = subprocess.run(
+            retention_cmd,
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        if result.returncode != 0:
+            console.print(
+                format_warning(
+                    f"Could not update retention policy (exit code {result.returncode}).\n"
+                    f"STDERR: {result.stderr}\n"
+                    "This is non-fatal; you can set retention manually via the InfluxDB UI."
+                )
+            )
+        else:
+            console.print(format_success("✅ Retention policy set to 30 days."))
+
+    except Exception as exc:
+        console.print(
+            format_warning(
+                f"Could not update retention policy: {exc}\n"
+                "This is non-fatal; you can set retention manually via the InfluxDB UI."
+            )
+        )
+
+    # Final instructions
+    console.print(
+        "\n[bold green]✅ InfluxDB initialization complete![/bold green]\n"
+        f"Org: [cyan]{org}[/cyan]\n"
+        f"Bucket: [cyan]{bucket}[/cyan]\n"
+        f"Token: [yellow](use the token you provided)[/yellow]\n\n"
+        "[blue]Next steps:[/blue]\n"
+        "1. Store the token securely: [bold]uv run aico security influx-set[/bold]\n"
+        "2. Export it for runtime: [bold]eval \"$(uv run aico security influx-env --include-secrets --format env)\"[/bold]\n"
+        "3. Verify with: [bold]uv run aico influx doctor[/bold]"
+    )
+
+
+@app.command(help="Start the InfluxDB container using docker-compose.local.yml")
+def start():
+    """Start the local InfluxDB container (docker compose)."""
+
+    console.print("🚀 [cyan]Starting InfluxDB container (docker compose)...[/cyan]")
+    code = _run_compose(["up", "-d", "influxdb"])
+    if code != 0:
+        raise typer.Exit(code)
+    console.print(format_success("InfluxDB container started (if Docker is available)."))
+
+
+@app.command(help="Stop the InfluxDB container using docker-compose.local.yml")
+def stop():
+    """Stop the local InfluxDB container (docker compose)."""
+
+    console.print("🛑 [cyan]Stopping InfluxDB container (docker compose)...[/cyan]")
+    code = _run_compose(["stop", "influxdb"])
+    if code != 0:
+        raise typer.Exit(code)
+    console.print(format_success("InfluxDB container stopped (if it was running)."))

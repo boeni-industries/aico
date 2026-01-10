@@ -72,6 +72,7 @@ from cli.commands.kg import app as kg_app
 from cli.commands.emotion import app as emotion_app
 from cli.commands.pg import app as pg_app
 from cli.commands.influx import app as influx_app
+from cli.commands.deploy import app as deploy_app
 from cli.utils.platform import get_platform_chars
 
 # Get platform-appropriate characters
@@ -93,6 +94,7 @@ app.add_typer(chroma_app, name="chroma", help=f"{chars['database']} ChromaDB sem
 app.add_typer(kg_app, name="kg", help="💡 Knowledge graph management")
 app.add_typer(pg_app, name="pg", help=f"{chars['database']} Postgres/Timescale backend management (experimental)")
 app.add_typer(influx_app, name="influx", help=f"{chars['database']} InfluxDB time-series database management")
+app.add_typer(deploy_app, name="deploy", help=f"{chars['dev']} Deployment orchestration for Postgres/InfluxDB backends")
 app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
 app.add_typer(logs_app, name="logs", help=f"{chars['logs']} Log management and analysis")
 app.add_typer(scheduler_app, name="scheduler", help="⏰ Task scheduler management")

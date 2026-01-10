@@ -78,10 +78,12 @@ class TelemetryManager:
         self.mode = self.config.get('mode', 'casual')
         
         # Create resource with service information
+        import socket
         resource = Resource.create({
             "service.name": "aico-backend",
-            "service.version": "1.0.0",
+            "service.version": "0.5.2",
             "deployment.environment": self.mode,
+            "host.name": socket.gethostname(),
         })
         
         # Initialize tracing
@@ -108,21 +110,51 @@ class TelemetryManager:
     
     def _initialize_metrics(self, resource: Resource, db_connection=None) -> None:
         """Initialize meter provider and readers"""
-        # Create metric exporter for local storage
-        from backend.core.otel_storage_adapter import OTelStorageExporter
+        # Create metric exporter for InfluxDB
+        from backend.core.otel_influx_exporter import OTelInfluxExporter
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        import os
         
-        storage_exporter = OTelStorageExporter(db_connection=db_connection)
+        # Get InfluxDB config from database.influx section
+        db_config = self.config.get('database', {})
+        influx_config = db_config.get('influx', {})
+        influx_url = influx_config.get('url', 'http://127.0.0.1:8086')
+        influx_org = influx_config.get('org', 'aico')
+        influx_bucket = influx_config.get('bucket', 'aico_telemetry')
         
-        # Wrap exporter in periodic reader (exports every 5 seconds)
-        storage_reader = PeriodicExportingMetricReader(
-            exporter=storage_exporter,
-            export_interval_millis=5000,  # 5 seconds
+        # Read token from keyring automatically
+        from aico.security.key_manager import AICOKeyManager
+        from aico.core.config import ConfigurationManager
+        
+        try:
+            config_manager = ConfigurationManager()
+            key_manager = AICOKeyManager(config_manager)
+            influx_token = key_manager.get_database_password('influx', username='admin_token')
+            
+            if not influx_token:
+                logger.warning("InfluxDB token not found in keyring; InfluxDB writes may fail. Run 'aico deploy influx' to set up credentials.")
+        except Exception as e:
+            logger.warning(f"Failed to retrieve InfluxDB token from keyring: {e}")
+            influx_token = None
+        
+        # Create InfluxDB exporter
+        influx_exporter = OTelInfluxExporter(
+            influx_url=influx_url,
+            org=influx_org,
+            bucket=influx_bucket,
+            token=influx_token,
+            resource_attributes=dict(resource.attributes),
+        )
+        
+        # Wrap exporter in periodic reader (exports every 60 seconds)
+        influx_reader = PeriodicExportingMetricReader(
+            exporter=influx_exporter,
+            export_interval_millis=60000,  # 60 seconds (as per schema.lp)
         )
         
         self.meter_provider = MeterProvider(
             resource=resource,
-            metric_readers=[storage_reader]
+            metric_readers=[influx_reader]
         )
         
         metrics.set_meter_provider(self.meter_provider)

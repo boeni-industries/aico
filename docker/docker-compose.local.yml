@@ -1,0 +1,77 @@
+# AICO Local Development Infrastructure
+# All containers are labeled with project ownership and metadata
+name: aico
+
+services:
+  postgres:
+    image: postgres:18.1
+    container_name: aico-postgres
+    restart: unless-stopped
+    environment:
+      # Non-secret parameters; safe to keep here
+      POSTGRES_DB: aico
+      POSTGRES_USER: postgres
+      # Secret is provided via environment (AICO_PG_PASSWORD), never hardcoded
+      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD}
+    ports:
+      # Expose to host so aico CLI / psql can connect (matches core.yaml defaults)
+      - "5432:5432"
+    volumes:
+      # Postgres 18+ requires mount at /var/lib/postgresql (not /data subdirectory)
+      # This supports pg_ctlcluster format and proper version-specific directories
+      - aico-pgdata:/var/lib/postgresql
+    labels:
+      # Project identification
+      com.aico.project: "aico"
+      com.aico.component: "postgres"
+      com.aico.service.type: "database"
+      com.aico.service.role: "primary-datastore"
+      # Standard Docker labels
+      org.opencontainers.image.title: "AICO Postgres Database"
+      org.opencontainers.image.description: "Primary relational database for AICO system"
+      org.opencontainers.image.vendor: "AICO"
+      # Management metadata
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  influxdb:
+    image: influxdb:2
+    container_name: aico-influxdb
+    restart: unless-stopped
+    # For now we do not use DOCKER_INFLUXDB_INIT_* here to avoid hardcoding
+    # any credentials. Initial setup (org/bucket/token) can be done via the
+    # Influx UI or automated later using the AICO CLI once the container is up.
+    ports:
+      - "8086:8086"
+    volumes:
+      - aico-influxdata:/var/lib/influxdb2
+    labels:
+      # Project identification
+      com.aico.project: "aico"
+      com.aico.component: "influxdb"
+      com.aico.service.type: "database"
+      com.aico.service.role: "telemetry-timeseries"
+      # Standard Docker labels
+      org.opencontainers.image.title: "AICO InfluxDB Time-Series Database"
+      org.opencontainers.image.description: "Time-series database for AICO telemetry and metrics"
+      org.opencontainers.image.vendor: "AICO"
+      # Management metadata
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+volumes:
+  aico-pgdata:
+    name: aico-pgdata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "postgres"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-influxdata:
+    name: aico-influxdata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "influxdb"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
