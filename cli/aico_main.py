@@ -151,6 +151,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             (chars["database"], "chroma", "ChromaDB semantic memory management"),
             (chars["database"], "pg", "Postgres/Timescale backend management (experimental)"),
             (chars["database"], "influx", "InfluxDB time-series database management (experimental)"),
+            ("🚀", "deploy", "Deployment orchestration for Postgres/InfluxDB backends"),
             ("💡", "kg", "Knowledge graph management and inspection"),
             (chars["security"], "security", "Master password setup and security management"),
             (chars["config"], "config", "Configuration management and validation"),

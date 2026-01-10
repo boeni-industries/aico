@@ -179,10 +179,9 @@ class BackendLifecycleManager:
         try:
             from backend.core.telemetry import initialize_telemetry
             
-            # Read instrumentation config directly from core config
-            instrumentation_cfg = self.config.get("instrumentation", {})
-            enabled = instrumentation_cfg.get("enabled", False)
-            mode = instrumentation_cfg.get("mode", "dev")
+            # Read instrumentation config from core.instrumentation
+            enabled = self.config.get("core.instrumentation.enabled", False)
+            mode = self.config.get("core.instrumentation.mode", "dev")
 
             if not enabled:
                 # Kill switch is OFF – log clearly to console and logs
@@ -206,7 +205,12 @@ class BackendLifecycleManager:
                     self.logger.warning("Database connection not yet available for telemetry")
             
             # Build config dict expected by initialize_telemetry
-            config_dict = {'instrumentation': instrumentation_cfg}
+            config_dict = {
+                'instrumentation': {
+                    'enabled': enabled,
+                    'mode': mode
+                }
+            }
             
             initialize_telemetry(config_dict, db_connection=db_connection)
             

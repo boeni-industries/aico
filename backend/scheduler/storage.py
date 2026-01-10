@@ -273,23 +273,11 @@ class TaskStore:
         
         def _sync_acquire():
             try:
-                if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 Inside _sync_acquire thread for task {task_id}")
-                
                 now = datetime.now(timezone.utc)
                 expires_at = (now + timedelta(seconds=timeout_seconds)).isoformat()
                 
-                if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 About to clean up expired locks...")
-                
                 # Clean up expired locks first (best-effort)
                 deleted = self.db.execute("DELETE FROM scheduler_task_locks WHERE expires_at < ?", (now.isoformat(),))
-
-                if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 Deleted {deleted.rowcount if hasattr(deleted, 'rowcount') else 0} expired locks")
-
-                if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 About to insert/update lock atomically...")
 
                 # Atomic acquisition:
                 # - If no lock exists: insert succeeds.
@@ -307,9 +295,6 @@ class TaskStore:
                     (task_id, execution_id, expires_at, now.isoformat()),
                 )
 
-                if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 About to commit...")
-
                 self.db.commit()
 
                 # If a non-expired lock existed, the WHERE clause prevents update.
@@ -319,31 +304,16 @@ class TaskStore:
                             "SELECT execution_id, expires_at FROM scheduler_task_locks WHERE task_id = ?",
                             (task_id,),
                         ).fetchone()
-                        if existing:
-                            print(
-                                f"[TASK_STORE] 🔒 ⚠️  Existing lock found: execution_id={existing[0]}, expires_at={existing[1]}"
-                            )
-                        print(f"[TASK_STORE] 🔒 ❌ Lock is still valid, cannot acquire")
                     return False
-
-                if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 Lock acquired successfully!")
 
                 return True
                 
             except sqlite3.IntegrityError:
                 # Lock already exists
-                if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 Lock already exists for {task_id}")
                 return False
             except Exception as e:
-                if os.getenv('AICO_DETACH_MODE') == 'false':
-                    print(f"[TASK_STORE] 🔒 ❌ Error acquiring lock: {e}")
                 self.logger.error(f"Failed to acquire lock for {task_id}: {e}")
                 return False
-        
-        if os.getenv('AICO_DETACH_MODE') == 'false':
-            print(f"[TASK_STORE] 🔒 Calling asyncio.to_thread for acquire_lock...")
         
         return await asyncio.to_thread(_sync_acquire)
     

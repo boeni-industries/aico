@@ -42,6 +42,8 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.41b0",
     "opentelemetry-instrumentation-sqlite3>=0.41b0",
     "opentelemetry-instrumentation-requests>=0.41b0",
+    # InfluxDB client for telemetry storage
+    "influxdb-client>=1.45.0",
 ]
 
 [project.optional-dependencies]

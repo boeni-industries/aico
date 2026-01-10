@@ -96,54 +96,78 @@ async def initialize_modelservice():
     zmq_service = ModelserviceZMQService(cfg, None)  # No ollama_manager yet
     await zmq_service.start_early()  # New method for early startup
     
-    # Initialize database connection for metrics persistence (honor instrumentation flag)
+    # Initialize InfluxDB metrics exporter (honor instrumentation flag)
     instrumentation_config = core_config.get("instrumentation", {})
     if instrumentation_config.get("enabled", False):
-        print("📊 Initializing metrics database connection...")
-        logger.info("Initializing database connection for metrics (instrumentation enabled)")
+        print("📊 Initializing InfluxDB metrics exporter...")
+        logger.info("Initializing InfluxDB metrics exporter (instrumentation enabled)")
         try:
-            from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-            from aico.core.paths import get_default_database_path
-            
-            db_path = get_default_database_path()
-            db_connection = EncryptedLibSQLConnection(str(db_path))
-            
-            # Initialize OpenTelemetry MeterProvider with storage exporter
             from opentelemetry import metrics as otel_metrics
             from opentelemetry.sdk.metrics import MeterProvider
             from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
             from opentelemetry.sdk.resources import Resource
-            from backend.core.otel_storage_adapter import OTelStorageExporter
+            from backend.core.otel_influx_exporter import OTelInfluxExporter
+            import socket
+            
+            # Get InfluxDB config
+            db_config = core_config.get("database", {})
+            influx_config = db_config.get("influx", {})
+            influx_url = influx_config.get("url", "http://127.0.0.1:8086")
+            influx_org = influx_config.get("org", "aico")
+            influx_bucket = influx_config.get("bucket", "aico_telemetry")
+            
+            # Retrieve token from keyring
+            influx_token = None
+            try:
+                from aico.security.key_manager import AICOKeyManager
+                
+                # Use the global config_manager (already initialized at module level)
+                key_manager = AICOKeyManager(config_manager)
+                influx_token = key_manager.get_database_password("influx", username="admin_token")
+                
+                if not influx_token:
+                    logger.warning("InfluxDB token not found in keyring; metrics may not be exported. Run 'aico deploy influx' to set up credentials.")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve InfluxDB token from keyring: {e}")
+                influx_token = None
             
             # Create resource for modelservice
             resource = Resource.create({
                 "service.name": "modelservice",
-                "service.version": __version__
+                "service.version": __version__,
+                "deployment.environment": instrumentation_config.get("mode", "casual"),
+                "host.name": socket.gethostname(),
             })
             
-            # Create storage exporter with database connection
-            storage_exporter = OTelStorageExporter(db_connection=db_connection)
+            # Create InfluxDB exporter
+            influx_exporter = OTelInfluxExporter(
+                influx_url=influx_url,
+                org=influx_org,
+                bucket=influx_bucket,
+                token=influx_token,
+                resource_attributes=dict(resource.attributes),
+            )
             
-            # Wrap exporter in periodic reader (exports every 5 seconds)
-            storage_reader = PeriodicExportingMetricReader(
-                exporter=storage_exporter,
-                export_interval_millis=5000,  # 5 seconds
+            # Wrap exporter in periodic reader (exports every 60 seconds, matching backend)
+            influx_reader = PeriodicExportingMetricReader(
+                exporter=influx_exporter,
+                export_interval_millis=60000,  # 60 seconds (as per schema.lp)
             )
             
             # Create and set meter provider
             meter_provider = MeterProvider(
                 resource=resource,
-                metric_readers=[storage_reader]
+                metric_readers=[influx_reader]
             )
             otel_metrics.set_meter_provider(meter_provider)
             
-            print("✅ Metrics database connection and OTel exporter ready")
-            logger.info("Metrics database connection and OTel MeterProvider initialized successfully")
+            print("✅ InfluxDB metrics exporter ready")
+            logger.info("InfluxDB metrics exporter initialized successfully")
         except Exception as e:
             print(f"⚠️  Metrics initialization failed: {e}")
             logger.warning(f"Metrics initialization failed: {e}")
     else:
-        print("⏹️  Instrumentation disabled in config; skipping metrics database and OTel setup")
+        print("⏹️  Instrumentation disabled in config; skipping metrics setup")
         logger.info("Instrumentation disabled in config; skipping modelservice metrics initialization")
     
     # Initialize ZMQ logging transport - but don't try to connect yet

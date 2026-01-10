@@ -33,9 +33,10 @@ from aico.core.logging_context import create_infrastructure_logger
 config_manager = ConfigurationManager()
 initialize_logging(config_manager, service_name="backend")
 
-# Suppress httpx INFO logging (shows every HTTP request)
+# Suppress noisy third-party and internal library loggers
 import logging
-logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Suppress HTTP request logs
+logging.getLogger("aico.data.influx.connection").setLevel(logging.ERROR)  # Only show InfluxDB errors
 
 from core.lifecycle_manager import BackendLifecycleManager
 

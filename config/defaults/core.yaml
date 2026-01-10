@@ -41,7 +41,7 @@ database:
 
 # Telemetry / instrumentation configuration
 instrumentation:
-  enabled: false  # Global kill switch for OpenTelemetry (tracing + metrics)
+  enabled: true  # Global kill switch for OpenTelemetry (tracing + metrics)
   mode: "dev"  # dev | test | prod
   exporters:
     prometheus:
@@ -56,7 +56,7 @@ logging:
     default: "INFO"  # Default log level for all subsystems
     subsystems:
       cli: "INFO"
-      backend: "INFO" 
+      backend: "INFO"
       frontend: "INFO"
       studio: "INFO"
       modelservice: "INFO"
