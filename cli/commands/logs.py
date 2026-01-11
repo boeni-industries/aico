@@ -118,22 +118,37 @@ def tail_logs(
     from(bucket: "{bucket}")
       |> range(start: -1h)
       |> filter(fn: (r) => {filter_str})
-      |> sort(columns: ["_time"], desc: false)
+      |> sort(columns: ["_time"], desc: true)
       |> limit(n: {lines})
+      |> sort(columns: ["_time"], desc: false)
     '''
     
     try:
         query_api = client.query_api()
         tables = query_api.query(query, org=org)
         
-        if not tables or not tables[0].records:
+        if not tables:
             console.print("[yellow]No logs found matching criteria[/yellow]")
             return
         
-        # Display logs (already sorted oldest to newest)
+        # Collect all records from all tables
+        all_records = []
         for table in tables:
-            for record in table.records:
-                timestamp = record.get_time().strftime("%Y-%m-%d %H:%M:%S")
+            all_records.extend(table.records)
+        
+        if not all_records:
+            console.print("[yellow]No logs found matching criteria[/yellow]")
+            return
+        
+        # Sort all records by timestamp (oldest to newest)
+        all_records.sort(key=lambda r: r.get_time())
+        
+        # Display logs
+        for record in all_records:
+                # Convert UTC timestamp to local time for display
+                utc_time = record.get_time()
+                local_time = utc_time.replace(tzinfo=None) if utc_time.tzinfo is None else utc_time.astimezone()
+                timestamp = local_time.strftime("%Y-%m-%d %H:%M:%S")
                 level = record.values.get("level", "INFO")
                 service_name = record.values.get("service", "unknown")
                 logger_name = record.values.get("logger", "unknown")

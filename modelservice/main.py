@@ -353,6 +353,10 @@ async def main():
     """Main entry point for the modelservice ZMQ service."""
     global _zmq_service
     
+    # Initialize these to None so they're always defined for cleanup
+    ollama_manager = None
+    process_manager = None
+    
     try:
         # Set up signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, signal_handler)
@@ -386,10 +390,11 @@ async def main():
             print(f"Modelservice error: {str(e)}")
         raise
     finally:
-        # Cleanup
+        # Cleanup - ollama_manager and process_manager are always defined (may be None)
         if _zmq_service:
             await _zmq_service.stop()
-        await shutdown_modelservice(ollama_manager, process_manager)
+        if ollama_manager is not None:
+            await shutdown_modelservice(ollama_manager, process_manager)
 
 
 def run_main():

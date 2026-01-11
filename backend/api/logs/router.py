@@ -189,7 +189,9 @@ async def process_log_entry(log_data: dict):
             if len(module_parts) >= 2:
                 module = module_parts[1]  # Use the second part as the module name
         
-        subsystem_logger = get_logger(subsystem, module)
+        # Construct logger name from subsystem and module
+        logger_name = f"{subsystem}.{module}" if module else subsystem
+        subsystem_logger = get_logger(logger_name)
         
         # Map log levels to Python logging levels
         level_mapping = {
