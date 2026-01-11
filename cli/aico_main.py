@@ -48,13 +48,8 @@ from rich.console import Console
 # Create Rich console - no special handling needed after stdout fix
 console = Console()
 
-# Initialize CLI logging BEFORE importing any modules that use get_logger()
-# This prevents "Logging not initialized" errors during module imports
-from cli.utils.logging import initialize_cli_logging
-try:
-    initialize_cli_logging()
-except Exception:
-    pass  # Ignore errors if already initialized or database not ready
+# CLI logging now handled automatically by aico.core.logging
+# No manual initialization needed - logs go directly to InfluxDB
 
 from cli.commands.config import app as config_app
 from cli.commands.version import app as version_app

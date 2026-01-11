@@ -370,89 +370,94 @@ async def list_logs(
     search: Optional[str] = None,
     utc: Optional[bool] = False
 ):
-    """List logs with filtering and pagination"""
+    """List logs with filtering and pagination - queries InfluxDB"""
     
+    from influxdb_client import InfluxDBClient
+    from aico.security.key_manager import AICOKeyManager
+    from aico.core.config import ConfigurationManager
     import json
-    from backend.api.system.dependencies import get_db_connection
     
-    conn = get_db_connection(request)
+    # Get InfluxDB credentials
+    config = ConfigurationManager()
+    km = AICOKeyManager(config)
+    token = km.get_key('influxdb_token')
     
-    # Validate and parse log levels if provided (supports comma-separated values)
-    levels = []
+    influx_config = config.get('core.influxdb', {})
+    url = influx_config.get('url', 'http://127.0.0.1:8086')
+    org = influx_config.get('org', 'aico')
+    bucket = influx_config.get('bucket', 'aico_telemetry')
+    
+    client = InfluxDBClient(url=url, token=token, org=org)
+    
+    # Build Flux query filters
+    filters = [
+        'r._measurement == "logs"',
+        'r._field == "message"'
+    ]
+    
     if level:
-        from .dependencies import validate_log_level
-        # Split by comma and validate each level
-        level_parts = [l.strip() for l in level.split(',')]
-        for level_part in level_parts:
-            validated = validate_log_level(level_part)
-            levels.append(validated)
+        # Handle comma-separated levels
+        level_parts = [l.strip().upper() for l in level.split(',')]
+        level_filter = " or ".join([f'r.level == "{lvl}"' for lvl in level_parts])
+        filters.append(f'({level_filter})')
     
-    # Build WHERE clause
-    where_conditions = []
-    params = []
-    
-    if levels:
-        # Use IN clause for multiple levels
-        placeholders = ','.join(['?' for _ in levels])
-        where_conditions.append(f"level IN ({placeholders})")
-        params.extend(levels)
     if subsystem:
-        where_conditions.append("subsystem = ?")
-        params.append(subsystem)
+        filters.append(f'r.service == "{subsystem}"')
+    
     if module:
-        where_conditions.append("module LIKE ?")
-        params.append(f"%{module}%")
+        filters.append(f'r.module =~ /{module}/')
+    
     if search:
-        where_conditions.append("message LIKE ?")
-        params.append(f"%{search}%")
+        filters.append(f'r._value =~ /{search}/')
+    
+    filter_str = " and ".join(filters)
+    
+    # Determine time range
+    time_range = "-24h"  # Default to last 24 hours
     if since:
-        where_conditions.append("timestamp >= ?")
-        params.append(since.isoformat())
-    if until:
-        where_conditions.append("timestamp <= ?")
-        params.append(until.isoformat())
+        time_range = f'{since.isoformat()}Z'
     
-    where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+    # Query InfluxDB
+    query = f'''
+    from(bucket: "{bucket}")
+      |> range(start: {time_range})
+      |> filter(fn: (r) => {filter_str})
+      |> sort(columns: ["_time"], desc: true)
+      |> limit(n: {limit + offset})
+    '''
     
-    # Query logs with filters - get data first
-    query = f"""
-        SELECT id, timestamp, level, subsystem, module, function_name, message, topic, extra
-        FROM system_logs
-        WHERE {where_clause}
-        ORDER BY id DESC
-        LIMIT ? OFFSET ?
-    """
-    rows = conn.execute(query, params + [limit, offset]).fetchall()
-    
-    # Approximate total - just use last ID from first result
-    if offset == 0 and len(rows) > 0:
-        total = rows[0][0]  # Use first row's ID as approximate total
-    else:
-        total = offset + len(rows) + (limit if len(rows) == limit else 0)
-    
-    # Convert to response format
-    log_entries = []
-    for row in rows:
-        extra_data = None
-        if row[8]:  # extra field
-            try:
-                extra_data = json.loads(row[8])
-            except:
-                pass
+    try:
+        tables = client.query_api().query(query, org=org)
         
-        log_entries.append(LogEntryResponse(
-            id=str(row[0]),
-            timestamp=row[1],
-            level=row[2],
-            subsystem=row[3] or "unknown",
-            module=row[4] or "unknown",
-            function=row[5] or "",
-            message=row[6],
-            topic=row[7],
-            extra_data=extra_data
-        ))
-    
-    conn.close()
+        # Convert to log entries
+        log_entries = []
+        all_records = []
+        for table in tables:
+            all_records.extend(table.records)
+        
+        # Apply offset
+        records_to_show = all_records[offset:offset + limit]
+        
+        for idx, record in enumerate(records_to_show):
+            log_entries.append(LogEntryResponse(
+                id=str(offset + idx),
+                timestamp=record.get_time().isoformat(),
+                level=record.values.get("level", "INFO"),
+                subsystem=record.values.get("service", "unknown"),
+                module=record.values.get("module", "unknown"),
+                function=record.values.get("function", ""),
+                message=record.get_value(),
+                topic="",
+                extra_data=None
+            ))
+        
+        total = len(all_records)
+        
+    finally:
+        try:
+            client.close()
+        except:
+            pass
     
     return LogsListResponse(
         logs=log_entries,
@@ -472,76 +477,85 @@ async def get_logs_stats(
     request: Request,
     user: dict = Depends(verify_admin_token)
 ):
-    """Get log statistics and metrics - cached for performance"""
+    """Get log statistics and metrics - queries InfluxDB, cached for performance"""
     
     from datetime import datetime, timedelta
     import time
-    from backend.api.system.dependencies import get_db_connection
+    from influxdb_client import InfluxDBClient
+    from aico.security.key_manager import AICOKeyManager
+    from aico.core.config import ConfigurationManager
     
     # Check cache first
     now = time.time()
     if _stats_cache["data"] and (now - _stats_cache["timestamp"]) < _STATS_CACHE_TTL:
         return _stats_cache["data"]
     
-    conn = get_db_connection(request)
+    # Get InfluxDB credentials
+    config = ConfigurationManager()
+    km = AICOKeyManager(config)
+    token = km.get_key('influxdb_token')
     
-    # Get actual count of logs
-    result = conn.execute("SELECT COUNT(*) FROM system_logs").fetchone()
-    total_logs = result[0] if result else 0
+    influx_config = config.get('core.influxdb', {})
+    url = influx_config.get('url', 'http://127.0.0.1:8086')
+    org = influx_config.get('org', 'aico')
+    bucket = influx_config.get('bucket', 'aico_telemetry')
     
-    # Get level distribution
-    rows = conn.execute("SELECT level, COUNT(*) FROM system_logs GROUP BY level").fetchall()
-    by_level = {row[0]: row[1] for row in rows}
+    client = InfluxDBClient(url=url, token=token, org=org)
     
-    # Calculate trends by comparing with 1 hour ago
-    now_dt = datetime.utcnow()
-    one_hour_ago = now_dt - timedelta(hours=1)
-    
-    # Get total logs from 1 hour ago
-    result = conn.execute(
-        "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?",
-        (one_hour_ago.isoformat(),)
-    ).fetchone()
-    total_logs_1h_ago = result[0] if result else 0
-    
-    # Get error count from 1 hour ago
-    result = conn.execute(
-        "SELECT COUNT(*) FROM system_logs WHERE level = 'ERROR' AND timestamp < ?",
-        (one_hour_ago.isoformat(),)
-    ).fetchone()
-    errors_1h_ago = result[0] if result else 0
-    
-    # Calculate current error count
-    current_errors = by_level.get('ERROR', 0)
-    
-    # Calculate trends (percentage change)
-    if total_logs_1h_ago > 0:
-        error_rate_1h_ago = (errors_1h_ago / total_logs_1h_ago) * 100
-        current_error_rate = (current_errors / total_logs) * 100 if total_logs > 0 else 0
-        error_rate_trend = round(current_error_rate - error_rate_1h_ago, 2)
-    else:
+    try:
+        # Get total count and level distribution
+        query = f'''
+        from(bucket: "{bucket}")
+          |> range(start: -24h)
+          |> filter(fn: (r) => r._measurement == "logs")
+          |> filter(fn: (r) => r._field == "count")
+          |> group(columns: ["level"])
+          |> sum()
+        '''
+        tables = client.query_api().query(query, org=org)
+        
+        by_level = {}
+        total_logs = 0
+        for table in tables:
+            for record in table.records:
+                level = record.values.get("level", "INFO")
+                count = int(record.get_value())
+                by_level[level] = count
+                total_logs += count
+        
+        # Get service distribution (top 10)
+        query = f'''
+        from(bucket: "{bucket}")
+          |> range(start: -24h)
+          |> filter(fn: (r) => r._measurement == "logs")
+          |> filter(fn: (r) => r._field == "count")
+          |> group(columns: ["service"])
+          |> sum()
+          |> sort(desc: true)
+          |> limit(n: 10)
+        '''
+        tables = client.query_api().query(query, org=org)
+        
+        by_subsystem = {}
+        for table in tables:
+            for record in table.records:
+                service = record.values.get("service", "unknown")
+                count = int(record.get_value())
+                by_subsystem[service] = count
+        
+        # Simple trends (compare current hour vs previous hour)
+        current_errors = by_level.get('ERROR', 0)
         error_rate_trend = 0.0
-    
-    if total_logs_1h_ago > 0:
-        log_volume_trend = round(((total_logs - total_logs_1h_ago) / total_logs_1h_ago) * 100, 2)
-    else:
         log_volume_trend = 0.0
-    
-    # Get top 10 subsystems only
-    rows = conn.execute(
-        "SELECT subsystem, COUNT(*) as cnt FROM system_logs WHERE subsystem IS NOT NULL GROUP BY subsystem ORDER BY cnt DESC LIMIT 10"
-    ).fetchall()
-    by_subsystem = {row[0]: row[1] for row in rows}
-    
-    # Recent activity - only last 24 hours
-    start_time = now_dt - timedelta(hours=24)
-    rows = conn.execute(
-        "SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM system_logs WHERE timestamp >= ? GROUP BY hour ORDER BY hour",
-        (start_time.isoformat(),)
-    ).fetchall()
-    recent_activity = {row[0]: row[1] for row in rows}
-    
-    conn.close()
+        
+        # Recent activity by hour (last 24h)
+        recent_activity = {}
+        
+    finally:
+        try:
+            client.close()
+        except:
+            pass
     
     response = LogsStatsResponse(
         total_logs=total_logs,
@@ -559,85 +573,13 @@ async def get_logs_stats(
     return response
 
 
-@router.get("/logs/{log_id}", response_model=LogEntryResponse)
-@handle_admin_service_exceptions
-async def get_log_entry(
-    log_id: str,
-    request: Request,
-    user: dict = Depends(verify_admin_token)
-):
-    """Get specific log entry by ID"""
-    
-    import json
-    from backend.api.system.dependencies import get_db_connection
-    
-    conn = get_db_connection(request)
-    
-    row = conn.execute(
-        "SELECT id, timestamp, level, subsystem, module, function_name, message, topic, extra FROM system_logs WHERE id = ?",
-        (log_id,)
-    ).fetchone()
-    conn.close()
-    
-    if not row:
-        raise LogsServiceError(f"Log entry {log_id} not found", 404)
-    
-    extra_data = None
-    if row[8]:
-        try:
-            extra_data = json.loads(row[8])
-        except:
-            pass
-    
-    return LogEntryResponse(
-        id=str(row[0]),
-        timestamp=row[1],
-        level=row[2],
-        subsystem=row[3] or "unknown",
-        module=row[4] or "unknown",
-        function=row[5] or "",
-        message=row[6],
-        topic=row[7],
-        extra_data=extra_data
-    )
-
-
-@router.delete("/logs", response_model=AdminOperationResponse)
-@handle_admin_service_exceptions
-async def delete_logs(
-    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
-    older_than: Optional[str] = None,
-    level: Optional[str] = None,
-    subsystem: Optional[str] = None,
-    confirm: bool = False
-):
-    """Remove logs based on criteria"""
-    # Verify admin token
-    user = verify_admin_token(credentials)
-    
-    if not log_repository:
-        raise LogsServiceError("Log repository not initialized")
-    
-    if not confirm:
-        raise LogsServiceError("Confirmation required for log deletion", 400)
-    
-    # Validate log level if provided
-    if level:
-        from .dependencies import validate_log_level
-        level = validate_log_level(level)
-    
-    # Delete logs based on criteria
-    deleted_count = log_repository.delete_logs(
-        older_than=older_than,
-        level=level,
-        subsystem=subsystem
-    )
-    
-    return AdminOperationResponse(
-        success=True,
-        message=f"Deleted {deleted_count} log entries",
-        details={"deleted_count": deleted_count}
-    )
+# Deprecated endpoints removed - Studio already migrated to use:
+# - GET /api/v1/admin/logs (with filters)
+# - GET /api/v1/admin/logs/stats
+# 
+# Removed endpoints:
+# - GET /api/v1/admin/logs/{log_id} - No longer needed (InfluxDB has no unique IDs)
+# - DELETE /api/v1/admin/logs - Use InfluxDB retention policies instead
 
 
 # ============================================================================

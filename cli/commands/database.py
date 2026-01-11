@@ -44,7 +44,8 @@ import aico.data.schemas.schema
 # Import shared utilities using the same pattern as other CLI modules
 from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 from cli.utils.timezone import format_timestamp_local, get_timezone_suffix
-from cli.utils.logging import initialize_cli_logging, get_cli_logger
+# cli.utils.logging removed - use aico.core.logging instead
+from aico.core.logging import get_logger
 from cli.utils.lmdb_utils import initialize_lmdb_cli
 
 def initialize_chromadb_cli(config: Optional[ConfigurationManager] = None, verbose: bool = True) -> None:
@@ -300,20 +301,10 @@ def init(
             # Connect to existing database using session-based auth
             conn = _get_database_connection(str(db_file))
             
-            # Initialize CLI logging with direct database access BEFORE operations
-            try:
-                config = ConfigurationManager()
-                initialize_cli_logging(conn, config)
-                # Test that logging actually works by attempting a log write
-                test_logger = get_cli_logger("cli", "database")
-                test_logger.info("CLI logging initialized successfully for database init")
-                console.print("✅ [green]CLI logging initialized and verified[/green]")
-            except Exception as e:
-                console.print(f"❌ [red]CRITICAL: CLI logging initialization failed: {e}[/red]")
-                console.print(f"[red]Database logging is required for CLI operations[/red]")
-                import traceback
-                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
-                raise typer.Exit(1)
+            # CLI logging now handled automatically by aico.core.logging
+            # Logs go directly to InfluxDB - no manual initialization needed
+            logger = get_logger("cli.database.init")
+            logger.info("Database initialization started")
             
             # Apply any missing schemas
             console.print("📋 Checking for missing database schemas...")
@@ -559,20 +550,9 @@ def status(
             # Database likely encrypted, use session-based authentication
             conn = _get_database_connection(str(db_file))
             
-            # Initialize CLI logging with direct database access BEFORE operations
-            try:
-                config = ConfigurationManager()
-                initialize_cli_logging(conn, config)
-                # Test that logging actually works
-                test_logger = get_cli_logger("cli", "database")
-                test_logger.info("CLI logging initialized successfully for database status")
-                console.print("✅ [green]CLI logging verified[/green]")
-            except Exception as e:
-                console.print(f"❌ [red]CRITICAL: CLI logging verification failed: {e}[/red]")
-                console.print(f"[red]Database logging is required for CLI operations[/red]")
-                import traceback
-                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
-                raise typer.Exit(1)
+            # CLI logging now handled automatically by aico.core.logging
+            logger = get_logger("cli.database.status")
+            logger.info("Database status check started")
             
             info = conn.get_encryption_info()
         else:
@@ -942,20 +922,9 @@ def _get_db_connection():
     # Create database connection
     conn = _get_database_connection(str(db_file))
     
-    # Initialize isolated CLI logging with the SAME connection
-    # This is efficient - we reuse the connection for both command and logging
-    try:
-        initialize_cli_logging(conn, config)
-        # Verify CLI logging works by creating a test logger
-        test_logger = get_cli_logger("cli", "database")
-        test_logger.info("Accessing DB from CLI.")
-        print("✅ CLI logging verified for test command")
-    except Exception as e:
-        print(f"❌ CRITICAL: CLI logging initialization failed: {e}", file=sys.stderr)
-        print(f"Database logging is required for CLI operations", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        raise RuntimeError(f"CLI logging initialization failed: {e}") from e
+    # CLI logging now handled automatically by aico.core.logging
+    logger = get_logger("cli.database.test")
+    logger.info("Database test command started")
     
     return conn
 
@@ -1294,16 +1263,9 @@ def exec(
     query_upper = query.upper().strip()
     is_drop_table = query_upper.startswith("DROP TABLE")
     
-    # Clean up any existing CLI logging connections BEFORE getting new connection
+    # For DROP TABLE, use a completely fresh connection
+    # to avoid any lock conflicts
     if is_drop_table:
-        try:
-            from cli.utils.logging import _cli_logging_manager
-            _cli_logging_manager.cleanup()
-        except:
-            pass
-        
-        # For DROP TABLE, use a completely fresh connection without CLI logging
-        # to avoid any lock conflicts
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         key_manager = AICOKeyManager(config)
@@ -1429,12 +1391,7 @@ def exec(
         console.print(f"[red]Error executing query: {e}[/red]")
         raise typer.Exit(1)
     finally:
-        # CRITICAL: Clean up CLI logging manager BEFORE closing connection
-        # This releases the reference so connection can be fully closed
-        from cli.utils.logging import _cli_logging_manager
-        _cli_logging_manager.cleanup()
-        
-        # Now close cursor and connection
+        # Close cursor and connection
         if cursor:
             cursor.close()
         conn.close()

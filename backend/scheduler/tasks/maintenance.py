@@ -72,44 +72,11 @@ class LogCleanupTask(BaseTask):
             return TaskResult(success=False, error=error_msg)
     
     def _cleanup_database_logs(self, context: TaskContext, retention_days: int) -> int:
-        """Clean up old log entries from database"""
-        try:
-            # Format to match database timestamp format: ISO 8601 UTC with Z suffix
-            cutoff_date = (datetime.now(timezone.utc) - timedelta(days=retention_days)).replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
-            
-            # Count logs to be deleted first
-            count_cursor = context.db_connection.execute(
-                "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?", (cutoff_date,)
-            )
-            count_to_delete = count_cursor.fetchone()[0]
-            self.logger.info(f"Found {count_to_delete} logs older than {cutoff_date} to delete")
-            
-            if count_to_delete == 0:
-                return 0
-            
-            # Delete the logs
-            cursor = context.db_connection.execute(
-                "DELETE FROM system_logs WHERE timestamp < ?", (cutoff_date,)
-            )
-            context.db_connection.commit()
-            
-            # Verify deletion
-            verify_cursor = context.db_connection.execute(
-                "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?", (cutoff_date,)
-            )
-            remaining = verify_cursor.fetchone()[0]
-            deleted_count = count_to_delete - remaining
-            
-            if deleted_count > 0:
-                self.logger.info(f"Deleted {deleted_count} old log entries from database")
-            else:
-                self.logger.warning(f"DELETE executed but {remaining} logs still remain (expected 0)")
-            
-            return deleted_count
-            
-        except Exception as e:
-            self.logger.warning(f"Database log cleanup failed: {e}")
-            return 0
+        """Clean up old log entries - system_logs table removed, logs now in InfluxDB"""
+        # system_logs table no longer exists - logs are in InfluxDB with retention policies
+        # InfluxDB handles log retention automatically via bucket retention settings
+        self.logger.info("Log cleanup skipped - logs now stored in InfluxDB with automatic retention")
+        return 0
     
     def _cleanup_log_files(self, context: TaskContext, retention_days: int, max_size_mb: int) -> float:
         """Clean up old log files from filesystem"""
