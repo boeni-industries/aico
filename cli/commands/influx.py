@@ -336,105 +336,114 @@ def status():
             console.rule("[bold cyan]📊 Data Overview[/bold cyan]")
             
             with InfluxDBConnection() as conn:
-                # Get measurement counts for last 24h, 7d, and total
-                measurements = ["api_request", "model_inference", "memory_query", "scheduler_job", "messagebus_event"]
+                # Get all measurements from the bucket
+                measurements_query = f'''
+                    import "influxdata/influxdb/schema"
+                    schema.measurements(bucket: "{bucket}")
+                '''
+                measurements_results = conn.query(measurements_query)
+                measurements = sorted([r.get('_value') for r in measurements_results if r.get('_value')])
                 
-                data_table = Table(
-                    border_style="bright_blue",
-                    header_style="bold yellow",
-                    box=box.SIMPLE_HEAD,
-                    padding=(0, 1),
-                )
-                data_table.add_column("Measurement", style="cyan", justify="left")
-                data_table.add_column("Last 1h", justify="right")
-                data_table.add_column("Last 24h", justify="right")
-                data_table.add_column("Last 7d", justify="right")
-                data_table.add_column("Total", justify="right")
-                
-                total_1h = 0
-                total_24h = 0
-                total_7d = 0
-                total_all = 0
-                
-                for measurement in measurements:
-                    # Count for different time ranges
-                    query_1h = f'''
-                        from(bucket: "{bucket}")
-                        |> range(start: -1h)
-                        |> filter(fn: (r) => r._measurement == "{measurement}")
-                        |> count()
-                    '''
-                    results_1h = conn.query(query_1h)
-                    count_1h = sum(r.get('value', 0) for r in results_1h)
+                if not measurements:
+                    console.print("[yellow]No measurements found in bucket[/yellow]")
+                    console.print()
+                else:
+                    data_table = Table(
+                        border_style="bright_blue",
+                        header_style="bold yellow",
+                        box=box.SIMPLE_HEAD,
+                        padding=(0, 1),
+                    )
+                    data_table.add_column("Measurement", style="cyan", justify="left")
+                    data_table.add_column("Last 1h", justify="right")
+                    data_table.add_column("Last 24h", justify="right")
+                    data_table.add_column("Last 7d", justify="right")
+                    data_table.add_column("Total", justify="right")
                     
-                    query_24h = f'''
-                        from(bucket: "{bucket}")
-                        |> range(start: -24h)
-                        |> filter(fn: (r) => r._measurement == "{measurement}")
-                        |> count()
-                    '''
-                    results_24h = conn.query(query_24h)
-                    count_24h = sum(r.get('value', 0) for r in results_24h)
+                    total_1h = 0
+                    total_24h = 0
+                    total_7d = 0
+                    total_all = 0
                     
-                    query_7d = f'''
-                        from(bucket: "{bucket}")
-                        |> range(start: -7d)
-                        |> filter(fn: (r) => r._measurement == "{measurement}")
-                        |> count()
-                    '''
-                    results_7d = conn.query(query_7d)
-                    count_7d = sum(r.get('value', 0) for r in results_7d)
+                    for measurement in measurements:
+                        # Count for different time ranges
+                        query_1h = f'''
+                            from(bucket: "{bucket}")
+                            |> range(start: -1h)
+                            |> filter(fn: (r) => r._measurement == "{measurement}")
+                            |> count()
+                        '''
+                        results_1h = conn.query(query_1h)
+                        count_1h = sum(r.get('value', 0) for r in results_1h)
+                        
+                        query_24h = f'''
+                            from(bucket: "{bucket}")
+                            |> range(start: -24h)
+                            |> filter(fn: (r) => r._measurement == "{measurement}")
+                            |> count()
+                        '''
+                        results_24h = conn.query(query_24h)
+                        count_24h = sum(r.get('value', 0) for r in results_24h)
+                        
+                        query_7d = f'''
+                            from(bucket: "{bucket}")
+                            |> range(start: -7d)
+                            |> filter(fn: (r) => r._measurement == "{measurement}")
+                            |> count()
+                        '''
+                        results_7d = conn.query(query_7d)
+                        count_7d = sum(r.get('value', 0) for r in results_7d)
+                        
+                        # Total (all time - limited to retention period)
+                        query_all = f'''
+                            from(bucket: "{bucket}")
+                            |> range(start: -30d)
+                            |> filter(fn: (r) => r._measurement == "{measurement}")
+                            |> count()
+                        '''
+                        results_all = conn.query(query_all)
+                        count_all = sum(r.get('value', 0) for r in results_all)
+                        
+                        # Format counts with color based on presence
+                        def format_count(count):
+                            if count == 0:
+                                return "[dim]0[/dim]"
+                            elif count < 100:
+                                return f"[yellow]{count:,}[/yellow]"
+                            else:
+                                return f"[green]{count:,}[/green]"
+                        
+                        data_table.add_row(
+                            measurement,
+                            format_count(count_1h),
+                            format_count(count_24h),
+                            format_count(count_7d),
+                            format_count(count_all)
+                        )
+                        
+                        total_1h += count_1h
+                        total_24h += count_24h
+                        total_7d += count_7d
+                        total_all += count_all
                     
-                    # Total (all time - limited to retention period)
-                    query_all = f'''
-                        from(bucket: "{bucket}")
-                        |> range(start: -30d)
-                        |> filter(fn: (r) => r._measurement == "{measurement}")
-                        |> count()
-                    '''
-                    results_all = conn.query(query_all)
-                    count_all = sum(r.get('value', 0) for r in results_all)
-                    
-                    # Format counts with color based on presence
-                    def format_count(count):
-                        if count == 0:
-                            return "[dim]0[/dim]"
-                        elif count < 100:
-                            return f"[yellow]{count:,}[/yellow]"
-                        else:
-                            return f"[green]{count:,}[/green]"
-                    
+                    # Add totals row
                     data_table.add_row(
-                        measurement,
-                        format_count(count_1h),
-                        format_count(count_24h),
-                        format_count(count_7d),
-                        format_count(count_all)
+                        "[bold]TOTAL[/bold]",
+                        f"[bold cyan]{total_1h:,}[/bold cyan]",
+                        f"[bold cyan]{total_24h:,}[/bold cyan]",
+                        f"[bold cyan]{total_7d:,}[/bold cyan]",
+                        f"[bold cyan]{total_all:,}[/bold cyan]"
                     )
                     
-                    total_1h += count_1h
-                    total_24h += count_24h
-                    total_7d += count_7d
-                    total_all += count_all
-                
-                # Add totals row
-                data_table.add_row(
-                    "[bold]TOTAL[/bold]",
-                    f"[bold cyan]{total_1h:,}[/bold cyan]",
-                    f"[bold cyan]{total_24h:,}[/bold cyan]",
-                    f"[bold cyan]{total_7d:,}[/bold cyan]",
-                    f"[bold cyan]{total_all:,}[/bold cyan]"
-                )
-                
-                console.print(data_table)
-                console.print()
-                
-                # Data rate summary
-                if total_1h > 0:
-                    rate_per_second = total_1h / 3600
-                    rate_per_minute = total_1h / 60
-                    console.print(f"[dim]Current rate: ~{rate_per_second:.1f} points/sec (~{rate_per_minute:.0f} points/min)[/dim]")
+                    console.print(data_table)
                     console.print()
+                    
+                    # Data rate summary
+                    if total_1h > 0:
+                        rate_per_second = total_1h / 3600
+                        rate_per_minute = total_1h / 60
+                        console.print(f"[dim]Current rate: ~{rate_per_second:.1f} points/sec (~{rate_per_minute:.0f} points/min)[/dim]")
+                        console.print()
                 
         except Exception as e:
             console.print(f"[yellow]⚠️  Could not fetch data overview: {e}[/yellow]")
