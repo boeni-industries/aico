@@ -51,14 +51,28 @@ async def get_gateway_metrics():
             requests_per_second = recent_count / 60.0
             
             # RPS sparkline (last 12 minutes, 1-minute intervals)
-            rps_sparkline = client.sparkline(
-                measurement="api_request",
-                field=None,  # Count-based
-                intervals=12,
-                interval_duration="1m",
-                aggregation="mean",
-                filters=filters
-            )
+            # Note: Using count aggregation for request rate
+            rps_sparkline = []
+            for i in range(12):
+                start_offset = 12 - i
+                end_offset = 11 - i
+                
+                # Build time range - avoid empty range when end_offset is 0
+                if end_offset == 0:
+                    time_range = f"range(start: -{start_offset}m)"
+                else:
+                    time_range = f"range(start: -{start_offset}m, stop: -{end_offset}m)"
+                
+                query = f'''
+                    from(bucket: "aico_telemetry")
+                    |> {time_range}
+                    |> filter(fn: (r) => r._measurement == "api_request")
+                    |> filter(fn: (r) => r.service == "{filters['service']}")
+                    |> count()
+                '''
+                results = client.query(query)
+                count = sum(r.get('value', 0) for r in results)
+                rps_sparkline.append(count / 60.0)
             
             # Total requests in 24h
             total_requests_24h = client.count_points("api_request", "-24h", filters)
@@ -73,14 +87,27 @@ async def get_gateway_metrics():
             )
             
             # Latency sparkline (last 12 minutes)
-            latency_sparkline = client.sparkline(
-                measurement="api_request",
-                field="latency_ms_f",
-                intervals=12,
-                interval_duration="1m",
-                aggregation="mean",
-                filters=filters
-            )
+            latency_sparkline = []
+            for i in range(12):
+                start_offset = 12 - i
+                end_offset = 11 - i
+                
+                # Build time range - avoid empty range when end_offset is 0
+                if end_offset == 0:
+                    time_range = f"range(start: -{start_offset}m)"
+                else:
+                    time_range = f"range(start: -{start_offset}m, stop: -{end_offset}m)"
+                
+                query = f'''
+                    from(bucket: "aico_telemetry")
+                    |> {time_range}
+                    |> filter(fn: (r) => r._measurement == "api_request")
+                    |> filter(fn: (r) => r.service == "{filters['service']}")
+                    |> filter(fn: (r) => r._field == "latency_ms_f")
+                    |> mean()
+                '''
+                results = client.query(query)
+                latency_sparkline.append(results[0].get('value', 0.0) if results else 0.0)
             
             # P95 and P99 latencies (last 24h)
             p95_response_time = client.percentile_field(
@@ -111,47 +138,41 @@ async def get_gateway_metrics():
             error_rate = (total_errors / recent_count * 100) if recent_count > 0 else 0.0
             success_rate = 100.0 - error_rate
             
-            # Error rate sparkline (last 12 minutes)
+            # Error rate sparkline
             error_rate_sparkline = []
             for i in range(12):
                 start_offset = 12 - i
                 end_offset = 11 - i
                 
-                # Total in interval
-                interval_total = client.count_points(
-                    "api_request",
-                    f"-{start_offset}m",
-                    filters
-                ) - client.count_points(
-                    "api_request",
-                    f"-{end_offset}m",
-                    filters
-                )
+                # Build time range - avoid empty range when end_offset is 0
+                if end_offset == 0:
+                    time_range = f"range(start: -{start_offset}m)"
+                else:
+                    time_range = f"range(start: -{start_offset}m, stop: -{end_offset}m)"
                 
-                # Errors in interval
-                error_filters_4xx = {**filters, "status_class": "4xx"}
-                interval_errors_4xx = client.count_points(
-                    "api_request",
-                    f"-{start_offset}m",
-                    error_filters_4xx
-                ) - client.count_points(
-                    "api_request",
-                    f"-{end_offset}m",
-                    error_filters_4xx
-                )
+                # Total requests in interval
+                query_total = f'''
+                    from(bucket: "aico_telemetry")
+                    |> {time_range}
+                    |> filter(fn: (r) => r._measurement == "api_request")
+                    |> filter(fn: (r) => r.service == "{filters['service']}")
+                    |> count()
+                '''
+                total_results = client.query(query_total)
+                interval_total = sum(r.get('value', 0) for r in total_results)
                 
-                error_filters_5xx = {**filters, "status_class": "5xx"}
-                interval_errors_5xx = client.count_points(
-                    "api_request",
-                    f"-{start_offset}m",
-                    error_filters_5xx
-                ) - client.count_points(
-                    "api_request",
-                    f"-{end_offset}m",
-                    error_filters_5xx
-                )
+                # Error requests in interval
+                query_errors = f'''
+                    from(bucket: "aico_telemetry")
+                    |> {time_range}
+                    |> filter(fn: (r) => r._measurement == "api_request")
+                    |> filter(fn: (r) => r.service == "{filters['service']}")
+                    |> filter(fn: (r) => r.status_class == "4xx" or r.status_class == "5xx")
+                    |> count()
+                '''
+                error_results = client.query(query_errors)
+                interval_errors = sum(r.get('value', 0) for r in error_results)
                 
-                interval_errors = interval_errors_4xx + interval_errors_5xx
                 interval_error_rate = (interval_errors / interval_total * 100) if interval_total > 0 else 0.0
                 error_rate_sparkline.append(interval_error_rate)
             

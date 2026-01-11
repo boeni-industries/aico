@@ -117,9 +117,16 @@ async def get_gateway_metrics():
         for i in range(12):
             start_offset = 12 - i
             end_offset = 11 - i
+            
+            # Build time range - avoid empty range when end_offset is 0
+            if end_offset == 0:
+                time_range = f"range(start: -{start_offset}m)"
+            else:
+                time_range = f"range(start: -{start_offset}m, stop: -{end_offset}m)"
+            
             query = f'''
                 from(bucket: "aico_telemetry")
-                |> range(start: -{start_offset}m, stop: -{end_offset}m)
+                |> {time_range}
                 |> filter(fn: (r) => r._measurement == "api_request")
                 |> filter(fn: (r) => r.service == "aico-backend")
                 |> count()
@@ -145,9 +152,16 @@ async def get_gateway_metrics():
         for i in range(12):
             start_offset = 12 - i
             end_offset = 11 - i
+            
+            # Build time range - avoid empty range when end_offset is 0
+            if end_offset == 0:
+                time_range = f"range(start: -{start_offset}m)"
+            else:
+                time_range = f"range(start: -{start_offset}m, stop: -{end_offset}m)"
+            
             query = f'''
                 from(bucket: "aico_telemetry")
-                |> range(start: -{start_offset}m, stop: -{end_offset}m)
+                |> {time_range}
                 |> filter(fn: (r) => r._measurement == "api_request")
                 |> filter(fn: (r) => r.service == "aico-backend")
                 |> filter(fn: (r) => r._field == "latency_ms_f")
@@ -207,10 +221,16 @@ async def get_gateway_metrics():
             start_offset = 12 - i
             end_offset = 11 - i
             
+            # Build time range - avoid empty range when end_offset is 0
+            if end_offset == 0:
+                time_range = f"range(start: -{start_offset}m)"
+            else:
+                time_range = f"range(start: -{start_offset}m, stop: -{end_offset}m)"
+            
             # Total requests in interval
             query_total = f'''
                 from(bucket: "aico_telemetry")
-                |> range(start: -{start_offset}m, stop: -{end_offset}m)
+                |> {time_range}
                 |> filter(fn: (r) => r._measurement == "api_request")
                 |> filter(fn: (r) => r.service == "aico-backend")
                 |> count()
@@ -221,7 +241,7 @@ async def get_gateway_metrics():
             # Error requests in interval
             query_errors_interval = f'''
                 from(bucket: "aico_telemetry")
-                |> range(start: -{start_offset}m, stop: -{end_offset}m)
+                |> {time_range}
                 |> filter(fn: (r) => r._measurement == "api_request")
                 |> filter(fn: (r) => r.service == "aico-backend")
                 |> filter(fn: (r) => r.status_class == "4xx" or r.status_class == "5xx")

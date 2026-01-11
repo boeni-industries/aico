@@ -373,19 +373,19 @@ async def list_logs(
     """List logs with filtering and pagination - queries InfluxDB"""
     
     from influxdb_client import InfluxDBClient
-    from aico.security.key_manager import AICOKeyManager
     from aico.core.config import ConfigurationManager
+    from aico.security.key_manager import AICOKeyManager
     import json
     
     # Get InfluxDB credentials
     config = ConfigurationManager()
-    km = AICOKeyManager(config)
-    token = km.get_key('influxdb_token')
+    key_manager = AICOKeyManager(config)
     
-    influx_config = config.get('core.influxdb', {})
+    influx_config = config.get('core.database.influx', {})
     url = influx_config.get('url', 'http://127.0.0.1:8086')
     org = influx_config.get('org', 'aico')
     bucket = influx_config.get('bucket', 'aico_telemetry')
+    token = key_manager.get_database_password('influx', username='admin_token')
     
     client = InfluxDBClient(url=url, token=token, org=org)
     
@@ -482,8 +482,8 @@ async def get_logs_stats(
     from datetime import datetime, timedelta
     import time
     from influxdb_client import InfluxDBClient
-    from aico.security.key_manager import AICOKeyManager
     from aico.core.config import ConfigurationManager
+    from aico.security.key_manager import AICOKeyManager
     
     # Check cache first
     now = time.time()
@@ -492,13 +492,13 @@ async def get_logs_stats(
     
     # Get InfluxDB credentials
     config = ConfigurationManager()
-    km = AICOKeyManager(config)
-    token = km.get_key('influxdb_token')
+    key_manager = AICOKeyManager(config)
     
-    influx_config = config.get('core.influxdb', {})
+    influx_config = config.get('core.database.influx', {})
     url = influx_config.get('url', 'http://127.0.0.1:8086')
     org = influx_config.get('org', 'aico')
     bucket = influx_config.get('bucket', 'aico_telemetry')
+    token = key_manager.get_database_password('influx', username='admin_token')
     
     client = InfluxDBClient(url=url, token=token, org=org)
     
@@ -548,8 +548,31 @@ async def get_logs_stats(
         error_rate_trend = 0.0
         log_volume_trend = 0.0
         
-        # Recent activity by hour (last 24h)
+        # Recent activity by hour (last 24h) - for timeline visualization
+        query = f'''
+        from(bucket: "{bucket}")
+          |> range(start: -24h)
+          |> filter(fn: (r) => r._measurement == "logs")
+          |> filter(fn: (r) => r._field == "count")
+          |> window(every: 1h)
+          |> group(columns: ["level", "_start"])
+          |> sum()
+          |> duplicate(column: "_start", as: "_time")
+        '''
+        tables = client.query_api().query(query, org=org)
+        
         recent_activity = {}
+        for table in tables:
+            for record in table.records:
+                # Get hour from timestamp
+                timestamp = record.get_time()
+                hour_str = str(timestamp.hour)  # Convert to string for Pydantic validation
+                count = int(record.get_value())
+                
+                # Sum all levels per hour (Pydantic expects Dict[str, int])
+                if hour_str not in recent_activity:
+                    recent_activity[hour_str] = 0
+                recent_activity[hour_str] += count
         
     finally:
         try:

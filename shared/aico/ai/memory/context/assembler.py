@@ -448,7 +448,7 @@ class ContextAssembler:
                 with self.db_connection:
                     return self.db_connection.execute(
                         """SELECT lesson_id, lesson_type, target_kind, target_id, 
-                                  description, confidence, created_at
+                                  summary_text, confidence, created_at
                            FROM agency_lessons
                            WHERE user_id = ? 
                              AND status = 'active'
