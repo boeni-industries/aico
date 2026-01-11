@@ -11,6 +11,12 @@ import {
 } from '../api/config';
 import { authenticateUser, AuthenticationResponseDto, UserDto } from '../api/users';
 import { startTokenRefreshMonitoring, stopTokenRefreshMonitoring } from '../utils/tokenManager';
+import {
+  storeCredentials,
+  getStoredCredentials,
+  clearStoredCredentials,
+  hasStoredCredentials,
+} from '../utils/credentialStorage';
 
 /**
  * Decode JWT token to get expiration time
@@ -51,12 +57,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshToken: null,
   });
 
+  // Internal authentication function (doesn't store credentials, used for auto re-auth)
+  const performAuthentication = React.useCallback(async (userUuid: string, pin: string, storeCredentialsFlag: boolean = false) => {
+    const response: AuthenticationResponseDto = await authenticateUser({ user_uuid: userUuid, pin });
+    if (!response.success || !response.user || !response.jwt_token) {
+      throw new Error(response.error || 'Authentication failed');
+    }
+    setAuthToken(response.jwt_token);
+    setRefreshToken(response.refresh_token ?? null);
+    setStoredUserUuid(response.user.uuid);
+    setStoredUserProfile(response.user);
+    
+    // Store encrypted credentials if requested
+    if (storeCredentialsFlag) {
+      try {
+        await storeCredentials(userUuid, pin);
+        console.log('[AuthContext] Credentials stored securely for auto re-auth');
+      } catch (error) {
+        console.warn('[AuthContext] Failed to store credentials:', error);
+      }
+    }
+    
+    setState({
+      user: response.user,
+      accessToken: response.jwt_token,
+      refreshToken: response.refresh_token ?? null,
+    });
+  }, []);
+
   // On initial load, try to restore session from stored token + user UUID
   React.useEffect(() => {
     const restoreSession = async () => {
       const token = getAuthToken();
       const storedUserUuid = getStoredUserUuid();
       const storedProfile = getStoredUserProfile() as UserDto | null;
+      
+      // If no token but we have stored credentials, try automatic re-authentication
+      if (!token && hasStoredCredentials()) {
+        console.log('[AuthContext] No token found but credentials available, attempting auto re-auth...');
+        try {
+          const credentials = await getStoredCredentials();
+          if (credentials) {
+            await performAuthentication(credentials.userUuid, credentials.pin, false);
+            console.log('[AuthContext] Auto re-authentication successful');
+            return;
+          }
+        } catch (error) {
+          console.error('[AuthContext] Auto re-authentication failed:', error);
+          clearStoredCredentials(); // Clear invalid credentials
+        }
+      }
+      
       if (!token || !storedUserUuid || !storedProfile) {
         return;
       }
@@ -77,11 +128,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log('[AuthContext] Token expired or expiring soon, refreshing before restoring session...');
             const refreshed = await refreshTokenNow();
             if (!refreshed) {
-              console.warn('[AuthContext] Failed to refresh token on load, clearing session');
+              console.warn('[AuthContext] Token refresh failed, attempting auto re-auth...');
+              // Try automatic re-authentication with stored credentials
+              try {
+                const credentials = await getStoredCredentials();
+                if (credentials) {
+                  await performAuthentication(credentials.userUuid, credentials.pin, false);
+                  console.log('[AuthContext] Auto re-authentication successful after refresh failure');
+                  return;
+                }
+              } catch (error) {
+                console.error('[AuthContext] Auto re-authentication failed:', error);
+              }
+              // If auto re-auth also failed, clear session
               clearAuthToken();
               setRefreshToken(null);
               setStoredUserUuid(null);
               setStoredUserProfile(null);
+              clearStoredCredentials();
               return;
             }
             // Get the new token after refresh
@@ -99,7 +163,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     restoreSession();
-  }, []);
+  }, [performAuthentication]);
 
   // Start/stop automatic token refresh monitoring based on authentication state
   React.useEffect(() => {
@@ -117,19 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.user, state.accessToken]);
 
   const login = async (userUuid: string, pin: string) => {
-    const response: AuthenticationResponseDto = await authenticateUser({ user_uuid: userUuid, pin });
-    if (!response.success || !response.user || !response.jwt_token) {
-      throw new Error(response.error || 'Authentication failed');
-    }
-    setAuthToken(response.jwt_token);
-    setRefreshToken(response.refresh_token ?? null);
-    setStoredUserUuid(response.user.uuid);
-    setStoredUserProfile(response.user);
-    setState({
-      user: response.user,
-      accessToken: response.jwt_token,
-      refreshToken: response.refresh_token ?? null,
-    });
+    await performAuthentication(userUuid, pin, true); // Store credentials on manual login
   };
 
   const logout = () => {
@@ -138,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRefreshToken(null);
     setStoredUserUuid(null);
     setStoredUserProfile(null);
+    clearStoredCredentials(); // Clear encrypted credentials on explicit logout
     setState({ user: null, accessToken: null, refreshToken: null });
   };
 
