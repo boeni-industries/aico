@@ -26,7 +26,7 @@ sys.path.insert(0, str(backend_dir))
 
 # Import AICO modules
 from aico.core.config import ConfigurationManager
-from aico.core.logging import initialize_logging, get_logger
+from aico.core.logging import initialize_logging, get_logger, shutdown_logging
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
@@ -132,7 +132,8 @@ async def main():
         port=port,
         log_level="info",
         lifespan="on",
-        access_log=False
+        access_log=False,
+        log_config=None  # Disable Uvicorn's logging config to prevent it from shutting down our handlers
     )
     server = uvicorn.Server(config)
 
@@ -195,8 +196,12 @@ async def main():
         await lifecycle_manager.stop()
         if process_manager:
             process_manager.cleanup_pid_files()
+        
+        # Shutdown logging system (flush and close InfluxDB handler)
+        print("[~] Shutting down logging system...")
+        shutdown_logging()
+        
         print("[+] Shutdown complete.")
-        logger.info("Shutdown complete.")
 
 if __name__ == "__main__":
     try:

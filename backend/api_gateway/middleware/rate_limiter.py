@@ -102,7 +102,7 @@ class RateLimiter:
             raise HTTPException(status_code=429, detail=str(e))
         except Exception as e:
             self.logger.error(f"Rate limiter middleware error: {e}", extra={
-                "module": "api_gateway",
+                "subsystem": "api_gateway",
                 "function": "dispatch",
                 "topic": "rate_limiter.middleware_error",
                 "error": str(e)

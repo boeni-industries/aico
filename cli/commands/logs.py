@@ -79,7 +79,7 @@ def tail_logs(
     lines: int = typer.Option(50, "--lines", "-n", help="Number of lines to show"),
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output (not implemented yet)")
 ):
-    """Tail recent logs from InfluxDB."""
+    """Show the most recent N log entries (like tail -n)."""
     
     if follow:
         console.print("[yellow]⚠ Follow mode not yet implemented[/yellow]")
@@ -114,9 +114,11 @@ def tail_logs(
     
     filter_str = " and ".join(filters)
     
+    # Use a large time window to ensure we get enough logs
+    # Tail shows the most recent N lines, not time-based filtering
     query = f'''
     from(bucket: "{bucket}")
-      |> range(start: -1h)
+      |> range(start: -30d)
       |> filter(fn: (r) => {filter_str})
       |> sort(columns: ["_time"], desc: true)
       |> limit(n: {lines})

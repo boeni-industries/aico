@@ -1412,7 +1412,7 @@ class ConversationEngine(BaseService):
                             "turn_number": turn_number,
                             "agency_context": agency_context,
                             "subsystem": "agency",
-                            "module": "conversation_engine"
+                            "subsystem": "conversation_engine"
                         }
                     )
             

@@ -85,7 +85,7 @@ async def get_system_health_metrics():
     
     except Exception as e:
         # If InfluxDB is empty or has no data, return zero metrics instead of failing
-        logger.warning(f"InfluxDB query failed (likely no data yet), returning zero metrics: {e}")
+        logger.debug(f"InfluxDB query failed (likely no data yet), returning zero metrics: {e}")
         
         # Return empty/zero metrics
         return SystemHealthMetrics(

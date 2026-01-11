@@ -90,7 +90,7 @@ class UserService:
                     """, (auth_uuid, user_uuid, pin_hash))
                 
                 self.logger.info("User created", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "create_user",
                     "topic": "user_management",
                     "zmq_topic": "logs",
@@ -104,7 +104,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to create user: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "create_user", 
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -156,7 +156,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to get user: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "get_user",
                 "topic": "user_management", 
                 "zmq_topic": "logs",
@@ -198,7 +198,7 @@ class UserService:
                     return None
                 
                 self.logger.info("User updated", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "update_user",
                     "topic": "user_management",
                     "zmq_topic": "logs", 
@@ -210,7 +210,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to update user: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "update_user",
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -242,7 +242,7 @@ class UserService:
                     return False
                 
                 self.logger.info("User deleted", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "delete_user",
                     "topic": "user_management",
                     "zmq_topic": "logs",
@@ -253,7 +253,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to delete user: {e}", extra={
-                "module": "user_service", 
+                "subsystem": "user_service", 
                 "function": "delete_user",
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -286,7 +286,7 @@ class UserService:
                 self.db.execute("DELETE FROM user_profiles WHERE uuid = ?", (user_uuid,))
                 
                 self.logger.warning("User permanently deleted", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "hard_delete_user",
                     "topic": "user_management",
                     "zmq_topic": "logs",
@@ -298,7 +298,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to permanently delete user: {e}", extra={
-                "module": "user_service", 
+                "subsystem": "user_service", 
                 "function": "hard_delete_user",
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -338,7 +338,7 @@ class UserService:
                     
                     if not self.pwd_context.verify(old_pin, auth_data['pin_hash']):
                         self.logger.warning("Failed PIN update attempt", extra={
-                            "module": "user_service",
+                            "subsystem": "user_service",
                             "function": "set_pin",
                             "topic": "authentication",
                             "zmq_topic": "logs",
@@ -366,7 +366,7 @@ class UserService:
                     """, (auth_uuid, user_uuid, pin_hash))
                 
                 self.logger.info("User PIN updated", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "set_pin",
                     "topic": "authentication",
                     "zmq_topic": "logs",
@@ -378,7 +378,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to set PIN: {e}", extra={
-                "module": "user_service", 
+                "subsystem": "user_service", 
                 "function": "set_pin",
                 "topic": "authentication",
                 "zmq_topic": "logs",
@@ -450,7 +450,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to list users: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "list_users", 
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -513,7 +513,7 @@ class UserService:
                 """, (failed_attempts, locked_until.isoformat() if locked_until else None, user_uuid))
                 
                 self.logger.warning("Authentication failed", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "authenticate_user",
                     "topic": "authentication",
                     "zmq_topic": "logs",
@@ -537,7 +537,7 @@ class UserService:
             """, (user_uuid,))
             
             self.logger.info("User authenticated successfully", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "authenticate_user",
                 "topic": "authentication",
                 "zmq_topic": "logs",
@@ -553,7 +553,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Authentication error: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "authenticate_user",
                 "topic": "authentication", 
                 "zmq_topic": "logs",
@@ -603,7 +603,7 @@ class UserService:
                     """, (auth_uuid, user_uuid, pin_hash))
                 
                 self.logger.info("User PIN updated", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "set_user_pin",
                     "topic": "authentication",
                     "zmq_topic": "logs",
@@ -614,7 +614,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to set user PIN: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "set_user_pin",
                 "topic": "authentication",
                 "zmq_topic": "logs", 
@@ -642,7 +642,7 @@ class UserService:
             
             if result.rowcount > 0:
                 self.logger.info("User unlocked", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "unlock_user",
                     "topic": "authentication",
                     "zmq_topic": "logs",
@@ -654,7 +654,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to unlock user: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "unlock_user", 
                 "topic": "authentication",
                 "zmq_topic": "logs",
@@ -703,7 +703,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to get user stats: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "get_user_stats",
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -741,7 +741,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to get user authentication: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "get_user_authentication",
                 "topic": "authentication",
                 "zmq_topic": "logs",
@@ -785,7 +785,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to get user relationships: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "get_user_relationships",
                 "topic": "user_management",
                 "zmq_topic": "logs",

@@ -1068,8 +1068,20 @@ class EmotionEngine(BaseService):
             
             if row:
                 # Reconstruct emotional state from database
+                # Create neutral appraisal for backward compatibility with old persisted states
+                neutral_appraisal = AppraisalResult(
+                    relevance=0.5,
+                    goal_impact="neutral",
+                    coping_capability="high_capability",
+                    social_appropriateness="neutral_response"
+                )
+                
                 self.current_state = EmotionalState(
                     timestamp=datetime.fromisoformat(row[0]).replace(tzinfo=UTC),
+                    cognitive_component=neutral_appraisal,
+                    physiological_arousal=row[3],  # Use arousal from DB
+                    motivational_tendency="neutral",
+                    motor_expression="relaxed",
                     subjective_feeling=EmotionLabel(row[1]),
                     mood_valence=row[2],
                     mood_arousal=row[3],

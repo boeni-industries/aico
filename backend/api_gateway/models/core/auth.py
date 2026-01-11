@@ -180,7 +180,7 @@ class AuthenticationManager:
                 pass
         
         self.logger.info("JWT access token generated", extra={
-            "module": "api_gateway",
+            "subsystem": "api_gateway",
             "function": "generate_jwt_token",
             "topic": "auth.jwt.token_generated",
             "user_uuid": user_uuid,
@@ -215,7 +215,7 @@ class AuthenticationManager:
         token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
         
         self.logger.info("JWT refresh token generated", extra={
-            "module": "api_gateway",
+            "subsystem": "api_gateway",
             "function": "generate_refresh_token",
             "topic": "auth.jwt.refresh_token_generated",
             "user_uuid": user_uuid,
@@ -253,7 +253,7 @@ class AuthenticationManager:
             success = True
         
         self.logger.info("JWT token revoked", extra={
-            "module": "api_gateway",
+            "subsystem": "api_gateway",
             "function": "revoke_token", 
             "topic": "auth.jwt.token_revoked",
             "via_session_service": self.session_service is not None
@@ -268,7 +268,7 @@ class AuthenticationManager:
             return self.key_manager.get_jwt_secret("api_gateway")
         except Exception as e:
             self.logger.error("Failed to get JWT secret from key manager", extra={
-                "module": "api_gateway",
+                "subsystem": "api_gateway",
                 "function": "_get_jwt_secret",
                 "topic": "auth.jwt.secret_error",
                 "error": str(e)
