@@ -21,7 +21,7 @@ try:
 except ImportError:
     JSON_REPAIR_AVAILABLE = False
 
-logger = get_logger("aico", "core.json_sanitizer")
+logger = get_logger("aico.core.json_sanitizer")
 
 
 class RepairStrategy(Enum):

@@ -19,7 +19,7 @@ from .models import (
 )
 
 
-logger = get_logger("shared", "ai.agency.store")
+logger = get_logger("shared.ai.agency.store")
 
 
 class GoalStore:

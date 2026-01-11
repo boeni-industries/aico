@@ -11,7 +11,7 @@ from typing import Any, Dict
 from .base import BaseTask, TaskContext, TaskResult
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "scheduler.tasks.goal_expiration")
+logger = get_logger("backend.scheduler.tasks.goal_expiration")
 
 
 class GoalExpirationTask(BaseTask):

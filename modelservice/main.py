@@ -58,10 +58,10 @@ async def initialize_modelservice():
     
     # Initialize service-specific logging first to capture all subsequent logs
     from aico.core.logging import initialize_logging
-    logger_factory = initialize_logging(cfg, service_name="modelservice")
+    initialize_logging(service_name="modelservice", enable_influx=True, enable_console=True)
     
     # Now we can get a logger
-    logger = get_logger("modelservice", "main")
+    logger = get_logger("modelservice.main")
     
     # The modelservice config is actually under the 'core' domain
     core_config = cfg.get("core", {})
@@ -170,13 +170,8 @@ async def initialize_modelservice():
         print("⏹️  Instrumentation disabled in config; skipping metrics setup")
         logger.info("Instrumentation disabled in config; skipping modelservice metrics initialization")
     
-    # Initialize ZMQ logging transport - but don't try to connect yet
-    # Connection will happen automatically when mark_broker_ready() is called
-    if not logger_factory._transport:
-        print("⚠️  Logger factory has no transport!")
-    
-    # Also test without the extra topic to see if that works
-    logger.info("Testing modelservice log without extra topic")
+    # ZMQ log transport removed - logs now go directly to InfluxDB
+    logger.info("Modelservice logging initialized with InfluxDB")
     
     # Initialize OllamaManager (now that ZMQ logging is available)
     from .core.ollama_manager import OllamaManager
@@ -301,7 +296,7 @@ async def shutdown_modelservice(ollama_manager, process_manager):
     """Gracefully shutdown modelservice and Ollama."""
     # Get logger safely
     try:
-        logger = get_logger("modelservice", "main")
+        logger = get_logger("modelservice.main")
     except:
         logger = None
     
@@ -345,7 +340,7 @@ def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     # Get logger (it should be initialized by now)
     try:
-        logger = get_logger("modelservice", "main")
+        logger = get_logger("modelservice.main")
         logger.info(f"Received signal {signum}, initiating shutdown")
     except:
         print(f"Received signal {signum}, initiating shutdown")
@@ -369,20 +364,7 @@ async def main():
         # Complete the full ZMQ service initialization (subscribe to all topics)
         await _zmq_service.start()
         
-        # NOW mark broker ready - log consumer is fully initialized and ready
-        from aico.core.logging import get_logger_factory
-        logger_factory = get_logger_factory("modelservice")  # Get modelservice-specific factory
-        # Got logger factory
-        # Check factory has transport
-        # Check transport object
-        
-        if logger_factory and logger_factory._transport:
-            # Calling mark_broker_ready
-            logger_factory._transport.mark_broker_ready()  # This will trigger automatic flush of buffered logs
-            # mark_broker_ready completed
-        else:
-            # Cannot call mark_broker_ready - missing factory or transport
-            pass
+        # ZMQ log transport removed - logs now go directly to InfluxDB
         
         # Keep the service running (both foreground and background modes)
         # Entering service loop
@@ -392,13 +374,13 @@ async def main():
         
     except KeyboardInterrupt:
         try:
-            logger = get_logger("modelservice", "main")
+            logger = get_logger("modelservice.main")
             logger.info("Received keyboard interrupt")
         except:
             print("Received keyboard interrupt")
     except Exception as e:
         try:
-            logger = get_logger("modelservice", "main")
+            logger = get_logger("modelservice.main")
             logger.error(f"Modelservice error: {str(e)}")
         except:
             print(f"Modelservice error: {str(e)}")
@@ -416,13 +398,13 @@ def run_main():
         asyncio.run(main())
     except KeyboardInterrupt:
         try:
-            logger = get_logger("modelservice", "main")
+            logger = get_logger("modelservice.main")
             logger.info("Modelservice stopped by user")
         except:
             print("Modelservice stopped by user")
     except Exception as e:
         try:
-            logger = get_logger("modelservice", "main")
+            logger = get_logger("modelservice.main")
             logger.error(f"Fatal error: {str(e)}")
         except:
             print(f"Fatal error: {str(e)}")

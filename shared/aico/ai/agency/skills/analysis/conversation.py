@@ -21,7 +21,7 @@ from aico.data.libsql import EncryptedLibSQLConnection
 from aico.ai.memory.manager import MemoryManager
 
 
-logger = get_logger("shared", "ai.agency.skills.analysis.conversation")
+logger = get_logger("shared.ai.agency.skills.analysis.conversation")
 
 
 class AnalyzeConversationSkill(Skill):

@@ -17,7 +17,7 @@ from .schemas import (
     MemoryEvolutionResponse,
 )
 
-logger = get_logger("backend", "api.ams.extensions")
+logger = get_logger("backend.api.ams.extensions")
 
 
 def get_skill_overview(db: sqlite3.Connection, user_id: str) -> SkillOverviewResponse:

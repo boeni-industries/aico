@@ -9,7 +9,7 @@ import jwt
 
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.system.dependencies")
+logger = get_logger("backend.api.system.dependencies")
 security = HTTPBearer()
 
 

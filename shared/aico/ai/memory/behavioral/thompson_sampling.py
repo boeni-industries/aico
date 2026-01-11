@@ -13,7 +13,7 @@ from datetime import datetime
 from aico.core.logging import get_logger
 from .models import Skill, ContextSkillStats
 
-logger = get_logger("shared", "memory.behavioral.thompson_sampling")
+logger = get_logger("shared.memory.behavioral.thompson_sampling")
 
 
 class ThompsonSamplingSelector:

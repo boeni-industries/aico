@@ -13,7 +13,7 @@ import time
 from aico.core.logging import get_logger
 from backend.api.system.dependencies import get_current_user, get_db_connection
 
-logger = get_logger("backend", "api.system")
+logger = get_logger("backend.api.system")
 
 router = APIRouter()
 

@@ -12,7 +12,7 @@ from aico.core.logging import get_logger
 from .schemas import EmotionStateResponse, EmotionHistoryResponse, EmotionHistoryItem
 from .dependencies import get_current_user, get_emotion_engine
 
-logger = get_logger("aico.api.emotion", "router")
+logger = get_logger("aico.api.emotion.router")
 
 router = APIRouter()
 

@@ -12,7 +12,7 @@ from datetime import datetime
 from aico.core.logging import get_logger
 from .models import Skill, UserSkillConfidence
 
-logger = get_logger("shared", "memory.behavioral.skills")
+logger = get_logger("shared.memory.behavioral.skills")
 
 
 class SkillStore:

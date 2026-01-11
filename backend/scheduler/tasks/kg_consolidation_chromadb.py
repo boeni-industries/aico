@@ -6,7 +6,7 @@ Separated to avoid circular imports and keep consolidation task clean.
 from typing import Dict
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "scheduler.tasks.kg_consolidation")
+logger = get_logger("backend.scheduler.tasks.kg_consolidation")
 
 
 async def cleanup_chromadb_historical(memory_manager) -> Dict[str, int]:

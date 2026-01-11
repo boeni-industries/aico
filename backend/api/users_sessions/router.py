@@ -25,7 +25,7 @@ from backend.api.users_sessions.schemas import (
 from pydantic import BaseModel
 from backend.api.system.dependencies import get_current_user, get_db_connection
 
-logger = get_logger("backend", "api.users_sessions")
+logger = get_logger("backend.api.users_sessions")
 
 router = APIRouter()
 

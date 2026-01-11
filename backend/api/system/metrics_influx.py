@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from aico.data.influx.connection import InfluxDBConnection
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.system.metrics_influx")
+logger = get_logger("backend.api.system.metrics_influx")
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 

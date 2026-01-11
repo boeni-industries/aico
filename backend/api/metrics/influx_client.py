@@ -12,7 +12,7 @@ import statistics
 from aico.data.influx.connection import InfluxDBConnection
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.metrics.influx_client")
+logger = get_logger("backend.api.metrics.influx_client")
 
 
 class MetricsInfluxClient:

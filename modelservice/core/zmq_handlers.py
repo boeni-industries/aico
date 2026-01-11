@@ -38,14 +38,9 @@ class ModelserviceZMQHandlers:
     
     def __init__(self, config: dict, ollama_manager, message_bus_client=None, config_manager=None):
         # Initialize logger first
-        self.logger = get_logger("modelservice", "core.zmq_handlers")
+        self.logger = get_logger("modelservice.core.zmq_handlers")
         
         self.logger.debug("ModelserviceZMQHandlers constructor called - initializing...")
-        
-        # Test if logger is connected to buffering system
-        from aico.core.logging import get_logger_factory
-        factory = get_logger_factory("modelservice")  # Get modelservice-specific factory
-        
         self.logger.info("ModelserviceZMQHandlers constructor called - initializing...")
         self.config = config
         self.ollama_manager = ollama_manager

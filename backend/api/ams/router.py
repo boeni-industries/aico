@@ -37,7 +37,7 @@ from .schemas import (
     MemoryEvolutionResponse,
 )
 
-logger = get_logger("backend", "api.ams")
+logger = get_logger("backend.api.ams")
 
 router = APIRouter(prefix="/ams", tags=["ams"])
 

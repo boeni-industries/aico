@@ -17,7 +17,7 @@ from aico.data.libsql import EncryptedLibSQLConnection
 from .skills.registry import SkillRegistry
 
 
-logger = get_logger("shared", "ai.agency.skill_invoker")
+logger = get_logger("shared.ai.agency.skill_invoker")
 
 
 class SkillInvoker:

@@ -24,7 +24,7 @@ from .models import Lesson, SelfModelEntry, ReflectionRun, LessonType, TargetKin
 from .store import LessonStore, SelfModelStore, ReflectionRunStore
 
 
-logger = get_logger("agency", "lesson_projector")
+logger = get_logger("agency.lesson_projector")
 
 
 class LessonMemoryProjector:

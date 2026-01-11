@@ -17,7 +17,7 @@ from ..models import MessageBusMetrics, MetricValue
 from ..influx_client import MetricsInfluxClient
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.metrics.messagebus")
+logger = get_logger("backend.api.metrics.messagebus")
 
 router = APIRouter()
 

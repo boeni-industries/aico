@@ -17,7 +17,7 @@ from aico.core.logging import get_logger
 from .models import Hypothesis, HypothesisTestResult
 
 
-logger = get_logger("shared", "world_model.hypothesis_manager")
+logger = get_logger("shared.world_model.hypothesis_manager")
 
 
 class HypothesisManager:

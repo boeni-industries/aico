@@ -167,22 +167,8 @@ class MessageBusPlugin(BasePlugin):
     
     def _notify_log_transport_broker_ready(self):
         """Notify backend's ZMQ log transport that broker is ready to accept connections"""
-        try:
-            from aico.core.logging import get_logger_factory
-            
-            # Get the backend-specific logger factory instance
-            factory = get_logger_factory("backend")
-            
-            if factory and hasattr(factory, '_transport') and factory._transport:
-                factory._transport.mark_broker_ready()
-                self.logger.info("Notified backend ZMQ log transport that broker is ready")
-            else:
-                self.logger.warning("Backend factory missing _transport or transport is None")
-            
-        except Exception as e:
-            # Don't fail startup if notification fails
-            self.logger.error(f"Exception in notification: {e}")
-            self.logger.warning(f"Failed to notify log transport broker ready: {e}")
+        # ZMQ log transport removed - logs now go directly to InfluxDB
+        pass
     
     async def shutdown(self) -> None:
         """Cleanup message bus plugin resources"""

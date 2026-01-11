@@ -10,14 +10,14 @@ import time
 from typing import Dict, List, Optional, Any, Type
 from dataclasses import dataclass
 
-from aico.core.logging import get_logger, get_logger_factory
+from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusClient
 from aico.security.key_manager import AICOKeyManager
 
 # Import service container and plugin base classes
 from backend.core.service_container import ServiceContainer, BaseService
-from backend.services.log_consumer_service import LogConsumerService
+# LogConsumerService removed - logs now go directly to InfluxDB
 
 # Core gateway components
 from .protocol_manager import ProtocolAdapterManager
@@ -51,7 +51,7 @@ class GatewayCore:
     
     def __init__(self, config: ConfigurationManager, logger=None, db_connection=None):
         self.config = config
-        self.logger = logger or get_logger("backend", "api_gateway.core")
+        self.logger = logger or get_logger("backend.api_gateway.core")
         self.db_connection = db_connection
         
         # Initialize service container for new architecture
@@ -110,11 +110,7 @@ class GatewayCore:
             # 3. Plugin loading disabled - handled by BackendLifecycleManager
             # await self._load_plugins()  # DISABLED - causes duplicate registration
 
-            # 4. Re-initialize loggers to ensure ZMQ transport is attached
-            logger_factory = get_logger_factory()
-            if logger_factory:
-                logger_factory.reinitialize_loggers()
-                logger_factory.mark_all_databases_ready()
+            # Logging initialization removed - logs now go directly to InfluxDB
             
             # 5. Initialize protocol adapters
             await self._initialize_protocols()
@@ -164,18 +160,7 @@ class GatewayCore:
         try:
             self.logger.info("Registering core services in container...")
             
-            # Register log consumer service
-            if self.db_connection and self.zmq_context:
-                log_consumer_service = LogConsumerService(
-                    db_connection=self.db_connection,
-                    zmq_context=self.zmq_context
-                )
-                self.service_container.register_service(
-                    "log_consumer", 
-                    log_consumer_service,
-                    dependencies=[]
-                )
-                self.logger.info("Registered log consumer service")
+            # Log consumer service removed - logs now go directly to InfluxDB via handler
             
             # Register key manager as service
             self.service_container.register_service(

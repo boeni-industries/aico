@@ -10,10 +10,10 @@ from pydantic import BaseModel
 from typing import Dict, Any
 import time
 
-from aico.core.logging import get_logger, is_cli_context
+from aico.core.logging import get_logger
 
 # Initialize logger at the module level
-logger = get_logger("aico.api.echo", "router")
+logger = get_logger("aico.api.echo.router")
 
 router = APIRouter()
 

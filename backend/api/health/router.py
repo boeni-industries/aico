@@ -16,7 +16,7 @@ from .schemas import (
     DatabaseHealth, MessageBusHealth
 )
 
-logger = get_logger("aico.api.health", "router")
+logger = get_logger("aico.api.health.router")
 
 router = APIRouter()
 

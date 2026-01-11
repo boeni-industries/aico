@@ -29,7 +29,7 @@ from .lesson_applicator import LessonApplicationService
 from .lesson_projector import LessonMemoryProjector
 
 
-logger = get_logger("agency", "reflection")
+logger = get_logger("agency.reflection")
 
 
 class SelfReflectionEngine:

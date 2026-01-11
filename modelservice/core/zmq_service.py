@@ -27,7 +27,7 @@ class ModelserviceZMQService:
     def __init__(self, config: ConfigurationManager, ollama_manager=None):
         """Initialize the ZMQ service with configuration and optional Ollama manager."""
         # Initialize logger first
-        self.logger = get_logger("modelservice", "zmq_service")
+        self.logger = get_logger("modelservice.zmq_service")
         
         # Store full config manager for handlers
         self.config_manager = config

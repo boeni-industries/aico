@@ -15,7 +15,7 @@ from aico.core.logging import get_logger
 from .tasks.base import RetryConfig, RetryStrategy
 
 
-logger = get_logger("backend", "scheduler.retry_manager")
+logger = get_logger("backend.scheduler.retry_manager")
 
 
 class RetryManager:

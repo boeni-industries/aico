@@ -13,7 +13,7 @@ from backend.api.conversation.dependencies import get_current_user
 from aico.data.libsql import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.conversation.proactive")
+logger = get_logger("backend.api.conversation.proactive")
 
 router = APIRouter(prefix="/proactive", tags=["proactive_conversation"])
 

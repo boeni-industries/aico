@@ -17,7 +17,7 @@ from aico.core.logging import get_logger
 from .models import Schema, FieldSchema, ValidationResult
 
 
-logger = get_logger("shared", "world_model.schema_learner")
+logger = get_logger("shared.world_model.schema_learner")
 
 
 class SchemaLearner:

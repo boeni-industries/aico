@@ -11,7 +11,7 @@ import jwt
 from aico.core.logging import get_logger
 
 security = HTTPBearer()
-logger = get_logger("api", "dependencies")
+logger = get_logger("api.dependencies")
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:

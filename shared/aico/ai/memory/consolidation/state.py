@@ -11,7 +11,7 @@ from enum import Enum
 
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "memory.consolidation.state")
+logger = get_logger("shared.memory.consolidation.state")
 
 
 class ConsolidationStatus(Enum):

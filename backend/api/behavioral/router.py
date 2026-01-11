@@ -17,7 +17,7 @@ from aico.ai.memory.behavioral import SkillStore, FeedbackEvent, PreferenceManag
 
 from .schemas import FeedbackRequest, FeedbackResponse
 
-logger = get_logger("backend", "api.behavioral")
+logger = get_logger("backend.api.behavioral")
 
 router = APIRouter()
 

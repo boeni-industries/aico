@@ -21,7 +21,7 @@ from aico.core.logging import get_logger
 from aico.data.libsql import EncryptedLibSQLConnection
 
 
-logger = get_logger("shared", "ai.agency.skills.communication.initiate")
+logger = get_logger("shared.ai.agency.skills.communication.initiate")
 
 
 class InitiateConversationSkill(Skill):

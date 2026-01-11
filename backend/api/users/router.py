@@ -35,7 +35,7 @@ from .exceptions import (
 )
 
 router = APIRouter()
-logger = get_logger("backend", "api.users_router")
+logger = get_logger("backend.api.users_router")
 
 # Router now uses proper FastAPI dependency injection - no global state needed
 # Dependencies are injected via get_user_service, get_auth_manager from dependencies.py

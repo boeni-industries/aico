@@ -15,7 +15,7 @@ from enum import Enum
 from aico.core.logging import get_logger
 
 
-logger = get_logger("shared", "ai.agency.skills.registry")
+logger = get_logger("shared.ai.agency.skills.registry")
 
 
 class SkillParameterType(Enum):

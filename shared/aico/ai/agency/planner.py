@@ -20,7 +20,7 @@ from aico.ai.agency.templates import PLAN_SHAPES, PlanShape
 from aico.ai.agency.skills.matcher import SkillMatcher
 
 
-logger = get_logger("shared", "ai.agency.planner")
+logger = get_logger("shared.ai.agency.planner")
 
 
 class PlanStrategy(str, Enum):

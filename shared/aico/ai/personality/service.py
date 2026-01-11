@@ -27,7 +27,7 @@ class PersonalityService:
         # Lazy logger initialization to avoid import errors
         try:
             from aico.core.logging import get_logger
-            self.logger = get_logger("shared", "personality.service")
+            self.logger = get_logger("shared.personality.service")
             self.logger.info("[PERSONALITY] Service initialized (Phase 2 - basic mode)")
         except Exception:
             self.logger = None

@@ -14,7 +14,7 @@ import psutil
 
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "memory.consolidation.scheduler")
+logger = get_logger("shared.memory.consolidation.scheduler")
 
 
 class IdleStatus(Enum):

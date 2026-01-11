@@ -13,7 +13,7 @@ from aico.core.logging import get_logger
 
 from .models import ContextItem
 
-logger = get_logger("ai", "memory.context.scorers")
+logger = get_logger("ai.memory.context.scorers")
 
 
 class ContextScorer:

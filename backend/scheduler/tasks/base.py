@@ -106,7 +106,7 @@ class TaskContext:
         self.execution_id = execution_id
         self.service_container = service_container
         self.retry_count = retry_count  # Phase 6.2: Current retry attempt
-        self.logger = get_logger("backend", "scheduler.task_context")
+        self.logger = get_logger("backend.scheduler.task_context")
     
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value with fallback chain:
@@ -210,7 +210,7 @@ class BaseTask(ABC):
         if not self.task_id:
             raise ValueError(f"Task class {self.__class__.__name__} must define task_id")
         
-        self.logger = get_logger("backend", f"scheduler.task.{self.task_id}")
+        self.logger = get_logger(f"backend.scheduler.task.{self.task_id}")
     
     @abstractmethod
     async def execute(self, context: TaskContext) -> TaskResult:

@@ -12,7 +12,7 @@ import uuid
 from .base import BaseTask, TaskContext, TaskResult, TaskPriority, TaskQueue
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "scheduler.tasks.proactive_conversation")
+logger = get_logger("backend.scheduler.tasks.proactive_conversation")
 
 
 class ProactiveConversationTask(BaseTask):

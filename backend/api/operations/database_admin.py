@@ -42,7 +42,7 @@ from backend.api.operations.lmdb_browser import (
 )
 from backend.api.operations.chromadb_browser import search_chromadb, delete_chromadb_documents, browse_chromadb_collection
 
-logger = get_logger("backend", "api.operations.database_admin")
+logger = get_logger("backend.api.operations.database_admin")
 
 
 # ============================================================================

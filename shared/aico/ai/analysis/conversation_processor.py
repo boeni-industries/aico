@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "ai.conversation_processor")
+logger = get_logger("shared.ai.conversation_processor")
 
 
 @dataclass

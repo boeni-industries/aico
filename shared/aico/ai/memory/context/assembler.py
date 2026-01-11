@@ -15,7 +15,7 @@ from .retrievers import ContextRetrievers
 from .scorers import ContextScorer
 from .graph_ranking import GraphContextRanker
 
-logger = get_logger("ai", "memory.context.assembler")
+logger = get_logger("ai.memory.context.assembler")
 
 
 class ContextAssembler:

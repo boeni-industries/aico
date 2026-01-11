@@ -19,7 +19,7 @@ from aico.proto.aico_modelservice_pb2 import (
     CompletionsRequest, CompletionsResponse
 )
 
-logger = get_logger("shared", "ai.knowledge_graph.modelservice_client")
+logger = get_logger("shared.ai.knowledge_graph.modelservice_client")
 
 def _ts():
     """Get timestamp for debug prints."""

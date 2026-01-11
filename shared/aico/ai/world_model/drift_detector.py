@@ -18,7 +18,7 @@ from aico.core.logging import get_logger
 from .models import DriftReport, Contradiction, ConfidenceDecayConfig
 
 
-logger = get_logger("shared", "world_model.drift_detector")
+logger = get_logger("shared.world_model.drift_detector")
 
 
 class DriftDetector:

@@ -26,12 +26,11 @@ sys.path.insert(0, str(backend_dir))
 
 # Import AICO modules
 from aico.core.config import ConfigurationManager
-from aico.core.logging import initialize_logging
-from aico.core.logging_context import create_infrastructure_logger
+from aico.core.logging import initialize_logging, get_logger
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
-initialize_logging(config_manager, service_name="backend")
+initialize_logging(service_name="backend", enable_influx=True, enable_console=True)
 
 # Suppress noisy third-party and internal library loggers
 import logging
@@ -45,7 +44,7 @@ from aico.core.version import get_backend_version
 __version__ = get_backend_version()
 
 # Global components - config_manager already initialized above
-logger = create_infrastructure_logger("aico.infrastructure.backend.main")
+logger = get_logger("backend.main")
 process_manager = None
 shutdown_event = asyncio.Event()
 
@@ -164,14 +163,15 @@ async def main():
 
     # Beautiful cross-platform startup display
     print("\n" + "="*60)
-    print("[*] AICO Backend Server")
+    print("🚀 AICO Backend Server")
     print("="*60)
-    print(f"[>] Server: http://{host}:{port}")
-    print(f"[>] Environment: {os.getenv('AICO_ENV', 'development')}")
-    print(f"[>] Service Container: {len(lifecycle_manager.container._definitions)} services")
-    print(f"[>] Plugins: Active plugins will be shown after startup")
+    print(f"✓ Server: http://{host}:{port}")
+    print(f"✓ Environment: {os.getenv('AICO_ENV', 'development')}")
+    print(f"✓ Services: {len(lifecycle_manager.container._definitions)} registered")
     print("="*60)
-    print("[+] Starting server... (Press Ctrl+C to stop)\n")
+    print("✅ STARTUP COMPLETE - Server ready to accept connections")
+    print("="*60)
+    print("Press Ctrl+C to stop\n")
     
     try:
         # Start shutdown file monitoring task

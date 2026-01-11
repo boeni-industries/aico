@@ -17,7 +17,7 @@ from aico.core.logging import get_logger
 
 from .base import BaseTask, TaskContext, TaskResult
 
-logger = get_logger("backend", "scheduler.tasks.ams_consolidation")
+logger = get_logger("backend.scheduler.tasks.ams_consolidation")
 
 
 class MemoryConsolidationTask(BaseTask):

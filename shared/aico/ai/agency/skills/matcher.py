@@ -27,7 +27,7 @@ from aico.data.libsql.connection import LibSQLConnection
 from .registry import Skill, SkillRegistry
 
 
-logger = get_logger("shared", "ai.agency.skills.matcher")
+logger = get_logger("shared.ai.agency.skills.matcher")
 
 
 class MatchStrategy(str, Enum):

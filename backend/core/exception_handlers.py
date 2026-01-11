@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "core.exception_handlers")
+logger = get_logger("backend.core.exception_handlers")
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:

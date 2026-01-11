@@ -16,7 +16,7 @@ from ..models import ModelserviceMetrics, LLMMetrics, NERMetrics, SentimentMetri
 from ..influx_client import MetricsInfluxClient, get_metric_status
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.metrics.modelservice")
+logger = get_logger("backend.api.metrics.modelservice")
 
 router = APIRouter()
 

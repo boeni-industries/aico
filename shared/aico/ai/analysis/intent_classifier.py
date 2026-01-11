@@ -33,7 +33,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from ..base import BaseAIProcessor, ProcessingContext, ProcessingResult
 
-logger = get_logger("shared", "ai.analysis.intent_classifier")
+logger = get_logger("shared.ai.analysis.intent_classifier")
 
 
 class IntentType(Enum):

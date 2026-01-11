@@ -11,7 +11,7 @@ from typing import Optional, Union, Any, Iterator
 from pathlib import Path
 
 from ..core.config import ConfigurationManager
-from ..core.logging import AICOLogger
+from ..core.logging import get_logger
 from .key_manager import AICOKeyManager
 from .file_crypto import FileCrypto
 from .exceptions import (
@@ -60,11 +60,7 @@ class EncryptedFile:
         
         # Initialize components
         self.config = ConfigurationManager()
-        self.logger = AICOLogger(
-            subsystem="security",
-            module="aico.security.encrypted_file", 
-            config_manager=self.config
-        )
+        self.logger = get_logger("shared.security.encrypted_file")
         
         # Key manager setup
         if key_manager is None:

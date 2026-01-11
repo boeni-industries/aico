@@ -24,7 +24,7 @@ from ..influx_client import (
 )
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.metrics.gateway")
+logger = get_logger("backend.api.metrics.gateway")
 
 router = APIRouter()
 

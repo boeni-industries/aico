@@ -20,7 +20,7 @@ from .models import Plan, PlanStep, StepStatus, PlanStatus
 from .store import PlanStore
 
 
-logger = get_logger("shared", "ai.agency.executor")
+logger = get_logger("shared.ai.agency.executor")
 
 
 class ExecutionStatus(str, Enum):

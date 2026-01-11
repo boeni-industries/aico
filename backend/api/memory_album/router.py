@@ -20,7 +20,7 @@ import json
 import time
 
 router = APIRouter()
-logger = get_logger("backend", "api.memory_album")
+logger = get_logger("backend.api.memory_album")
 
 
 @router.post("/remember", response_model=RememberResponse, status_code=status.HTTP_201_CREATED)

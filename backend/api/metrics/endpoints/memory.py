@@ -17,7 +17,7 @@ from ..models import MemoryMetrics, MetricValue
 from ..influx_client import MetricsInfluxClient
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.metrics.memory")
+logger = get_logger("backend.api.metrics.memory")
 
 router = APIRouter()
 

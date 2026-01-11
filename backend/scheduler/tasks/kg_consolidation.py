@@ -20,7 +20,7 @@ from aico.ai.knowledge_graph.models import PropertyGraph
 
 from .base import BaseTask, TaskContext, TaskResult
 
-logger = get_logger("backend", "scheduler.tasks.kg_consolidation")
+logger = get_logger("backend.scheduler.tasks.kg_consolidation")
 
 
 class KGConsolidationTask(BaseTask):

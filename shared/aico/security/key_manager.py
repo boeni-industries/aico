@@ -34,12 +34,10 @@ def _get_logger():
             
             # Try to initialize logging if not already done
             try:
-                _logger = get_logger("shared", "security.key_manager")
+                _logger = get_logger("shared.security.key_manager")
             except RuntimeError:
-                # Logging not initialized, initialize with default service
-                config = ConfigurationManager()
-                initialize_logging(config, service_name="shared")
-                _logger = get_logger("shared", "security.key_manager")
+                # Logging not initialized, use basic logger
+                _logger = get_logger("shared.security.key_manager")
         except Exception:
             # Fallback to standard logging if unified system fails
             import logging

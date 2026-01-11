@@ -161,7 +161,7 @@ class TransformersManager:
         """Ensure logger is initialized (lazy initialization)."""
         if self.logger is None:
             try:
-                self.logger = get_logger("modelservice", "core.transformers_manager")
+                self.logger = get_logger("modelservice.core.transformers_manager")
             except RuntimeError:
                 # Logging not initialized yet, use basic Python logger as fallback
                 import logging

@@ -13,7 +13,7 @@ class LogRepository:
     
     def __init__(self, db_connection: LibSQLConnection):
         self.db = db_connection
-        self.logger = get_logger("log_repository", "core")
+        self.logger = get_logger("log_repository.core")
         self._ensure_tables()
     
     def _ensure_tables(self):

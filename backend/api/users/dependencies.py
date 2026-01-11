@@ -16,7 +16,7 @@ from aico.data.user import UserService
 from backend.core.lifecycle_manager import get_service_container, get_user_service, get_auth_manager
 
 security = HTTPBearer()
-logger = get_logger("api", "users_dependencies")
+logger = get_logger("api.users_dependencies")
 
 
 # Use the proper dependency injection functions from lifecycle_manager

@@ -35,7 +35,7 @@ class TtsFactory:
         Raises:
             RuntimeError: If engine is not configured or invalid
         """
-        logger = get_logger("modelservice", "tts_factory")
+        logger = get_logger("modelservice.tts_factory")
         
         if not config_manager:
             error_msg = (

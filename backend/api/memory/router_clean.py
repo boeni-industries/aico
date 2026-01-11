@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from aico.core.logging import get_logger
 from backend.api.memory.dependencies import get_current_user
 
-logger = get_logger("backend", "api.memory")
+logger = get_logger("backend.api.memory")
 
 print("\n=== CREATING MEMORY ROUTER ===")
 router = APIRouter(prefix="/memory", tags=["memory"])

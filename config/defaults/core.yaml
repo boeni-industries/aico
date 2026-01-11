@@ -118,13 +118,11 @@ api_gateway:
   plugins:
     message_bus:
       enabled: true
-    log_consumer:
-      enabled: true
-    validation:
-      enabled: true
     security:
       enabled: true
     rate_limiting:
+      enabled: true
+    validation:
       enabled: true
     encryption:
       enabled: true
@@ -381,11 +379,7 @@ services:
     max_concurrent_tasks: 10
     scheduler_interval: 1.0
     
-  # Log consumer service configuration
-  log_consumer:
-    enabled: true
-    buffer_size: 1000
-    flush_interval: 5.0
+  # Log consumer service removed - logs now go directly to InfluxDB via handler
     
   # Security service configuration
   security:

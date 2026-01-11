@@ -45,7 +45,7 @@ class KokoroTtsHandler:
         self._voices = {}  # Language -> voice name mapping
         self._model_path = None
         self._voices_path = None
-        self._logger = get_logger("modelservice", "kokoro_tts_handler")
+        self._logger = get_logger("modelservice.kokoro_tts_handler")
         
     async def initialize(self):
         """Initialize Kokoro TTS system."""

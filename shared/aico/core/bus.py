@@ -14,7 +14,7 @@ import uuid
 import zmq
 import zmq.asyncio
 from .topics import AICOTopics
-from .logging_context import get_logging_context, create_infrastructure_logger
+from .logging import get_logger
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message as ProtobufMessage
@@ -125,16 +125,13 @@ class MessageBusClient:
         self.subscriptions = {}
         self.encryption_enabled = True  # Default to encrypted
         
-        # Use infrastructure logger for logging transport components to prevent circular dependencies
-        if client_id in ["zmq_log_transport", "log_consumer"]:
-            self.logger = create_infrastructure_logger(f"bus.client.{client_id}")
-        else:
-            try:
-                self.logger = get_logger("shared", f"bus.client.{client_id}")
-            except RuntimeError:
-                # Logging not initialized yet - use fallback
-                import logging
-                self.logger = logging.getLogger(f"shared.bus.client.{client_id}")
+        # Get logger with service context
+        try:
+            self.logger = get_logger(f"shared.bus.client.{client_id}")
+        except RuntimeError:
+            # Logging not initialized yet - use fallback
+            import logging
+            self.logger = logging.getLogger(f"shared.bus.client.{client_id}")
         
         # ZeroMQ context and sockets
         self.context = self.zmq_context
@@ -451,23 +448,11 @@ class MessageBusClient:
         
         # Track message processing metrics with context
         with track_message(topic, client_id=self.client_id, direction="consume", source=source) as tracker:
-            # Use infrastructure logging context for logging transport components
-            context = get_logging_context()
-            
-            # Check if this is an infrastructure component based on logger type
-            is_infrastructure = hasattr(self.logger, '__class__') and 'InfrastructureLogger' in str(type(self.logger))
-            
-            if is_infrastructure:
-                with context.infrastructure_logging(self.client_id):
-                    if asyncio.iscoroutinefunction(callback):
-                        await callback(message)
-                    else:
-                        callback(message)
+            # Invoke callback
+            if asyncio.iscoroutinefunction(callback):
+                await callback(message)
             else:
-                if asyncio.iscoroutinefunction(callback):
-                    await callback(message)
-                else:
-                    callback(message)
+                callback(message)
             
             # Metrics are automatically recorded by track_message context manager
     
@@ -498,7 +483,7 @@ class MessageBusBroker:
     
     def __init__(self, bind_address: str = "tcp://*:5555"):
         self.bind_address = bind_address
-        self.logger = get_logger("shared", "bus.broker")
+        self.logger = get_logger("shared.bus.broker")
         
         # Parse ports from config
         from aico.core.config import ConfigurationManager

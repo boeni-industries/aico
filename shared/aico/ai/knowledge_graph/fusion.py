@@ -16,7 +16,7 @@ from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
 
-logger = get_logger("shared", "ai.knowledge_graph.fusion")
+logger = get_logger("shared.ai.knowledge_graph.fusion")
 
 
 class GraphFusion:

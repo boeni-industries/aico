@@ -18,7 +18,7 @@ from aico.ai.analysis.intent_classifier import IntentClassificationProcessor, In
 from .perceptual_events import PerceptualEvent, GoalHorizon
 from .models import Goal, GoalStatus
 
-logger = get_logger("shared", "ai.agency.goal_extractor")
+logger = get_logger("shared.ai.agency.goal_extractor")
 
 
 class UserGoalExtractor:

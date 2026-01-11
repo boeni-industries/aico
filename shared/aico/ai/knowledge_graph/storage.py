@@ -18,7 +18,7 @@ from aico.core.logging import get_logger
 
 from .models import Node, Edge, PropertyGraph
 
-logger = get_logger("shared", "ai.knowledge_graph.storage")
+logger = get_logger("shared.ai.knowledge_graph.storage")
 
 # Global lock for edge insertion to prevent race conditions in parallel extraction
 _edge_insertion_lock = threading.Lock()

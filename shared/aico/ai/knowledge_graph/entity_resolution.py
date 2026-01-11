@@ -23,7 +23,7 @@ from aico.core.json_sanitizer import LLMJsonSanitizer
 from .models import Node, Edge, PropertyGraph
 from .modelservice_client import ModelserviceClient
 
-logger = get_logger("shared", "ai.knowledge_graph.entity_resolution")
+logger = get_logger("shared.ai.knowledge_graph.entity_resolution")
 
 
 @dataclass

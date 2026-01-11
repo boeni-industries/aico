@@ -14,7 +14,7 @@ from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 from .types import FeedbackEventType
 
-logger = get_logger("shared", "feedback.events")
+logger = get_logger("shared.feedback.events")
 
 
 class FeedbackEventStore:

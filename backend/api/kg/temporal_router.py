@@ -28,7 +28,7 @@ from backend.api.kg.dependencies import (
 )
 
 router = APIRouter()
-logger = get_logger("backend", "api.kg.temporal")
+logger = get_logger("backend.api.kg.temporal")
 
 
 @router.get("/nodes/{node_id}/history", response_model=NodeHistoryResponse)

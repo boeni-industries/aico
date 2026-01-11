@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import uuid
 
-from .logging import AICOLogger
+from .logging import get_logger
 from .config import ConfigurationManager
 
 
@@ -37,7 +37,7 @@ class AuthorizationService:
     def __init__(self, db_connection):
         self.db = db_connection
         self.config_manager = ConfigurationManager()
-        self.logger = AICOLogger("authorization", "authorization", self.config_manager)
+        self.logger = get_logger("shared.authorization.authorization")
         
         # Load RBAC configuration
         self.rbac_config = self.config_manager.get("security.rbac", {})

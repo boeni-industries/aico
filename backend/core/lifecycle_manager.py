@@ -35,7 +35,7 @@ class BackendLifecycleManager:
     
     def __init__(self, config_manager: ConfigurationManager):
         self.config = config_manager
-        self.logger = get_logger("backend", "core.lifecycle_manager")
+        self.logger = get_logger("backend.core.lifecycle_manager")
         import time
         self.start_time = time.time()
         
@@ -648,7 +648,6 @@ class BackendLifecycleManager:
             RateLimitingPlugin,
             ValidationPlugin,
             RoutingPlugin,
-            LogConsumerPlugin,
             EncryptionPlugin
         )
         
@@ -660,7 +659,6 @@ class BackendLifecycleManager:
         registry.register_plugin_class("rate_limiting", RateLimitingPlugin)
         registry.register_plugin_class("validation", ValidationPlugin)
         registry.register_plugin_class("routing", RoutingPlugin)
-        registry.register_plugin_class("log_consumer", LogConsumerPlugin)
         registry.register_plugin_class("encryption", EncryptionPlugin)
         
         # Register AI plugin classes
@@ -720,7 +718,6 @@ class BackendLifecycleManager:
             "validation": [],
             "routing": [],
             "message_bus": ["zmq_context"],
-            "log_consumer": ["database", "zmq_context"],
             # AI plugins need message bus for inter-plugin communication
             "embodiment": ["zmq_context"],
             "agency": ["zmq_context"],
@@ -734,7 +731,6 @@ class BackendLifecycleManager:
         """Get plugin startup priority"""
         priority_map = {
             "message_bus": 20,
-            "log_consumer": 25,  # Start log consumer after message bus
             "security": 30,
             "encryption": 35,
             "rate_limiting": 40,
@@ -1142,149 +1138,29 @@ class BackendLifecycleManager:
     
     def _notify_log_transport_broker_ready(self) -> None:
         """Notify ZMQ log transport that broker is ready, but delay buffer flush until LogConsumer is subscribed"""
-        try:
-
-            # Get the global ZMQ transport instance from the logging system
-            from aico.core.logging import _get_zmq_transport
-            zmq_transport = _get_zmq_transport()
-            if zmq_transport:
-                # Mark broker ready but don't flush buffer yet
-                zmq_transport._broker_available = True
-            else:
-                self.logger.warning("ZMQ log transport not found - startup messages may be lost")
-                
-            # Notify log consumer service to connect
-            self._notify_log_consumer_broker_ready()
-                
-        except Exception as e:
-            self.logger.warning(f"Failed to notify ZMQ log transport: {e}")
+        # ZMQ log transport removed - logs now go directly to InfluxDB
+        # Log consumer service also removed - no longer needed
+        pass
     
     def _notify_log_consumer_broker_ready(self) -> None:
         """Notify log consumer service that broker is ready and schedule buffer flush after subscription"""
-        try:
-            log_consumer_plugin = self.container.get_service('log_consumer_plugin')
-            if log_consumer_plugin and log_consumer_plugin.log_consumer:
-                print("[+] Notifying log consumer that broker is ready...")
-                import asyncio
-                # Run the async method in the current event loop and flush buffer after subscription
-                asyncio.create_task(self._connect_log_consumer_and_flush_buffer(log_consumer_plugin.log_consumer))
-                print("[✓] Log consumer notified - will connect to message bus and flush buffer")
-            else:
-                print("[!] Log consumer service not found")
-        except Exception as e:
-            self.logger.warning(f"Failed to notify log consumer: {e}")
-            print(f"[!] Warning: Could not notify log consumer: {e}")
+        # Log consumer service removed - logs now go directly to InfluxDB
+        pass
     
     async def _connect_log_consumer_and_flush_buffer(self, log_consumer):
         """Connect log consumer and flush buffer after subscription is complete"""
-        try:
-            # Connect the log consumer first
-            await log_consumer.connect_when_broker_ready()
-            
-            # Wait a brief moment for subscription to be fully established
-            import asyncio
-            await asyncio.sleep(0.1)
-            
-            # Now flush the buffered logs
-            from aico.core.logging import _get_zmq_transport
-            zmq_transport = _get_zmq_transport()
-            if zmq_transport:
-                zmq_transport._flush_log_buffer()
-            else:
-                self.logger.warning("ZMQ transport not found for buffer flush")
-                
-        except Exception as e:
-            self.logger.warning(f"Failed to connect log consumer and flush buffer: {e}")
+        # Log consumer service removed - logs now go directly to InfluxDB
+        pass
     
     def _display_log_consumer_status(self) -> None:
         """Display log consumer service status"""
-        print("\n[i] Log Consumer Status:")
-        print("-" * 40)
-        
-        try:
-            # Check plugin first
-            log_consumer_plugin = self.container.get_service('log_consumer_plugin')
-            if log_consumer_plugin:
-                print(f"[✓] Log consumer plugin: Found")
-                print(f"[i] Plugin enabled: {getattr(log_consumer_plugin, 'enabled', 'unknown')}")
-                print(f"[i] Plugin running: {getattr(log_consumer_plugin, 'running', 'unknown')}")
-                
-                # Check if plugin has internal log consumer service
-                internal_consumer = getattr(log_consumer_plugin, 'log_consumer', None)
-                if internal_consumer:
-                    print(f"[✓] Internal log consumer service: Found")
-                    print(f"[i] Service running: {getattr(internal_consumer, 'running', 'unknown')}")
-                    print(f"[i] Service enabled: {getattr(internal_consumer, 'enabled', 'unknown')}")
-                    
-                    if hasattr(internal_consumer, 'message_thread') and internal_consumer.message_thread:
-                        thread_alive = internal_consumer.message_thread.is_alive()
-                        print(f"[i] Message thread: {'Running' if thread_alive else 'Stopped'}")
-                    else:
-                        print("[!] Message thread: Not found")
-                        
-                    if hasattr(internal_consumer, 'subscriber'):
-                        print(f"[i] ZMQ subscriber: {'Connected' if internal_consumer.subscriber else 'Not connected'}")
-                else:
-                    print("[!] Internal log consumer service: Not found")
-            else:
-                print("[✗] Log consumer plugin: Not found")
-                
-        except Exception as e:
-            print(f"[✗] Log consumer: Error checking status - {e}")
-        
-        print("-" * 40)
+        # Log consumer service removed - logs now go directly to InfluxDB
+        pass
     
     async def _debug_log_consumer_initialization(self) -> None:
         """Debug log consumer initialization issues"""
-        print("\nLog Consumer Initialization:")
-        print("-" * 40)
-        
-        try:
-            # Check plugin first
-            log_consumer_plugin = self.container.get_service('log_consumer_plugin')
-            if log_consumer_plugin:
-                print(f"[✓] Log consumer plugin: Found")
-                print(f"[i] Plugin enabled: {getattr(log_consumer_plugin, 'enabled', 'unknown')}")
-                
-                # Force initialization if not done
-                if not hasattr(log_consumer_plugin, 'log_consumer') or log_consumer_plugin.log_consumer is None:
-                    print("[!] Internal service not found - forcing initialization...")
-                    try:
-                        await log_consumer_plugin.initialize()
-                        print(f"[i] After init - service exists: {log_consumer_plugin.log_consumer is not None}")
-                    except Exception as e:
-                        print(f"[✗] Initialization failed: {e}")
-                
-                # Check internal service
-                internal_consumer = getattr(log_consumer_plugin, 'log_consumer', None)
-                if internal_consumer:
-                    print(f"[✓] Internal log consumer service: Found")
-                    print(f"[i] Service running: {getattr(internal_consumer, 'running', 'unknown')}")
-                    print(f"[i] Service enabled: {getattr(internal_consumer, 'enabled', 'unknown')}")
-                    
-                    # Check dependencies
-                    db_conn = getattr(internal_consumer, 'db_connection', None)
-                    zmq_ctx = getattr(internal_consumer, 'zmq_context', None)
-                    print(f"[i] DB connection: {'Found' if db_conn else 'Missing'}")
-                    print(f"[i] ZMQ context: {'Found' if zmq_ctx else 'Missing'}")
-                    
-                    if hasattr(internal_consumer, 'message_thread') and internal_consumer.message_thread:
-                        thread_alive = internal_consumer.message_thread.is_alive()
-                        print(f"[i] Message thread: {'Running' if thread_alive else 'Stopped'}")
-                    else:
-                        print("[!] Message thread: Not found")
-                        
-                    if hasattr(internal_consumer, 'subscriber'):
-                        print(f"[i] ZMQ subscriber: {'Connected' if internal_consumer.subscriber else 'Not connected'}")
-                else:
-                    print("[!] Internal log consumer service: Not found")
-            else:
-                print("[✗] Log consumer plugin: Not found")
-                
-        except Exception as e:
-            print(f"[✗] Debug failed: {e}")
-        
-        print("-" * 40)
+        # Log consumer service removed - logs now go directly to InfluxDB
+        pass
 
 
 # Dependency injection functions for FastAPI

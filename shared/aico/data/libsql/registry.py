@@ -26,12 +26,10 @@ def _get_logger():
             
             # Try to initialize logging if not already done
             try:
-                _logger = get_logger("data", "libsql.registry")
+                _logger = get_logger("shared.data.libsql.registry")
             except RuntimeError:
-                # Logging not initialized, initialize with default service
-                config = ConfigurationManager()
-                initialize_logging(config, service_name="shared")
-                _logger = get_logger("data", "libsql.registry")
+                # Logging not initialized, use basic logger
+                _logger = get_logger("shared.data.libsql.registry")
         except Exception:
             # Fallback to standard logging if unified system fails
             import logging

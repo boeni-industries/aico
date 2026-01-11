@@ -24,7 +24,7 @@ from backend.api.kg.dependencies import (
 
 # Initialize router and logger
 router = APIRouter()
-logger = get_logger("backend", "api.kg")
+logger = get_logger("backend.api.kg")
 
 # Include temporal endpoints
 from backend.api.kg.temporal_router import router as temporal_router

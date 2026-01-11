@@ -14,7 +14,7 @@ from aico.ai import ai_registry
 from backend.core.ai_plugin_base import AIProcessingPlugin, ProcessingRequest, ProcessingResponse, CapabilityContract
 
 
-logger = get_logger("backend", "services.agency_plugin")
+logger = get_logger("backend.services.agency_plugin")
 
 
 class AgencyPlugin(AIProcessingPlugin):

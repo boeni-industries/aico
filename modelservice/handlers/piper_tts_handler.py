@@ -42,7 +42,7 @@ class PiperTtsHandler:
         self._voices = {}  # Language -> voice model mapping
         self._piper_voices = {}  # Cached loaded voice models
         self._quality = "medium"
-        self._logger = get_logger("modelservice", "piper_tts_handler")
+        self._logger = get_logger("modelservice.piper_tts_handler")
         
     async def initialize(self):
         """Initialize Piper TTS system."""

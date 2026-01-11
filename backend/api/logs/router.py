@@ -34,7 +34,7 @@ from .exceptions import (
 )
 
 router = APIRouter()
-logger = get_logger("api", "logs_router")
+logger = get_logger("api.logs_router")
 
 
 @router.post("/", response_model=LogSubmissionResponse)

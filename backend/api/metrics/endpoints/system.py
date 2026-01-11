@@ -20,7 +20,7 @@ from ..models import SystemHealthMetrics
 from ..influx_client import MetricsInfluxClient
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.metrics.system")
+logger = get_logger("backend.api.metrics.system")
 
 router = APIRouter()
 

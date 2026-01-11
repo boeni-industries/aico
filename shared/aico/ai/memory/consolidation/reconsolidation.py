@@ -12,7 +12,7 @@ from enum import Enum
 
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "memory.consolidation.reconsolidation")
+logger = get_logger("shared.memory.consolidation.reconsolidation")
 
 
 class ConflictType(Enum):

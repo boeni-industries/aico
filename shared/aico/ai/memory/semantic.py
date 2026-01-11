@@ -37,7 +37,7 @@ from .fusion import calculate_rrf_scores, calculate_weighted_scores
 from .temporal import TemporalMetadata
 from .metrics import track_query
 
-logger = get_logger("shared", "ai.memory.semantic")
+logger = get_logger("shared.ai.memory.semantic")
 
 
 @dataclass

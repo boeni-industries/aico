@@ -20,7 +20,7 @@ from .clustering import OpportunityClusterer
 
 try:
     from aico.core.logging import get_logger
-    logger = get_logger("shared", "curiosity.engine")
+    logger = get_logger("shared.curiosity.engine")
 except Exception:
     import logging
     logger = logging.getLogger(__name__)

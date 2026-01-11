@@ -17,7 +17,7 @@ from datetime import datetime
 from .paths import AICOPaths
 from .logging import get_logger
 
-logger = get_logger("core", "process")
+logger = get_logger("core.process")
 
 
 class ProcessManager:

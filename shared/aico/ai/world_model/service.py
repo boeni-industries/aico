@@ -31,7 +31,7 @@ from .hypothesis_manager import HypothesisManager
 from .drift_detector import DriftDetector
 
 
-logger = get_logger("shared", "world_model.service")
+logger = get_logger("shared.world_model.service")
 
 
 class WorldModelService:

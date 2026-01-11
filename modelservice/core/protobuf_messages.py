@@ -61,7 +61,7 @@ class ModelserviceMessageFactory:
         
         # Debug logging for payload unpacking
         from aico.core.logging import get_logger
-        logger = get_logger("modelservice", "protobuf_debug")
+        logger = get_logger("modelservice.protobuf_debug")
         
         logger.info(f"[DEBUG] Attempting to unpack payload as {expected_type.__name__}")
         logger.info(f"[DEBUG] Payload type URL: {envelope.any_payload.type_url}")
@@ -242,7 +242,7 @@ class ModelserviceMessageParser:
     def extract_request_payload(envelope: AicoMessage, topic: str):
         """Extract request payload from envelope based on topic."""
         from aico.core.logging import get_logger
-        logger = get_logger("modelservice", "protobuf_debug")
+        logger = get_logger("modelservice.protobuf_debug")
         
         message_type = envelope.metadata.message_type
         logger.info(f"[DEBUG] extract_request_payload called with message_type: {message_type}")

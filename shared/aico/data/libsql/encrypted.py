@@ -27,7 +27,7 @@ def _get_logger():
             
             # Try to get logger (assume already initialized by CLI)
             try:
-                _logger = get_logger("data", "libsql.encrypted")
+                _logger = get_logger("data.libsql.encrypted")
             except RuntimeError:
                 # Logging not initialized - use fallback for CLI context
                 import logging

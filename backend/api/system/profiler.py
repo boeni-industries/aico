@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.profiler")
+logger = get_logger("backend.api.profiler")
 
 
 @contextmanager

@@ -15,7 +15,7 @@ from aico.core.logging import get_logger
 from .models import Node, Edge
 from .storage import PropertyGraphStorage
 
-logger = get_logger("shared", "ai.knowledge_graph.analytics")
+logger = get_logger("shared.ai.knowledge_graph.analytics")
 
 
 class GraphAnalytics:

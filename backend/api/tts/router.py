@@ -13,7 +13,7 @@ from aico.proto.aico_modelservice_pb2 import TtsRequest, TtsStreamChunk
 from backend.api.conversation.dependencies import get_current_user
 from .schemas import TtsSynthesizeRequest
 
-logger = get_logger("aico.api.tts", "router")
+logger = get_logger("aico.api.tts.router")
 
 
 router = APIRouter()

@@ -15,7 +15,7 @@ from starlette.datastructures import Headers
 from opentelemetry import metrics
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api_gateway.metrics")
+logger = get_logger("backend.api_gateway.metrics")
 
 
 def classify_service(path: str) -> str:

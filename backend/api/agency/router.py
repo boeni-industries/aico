@@ -44,7 +44,7 @@ from aico.data.libsql import EncryptedLibSQLConnection
 from aico.security import AICOKeyManager
 from aico.ai import ai_registry
 
-logger = get_logger("backend", "api.agency")
+logger = get_logger("backend.api.agency")
 router = APIRouter()
 
 

@@ -12,7 +12,7 @@ from aico.core.logging import get_logger
 from aico.data.libsql import EncryptedLibSQLConnection
 
 
-logger = get_logger("shared", "ai.agency.skills.communication.user_preferences")
+logger = get_logger("shared.ai.agency.skills.communication.user_preferences")
 
 
 class UserPreferencesManager:

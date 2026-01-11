@@ -50,7 +50,7 @@ from aico.data.lmdb import get_lmdb_path, initialize_lmdb_env
 from aico.ai.memory.temporal import TemporalMetadata
 from .metrics import track_query
 
-logger = get_logger("shared", "ai.memory.working")
+logger = get_logger("shared.ai.memory.working")
 
 
 class WorkingMemoryStore:

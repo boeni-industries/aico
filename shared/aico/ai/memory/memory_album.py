@@ -13,7 +13,7 @@ import uuid
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "ai.memory.memory_album")
+logger = get_logger("shared.ai.memory.memory_album")
 
 
 class MemoryAlbumStore:

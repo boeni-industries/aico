@@ -34,7 +34,7 @@ class TtsHandler:
         self._config = config_manager
         self._voices = {}  # Language -> speaker name mapping
         self._conditioning_cache = {}  # Cache for speaker embeddings
-        self._logger = get_logger("modelservice", "tts_handler")
+        self._logger = get_logger("modelservice.tts_handler")
         
     async def initialize(self):
         """

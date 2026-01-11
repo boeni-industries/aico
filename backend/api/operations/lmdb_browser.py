@@ -12,7 +12,7 @@ from backend.api.operations.schemas import (
     LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyInfo, LMDBKeyValueResponse,
 )
 
-logger = get_logger("backend", "api.operations.lmdb_browser")
+logger = get_logger("backend.api.operations.lmdb_browser")
 
 
 async def browse_lmdb_keys(browse_request: LMDBBrowseRequest) -> LMDBBrowseResponse:

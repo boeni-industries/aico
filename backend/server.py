@@ -22,7 +22,7 @@ from aico.core.logging import get_logger
 from aico.core.process import ServiceContext
 from aico.core.config import ConfigurationManager
 
-logger = get_logger("backend", "server")
+logger = get_logger("backend.server")
 
 
 class AICOServer:

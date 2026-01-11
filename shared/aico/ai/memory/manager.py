@@ -83,7 +83,7 @@ from aico.ai.knowledge_graph.modelservice_client import ModelserviceClient
 from .consolidation import ConsolidationScheduler, IdleDetector
 from .temporal import EvolutionTracker
 
-logger = get_logger("shared", "ai.memory.manager")
+logger = get_logger("shared.ai.memory.manager")
 
 
 @dataclass

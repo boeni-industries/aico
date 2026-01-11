@@ -27,7 +27,7 @@ from backend.api.metrics.endpoints.system import get_system_health_metrics
 from pydantic import BaseModel, Field
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.metrics.all")
+logger = get_logger("backend.api.metrics.all")
 
 router = APIRouter()
 

@@ -21,7 +21,7 @@ from .store import LessonStore
 from .lesson_projector import LessonMemoryProjector
 
 
-logger = get_logger("agency", "lesson_applicator")
+logger = get_logger("agency.lesson_applicator")
 
 
 class LessonApplicationService:

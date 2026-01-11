@@ -12,12 +12,12 @@ import jwt
 import uuid
 import re
 
-logger = get_logger("backend", "api.conversation.dependencies")
+logger = get_logger("backend.api.conversation.dependencies")
 security = HTTPBearer()
 
 # Module-level cache for message bus client to avoid re-registration warnings
 _message_bus_client_cache = None
-logger = get_logger("api", "conversation_dependencies")
+logger = get_logger("api.conversation_dependencies")
 
 
 def get_auth_manager(request: Request):

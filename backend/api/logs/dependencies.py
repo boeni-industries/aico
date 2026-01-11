@@ -10,7 +10,7 @@ from aico.core.logging import get_logger
 from .schemas import LogLevel, LogSeverity
 
 
-logger = get_logger("api", "logs_dependencies")
+logger = get_logger("api.logs_dependencies")
 
 
 def validate_log_level(level: str) -> LogLevel:

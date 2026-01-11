@@ -27,7 +27,7 @@ from enum import Enum
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "ai.fact_extractor")
+logger = get_logger("shared.ai.fact_extractor")
 
 
 class FactType(Enum):

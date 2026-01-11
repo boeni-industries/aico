@@ -129,12 +129,8 @@ def test_connection(
     
     # Initialize logging for bus operations
     try:
-        from aico.core.config import ConfigurationManager
         from aico.core.logging import initialize_logging
-        
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        initialize_logging(config, service_name="cli")
+        initialize_logging(service_name="cli", enable_influx=True, enable_console=True)
     except Exception as e:
         console.print(f"[yellow]Warning: Could not initialize logging: {e}[/yellow]")
     
@@ -227,12 +223,8 @@ def monitor_traffic(
     
     # Initialize logging for bus operations
     try:
-        from aico.core.config import ConfigurationManager
         from aico.core.logging import initialize_logging
-        
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        initialize_logging(config, service_name="cli")
+        initialize_logging(service_name="cli", enable_influx=True, enable_console=True)
         
     except Exception as e:
         console.print(f"[red]✗ Failed to initialize logging: {e}[/red]")

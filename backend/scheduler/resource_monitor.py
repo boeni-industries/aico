@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from aico.core.logging import get_logger
 
 
-logger = get_logger("backend", "scheduler.resource_monitor")
+logger = get_logger("backend.scheduler.resource_monitor")
 
 
 @dataclass

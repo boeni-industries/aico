@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from aico.core.logging import get_logger
 from .models import PreferenceVector, Skill
 
-logger = get_logger("shared", "memory.behavioral.preferences")
+logger = get_logger("shared.memory.behavioral.preferences")
 
 
 class PreferenceManager:

@@ -37,7 +37,7 @@ from backend.api.conversation.exceptions import (
 
 # Initialize router and logger
 router = APIRouter()
-logger = get_logger("backend", "api.conversation")
+logger = get_logger("backend.api.conversation")
 security = HTTPBearer()
 
 # Include proactive conversation endpoints

@@ -13,7 +13,7 @@ from backend.api.operations.schemas import (
     ChromaDBBrowseDocument, ChromaDBBrowseResponse,
 )
 
-logger = get_logger("backend", "api.operations.chromadb_browser")
+logger = get_logger("backend.api.operations.chromadb_browser")
 
 
 async def search_chromadb(search_request: ChromaDBSearchRequest, request: Request) -> ChromaDBSearchResponse:

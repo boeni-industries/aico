@@ -42,7 +42,7 @@ except ImportError:
     PersonalityContext = None  # type: ignore
 
 
-logger = get_logger("shared", "ai.agency.engine")
+logger = get_logger("shared.ai.agency.engine")
 
 
 class AgencyEngine(BaseAIProcessor):

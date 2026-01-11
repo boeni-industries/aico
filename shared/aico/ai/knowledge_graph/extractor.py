@@ -18,7 +18,7 @@ from aico.core.json_sanitizer import LLMJsonSanitizer
 from .models import Node, Edge, PropertyGraph
 from .modelservice_client import ModelserviceClient
 
-logger = get_logger("shared", "ai.knowledge_graph.extractor")
+logger = get_logger("shared.ai.knowledge_graph.extractor")
 
 
 def normalize_relation_type(relation_type: str) -> str:

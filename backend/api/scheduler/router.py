@@ -44,7 +44,7 @@ from .exceptions import (
 )
 
 router = APIRouter()
-logger = get_logger("api", "scheduler_router")
+logger = get_logger("api.scheduler_router")
 
 
 @router.get("/status", response_model=SchedulerStatusResponse)

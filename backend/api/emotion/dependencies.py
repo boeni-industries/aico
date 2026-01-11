@@ -11,7 +11,7 @@ import jwt
 
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "api.emotion.dependencies")
+logger = get_logger("backend.api.emotion.dependencies")
 security = HTTPBearer()
 
 
