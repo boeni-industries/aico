@@ -497,7 +497,7 @@ export const MetricsPage: React.FC = () => {
           <MetricCard
             label="TTFT"
             value={modelservice.llm?.ttft?.value || 0}
-            unit="ms"
+            unit="s"
             trend={modelservice.llm?.ttft?.trend || 0}
             color="#EC4899"
             dataSource="real"

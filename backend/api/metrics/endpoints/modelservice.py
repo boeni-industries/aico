@@ -53,7 +53,8 @@ async def get_modelservice_metrics():
             llm_latency_prev = llm_latency_prev_ms / 1000
             llm_latency_trend = ((llm_latency - llm_latency_prev) / llm_latency_prev * 100) if llm_latency_prev > 0 else 0
             
-            llm_ttft = client.mean_field("model_inference", "ttft_ms_f", "-24h", llm_filters)
+            llm_ttft_ms = client.mean_field("model_inference", "ttft_ms_f", "-24h", llm_filters)
+            llm_ttft = llm_ttft_ms / 1000  # Convert ms to seconds for better UX
             
             # Calculate RPS (requests per second) - use max to avoid 0
             rps_value = max(llm_count / 86400, 0.01) if llm_count > 0 else 0.0
@@ -133,7 +134,7 @@ async def get_modelservice_metrics():
                     unit="models", 
                     status="healthy"
                 ),
-                ttft=MetricValue(value=round(llm_ttft, 2) if llm_ttft > 0 else 0, unit="ms", status="healthy"),
+                ttft=MetricValue(value=round(llm_ttft, 2) if llm_ttft > 0 else 0, unit="s", status="healthy"),
                 tps=MetricValue(value=tps_value, unit="tokens/s", status="healthy"),
                 e2e_latency=MetricValue(
                     value=round(llm_latency, 2) if llm_latency > 0 else 0, 

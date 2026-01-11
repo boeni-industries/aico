@@ -168,6 +168,7 @@ def track_inference(
             attributes["prompt.tokens"] = tracker_state["prompt_tokens"]
         
         if tracker_state["ttft"] is not None:
+            attributes["ttft"] = tracker_state["ttft"]  # Add to attributes for InfluxDB export
             ttft_histogram.record(tracker_state["ttft"], attributes)
         
         # NER-specific metrics
