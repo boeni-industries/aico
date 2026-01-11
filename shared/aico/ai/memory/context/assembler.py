@@ -472,7 +472,8 @@ class ContextAssembler:
                 # Create context item
                 item = ContextItem(
                     content=f"[Lesson: {lesson_type}] {description}",
-                    source="agency_lessons",
+                    source_tier="behavioral",
+                    item_type="pattern",
                     timestamp=datetime.fromisoformat(created_at) if created_at else datetime.utcnow(),
                     relevance_score=confidence,  # Use lesson confidence as relevance
                     metadata={

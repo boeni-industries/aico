@@ -279,7 +279,8 @@ class OTelInfluxExporter(MetricExporter):
                         fields['sentiment_result_s'] = f'"{sentiment}"'
                     
                     if 'ttft' in attributes:
-                        fields['ttft_ms_f'] = f"{attributes['ttft']:.2f}"
+                        ttft_ms = attributes['ttft'] * 1000  # Convert seconds to milliseconds
+                        fields['ttft_ms_f'] = f"{ttft_ms:.2f}"
                     
                     if 'error.message' in attributes:
                         error_msg = str(attributes['error.message']).replace('"', '\\"')

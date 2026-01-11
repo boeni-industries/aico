@@ -3,6 +3,7 @@ import { Box, Typography, Paper, LinearProgress } from '@mui/material';
 import { CircularGauge } from '../components/metrics/CircularGauge';
 import { DonutChart } from '../components/metrics/DonutChart';
 import { MetricCard } from '../components/metrics/MetricCard';
+import { ActiveModelsCard } from '../components/metrics/ActiveModelsCard';
 import { MetricsSkeleton } from '../components/metrics/MetricsSkeleton';
 import { MetricDetailDrawer } from '../components/metrics/MetricDetailDrawer';
 import { httpJson } from '../api/http';
@@ -452,26 +453,30 @@ export const MetricsPage: React.FC = () => {
       >
         LLM Inference (Ollama)
       </Typography>
-      <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap' }}>
+      {/* Row 1: Throughput & Performance Metrics */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
-            label="Active Models"
-            value={modelservice.llm?.active_models?.value || 0}
-            unit="models"
-            color="#A78BFA"
+            label="RPS"
+            value={modelservice.llm?.rps?.value || 0}
+            unit="req/s"
+            trend={modelservice.llm?.rps?.trend || 0}
+            color="#10B981"
             dataSource="real"
+            tooltip="Requests Per Second - throughput for concurrent users"
+            avg_1h={modelservice.llm?.rps?.avg_1h}
+            avg_24h={modelservice.llm?.rps?.avg_24h}
+            avg_7d={modelservice.llm?.rps?.avg_7d}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
-            label="TTFT"
-            value={modelservice.llm?.ttft?.value || 0}
-            unit="s"
-            trend={modelservice.llm?.ttft?.trend || 0}
-            color="#EC4899"
+            label="Total Requests"
+            value={modelservice.llm?.total_requests_24h || 0}
+            unit="req"
+            color="#8B5CF6"
             dataSource="real"
-            tooltip="Time to First Token - latency until first token appears"
-            lowerIsBetter={true}
+            tooltip="Total LLM requests in the last 24 hours"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
@@ -490,36 +495,38 @@ export const MetricsPage: React.FC = () => {
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
+            label="TTFT"
+            value={modelservice.llm?.ttft?.value || 0}
+            unit="ms"
+            trend={modelservice.llm?.ttft?.trend || 0}
+            color="#EC4899"
+            dataSource="real"
+            tooltip="Time to First Token - latency until first token appears"
+            lowerIsBetter={true}
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <MetricCard
             label="E2E Latency"
             value={modelservice.llm?.e2e_latency?.value || 0}
             unit="s"
             trend={modelservice.llm?.e2e_latency?.trend || 0}
             color="#F59E0B"
             dataSource="real"
-            tooltip="End-to-end request completion time"
+            tooltip="End-to-end request completion time (24h trend)"
             lowerIsBetter={true}
+            size="large"
+            sparklineData={modelservice.llm?.e2e_latency?.sparkline_data}
+            invertSparkline={true}
             avg_1h={modelservice.llm?.e2e_latency?.avg_1h}
             avg_24h={modelservice.llm?.e2e_latency?.avg_24h}
             avg_7d={modelservice.llm?.e2e_latency?.avg_7d}
           />
         </Box>
-        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
-          <MetricCard
-            label="RPS"
-            value={modelservice.llm?.rps?.value || 0}
-            unit="req/s"
-            trend={modelservice.llm?.rps?.trend || 0}
-            color="#10B981"
-            dataSource="real"
-            tooltip="Requests Per Second - throughput for concurrent users"
-            avg_1h={modelservice.llm?.rps?.avg_1h}
-            avg_24h={modelservice.llm?.rps?.avg_24h}
-            avg_7d={modelservice.llm?.rps?.avg_7d}
-          />
-        </Box>
       </Box>
+      {/* Row 2: Quality & Resource Metrics */}
       <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap' }}>
-        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 180, minHeight: 120 }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
             label="Success Rate"
             value={modelservice.llm?.success_rate?.value || 0}
@@ -528,7 +535,7 @@ export const MetricsPage: React.FC = () => {
             dataSource="real"
           />
         </Box>
-        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 180, minHeight: 120 }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
             label="Tokens (24h)"
             value={modelservice.llm?.total_tokens_24h || 0}
@@ -537,22 +544,31 @@ export const MetricsPage: React.FC = () => {
             dataSource="real"
           />
         </Box>
-        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 180, minHeight: 120 }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
             label="Avg Prompt"
             value={modelservice.llm?.avg_prompt_length?.value || 0}
             unit="tokens"
             color="#06B6D4"
             dataSource="real"
+            tooltip="Includes user message, system instructions, memory context, and knowledge graph information"
           />
         </Box>
-        <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 180, minHeight: 120 }}>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <MetricCard
             label="Avg Response"
             value={modelservice.llm?.avg_response_length?.value || 0}
             unit="tokens"
             color="#14B8A6"
             dataSource="real"
+          />
+        </Box>
+        <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
+          <ActiveModelsCard
+            modelCount={modelservice.llm?.active_models?.value || 0}
+            modelUsage={modelservice.llm?.model_usage || {}}
+            dataSource="real"
+            tooltip="Models with inference activity in the last 24 hours"
           />
         </Box>
       </Box>

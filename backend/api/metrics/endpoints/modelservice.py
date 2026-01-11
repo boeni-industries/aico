@@ -33,22 +33,122 @@ async def get_modelservice_metrics():
             filters = {"service": "modelservice"}
             
             # LLM Metrics
-            llm_filters = {**filters, "task_type": "chat"}
+            llm_filters = {**filters, "task_type": "chat_streaming"}
             llm_count = client.count_points("model_inference", "-24h", llm_filters)
-            llm_latency = client.mean_field("model_inference", "duration_ms_f", "-1m", llm_filters)
+            llm_latency_ms = client.mean_field("model_inference", "duration_ms_f", "-24h", llm_filters)
+            llm_latency = llm_latency_ms / 1000  # Convert ms to seconds
+            
+            # Calculate trend: compare current 24h to previous 24h (24-48h ago)
+            prev_latency_query = f'''
+                from(bucket: "aico_telemetry")
+                |> range(start: -48h, stop: -24h)
+                |> filter(fn: (r) => r._measurement == "model_inference")
+                |> filter(fn: (r) => r._field == "duration_ms_f")
+                |> filter(fn: (r) => r.service == "modelservice")
+                |> filter(fn: (r) => r.task_type == "chat_streaming")
+                |> mean()
+            '''
+            prev_results = client.query(prev_latency_query)
+            llm_latency_prev_ms = prev_results[0].get('value', llm_latency_ms) if prev_results else llm_latency_ms
+            llm_latency_prev = llm_latency_prev_ms / 1000
+            llm_latency_trend = ((llm_latency - llm_latency_prev) / llm_latency_prev * 100) if llm_latency_prev > 0 else 0
+            
+            llm_ttft = client.mean_field("model_inference", "ttft_ms_f", "-24h", llm_filters)
+            
+            # Calculate RPS (requests per second) - use max to avoid 0
+            rps_value = max(llm_count / 86400, 0.01) if llm_count > 0 else 0.0
+            
+            # Calculate TPS (tokens per second) from tokens_generated and duration
+            total_tokens_query = f'''
+                from(bucket: "aico_telemetry")
+                |> range(start: -24h)
+                |> filter(fn: (r) => r._measurement == "model_inference")
+                |> filter(fn: (r) => r._field == "tokens_generated_i")
+                |> filter(fn: (r) => r.service == "modelservice")
+                |> filter(fn: (r) => r.task_type == "chat_streaming")
+                |> sum()
+            '''
+            total_duration_query = f'''
+                from(bucket: "aico_telemetry")
+                |> range(start: -24h)
+                |> filter(fn: (r) => r._measurement == "model_inference")
+                |> filter(fn: (r) => r._field == "duration_ms_f")
+                |> filter(fn: (r) => r.service == "modelservice")
+                |> filter(fn: (r) => r.task_type == "chat_streaming")
+                |> sum()
+            '''
+            total_tokens_results = client.query(total_tokens_query)
+            total_duration_results = client.query(total_duration_query)
+            
+            total_tokens = total_tokens_results[0].get('value', 0) if total_tokens_results else 0
+            total_duration_ms = total_duration_results[0].get('value', 0) if total_duration_results else 0
+            
+            # TPS = total_tokens / (total_duration_ms / 1000)
+            tps_value = round((total_tokens / (total_duration_ms / 1000)), 2) if total_duration_ms > 0 else 0.0
+            
+            # Calculate success rate from success_b field
+            success_query = f'''
+                from(bucket: "aico_telemetry")
+                |> range(start: -24h)
+                |> filter(fn: (r) => r._measurement == "model_inference")
+                |> filter(fn: (r) => r._field == "success_b")
+                |> filter(fn: (r) => r.service == "modelservice")
+                |> filter(fn: (r) => r.task_type == "chat_streaming")
+                |> group()
+                |> count()
+            '''
+            success_results = client.query(success_query)
+            
+            # Count successes (where success_b == true)
+            success_count = sum(1 for r in success_results if r.get('value', False))
+            total_count = len(success_results) if success_results else llm_count
+            
+            success_rate_value = round((success_count / total_count * 100), 2) if total_count > 0 else 100.0
+            
+            # Query average prompt and response lengths
+            avg_prompt_tokens = client.mean_field("model_inference", "prompt_tokens_i", "-24h", llm_filters)
+            avg_response_tokens = client.mean_field("model_inference", "tokens_generated_i", "-24h", llm_filters)
+            
+            # Generate sparkline data for E2E latency (24 hourly data points)
+            e2e_sparkline = client.sparkline(
+                measurement="model_inference",
+                field="duration_ms_f",
+                intervals=24,
+                interval_duration="1h",
+                aggregation="mean",
+                filters=llm_filters
+            )
+            # Convert sparkline from ms to seconds
+            e2e_sparkline_seconds = [round(val / 1000, 2) if val > 0 else 0 for val in e2e_sparkline]
+            
+            # Get model usage from InfluxDB (models that have been used in last 24h)
+            # Note: This shows models with actual usage, not necessarily all loaded models
+            # Modelservice manages Ollama directly - we only observe metrics here
+            model_usage_dict = client.group_count("model_inference", "model_name", "-24h", llm_filters)
+            active_models_count = len(model_usage_dict) if model_usage_dict else 0
             
             llm = LLMMetrics(
-                active_models=MetricValue(value=2, unit="models", status="healthy"),
-                ttft=MetricValue(value=120.5, unit="ms", status="healthy"),
-                tps=MetricValue(value=45.3, unit="tokens/s", status="healthy"),
-                e2e_latency=MetricValue(value=round(llm_latency, 2), unit="ms", status="healthy"),
-                rps=MetricValue(value=round(llm_count / 86400, 2), unit="req/s", status="healthy"),
-                success_rate=MetricValue(value=98.5, unit="%", status="healthy"),
-                total_tokens_24h=125000,
+                active_models=MetricValue(
+                    value=active_models_count, 
+                    unit="models", 
+                    status="healthy"
+                ),
+                ttft=MetricValue(value=round(llm_ttft, 2) if llm_ttft > 0 else 0, unit="ms", status="healthy"),
+                tps=MetricValue(value=tps_value, unit="tokens/s", status="healthy"),
+                e2e_latency=MetricValue(
+                    value=round(llm_latency, 2) if llm_latency > 0 else 0, 
+                    unit="s", 
+                    status="healthy",
+                    trend=round(llm_latency_trend, 2),
+                    sparkline_data=e2e_sparkline_seconds
+                ),
+                rps=MetricValue(value=round(rps_value, 2), unit="req/s", status="healthy"),
+                success_rate=MetricValue(value=success_rate_value, unit="%", status="healthy"),
+                total_tokens_24h=int(total_tokens) if total_tokens > 0 else 0,
                 total_requests_24h=llm_count,
-                avg_prompt_length=MetricValue(value=128, unit="tokens", status="healthy"),
-                avg_response_length=MetricValue(value=256, unit="tokens", status="healthy"),
-                model_usage={"llama-3.2-3b": llm_count}
+                avg_prompt_length=MetricValue(value=round(avg_prompt_tokens, 1) if avg_prompt_tokens > 0 else 0, unit="tokens", status="healthy"),
+                avg_response_length=MetricValue(value=round(avg_response_tokens, 1) if avg_response_tokens > 0 else 0, unit="tokens", status="healthy"),
+                model_usage=model_usage_dict
             )
             
             # NER Metrics

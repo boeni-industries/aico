@@ -181,7 +181,7 @@ class EncryptionService {
       nonce: nonce,
     );
     
-    // Combine nonce + ciphertext and encode as base64 (NaCl format)
+    // Combine nonce + ciphertext to match PyNaCl Box.encrypt() EncryptedMessage format
     final combined = Uint8List.fromList([...nonce, ...ciphertext]);
     return base64Encode(combined);
   }

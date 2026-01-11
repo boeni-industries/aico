@@ -1,7 +1,9 @@
-import React from 'react';
-import { Box, Typography, Tooltip } from '@mui/material';
+import React, { useRef, useEffect, useState } from 'react';
+import { Box, Typography } from '@mui/material';
 import { TrendingUp, TrendingDown, Info } from 'lucide-react';
 import { Sparkline } from './Sparkline';
+import { StyledTooltip } from '../common/StyledTooltip';
+import { formatMetricValue } from '../../utils/formatNumber';
 
 interface MetricCardProps {
   label: string;
@@ -42,6 +44,9 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   avg_7d,
   onClick,
 }) => {
+  const sparklineContainerRef = useRef<HTMLDivElement>(null);
+  const [sparklineWidth, setSparklineWidth] = useState(200);
+
   const statusColors = {
     healthy: '#10B981',
     warning: '#F59E0B',
@@ -55,6 +60,29 @@ export const MetricCard: React.FC<MetricCardProps> = ({
     medium: { fontSize: '2rem', padding: 2.5 },
     large: { fontSize: '2.5rem', padding: 3 },
   };
+
+  // Measure sparkline container width
+  useEffect(() => {
+    if (!sparklineContainerRef.current || !sparklineData) return;
+
+    const updateWidth = () => {
+      if (sparklineContainerRef.current) {
+        const width = sparklineContainerRef.current.offsetWidth;
+        if (width > 0) {
+          setSparklineWidth(width);
+        }
+      }
+    };
+
+    updateWidth();
+
+    const resizeObserver = new ResizeObserver(updateWidth);
+    resizeObserver.observe(sparklineContainerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [sparklineData]);
 
   return (
     <Box
@@ -93,9 +121,9 @@ export const MetricCard: React.FC<MetricCardProps> = ({
             {label}
           </Typography>
           {tooltip && (
-            <Tooltip title={tooltip} arrow>
+            <StyledTooltip title={tooltip} arrow>
               <Info size={12} style={{ color: 'rgba(255, 255, 255, 0.3)', cursor: 'help' }} />
-            </Tooltip>
+            </StyledTooltip>
           )}
         </Box>
         <Box
@@ -121,8 +149,8 @@ export const MetricCard: React.FC<MetricCardProps> = ({
           </Typography>
         </Box>
       </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: sparklineData ? 0.5 : 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: sparklineData ? 0.5 : 0, width: '100%' }}>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexShrink: 0 }}>
           <Typography
             variant="h4"
             sx={{
@@ -132,7 +160,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
               lineHeight: 1,
             }}
           >
-            {value}
+            {formatMetricValue(value, unit)}
           </Typography>
           {unit && (
             <Typography
@@ -146,15 +174,56 @@ export const MetricCard: React.FC<MetricCardProps> = ({
               {unit}
             </Typography>
           )}
+          {trend !== undefined && trend !== 0 && !isNeutralMetric && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.3,
+                ml: 0.5,
+              }}
+            >
+              {/* For lowerIsBetter metrics: negative trend (down) is good (green), positive trend (up) is bad (red) */}
+              {/* For higherIsBetter metrics: positive trend (up) is good (green), negative trend (down) is bad (red) */}
+              {lowerIsBetter ? (
+                trend < 0 ? (
+                  <TrendingDown size={16} style={{ color: '#10B981' }} />
+                ) : (
+                  <TrendingUp size={16} style={{ color: '#EF4444' }} />
+                )
+              ) : (
+                trend > 0 ? (
+                  <TrendingUp size={16} style={{ color: '#10B981' }} />
+                ) : (
+                  <TrendingDown size={16} style={{ color: '#EF4444' }} />
+                )
+              )}
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  color: lowerIsBetter 
+                    ? (trend < 0 ? '#10B981' : '#EF4444')
+                    : (trend > 0 ? '#10B981' : '#EF4444'),
+                }}
+              >
+                {Math.abs(trend).toFixed(1)}%
+              </Typography>
+            </Box>
+          )}
         </Box>
         {sparklineData && sparklineData.length > 1 && (
-          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
+          <Box 
+            ref={sparklineContainerRef}
+            sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minWidth: 0, mr: -1 }}
+          >
             <Sparkline
               data={sparklineData}
               color={displayColor}
-              width={size === 'small' ? 60 : size === 'large' ? 100 : 80}
-              height={size === 'small' ? 20 : size === 'large' ? 28 : 24}
-              strokeWidth={size === 'small' ? 1.5 : 2}
+              width={sparklineWidth}
+              height={size === 'small' ? 20 : size === 'large' ? 40 : 24}
+              strokeWidth={size === 'small' ? 1.5 : size === 'large' ? 2.5 : 2}
               showGradient={true}
               invertY={invertSparkline}
               unit={unit}

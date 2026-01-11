@@ -55,6 +55,11 @@ class ContextScorer:
             Recency factor (0-1, where 1 is most recent)
         """
         now = datetime.utcnow()
+        
+        # Ensure timestamp is timezone-naive UTC for comparison
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.replace(tzinfo=None)
+        
         hours_ago = (now - timestamp).total_seconds() / 3600.0
         
         # Exponential decay with configurable half-life
