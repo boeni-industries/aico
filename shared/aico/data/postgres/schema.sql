@@ -1089,40 +1089,6 @@ CREATE INDEX IF NOT EXISTS idx_events_source ON "system_events"(source);
 
 CREATE INDEX IF NOT EXISTS idx_events_topic_timestamp ON "system_events"(topic, timestamp);
 
-CREATE TABLE IF NOT EXISTS "system_logs" (
-                id BIGSERIAL PRIMARY KEY,
-                timestamp TEXT NOT NULL,
-                level TEXT NOT NULL,
-                subsystem TEXT NOT NULL,
-                module TEXT NOT NULL,
-                function_name TEXT,
-                file_path TEXT,
-                line_number INTEGER,
-                topic TEXT NOT NULL,
-                message TEXT NOT NULL,
-                user_uuid TEXT,
-                session_id TEXT,
-                trace_id TEXT,
-                extra TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-
-CREATE INDEX IF NOT EXISTS idx_logs_level ON "system_logs"(level);
-
-CREATE INDEX IF NOT EXISTS idx_logs_level_timestamp ON "system_logs"(level, timestamp DESC);
-
-CREATE INDEX IF NOT EXISTS idx_logs_module ON "system_logs"(module);
-
-CREATE INDEX IF NOT EXISTS idx_logs_session_id ON "system_logs"(session_id);
-
-CREATE INDEX IF NOT EXISTS idx_logs_subsystem ON "system_logs"(subsystem);
-
-CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON "system_logs"(timestamp);
-
-CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON "system_logs"(trace_id);
-
-CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON "system_logs"(user_uuid, timestamp);
-
 CREATE TABLE IF NOT EXISTS "user_feedback_requests" (
             request_id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
