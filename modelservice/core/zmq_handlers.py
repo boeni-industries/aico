@@ -800,6 +800,8 @@ class ModelserviceZMQHandlers:
     
     async def handle_ner_request(self, request_payload) -> Any:
         """Handle NER (Named Entity Recognition) requests via GLiNER."""
+        from modelservice.core.metrics import track_inference
+        
         try:
             import time
             handler_start = time.time()
@@ -854,21 +856,29 @@ class ModelserviceZMQHandlers:
             # Use threshold from request if provided, otherwise default to 0.5
             threshold = request_payload.threshold if request_payload.HasField('threshold') else 0.5
             
-            inference_start = time.time()
-            print(f"🔍 [NER_DEEP_ANALYSIS] Starting GLiNER inference [{inference_start:.6f}]")
-            raw_entities = gliner_model.predict_entities(
-                text,
-                labels=entity_types,
-                threshold=threshold,
-                flat_ner=False,  # Allow nested entities to capture complex phrases like "website redesign project"
-                multi_label=False  # Avoid overlapping entity classifications
-            )
-            inference_end = time.time()
-            inference_duration = inference_end - inference_start
-            print(f"🔍 [NER_DEEP_ANALYSIS] GLiNER inference COMPLETED in {inference_duration*1000:.2f}ms [{inference_end:.6f}]")
-            
-            # Log entity count for monitoring
-            self.logger.debug(f"GLiNER extracted {len(raw_entities)} raw entities")
+            # Track NER inference metrics
+            self.logger.info(f"🔍 [NER_METRICS] Starting NER inference tracking for text: {text[:50]}...")
+            with track_inference("gliner", task_type="ner") as tracker:
+                inference_start = time.time()
+                print(f"🔍 [NER_DEEP_ANALYSIS] Starting GLiNER inference [{inference_start:.6f}]")
+                raw_entities = gliner_model.predict_entities(
+                    text,
+                    labels=entity_types,
+                    threshold=threshold,
+                    flat_ner=False,  # Allow nested entities to capture complex phrases like "website redesign project"
+                    multi_label=False  # Avoid overlapping entity classifications
+                )
+                inference_end = time.time()
+                inference_duration = inference_end - inference_start
+                print(f"🔍 [NER_DEEP_ANALYSIS] GLiNER inference COMPLETED in {inference_duration*1000:.2f}ms [{inference_end:.6f}]")
+                
+                # Log entity count for monitoring
+                self.logger.debug(f"GLiNER extracted {len(raw_entities)} raw entities")
+                
+                # Track metrics
+                tracker.set_success(True)
+                tracker.set_entities(len(raw_entities), entity_types)
+                self.logger.info(f"🔍 [NER_METRICS] ✅ NER metrics recorded: {len(raw_entities)} entities, duration: {inference_duration*1000:.2f}ms")
             
             # Group entities by type with intelligent filtering - PRESERVE CONFIDENCE SCORES
             entities = {}

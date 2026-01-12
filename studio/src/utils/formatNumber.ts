@@ -70,14 +70,25 @@ export function formatMetricValue(
     return num.toFixed(1);
   }
   
-  // Special handling for rates (req/s, t/s, etc.) - show 2 decimals for small values
+  // Special handling for rates (req/s, t/s, etc.) - adaptive precision for all scales
   if (unit?.includes('/s') || unit?.includes('/sec')) {
+    // For very small non-zero values, show enough precision to be visible
+    if (num > 0 && num < 0.01) {
+      return num.toFixed(6); // e.g., 0.003750
+    }
+    if (num < 0.1) {
+      return num.toFixed(4); // e.g., 0.0125
+    }
     if (num < 1) {
-      return num.toFixed(2);
+      return num.toFixed(3); // e.g., 0.125
     }
     if (num < 10) {
-      return num.toFixed(1);
+      return num.toFixed(2); // e.g., 5.25
     }
+    if (num < 100) {
+      return num.toFixed(1); // e.g., 45.2
+    }
+    // For >= 100, use default K/M/B notation
   }
   
   // Special handling for latencies (ms, s) - show 2 decimals for precision

@@ -434,7 +434,7 @@ async def list_logs(
             all_records.extend(table.records)
         
         if not all_records:
-            return LogEventsResponse(logs=[], total=0, has_more=False)
+            return LogsListResponse(logs=[], total=0, has_more=False)
         
         # CRITICAL: Sort all records by timestamp DESC after combining tables
         # InfluxDB returns separate tables per tag combination, so we must re-sort

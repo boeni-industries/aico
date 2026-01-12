@@ -545,121 +545,131 @@ async def get_system_topology(
         backend_uptime_seconds = time.time() - start_time
         backend_uptime_str = format_uptime(backend_uptime_seconds)
         
-        # Get modelservice uptime (separate service via ZMQ health check)
-        modelservice_uptime_str = "N/A"
-        try:
-            from backend.services import get_modelservice_client
-            from aico.core.config import ConfigurationManager
-            
-            config = ConfigurationManager()
-            modelservice_client = get_modelservice_client(config)
-            
-            health_data = await modelservice_client.get_health()
-            if health_data and health_data.get('success') and health_data.get('uptime_seconds'):
-                modelservice_uptime_str = format_uptime(health_data['uptime_seconds'])
-        except Exception as e:
-            logger.debug(f"Could not poll modelservice uptime: {e}")
-            modelservice_uptime_str = "N/A"
+        # Run all health checks and docker inspects in parallel for performance
+        async def get_modelservice_uptime():
+            try:
+                from backend.services import get_modelservice_client
+                from aico.core.config import ConfigurationManager
+                
+                config = ConfigurationManager()
+                modelservice_client = get_modelservice_client(config)
+                
+                health_data = await modelservice_client.get_health()
+                if health_data and health_data.get('success') and health_data.get('uptime_seconds'):
+                    return format_uptime(health_data['uptime_seconds'])
+            except Exception as e:
+                logger.debug(f"Could not poll modelservice uptime: {e}")
+            return "N/A"
         
-        # Get Ollama uptime and version (from version detector)
+        async def check_ollama_status():
+            try:
+                import httpx
+                import logging
+                
+                # Disable httpx logging to prevent console spam
+                logging.getLogger("httpx").setLevel(logging.WARNING)
+                
+                async with httpx.AsyncClient(timeout=2.0) as client:
+                    response = await client.get("http://localhost:11434/api/version")
+                    if response.status_code == 200:
+                        return "healthy"
+            except Exception as e:
+                logger.debug(f"Could not poll Ollama: {e}")
+            return "unavailable"
+        
+        async def get_studio_uptime():
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=2.0) as client:
+                    response = await client.get("http://localhost:3000")
+                    if response.status_code == 200:
+                        # Studio is running, try to get uptime from docker if containerized
+                        try:
+                            result = await asyncio.to_thread(
+                                subprocess.run,
+                                ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-studio"],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                            if result.returncode == 0:
+                                from datetime import datetime
+                                started_at = datetime.fromisoformat(result.stdout.strip().replace('Z', '+00:00'))
+                                uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
+                                return format_uptime(uptime_seconds)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            return "N/A"
+        
+        async def get_postgres_uptime():
+            try:
+                import subprocess
+                from datetime import datetime
+                
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-postgres"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    started_at_str = result.stdout.strip()
+                    logger.debug(f"PostgreSQL container started at: {started_at_str}")
+                    started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+                    uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
+                    return format_uptime(uptime_seconds)
+                else:
+                    logger.debug(f"Docker inspect failed for aico-postgres: {result.stderr}")
+            except Exception as e:
+                logger.debug(f"Could not get PostgreSQL uptime: {e}")
+            return "N/A"
+        
+        async def get_influxdb_uptime():
+            try:
+                import subprocess
+                from datetime import datetime
+                
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-influxdb"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    started_at_str = result.stdout.strip()
+                    logger.debug(f"InfluxDB container started at: {started_at_str}")
+                    started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+                    uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
+                    return format_uptime(uptime_seconds)
+                else:
+                    logger.debug(f"Docker inspect failed for aico-influxdb: {result.stderr}")
+            except Exception as e:
+                logger.debug(f"Could not get InfluxDB uptime: {e}")
+            return "N/A"
+        
+        # Execute all checks in parallel
+        (
+            modelservice_uptime_str,
+            ollama_status,
+            studio_uptime_str,
+            postgres_uptime_str,
+            influxdb_uptime_str
+        ) = await asyncio.gather(
+            get_modelservice_uptime(),
+            check_ollama_status(),
+            get_studio_uptime(),
+            get_postgres_uptime(),
+            get_influxdb_uptime(),
+            return_exceptions=False
+        )
+        
+        # Get Ollama uptime and version
         ollama_uptime_str = modelservice_uptime_str  # Ollama managed by modelservice
         ollama_version = db_versions.get("Ollama", "0.5.x")
-        ollama_status = "healthy"
-        
-        # Check if Ollama is actually running
-        try:
-            import httpx
-            import logging
-            
-            # Disable httpx logging to prevent console spam
-            logging.getLogger("httpx").setLevel(logging.WARNING)
-            
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                response = await client.get("http://localhost:11434/api/version")
-                if response.status_code != 200:
-                    ollama_status = "unavailable"
-        except Exception as e:
-            logger.debug(f"Could not poll Ollama: {e}")
-            ollama_status = "unavailable"
-        
-        # Studio uptime (separate frontend service)
-        studio_uptime_str = "N/A"
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                response = await client.get("http://localhost:3000")
-                if response.status_code == 200:
-                    # Studio is running, try to get uptime from docker if containerized
-                    try:
-                        result = await asyncio.to_thread(
-                            subprocess.run,
-                            ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-studio"],
-                            capture_output=True,
-                            text=True,
-                            timeout=2
-                        )
-                        if result.returncode == 0:
-                            from datetime import datetime
-                            started_at = datetime.fromisoformat(result.stdout.strip().replace('Z', '+00:00'))
-                            uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
-                            studio_uptime_str = format_uptime(uptime_seconds)
-                    except Exception:
-                        # Not containerized or docker not available
-                        pass
-        except Exception:
-            pass
-        
-        # PostgreSQL uptime (from docker container)
-        postgres_uptime_str = "N/A"
-        try:
-            import subprocess
-            from datetime import datetime
-            
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-postgres"],
-                capture_output=True,
-                text=True,
-                timeout=2
-            )
-            if result.returncode == 0:
-                started_at_str = result.stdout.strip()
-                logger.info(f"PostgreSQL container started at: {started_at_str}")
-                # Parse ISO format timestamp
-                started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
-                uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
-                postgres_uptime_str = format_uptime(uptime_seconds)
-                logger.info(f"PostgreSQL uptime calculated: {postgres_uptime_str}")
-            else:
-                logger.warning(f"Docker inspect failed for aico-postgres: {result.stderr}")
-        except Exception as e:
-            logger.error(f"Could not get PostgreSQL uptime: {e}", exc_info=True)
-        
-        # InfluxDB uptime (from docker container)
-        influxdb_uptime_str = "N/A"
-        try:
-            import subprocess
-            from datetime import datetime
-            
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-influxdb"],
-                capture_output=True,
-                text=True,
-                timeout=2
-            )
-            if result.returncode == 0:
-                started_at_str = result.stdout.strip()
-                logger.info(f"InfluxDB container started at: {started_at_str}")
-                # Parse ISO format timestamp
-                started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
-                uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
-                influxdb_uptime_str = format_uptime(uptime_seconds)
-                logger.info(f"InfluxDB uptime calculated: {influxdb_uptime_str}")
-            else:
-                logger.warning(f"Docker inspect failed for aico-influxdb: {result.stderr}")
-        except Exception as e:
-            logger.error(f"Could not get InfluxDB uptime: {e}", exc_info=True)
         
         # Define services
         services = [

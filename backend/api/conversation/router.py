@@ -184,7 +184,7 @@ async def send_message_with_auto_thread(
                             if streaming_chunk.request_id != message_id:
                                 return  # Not for us, continue listening
                             
-                            logger.info(f"🔍 [API_STREAMING] 📦 Received chunk for {message_id}: '{streaming_chunk.content}' (done: {streaming_chunk.done})")
+                            logger.debug(f"🔍 [API_STREAMING] 📦 Received chunk for {message_id}: '{streaming_chunk.content}' (done: {streaming_chunk.done})")
                             
                             # Put chunk in queue for immediate processing
                             await chunk_queue.put({
@@ -222,13 +222,13 @@ async def send_message_with_auto_thread(
                             # Wait for chunk with short timeout to check completion
                             chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
                             chunk_count += 1
-                            logger.info(f"🔍 [API_STREAMING] 🎯 Got chunk #{chunk_count} from queue: {chunk}")
+                            logger.debug(f"🔍 [API_STREAMING] 🎯 Got chunk #{chunk_count} from queue: {chunk}")
                             
                             if "type" in chunk and chunk["type"] == "error":
-                                logger.info(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
+                                logger.debug(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
                                 yield json.dumps(chunk) + "\n"
                             else:
-                                logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}' (type: {chunk.get('content_type', 'response')})")
+                                logger.debug(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}' (type: {chunk.get('content_type', 'response')})")
                                 chunk_data = {
                                     "type": "chunk",
                                     "content": chunk["content"],

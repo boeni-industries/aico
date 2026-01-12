@@ -600,6 +600,7 @@ export const MetricsPage: React.FC = () => {
             trend={modelservice.ner?.inference_rate?.trend || 0}
             color="#F59E0B"
             dataSource="real"
+            tooltip="NER inference requests per second. Shows how frequently named entities are being extracted from text."
             avg_1h={modelservice.ner?.inference_rate?.avg_1h}
             avg_24h={modelservice.ner?.inference_rate?.avg_24h}
             avg_7d={modelservice.ner?.inference_rate?.avg_7d}
@@ -613,6 +614,7 @@ export const MetricsPage: React.FC = () => {
             trend={modelservice.ner?.avg_latency?.trend || 0}
             color="#EF4444"
             dataSource="real"
+            tooltip="Average time to extract named entities from text. Lower is better. Includes model inference and post-processing."
             lowerIsBetter={true}
             avg_1h={modelservice.ner?.avg_latency?.avg_1h}
             avg_24h={modelservice.ner?.avg_latency?.avg_24h}
@@ -626,7 +628,7 @@ export const MetricsPage: React.FC = () => {
             unit="s"
             color="#DC2626"
             dataSource="real"
-            tooltip="99th percentile latency"
+            tooltip="99th percentile latency - 99% of NER requests complete faster than this. Useful for identifying worst-case performance."
             lowerIsBetter={true}
           />
         </Box>
@@ -637,6 +639,7 @@ export const MetricsPage: React.FC = () => {
             unit="entities"
             color="#F97316"
             dataSource="real"
+            tooltip="Total named entities extracted in the last 24 hours. Includes PERSON, ORG, LOC, DATE, and other entity types."
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
@@ -646,6 +649,7 @@ export const MetricsPage: React.FC = () => {
             unit="%"
             color="#10B981"
             dataSource="real"
+            tooltip="Percentage of NER requests that completed successfully without errors. Target: >95%."
           />
         </Box>
       </Box>
@@ -661,6 +665,7 @@ export const MetricsPage: React.FC = () => {
             trend={modelservice.sentiment?.inference_rate?.trend || 0}
             color="#8B5CF6"
             dataSource="real"
+            tooltip="Sentiment analysis requests per second. Shows how frequently text sentiment is being analyzed."
             avg_1h={modelservice.sentiment?.inference_rate?.avg_1h}
             avg_24h={modelservice.sentiment?.inference_rate?.avg_24h}
             avg_7d={modelservice.sentiment?.inference_rate?.avg_7d}
@@ -674,10 +679,11 @@ export const MetricsPage: React.FC = () => {
             trend={modelservice.sentiment?.avg_latency?.trend || 0}
             color="#A855F7"
             dataSource="real"
+            tooltip="Average time to analyze text sentiment. Lower is better. Includes model inference and confidence scoring."
             lowerIsBetter={true}
             avg_1h={modelservice.sentiment?.avg_latency?.avg_1h}
             avg_24h={modelservice.sentiment?.avg_latency?.avg_24h}
-            avg_7d={modelservice.sentiment?.avg_latency?.avg_7d}
+            avg_7d={modelservice.sentiment?.avg_7d}
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
@@ -687,7 +693,7 @@ export const MetricsPage: React.FC = () => {
             unit="s"
             color="#9333EA"
             dataSource="real"
-            tooltip="99th percentile latency"
+            tooltip="99th percentile latency - 99% of sentiment analyses complete faster than this. Useful for SLA monitoring."
             lowerIsBetter={true}
           />
         </Box>
@@ -698,6 +704,7 @@ export const MetricsPage: React.FC = () => {
             unit="analyses"
             color="#C084FC"
             dataSource="real"
+            tooltip="Total sentiment analyses performed in the last 24 hours. Each analysis classifies text as positive, negative, or neutral."
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
@@ -707,6 +714,7 @@ export const MetricsPage: React.FC = () => {
             unit=""
             color="#D946EF"
             dataSource="real"
+            tooltip="Average confidence score (0-1) of sentiment predictions. Higher values indicate more certain classifications. Target: >0.7."
           />
         </Box>
       </Box>
@@ -718,7 +726,7 @@ export const MetricsPage: React.FC = () => {
           <MetricCard
             label="Rate"
             value={modelservice.embeddings?.inference_rate?.value || 0}
-            unit="req/s"
+            unit={modelservice.embeddings?.inference_rate?.unit || "emb/s"}
             trend={modelservice.embeddings?.inference_rate?.trend || 0}
             color="#06B6D4"
             dataSource="real"
@@ -731,7 +739,7 @@ export const MetricsPage: React.FC = () => {
           <MetricCard
             label="Latency"
             value={modelservice.embeddings?.avg_latency?.value || 0}
-            unit="s"
+            unit="ms"
             trend={modelservice.embeddings?.avg_latency?.trend || 0}
             color="#0891B2"
             dataSource="real"
@@ -745,7 +753,7 @@ export const MetricsPage: React.FC = () => {
           <MetricCard
             label="P99"
             value={modelservice.embeddings?.p99_latency || 0}
-            unit="s"
+            unit="ms"
             color="#0E7490"
             dataSource="real"
             tooltip="99th percentile latency"
