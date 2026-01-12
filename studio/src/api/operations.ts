@@ -63,6 +63,14 @@ export interface DatabaseMetrics {
   database_count?: number;
   key_count?: number;
   map_size_bytes?: number;
+  database_name?: string;
+  host?: string;
+  port?: number;
+  bucket_count?: number;
+  measurement_count?: number;
+  series_count?: number;
+  org?: string;
+  bucket?: string;
 }
 
 export interface DatabaseStatsResponse {
@@ -392,14 +400,14 @@ export interface SchemaMetadata {
 export async function getSchemaMetadata(): Promise<SchemaMetadata> {
   return httpJson<SchemaMetadata>({
     method: 'GET',
-    path: `${BASE_URL}/operations/databases/libsql/schema`,
+    path: `${BASE_URL}/operations/databases/postgresql/schema`,
   });
 }
 
 export async function executeSQLQuery(request: QueryRequest): Promise<QueryResult> {
   return httpJson<QueryResult>({
     method: 'POST',
-    path: `${BASE_URL}/operations/databases/libsql/query`,
+    path: `${BASE_URL}/operations/databases/postgresql/query`,
     body: request,
   });
 }

@@ -11,20 +11,28 @@ from typing import Optional, List
 class DatabaseMetrics(BaseModel):
     """Metrics for a single database"""
     name: str = Field(..., description="Database name")
-    type: str = Field(..., description="Database type (libsql, chromadb, lmdb)")
+    type: str = Field(..., description="Database type (postgresql, chromadb, lmdb, influxdb)")
     size_bytes: int = Field(..., description="Database size in bytes")
     status: str = Field(..., description="Database status (healthy, degraded, critical)")
-    location: str = Field(..., description="Database file path")
+    location: str = Field(..., description="Database location (file path or connection string)")
     error_details: Optional[str] = Field(None, description="Error details for degraded/critical status")
-    table_count: Optional[int] = Field(None, description="Number of tables (LibSQL)")
-    connection_count: Optional[int] = Field(None, description="Active connections (LibSQL)")
-    wal_size_bytes: Optional[int] = Field(None, description="WAL size in bytes (LibSQL)")
+    table_count: Optional[int] = Field(None, description="Number of tables (PostgreSQL)")
+    connection_count: Optional[int] = Field(None, description="Active connections (PostgreSQL)")
+    wal_size_bytes: Optional[int] = Field(None, description="WAL size in bytes (PostgreSQL)")
     collection_count: Optional[int] = Field(None, description="Number of collections (ChromaDB)")
     document_count: Optional[int] = Field(None, description="Number of documents (ChromaDB)")
     index_size_bytes: Optional[int] = Field(None, description="Index size in bytes (ChromaDB)")
     database_count: Optional[int] = Field(None, description="Number of databases (LMDB)")
     key_count: Optional[int] = Field(None, description="Number of keys (LMDB)")
     map_size_bytes: Optional[int] = Field(None, description="Map size in bytes (LMDB)")
+    database_name: Optional[str] = Field(None, description="Database name (PostgreSQL)")
+    host: Optional[str] = Field(None, description="Database host (PostgreSQL)")
+    port: Optional[int] = Field(None, description="Database port (PostgreSQL)")
+    bucket_count: Optional[int] = Field(None, description="Number of buckets (InfluxDB)")
+    measurement_count: Optional[int] = Field(None, description="Number of measurements (InfluxDB)")
+    series_count: Optional[int] = Field(None, description="Number of series (InfluxDB)")
+    org: Optional[str] = Field(None, description="Organization name (InfluxDB)")
+    bucket: Optional[str] = Field(None, description="Bucket name (InfluxDB)")
 
 
 class DatabaseStatsResponse(BaseModel):

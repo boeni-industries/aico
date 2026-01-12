@@ -13,7 +13,7 @@ loader.config({
   } 
 });
 
-export type EditorLanguage = 'sql' | 'cypher' | 'graphql' | 'json' | 'yaml' | 'javascript' | 'typescript';
+export type EditorLanguage = 'sql' | 'cypher' | 'graphql' | 'json' | 'yaml' | 'javascript' | 'typescript' | 'flux';
 
 export interface CodeEditorProps {
   value: string;
@@ -40,13 +40,20 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   schemaEndpoint,
   onValidate,
 }) => {
+  // Generate unique ID for this editor instance
+  const editorId = useRef(`editor-${language}-${Math.random().toString(36).substr(2, 9)}`);
+  console.log(`[CodeEditor ${editorId.current}] Component rendered with language:`, language);
+  
   const editorRef = useRef<monacoType.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const [schema, setSchema] = useState<CompletionSchema | null>(null);
+  const [editorMounted, setEditorMounted] = useState(false);
 
   const handleEditorDidMount = (editor: monacoType.editor.IStandaloneCodeEditor, monaco: Monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    setEditorMounted(true);
+    console.log(`[CodeEditor ${editorId.current}] Editor mounted`);
   };
 
   // Fetch schema from endpoint if provided
@@ -77,11 +84,43 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   useEffect(() => {
     if (!editorRef.current || !monacoRef.current) return;
 
+    console.log(`[CodeEditor ${editorId.current}] useEffect running for language:`, language);
+    
     const plugin = getLanguagePlugin(language);
-    if (!plugin) return;
+    console.log(`[CodeEditor ${editorId.current}] getLanguagePlugin(${language}) returned:`, plugin?.constructor.name);
+    
+    if (!plugin) {
+      console.log(`[CodeEditor ${editorId.current}] No plugin found for language:`, language);
+      return;
+    }
 
     const editor = editorRef.current;
     const monaco = monacoRef.current;
+
+    // Store the original language prop (before conversion to Monaco language)
+    const originalLanguage = language;
+
+    // Only register completion provider if this is the right plugin for this editor
+    // Skip registration if language doesn't match
+    const pluginName = plugin.constructor.name;
+    const shouldRegister = (originalLanguage === 'flux' && pluginName.includes('Flux')) ||
+                          (originalLanguage === 'sql' && !pluginName.includes('Flux')) ||
+                          (originalLanguage !== 'flux' && originalLanguage !== 'sql');
+    
+    console.log(`[CodeEditor ${editorId.current}] Plugin check:`, {
+      originalLanguage,
+      pluginName,
+      shouldRegister,
+      isFluxEditor: originalLanguage === 'flux',
+      isFluxPlugin: pluginName.includes('Flux'),
+    });
+    
+    if (!shouldRegister) {
+      console.log(`[CodeEditor ${editorId.current}] Skipping plugin registration:`, pluginName, 'for language:', originalLanguage);
+      return () => {}; // Return empty cleanup function
+    }
+
+    console.log(`[CodeEditor ${editorId.current}] ✅ Registering plugin:`, pluginName, 'for language:', originalLanguage);
 
     const disposable = monaco.languages.registerCompletionItemProvider(plugin.languageId, {
         triggerCharacters: plugin.triggerCharacters,
@@ -110,6 +149,15 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           };
 
           const completionItems = plugin.provideCompletions(context, schema, monaco as any);
+          
+          console.log(`[CodeEditor ${editorId.current}] Autocomplete triggered:`, {
+            editorLanguage: originalLanguage,
+            pluginLanguage: plugin.languageId,
+            pluginName: plugin.constructor.name,
+            textBeforeCursor,
+            itemCount: completionItems.length,
+            firstFew: completionItems.slice(0, 3).map(i => i.label),
+          });
 
           // Deduplicate suggestions by label to prevent Monaco from showing duplicates
           const seen = new Set<string>();
@@ -130,6 +178,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 endColumn: word.endColumn,
               },
             }));
+
+          console.log(`[CodeEditor ${editorId.current}] Returning suggestions:`, uniqueSuggestions.length);
 
           return {
             suggestions: uniqueSuggestions,
@@ -174,7 +224,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       disposable.dispose();
       changeDisposable.dispose();
     };
-  }, [language, schema]);
+  }, [language, schema, editorMounted]);
 
   useEffect(() => {
     if (editorRef.current && onValidate) {
@@ -198,7 +248,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     >
       <Editor
         height={height}
-        language={language}
+        language={language === 'flux' ? 'sql' : language}
         value={value}
         onChange={(newValue) => onChange(newValue || '')}
         onMount={handleEditorDidMount}
@@ -220,11 +270,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           quickSuggestions: {
             other: true,
             comments: false,
-            strings: false,
+            strings: true, // Enable suggestions in strings for Flux parameters
           },
+          quickSuggestionsDelay: 10, // Show suggestions quickly
           acceptSuggestionOnCommitCharacter: true,
           acceptSuggestionOnEnter: 'on',
           wordBasedSuggestions: 'off', // Use our custom suggestions only
+          parameterHints: {
+            enabled: true,
+            cycle: true,
+          },
           suggest: {
             showKeywords: true,
             showSnippets: true,

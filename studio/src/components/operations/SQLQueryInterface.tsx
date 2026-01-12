@@ -204,7 +204,7 @@ export const SQLQueryInterface: React.FC<SQLQueryInterfaceProps> = ({ databaseNa
             language="sql"
             height={300}
             placeholder="Enter your SQL query here..."
-            schemaEndpoint="http://localhost:8771/api/v1/operations/databases/libsql/schema"
+            schemaEndpoint="http://localhost:8771/api/v1/operations/databases/postgresql/schema"
           />
         </Box>
 

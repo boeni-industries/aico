@@ -38,16 +38,19 @@ async def get_database_details(
     """
     Get detailed information about database tables/collections.
     
-    - **libsql**: Returns list of tables with row counts
+    - **postgresql**: Returns list of tables with row counts
     - **chromadb**: Returns list of collections with document counts
     - **lmdb**: Returns list of databases with key counts
+    - **influxdb**: Returns basic database information
     """
-    if database_type == "libsql":
-        return await database_admin.get_libsql_details(db_connection)
+    if database_type == "postgresql":
+        return await database_admin.get_postgresql_details()
     elif database_type == "chromadb":
         return await database_admin.get_chromadb_details(request)
     elif database_type == "lmdb":
         return await database_admin.get_lmdb_details()
+    elif database_type == "influxdb":
+        return await database_admin.get_influxdb_details()
     else:
         from fastapi import HTTPException, status
         raise HTTPException(
@@ -60,14 +63,14 @@ async def get_database_details(
 # SQL Query Execution
 # ============================================================================
 
-@router.post("/databases/libsql/query", response_model=QueryResult)
+@router.post("/databases/postgresql/query", response_model=QueryResult)
 async def execute_query(
     query_request: QueryRequest,
     user: Annotated[dict, Depends(get_current_user)],
     db_connection: Annotated[object, Depends(get_db_connection)]
 ) -> QueryResult:
     """
-    Execute a SQL query on LibSQL database.
+    Execute a SQL query on PostgreSQL database.
     
     **Security**: Only SELECT queries are allowed.
     """
@@ -76,6 +79,19 @@ async def execute_query(
         query_request.limit or 100,
         db_connection
     )
+
+
+@router.post("/databases/influxdb/query", response_model=QueryResult)
+async def execute_influx_query(
+    query_request: QueryRequest,
+    user: Annotated[dict, Depends(get_current_user)]
+) -> QueryResult:
+    """
+    Execute a Flux query on InfluxDB.
+    
+    Returns time-series data from the configured InfluxDB instance.
+    """
+    return await database_admin.execute_influx_query(query_request.query)
 
 
 # ============================================================================
@@ -107,7 +123,7 @@ async def create_backup(
     """
     Create a backup of the specified database.
     
-    Supports: LibSQL, ChromaDB, LMDB
+    Supports: PostgreSQL, ChromaDB, LMDB
     """
     return await database_admin.create_database_backup(database_name)
 

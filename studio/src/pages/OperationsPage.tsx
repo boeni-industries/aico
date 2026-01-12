@@ -2,7 +2,6 @@ import React, { useState, useCallback } from 'react';
 import { Box, Typography, Tabs, Tab } from '@mui/material';
 import { AutoRefreshControls } from '../components/common/AutoRefreshControls';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import { OperationsOverview } from '../components/operations/OperationsOverview';
 import { SystemTopology } from '../components/operations/SystemTopology';
 import { UsersSessions } from '../components/operations/UsersSessions';
 import { SchedulerJobs } from '../components/operations/SchedulerJobs';
@@ -10,10 +9,10 @@ import { LogsEvents } from '../components/operations/LogsEvents';
 import { DatabaseStorage } from '../components/operations/DatabaseStorage';
 import { MetricsPage } from './MetricsPage';
 
-type OperationsTab = 'overview' | 'topology' | 'users' | 'scheduler' | 'logs' | 'database' | 'metrics';
+type OperationsTab = 'topology' | 'users' | 'scheduler' | 'logs' | 'database' | 'metrics';
 
 export const OperationsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<OperationsTab>('overview');
+  const [activeTab, setActiveTab] = useState<OperationsTab>('topology');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const loadOperationsData = useCallback(async () => {
@@ -69,7 +68,6 @@ export const OperationsPage: React.FC = () => {
             },
           }}
         >
-          <Tab label="Overview" value="overview" />
           <Tab label="System Topology" value="topology" />
           <Tab label="Users & Sessions" value="users" />
           <Tab label="Scheduler & Jobs" value="scheduler" />
@@ -81,7 +79,6 @@ export const OperationsPage: React.FC = () => {
 
       {/* Tab Content */}
       <Box>
-        {activeTab === 'overview' && <OperationsOverview onNavigateToTab={handleNavigateToTab} refreshTrigger={refreshTrigger} />}
         {activeTab === 'topology' && <SystemTopology refreshTrigger={refreshTrigger} />}
         {activeTab === 'users' && <UsersSessions refreshTrigger={refreshTrigger} />}
         {activeTab === 'scheduler' && <SchedulerJobs refreshTrigger={refreshTrigger} />}

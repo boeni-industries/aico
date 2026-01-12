@@ -9,6 +9,7 @@ import sqlite3
 import time
 import shutil
 import uuid
+import asyncio
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from datetime import datetime, timedelta
@@ -70,41 +71,95 @@ async def get_database_stats(
     try:
         databases = []
         
-        # LibSQL Database
+        # PostgreSQL Database
         try:
-            from aico.core.paths import get_default_database_path
-            db_path = get_default_database_path()
-            db_size = get_file_size(str(db_path))
+            import psycopg2
+            from aico.core.config import ConfigurationManager
+            from aico.security.key_manager import AICOKeyManager
             
-            # Get table count
+            config = ConfigurationManager()
+            pg_config = config.get('core.database.postgres', {})
+            
+            db_host = pg_config.get('host', '127.0.0.1')
+            db_port = pg_config.get('port', 5432)
+            db_name = pg_config.get('db_name', 'aico')
+            db_user = pg_config.get('user', 'postgres')
+            
+            # Get password from keyring using AICOKeyManager
+            key_manager = AICOKeyManager(config)
+            db_password = key_manager.get_database_password('postgres', db_user) or ''
+            
+            # Initialize metrics
+            db_size = 0
             table_count = 0
-            try:
-                result = db_connection.execute(
-                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
-                ).fetchone()
-                table_count = result[0] if result else 0
-            except Exception as e:
-                logger.warning(f"Failed to get LibSQL table count: {e}")
+            connection_count = 0
+            wal_size = 0
+            status = "healthy"
             
-            # Get WAL size
-            wal_path = f"{db_path}-wal"
-            wal_size = get_file_size(wal_path)
+            try:
+                # Connect to PostgreSQL
+                conn = psycopg2.connect(
+                    host=db_host,
+                    port=db_port,
+                    database=db_name,
+                    user=db_user,
+                    password=db_password,
+                    connect_timeout=5
+                )
+                
+                with conn.cursor() as cur:
+                    # Get table count from aico_core schema
+                    cur.execute(
+                        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'aico_core' AND table_type = 'BASE TABLE'"
+                    )
+                    table_count = cur.fetchone()[0]
+                    
+                    # Get active connections
+                    cur.execute(
+                        "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()"
+                    )
+                    connection_count = cur.fetchone()[0]
+                    
+                    # Get database size
+                    cur.execute(
+                        "SELECT pg_database_size(current_database())"
+                    )
+                    db_size = cur.fetchone()[0]
+                    
+                    # Get WAL size (approximate current WAL position)
+                    cur.execute(
+                        "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')"
+                    )
+                    wal_size = int(cur.fetchone()[0])
+                
+                conn.close()
+                logger.info(f"PostgreSQL metrics collected: {table_count} tables, {connection_count} connections, {db_size} bytes")
+                
+            except psycopg2.OperationalError as e:
+                logger.error(f"Failed to connect to PostgreSQL: {e}")
+                status = "critical"
+            except Exception as e:
+                logger.error(f"Failed to query PostgreSQL metrics: {e}")
+                status = "degraded"
             
             databases.append(DatabaseMetrics(
-                name="LibSQL",
-                type="libsql",
+                name="PostgreSQL",
+                type="postgresql",
                 size_bytes=db_size,
-                status="healthy" if db_size > 0 else "degraded",
-                location=str(db_path),
+                status=status,
+                location=f"{db_host}:{db_port}/{db_name}",
                 table_count=table_count,
-                connection_count=1,  # At least one (current connection)
+                connection_count=connection_count,
                 wal_size_bytes=wal_size,
+                database_name=db_name,
+                host=db_host,
+                port=db_port,
             ))
         except Exception as e:
-            logger.error(f"Failed to get LibSQL metrics: {e}")
+            logger.error(f"Failed to get PostgreSQL metrics: {e}")
             databases.append(DatabaseMetrics(
-                name="LibSQL",
-                type="libsql",
+                name="PostgreSQL",
+                type="postgresql",
                 size_bytes=0,
                 status="critical",
                 location="unknown",
@@ -260,6 +315,108 @@ async def get_database_stats(
                 error_details=f"Critical error: {str(e)}",
             ))
         
+        # InfluxDB
+        try:
+            from aico.data.influx.connection import InfluxDBConnection
+            from aico.core.config import ConfigurationManager
+            
+            config = ConfigurationManager()
+            influx_config = config.get('core.database.influx', {})
+            
+            influx_url = influx_config.get('url', 'http://127.0.0.1:8086')
+            influx_org = influx_config.get('org', 'aico')
+            influx_bucket = influx_config.get('bucket', 'aico_telemetry')
+            
+            # Initialize metrics
+            influx_size = 0
+            bucket_count = 0
+            measurement_count = 0
+            series_count = 0
+            status = "healthy"
+            error_details = None
+            
+            try:
+                # Connect to InfluxDB
+                influx_conn = InfluxDBConnection()
+                
+                # Check health
+                health = influx_conn.health()
+                if not health.get('healthy', False):
+                    status = "degraded"
+                    error_details = health.get('message', 'Health check failed')
+                else:
+                    # Get bucket list
+                    buckets_api = influx_conn.client.buckets_api()
+                    buckets = buckets_api.find_buckets().buckets
+                    bucket_count = len(buckets) if buckets else 0
+                    
+                    # Get measurements count for the configured bucket
+                    try:
+                        measurements_query = f'''
+                            import "influxdata/influxdb/schema"
+                            schema.measurements(bucket: "{influx_bucket}")
+                        '''
+                        measurements = influx_conn.query(measurements_query)
+                        measurement_count = len(measurements)
+                    except Exception as e:
+                        logger.debug(f"Could not query measurements: {e}")
+                        measurement_count = 0
+                    
+                    # Get series cardinality (approximate size indicator)
+                    try:
+                        cardinality_query = f'''
+                            from(bucket: "{influx_bucket}")
+                            |> range(start: -30d)
+                            |> group()
+                            |> count()
+                        '''
+                        cardinality = influx_conn.query(cardinality_query)
+                        if cardinality:
+                            series_count = sum(r.get('_value', 0) for r in cardinality)
+                    except Exception as e:
+                        logger.debug(f"Could not query cardinality: {e}")
+                        series_count = 0
+                    
+                    # Estimate size based on series count (rough approximation)
+                    # Average ~1KB per series
+                    influx_size = series_count * 1024 if series_count > 0 else 0
+                
+                influx_conn.close()
+                
+            except ValueError as e:
+                # Token not found in keyring
+                status = "degraded"
+                error_details = str(e)
+                logger.warning(f"InfluxDB credentials not configured: {e}")
+            except Exception as e:
+                status = "degraded"
+                error_details = f"Connection failed: {str(e)}"
+                logger.error(f"Failed to connect to InfluxDB: {e}")
+            
+            databases.append(DatabaseMetrics(
+                name="InfluxDB",
+                type="influxdb",
+                size_bytes=influx_size,
+                status=status,
+                location=influx_url,
+                error_details=error_details,
+                bucket_count=bucket_count,
+                measurement_count=measurement_count,
+                series_count=series_count,
+                org=influx_org,
+                bucket=influx_bucket,
+            ))
+        except Exception as e:
+            logger.error(f"Failed to get InfluxDB metrics: {e}")
+            databases.append(DatabaseMetrics(
+                name="InfluxDB",
+                type="influxdb",
+                size_bytes=0,
+                status="critical",
+                location="unknown",
+                error_details=f"Critical error: {str(e)}",
+            ))
+        
         return DatabaseStatsResponse(databases=databases)
         
     except Exception as e:
@@ -368,12 +525,17 @@ async def get_system_topology(
     """
     try:
         from backend.core.lifecycle_manager import get_service_container
+        from backend.services.version_detector import get_version_detector
         import time
         
         # Get versions from shared version system
         backend_version = get_backend_version()
         modelservice_version = get_modelservice_version()
         studio_version = get_studio_version()
+        
+        # Get database versions with caching
+        version_detector = get_version_detector()
+        db_versions = await version_detector.get_all_versions()
         
         # Get health data for service statuses
         container = get_service_container(request)
@@ -399,10 +561,12 @@ async def get_system_topology(
             logger.debug(f"Could not poll modelservice uptime: {e}")
             modelservice_uptime_str = "N/A"
         
-        # Get Ollama uptime and version (managed by modelservice)
-        ollama_uptime_str = "N/A"
-        ollama_version = "v0.5.x"
+        # Get Ollama uptime and version (from version detector)
+        ollama_uptime_str = modelservice_uptime_str  # Ollama managed by modelservice
+        ollama_version = db_versions.get("Ollama", "0.5.x")
         ollama_status = "healthy"
+        
+        # Check if Ollama is actually running
         try:
             import httpx
             import logging
@@ -412,12 +576,7 @@ async def get_system_topology(
             
             async with httpx.AsyncClient(timeout=2.0) as client:
                 response = await client.get("http://localhost:11434/api/version")
-                if response.status_code == 200:
-                    version_data = response.json()
-                    ollama_version = version_data.get("version", "v0.5.x")
-                    # Ollama is started/stopped by modelservice, so use modelservice uptime
-                    ollama_uptime_str = modelservice_uptime_str
-                else:
+                if response.status_code != 200:
                     ollama_status = "unavailable"
         except Exception as e:
             logger.debug(f"Could not poll Ollama: {e}")
@@ -425,6 +584,82 @@ async def get_system_topology(
         
         # Studio uptime (separate frontend service)
         studio_uptime_str = "N/A"
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                response = await client.get("http://localhost:3000")
+                if response.status_code == 200:
+                    # Studio is running, try to get uptime from docker if containerized
+                    try:
+                        result = await asyncio.to_thread(
+                            subprocess.run,
+                            ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-studio"],
+                            capture_output=True,
+                            text=True,
+                            timeout=2
+                        )
+                        if result.returncode == 0:
+                            from datetime import datetime
+                            started_at = datetime.fromisoformat(result.stdout.strip().replace('Z', '+00:00'))
+                            uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
+                            studio_uptime_str = format_uptime(uptime_seconds)
+                    except Exception:
+                        # Not containerized or docker not available
+                        pass
+        except Exception:
+            pass
+        
+        # PostgreSQL uptime (from docker container)
+        postgres_uptime_str = "N/A"
+        try:
+            import subprocess
+            from datetime import datetime
+            
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-postgres"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                started_at_str = result.stdout.strip()
+                logger.info(f"PostgreSQL container started at: {started_at_str}")
+                # Parse ISO format timestamp
+                started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+                uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
+                postgres_uptime_str = format_uptime(uptime_seconds)
+                logger.info(f"PostgreSQL uptime calculated: {postgres_uptime_str}")
+            else:
+                logger.warning(f"Docker inspect failed for aico-postgres: {result.stderr}")
+        except Exception as e:
+            logger.error(f"Could not get PostgreSQL uptime: {e}", exc_info=True)
+        
+        # InfluxDB uptime (from docker container)
+        influxdb_uptime_str = "N/A"
+        try:
+            import subprocess
+            from datetime import datetime
+            
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-influxdb"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                started_at_str = result.stdout.strip()
+                logger.info(f"InfluxDB container started at: {started_at_str}")
+                # Parse ISO format timestamp
+                started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+                uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
+                influxdb_uptime_str = format_uptime(uptime_seconds)
+                logger.info(f"InfluxDB uptime calculated: {influxdb_uptime_str}")
+            else:
+                logger.warning(f"Docker inspect failed for aico-influxdb: {result.stderr}")
+        except Exception as e:
+            logger.error(f"Could not get InfluxDB uptime: {e}", exc_info=True)
         
         # Define services
         services = [
@@ -487,20 +722,31 @@ async def get_system_topology(
                 uptime=backend_uptime_str
             ),
             ServiceNode(
-                id="libsql",
-                name="LibSQL",
+                id="postgresql",
+                name="PostgreSQL",
                 type="database",
                 status="healthy",
-                version="v0.24.0",
+                version=db_versions.get("PostgreSQL", "18.1"),
                 host="localhost",
-                uptime="N/A"
+                port=5432,
+                uptime=postgres_uptime_str
+            ),
+            ServiceNode(
+                id="influxdb",
+                name="InfluxDB",
+                type="database",
+                status="healthy",
+                version=db_versions.get("InfluxDB", "2.8.0"),
+                host="localhost",
+                port=8086,
+                uptime=influxdb_uptime_str
             ),
             ServiceNode(
                 id="chromadb",
                 name="ChromaDB",
                 type="database",
                 status="healthy",
-                version="v0.4.x",
+                version=db_versions.get("ChromaDB", "0.5.x"),
                 host="localhost",
                 uptime="N/A"
             ),
@@ -519,7 +765,7 @@ async def get_system_topology(
                 name="LMDB",
                 type="database",
                 status="healthy",
-                version="v1.4.x",
+                version=db_versions.get("LMDB", "0.9.x"),
                 host="localhost",
                 uptime="N/A"
             ),
@@ -588,11 +834,20 @@ async def get_system_topology(
                 protocol="ZMQ",
                 status="active"
             ),
-            # Backend -> LibSQL
+            # Backend -> PostgreSQL
             ServiceConnection(
                 from_service="backend",
-                to_service="libsql",
-                protocol="SQLite",
+                to_service="postgresql",
+                protocol="PostgreSQL",
+                port=5432,
+                status="active"
+            ),
+            # Backend -> InfluxDB
+            ServiceConnection(
+                from_service="backend",
+                to_service="influxdb",
+                protocol="HTTP",
+                port=8086,
                 status="active"
             ),
             # Backend -> ChromaDB
@@ -646,12 +901,13 @@ async def get_database_details(
     """
     Get detailed information about database tables/collections.
     
-    - **libsql**: Returns list of tables with row counts
+    - **postgresql**: Returns list of tables with row counts
     - **chromadb**: Returns list of collections with document counts
     - **lmdb**: Returns list of databases with key counts
     """
-    if database_type == "libsql":
-        return await database_admin.get_libsql_details(db_connection)
+    if database_type == "postgresql":
+        # PostgreSQL details require separate connection, not the LibSQL db_connection
+        return await database_admin.get_postgresql_details()
     elif database_type == "chromadb":
         return await database_admin.get_chromadb_details(request)
     elif database_type == "lmdb":
@@ -667,29 +923,27 @@ async def get_database_details(
 # Stage 2: SQL Query Interface
 # ============================================================================
 
-@router.get("/databases/libsql/schema", response_model=SchemaMetadata)
+@router.get("/databases/postgresql/schema", response_model=SchemaMetadata)
 async def get_database_schema(
-    user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    user: Annotated[dict, Depends(get_current_user)]
 ) -> SchemaMetadata:
     """
     Get database schema metadata for autocomplete.
     Returns table names and their columns.
     """
-    return await database_admin.get_schema_metadata(db_connection)
+    return await database_admin.get_schema_metadata()
 
 
-@router.post("/databases/libsql/query", response_model=QueryResult)
+@router.post("/databases/postgresql/query", response_model=QueryResult)
 async def execute_sql_query(
     query_request: QueryRequest,
-    user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    user: Annotated[dict, Depends(get_current_user)]
 ) -> QueryResult:
     """
-    Execute a SQL query on LibSQL database.
+    Execute a SQL query on PostgreSQL database.
     
     **Security**:
-    - SELECT and PRAGMA queries allowed by default
+    - SELECT and SHOW queries allowed by default
     - Destructive operations (DELETE, UPDATE, INSERT) require allow_destructive=true
     - Forbidden operations (DROP, ALTER, TRUNCATE) always blocked
     - Auto-adds LIMIT to SELECT queries
@@ -699,7 +953,6 @@ async def execute_sql_query(
     return await database_admin.execute_sql_query(
         query_request.query,
         query_request.limit or 100,
-        db_connection,
         query_request.allow_destructive
     )
 

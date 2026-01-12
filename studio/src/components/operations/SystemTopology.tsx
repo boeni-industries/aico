@@ -86,10 +86,10 @@ export const SystemTopology: React.FC<SystemTopologyProps> = ({ refreshTrigger }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'healthy': return <HealthyIcon sx={{ fontSize: 16 }} />;
-      case 'degraded': return <WarningIcon sx={{ fontSize: 16 }} />;
-      case 'critical': return <ErrorIcon sx={{ fontSize: 16 }} />;
-      default: return <ErrorIcon sx={{ fontSize: 16 }} />;
+      case 'healthy': return <HealthyIcon size={16} />;
+      case 'degraded': return <WarningIcon size={16} />;
+      case 'critical': return <ErrorIcon size={16} />;
+      default: return <ErrorIcon size={16} />;
     }
   };
 
@@ -170,14 +170,17 @@ export const SystemTopology: React.FC<SystemTopologyProps> = ({ refreshTrigger }
     }
     
     // Data layer (bottom) - aligned with their parent services
-    if (service.name === 'LibSQL') {
-      return { x: width * 0.15, y: padding + 540 }; // Below Model Service
+    if (service.name === 'PostgreSQL') {
+      return { x: width * 0.12, y: padding + 540 }; // Left - Primary database
+    }
+    if (service.name === 'InfluxDB') {
+      return { x: width * 0.35, y: padding + 540 }; // Center-left - Time-series
     }
     if (service.name === 'ChromaDB') {
-      return { x: width * 0.5, y: padding + 540 }; // Below Backend
+      return { x: width * 0.58, y: padding + 540 }; // Center-right - Vector DB
     }
     if (service.name === 'LMDB') {
-      return { x: width * 0.85, y: padding + 540 }; // Far right
+      return { x: width * 0.81, y: padding + 540 }; // Right - Working memory
     }
     
     // Default fallback

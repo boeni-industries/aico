@@ -49,53 +49,108 @@ logger = get_logger("backend.api.operations.database_admin")
 # Database Details - Table/Collection Browser
 # ============================================================================
 
-async def get_libsql_details(db_connection) -> DatabaseDetailsResponse:
-    """Get detailed information about LibSQL database tables"""
+async def get_postgresql_details() -> DatabaseDetailsResponse:
+    """Get detailed information about PostgreSQL database tables"""
     try:
+        import psycopg2
+        from aico.core.config import ConfigurationManager
+        from aico.security.key_manager import AICOKeyManager
+        
+        config = ConfigurationManager()
+        pg_config = config.get('core.database.postgres', {})
+        
+        db_user = pg_config.get('user', 'postgres')
+        key_manager = AICOKeyManager(config)
+        db_password = key_manager.get_database_password('postgres', db_user) or ''
+        
+        # Connect to PostgreSQL
+        conn = psycopg2.connect(
+            host=pg_config.get('host', '127.0.0.1'),
+            port=pg_config.get('port', 5432),
+            database=pg_config.get('db_name', 'aico'),
+            user=db_user,
+            password=db_password,
+            connect_timeout=5
+        )
+        
         tables = []
         
-        # Get all user tables (exclude sqlite internal tables)
-        result = db_connection.execute(
-            """
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name NOT LIKE 'sqlite_%'
-            ORDER BY name
-            """
-        ).fetchall()
+        with conn.cursor() as cur:
+            # Get all user tables from aico_core schema
+            cur.execute(
+                """
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'aico_core' AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+                """
+            )
+            table_rows = cur.fetchall()
+            
+            for (table_name,) in table_rows:
+                # Get row count
+                try:
+                    cur.execute(f'SELECT COUNT(*) FROM "aico_core"."{table_name}"')
+                    row_count = cur.fetchone()[0]
+                except Exception as e:
+                    logger.warning(f"Failed to get row count for table {table_name}: {e}")
+                    row_count = 0
+                
+                # Get column count from PostgreSQL information_schema
+                try:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'aico_core' AND table_name = %s",
+                        (table_name,)
+                    )
+                    column_count = cur.fetchone()[0]
+                except Exception as e:
+                    logger.warning(f"Failed to get column count for table {table_name}: {e}")
+                    column_count = 0
+                
+                # Get table size
+                try:
+                    cur.execute(f"SELECT pg_total_relation_size('aico_core.{table_name}')")
+                    size_bytes = cur.fetchone()[0]
+                except Exception:
+                    size_bytes = None
+                
+                tables.append(TableInfo(
+                    name=table_name,
+                    row_count=row_count,
+                    columns=column_count,
+                    size_bytes=size_bytes
+                ))
         
-        for (table_name,) in result:
-            # Get row count
-            try:
-                count_result = db_connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
-                row_count = count_result[0] if count_result else 0
-            except Exception as e:
-                logger.warning(f"Failed to get row count for table {table_name}: {e}")
-                row_count = 0
-            
-            # Get column count
-            try:
-                col_result = db_connection.execute(f"PRAGMA table_info({table_name})").fetchall()
-                column_count = len(col_result)
-            except Exception as e:
-                logger.warning(f"Failed to get column count for table {table_name}: {e}")
-                column_count = 0
-            
-            tables.append(TableInfo(
-                name=table_name,
-                row_count=row_count,
-                columns=column_count,
-                size_bytes=None  # Would require page analysis
-            ))
+        conn.close()
         
         return DatabaseDetailsResponse(
-            database_type="libsql",
+            database_type="postgresql",
             tables=tables
         )
     except Exception as e:
-        logger.error(f"Failed to get LibSQL details: {e}")
+        logger.error(f"Failed to get PostgreSQL details: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve LibSQL details: {str(e)}"
+            detail=f"Failed to retrieve PostgreSQL details: {str(e)}"
+        )
+
+
+async def get_influxdb_details() -> DatabaseDetailsResponse:
+    """Get detailed information about InfluxDB"""
+    try:
+        # InfluxDB doesn't have traditional tables/collections to browse
+        # The browser interface uses Flux queries instead
+        # Return empty response to satisfy the interface
+        return DatabaseDetailsResponse(
+            database_type="influxdb",
+            tables=None,
+            collections=None,
+            databases=None
+        )
+    except Exception as e:
+        logger.error(f"Failed to get InfluxDB details: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve InfluxDB details: {str(e)}"
         )
 
 
@@ -212,40 +267,64 @@ DESTRUCTIVE_SQL_PATTERNS = [
 ]
 
 
-async def get_schema_metadata(db_connection) -> SchemaMetadata:
+async def get_schema_metadata() -> SchemaMetadata:
     """
     Get database schema metadata for autocomplete.
     Returns table names and their columns.
     """
     try:
+        import psycopg2
+        from aico.core.config import ConfigurationManager
+        from aico.security.key_manager import AICOKeyManager
+        
+        config = ConfigurationManager()
+        pg_config = config.get('core.database.postgres', {})
+        
+        db_user = pg_config.get('user', 'postgres')
+        key_manager = AICOKeyManager(config)
+        db_password = key_manager.get_database_password('postgres', db_user) or ''
+        
+        # Connect to PostgreSQL
+        conn = await asyncio.to_thread(
+            psycopg2.connect,
+            host=pg_config.get('host', '127.0.0.1'),
+            port=pg_config.get('port', 5432),
+            database=pg_config.get('db_name', 'aico'),
+            user=db_user,
+            password=db_password,
+            connect_timeout=5
+        )
+        
         tables = []
         columns = {}
         
-        # Get all user tables
-        result = await asyncio.to_thread(
-            db_connection.execute,
-            """
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name NOT LIKE 'sqlite_%'
-            ORDER BY name
-            """
-        )
-        table_rows = result.fetchall()
-        
-        for (table_name,) in table_rows:
-            tables.append(table_name)
+        with conn.cursor() as cur:
+            # Get all user tables from aico_core schema
+            cur.execute(
+                """
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'aico_core' AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+                """
+            )
+            table_rows = cur.fetchall()
             
-            # Get columns for this table
-            try:
-                col_result = await asyncio.to_thread(
-                    db_connection.execute,
-                    f"PRAGMA table_info({table_name})"
-                )
-                col_rows = col_result.fetchall()
-                columns[table_name] = [row[1] for row in col_rows]  # row[1] is column name
-            except Exception as e:
-                logger.warning(f"Failed to get columns for table {table_name}: {e}")
-                columns[table_name] = []
+            for (table_name,) in table_rows:
+                tables.append(table_name)
+                
+                # Get columns for this table from PostgreSQL information_schema
+                try:
+                    cur.execute(
+                        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'aico_core' AND table_name = %s ORDER BY ordinal_position",
+                        (table_name,)
+                    )
+                    col_rows = cur.fetchall()
+                    columns[table_name] = [row[0] for row in col_rows]
+                except Exception as e:
+                    logger.warning(f"Failed to get columns for table {table_name}: {e}")
+                    columns[table_name] = []
+        
+        conn.close()
         
         return SchemaMetadata(tables=tables, columns=columns)
     except Exception as e:
@@ -291,9 +370,9 @@ def validate_sql_query(query: str, allow_destructive: bool = False) -> tuple[boo
     
     # Validate it's a SELECT query if not destructive
     if not is_destructive and not query_upper.strip().startswith('SELECT'):
-        # Allow PRAGMA queries for database inspection
-        if not query_upper.strip().startswith('PRAGMA'):
-            return False, "Only SELECT and PRAGMA queries are allowed in read-only mode", False
+        # Allow SHOW queries for database inspection (PostgreSQL equivalent of PRAGMA)
+        if not query_upper.strip().startswith('SHOW'):
+            return False, "Only SELECT and SHOW queries are allowed in read-only mode", False
     
     return True, None, is_destructive
 
@@ -301,11 +380,10 @@ def validate_sql_query(query: str, allow_destructive: bool = False) -> tuple[boo
 async def execute_sql_query(
     query: str,
     limit: int,
-    db_connection,
     allow_destructive: bool = False
 ) -> QueryResult:
     """
-    Execute a SQL query on LibSQL database.
+    Execute a SQL query on PostgreSQL database.
     
     Security:
     - Validates query for forbidden operations
@@ -330,22 +408,49 @@ async def execute_sql_query(
         query_upper = query.strip().upper()
         
         # Add LIMIT for SELECT queries if not present
-        if query_upper.startswith('SELECT') and 'LIMIT' not in query_upper:
+        # Use regex to check for LIMIT as a word (not substring) to avoid false positives
+        import re
+        has_limit = bool(re.search(r'\bLIMIT\b', query_upper))
+        if query_upper.startswith('SELECT') and not has_limit:
             query = f"{query.rstrip(';')} LIMIT {limit}"
         
-        # Execute query
-        result = await asyncio.to_thread(
-            db_connection.execute,
-            query
+        # Connect to PostgreSQL and execute query
+        import psycopg2
+        from aico.core.config import ConfigurationManager
+        from aico.security.key_manager import AICOKeyManager
+        
+        config = ConfigurationManager()
+        pg_config = config.get('core.database.postgres', {})
+        
+        db_user = pg_config.get('user', 'postgres')
+        key_manager = AICOKeyManager(config)
+        db_password = key_manager.get_database_password('postgres', db_user) or ''
+        
+        conn = await asyncio.to_thread(
+            psycopg2.connect,
+            host=pg_config.get('host', '127.0.0.1'),
+            port=pg_config.get('port', 5432),
+            database=pg_config.get('db_name', 'aico'),
+            user=db_user,
+            password=db_password,
+            connect_timeout=5
         )
         
-        rows = await asyncio.to_thread(result.fetchall)
+        with conn.cursor() as cur:
+            # Set search_path to aico_core schema so queries work without schema prefix
+            cur.execute("SET search_path TO aico_core, public")
+            cur.execute(query)
+            
+            # Get column names
+            columns = [desc[0] for desc in cur.description] if cur.description else []
+            
+            # Fetch rows
+            rows = cur.fetchall()
+            
+            # Convert rows to list of lists
+            row_data = [list(row) for row in rows]
         
-        # Get column names
-        columns = [desc[0] for desc in result.description] if result.description else []
-        
-        # Convert rows to list of lists
-        row_data = [list(row) for row in rows]
+        conn.close()
         
         logger.info(f"SQL query executed successfully: {len(row_data)} rows returned")
         
@@ -370,6 +475,78 @@ async def execute_sql_query(
         )
 
 
+async def execute_influx_query(query: str) -> QueryResult:
+    """
+    Execute a Flux query on InfluxDB.
+    
+    Returns time-series data from the configured InfluxDB instance.
+    """
+    try:
+        from aico.data.influx.connection import InfluxDBConnection
+        
+        # Connect to InfluxDB
+        influx_conn = InfluxDBConnection()
+        
+        # Execute query
+        results = influx_conn.query(query)
+        
+        # Convert results to table format
+        if not results:
+            influx_conn.close()
+            return QueryResult(
+                success=True,
+                error=None,
+                columns=[],
+                rows=[],
+                row_count=0,
+                is_destructive=False
+            )
+        
+        # Extract columns from first result
+        columns = list(results[0].keys()) if results else []
+        
+        # Convert results to rows
+        rows = []
+        for result in results:
+            row = [result.get(col) for col in columns]
+            rows.append(row)
+        
+        influx_conn.close()
+        
+        logger.info(f"InfluxDB query executed successfully: {len(rows)} rows returned")
+        
+        return QueryResult(
+            success=True,
+            error=None,
+            columns=columns,
+            rows=rows,
+            row_count=len(rows),
+            is_destructive=False
+        )
+        
+    except ValueError as e:
+        # Token not found in keyring
+        logger.error(f"InfluxDB credentials not configured: {e}")
+        return QueryResult(
+            success=False,
+            error=str(e),
+            columns=[],
+            rows=[],
+            row_count=0,
+            is_destructive=False
+        )
+    except Exception as e:
+        logger.error(f"InfluxDB query execution failed: {e}")
+        return QueryResult(
+            success=False,
+            error=str(e),
+            columns=[],
+            rows=[],
+            row_count=0,
+            is_destructive=False
+        )
+
+
 # ============================================================================
 # Storage Growth Trends
 # ============================================================================
@@ -383,10 +560,10 @@ async def get_storage_trends(database_name: str) -> StorageTrendResponse:
         current_size = 0
         data_points = []
         
-        if database_name == "LibSQL":
-            db_path = get_default_database_path()
-            if os.path.exists(db_path):
-                current_size = os.path.getsize(db_path)
+        if database_name == "PostgreSQL":
+            # For PostgreSQL, size will be queried from the database itself
+            # This is a placeholder for trend data
+            current_size = 0  # Will be replaced with actual PostgreSQL size query
         elif database_name == "ChromaDB":
             chroma_path = AICOPaths.get_data_directory() / "data" / "memory" / "semantic"
             if os.path.exists(chroma_path):
@@ -496,9 +673,10 @@ async def create_database_backup(database_name: str) -> BackupResponse:
         source_path = None
         backup_filename = None
         
-        if database_name == "LibSQL":
-            source_path = get_default_database_path()
-            backup_filename = f"libsql_backup_{backup_id}.db"
+        if database_name == "PostgreSQL":
+            # PostgreSQL backup will use pg_dump
+            source_path = None  # PostgreSQL doesn't have a single file path
+            backup_filename = f"postgresql_backup_{backup_id}.sql"
         elif database_name == "ChromaDB":
             source_path = AICOPaths.get_data_directory() / "data" / "memory" / "semantic"
             backup_filename = f"chromadb_backup_{backup_id}.tar.gz"
@@ -520,9 +698,13 @@ async def create_database_backup(database_name: str) -> BackupResponse:
         backup_path = backup_dir / backup_filename
         
         # Perform backup
-        if database_name == "LibSQL":
-            # Simple file copy for SQLite
-            shutil.copy2(source_path, backup_path)
+        if database_name == "PostgreSQL":
+            # PostgreSQL backup using pg_dump (placeholder - needs actual implementation)
+            # This would require running pg_dump command
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="PostgreSQL backup not yet implemented"
+            )
         else:
             # Create tar.gz for directory-based databases
             shutil.make_archive(
@@ -614,13 +796,12 @@ async def restore_from_backup(backup_id: str) -> RestoreResponse:
         database_name = backup["database_name"]
         
         # Determine restore target
-        if database_name == "LibSQL":
-            target_path = get_default_database_path()
-            # Create backup of current database before restore
-            current_backup = f"{target_path}.pre_restore_{int(time.time())}"
-            shutil.copy2(target_path, current_backup)
-            # Restore
-            shutil.copy2(backup_path, target_path)
+        if database_name == "PostgreSQL":
+            # PostgreSQL restore using psql (placeholder - needs actual implementation)
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="PostgreSQL restore not yet implemented"
+            )
         elif database_name in ["ChromaDB", "LMDB"]:
             # For directory-based databases, extract tar.gz
             if database_name == "ChromaDB":

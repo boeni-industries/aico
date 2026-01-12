@@ -44,6 +44,7 @@ dependencies = [
     "opentelemetry-instrumentation-requests>=0.41b0",
     # InfluxDB client for telemetry storage
     "influxdb-client>=1.45.0",
+    "psycopg2-binary>=2.9.9",  # PostgreSQL database adapter
 ]
 
 [project.optional-dependencies]

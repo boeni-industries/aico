@@ -6,6 +6,7 @@ import { SQLQueryInterface } from './SQLQueryInterface';
 import { LMDBBrowser } from './LMDBBrowser';
 import { ChromaDBBrowser } from './ChromaDBBrowser';
 import { ChromaDBCollectionBrowser } from './ChromaDBCollectionBrowser';
+import { InfluxDBBrowser } from './InfluxDBBrowser';
 
 interface DatabaseStorageProps {
   refreshTrigger?: number;
@@ -13,9 +14,9 @@ interface DatabaseStorageProps {
 
 // Database type configuration for consistent styling
 const DB_CONFIG = {
-  libsql: {
-    name: 'LibSQL',
-    color: '#3B82F6',
+  postgresql: {
+    name: 'PostgreSQL',
+    color: '#336791',
     icon: Database,
     description: 'Primary relational database for system data',
   },
@@ -30,6 +31,12 @@ const DB_CONFIG = {
     color: '#14B8A6',
     icon: Key,
     description: 'Key-value store for working memory',
+  },
+  influxdb: {
+    name: 'InfluxDB',
+    color: '#22ADF6',
+    icon: HardDrive,
+    description: 'Time-series database for telemetry and metrics',
   },
 };
 
@@ -61,6 +68,7 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
   const [showSQLInterface, setShowSQLInterface] = useState<Record<string, boolean>>({});
   const [showLMDBBrowser, setShowLMDBBrowser] = useState<Record<string, boolean>>({});
   const [showChromaDBBrowser, setShowChromaDBBrowser] = useState<Record<string, boolean>>({});
+  const [showInfluxDBBrowser, setShowInfluxDBBrowser] = useState<Record<string, boolean>>({});
   const [selectedChromaCollection, setSelectedChromaCollection] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -134,7 +142,7 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
     const metrics: { label: string; value: string | number }[] = [];
 
     // Type-specific metrics
-    if (db.type === 'libsql') {
+    if (db.type === 'postgresql') {
       if (db.table_count !== undefined) metrics.push({ label: 'Tables', value: db.table_count });
       if (db.connection_count !== undefined) metrics.push({ label: 'Connections', value: db.connection_count });
       if (db.wal_size_bytes !== undefined) metrics.push({ label: 'WAL Size', value: formatBytes(db.wal_size_bytes) });
@@ -146,6 +154,10 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
       if (db.database_count !== undefined) metrics.push({ label: 'Databases', value: db.database_count });
       if (db.key_count !== undefined) metrics.push({ label: 'Keys', value: formatNumber(db.key_count) });
       if (db.map_size_bytes !== undefined) metrics.push({ label: 'Map Size', value: formatBytes(db.map_size_bytes) });
+    } else if (db.type === 'influxdb') {
+      if (db.bucket_count !== undefined) metrics.push({ label: 'Buckets', value: db.bucket_count });
+      if (db.measurement_count !== undefined) metrics.push({ label: 'Measurements', value: db.measurement_count });
+      if (db.series_count !== undefined) metrics.push({ label: 'Series', value: formatNumber(db.series_count) });
     }
 
     return metrics;
@@ -376,8 +388,8 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                       </Box>
                     ) : (
                       <>
-                        {/* SQL Query Interface for LibSQL */}
-                        {db.type === 'libsql' && (
+                        {/* SQL Query Interface for PostgreSQL */}
+                        {db.type === 'postgresql' && (
                           <Box sx={{ mb: 3 }}>
                             <Box
                               sx={{
@@ -450,6 +462,46 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                             <Collapse in={showLMDBBrowser[db.name]}>
                               <Box sx={{ mb: 2 }}>
                                 <LMDBBrowser databaseName="session_memory" color={config.color} />
+                              </Box>
+                            </Collapse>
+                            <Divider sx={{ mb: 2, borderColor: `${config.color}20` }} />
+                          </Box>
+                        )}
+
+                        {/* InfluxDB Browser */}
+                        {db.type === 'influxdb' && (
+                          <Box sx={{ mb: 3 }}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                mb: 1.5,
+                                cursor: 'pointer',
+                                p: 1.5,
+                                borderRadius: '8px',
+                                bgcolor: showInfluxDBBrowser[db.name] ? `${config.color}15` : `${config.color}08`,
+                                border: '1px solid',
+                                borderColor: showInfluxDBBrowser[db.name] ? `${config.color}30` : `${config.color}15`,
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  bgcolor: `${config.color}15`,
+                                  borderColor: `${config.color}40`,
+                                },
+                              }}
+                              onClick={() => setShowInfluxDBBrowser(prev => ({ ...prev, [db.name]: !prev[db.name] }))}
+                            >
+                              <Code size={16} color={config.color} />
+                              <Typography variant="caption" sx={{ fontWeight: 600, color: config.color, flex: 1 }}>
+                                Flux Query Interface
+                              </Typography>
+                              <IconButton size="small" sx={{ color: config.color }}>
+                                {showInfluxDBBrowser[db.name] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                              </IconButton>
+                            </Box>
+                            <Collapse in={showInfluxDBBrowser[db.name]}>
+                              <Box sx={{ mb: 2 }}>
+                                <InfluxDBBrowser color={config.color} />
                               </Box>
                             </Collapse>
                             <Divider sx={{ mb: 2, borderColor: `${config.color}20` }} />
@@ -595,11 +647,11 @@ export const DatabaseStorage: React.FC<DatabaseStorageProps> = ({ refreshTrigger
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                               <List size={16} color={config.color} />
                               <Typography variant="caption" sx={{ fontWeight: 600, color: config.color }}>
-                                {db.type === 'libsql' ? 'Tables' : db.type === 'chromadb' ? 'Collections' : 'Databases'}
+                                {db.type === 'postgresql' ? 'Tables' : db.type === 'chromadb' ? 'Collections' : 'Databases'}
                               </Typography>
                             </Box>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                          {/* LibSQL Tables - Compact */}
+                          {/* PostgreSQL Tables - Compact */}
                           {databaseDetails[db.name].tables?.map((table: TableInfo) => (
                             <Box
                               key={table.name}

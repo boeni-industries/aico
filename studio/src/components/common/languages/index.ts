@@ -7,12 +7,14 @@
 import { LanguagePlugin } from './LanguagePlugin';
 import { SQLLanguagePlugin } from './sql/SQLLanguagePlugin';
 import { CypherLanguagePlugin } from './cypher/CypherLanguagePlugin';
+import { FluxLanguagePlugin } from './flux/FluxLanguagePlugin';
 
 const plugins = new Map<string, LanguagePlugin>();
 
 // Register available plugins
 plugins.set('sql', new SQLLanguagePlugin());
 plugins.set('cypher', new CypherLanguagePlugin());
+plugins.set('flux', new FluxLanguagePlugin());
 
 /**
  * Get language plugin by language ID
@@ -39,3 +41,4 @@ export function getSupportedLanguages(): string[] {
 export type { LanguagePlugin, CompletionContext, CompletionItem, CompletionSchema, ValidationError } from './LanguagePlugin';
 export { SQLLanguagePlugin } from './sql/SQLLanguagePlugin';
 export { CypherLanguagePlugin } from './cypher/CypherLanguagePlugin';
+export { FluxLanguagePlugin } from './flux/FluxLanguagePlugin';
