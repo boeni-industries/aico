@@ -14,7 +14,6 @@ interface MetricCardProps {
   color?: string;
   tooltip?: string;
   size?: 'small' | 'medium' | 'large';
-  dataSource?: 'real' | 'mock';
   sparklineData?: number[];
   invertSparkline?: boolean;
   isNeutralMetric?: boolean;
@@ -34,7 +33,6 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   color,
   tooltip,
   size = 'medium',
-  dataSource = 'mock',
   sparklineData,
   invertSparkline = false,
   isNeutralMetric = false,
@@ -125,28 +123,6 @@ export const MetricCard: React.FC<MetricCardProps> = ({
               <Info size={12} style={{ color: 'rgba(255, 255, 255, 0.3)', cursor: 'help' }} />
             </StyledTooltip>
           )}
-        </Box>
-        <Box
-          sx={{
-            px: 1,
-            py: 0.25,
-            borderRadius: '4px',
-            bgcolor: dataSource === 'real' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(251, 191, 36, 0.15)',
-            border: '1px solid',
-            borderColor: dataSource === 'real' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(251, 191, 36, 0.3)',
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{
-              fontSize: '0.6rem',
-              fontWeight: 700,
-              letterSpacing: '0.05em',
-              color: dataSource === 'real' ? '#10B981' : '#F59E0B',
-            }}
-          >
-            {dataSource === 'real' ? 'REAL' : 'MOCK'}
-          </Typography>
         </Box>
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: sparklineData ? 0.5 : 0, width: '100%' }}>

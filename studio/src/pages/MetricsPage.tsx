@@ -6,6 +6,8 @@ import { MetricCard } from '../components/metrics/MetricCard';
 import { ActiveModelsCard } from '../components/metrics/ActiveModelsCard';
 import { MetricsSkeleton } from '../components/metrics/MetricsSkeleton';
 import { MetricDetailDrawer } from '../components/metrics/MetricDetailDrawer';
+import { StyledTooltip } from '../components/common/StyledTooltip';
+import { Info } from 'lucide-react';
 import { httpJson } from '../api/http';
 
 interface MetricsData {
@@ -110,35 +112,6 @@ export const MetricsPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* Mock Data Disclaimer */}
-      <Paper
-        sx={{
-          p: 2,
-          mb: 3,
-          borderRadius: '12px',
-          bgcolor: 'rgba(251, 191, 36, 0.1)',
-          border: '1px solid rgba(251, 191, 36, 0.3)',
-        }}
-      >
-        <Typography
-          variant="body2"
-          sx={{
-            color: '#F59E0B',
-            fontWeight: 500,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-          }}
-        >
-          <span style={{ fontSize: '18px' }}>⚠️</span>
-          <span>
-            <strong>Development Notice:</strong> This dashboard currently displays mock data for demonstration purposes. 
-            Metrics are being migrated to real telemetry data using OpenTelemetry instrumentation. 
-            Real data will be available incrementally as each subsystem is instrumented.
-          </span>
-        </Typography>
-      </Paper>
-
       {/* Hero Section - System Health */}
       <Paper
         sx={{
@@ -322,37 +295,54 @@ export const MetricsPage: React.FC = () => {
               Components
             </Typography>
             {Object.entries(system_health.component_status).map(([name, status]: [string, any]) => (
-              <Box
+              <StyledTooltip 
                 key={name}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  mb: 1,
-                  p: 1.5,
-                  borderRadius: '8px',
-                  bgcolor: status.status === 'healthy' ? 'rgba(16, 185, 129, 0.05)' : status.status === 'warning' ? 'rgba(245, 158, 11, 0.05)' : 'rgba(239, 68, 68, 0.05)',
-                  border: '1px solid',
-                  borderColor: status.status === 'healthy' ? 'rgba(16, 185, 129, 0.2)' : status.status === 'warning' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                }}
+                title={status.explanation || 'No details available'}
+                arrow
+                placement="left"
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Box
-                    sx={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      bgcolor: status.status === 'healthy' ? '#10B981' : status.status === 'warning' ? '#F59E0B' : '#EF4444',
-                    }}
-                  />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
-                    {name}
-                  </Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    mb: 1,
+                    p: 1.5,
+                    borderRadius: '8px',
+                    bgcolor: status.status === 'healthy' ? 'rgba(16, 185, 129, 0.05)' : status.status === 'warning' ? 'rgba(245, 158, 11, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                    border: '1px solid',
+                    borderColor: status.status === 'healthy' ? 'rgba(16, 185, 129, 0.2)' : status.status === 'warning' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                    cursor: 'help',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      bgcolor: status.status === 'healthy' ? 'rgba(16, 185, 129, 0.1)' : status.status === 'warning' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      borderColor: status.status === 'healthy' ? 'rgba(16, 185, 129, 0.4)' : status.status === 'warning' ? 'rgba(245, 158, 11, 0.4)' : 'rgba(239, 68, 68, 0.4)',
+                    },
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: status.status === 'healthy' ? '#10B981' : status.status === 'warning' ? '#F59E0B' : '#EF4444',
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                      {name}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 700, color: status.status === 'healthy' ? '#10B981' : status.status === 'warning' ? '#F59E0B' : '#EF4444' }}>
+                      {status.health}
+                    </Typography>
+                    {status.status !== 'healthy' && (
+                      <Info size={12} style={{ color: status.status === 'warning' ? '#F59E0B' : '#EF4444' }} />
+                    )}
+                  </Box>
                 </Box>
-                <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 700, color: status.status === 'healthy' ? '#10B981' : status.status === 'warning' ? '#F59E0B' : '#EF4444' }}>
-                  {status.health}
-                </Typography>
-              </Box>
+              </StyledTooltip>
             ))}
           </Box>
         </Box>
@@ -380,9 +370,7 @@ export const MetricsPage: React.FC = () => {
             unit="req/s"
             trend={gateway.requests_per_second.trend}
             color="#00D9FF"
-            dataSource="real"
             sparklineData={gateway.requests_per_second.sparkline_data}
-            isNeutralMetric={true}
             avg_1h={gateway.requests_per_second.avg_1h}
             avg_24h={gateway.requests_per_second.avg_24h}
             avg_7d={gateway.requests_per_second.avg_7d}
@@ -397,7 +385,6 @@ export const MetricsPage: React.FC = () => {
             trend={gateway.avg_response_time.trend}
             color="#A78BFA"
             status={gateway.avg_response_time.status}
-            dataSource="real"
             sparklineData={gateway.avg_response_time.sparkline_data}
             lowerIsBetter={true}
             avg_1h={gateway.avg_response_time.avg_1h}
@@ -414,7 +401,6 @@ export const MetricsPage: React.FC = () => {
             trend={gateway.error_rate.trend}
             color="#F59E0B"
             status={gateway.error_rate.status}
-            dataSource="real"
             sparklineData={gateway.error_rate.sparkline_data}
             lowerIsBetter={true}
             avg_1h={gateway.error_rate.avg_1h}
@@ -430,7 +416,6 @@ export const MetricsPage: React.FC = () => {
             unit="%"
             trend={gateway.success_rate.trend}
             color="#10B981"
-            dataSource="real"
             sparklineData={gateway.success_rate.sparkline_data}
             avg_1h={gateway.success_rate.avg_1h}
             avg_24h={gateway.success_rate.avg_24h}
@@ -462,7 +447,6 @@ export const MetricsPage: React.FC = () => {
             unit="req/s"
             trend={modelservice.llm?.rps?.trend || 0}
             color="#10B981"
-            dataSource="real"
             tooltip="Requests Per Second - throughput for concurrent users"
             avg_1h={modelservice.llm?.rps?.avg_1h}
             avg_24h={modelservice.llm?.rps?.avg_24h}
@@ -475,7 +459,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.llm?.total_requests_24h || 0}
             unit="req"
             color="#8B5CF6"
-            dataSource="real"
             tooltip="Total LLM requests in the last 24 hours"
           />
         </Box>
@@ -486,7 +469,6 @@ export const MetricsPage: React.FC = () => {
             unit="t/s"
             trend={modelservice.llm?.tps?.trend || 0}
             color="#00D9FF"
-            dataSource="real"
             tooltip="Tokens Per Second - output generation speed"
             avg_1h={modelservice.llm?.tps?.avg_1h}
             avg_24h={modelservice.llm?.tps?.avg_24h}
@@ -500,7 +482,6 @@ export const MetricsPage: React.FC = () => {
             unit="s"
             trend={modelservice.llm?.ttft?.trend || 0}
             color="#EC4899"
-            dataSource="real"
             tooltip="Time to First Token - latency until first token appears"
             lowerIsBetter={true}
           />
@@ -512,7 +493,6 @@ export const MetricsPage: React.FC = () => {
             unit="s"
             trend={modelservice.llm?.e2e_latency?.trend || 0}
             color="#F59E0B"
-            dataSource="real"
             tooltip="End-to-end request completion time (24h trend)"
             lowerIsBetter={true}
             size="large"
@@ -532,7 +512,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.llm?.success_rate?.value || 0}
             unit="%"
             color="#10B981"
-            dataSource="real"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
@@ -541,7 +520,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.llm?.total_tokens_24h || 0}
             unit="tokens"
             color="#8B5CF6"
-            dataSource="real"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
@@ -550,7 +528,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.llm?.avg_prompt_length?.value || 0}
             unit="tokens"
             color="#06B6D4"
-            dataSource="real"
             tooltip="Includes user message, system instructions, memory context, and knowledge graph information"
           />
         </Box>
@@ -560,14 +537,12 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.llm?.avg_response_length?.value || 0}
             unit="tokens"
             color="#14B8A6"
-            dataSource="real"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(20% - 12px)', minWidth: 180, minHeight: 120 }}>
           <ActiveModelsCard
             modelCount={modelservice.llm?.active_models?.value || 0}
             modelUsage={modelservice.llm?.model_usage || {}}
-            dataSource="real"
             tooltip="Models with inference activity in the last 24 hours"
           />
         </Box>
@@ -599,7 +574,6 @@ export const MetricsPage: React.FC = () => {
             unit="req/s"
             trend={modelservice.ner?.inference_rate?.trend || 0}
             color="#F59E0B"
-            dataSource="real"
             tooltip="NER inference requests per second. Shows how frequently named entities are being extracted from text."
             avg_1h={modelservice.ner?.inference_rate?.avg_1h}
             avg_24h={modelservice.ner?.inference_rate?.avg_24h}
@@ -613,7 +587,6 @@ export const MetricsPage: React.FC = () => {
             unit="s"
             trend={modelservice.ner?.avg_latency?.trend || 0}
             color="#EF4444"
-            dataSource="real"
             tooltip="Average time to extract named entities from text. Lower is better. Includes model inference and post-processing."
             lowerIsBetter={true}
             avg_1h={modelservice.ner?.avg_latency?.avg_1h}
@@ -627,7 +600,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.ner?.p99_latency || 0}
             unit="s"
             color="#DC2626"
-            dataSource="real"
             tooltip="99th percentile latency - 99% of NER requests complete faster than this. Useful for identifying worst-case performance."
             lowerIsBetter={true}
           />
@@ -638,7 +610,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.ner?.total_entities_24h || 0}
             unit="entities"
             color="#F97316"
-            dataSource="real"
             tooltip="Total named entities extracted in the last 24 hours. Includes PERSON, ORG, LOC, DATE, and other entity types."
           />
         </Box>
@@ -648,7 +619,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.ner?.success_rate?.value || 0}
             unit="%"
             color="#10B981"
-            dataSource="real"
             tooltip="Percentage of NER requests that completed successfully without errors. Target: >95%."
           />
         </Box>
@@ -664,7 +634,6 @@ export const MetricsPage: React.FC = () => {
             unit="req/s"
             trend={modelservice.sentiment?.inference_rate?.trend || 0}
             color="#8B5CF6"
-            dataSource="real"
             tooltip="Sentiment analysis requests per second. Shows how frequently text sentiment is being analyzed."
             avg_1h={modelservice.sentiment?.inference_rate?.avg_1h}
             avg_24h={modelservice.sentiment?.inference_rate?.avg_24h}
@@ -678,7 +647,6 @@ export const MetricsPage: React.FC = () => {
             unit="s"
             trend={modelservice.sentiment?.avg_latency?.trend || 0}
             color="#A855F7"
-            dataSource="real"
             tooltip="Average time to analyze text sentiment. Lower is better. Includes model inference and confidence scoring."
             lowerIsBetter={true}
             avg_1h={modelservice.sentiment?.avg_latency?.avg_1h}
@@ -692,7 +660,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.sentiment?.p99_latency || 0}
             unit="s"
             color="#9333EA"
-            dataSource="real"
             tooltip="99th percentile latency - 99% of sentiment analyses complete faster than this. Useful for SLA monitoring."
             lowerIsBetter={true}
           />
@@ -703,7 +670,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.sentiment?.total_analyses_24h || 0}
             unit="analyses"
             color="#C084FC"
-            dataSource="real"
             tooltip="Total sentiment analyses performed in the last 24 hours. Each analysis classifies text as positive, negative, or neutral."
           />
         </Box>
@@ -713,7 +679,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.sentiment?.avg_confidence?.value || 0}
             unit=""
             color="#D946EF"
-            dataSource="real"
             tooltip="Average confidence score (0-1) of sentiment predictions. Higher values indicate more certain classifications. Target: >0.7."
           />
         </Box>
@@ -729,7 +694,6 @@ export const MetricsPage: React.FC = () => {
             unit={modelservice.embeddings?.inference_rate?.unit || "emb/s"}
             trend={modelservice.embeddings?.inference_rate?.trend || 0}
             color="#06B6D4"
-            dataSource="real"
             avg_1h={modelservice.embeddings?.inference_rate?.avg_1h}
             avg_24h={modelservice.embeddings?.inference_rate?.avg_24h}
             avg_7d={modelservice.embeddings?.inference_rate?.avg_7d}
@@ -742,7 +706,6 @@ export const MetricsPage: React.FC = () => {
             unit="ms"
             trend={modelservice.embeddings?.avg_latency?.trend || 0}
             color="#0891B2"
-            dataSource="real"
             lowerIsBetter={true}
             avg_1h={modelservice.embeddings?.avg_latency?.avg_1h}
             avg_24h={modelservice.embeddings?.avg_latency?.avg_24h}
@@ -755,7 +718,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.embeddings?.p99_latency || 0}
             unit="ms"
             color="#0E7490"
-            dataSource="real"
             tooltip="99th percentile latency"
             lowerIsBetter={true}
           />
@@ -766,7 +728,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.embeddings?.throughput?.value || 0}
             unit="t/s"
             color="#14B8A6"
-            dataSource="real"
             tooltip="Input tokens processed per second"
           />
         </Box>
@@ -776,7 +737,6 @@ export const MetricsPage: React.FC = () => {
             value={modelservice.embeddings?.total_embeddings_24h || 0}
             unit="embeddings"
             color="#2DD4BF"
-            dataSource="real"
           />
         </Box>
       </Box>
@@ -803,7 +763,6 @@ export const MetricsPage: React.FC = () => {
             unit="entries"
             trend={memory.working_memory_size.trend}
             color="#00D9FF"
-            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -813,7 +772,6 @@ export const MetricsPage: React.FC = () => {
             unit="queries/s"
             trend={memory.semantic_queries_per_second.trend}
             color="#A78BFA"
-            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -823,7 +781,6 @@ export const MetricsPage: React.FC = () => {
             unit="nodes"
             trend={memory.kg_nodes.trend}
             color="#EC4899"
-            dataSource="mock"
           />
         </Box>
         <Box sx={{ flex: '1 1 calc(25% - 12px)', minWidth: 200, minHeight: 120 }}>
@@ -833,7 +790,6 @@ export const MetricsPage: React.FC = () => {
             unit="edges"
             trend={memory.kg_relationships.trend}
             color="#10B981"
-            dataSource="mock"
           />
         </Box>
       </Box>
@@ -901,7 +857,21 @@ export const MetricsPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Scheduler & Message Bus */}
+      {/* Scheduler & Message Bus Metrics */}
+      <Typography
+        variant="h6"
+        sx={{
+          mb: 2,
+          mt: 3,
+          fontWeight: 600,
+          fontSize: '0.85rem',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'text.secondary',
+        }}
+      >
+        Scheduler & Message Bus
+      </Typography>
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'stretch' }}>
         <Box sx={{ flex: '1 1 calc(50% - 12px)', minWidth: 300, display: 'flex' }}>
           <Paper
@@ -925,7 +895,6 @@ export const MetricsPage: React.FC = () => {
                   trend={scheduler.jobs_today.trend}
                   color="#00D9FF"
                   size="small"
-                  dataSource="mock"
                 />
               </Box>
               <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 140, minHeight: 100 }}>
@@ -936,7 +905,6 @@ export const MetricsPage: React.FC = () => {
                   trend={scheduler.success_rate.trend}
                   color="#10B981"
                   size="small"
-                  dataSource="mock"
                 />
               </Box>
             </Box>
@@ -995,7 +963,6 @@ export const MetricsPage: React.FC = () => {
                   trend={message_bus.messages_per_second.trend}
                   color="#00D9FF"
                   size="small"
-                  dataSource="mock"
                 />
               </Box>
               <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 140, minHeight: 100 }}>
@@ -1007,35 +974,117 @@ export const MetricsPage: React.FC = () => {
                   color="#F59E0B"
                   status={message_bus.backlog_depth.status}
                   size="small"
-                  dataSource="mock"
                 />
               </Box>
             </Box>
             <Box>
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', mb: 1, display: 'block' }}>
-                Top Topics
-              </Typography>
-              {message_bus.top_topics.slice(0, 4).map((topic: any, index: number) => (
-                <Box
-                  key={index}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    mb: 1,
-                    p: 1,
-                    borderRadius: '8px',
-                    bgcolor: 'rgba(255, 255, 255, 0.02)',
-                  }}
-                >
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem', flex: 1 }}>
-                    {topic.topic}
-                  </Typography>
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#00D9FF' }}>
-                    {topic.msg_per_sec.toFixed(1)} msg/s
-                  </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', letterSpacing: '0.05em' }}>
+                  ACTIVE TOPICS ({message_bus.top_topics.length})
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                  {[
+                    { label: 'model', color: '#00D9FF' },
+                    { label: 'system', color: '#A78BFA' },
+                    { label: 'emotion', color: '#EC4899' },
+                    { label: 'conversation', color: '#10B981' },
+                    { label: 'proactive', color: '#F59E0B' },
+                  ].map(({ label, color }) => (
+                    <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: color }} />
+                      <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
+                        {label}
+                      </Typography>
+                    </Box>
+                  ))}
                 </Box>
-              ))}
+              </Box>
+              <Box sx={{ maxHeight: 400, overflowY: 'auto', pr: 1, '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-track': { bgcolor: 'rgba(255,255,255,0.02)' }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.1)', borderRadius: '2px' } }}>
+                {message_bus.top_topics.map((topic: any, index: number) => {
+                  const isHighVolume = topic.msg_per_sec > 1;
+                  const category = topic.topic.split('/')[0];
+                  const categoryColors: Record<string, string> = {
+                    'modelservice': '#00D9FF',
+                    'system': '#A78BFA',
+                    'emotion': '#EC4899',
+                    'conversation': '#10B981',
+                    'proactive': '#F59E0B',
+                  };
+                  const color = categoryColors[category] || '#6B7280';
+                  
+                  // Truncate long topics with ellipsis
+                  const displayTopic = topic.topic.length > 60 
+                    ? topic.topic.substring(0, 57) + '...' 
+                    : topic.topic;
+                  
+                  return (
+                    <Box
+                      key={index}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        mb: 0.75,
+                        p: 1,
+                        borderRadius: '6px',
+                        bgcolor: isHighVolume ? 'rgba(0, 217, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                        border: '1px solid',
+                        borderColor: isHighVolume ? 'rgba(0, 217, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                        transition: 'all 0.15s ease',
+                        '&:hover': {
+                          bgcolor: 'rgba(255, 255, 255, 0.05)',
+                          borderColor: color,
+                          transform: 'translateX(2px)',
+                        },
+                      }}
+                      title={topic.topic}
+                    >
+                      <Box
+                        sx={{
+                          width: 5,
+                          height: 5,
+                          borderRadius: '50%',
+                          bgcolor: color,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
+                          fontSize: '0.7rem', 
+                          flex: 1,
+                          fontFamily: 'monospace',
+                          color: 'text.primary',
+                          fontWeight: isHighVolume ? 600 : 400,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {displayTopic}
+                      </Typography>
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          color: color,
+                          minWidth: '60px',
+                          textAlign: 'right',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {topic.msg_per_sec >= 1 
+                          ? topic.msg_per_sec.toFixed(1) 
+                          : topic.msg_per_sec >= 0.01 
+                            ? topic.msg_per_sec.toFixed(2)
+                            : topic.msg_per_sec.toFixed(4)
+                        } msg/s
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
             </Box>
           </Paper>
         </Box>

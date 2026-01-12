@@ -86,6 +86,86 @@ class MetricsInfluxClient:
         results = self.query(query)
         return sum(r.get('value', 0) for r in results)
     
+    def count_points_by_field(
+        self,
+        measurement: str,
+        field: str,
+        field_value: Any,
+        time_range: str,
+        filters: Optional[Dict[str, str]] = None
+    ) -> int:
+        """
+        Count data points filtered by field value.
+        
+        Args:
+            measurement: Measurement name (e.g., "scheduler_job")
+            field: Field name (e.g., "success_b")
+            field_value: Field value to filter by (e.g., True, False)
+            time_range: Time range (e.g., "-1h", "-24h")
+            filters: Optional tag filters
+            
+        Returns:
+            Count of data points matching field value
+        """
+        filter_clauses = self._build_filter_clauses(filters)
+        
+        # Convert Python boolean to Flux boolean
+        if isinstance(field_value, bool):
+            flux_value = "true" if field_value else "false"
+        elif isinstance(field_value, str):
+            flux_value = f'"{field_value}"'
+        else:
+            flux_value = str(field_value)
+        
+        query = f'''
+            from(bucket: "aico_telemetry")
+            |> range(start: {time_range})
+            |> filter(fn: (r) => r._measurement == "{measurement}")
+            |> filter(fn: (r) => r._field == "{field}")
+            |> filter(fn: (r) => r._value == {flux_value})
+            {filter_clauses}
+            |> count()
+        '''
+        
+        results = self.query(query)
+        return sum(r.get('value', 0) for r in results)
+    
+    def count_field_points(
+        self,
+        measurement: str,
+        field: str,
+        time_range: str,
+        filters: Optional[Dict[str, str]] = None
+    ) -> int:
+        """
+        Count all data points for a specific field (regardless of value).
+        
+        Useful when you need to count actual events but InfluxDB stores multiple
+        fields per event (e.g., scheduler_job has both success_b and duration_ms_f).
+        
+        Args:
+            measurement: Measurement name
+            field: Field name to count
+            time_range: Time range
+            filters: Optional tag filters
+            
+        Returns:
+            Count of data points for this field
+        """
+        filter_clauses = self._build_filter_clauses(filters)
+        
+        query = f'''
+            from(bucket: "aico_telemetry")
+            |> range(start: {time_range})
+            |> filter(fn: (r) => r._measurement == "{measurement}")
+            |> filter(fn: (r) => r._field == "{field}")
+            {filter_clauses}
+            |> count()
+        '''
+        
+        results = self.query(query)
+        return sum(r.get('value', 0) for r in results)
+    
     def mean_field(
         self,
         measurement: str,

@@ -21,8 +21,8 @@ router = APIRouter()
 from backend.api.metrics import router as metrics_router
 router.include_router(metrics_router)
 
-# Track server start time
-start_time = time.time()
+# Import shared start_time to ensure consistency across all endpoints
+from backend.api.metrics.start_time import start_time
 
 
 class SystemEvent(BaseModel):

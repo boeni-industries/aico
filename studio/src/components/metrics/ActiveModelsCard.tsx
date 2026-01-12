@@ -6,14 +6,12 @@ import { Info } from 'lucide-react';
 interface ActiveModelsCardProps {
   modelCount: number;
   modelUsage: Record<string, number>;
-  dataSource?: 'real' | 'mock';
   tooltip?: string;
 }
 
 export const ActiveModelsCard: React.FC<ActiveModelsCardProps> = ({
   modelCount,
   modelUsage,
-  dataSource = 'real',
   tooltip,
 }) => {
   // Extract model names and sort by usage
@@ -59,28 +57,6 @@ export const ActiveModelsCard: React.FC<ActiveModelsCardProps> = ({
               <Info size={12} style={{ color: 'rgba(255, 255, 255, 0.3)', cursor: 'help' }} />
             </StyledTooltip>
           )}
-        </Box>
-        <Box
-          sx={{
-            px: 1,
-            py: 0.25,
-            borderRadius: '4px',
-            bgcolor: dataSource === 'real' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(251, 191, 36, 0.15)',
-            border: '1px solid',
-            borderColor: dataSource === 'real' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(251, 191, 36, 0.3)',
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{
-              fontSize: '0.6rem',
-              fontWeight: 700,
-              letterSpacing: '0.05em',
-              color: dataSource === 'real' ? '#10B981' : '#F59E0B',
-            }}
-          >
-            {dataSource === 'real' ? 'REAL' : 'MOCK'}
-          </Typography>
         </Box>
       </Box>
       

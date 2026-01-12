@@ -665,6 +665,15 @@ class TaskScheduler(BaseService):
                 self.logger.error(f"Task class not found for {task_id}")
                 return
 
+            # For scheduled tasks, advance next_run immediately to prevent re-enqueueing on every tick
+            # This must happen BEFORE the early return checks
+            if is_scheduled and task_id in self.next_run_times:
+                schedule = task_config.get('schedule')
+                if schedule:
+                    next_run = self.cron_parser.next_run_time(schedule, datetime.now(timezone.utc))
+                    if next_run:
+                        self.next_run_times[task_id] = next_run
+
             # Prevent enqueue storms: if already running or already queued, don't enqueue again
             if task_id in self.task_executor.running_tasks:
                 return
@@ -688,14 +697,6 @@ class TaskScheduler(BaseService):
             )
             
             if success:
-                # For scheduled tasks, advance next_run immediately on enqueue.
-                # This prevents re-enqueueing every scheduler tick while the task is pending/running.
-                if is_scheduled and task_id in self.next_run_times:
-                    schedule = task_config.get('schedule')
-                    if schedule:
-                        next_run = self.cron_parser.next_run_time(schedule, datetime.now(timezone.utc))
-                        if next_run:
-                            self.next_run_times[task_id] = next_run
                 self.logger.debug(
                     f"Enqueued {task_id} to {task_instance.queue.value} queue "
                     f"(priority={task_instance.priority.name})"
@@ -758,15 +759,7 @@ class TaskScheduler(BaseService):
             if result.success:
                 # Success - clear retry history
                 self.retry_tracker.record_success(task_id)
-                
-                # For scheduled tasks, calculate next run time
-                if task_id in self.next_run_times:
-                    schedule = prioritized_task.config.get('schedule')
-                    if schedule:
-                        next_run = self.cron_parser.next_run_time(schedule, datetime.now(timezone.utc))
-                        if next_run:
-                            self.next_run_times[task_id] = next_run
-                            self.logger.debug(f"Next run for {task_id}: {next_run}")
+                # Note: next_run_times is already advanced when task becomes due (in _enqueue_task)
             
             elif not result.skipped:
                 # Failure - check if should retry

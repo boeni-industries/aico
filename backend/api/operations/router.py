@@ -26,7 +26,8 @@ from backend.api.operations.schemas import (
     TopologyResponse, ServiceNode, ServiceConnection
 )
 from backend.api.system.dependencies import get_current_user, get_db_connection
-from backend.api.system.router import start_time, format_uptime
+from backend.api.metrics.start_time import start_time
+from backend.api.system.router import format_uptime
 from backend.api.operations import database_admin
 from backend.api.operations import database_routes
 

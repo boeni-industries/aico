@@ -25,6 +25,15 @@ from opentelemetry.sdk.metrics.export import (
     MetricExporter,
     MetricsData,
     MetricExportResult,
+    AggregationTemporality,
+)
+from opentelemetry.sdk.metrics import (
+    Counter,
+    Histogram,
+    ObservableCounter,
+    ObservableGauge,
+    ObservableUpDownCounter,
+    UpDownCounter,
 )
 
 logger = logging.getLogger("backend.otel_influx")
@@ -48,7 +57,18 @@ class OTelInfluxExporter(MetricExporter):
         token: Optional[str] = None,
         resource_attributes: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__()
+        # Configure DELTA temporality for Counter and Histogram to avoid duplicate entries
+        # CUMULATIVE for UpDownCounter as per OpenTelemetry spec recommendations
+        super().__init__(
+            preferred_temporality={
+                Counter: AggregationTemporality.DELTA,
+                Histogram: AggregationTemporality.DELTA,
+                ObservableCounter: AggregationTemporality.DELTA,
+                UpDownCounter: AggregationTemporality.CUMULATIVE,
+                ObservableUpDownCounter: AggregationTemporality.CUMULATIVE,
+                ObservableGauge: AggregationTemporality.CUMULATIVE,
+            }
+        )
         
         self.influx_url = influx_url.rstrip("/")
         self.org = org
