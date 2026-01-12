@@ -413,9 +413,12 @@ async def list_logs(
     filter_str = " and ".join(filters)
     
     # Determine time range
-    time_range = "-24h"  # Default to last 24 hours
+    # Flux requires RFC3339 timestamps to be in time() function or use relative notation
     if since:
-        time_range = f'{since.isoformat()}Z'
+        # Convert to RFC3339 format and wrap in time() function
+        time_range = f'time(v: "{since.strftime("%Y-%m-%dT%H:%M:%SZ")}")'
+    else:
+        time_range = "-24h"  # Default to last 24 hours
     
     # Query InfluxDB
     query = f'''

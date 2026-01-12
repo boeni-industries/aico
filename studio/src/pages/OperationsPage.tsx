@@ -82,7 +82,7 @@ export const OperationsPage: React.FC = () => {
         {activeTab === 'topology' && <SystemTopology refreshTrigger={refreshTrigger} />}
         {activeTab === 'users' && <UsersSessions refreshTrigger={refreshTrigger} />}
         {activeTab === 'scheduler' && <SchedulerJobs refreshTrigger={refreshTrigger} />}
-        {activeTab === 'logs' && <LogsEvents />}
+        {activeTab === 'logs' && <LogsEvents refreshTrigger={refreshTrigger} />}
         {activeTab === 'database' && <DatabaseStorage refreshTrigger={refreshTrigger} />}
         {activeTab === 'metrics' && <MetricsPage />}
       </Box>

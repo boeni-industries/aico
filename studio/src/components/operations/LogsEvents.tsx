@@ -176,7 +176,7 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
   const loadData = useCallback(async (forceRefresh = false) => {
     // Build cache key including filters to avoid stale data
     const filterKey = severityFilter.length === 4 ? 'ALL' : severityFilter.join(',');
-    const cacheKey = `${page}-${filterKey}-${searchQuery}`;
+    const cacheKey = `${page}-${filterKey}-${searchQuery}-${timeRange}`;
     
     // Check cache first for instant loading
     if (!forceRefresh && cacheRef.current.has(cacheKey)) {
@@ -204,11 +204,31 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
 
       // Fetch log events - admin API uses limit/offset instead of page/page_size
       const offset = (page - 1) * pageSize;
+      
+      // Calculate time range based on selected filter
+      const now = new Date();
+      const since = new Date(now);
+      switch (timeRange) {
+        case '5m':
+          since.setMinutes(now.getMinutes() - 5);
+          break;
+        case '1h':
+          since.setHours(now.getHours() - 1);
+          break;
+        case '24h':
+          since.setHours(now.getHours() - 24);
+          break;
+        case '7d':
+          since.setDate(now.getDate() - 7);
+          break;
+      }
+      
       const eventsData = await getLogEvents({
         limit: pageSize,
         offset: offset,
         level: severityFilter.length === 4 ? undefined : severityFilter.map(s => s.toUpperCase()).join(','),
         search: searchQuery || undefined,
+        since: since.toISOString(),
       });
       
       // Admin API returns { logs, total, has_more }
@@ -216,9 +236,9 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
       setLogEvents(logs);
       setTotalCount(eventsData.total || 0);
       
-      // Cache the result with filter key
+      // Cache the result with filter key including time range
       const filterKey = severityFilter.length === 4 ? 'ALL' : severityFilter.join(',');
-      const cacheKey = `${page}-${filterKey}-${searchQuery}`;
+      const cacheKey = `${page}-${filterKey}-${searchQuery}-${timeRange}`;
       cacheRef.current.set(cacheKey, logs);
       
       // Limit cache size to 10 pages (500 entries)
@@ -239,7 +259,7 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, severityFilter, searchQuery, kpis, prefetchPage]);
+  }, [page, pageSize, severityFilter, searchQuery, timeRange, kpis, prefetchPage]);
 
   useEffect(() => {
     loadData();
