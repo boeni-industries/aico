@@ -116,13 +116,12 @@ def tail_logs(
     
     # Use a large time window to ensure we get enough logs
     # Tail shows the most recent N lines, not time-based filtering
+    # Note: Don't use limit() in Flux - it applies per-table, not globally
     query = f'''
     from(bucket: "{bucket}")
       |> range(start: -30d)
       |> filter(fn: (r) => {filter_str})
       |> sort(columns: ["_time"], desc: true)
-      |> limit(n: {lines})
-      |> sort(columns: ["_time"], desc: false)
     '''
     
     try:
@@ -142,7 +141,13 @@ def tail_logs(
             console.print("[yellow]No logs found matching criteria[/yellow]")
             return
         
-        # Sort all records by timestamp (oldest to newest)
+        # Sort all records by timestamp (newest first)
+        all_records.sort(key=lambda r: r.get_time(), reverse=True)
+        
+        # Apply limit after collecting from all tables
+        all_records = all_records[:lines]
+        
+        # Re-sort for display (oldest to newest)
         all_records.sort(key=lambda r: r.get_time())
         
         # Display logs

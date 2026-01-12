@@ -121,7 +121,7 @@ const EmotionStrip: React.FC<{ history: EmotionHistoryItemDto[]; windowHours: nu
           gridTemplateColumns: `repeat(${samples.length}, 1fr)`,
         }}
       >
-        {samples.map((item) => {
+        {samples.map((item, index) => {
           const color = colorForEmotion(item.feeling, item.valence, item.arousal);
           const opacity = 0.3 + item.intensity * 0.7;
           const { date, time } = formatTooltipTimestamp(item.timestamp);
@@ -275,7 +275,7 @@ const EmotionStrip: React.FC<{ history: EmotionHistoryItemDto[]; windowHours: nu
           
           return (
             <Tooltip
-              key={item.timestamp}
+              key={`${item.timestamp}-${index}`}
               title={tooltipContent}
               arrow
               componentsProps={{

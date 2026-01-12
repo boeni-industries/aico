@@ -133,7 +133,7 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
   const [severityFilter, setSeverityFilter] = useState<string[]>(['error', 'warning', 'info']);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [timeRange, setTimeRange] = useState<'5m' | '1h' | '24h' | '7d'>('1h');
+  const [timeRange, setTimeRange] = useState<'5m' | '1h' | '24h' | '7d'>('24h');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
@@ -141,6 +141,7 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
   const [kpis, setKpis] = useState<ApiLogKPIs | null>(null);
   const [logEvents, setLogEvents] = useState<ApiLogEvent[]>([]);
   const [histogramData, setHistogramData] = useState<ApiHistogramDataPoint[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   
   // Caching and pre-fetching (cache key includes filters)
   const cacheRef = useRef<Map<string, ApiLogEvent[]>>(new Map());
@@ -205,36 +206,21 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
       // Fetch log events - admin API uses limit/offset instead of page/page_size
       const offset = (page - 1) * pageSize;
       
-      // Calculate time range based on selected filter
-      const now = new Date();
-      const since = new Date(now);
-      switch (timeRange) {
-        case '5m':
-          since.setMinutes(now.getMinutes() - 5);
-          break;
-        case '1h':
-          since.setHours(now.getHours() - 1);
-          break;
-        case '24h':
-          since.setHours(now.getHours() - 24);
-          break;
-        case '7d':
-          since.setDate(now.getDate() - 7);
-          break;
-      }
-      
+      // Don't send 'since' parameter - let backend handle time ranges with relative notation
+      // Frontend time calculation was buggy (timezone issues), backend will use -24h, -1h, etc.
       const eventsData = await getLogEvents({
         limit: pageSize,
         offset: offset,
         level: severityFilter.length === 4 ? undefined : severityFilter.map(s => s.toUpperCase()).join(','),
         search: searchQuery || undefined,
-        since: since.toISOString(),
+        // since parameter removed - backend uses default -24h
       });
       
       // Admin API returns { logs, total, has_more }
       const logs = eventsData.logs || [];
       setLogEvents(logs);
       setTotalCount(eventsData.total || 0);
+      setLastUpdated(new Date());
       
       // Cache the result with filter key including time range
       const filterKey = severityFilter.length === 4 ? 'ALL' : severityFilter.join(',');
@@ -275,26 +261,29 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
             // Fetch only KPIs and check for new logs without disrupting UI
             const [kpisData, eventsData] = await Promise.all([
               getLogKPIs(),
-              getLogEvents({ limit: pageSize, offset: 0, level: severityFilter.length === 4 ? undefined : severityFilter.map(s => s.toUpperCase()).join(','), search: searchQuery || undefined })
+              getLogEvents({ 
+                limit: pageSize, 
+                offset: 0, 
+                level: severityFilter.length === 4 ? undefined : severityFilter.map(s => s.toUpperCase()).join(','), 
+                search: searchQuery || undefined
+                // since parameter removed - backend uses default -24h
+              })
             ]);
             
             setKpis(kpisData);
             
-            // Only update if there are new logs (compare first log ID)
-            const currentFirstId = logEvents[0]?.id;
-            const newFirstId = eventsData.logs?.[0]?.id;
-            if (newFirstId && newFirstId !== currentFirstId) {
-              setLogEvents(eventsData.logs || []);
-              setTotalCount(eventsData.total || 0);
-              const filterKey = severityFilter.length === 4 ? 'ALL' : severityFilter.join(',');
-              const cacheKey = `1-${filterKey}-${searchQuery}`;
-              cacheRef.current.set(cacheKey, eventsData.logs || []);
-            }
+            // Always update logs and timestamp on auto-refresh
+            setLogEvents(eventsData.logs || []);
+            setTotalCount(eventsData.total || 0);
+            setLastUpdated(new Date());
+            const filterKey = severityFilter.length === 4 ? 'ALL' : severityFilter.join(',');
+            const cacheKey = `1-${filterKey}-${searchQuery}-${timeRange}`;
+            cacheRef.current.set(cacheKey, eventsData.logs || []);
           } catch (error) {
             console.error('Auto-refresh failed:', error);
           }
         }
-      }, 10000); // Refresh every 10 seconds (less disruptive)
+      }, 5000); // Refresh every 5 seconds (matches global app refresh rate)
     };
 
     startAutoRefresh();
@@ -304,7 +293,7 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
         clearInterval(autoRefreshTimerRef.current);
       };
     }
-  }, [page, pageSize, severityFilter, searchQuery, logEvents, isUserInteracting, expandedRows]);
+  }, [page, pageSize, severityFilter, searchQuery, timeRange, logEvents, isUserInteracting, expandedRows]);
 
   // Clear cache and reset to page 1 when filters change
   useEffect(() => {
@@ -446,9 +435,9 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
                   tooltip: {
                     sx: {
                       bgcolor: 'rgba(0, 0, 0, 0.9)',
-                      borderRadius: '8px',
+                      borderRadius: '4px',
                       border: '1px solid rgba(255, 255, 255, 0.1)',
-                      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
                     }
                   },
                   arrow: {
@@ -466,17 +455,34 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
                 </Box>
               </Tooltip>
             </Box>
-            {displayKpis.error_rate_trend < 0 ? (
-              <TrendingDown size={16} color="#10B981" />
-            ) : (
-              <TrendingUp size={16} color="#EF4444" />
-            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+              {displayKpis.error_rate_trend < 0 ? (
+                <>
+                  <TrendingDown size={16} style={{ color: '#10B981' }} />
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#10B981' }}>
+                    {Math.abs(displayKpis.error_rate_trend).toFixed(1)}%
+                  </Typography>
+                </>
+              ) : displayKpis.error_rate_trend > 0 ? (
+                <>
+                  <TrendingUp size={16} style={{ color: '#EF4444' }} />
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#EF4444' }}>
+                    {Math.abs(displayKpis.error_rate_trend).toFixed(1)}%
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'text.secondary' }}>
+                  0.0%
+                </Typography>
+              )}
+            </Box>
           </Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary', mt: 1 }}>
             {formatPercent(displayKpis.error_rate)}%
           </Typography>
           <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary', mt: 0.5, display: 'block' }}>
-            {displayKpis.error_rate_trend > 0 ? '+' : ''}{displayKpis.error_rate_trend}% vs last hour
+            {displayKpis.error_rate_trend === 0 ? '0% vs last hour' : 
+             displayKpis.error_rate_trend < 0 ? 'Decreasing' : 'Increasing'}
           </Typography>
         </Paper>
 
@@ -524,13 +530,34 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
                 </Box>
               </Tooltip>
             </Box>
-            <TrendingUp size={16} color="#3B82F6" />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+              {displayKpis.log_volume_trend > 0 ? (
+                <>
+                  <TrendingUp size={16} style={{ color: '#10B981' }} />
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#10B981' }}>
+                    {Math.abs(displayKpis.log_volume_trend).toFixed(1)}%
+                  </Typography>
+                </>
+              ) : displayKpis.log_volume_trend < 0 ? (
+                <>
+                  <TrendingDown size={16} style={{ color: '#EF4444' }} />
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#EF4444' }}>
+                    {Math.abs(displayKpis.log_volume_trend).toFixed(1)}%
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'text.secondary' }}>
+                  0.0%
+                </Typography>
+              )}
+            </Box>
           </Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary', mt: 1 }}>
             {formatNumber(displayKpis.log_volume)}
           </Typography>
           <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary', mt: 0.5, display: 'block' }}>
-            +{displayKpis.log_volume_trend}% vs last hour
+            {displayKpis.log_volume_trend === 0 ? '0% vs last hour' : 
+             displayKpis.log_volume_trend > 0 ? 'Increasing' : 'Decreasing'}
           </Typography>
         </Paper>
 
@@ -723,6 +750,50 @@ export const LogsEvents: React.FC<LogsEventsProps> = ({ refreshTrigger = 0 }) =>
           <Typography variant="subtitle2" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'text.secondary' }}>
             Event Log
           </Typography>
+          <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary', fontStyle: 'italic' }}>
+            Last updated: {lastUpdated.toLocaleDateString('de-DE', { 
+              day: '2-digit', 
+              month: '2-digit', 
+              year: 'numeric'
+            })} {lastUpdated.toLocaleTimeString('de-DE', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            })}
+          </Typography>
+        </Box>
+
+        {/* Time Range Selector */}
+        <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', fontWeight: 600, mr: 1 }}>
+            TIME RANGE:
+          </Typography>
+          {(['5m', '1h', '24h', '7d'] as const).map((range) => {
+            const isActive = timeRange === range;
+            const labels = { '5m': '5 Minutes', '1h': '1 Hour', '24h': '24 Hours', '7d': '7 Days' };
+            return (
+              <Chip
+                key={range}
+                icon={<Clock size={14} />}
+                label={labels[range]}
+                size="small"
+                onClick={() => setTimeRange(range)}
+                sx={{
+                  bgcolor: isActive ? 'rgba(184, 161, 234, 0.15)' : 'rgba(255,255,255,0.05)',
+                  color: isActive ? '#B8A1EA' : 'text.secondary',
+                  border: `1px solid ${isActive ? 'rgba(184, 161, 234, 0.5)' : 'rgba(255,255,255,0.12)'}`,
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: 'rgba(184, 161, 234, 0.15)',
+                    borderColor: '#B8A1EA',
+                  },
+                }}
+              />
+            );
+          })}
         </Box>
 
         {/* Search and Filters */}

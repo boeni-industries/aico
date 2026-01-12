@@ -1,5 +1,5 @@
 import { API_BASE_URL, getAuthToken, setAuthToken, getRefreshToken, setRefreshToken } from './config';
-import { ensureSecureSession, wrapEncryptedRequestBody, unwrapEncryptedResponse } from '../transport/secureTransport';
+import { ensureSecureSession, wrapEncryptedRequestBody, unwrapEncryptedResponse, forceNewHandshake } from '../transport/secureTransport';
 
 export interface HttpRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -65,6 +65,35 @@ export async function httpJson<T>(options: HttpRequestOptions): Promise<T> {
   }
 
   if (!response.ok) {
+    // Try to parse error response first to check if it's an encryption error
+    let errorData: any = null;
+    let errorMessage = '';
+    try {
+      errorData = await response.json();
+      // If the error response is encrypted, decrypt it
+      if (errorData.encrypted && isProtected) {
+        const decrypted = unwrapEncryptedResponse<{ detail?: string }>(errorData);
+        errorMessage = decrypted.detail || JSON.stringify(decrypted);
+      } else if (errorData.detail) {
+        errorMessage = errorData.detail;
+      } else if (errorData.message) {
+        errorMessage = errorData.message;
+      } else {
+        errorMessage = JSON.stringify(errorData);
+      }
+    } catch {
+      // If JSON parsing fails, fall back to text
+      errorMessage = await response.text().catch(() => '');
+    }
+    
+    // If 401 with encryption error, force new handshake and retry
+    if (response.status === 401 && (errorData?.error === 'Encryption required' || errorMessage.includes('Perform handshake'))) {
+      const retried = await retryWithNewHandshake<T>(options);
+      if (retried !== null) {
+        return retried;
+      }
+    }
+    
     // If 401 and we have a refresh token, try to refresh and retry once
     if (response.status === 401 && getRefreshToken()) {
       const refreshed = await tryRefreshToken();
@@ -72,24 +101,6 @@ export async function httpJson<T>(options: HttpRequestOptions): Promise<T> {
         // Retry the original request with new token
         return httpJson<T>(options);
       }
-    }
-    
-    // Try to parse error response as JSON and decrypt if needed
-    let errorMessage = '';
-    try {
-      const errorData = await response.json();
-      // If the error response is encrypted, decrypt it
-      if (errorData.encrypted && isProtected) {
-        const decrypted = unwrapEncryptedResponse<{ detail?: string }>(errorData);
-        errorMessage = decrypted.detail || JSON.stringify(decrypted);
-      } else if (errorData.detail) {
-        errorMessage = errorData.detail;
-      } else {
-        errorMessage = JSON.stringify(errorData);
-      }
-    } catch {
-      // If JSON parsing fails, fall back to text
-      errorMessage = await response.text().catch(() => '');
     }
     
     throw new Error(
@@ -108,6 +119,28 @@ export async function httpJson<T>(options: HttpRequestOptions): Promise<T> {
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
+let isRetryingHandshake = false;
+
+async function retryWithNewHandshake<T>(options: HttpRequestOptions): Promise<T | null> {
+  // Prevent multiple simultaneous handshake retries
+  if (isRetryingHandshake) {
+    return null;
+  }
+
+  isRetryingHandshake = true;
+  try {
+    // Force invalidate the current encryption session
+    forceNewHandshake();
+    
+    // Retry the request - ensureSecureSession will establish a new handshake
+    return await httpJson<T>(options);
+  } catch (error) {
+    console.error('Failed to retry with new handshake:', error);
+    return null;
+  } finally {
+    isRetryingHandshake = false;
+  }
+}
 
 async function tryRefreshToken(): Promise<boolean> {
   // Prevent multiple simultaneous refresh attempts

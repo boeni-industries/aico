@@ -412,18 +412,14 @@ async def list_logs(
     
     filter_str = " and ".join(filters)
     
-    # Determine time range
-    # Flux requires RFC3339 timestamps to be in time() function or use relative notation
-    if since:
-        # Convert to RFC3339 format and wrap in time() function
-        time_range = f'time(v: "{since.strftime("%Y-%m-%dT%H:%M:%SZ")}")'
-    else:
-        time_range = "-24h"  # Default to last 24 hours
+    # Use relative time ranges (like CLI) to avoid timezone issues
+    # Frontend no longer sends 'since' parameter
+    time_range = "-24h"  # Always use last 24 hours (matches default time range selector)
     
-    # Query InfluxDB
+    # Query InfluxDB - fetch more than needed and slice in Python for performance
     query = f'''
     from(bucket: "{bucket}")
-      |> range(start: {time_range})
+      |> range(start: {time_range}, stop: now())
       |> filter(fn: (r) => {filter_str})
       |> sort(columns: ["_time"], desc: true)
       |> limit(n: {limit + offset})
@@ -432,24 +428,38 @@ async def list_logs(
     try:
         tables = client.query_api().query(query, org=org)
         
-        # Convert to log entries
-        log_entries = []
+        # Collect all records from all tables
         all_records = []
         for table in tables:
             all_records.extend(table.records)
         
-        # Apply offset
+        if not all_records:
+            return LogEventsResponse(logs=[], total=0, has_more=False)
+        
+        # CRITICAL: Sort all records by timestamp DESC after combining tables
+        # InfluxDB returns separate tables per tag combination, so we must re-sort
+        all_records.sort(key=lambda r: r.get_time(), reverse=True)
+        
+        # Apply offset in Python
         records_to_show = all_records[offset:offset + limit]
         
-        for idx, record in enumerate(records_to_show):
+        # Convert to log entries
+        log_entries = []
+        
+        for record in records_to_show:
+            # Generate unique ID from timestamp + message hash to prevent React key collisions
+            timestamp = record.get_time()
+            message = record.get_value()
+            unique_id = f"{timestamp.timestamp()}_{hash(message) & 0xFFFFFFFF}"
+            
             log_entries.append(LogEntryResponse(
-                id=str(offset + idx),
-                timestamp=record.get_time().isoformat(),
+                id=unique_id,
+                timestamp=timestamp.isoformat(),
                 level=record.values.get("level", "INFO"),
                 subsystem=record.values.get("service", "unknown"),
                 module=record.values.get("module", "unknown"),
                 function=record.values.get("function", ""),
-                message=record.get_value(),
+                message=message,
                 topic="",
                 extra_data=None
             ))
@@ -546,10 +556,64 @@ async def get_logs_stats(
                 count = int(record.get_value())
                 by_subsystem[service] = count
         
-        # Simple trends (compare current hour vs previous hour)
-        current_errors = by_level.get('ERROR', 0)
-        error_rate_trend = 0.0
-        log_volume_trend = 0.0
+        # Calculate trends by comparing last hour vs previous hour
+        # Query for last hour
+        query_last_hour = f'''
+        from(bucket: "{bucket}")
+          |> range(start: -1h)
+          |> filter(fn: (r) => r._measurement == "logs")
+          |> filter(fn: (r) => r._field == "message")
+          |> group(columns: ["level"])
+          |> count()
+        '''
+        tables_last = client.query_api().query(query_last_hour, org=org)
+        
+        last_hour_by_level = {}
+        last_hour_total = 0
+        for table in tables_last:
+            for record in table.records:
+                level = record.values.get("level", "INFO")
+                count = int(record.get_value())
+                last_hour_by_level[level] = count
+                last_hour_total += count
+        
+        # Query for previous hour (1h-2h ago)
+        query_prev_hour = f'''
+        from(bucket: "{bucket}")
+          |> range(start: -2h, stop: -1h)
+          |> filter(fn: (r) => r._measurement == "logs")
+          |> filter(fn: (r) => r._field == "message")
+          |> group(columns: ["level"])
+          |> count()
+        '''
+        tables_prev = client.query_api().query(query_prev_hour, org=org)
+        
+        prev_hour_by_level = {}
+        prev_hour_total = 0
+        for table in tables_prev:
+            for record in table.records:
+                level = record.values.get("level", "INFO")
+                count = int(record.get_value())
+                prev_hour_by_level[level] = count
+                prev_hour_total += count
+        
+        # Calculate error rate trend
+        last_hour_errors = last_hour_by_level.get('ERROR', 0)
+        prev_hour_errors = prev_hour_by_level.get('ERROR', 0)
+        
+        last_hour_error_rate = (last_hour_errors / last_hour_total * 100) if last_hour_total > 0 else 0
+        prev_hour_error_rate = (prev_hour_errors / prev_hour_total * 100) if prev_hour_total > 0 else 0
+        
+        if prev_hour_error_rate > 0:
+            error_rate_trend = ((last_hour_error_rate - prev_hour_error_rate) / prev_hour_error_rate) * 100
+        else:
+            error_rate_trend = 0.0
+        
+        # Calculate log volume trend
+        if prev_hour_total > 0:
+            log_volume_trend = ((last_hour_total - prev_hour_total) / prev_hour_total) * 100
+        else:
+            log_volume_trend = 0.0
         
         # Recent activity by hour (last 24h) - for timeline visualization
         query = f'''

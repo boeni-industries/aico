@@ -148,3 +148,12 @@ export function unwrapEncryptedResponse<T = unknown>(data: any): T {
 export function getClientId(): string | null {
   return clientId;
 }
+
+export function forceNewHandshake(): void {
+  // Invalidate current session to force a new handshake
+  sharedKey = null;
+  clientId = null;
+  sessionEstablishedAt = 0;
+  identityKeyPair = null;
+  sessionKeyPair = null;
+}
