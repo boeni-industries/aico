@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from datetime import datetime, timedelta
 
 from aico.core.logging import get_logger
-from aico.core.version import get_backend_version, get_modelservice_version, get_studio_version
+from aico.core.version import get_backend_version, get_modelservice_version
 from backend.api.operations.schemas import (
     DatabaseStatsResponse, DatabaseMetrics,
     DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo,
@@ -532,7 +532,7 @@ async def get_system_topology(
         # Get versions from shared version system
         backend_version = get_backend_version()
         modelservice_version = get_modelservice_version()
-        studio_version = get_studio_version()
+        studio_version = "N/A"  # Placeholder - Studio manages its own version
         
         # Get database versions with caching
         version_detector = get_version_detector()
