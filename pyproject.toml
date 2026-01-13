@@ -44,7 +44,9 @@ dependencies = [
     "opentelemetry-instrumentation-requests>=0.41b0",
     # InfluxDB client for telemetry storage
     "influxdb-client>=1.45.0",
-    "psycopg2-binary>=2.9.9",  # PostgreSQL database adapter
+    "psycopg2-binary>=2.9.9",  # PostgreSQL database adapter (sync)
+    "asyncpg>=0.30.0",  # High-performance async PostgreSQL driver
+    "sqlalchemy[asyncio]>=2.0.0",  # SQLAlchemy Core with async support
 ]
 
 [project.optional-dependencies]
