@@ -88,6 +88,8 @@ async def get_postgres_pool() -> asyncpg.Pool:
             user=user,
             password=password,
             database=database,
+            # SSL configuration (disable for local dev, enable for production)
+            ssl=False,                # No SSL for local docker container
             # Connection pool sizing for optimal performance
             min_size=10,              # Always-ready connections
             max_size=50,              # Scale under load
@@ -96,17 +98,6 @@ async def get_postgres_pool() -> asyncpg.Pool:
             # Timeouts
             command_timeout=60,       # Query timeout
             timeout=10,               # Connection acquisition timeout
-            # Performance optimizations
-            server_settings={
-                'jit': 'on',                          # Enable JIT compilation for complex queries
-                'random_page_cost': '1.1',            # SSD-optimized (default 4.0 for HDD)
-                'effective_cache_size': '4GB',        # Postgres can use for caching
-                'shared_buffers': '1GB',              # Memory for shared buffers
-                'work_mem': '16MB',                   # Memory per query operation
-                'maintenance_work_mem': '256MB',      # Memory for maintenance operations
-                'max_parallel_workers_per_gather': '4',  # Parallel query workers
-                'effective_io_concurrency': '200',    # SSD concurrent I/O
-            },
             # Connection initialization callback
             init=_init_connection,
         )
@@ -219,6 +210,7 @@ async def get_session_factory() -> async_sessionmaker:
     
     # Create SQLAlchemy async engine with asyncpg
     # Use postgresql+asyncpg:// dialect for native asyncpg support
+    # Note: SSL is disabled via connect_args for local development
     database_url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{database}"
     
     try:
@@ -233,6 +225,7 @@ async def get_session_factory() -> async_sessionmaker:
             future=True,  # Use SQLAlchemy 2.0 style
             # Connection arguments passed to asyncpg
             connect_args={
+                "ssl": False,  # Disable SSL for local development
                 "server_settings": {
                     "jit": "on",
                     "application_name": "aico_backend",

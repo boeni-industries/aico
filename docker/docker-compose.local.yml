@@ -20,6 +20,17 @@ services:
       # Postgres 18+ requires mount at /var/lib/postgresql (not /data subdirectory)
       # This supports pg_ctlcluster format and proper version-specific directories
       - aico-pgdata:/var/lib/postgresql
+      # Mount production-grade postgresql.conf for optimal performance
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      # Mount pg_hba.conf for password authentication
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command:
+      # Use custom configuration files
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+      - "-c"
+      - "hba_file=/etc/postgresql/pg_hba.conf"
     labels:
       # Project identification
       com.aico.project: "aico"
