@@ -206,7 +206,7 @@ nav:
               - Animations: subsystems/frontend/avatar-animations.md
       - Modelservice:
           - Model Service: subsystems/modelservice/modelservice.md
-      - Studio:
+      - Studio (Enterprise/Pro):
           - Admin UI: subsystems/studio/admin-ui.md
           - Master Admin UI: subsystems/studio/admin-ui-master.md
 

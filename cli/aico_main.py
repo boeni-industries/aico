@@ -115,14 +115,6 @@ except ImportError as e:
     # Agency commands not available
     pass
 
-# Import and register studio commands
-try:
-    from cli.commands import studio
-    app.add_typer(studio.app, name="studio", help="🖥️ Studio admin UI (React dashboard)")
-except ImportError:
-    # Studio commands not available (e.g., missing node/npm)
-    pass
-
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
     """

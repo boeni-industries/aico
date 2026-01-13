@@ -281,18 +281,6 @@ class ProcessManager:
                                 'AICO_SERVICE_MODE=gateway'
                             ]):
                                 processes.append(proc.info)
-                        elif self.service_name == "studio":
-                            # Studio is a React dev server started via CRA (react-scripts)
-                            # or npm/yarn scripts. Match the actual command line we see
-                            # on macOS: `node .../react-scripts/scripts/start.js`.
-                            if any(pattern in cmdline_str for pattern in [
-                                'react-scripts/scripts/start.js',
-                                'react-scripts start',
-                                'npm run start',
-                                'yarn start',
-                                'AICO_SERVICE_MODE=studio'
-                            ]) or ('node' in cmdline_str and 'webpack-dev-server' in cmdline_str):
-                                processes.append(proc.info)
                         elif self.service_name == "modelservice":
                             if any(pattern in cmdline_str for pattern in [
                                 'modelservice.main',

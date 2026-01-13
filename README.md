@@ -43,7 +43,7 @@ This isn't just feature development—it's relationship evolution. We start with
   - **Modelservice:** ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), Piper TTS, Coqui XTTS v2
   - **Shared Library:** Cross-subsystem Python package with AI, data, security, and core modules
   - **CLI:** Typer + Rich with 15 command groups (security, database, gateway, ollama, kg, scheduler, logs)
-  - **Admin Tools:** React-based Studio UI (in development)
+  - **Admin Tools:** React-based Studio UI (Enterprise/Pro edition only)
   - **Security:** CurveZMQ encryption, Argon2id key derivation, JWT auth, encrypted audit logs
 
 - **AI Models & Algorithms:**
@@ -227,7 +227,7 @@ Each character maintains its own consistent personality across conversations whi
 - **[DONE]** REST API: 14+ endpoint groups (users, conversation, memory_album, scheduler, kg, logs, health, tts, emotion, behavioral)
 - **[DONE]** CLI Commands: 15 command groups with 100+ subcommands (security, database, gateway, ollama, kg, scheduler, logs)
 - **[DONE]** Plugin System: Message bus, log consumer, validation, security, rate limiting, encryption
-- **[WIP]** Admin UI: React-based dashboard (studio subsystem)
+- **[ENTERPRISE]** Admin UI: React-based Studio dashboard (Enterprise/Pro edition only)
 - **[DONE]** Developer Tools: Schema management, protobuf generation, testing utilities
 
 ### 🤝 Community & Collaboration
@@ -251,7 +251,7 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - **CLI**: v1.1.0 - Production-ready with 15 command groups
 - **Modelservice**: v1.0.0 - Ollama + GLiNER + transformers integration
 - **Frontend**: v1.0.0 - Flutter UI with encrypted local storage
-- **Studio**: v0.0.1 - React admin dashboard (early development)
+- **Studio**: v0.0.1 - React admin dashboard (Enterprise/Pro edition only)
 
 **Database Schema**: v33 (core.py)
 - v1-17: Core infrastructure (logs, auth, memory, KG, AMS, emotion)
@@ -283,7 +283,7 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - ✅ **Agency Phase 6.11**: Communication skills with state-of-the-art learning (Contextual Bandits, Thompson Sampling, PCA dimensions)
 - 🚧 **Agency Phase 6**: Proactive behaviors (follow-ups/reminders) in progress
 - 🚧 **Avatar**: Three.js integration planned
-- 🚧 **Studio**: React admin dashboard in early development
+- 🏢 **Studio**: React admin dashboard (Enterprise/Pro edition only)
 - 🚧 **User Emotion Detection**: Text/voice/facial analysis (Phase 2+)
 - 🚧 **Personality Simulation**: Evolving traits and values (Phase 3+)
 

@@ -58,7 +58,6 @@ logging:
       cli: "INFO"
       backend: "INFO"
       frontend: "INFO"
-      studio: "INFO"
       modelservice: "INFO"
     modules:
       # Fine-grained control per module if needed
@@ -314,10 +313,6 @@ service_auth:
       - "admin:write"
       - "logs:read"
       - "system:read"
-    studio:
-      - "logs:write"
-      - "system:read"
-      - "admin:read"
 
 # Emotion Engine Configuration
 emotion:
