@@ -219,11 +219,12 @@ class TestUserRepositoryCRUD:
     @pytest.mark.asyncio
     async def test_get_by_full_name(self, uow):
         """Test custom query method."""
-        # Create user with unique name for this test
+        # Create user with truly unique name for this test
+        unique_id = str(uuid.uuid4())[:8]
         test_user = UserProfile(
             uuid=str(uuid.uuid4()),
-            full_name="Unique Test User For Search",
-            nickname="unique_tester",
+            full_name=f"Unique Test User {unique_id}",
+            nickname=f"unique_tester_{unique_id}",
             user_type="parent",
             is_active=True,
             primary_language="en",
@@ -234,7 +235,7 @@ class TestUserRepositoryCRUD:
         await uow.commit()
         
         # Find by full name (case-insensitive)
-        found = await uow.users.get_by_full_name("unique test user for search")
+        found = await uow.users.get_by_full_name(f"unique test user {unique_id}")
         assert found is not None
         assert found.uuid == test_user.uuid
 
