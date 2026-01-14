@@ -10,8 +10,6 @@ from datetime import datetime, UTC
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.ai.base import BaseAIProcessor
-from aico.data.libsql.connection import LibSQLConnection
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 
 from .models import (
     Goal,
@@ -58,7 +56,7 @@ class AgencyEngine(BaseAIProcessor):
     def __init__(
         self,
         config: ConfigurationManager,
-        db_connection: Union[LibSQLConnection, EncryptedLibSQLConnection],
+        db_connection: Union[Any  # Agency system being redesigned, Any  # Agency system being redesigned],
         agency_service: "AgencyService",
         llm_plan_refiner: Optional[Callable] = None,
         world_model: Optional["WorldModelService"] = None,

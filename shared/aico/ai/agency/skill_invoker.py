@@ -13,7 +13,6 @@ from datetime import datetime, UTC
 from typing import Dict, Any, Optional
 
 from aico.core.logging import get_logger
-from aico.data.libsql import EncryptedLibSQLConnection
 from .skills.registry import SkillRegistry
 
 
@@ -33,7 +32,7 @@ class SkillInvoker:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         skill_registry: SkillRegistry,
         default_timeout: int = 30,
         max_retries: int = 2,

@@ -38,8 +38,7 @@ def check_database_sessions():
         
         # Use encrypted connection like CLI commands
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-        
+                
         key_manager = AICOKeyManager()
         
         # Try session-based authentication first
@@ -58,8 +57,7 @@ def check_database_sessions():
                 print("No master key available for database access")
                 return
         
-        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
+        conn = None          
         # Query sessions
         cursor = conn.execute("""
             SELECT uuid, user_uuid, device_uuid, expires_at, is_active, session_type 
@@ -76,8 +74,7 @@ def check_database_sessions():
         else:
             print("  - No sessions found")
         
-        # No close() method needed for EncryptedLibSQLConnection
-        return len([s for s in sessions if s[4]])  # Count active sessions
+        # No close() method needed for None          return len([s for s in sessions if s[4]])  # Count active sessions
         
     except Exception as e:
         print(f"Database check failed: {e}")

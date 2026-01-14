@@ -14,7 +14,6 @@ from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass, field
 from enum import Enum
 
-from aico.data.libsql import EncryptedLibSQLConnection
 
 
 # ============================================================================
@@ -81,7 +80,7 @@ class AdaptiveScoringEngine:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         config: Optional[AdaptiveConfig] = None,
         logger=None
     ):

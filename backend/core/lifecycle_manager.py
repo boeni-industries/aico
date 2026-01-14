@@ -16,7 +16,6 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger, initialize_logging
 from aico.security import AICOKeyManager
 from aico.core.paths import AICOPaths
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.data.user import UserService
 
 from .service_container import ServiceContainer, BaseService
@@ -41,7 +40,7 @@ class BackendLifecycleManager:
         
         # Core components
         self.container = ServiceContainer(config_manager)
-        self.db_connection: Optional[EncryptedLibSQLConnection] = None
+        self.db_connection: Optional[Any] = None
         self.app: Optional[FastAPI] = None
         
         # Protocol adapter manager for WebSocket and other protocols
@@ -271,26 +270,10 @@ class BackendLifecycleManager:
         """Register core infrastructure services"""
         
         # Database connection factory
-        def create_database_connection(container: ServiceContainer) -> EncryptedLibSQLConnection:
-            key_manager = AICOKeyManager(container.config)
-            paths = AICOPaths()
-            db_path = paths.resolve_database_path("aico.db")
-            
-            # Get encryption key
-            cached_key = key_manager._get_cached_session()
-            if cached_key:
-                key_manager._extend_session()
-                db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-            else:
-                import keyring
-                stored_key = keyring.get_password(key_manager.service_name, "master_key")
-                if stored_key:
-                    master_key = bytes.fromhex(stored_key)
-                    db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-                else:
-                    raise RuntimeError("Master key not found. Run 'aico security setup' to initialize.")
-            
-            return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+        def create_database_connection(container: ServiceContainer) -> Any:
+            # Legacy database connection - not used with PostgreSQL
+            # PostgreSQL uses UnitOfWork pattern per request
+            return None
         
         # ZMQ context factory
         def create_zmq_context(container: ServiceContainer):
@@ -1182,6 +1165,6 @@ def get_auth_manager(container: ServiceContainer = Depends(get_service_container
         raise RuntimeError("Auth manager not available")
     return security_plugin.auth_manager
 
-def get_database(container: ServiceContainer = Depends(get_service_container)) -> EncryptedLibSQLConnection:
+def get_database(container: ServiceContainer = Depends(get_service_container)) -> Any:
     """Get database connection via dependency injection"""
     return container.get_service("database")

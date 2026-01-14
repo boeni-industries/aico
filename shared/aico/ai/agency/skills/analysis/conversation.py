@@ -17,7 +17,6 @@ from ..registry import (
     SkillResult,
 )
 from aico.core.logging import get_logger
-from aico.data.libsql import EncryptedLibSQLConnection
 from aico.ai.memory.manager import MemoryManager
 
 
@@ -31,7 +30,8 @@ class AnalyzeConversationSkill(Skill):
     Used for: User Understanding, Pattern Analysis goals
     """
     
-    def __init__(self, db: Optional[EncryptedLibSQLConnection] = None, memory_manager: Optional[MemoryManager] = None):
+    def __init__(self, db: Any = None, memory_manager: MemoryManager = None):
+        """Initialize conversation analysis skill. Agency system being redesigned."""
         self.db = db
         self.memory_manager = memory_manager
     

@@ -14,7 +14,6 @@ from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass
 from enum import Enum
 
-from aico.data.libsql import EncryptedLibSQLConnection
 
 
 # ============================================================================
@@ -87,7 +86,7 @@ class BehavioralFeedbackService:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         logger=None
     ):
         self.db = db

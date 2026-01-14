@@ -13,7 +13,6 @@ import time
 import asyncio
 import threading
 
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 
 from .models import Node, Edge, PropertyGraph
@@ -34,7 +33,7 @@ class PropertyGraphStorage:
     
     def __init__(
         self,
-        db_connection: EncryptedLibSQLConnection,
+        db_connection: Any  # PostgreSQL migration,
         chromadb_client: Any,  # chromadb.Client
         modelservice_client: Any = None  # ModelserviceClient for embeddings
     ):

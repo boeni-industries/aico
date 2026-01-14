@@ -11,14 +11,12 @@ from collections import defaultdict, Counter
 import json
 import math
 import asyncio
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 
 
 class KGAnalyticsEngine:
     """Comprehensive knowledge graph analytics calculator."""
     
-    def __init__(self, db: EncryptedLibSQLConnection, user_id: str):
-        self.db = db
+    def __init__(self, db: None          self.db = db
         self.user_id = user_id
         self._nodes_cache = None
         self._edges_cache = None

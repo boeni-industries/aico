@@ -39,8 +39,7 @@ def pytest_sessionfinish(session, exitstatus):
         from aico.core.paths import AICOPaths
         from aico.core.config import ConfigurationManager
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-        import keyring
+                import keyring
         
         db_path = AICOPaths.resolve_database_path("aico.db", "auto")
         config = ConfigurationManager()
@@ -60,8 +59,7 @@ def pytest_sessionfinish(session, exitstatus):
                 return
         
         encryption_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        db = EncryptedLibSQLConnection(str(db_path), encryption_key=encryption_key)
-        
+        db = None          
         # Delete all test users (nickname='pytest')
         cursor = db.execute("SELECT COUNT(*) FROM user_profiles WHERE nickname = 'pytest'")
         count = cursor.fetchone()[0]

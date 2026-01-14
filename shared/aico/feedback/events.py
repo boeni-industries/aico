@@ -10,7 +10,6 @@ import json
 import uuid
 import time
 
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 from .types import FeedbackEventType
 
@@ -23,7 +22,7 @@ class FeedbackEventStore:
     Shared between backend and CLI for consistent feedback tracking.
     """
     
-    def __init__(self, db_connection: EncryptedLibSQLConnection):
+    def __init__(self, db_connection: Any  # PostgreSQL migration):
         """
         Initialize FeedbackEventStore with encrypted database connection.
         

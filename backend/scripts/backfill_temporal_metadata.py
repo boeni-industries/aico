@@ -17,15 +17,12 @@ from datetime import datetime, timezone
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from aico.core.paths import get_default_database_path
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 
 
 def get_db_connection():
     """Get database connection."""
-    db_path = get_default_database_path()
-    conn = EncryptedLibSQLConnection(db_path=str(db_path))
-    return conn.connect()
+    db_path = None  # PostgreSQL migration()
+    conn = None      return conn.connect()
 
 
 def backfill_temporal_metadata(user_id: str = None, dry_run: bool = False):

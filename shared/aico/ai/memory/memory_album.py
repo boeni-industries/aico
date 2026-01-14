@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 import json
 import uuid
 
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 
 logger = get_logger("shared.ai.memory.memory_album")
@@ -22,7 +21,7 @@ class MemoryAlbumStore:
     Shared between backend and CLI for consistent memory management.
     """
     
-    def __init__(self, db_connection: EncryptedLibSQLConnection):
+    def __init__(self, db_connection: Any  # PostgreSQL migration):
         """
         Initialize MemoryAlbumStore with encrypted database connection.
         

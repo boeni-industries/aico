@@ -9,7 +9,6 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
-from aico.data.libsql import EncryptedLibSQLConnection
 
 
 logger = get_logger("shared.ai.agency.skills.communication.user_preferences")
@@ -28,7 +27,7 @@ class UserPreferencesManager:
         'min_hours_between': 6,  # Minimum hours between initiations
     }
     
-    def __init__(self, db: EncryptedLibSQLConnection):
+    def __init__(self, db: Any  # Skills being redesigned):
         self.db = db
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_timestamps: Dict[str, datetime] = {}
@@ -161,7 +160,7 @@ class UserPreferencesManager:
             logger.debug("Cleared all preference cache")
 
 
-def load_user_preferences(db: EncryptedLibSQLConnection, user_id: str) -> Dict[str, Any]:
+def load_user_preferences(db: Any  # Skills being redesigned, user_id: str) -> Dict[str, Any]:
     """Convenience function to load user preferences.
     
     Args:

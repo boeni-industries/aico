@@ -14,7 +14,6 @@ from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass
 from enum import Enum
 
-from aico.data.libsql import EncryptedLibSQLConnection
 
 
 # ============================================================================
@@ -94,7 +93,7 @@ class PolicyManager:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         logger=None
     ):
         self.db = db
@@ -446,7 +445,7 @@ class ConsentManager:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         logger=None
     ):
         self.db = db
@@ -694,7 +693,7 @@ class EnhancedEthicsGate:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         policy_manager: PolicyManager,
         logger=None
     ):

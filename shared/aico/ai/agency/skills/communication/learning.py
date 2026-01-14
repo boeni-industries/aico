@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 from aico.core.logging import get_logger
-from aico.data.libsql import EncryptedLibSQLConnection
 
 
 logger = get_logger("shared.ai.agency.skills.communication.learning")
@@ -114,7 +113,7 @@ class ContextualBanditLearner:
     and exploitation while learning optimal initiation strategies.
     """
     
-    def __init__(self, db: EncryptedLibSQLConnection):
+    def __init__(self, db: Any  # Skills being redesigned):
         self.db = db
         self.arms: Dict[str, BanditArm] = {}
         self._initialize_arms()
@@ -392,7 +391,7 @@ class CivilityScorer:
 
 
 def extract_contextual_features(
-    db: EncryptedLibSQLConnection,
+    db: Any  # Skills being redesigned,
     user_id: str
 ) -> ContextualFeatures:
     """Extract contextual features for bandit decision-making."""

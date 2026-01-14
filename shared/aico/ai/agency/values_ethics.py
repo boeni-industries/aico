@@ -16,7 +16,6 @@ from datetime import datetime, timedelta, UTC
 
 from pydantic import BaseModel, Field
 
-from aico.data.libsql import EncryptedLibSQLConnection
 
 
 # ============================================================================
@@ -129,7 +128,7 @@ class ValuesEthicsService:
     against configured policies and user preferences.
     """
     
-    def __init__(self, db: EncryptedLibSQLConnection, logger=None):
+    def __init__(self, db: Any  # Agency system being redesigned, logger=None):
         self.db = db
         self.logger = logger
         

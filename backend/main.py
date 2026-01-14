@@ -67,31 +67,9 @@ except Exception as e:
 
 async def setup_backend_components():
     """Setup backend components using new lifecycle manager"""
-    # Create shared database connection
-    from aico.security import AICOKeyManager
-    from aico.core.paths import AICOPaths
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-    
-    key_manager = AICOKeyManager(config_manager)
-    paths = AICOPaths()
-    db_path = paths.resolve_database_path("aico.db")
-    
-    # Get encryption key
-    cached_key = key_manager._get_cached_session()
-    if cached_key:
-        key_manager._extend_session()
-        db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-    else:
-        import keyring
-        stored_key = keyring.get_password(key_manager.service_name, "master_key")
-        if stored_key:
-            master_key = bytes.fromhex(stored_key)
-            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        else:
-            raise RuntimeError("Master key not found. Run 'aico security setup' to initialize.")
-    
-    shared_db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-    logger.info("Created shared database connection")
+    # PostgreSQL connection handled by UnitOfWork pattern
+    # No shared database connection needed - each request gets its own UnitOfWork
+    logger.info("Backend using PostgreSQL with UnitOfWork pattern - no shared connection needed")
     
     # Create and initialize lifecycle manager with service container
     lifecycle_manager = BackendLifecycleManager(config_manager)
@@ -100,13 +78,7 @@ async def setup_backend_components():
     app = await lifecycle_manager.startup()
     logger.info("Backend lifecycle manager initialized")
     
-    return app, lifecycle_manager
-
-
-# Removed unused create_app function - replaced by lifecycle manager
-
-
-
+    return lifecycle_manager, app
 
 async def main():
     """Run the application using lifecycle manager"""

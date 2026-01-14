@@ -18,27 +18,12 @@ except ImportError:
     # Fallback indicates version system is broken
     __version__ = "x.x.x"
 
+# LibSQL removed - migrated to PostgreSQL
 # Re-export main components for convenience
-from .libsql import (
-    LibSQLConnection, 
-    EncryptedLibSQLConnection,
-    create_encrypted_database,
-    SchemaManager,
-    SchemaVersion,
-    SchemaRegistry,
-    register_schema
-)
 from aico.ai.user.models import UserProfile
+from .uow import UnitOfWork
 
 __all__ = [
-    "LibSQLConnection",
-    "EncryptedLibSQLConnection",
-    "create_encrypted_database",
-    "SchemaManager",
-    "SchemaVersion",
-    "SchemaRegistry",
-    "register_schema",
     "UserProfile",
-    "AuthenticationData", 
-    "UserService",
+    "UnitOfWork",
 ]

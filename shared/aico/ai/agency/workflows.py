@@ -29,7 +29,6 @@ from datetime import datetime, UTC
 from dataclasses import dataclass
 from enum import Enum
 
-from aico.data.libsql import EncryptedLibSQLConnection
 
 
 # ============================================================================
@@ -134,7 +133,7 @@ class EventSystem:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         logger=None
     ):
         self.db = db
@@ -345,7 +344,7 @@ class WorkflowOrchestrator:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         event_system: EventSystem,
         logger=None
     ):
@@ -621,7 +620,7 @@ class EventReplaySystem:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         event_system: EventSystem,
         logger=None
     ):
@@ -822,7 +821,7 @@ class EventMetricsCollector:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         logger=None
     ):
         self.db = db
@@ -1047,7 +1046,7 @@ class CompleteWorkflowExecutor:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         orchestrator: WorkflowOrchestrator,
         event_system: EventSystem,
         logger=None

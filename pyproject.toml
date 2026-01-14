@@ -34,18 +34,20 @@ dependencies = [
     "json-repair>=0.30.0", # Robust JSON repair for LLM-generated output (zero dependencies)
     "typer>=0.12.3,<1.0.0", # CLI framework
     "rich>=13.7.0,<14.0.0", # Rich terminal output
+    "psycopg2-binary>=2.9.9",  # PostgreSQL database adapter (sync)
+    "asyncpg>=0.30.0",  # High-performance async PostgreSQL driver
+    "sqlalchemy[asyncio]>=2.0.0",  # SQLAlchemy Core with async support
     "requests>=2.31.0,<3.0.0", # HTTP client for CLI
     # OpenTelemetry - Core instrumentation (always installed)
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-instrumentation-fastapi>=0.41b0",
-    "opentelemetry-instrumentation-sqlite3>=0.41b0",
+    "opentelemetry-instrumentation-psycopg2>=0.41b0",
     "opentelemetry-instrumentation-requests>=0.41b0",
     # InfluxDB client for telemetry storage
     "influxdb-client>=1.45.0",
-    "psycopg2-binary>=2.9.9",  # PostgreSQL database adapter (sync)
-    "asyncpg>=0.30.0",  # High-performance async PostgreSQL driver
-    "sqlalchemy[asyncio]>=2.0.0",  # SQLAlchemy Core with async support
+    "gliner>=0.2.9",  # GLiNER for entity extraction (NER)
+    "sentence-transformers>=3.3.1",  # Sentence embeddings for semantic search
 ]
 
 [project.optional-dependencies]

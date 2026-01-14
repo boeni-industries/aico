@@ -288,8 +288,7 @@ class MemoryManager(BaseAIProcessor):
                 return
             
             # Get encrypted database connection
-            from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-            from aico.core.paths import AICOPaths
+                        from aico.core.paths import AICOPaths
             from aico.security import AICOKeyManager
             
             # Create encrypted database connection for KG
@@ -311,7 +310,7 @@ class MemoryManager(BaseAIProcessor):
                 
                 db_path = AICOPaths.get_database_path()
                 db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-                db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+                db_connection = Any  # PostgreSQL migration(db_path, encryption_key=db_key)
                 logger.info("🕸️ [KG] Created new database connection")
             
             # Get ChromaDB client from semantic store

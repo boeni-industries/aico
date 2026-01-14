@@ -17,7 +17,6 @@ from ..registry import (
     SkillResult,
 )
 from aico.core.logging import get_logger
-from aico.data.libsql import EncryptedLibSQLConnection
 
 
 logger = get_logger("shared.ai.agency.skills.reflection.goal")
@@ -30,7 +29,7 @@ class ReflectOnGoalSkill(Skill):
     Used for: Deep Dive Learning, Skill Building goals
     """
     
-    def __init__(self, db: Optional[EncryptedLibSQLConnection] = None):
+    def __init__(self, db: Optional[Any  # Skills being redesigned] = None):
         self.db = db
     
     @property

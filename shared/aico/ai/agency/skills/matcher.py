@@ -23,7 +23,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from aico.core.logging import get_logger
-from aico.data.libsql.connection import LibSQLConnection
 from .registry import Skill, SkillRegistry
 
 
@@ -101,7 +100,7 @@ class SkillMatcher:
         self,
         skill_registry: SkillRegistry,
         embedding_client: Optional[Any] = None,
-        db_connection: Optional[LibSQLConnection] = None,
+        db_connection: Optional[Any  # Skills being redesigned] = None,
     ):
         """
         Initialize skill matcher.

@@ -633,8 +633,7 @@ async def get_skills_overview(
     logger.info("📊 [AMS] Fetching skills overview", extra={"user_id": user_id})
     
     try:
-        # TODO: Migrate router_extensions.get_skill_overview to use UnitOfWork
-        # For now, return simplified response
+                # For now, return simplified response
         overview = SkillOverviewResponse(
             total_skills=0,
             active_skills=0,
@@ -670,8 +669,7 @@ async def get_memory_evolution(
     logger.info("📊 [AMS] Fetching memory evolution", extra={"user_id": user_id})
     
     try:
-        # TODO: Migrate router_extensions.get_memory_evolution to use UnitOfWork
-        # For now, return simplified response
+                # For now, return simplified response
         evolution = MemoryEvolutionResponse(
             current_metrics=MemoryMetricsSnapshot(
                 semantic_facts_count=0,

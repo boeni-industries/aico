@@ -14,7 +14,6 @@ from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
 
 from aico.core.logging import get_logger
-from aico.data.libsql import EncryptedLibSQLConnection
 
 from .models import Plan, PlanStep, StepStatus, PlanStatus
 from aico.services.agency_service import AgencyService
@@ -146,7 +145,7 @@ class PlanExecutor:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any,  # Agency system being redesigned
         agency_service: AgencyService,
         skill_invoker: Optional[Any] = None,
         logger=None,

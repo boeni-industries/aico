@@ -15,7 +15,6 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from aico.data.libsql import EncryptedLibSQLConnection
 from aico.core.bus import MessageBusClient
 
 from .models import Goal, GoalStatus, GoalOrigin, GoalPriority
@@ -111,7 +110,7 @@ class GoalArbiter:
     
     def __init__(
         self,
-        db: EncryptedLibSQLConnection,
+        db: Any  # Agency system being redesigned,
         config=None,
         message_bus: Optional[MessageBusClient] = None,
         logger=None,
