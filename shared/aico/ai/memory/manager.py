@@ -288,7 +288,7 @@ class MemoryManager(BaseAIProcessor):
                 return
             
             # Get encrypted database connection
-                        from aico.core.paths import AICOPaths
+            from aico.core.paths import AICOPaths
             from aico.security import AICOKeyManager
             
             # Create encrypted database connection for KG

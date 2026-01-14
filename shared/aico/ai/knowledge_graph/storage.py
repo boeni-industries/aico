@@ -33,7 +33,7 @@ class PropertyGraphStorage:
     
     def __init__(
         self,
-        db_connection: Any  # PostgreSQL migration,
+        db_connection: Any,  # PostgreSQL migration
         chromadb_client: Any,  # chromadb.Client
         modelservice_client: Any = None  # ModelserviceClient for embeddings
     ):

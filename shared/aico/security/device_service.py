@@ -32,7 +32,7 @@ class DeviceService:
     management with multiplatform support.
     """
     
-    def __init__(self, db_connection: PostgreSQLConnection):
+    def __init__(self, db_connection: Any):
         self.db = db_connection
     
     def register_or_update_device(

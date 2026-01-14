@@ -131,11 +131,8 @@ class EventSystem:
     - Event metrics and monitoring
     """
     
-    def __init__(
-        self,
-        db: Any  # Agency system being redesigned,
-        logger=None
-    ):
+    def __init__(self, db: Any, logger=None):
+        # Agency system being redesigned
         self.db = db
         self.logger = logger
         self._triggers: Dict[str, List[Callable]] = {}
@@ -342,12 +339,8 @@ class WorkflowOrchestrator:
     - World Model → Hypothesis → Validation → Update flow
     """
     
-    def __init__(
-        self,
-        db: Any  # Agency system being redesigned,
-        event_system: EventSystem,
-        logger=None
-    ):
+    def __init__(self, db: Any, event_system: EventSystem, logger=None):
+        # Agency system being redesigned
         self.db = db
         self.event_system = event_system
         self.logger = logger
@@ -618,12 +611,8 @@ class EventReplaySystem:
     - State reconstruction from event history
     """
     
-    def __init__(
-        self,
-        db: Any  # Agency system being redesigned,
-        event_system: EventSystem,
-        logger=None
-    ):
+    def __init__(self, db: Any, event_system: EventSystem, logger=None):
+        # Agency system being redesigned
         self.db = db
         self.event_system = event_system
         self.logger = logger
@@ -819,11 +808,8 @@ class EventMetricsCollector:
     - Metric queries and dashboards
     """
     
-    def __init__(
-        self,
-        db: Any  # Agency system being redesigned,
-        logger=None
-    ):
+    def __init__(self, db: Any, logger=None):
+        # Agency system being redesigned
         self.db = db
         self.logger = logger
     
@@ -1046,7 +1032,7 @@ class CompleteWorkflowExecutor:
     
     def __init__(
         self,
-        db: Any  # Agency system being redesigned,
+        db: Any,  # Agency system being redesigned
         orchestrator: WorkflowOrchestrator,
         event_system: EventSystem,
         logger=None

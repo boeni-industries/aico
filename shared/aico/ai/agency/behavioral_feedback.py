@@ -86,7 +86,7 @@ class BehavioralFeedbackService:
     
     def __init__(
         self,
-        db: Any  # Agency system being redesigned,
+        db: Any,  # Agency system being redesigned
         logger=None
     ):
         self.db = db

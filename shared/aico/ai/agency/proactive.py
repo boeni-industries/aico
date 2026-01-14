@@ -127,7 +127,7 @@ class FollowupSystem:
     
     def __init__(
         self,
-        db: Any  # Agency system being redesigned,
+        db: Any,  # Agency system being redesigned
         policy_service=None,
         values_service=None,
         logger=None
@@ -486,11 +486,8 @@ class ReminderSystem:
     - Recurrence support
     """
     
-    def __init__(
-        self,
-        db: Any  # Agency system being redesigned,
-        logger=None
-    ):
+    def __init__(self, db: Any, logger=None):
+        # Agency system being redesigned
         self.db = db
         self.logger = logger
     

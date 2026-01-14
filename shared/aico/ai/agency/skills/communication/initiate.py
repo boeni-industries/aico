@@ -33,7 +33,7 @@ class InitiateConversationSkill(Skill):
     
     def __init__(
         self, 
-        db: Optional[Any  # Skills being redesigned] = None,
+        db: Optional[Any] = None,  # Skills being redesigned
         message_bus: Optional[Any] = None
     ):
         self.db = db

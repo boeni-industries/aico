@@ -93,8 +93,8 @@ class PolicyManager:
     
     def __init__(
         self,
-        db: Any  # Agency system being redesigned,
-        logger=None
+        db: Any,  # Agency system being redesigned,
+        logger: Optional[Any] = None  # Added default value and type hint
     ):
         self.db = db
         self.logger = logger
@@ -445,7 +445,7 @@ class ConsentManager:
     
     def __init__(
         self,
-        db: Any  # Agency system being redesigned,
+        db: Any,  # Agency system being redesigned
         logger=None
     ):
         self.db = db
@@ -693,7 +693,7 @@ class EnhancedEthicsGate:
     
     def __init__(
         self,
-        db: Any  # Agency system being redesigned,
+        db: Any,  # Agency system being redesigned
         policy_manager: PolicyManager,
         logger=None
     ):

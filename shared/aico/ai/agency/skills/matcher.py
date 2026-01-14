@@ -100,7 +100,7 @@ class SkillMatcher:
         self,
         skill_registry: SkillRegistry,
         embedding_client: Optional[Any] = None,
-        db_connection: Optional[Any  # Skills being redesigned] = None,
+        db_connection: Optional[Any] = None,  # Skills being redesigned
     ):
         """
         Initialize skill matcher.

@@ -29,7 +29,7 @@ class ReflectOnGoalSkill(Skill):
     Used for: Deep Dive Learning, Skill Building goals
     """
     
-    def __init__(self, db: Optional[Any  # Skills being redesigned] = None):
+    def __init__(self, db: Optional[Any] = None):  # Skills being redesigned
         self.db = db
     
     @property

@@ -29,7 +29,7 @@ class SearchMemorySkill(Skill):
     Used for: Knowledge retrieval, context building
     """
     
-    def __init__(self, db: Optional[Any  # Skills being redesigned] = None):
+    def __init__(self, db: Optional[Any] = None):  # Skills being redesigned
         self.db = db
     
     @property

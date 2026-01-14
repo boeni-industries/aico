@@ -9,7 +9,8 @@ Checks:
 4. Orphaned edges
 """
 
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from aico.core.paths import AICOPaths
 from pathlib import Path
 import sys
@@ -17,7 +18,25 @@ import sys
 def main():
     # Use AICOPaths to get correct paths (same as CLI and backend)
     db_path = AICOPaths.resolve_database_path("aico.db", "auto")
-    db = EncryptedLibSQLConnection(db_path=str(db_path))
+    # Connect to PostgreSQL
+    from aico.core.config import ConfigurationManager
+    from aico.security import AICOKeyManager
+    
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    key_manager = AICOKeyManager(config)
+    
+    pg_cfg = config.get("core.database.postgres", {})
+    password = key_manager.get_database_password("postgres", username=pg_cfg.get("user", "postgres"))
+    
+    db = psycopg2.connect(
+        host=pg_cfg.get("host", "127.0.0.1"),
+        port=int(pg_cfg.get("port", 5432)),
+        dbname=pg_cfg.get("db_name", "aico"),
+        user=pg_cfg.get("user", "postgres"),
+        password=password,
+        cursor_factory=RealDictCursor
+    )
     
     print("=" * 80)
     print("🔍 KNOWLEDGE GRAPH DATA QUALITY VERIFICATION")

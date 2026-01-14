@@ -113,7 +113,7 @@ class ContextualBanditLearner:
     and exploitation while learning optimal initiation strategies.
     """
     
-    def __init__(self, db: Any  # Skills being redesigned):
+    def __init__(self, db: Any):  # Skills being redesigned
         self.db = db
         self.arms: Dict[str, BanditArm] = {}
         self._initialize_arms()
@@ -391,7 +391,7 @@ class CivilityScorer:
 
 
 def extract_contextual_features(
-    db: Any  # Skills being redesigned,
+    db: Any,  # Skills being redesigned
     user_id: str
 ) -> ContextualFeatures:
     """Extract contextual features for bandit decision-making."""

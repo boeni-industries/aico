@@ -80,7 +80,7 @@ class AdaptiveScoringEngine:
     
     def __init__(
         self,
-        db: Any  # Agency system being redesigned,
+        db: Any,  # Agency system being redesigned
         config: Optional[AdaptiveConfig] = None,
         logger=None
     ):

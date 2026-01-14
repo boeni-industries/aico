@@ -56,7 +56,7 @@ class AgencyEngine(BaseAIProcessor):
     def __init__(
         self,
         config: ConfigurationManager,
-        db_connection: Union[Any  # Agency system being redesigned, Any  # Agency system being redesigned],
+        db_connection: Any,  # Agency system being redesigned
         agency_service: "AgencyService",
         llm_plan_refiner: Optional[Callable] = None,
         world_model: Optional["WorldModelService"] = None,

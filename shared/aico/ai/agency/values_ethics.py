@@ -128,7 +128,7 @@ class ValuesEthicsService:
     against configured policies and user preferences.
     """
     
-    def __init__(self, db: Any  # Agency system being redesigned, logger=None):
+    def __init__(self, db: Any, logger=None):  # Agency system being redesigned
         self.db = db
         self.logger = logger
         
