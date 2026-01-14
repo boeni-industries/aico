@@ -4,10 +4,17 @@
 **Status:** ✅ APPROVED - Big Bang Migration Plan  
 **Goal:** Migrate from LibSQL/SQLite to PostgreSQL with modern architecture patterns (Repository, Unit of Work, SQLAlchemy Core).
 
+**⚠️ CRITICAL: This is a COMPLETE MIGRATION with FULL CLEANUP**
+- After PostgreSQL migration is complete, **ALL LibSQL code and dependencies will be removed**
+- This includes: `libsql` package, `shared/aico/data/libsql/` directory, all LibSQL connection code
+- No dual-database support - PostgreSQL becomes the single source of truth
+- LibSQL was a temporary solution; PostgreSQL is the permanent architecture
+
 **Decisions Made:**
 - ✅ **SQLAlchemy Core** (query builder, not full ORM)
 - ✅ **Big Bang Migration** (single cutover, no dual-database period)
 - ✅ **Postgres Ready** (containerized, schema installed)
+- ✅ **Full LibSQL Removal** (after migration complete)
 
 **See Also:** `CODEBASE_ARCHITECTURE_ANALYSIS.md` for detailed findings.
 
@@ -31,10 +38,11 @@
 - ✅ Clean separation of concerns
 
 **Storage Architecture:**
-- **PostgreSQL** - Primary OLTP (✅ containerized, schema ready)
+- **PostgreSQL** - Primary OLTP (✅ containerized, schema ready) - **PERMANENT**
 - **InfluxDB** - Telemetry (✅ already migrated)
 - **ChromaDB** - Vector embeddings (✅ keep as-is)
 - **LMDB** - Working memory (✅ keep as-is)
+- **LibSQL** - ❌ **TO BE COMPLETELY REMOVED** after migration
 
 ---
 
@@ -201,6 +209,50 @@
 - ✅ <10ms query latency (p95)
 - ✅ 100+ concurrent users supported
 - ✅ All data migrated successfully
+
+### Phase 7: LibSQL Complete Removal (Week 11)
+**Goal:** Remove all LibSQL code and dependencies from the codebase
+
+**⚠️ CRITICAL: This is a PERMANENT removal - no going back after this phase**
+
+**Tasks:**
+1. **Remove LibSQL Package**
+   - Remove `libsql` from all requirements files
+   - Remove `libsql==0.1.8` dependency
+   - Update `pyproject.toml` / `requirements.txt` in all modules
+
+2. **Delete LibSQL Code**
+   - Delete `shared/aico/data/libsql/` directory entirely
+   - Remove `shared/aico/data/libsql/__init__.py`
+   - Remove `shared/aico/data/libsql/connection.py`
+   - Remove all LibSQL-related utility files
+
+3. **Remove LibSQL Imports**
+   - Search and remove all `from aico.data.libsql import` statements
+   - Remove LibSQL connection initialization code
+   - Clean up any LibSQL-specific configuration
+
+4. **Update Documentation**
+   - Remove LibSQL references from README files
+   - Update architecture diagrams to show PostgreSQL only
+   - Document the migration completion
+
+5. **Clean Up Configuration**
+   - Remove LibSQL database paths from config files
+   - Remove LibSQL connection strings
+   - Clean up environment variables
+
+**Verification:**
+- ✅ No `libsql` imports remain in codebase
+- ✅ No LibSQL files exist in project
+- ✅ All tests pass without LibSQL
+- ✅ Services start and run with PostgreSQL only
+- ✅ No LibSQL references in documentation
+
+**Deliverables:**
+- Clean codebase with PostgreSQL as sole database
+- Updated documentation reflecting PostgreSQL architecture
+- Confirmation that all LibSQL code has been removed
 
 ---
 

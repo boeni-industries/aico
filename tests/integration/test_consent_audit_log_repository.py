@@ -48,10 +48,10 @@ async def test_user(uow):
 class TestConsentAuditLogRepository:
     
     @pytest.mark.asyncio
-    async def test_create_audit_log(self, uow, test_user):
+    async def test_create_audit_log(self, uow, test_user, test_consent):
         audit = ConsentAuditLog(
             audit_id=str(uuid.uuid4()),
-            consent_id=str(uuid.uuid4()),
+            consent_id=test_consent.consent_id,
             user_id=test_user.uuid,
             action="granted",
             created_at=datetime.now(UTC).isoformat(),
@@ -64,10 +64,10 @@ class TestConsentAuditLogRepository:
         assert created.action == "granted"
     
     @pytest.mark.asyncio
-    async def test_get_audit_log_by_id(self, uow, test_user):
+    async def test_get_audit_log_by_id(self, uow, test_user, test_consent):
         audit = ConsentAuditLog(
             audit_id=str(uuid.uuid4()),
-            consent_id=str(uuid.uuid4()),
+            consent_id=test_consent.consent_id,
             user_id=test_user.uuid,
             action="revoked",
             created_at=datetime.now(UTC).isoformat(),
@@ -81,10 +81,10 @@ class TestConsentAuditLogRepository:
         assert found.action == "revoked"
     
     @pytest.mark.asyncio
-    async def test_update_audit_log(self, uow, test_user):
+    async def test_update_audit_log(self, uow, test_user, test_consent):
         audit = ConsentAuditLog(
             audit_id=str(uuid.uuid4()),
-            consent_id=str(uuid.uuid4()),
+            consent_id=test_consent.consent_id,
             user_id=test_user.uuid,
             action="granted",
             created_at=datetime.now(UTC).isoformat(),
@@ -103,10 +103,10 @@ class TestConsentAuditLogRepository:
         assert found.reason == "User requested"
     
     @pytest.mark.asyncio
-    async def test_delete_audit_log(self, uow, test_user):
+    async def test_delete_audit_log(self, uow, test_user, test_consent):
         audit = ConsentAuditLog(
             audit_id=str(uuid.uuid4()),
-            consent_id=str(uuid.uuid4()),
+            consent_id=test_consent.consent_id,
             user_id=test_user.uuid,
             action="expired",
             created_at=datetime.now(UTC).isoformat(),
@@ -124,12 +124,11 @@ class TestConsentAuditLogRepository:
         assert found is None
     
     @pytest.mark.asyncio
-    async def test_list_audit_logs(self, uow, test_user):
-        consent_id = str(uuid.uuid4())
+    async def test_list_audit_logs(self, uow, test_user, test_consent):
         for i in range(3):
             audit = ConsentAuditLog(
                 audit_id=str(uuid.uuid4()),
-                consent_id=consent_id,
+                consent_id=test_consent.consent_id,
                 user_id=test_user.uuid,
                 action="granted" if i < 2 else "revoked",
                 created_at=datetime.now(UTC).isoformat(),
@@ -145,11 +144,11 @@ class TestConsentAuditLogRepository:
         assert len(granted) >= 2
     
     @pytest.mark.asyncio
-    async def test_count_audit_logs(self, uow, test_user):
+    async def test_count_audit_logs(self, uow, test_user, test_consent):
         for i in range(3):
             audit = ConsentAuditLog(
                 audit_id=str(uuid.uuid4()),
-                consent_id=str(uuid.uuid4()),
+                consent_id=test_consent.consent_id,
                 user_id=test_user.uuid,
                 action="granted",
                 created_at=datetime.now(UTC).isoformat(),
@@ -162,12 +161,11 @@ class TestConsentAuditLogRepository:
         assert count >= 3
     
     @pytest.mark.asyncio
-    async def test_get_consent_history(self, uow, test_user):
-        consent_id = str(uuid.uuid4())
+    async def test_get_consent_history(self, uow, test_user, test_consent):
         for i in range(3):
             audit = ConsentAuditLog(
                 audit_id=str(uuid.uuid4()),
-                consent_id=consent_id,
+                consent_id=test_consent.consent_id,
                 user_id=test_user.uuid,
                 action=["granted", "revoked", "expired"][i],
                 created_at=datetime.now(UTC).isoformat(),
@@ -176,7 +174,7 @@ class TestConsentAuditLogRepository:
         
         await uow.commit()
         
-        history = await uow.consent_audit_log.get_consent_history(consent_id)
+        history = await uow.consent_audit_log.get_consent_history(test_consent.consent_id)
         assert len(history) >= 3
         for h in history:
-            assert h.consent_id == consent_id
+            assert h.consent_id == test_consent.consent_id

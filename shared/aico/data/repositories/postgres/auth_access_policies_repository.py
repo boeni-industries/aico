@@ -23,20 +23,20 @@ class PostgresAuthAccessPoliciesRepository(Repository[AuthAccessPolicy]):
     async def create(self, entity: AuthAccessPolicy) -> AuthAccessPolicy:
         """Create a new access policy."""
         stmt = auth_access_policies.insert().values(
-            policy_id=entity.policy_id,
+            uuid=entity.uuid,
+            user_uuid=entity.user_uuid,
             resource_type=entity.resource_type,
-            action=entity.action,
-            effect=entity.effect,
-            conditions_json=entity.conditions_json,
-            priority=entity.priority,
-            enabled=entity.enabled,
+            resource_uuid=entity.resource_uuid,
+            permission=entity.permission,
+            is_active=entity.is_active,
+            created_at=entity.created_at,
         )
         await self.session.execute(stmt)
         return entity
     
     async def get_by_id(self, entity_id: str) -> Optional[AuthAccessPolicy]:
         """Get access policy by ID."""
-        stmt = select(auth_access_policies).where(auth_access_policies.c.policy_id == entity_id)
+        stmt = select(auth_access_policies).where(auth_access_policies.c.uuid == entity_id)
         result = await self.session.execute(stmt)
         row = result.fetchone()
         
@@ -44,28 +44,24 @@ class PostgresAuthAccessPoliciesRepository(Repository[AuthAccessPolicy]):
             return None
         
         return AuthAccessPolicy(
-            policy_id=row.policy_id,
+            uuid=row.uuid,
+            user_uuid=row.user_uuid,
             resource_type=row.resource_type,
-            action=row.action,
-            effect=row.effect,
-            conditions_json=row.conditions_json,
-            priority=row.priority,
-            enabled=row.enabled,
+            resource_uuid=row.resource_uuid,
+            permission=row.permission,
+            is_active=row.is_active,
             created_at=row.created_at,
-            updated_at=row.updated_at,
         )
     
     async def update(self, entity: AuthAccessPolicy) -> AuthAccessPolicy:
         """Update an existing access policy."""
         stmt = (
             update(auth_access_policies)
-            .where(auth_access_policies.c.policy_id == entity.policy_id)
+            .where(auth_access_policies.c.uuid == entity.uuid)
             .values(
-                effect=entity.effect,
-                conditions_json=entity.conditions_json,
-                priority=entity.priority,
-                enabled=entity.enabled,
-                updated_at=datetime.now(UTC),
+                resource_uuid=entity.resource_uuid,
+                permission=entity.permission,
+                is_active=entity.is_active,
             )
         )
         await self.session.execute(stmt)
@@ -73,7 +69,7 @@ class PostgresAuthAccessPoliciesRepository(Repository[AuthAccessPolicy]):
     
     async def delete(self, entity_id: str) -> bool:
         """Delete an access policy."""
-        stmt = delete(auth_access_policies).where(auth_access_policies.c.policy_id == entity_id)
+        stmt = delete(auth_access_policies).where(auth_access_policies.c.uuid == entity_id)
         result = await self.session.execute(stmt)
         return result.rowcount > 0
     
@@ -83,30 +79,28 @@ class PostgresAuthAccessPoliciesRepository(Repository[AuthAccessPolicy]):
         
         if filters:
             conditions = []
+            if 'user_uuid' in filters:
+                conditions.append(auth_access_policies.c.user_uuid == filters['user_uuid'])
             if 'resource_type' in filters:
                 conditions.append(auth_access_policies.c.resource_type == filters['resource_type'])
-            if 'action' in filters:
-                conditions.append(auth_access_policies.c.action == filters['action'])
-            if 'enabled' in filters:
-                conditions.append(auth_access_policies.c.enabled == filters['enabled'])
+            if 'is_active' in filters:
+                conditions.append(auth_access_policies.c.is_active == filters['is_active'])
             
             if conditions:
                 stmt = stmt.where(and_(*conditions))
         
-        stmt = stmt.order_by(auth_access_policies.c.priority.asc()).limit(limit).offset(offset)
+        stmt = stmt.order_by(auth_access_policies.c.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         
         return [
             AuthAccessPolicy(
-                policy_id=row.policy_id,
+                uuid=row.uuid,
+                user_uuid=row.user_uuid,
                 resource_type=row.resource_type,
-                action=row.action,
-                effect=row.effect,
-                conditions_json=row.conditions_json,
-                priority=row.priority,
-                enabled=row.enabled,
+                resource_uuid=row.resource_uuid,
+                permission=row.permission,
+                is_active=row.is_active,
                 created_at=row.created_at,
-                updated_at=row.updated_at,
             )
             for row in result.fetchall()
         ]
@@ -117,8 +111,10 @@ class PostgresAuthAccessPoliciesRepository(Repository[AuthAccessPolicy]):
         
         if filters:
             conditions = []
-            if 'enabled' in filters:
-                conditions.append(auth_access_policies.c.enabled == filters['enabled'])
+            if 'user_uuid' in filters:
+                conditions.append(auth_access_policies.c.user_uuid == filters['user_uuid'])
+            if 'is_active' in filters:
+                conditions.append(auth_access_policies.c.is_active == filters['is_active'])
             
             if conditions:
                 stmt = stmt.where(and_(*conditions))
@@ -126,29 +122,29 @@ class PostgresAuthAccessPoliciesRepository(Repository[AuthAccessPolicy]):
         result = await self.session.execute(stmt)
         return result.scalar() or 0
     
-    async def get_active_policies(self, resource_type: str, action: str) -> List[AuthAccessPolicy]:
-        """Get active policies for a specific resource and action."""
-        stmt = select(auth_access_policies).where(
-            and_(
-                auth_access_policies.c.resource_type == resource_type,
-                auth_access_policies.c.action == action,
-                auth_access_policies.c.enabled == True
-            )
-        ).order_by(auth_access_policies.c.priority.asc())
+    async def get_user_policies(self, user_uuid: str, resource_type: Optional[str] = None) -> List[AuthAccessPolicy]:
+        """Get active policies for a specific user."""
+        conditions = [
+            auth_access_policies.c.user_uuid == user_uuid,
+            auth_access_policies.c.is_active == True
+        ]
+        
+        if resource_type:
+            conditions.append(auth_access_policies.c.resource_type == resource_type)
+        
+        stmt = select(auth_access_policies).where(and_(*conditions)).order_by(auth_access_policies.c.created_at.desc())
         
         result = await self.session.execute(stmt)
         
         return [
             AuthAccessPolicy(
-                policy_id=row.policy_id,
+                uuid=row.uuid,
+                user_uuid=row.user_uuid,
                 resource_type=row.resource_type,
-                action=row.action,
-                effect=row.effect,
-                conditions_json=row.conditions_json,
-                priority=row.priority,
-                enabled=row.enabled,
+                resource_uuid=row.resource_uuid,
+                permission=row.permission,
+                is_active=row.is_active,
                 created_at=row.created_at,
-                updated_at=row.updated_at,
             )
             for row in result.fetchall()
         ]

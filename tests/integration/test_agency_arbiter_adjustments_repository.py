@@ -48,11 +48,11 @@ async def test_user(uow):
 class TestAgencyArbiterAdjustmentsRepository:
     
     @pytest.mark.asyncio
-    async def test_create_adjustment(self, uow, test_user):
+    async def test_create_adjustment(self, uow, test_user, test_lesson):
         adjustment = AgencyArbiterAdjustment(
             adjustment_key=f"test_key_{uuid.uuid4()}",
             adjustment_value=1.5,
-            lesson_id="test_lesson_id",
+            lesson_id=test_lesson.lesson_id,
             user_id=test_user.uuid,
             applied_at=datetime.now(UTC),
             confidence=0.85,
@@ -66,11 +66,12 @@ class TestAgencyArbiterAdjustmentsRepository:
         assert created.adjustment_value == 1.5
     
     @pytest.mark.asyncio
-    async def test_get_adjustment_by_id(self, uow, test_user):
+    async def test_get_adjustment_by_id(self, uow, test_user, test_lesson):
+        adjustment_key = f"test_key_{uuid.uuid4()}"
         adjustment = AgencyArbiterAdjustment(
-            adjustment_key=f"test_key_{uuid.uuid4()}",
+            adjustment_key=adjustment_key,
             adjustment_value=2.0,
-            lesson_id="test_lesson_id",
+            lesson_id=test_lesson.lesson_id,
             user_id=test_user.uuid,
             applied_at=datetime.now(UTC),
             confidence=0.9,
@@ -79,16 +80,17 @@ class TestAgencyArbiterAdjustmentsRepository:
         await uow.agency_arbiter_adjustments.create(adjustment)
         await uow.commit()
         
-        found = await uow.agency_arbiter_adjustments.get_by_id(adjustment.adjustment_key)
+        found = await uow.agency_arbiter_adjustments.get_by_id(adjustment_key)
         assert found is not None
         assert found.adjustment_value == 2.0
     
     @pytest.mark.asyncio
-    async def test_update_adjustment(self, uow, test_user):
+    async def test_update_adjustment(self, uow, test_user, test_lesson):
+        adjustment_key = f"test_key_{uuid.uuid4()}"
         adjustment = AgencyArbiterAdjustment(
-            adjustment_key=f"test_key_{uuid.uuid4()}",
+            adjustment_key=adjustment_key,
             adjustment_value=1.0,
-            lesson_id="test_lesson_id",
+            lesson_id=test_lesson.lesson_id,
             user_id=test_user.uuid,
             applied_at=datetime.now(UTC),
             confidence=0.7,
@@ -105,15 +107,16 @@ class TestAgencyArbiterAdjustmentsRepository:
         
         assert updated.adjustment_value == 2.5
         
-        found = await uow.agency_arbiter_adjustments.get_by_id(adjustment.adjustment_key)
+        found = await uow.agency_arbiter_adjustments.get_by_id(adjustment_key)
         assert found.confidence == 0.95
     
     @pytest.mark.asyncio
-    async def test_delete_adjustment(self, uow, test_user):
+    async def test_delete_adjustment(self, uow, test_user, test_lesson):
+        adjustment_key = f"test_key_{uuid.uuid4()}"
         adjustment = AgencyArbiterAdjustment(
-            adjustment_key=f"test_key_{uuid.uuid4()}",
-            adjustment_value=1.0,
-            lesson_id="test_lesson_id",
+            adjustment_key=adjustment_key,
+            adjustment_value=1.5,
+            lesson_id=test_lesson.lesson_id,
             user_id=test_user.uuid,
             applied_at=datetime.now(UTC),
             confidence=0.8,
@@ -131,12 +134,12 @@ class TestAgencyArbiterAdjustmentsRepository:
         assert found is None
     
     @pytest.mark.asyncio
-    async def test_list_adjustments(self, uow, test_user):
+    async def test_list_adjustments(self, uow, test_user, test_lesson):
         for i in range(3):
             adjustment = AgencyArbiterAdjustment(
                 adjustment_key=f"test_key_{uuid.uuid4()}",
                 adjustment_value=float(i),
-                lesson_id="test_lesson_id",
+                lesson_id=test_lesson.lesson_id,
                 user_id=test_user.uuid,
                 applied_at=datetime.now(UTC),
                 confidence=0.8,
@@ -153,12 +156,12 @@ class TestAgencyArbiterAdjustmentsRepository:
         assert len(active) >= 2
     
     @pytest.mark.asyncio
-    async def test_count_adjustments(self, uow, test_user):
+    async def test_count_adjustments(self, uow, test_user, test_lesson):
         for i in range(3):
             adjustment = AgencyArbiterAdjustment(
                 adjustment_key=f"count_key_{uuid.uuid4()}",
                 adjustment_value=float(i),
-                lesson_id="test_lesson_id",
+                lesson_id=test_lesson.lesson_id,
                 user_id=test_user.uuid,
                 applied_at=datetime.now(UTC),
                 confidence=0.8,
@@ -171,12 +174,12 @@ class TestAgencyArbiterAdjustmentsRepository:
         assert count >= 3
     
     @pytest.mark.asyncio
-    async def test_get_active_adjustments(self, uow, test_user):
+    async def test_get_active_adjustments(self, uow, test_user, test_lesson):
         for i in range(3):
             adjustment = AgencyArbiterAdjustment(
                 adjustment_key=f"active_key_{uuid.uuid4()}",
                 adjustment_value=float(i),
-                lesson_id="test_lesson_id",
+                lesson_id=test_lesson.lesson_id,
                 user_id=test_user.uuid,
                 applied_at=datetime.now(UTC),
                 confidence=0.8,

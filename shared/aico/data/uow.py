@@ -666,6 +666,126 @@ class UnitOfWork:
             from .repositories.postgres.execution_repository import PostgresExecutionRepository
             self._execution_repository = PostgresExecutionRepository(self._session)
         return self._execution_repository
+    
+    @property
+    def agency_execution_snapshots(self):
+        """Get AgencyExecutionSnapshotsRepository instance."""
+        if not hasattr(self, '_agency_execution_snapshots'):
+            self._agency_execution_snapshots = None
+        if self._agency_execution_snapshots is None:
+            from .repositories.postgres.agency_execution_snapshots_repository import PostgresAgencyExecutionSnapshotsRepository
+            self._agency_execution_snapshots = PostgresAgencyExecutionSnapshotsRepository(self._session)
+        return self._agency_execution_snapshots
+    
+    @property
+    def agency_goal_dependencies(self):
+        """Get AgencyGoalDependenciesRepository instance."""
+        if not hasattr(self, '_agency_goal_dependencies'):
+            self._agency_goal_dependencies = None
+        if self._agency_goal_dependencies is None:
+            from .repositories.postgres.agency_goal_dependencies_repository import PostgresAgencyGoalDependenciesRepository
+            self._agency_goal_dependencies = PostgresAgencyGoalDependenciesRepository(self._session)
+        return self._agency_goal_dependencies
+    
+    @property
+    def agency_goal_outcomes(self):
+        """Get AgencyGoalOutcomesRepository instance."""
+        if not hasattr(self, '_agency_goal_outcomes'):
+            self._agency_goal_outcomes = None
+        if self._agency_goal_outcomes is None:
+            from .repositories.postgres.agency_goal_outcomes_repository import PostgresAgencyGoalOutcomesRepository
+            self._agency_goal_outcomes = PostgresAgencyGoalOutcomesRepository(self._session)
+        return self._agency_goal_outcomes
+    
+    @property
+    def agency_goal_skill_executions(self):
+        """Get AgencyGoalSkillExecutionsRepository instance."""
+        if not hasattr(self, '_agency_goal_skill_executions'):
+            self._agency_goal_skill_executions = None
+        if self._agency_goal_skill_executions is None:
+            from .repositories.postgres.agency_goal_skill_executions_repository import PostgresAgencyGoalSkillExecutionsRepository
+            self._agency_goal_skill_executions = PostgresAgencyGoalSkillExecutionsRepository(self._session)
+        return self._agency_goal_skill_executions
+    
+    @property
+    def agency_intention_set(self):
+        """Get AgencyIntentionSetRepository instance."""
+        if not hasattr(self, '_agency_intention_set'):
+            self._agency_intention_set = None
+        if self._agency_intention_set is None:
+            from .repositories.postgres.agency_intention_set_repository import PostgresAgencyIntentionSetRepository
+            self._agency_intention_set = PostgresAgencyIntentionSetRepository(self._session)
+        return self._agency_intention_set
+    
+    @property
+    def agency_plan_executions(self):
+        """Get AgencyPlanExecutionsRepository instance."""
+        if not hasattr(self, '_agency_plan_executions'):
+            self._agency_plan_executions = None
+        if self._agency_plan_executions is None:
+            from .repositories.postgres.agency_plan_executions_repository import PostgresAgencyPlanExecutionsRepository
+            self._agency_plan_executions = PostgresAgencyPlanExecutionsRepository(self._session)
+        return self._agency_plan_executions
+    
+    @property
+    def agency_reflection_runs(self):
+        """Get AgencyReflectionRunsRepository instance."""
+        if not hasattr(self, '_agency_reflection_runs'):
+            self._agency_reflection_runs = None
+        if self._agency_reflection_runs is None:
+            from .repositories.postgres.agency_reflection_runs_repository import PostgresAgencyReflectionRunsRepository
+            self._agency_reflection_runs = PostgresAgencyReflectionRunsRepository(self._session)
+        return self._agency_reflection_runs
+    
+    @property
+    def agency_self_model(self):
+        """Get AgencySelfModelRepository instance."""
+        if not hasattr(self, '_agency_self_model'):
+            self._agency_self_model = None
+        if self._agency_self_model is None:
+            from .repositories.postgres.agency_self_model_repository import PostgresAgencySelfModelRepository
+            self._agency_self_model = PostgresAgencySelfModelRepository(self._session)
+        return self._agency_self_model
+    
+    @property
+    def agency_skill_gaps(self):
+        """Get AgencySkillGapsRepository instance."""
+        if not hasattr(self, '_agency_skill_gaps'):
+            self._agency_skill_gaps = None
+        if self._agency_skill_gaps is None:
+            from .repositories.postgres.agency_skill_gaps_repository import PostgresAgencySkillGapsRepository
+            self._agency_skill_gaps = PostgresAgencySkillGapsRepository(self._session)
+        return self._agency_skill_gaps
+    
+    @property
+    def agency_skill_executions(self):
+        """Get AgencySkillExecutionsRepository instance."""
+        if not hasattr(self, '_agency_skill_executions'):
+            self._agency_skill_executions = None
+        if self._agency_skill_executions is None:
+            from .repositories.postgres.agency_skill_executions_repository import PostgresAgencySkillExecutionsRepository
+            self._agency_skill_executions = PostgresAgencySkillExecutionsRepository(self._session)
+        return self._agency_skill_executions
+    
+    @property
+    def agency_skill_learning_data(self):
+        """Get AgencySkillLearningDataRepository instance."""
+        if not hasattr(self, '_agency_skill_learning_data'):
+            self._agency_skill_learning_data = None
+        if self._agency_skill_learning_data is None:
+            from .repositories.postgres.agency_skill_learning_data_repository import PostgresAgencySkillLearningDataRepository
+            self._agency_skill_learning_data = PostgresAgencySkillLearningDataRepository(self._session)
+        return self._agency_skill_learning_data
+    
+    @property
+    def agency_step_executions(self):
+        """Get AgencyStepExecutionsRepository instance."""
+        if not hasattr(self, '_agency_step_executions'):
+            self._agency_step_executions = None
+        if self._agency_step_executions is None:
+            from .repositories.postgres.agency_step_executions_repository import PostgresAgencyStepExecutionsRepository
+            self._agency_step_executions = PostgresAgencyStepExecutionsRepository(self._session)
+        return self._agency_step_executions
 
 
 @asynccontextmanager

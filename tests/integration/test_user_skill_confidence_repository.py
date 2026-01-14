@@ -51,7 +51,7 @@ class TestUserSkillConfidenceRepository:
     async def test_create_skill_confidence(self, uow, test_user):
         skill_conf = UserSkillConfidence(
             user_id=test_user.uuid,
-            skill_id="test_skill_1",
+            skill_id=f"test_skill_1_{uuid.uuid4().hex[:8]}",
             confidence_level=0.8,
             usage_count=5,
             last_used=datetime.now(UTC).isoformat(),
@@ -69,7 +69,7 @@ class TestUserSkillConfidenceRepository:
     async def test_get_skill_confidence_by_id(self, uow, test_user):
         skill_conf = UserSkillConfidence(
             user_id=test_user.uuid,
-            skill_id="test_skill_2",
+            skill_id=f"test_skill_2_{uuid.uuid4().hex[:8]}",
             confidence_level=0.9,
             usage_count=10,
             last_used=datetime.now(UTC).isoformat(),
@@ -77,10 +77,10 @@ class TestUserSkillConfidenceRepository:
             updated_at=datetime.now(UTC),
         )
         
-        await uow.user_skill_confidence.create(skill_conf)
+        created = await uow.user_skill_confidence.create(skill_conf)
         await uow.commit()
         
-        found = await uow.user_skill_confidence.get_by_id(f"{test_user.uuid}:test_skill_2")
+        found = await uow.user_skill_confidence.get_by_id(f"{test_user.uuid}:{created.skill_id}")
         assert found is not None
         assert found.confidence_level == 0.9
     
@@ -88,7 +88,7 @@ class TestUserSkillConfidenceRepository:
     async def test_update_skill_confidence(self, uow, test_user):
         skill_conf = UserSkillConfidence(
             user_id=test_user.uuid,
-            skill_id="test_skill_3",
+            skill_id=f"test_skill_3_{uuid.uuid4().hex[:8]}",
             confidence_level=0.5,
             usage_count=1,
             last_used=datetime.now(UTC).isoformat(),
@@ -96,17 +96,17 @@ class TestUserSkillConfidenceRepository:
             updated_at=datetime.now(UTC),
         )
         
-        await uow.user_skill_confidence.create(skill_conf)
+        created = await uow.user_skill_confidence.create(skill_conf)
         await uow.commit()
         
-        skill_conf.confidence_level = 0.7
-        skill_conf.usage_count = 3
-        updated = await uow.user_skill_confidence.update(skill_conf)
+        created.confidence_level = 0.7
+        created.usage_count = 3
+        updated = await uow.user_skill_confidence.update(created)
         await uow.commit()
         
         assert updated.confidence_level == 0.7
         
-        found = await uow.user_skill_confidence.get_by_id(f"{test_user.uuid}:test_skill_3")
+        found = await uow.user_skill_confidence.get_by_id(f"{test_user.uuid}:{created.skill_id}")
         assert found.usage_count == 3
     
     @pytest.mark.asyncio
@@ -137,7 +137,7 @@ class TestUserSkillConfidenceRepository:
         for i in range(3):
             skill_conf = UserSkillConfidence(
                 user_id=test_user.uuid,
-                skill_id=f"list_skill_{i}",
+                skill_id=f"list_skill_{i}_{uuid.uuid4().hex[:8]}",
                 confidence_level=0.5 + (i * 0.1),
                 usage_count=i,
                 last_used=datetime.now(UTC).isoformat(),
@@ -156,7 +156,7 @@ class TestUserSkillConfidenceRepository:
         for i in range(3):
             skill_conf = UserSkillConfidence(
                 user_id=test_user.uuid,
-                skill_id=f"count_skill_{i}",
+                skill_id=f"count_skill_{i}_{uuid.uuid4().hex[:8]}",
                 confidence_level=0.5,
                 usage_count=i,
                 last_used=datetime.now(UTC).isoformat(),
@@ -175,7 +175,7 @@ class TestUserSkillConfidenceRepository:
         for i in range(3):
             skill_conf = UserSkillConfidence(
                 user_id=test_user.uuid,
-                skill_id=f"user_skill_{i}",
+                skill_id=f"user_skill_{i}_{uuid.uuid4().hex[:8]}",
                 confidence_level=0.5 + (i * 0.1),
                 usage_count=i,
                 last_used=datetime.now(UTC).isoformat(),

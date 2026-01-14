@@ -960,35 +960,28 @@ CREATE INDEX IF NOT EXISTS idx_kg_nodes_user_label ON kg_nodes(user_id, label);
 CREATE INDEX IF NOT EXISTS idx_kg_nodes_reason ON kg_nodes(reason) WHERE reason IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS proactive_analytics (
-                analytics_id TEXT PRIMARY KEY,
+                id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
-                behavior_type TEXT NOT NULL,  -- followup, reminder
-                item_id TEXT NOT NULL,
-                delivered_at TEXT NOT NULL,
-                user_action TEXT,  -- responded, dismissed, snoozed, ignored
-                response_time_minutes INTEGER,
-                sentiment_score DOUBLE PRECISION,
-                effectiveness_score DOUBLE PRECISION,
-                created_at TEXT NOT NULL
+                event_type TEXT NOT NULL,
+                event_data TEXT,
+                confidence_score DOUBLE PRECISION,
+                triggered_action TEXT,
+                created_at TIMESTAMPTZ NOT NULL
             );
 
-CREATE INDEX IF NOT EXISTS idx_proactive_analytics_delivered ON proactive_analytics(delivered_at);
-
-CREATE INDEX IF NOT EXISTS idx_proactive_analytics_type ON proactive_analytics(behavior_type);
-
 CREATE INDEX IF NOT EXISTS idx_proactive_analytics_user ON proactive_analytics(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_proactive_analytics_type ON proactive_analytics(event_type);
 
 CREATE TABLE IF NOT EXISTS "proactive_reminder_clusters" (
                 cluster_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
-                cluster_name TEXT,
-                scheduled_delivery TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',  -- pending, delivered, dismissed
-                reminder_count INTEGER DEFAULT 0,
-                created_at TEXT NOT NULL
+                cluster_name TEXT NOT NULL,
+                reminder_ids TEXT,
+                pattern_description TEXT,
+                confidence_score DOUBLE PRECISION,
+                created_at TIMESTAMPTZ NOT NULL
             );
-
-CREATE INDEX IF NOT EXISTS idx_reminder_clusters_delivery ON "proactive_reminder_clusters"(scheduled_delivery, status);
 
 CREATE INDEX IF NOT EXISTS idx_reminder_clusters_user ON "proactive_reminder_clusters"(user_id);
 
@@ -1222,8 +1215,9 @@ CREATE INDEX IF NOT EXISTS idx_user_time_preferences_active ON user_time_prefere
 
 -- Foreign key constraints added after all tables are created
 
-ALTER TABLE agency_arbiter_adjustments ADD CONSTRAINT fk_agency_arbiter_adjustments_lesson_id_agency_lessons FOREIGN KEY (lesson_id) REFERENCES agency_lessons(lesson_id) ON DELETE CASCADE;
-ALTER TABLE agency_arbiter_adjustments ADD CONSTRAINT fk_agency_arbiter_adjustments_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+ALTER TABLE agency_arbiter_adjustments
+    ADD CONSTRAINT fk_agency_arbiter_adjustments_lesson_id_agency_lessons
+    FOREIGN KEY (lesson_id) REFERENCES agency_lessons(lesson_id) ON DELETE CASCADE;
 ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
 ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_plan_id_agency_plans FOREIGN KEY (plan_id) REFERENCES agency_plans(plan_id) ON DELETE SET NULL;

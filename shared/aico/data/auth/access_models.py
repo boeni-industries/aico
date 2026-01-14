@@ -12,12 +12,10 @@ from typing import Optional
 @dataclass
 class AuthAccessPolicy:
     """Auth access policy model - matches auth_access_policies table."""
-    policy_id: str
+    uuid: str
+    user_uuid: str
     resource_type: str
-    action: str
-    effect: str
-    conditions_json: Optional[str] = None
-    priority: int = 100
-    enabled: bool = True
+    permission: str
+    resource_uuid: Optional[str] = None
+    is_active: bool = True
     created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None

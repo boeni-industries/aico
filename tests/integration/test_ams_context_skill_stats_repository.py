@@ -48,11 +48,11 @@ async def test_user(uow):
 class TestAMSContextSkillStatsRepository:
     
     @pytest.mark.asyncio
-    async def test_create_stat(self, uow, test_user):
+    async def test_create_stat(self, uow, test_user, test_behavioral_skill):
         stat = AMSContextSkillStats(
             user_id=test_user.uuid,
             context_bucket=0,
-            skill_id="skill_1",
+            skill_id=test_behavioral_skill.skill_id,
             alpha=2.0,
             beta=1.5,
             last_updated_at=datetime.now(UTC),
@@ -65,11 +65,11 @@ class TestAMSContextSkillStatsRepository:
         assert created.alpha == 2.0
     
     @pytest.mark.asyncio
-    async def test_get_stat_by_id(self, uow, test_user):
+    async def test_get_stat_by_id(self, uow, test_user, test_behavioral_skill):
         stat = AMSContextSkillStats(
             user_id=test_user.uuid,
             context_bucket=1,
-            skill_id="skill_2",
+            skill_id=test_behavioral_skill.skill_id,
             alpha=1.0,
             beta=1.0,
             last_updated_at=datetime.now(UTC),
@@ -78,16 +78,16 @@ class TestAMSContextSkillStatsRepository:
         await uow.ams_context_skill_stats.create(stat)
         await uow.commit()
         
-        found = await uow.ams_context_skill_stats.get_by_id(f"{test_user.uuid}:1:skill_2")
+        found = await uow.ams_context_skill_stats.get_by_id(f"{test_user.uuid}:1:{test_behavioral_skill.skill_id}")
         assert found is not None
-        assert found.skill_id == "skill_2"
+        assert found.skill_id == test_behavioral_skill.skill_id
     
     @pytest.mark.asyncio
-    async def test_update_stat(self, uow, test_user):
+    async def test_update_stat(self, uow, test_user, test_behavioral_skill):
         stat = AMSContextSkillStats(
             user_id=test_user.uuid,
             context_bucket=2,
-            skill_id="skill_3",
+            skill_id=test_behavioral_skill.skill_id,
             alpha=1.0,
             beta=1.0,
             last_updated_at=datetime.now(UTC),
@@ -103,15 +103,15 @@ class TestAMSContextSkillStatsRepository:
         
         assert updated.alpha == 3.0
         
-        found = await uow.ams_context_skill_stats.get_by_id(f"{test_user.uuid}:2:skill_3")
+        found = await uow.ams_context_skill_stats.get_by_id(f"{test_user.uuid}:2:{test_behavioral_skill.skill_id}")
         assert found.beta == 2.0
     
     @pytest.mark.asyncio
-    async def test_delete_stat(self, uow, test_user):
+    async def test_delete_stat(self, uow, test_user, test_behavioral_skill):
         stat = AMSContextSkillStats(
             user_id=test_user.uuid,
             context_bucket=3,
-            skill_id="skill_4",
+            skill_id=test_behavioral_skill.skill_id,
             alpha=1.0,
             beta=1.0,
             last_updated_at=datetime.now(UTC),
@@ -120,21 +120,21 @@ class TestAMSContextSkillStatsRepository:
         await uow.ams_context_skill_stats.create(stat)
         await uow.commit()
         
-        success = await uow.ams_context_skill_stats.delete(f"{test_user.uuid}:3:skill_4")
+        success = await uow.ams_context_skill_stats.delete(f"{test_user.uuid}:3:{test_behavioral_skill.skill_id}")
         await uow.commit()
         
         assert success is True
         
-        found = await uow.ams_context_skill_stats.get_by_id(f"{test_user.uuid}:3:skill_4")
+        found = await uow.ams_context_skill_stats.get_by_id(f"{test_user.uuid}:3:{test_behavioral_skill.skill_id}")
         assert found is None
     
     @pytest.mark.asyncio
-    async def test_list_stats(self, uow, test_user):
-        for i in range(4, 7):
+    async def test_list_stats(self, uow, test_user, test_behavioral_skill):
+        for i in range(3):
             stat = AMSContextSkillStats(
                 user_id=test_user.uuid,
-                context_bucket=4,
-                skill_id=f"skill_{i}",
+                context_bucket=4 + i,
+                skill_id=test_behavioral_skill.skill_id,
                 alpha=1.0,
                 beta=1.0,
                 last_updated_at=datetime.now(UTC),
@@ -143,16 +143,16 @@ class TestAMSContextSkillStatsRepository:
         
         await uow.commit()
         
-        all_stats = await uow.ams_context_skill_stats.list(filters={"user_id": test_user.uuid, "context_bucket": 4})
+        all_stats = await uow.ams_context_skill_stats.list(filters={"user_id": test_user.uuid})
         assert len(all_stats) >= 3
     
     @pytest.mark.asyncio
-    async def test_count_stats(self, uow, test_user):
-        for i in range(7, 10):
+    async def test_count_stats(self, uow, test_user, test_behavioral_skill):
+        for i in range(3):
             stat = AMSContextSkillStats(
                 user_id=test_user.uuid,
-                context_bucket=5,
-                skill_id=f"skill_{i}",
+                context_bucket=7 + i,
+                skill_id=test_behavioral_skill.skill_id,
                 alpha=1.0,
                 beta=1.0,
                 last_updated_at=datetime.now(UTC),
@@ -165,12 +165,12 @@ class TestAMSContextSkillStatsRepository:
         assert count >= 3
     
     @pytest.mark.asyncio
-    async def test_get_user_context_stats(self, uow, test_user):
-        for i in range(10, 13):
+    async def test_get_user_context_stats(self, uow, test_user, test_behavioral_skill):
+        for i in range(3):
             stat = AMSContextSkillStats(
                 user_id=test_user.uuid,
-                context_bucket=6,
-                skill_id=f"skill_{i}",
+                context_bucket=10 + i,
+                skill_id=test_behavioral_skill.skill_id,
                 alpha=1.0,
                 beta=1.0,
                 last_updated_at=datetime.now(UTC),

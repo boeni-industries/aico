@@ -5,6 +5,7 @@ Integration tests for AMSContextPreferenceVectorsRepository.
 import pytest
 import uuid
 from datetime import datetime, UTC
+import time
 
 from aico.data.ams.context_models import AMSContextPreferenceVector
 from aico.data.user.models import UserProfile
@@ -49,9 +50,15 @@ class TestAMSContextPreferenceVectorsRepository:
     
     @pytest.mark.asyncio
     async def test_create_vector(self, uow, test_user):
+        # Cleanup any existing test data
+        from sqlalchemy import text
+        await uow._session.execute(text("DELETE FROM aico_core.ams_context_preference_vectors WHERE user_id = :user_id"), {"user_id": test_user.uuid})
+        await uow.commit()
+        
+        bucket = int(time.time() * 1000000) % 100
         vector = AMSContextPreferenceVector(
             user_id=test_user.uuid,
-            context_bucket=0,
+            context_bucket=bucket,
             dimensions="[0.1, 0.2, 0.3]",
             last_updated_at=datetime.now(UTC),
         )
@@ -60,13 +67,18 @@ class TestAMSContextPreferenceVectorsRepository:
         await uow.commit()
         
         assert created.user_id == test_user.uuid
-        assert created.context_bucket == 0
+        assert created.context_bucket == bucket
     
     @pytest.mark.asyncio
     async def test_get_vector_by_id(self, uow, test_user):
+        from sqlalchemy import text
+        await uow._session.execute(text("DELETE FROM aico_core.ams_context_preference_vectors WHERE user_id = :user_id"), {"user_id": test_user.uuid})
+        await uow.commit()
+        
+        bucket = (int(time.time() * 1000000) + 1) % 100
         vector = AMSContextPreferenceVector(
             user_id=test_user.uuid,
-            context_bucket=1,
+            context_bucket=bucket,
             dimensions="[0.4, 0.5, 0.6]",
             last_updated_at=datetime.now(UTC),
         )
@@ -74,15 +86,20 @@ class TestAMSContextPreferenceVectorsRepository:
         await uow.ams_context_preference_vectors.create(vector)
         await uow.commit()
         
-        found = await uow.ams_context_preference_vectors.get_by_id(f"{test_user.uuid}:1")
+        found = await uow.ams_context_preference_vectors.get_by_id(f"{test_user.uuid}:{bucket}")
         assert found is not None
-        assert found.context_bucket == 1
+        assert found.context_bucket == bucket
     
     @pytest.mark.asyncio
     async def test_update_vector(self, uow, test_user):
+        from sqlalchemy import text
+        await uow._session.execute(text("DELETE FROM aico_core.ams_context_preference_vectors WHERE user_id = :user_id"), {"user_id": test_user.uuid})
+        await uow.commit()
+        
+        bucket = (int(time.time() * 1000000) + 2) % 100
         vector = AMSContextPreferenceVector(
             user_id=test_user.uuid,
-            context_bucket=2,
+            context_bucket=bucket,
             dimensions="[0.7, 0.8, 0.9]",
             last_updated_at=datetime.now(UTC),
         )
@@ -90,41 +107,51 @@ class TestAMSContextPreferenceVectorsRepository:
         await uow.ams_context_preference_vectors.create(vector)
         await uow.commit()
         
-        vector.dimensions = "[0.9, 0.8, 0.7]"
+        vector.dimensions = "[1.0, 1.0, 1.0]"
         updated = await uow.ams_context_preference_vectors.update(vector)
         await uow.commit()
         
-        assert updated.dimensions == "[0.9, 0.8, 0.7]"
+        assert updated.dimensions == "[1.0, 1.0, 1.0]"
         
-        found = await uow.ams_context_preference_vectors.get_by_id(f"{test_user.uuid}:2")
-        assert found.dimensions == "[0.9, 0.8, 0.7]"
+        found = await uow.ams_context_preference_vectors.get_by_id(f"{test_user.uuid}:{bucket}")
+        assert found.dimensions == "[1.0, 1.0, 1.0]"
     
     @pytest.mark.asyncio
     async def test_delete_vector(self, uow, test_user):
+        from sqlalchemy import text
+        await uow._session.execute(text("DELETE FROM aico_core.ams_context_preference_vectors WHERE user_id = :user_id"), {"user_id": test_user.uuid})
+        await uow.commit()
+        
+        bucket = (int(time.time() * 1000000) + 3) % 100
         vector = AMSContextPreferenceVector(
             user_id=test_user.uuid,
-            context_bucket=3,
+            context_bucket=bucket,
             dimensions="[0.1, 0.1, 0.1]",
             last_updated_at=datetime.now(UTC),
         )
         
-        await uow.ams_context_preference_vectors.create(vector)
+        created = await uow.ams_context_preference_vectors.create(vector)
         await uow.commit()
         
-        success = await uow.ams_context_preference_vectors.delete(f"{test_user.uuid}:3")
+        success = await uow.ams_context_preference_vectors.delete(f"{test_user.uuid}:{bucket}")
         await uow.commit()
         
         assert success is True
         
-        found = await uow.ams_context_preference_vectors.get_by_id(f"{test_user.uuid}:3")
+        found = await uow.ams_context_preference_vectors.get_by_id(f"{test_user.uuid}:{bucket}")
         assert found is None
     
     @pytest.mark.asyncio
     async def test_list_vectors(self, uow, test_user):
-        for i in range(4, 7):
+        from sqlalchemy import text
+        await uow._session.execute(text("DELETE FROM aico_core.ams_context_preference_vectors WHERE user_id = :user_id"), {"user_id": test_user.uuid})
+        await uow.commit()
+        
+        base = (int(time.time() * 1000000) + 10) % 90
+        for i in range(3):
             vector = AMSContextPreferenceVector(
                 user_id=test_user.uuid,
-                context_bucket=i,
+                context_bucket=base + i,
                 dimensions=f"[{i}, {i}, {i}]",
                 last_updated_at=datetime.now(UTC),
             )
@@ -137,10 +164,15 @@ class TestAMSContextPreferenceVectorsRepository:
     
     @pytest.mark.asyncio
     async def test_count_vectors(self, uow, test_user):
-        for i in range(7, 10):
+        from sqlalchemy import text
+        await uow._session.execute(text("DELETE FROM aico_core.ams_context_preference_vectors WHERE user_id = :user_id"), {"user_id": test_user.uuid})
+        await uow.commit()
+        
+        base = (int(time.time() * 1000000) + 20) % 90
+        for i in range(3):
             vector = AMSContextPreferenceVector(
                 user_id=test_user.uuid,
-                context_bucket=i,
+                context_bucket=base + i,
                 dimensions=f"[{i}, {i}, {i}]",
                 last_updated_at=datetime.now(UTC),
             )
@@ -153,10 +185,15 @@ class TestAMSContextPreferenceVectorsRepository:
     
     @pytest.mark.asyncio
     async def test_get_user_vectors(self, uow, test_user):
-        for i in range(10, 13):
+        from sqlalchemy import text
+        await uow._session.execute(text("DELETE FROM aico_core.ams_context_preference_vectors WHERE user_id = :user_id"), {"user_id": test_user.uuid})
+        await uow.commit()
+        
+        base = (int(time.time() * 1000000) + 30) % 90
+        for i in range(3):
             vector = AMSContextPreferenceVector(
                 user_id=test_user.uuid,
-                context_bucket=i,
+                context_bucket=base + i,
                 dimensions=f"[{i}, {i}, {i}]",
                 last_updated_at=datetime.now(UTC),
             )

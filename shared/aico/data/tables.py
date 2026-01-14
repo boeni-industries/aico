@@ -8,7 +8,8 @@ These tables mirror the schema in shared/aico/data/postgres/schema.sql
 from sqlalchemy import (
     Table, Column, MetaData,
     String, Integer, BigInteger, Boolean, Float, Text,
-    ForeignKey, Index, JSON, LargeBinary, PrimaryKeyConstraint
+    ForeignKey, Index, JSON, LargeBinary, PrimaryKeyConstraint, UniqueConstraint,
+    func
 )
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 
@@ -225,6 +226,17 @@ agency_events_log = Table(
     Index('idx_events_log_user', 'user_id'),
 )
 
+agency_execution_snapshots = Table(
+    'agency_execution_snapshots',
+    metadata,
+    Column('snapshot_id', String, primary_key=True),
+    Column('execution_id', String, nullable=False),
+    Column('snapshot_type', String, nullable=False),
+    Column('state_data', String, nullable=False),
+    Column('created_at', String, nullable=False),
+    Index('idx_execution_snapshots_execution', 'execution_id', 'created_at'),
+)
+
 agency_followups = Table(
     'agency_followups',
     metadata,
@@ -251,20 +263,177 @@ agency_followups = Table(
     Index('idx_followups_user', 'user_id'),
 )
 
+agency_goal_dependencies = Table(
+    'agency_goal_dependencies',
+    metadata,
+    Column('dependency_id', String, primary_key=True),
+    Column('goal_id', String, nullable=False),
+    Column('prerequisite_goal_id', String, nullable=False),
+    Column('dependency_type', String, server_default='hard'),
+    Column('active', Boolean, server_default='true'),
+    Column('created_at', String, nullable=False),
+    UniqueConstraint('goal_id', 'prerequisite_goal_id'),
+    Index('idx_goal_deps_active', 'active'),
+    Index('idx_goal_deps_goal', 'goal_id'),
+    Index('idx_goal_deps_prereq', 'prerequisite_goal_id'),
+)
+
+agency_goal_outcomes = Table(
+    'agency_goal_outcomes',
+    metadata,
+    Column('outcome_id', String, primary_key=True),
+    Column('goal_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('arm_id', String),
+    Column('outcome', String, nullable=False),
+    Column('success', Integer, server_default='0'),
+    Column('reward', Float),
+    Column('completion_time_minutes', Integer),
+    Column('user_satisfaction', Float),
+    Column('metadata_json', JSONB),
+    Column('created_at', String, nullable=False),
+    Index('idx_goal_outcomes_arm', 'arm_id'),
+    Index('idx_goal_outcomes_created', 'created_at'),
+    Index('idx_goal_outcomes_goal', 'goal_id'),
+    Index('idx_goal_outcomes_success', 'success'),
+    Index('idx_goal_outcomes_user', 'user_id'),
+)
+
+agency_goal_skill_executions = Table(
+    'agency_goal_skill_executions',
+    metadata,
+    Column('link_id', String, primary_key=True),
+    Column('goal_id', String, nullable=False),
+    Column('skill_id', String, nullable=False),
+    Column('execution_id', String, nullable=False),
+    Column('execution_order', Integer),
+    Column('created_at', String, nullable=False),
+    Index('idx_agency_goal_skill_executions_execution', 'execution_id'),
+    Index('idx_agency_goal_skill_executions_goal', 'goal_id'),
+)
+
 agency_reflection_notes = Table(
     'agency_reflection_notes',
     metadata,
     Column('note_id', String, primary_key=True),
-    Column('user_id', String, nullable=False),
+    Column('user_id', String, ForeignKey('user_profiles.uuid', ondelete='CASCADE'), nullable=False),
     Column('related_goal_id', String),
     Column('related_plan_id', String),
     Column('title', String, nullable=False),
     Column('content', String, nullable=False),
     Column('tags_json', JSONB),
-    Column('created_at', TIMESTAMP(timezone=True)),
-    Column('updated_at', TIMESTAMP(timezone=True)),
-    Index('idx_agency_reflection_goal', 'related_goal_id'),
+    Column('created_at', TIMESTAMP(timezone=True), server_default=func.now()),
+    Column('updated_at', TIMESTAMP(timezone=True), server_default=func.now()),
     Index('idx_agency_reflection_user_time', 'user_id', 'created_at'),
+)
+
+agency_reflection_runs = Table(
+    'agency_reflection_runs',
+    metadata,
+    Column('run_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('run_type', String, nullable=False),
+    Column('trigger_reason', String),
+    Column('analysis_window_start', TIMESTAMP(timezone=True), nullable=False),
+    Column('analysis_window_end', TIMESTAMP(timezone=True), nullable=False),
+    Column('lessons_generated', Integer, server_default='0'),
+    Column('lessons_applied', Integer, server_default='0'),
+    Column('started_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('completed_at', TIMESTAMP(timezone=True)),
+    Column('duration_seconds', Float),
+    Column('status', String, nullable=False),
+    Column('error_message', String),
+    Column('created_at', TIMESTAMP(timezone=True), server_default=func.now()),
+    Index('idx_reflection_runs_status', 'status'),
+    Index('idx_reflection_runs_user_time', 'user_id', 'started_at'),
+)
+
+agency_self_model = Table(
+    'agency_self_model',
+    metadata,
+    Column('model_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('entity_type', String, nullable=False),
+    Column('entity_id', String, nullable=False),
+    Column('performance_summary', String, nullable=False),
+    Column('window_start', TIMESTAMP(timezone=True), nullable=False),
+    Column('window_end', TIMESTAMP(timezone=True), nullable=False),
+    Column('sample_size', Integer, nullable=False),
+    Column('confidence', Float, nullable=False),
+    Column('last_updated', TIMESTAMP(timezone=True), server_default=func.now()),
+    Column('created_at', TIMESTAMP(timezone=True), server_default=func.now()),
+    UniqueConstraint('user_id', 'entity_type', 'entity_id', 'window_start'),
+    Index('idx_self_model_freshness', 'last_updated'),
+    Index('idx_self_model_user_entity', 'user_id', 'entity_type', 'entity_id'),
+    Index('idx_self_model_window', 'window_start', 'window_end'),
+)
+
+agency_skill_gaps = Table(
+    'agency_skill_gaps',
+    metadata,
+    Column('gap_id', String, primary_key=True),
+    Column('step_description', String, nullable=False),
+    Column('llm_suggested_skills', String),
+    Column('step_metadata', String),
+    Column('pattern_embedding', String),
+    Column('frequency_count', Integer, server_default='1'),
+    Column('first_seen_at', String, nullable=False),
+    Column('last_seen_at', String, nullable=False),
+    Column('priority_score', Float, server_default='0.0'),
+    Column('suggested_skill_spec', String),
+    Column('notes', String),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String, nullable=False),
+    Index('idx_skill_gaps_priority', 'priority_score'),
+    Index('idx_skill_gaps_frequency', 'frequency_count'),
+    Index('idx_skill_gaps_last_seen', 'last_seen_at'),
+)
+
+agency_skill_executions = Table(
+    'agency_skill_executions',
+    metadata,
+    Column('execution_id', String, primary_key=True),
+    Column('skill_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('message_id', String),
+    Column('goal_id', String),
+    Column('execution_time_ms', Integer),
+    Column('outcome', String, nullable=False),
+    Column('error_message', String),
+    Column('context_json', JSONB),
+    Column('created_at', String, nullable=False),
+)
+
+agency_skill_learning_data = Table(
+    'agency_skill_learning_data',
+    metadata,
+    Column('skill_id', String, primary_key=True),
+    Column('dimension_vector', String, nullable=False),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String, nullable=False),
+    Index('idx_skill_learning_updated', 'updated_at'),
+)
+
+agency_step_executions = Table(
+    'agency_step_executions',
+    metadata,
+    Column('step_execution_id', String, primary_key=True),
+    Column('execution_id', String, nullable=False),
+    Column('step_id', String, nullable=False),
+    Column('step_order', Integer, nullable=False),
+    Column('status', String, nullable=False, server_default='pending'),
+    Column('started_at', String),
+    Column('completed_at', String),
+    Column('duration_ms', Integer),
+    Column('skill_id', String),
+    Column('skill_invocation_id', String),
+    Column('input_data', String, server_default='{}'),
+    Column('output_data', String, server_default='{}'),
+    Column('error_message', String),
+    Column('retry_count', Integer, server_default='0'),
+    Column('blocked_reason', String),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String, nullable=False),
 )
 
 agency_reminders = Table(
@@ -314,18 +483,67 @@ agency_goals = Table(
     Index('idx_agency_goals_user_status', 'user_id', 'status'),
 )
 
+agency_intention_set = Table(
+    'agency_intention_set',
+    metadata,
+    Column('intention_id', String, primary_key=True),
+    Column('goal_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('status', String, nullable=False, server_default='proposed'),
+    Column('arbiter_score', Float, nullable=False),
+    Column('priority_band', String, nullable=False),
+    Column('reasons_json', JSONB),
+    Column('activated_at', TIMESTAMP(timezone=True)),
+    Column('deactivated_at', TIMESTAMP(timezone=True)),
+    Column('created_at', TIMESTAMP(timezone=True), server_default=func.now()),
+    Column('updated_at', TIMESTAMP(timezone=True), server_default=func.now()),
+    Index('idx_intention_set_goal', 'goal_id'),
+    Index('idx_intention_set_priority', 'priority_band', 'status'),
+    Index('idx_intention_set_user_status', 'user_id', 'status'),
+)
+
 agency_plans = Table(
     'agency_plans',
     metadata,
     Column('plan_id', String, primary_key=True),
-    Column('goal_id', String, ForeignKey('agency_goals.goal_id', ondelete='CASCADE'), nullable=False),
-    Column('status', String, nullable=False),
+    Column('goal_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('plan_type', String, nullable=False),
     Column('steps_json', JSONB, nullable=False),
-    Column('metadata_json', JSONB),
-    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
-    Column('updated_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('status', String, nullable=False, server_default='draft'),
+    Column('created_at', TIMESTAMP(timezone=True), server_default=func.now()),
+    Column('updated_at', TIMESTAMP(timezone=True), server_default=func.now()),
     Index('idx_agency_plans_goal', 'goal_id'),
     Index('idx_agency_plans_status', 'status'),
+    Index('idx_agency_plans_user', 'user_id'),
+)
+
+agency_plan_executions = Table(
+    'agency_plan_executions',
+    metadata,
+    Column('execution_id', String, primary_key=True),
+    Column('plan_id', String, nullable=False),
+    Column('goal_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('status', String, nullable=False, server_default='pending'),
+    Column('started_at', String),
+    Column('completed_at', String),
+    Column('paused_at', String),
+    Column('cancelled_at', String),
+    Column('current_step_id', String),
+    Column('steps_completed', Integer, server_default='0'),
+    Column('steps_total', Integer, nullable=False),
+    Column('progress_percentage', Float, server_default='0.0'),
+    Column('execution_context', String),
+    Column('error_message', String),
+    Column('cancellation_reason', String),
+    Column('retry_count', Integer, server_default='0'),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String, nullable=False),
+    Index('idx_plan_executions_goal', 'goal_id'),
+    Index('idx_plan_executions_plan', 'plan_id'),
+    Index('idx_plan_executions_status', 'status', 'created_at'),
+    Index('idx_plan_executions_user', 'user_id', 'status'),
 )
 
 agency_lessons = Table(

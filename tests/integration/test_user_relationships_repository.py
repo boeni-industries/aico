@@ -58,7 +58,7 @@ class TestUserRelationshipsRepository:
             uuid=str(uuid.uuid4()),
             user_uuid=user1_id,
             related_user_uuid=user2_id,
-            relationship_type="parent_child",
+            relationship_type=f"parent_{uuid.uuid4().hex[:8]}_child",
             is_active=True,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
@@ -68,7 +68,7 @@ class TestUserRelationshipsRepository:
         await uow.commit()
         
         assert created.uuid == relationship.uuid
-        assert created.relationship_type == "parent_child"
+        assert created.relationship_type == relationship.relationship_type
     
     @pytest.mark.asyncio
     async def test_get_relationship_by_id(self, uow, test_users):
@@ -77,7 +77,7 @@ class TestUserRelationshipsRepository:
             uuid=str(uuid.uuid4()),
             user_uuid=user1_id,
             related_user_uuid=user2_id,
-            relationship_type="sibling",
+            relationship_type=f"sibling_{uuid.uuid4().hex[:8]}",
             is_active=True,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
@@ -88,7 +88,7 @@ class TestUserRelationshipsRepository:
         
         found = await uow.user_relationships.get_by_id(relationship.uuid)
         assert found is not None
-        assert found.relationship_type == "sibling"
+        assert found.relationship_type == relationship.relationship_type
     
     @pytest.mark.asyncio
     async def test_update_relationship(self, uow, test_users):
@@ -97,7 +97,7 @@ class TestUserRelationshipsRepository:
             uuid=str(uuid.uuid4()),
             user_uuid=user1_id,
             related_user_uuid=user2_id,
-            relationship_type="friend",
+            relationship_type=f"friend_{uuid.uuid4().hex[:8]}",
             is_active=True,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
@@ -122,7 +122,7 @@ class TestUserRelationshipsRepository:
             uuid=str(uuid.uuid4()),
             user_uuid=user1_id,
             related_user_uuid=user2_id,
-            relationship_type="colleague",
+            relationship_type=f"colleague_{uuid.uuid4().hex[:8]}",
             is_active=True,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
@@ -148,7 +148,7 @@ class TestUserRelationshipsRepository:
                 uuid=str(uuid.uuid4()),
                 user_uuid=user1_id,
                 related_user_uuid=user2_id,
-                relationship_type=f"type_{i}",
+                relationship_type=f"list_type_{i}_{uuid.uuid4().hex[:8]}",
                 is_active=True if i < 2 else False,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
@@ -172,7 +172,7 @@ class TestUserRelationshipsRepository:
                 uuid=str(uuid.uuid4()),
                 user_uuid=user1_id,
                 related_user_uuid=user2_id,
-                relationship_type=f"count_type_{i}",
+                relationship_type=f"count_type_{i}_{uuid.uuid4().hex[:8]}",
                 is_active=True,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
@@ -193,7 +193,7 @@ class TestUserRelationshipsRepository:
                 uuid=str(uuid.uuid4()),
                 user_uuid=user1_id,
                 related_user_uuid=user2_id,
-                relationship_type=f"user_type_{i}",
+                relationship_type=f"user_type_{i}_{uuid.uuid4().hex[:8]}",
                 is_active=True,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),

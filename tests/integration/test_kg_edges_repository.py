@@ -47,20 +47,21 @@ async def test_user(uow):
 
 @pytest.fixture
 async def test_nodes(uow, test_user):
+    """Create test nodes for edge tests."""
     nodes = []
     for i in range(2):
         node = KGNode(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="PERSON",
-            properties={"name": f"Person{i}"},
+            properties={"name": f"Person{i}", "test_id": str(uuid.uuid4())},
             confidence=0.9,
             source_text=f"Person{i}",
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )
-        await uow.kg_nodes.create(node)
-        nodes.append(node)
+        created = await uow.kg_nodes.create(node)
+        nodes.append(created)
     await uow.commit()
     return nodes
 
@@ -139,7 +140,7 @@ class TestKGEdgesRepository:
             user_id=test_user.uuid,
             source_id=test_nodes[0].id,
             target_id=test_nodes[1].id,
-            relation_type="KNOWS",
+            relation_type="KNOWS_3",
             confidence=0.9,
             source_text="Person0 knows Person1",
             created_at=datetime.now(UTC),
@@ -158,13 +159,14 @@ class TestKGEdgesRepository:
     
     @pytest.mark.asyncio
     async def test_list_edges(self, uow, test_user, test_nodes):
+        # Create multiple edges with unique relation types
         for i in range(3):
             edge = KGEdge(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 source_id=test_nodes[0].id,
                 target_id=test_nodes[1].id,
-                relation_type="KNOWS" if i < 2 else "WORKS_WITH",
+                relation_type=f"KNOWS_{i}" if i < 2 else "WORKS_WITH_4",
                 confidence=0.9,
                 source_text=f"Edge{i}",
                 created_at=datetime.now(UTC),
@@ -177,18 +179,19 @@ class TestKGEdgesRepository:
         all_edges = await uow.kg_edges.list(filters={"user_id": test_user.uuid})
         assert len(all_edges) >= 3
         
-        knows_edges = await uow.kg_edges.list(filters={"relation_type": "KNOWS"})
-        assert len(knows_edges) >= 2
+        knows_edges = await uow.kg_edges.list(filters={"relation_type": "KNOWS_0"})
+        assert len(knows_edges) >= 1
     
     @pytest.mark.asyncio
     async def test_count_edges(self, uow, test_user, test_nodes):
+        # Create multiple edges with unique relation types
         for i in range(3):
             edge = KGEdge(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 source_id=test_nodes[0].id,
                 target_id=test_nodes[1].id,
-                relation_type="KNOWS",
+                relation_type=f"KNOWS_{i}",
                 confidence=0.9,
                 source_text=f"Edge{i}",
                 created_at=datetime.now(UTC),
@@ -208,7 +211,7 @@ class TestKGEdgesRepository:
                 user_id=test_user.uuid,
                 source_id=test_nodes[0].id,
                 target_id=test_nodes[1].id,
-                relation_type="KNOWS",
+                relation_type=f"KNOWS_NODE_{i}",
                 confidence=0.9,
                 source_text=f"Edge{i}",
                 created_at=datetime.now(UTC),
