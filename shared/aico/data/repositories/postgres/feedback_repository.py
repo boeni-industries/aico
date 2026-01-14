@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.ams.models import BehavioralFeedback
+from aico.data.ams.models import BehavioralFeedback
 from aico.data.tables import ams_behavioral_feedback
 from aico.data.repositories.base import Repository
 

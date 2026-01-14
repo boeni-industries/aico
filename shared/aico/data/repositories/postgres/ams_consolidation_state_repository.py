@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.ams.models import AMSConsolidationState
+from aico.data.ams.consolidation_models import AMSConsolidationState
 from aico.data.tables import ams_consolidation_state
 from aico.data.repositories.base import Repository
 

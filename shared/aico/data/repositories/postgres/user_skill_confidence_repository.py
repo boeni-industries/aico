@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.user.models import UserSkillConfidence
+from aico.data.user.models import UserSkillConfidence
 from aico.data.tables import user_skill_confidence
 from aico.data.repositories.base import Repository
 
@@ -22,14 +22,14 @@ class PostgresUserSkillConfidenceRepository(Repository[UserSkillConfidence]):
     
     async def create(self, entity: UserSkillConfidence) -> UserSkillConfidence:
         """Create a new user skill confidence record."""
-        from datetime import datetime
-        last_used_dt = datetime.fromisoformat(entity.last_used) if entity.last_used else None
         stmt = user_skill_confidence.insert().values(
             user_id=entity.user_id,
             skill_id=entity.skill_id,
-            confidence_score=entity.confidence_level,
+            confidence_score=entity.confidence_score,
             usage_count=entity.usage_count,
-            last_used_at=last_used_dt,
+            positive_count=entity.positive_count,
+            negative_count=entity.negative_count,
+            last_used_at=entity.last_used_at,
         )
         await self.session.execute(stmt)
         return entity
@@ -52,15 +52,15 @@ class PostgresUserSkillConfidenceRepository(Repository[UserSkillConfidence]):
         return UserSkillConfidence(
             user_id=row.user_id,
             skill_id=row.skill_id,
-            confidence_level=row.confidence_score,
+            confidence_score=row.confidence_score,
             usage_count=row.usage_count,
-            last_used=row.last_used_at.isoformat() if row.last_used_at else None,
+            positive_count=row.positive_count,
+            negative_count=row.negative_count,
+            last_used_at=row.last_used_at,
         )
     
     async def update(self, entity: UserSkillConfidence) -> UserSkillConfidence:
         """Update an existing user skill confidence record."""
-        from datetime import datetime
-        last_used_dt = datetime.fromisoformat(entity.last_used) if entity.last_used else None
         stmt = (
             update(user_skill_confidence)
             .where(
@@ -70,9 +70,11 @@ class PostgresUserSkillConfidenceRepository(Repository[UserSkillConfidence]):
                 )
             )
             .values(
-                confidence_score=entity.confidence_level,
+                confidence_score=entity.confidence_score,
                 usage_count=entity.usage_count,
-                last_used_at=last_used_dt,
+                positive_count=entity.positive_count,
+                negative_count=entity.negative_count,
+                last_used_at=entity.last_used_at,
             )
         )
         await self.session.execute(stmt)
@@ -109,9 +111,11 @@ class PostgresUserSkillConfidenceRepository(Repository[UserSkillConfidence]):
             UserSkillConfidence(
                 user_id=row.user_id,
                 skill_id=row.skill_id,
-                confidence_level=row.confidence_score,
+                confidence_score=row.confidence_score,
                 usage_count=row.usage_count,
-                last_used=row.last_used_at.isoformat() if row.last_used_at else None,
+                positive_count=row.positive_count,
+                negative_count=row.negative_count,
+                last_used_at=row.last_used_at,
             )
             for row in result.fetchall()
         ]
@@ -143,9 +147,11 @@ class PostgresUserSkillConfidenceRepository(Repository[UserSkillConfidence]):
             UserSkillConfidence(
                 user_id=row.user_id,
                 skill_id=row.skill_id,
-                confidence_level=row.confidence_score,
+                confidence_score=row.confidence_score,
                 usage_count=row.usage_count,
-                last_used=row.last_used_at.isoformat() if row.last_used_at else None,
+                positive_count=row.positive_count,
+                negative_count=row.negative_count,
+                last_used_at=row.last_used_at,
             )
             for row in result.fetchall()
         ]

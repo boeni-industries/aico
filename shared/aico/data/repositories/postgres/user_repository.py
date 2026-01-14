@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aico.data.repositories.base import Repository
 from aico.data.tables import user_profiles
-from aico.ai.user.models import UserProfile
+from aico.data.user.models import UserProfile
 from aico.core.logging import get_logger
 
 logger = get_logger("shared.data.repositories.postgres.user")
@@ -77,8 +77,7 @@ class PostgresUserRepository(Repository[UserProfile]):
             UserProfile if found, None otherwise
         """
         stmt = select(user_profiles).where(
-            user_profiles.c.uuid == id,
-            user_profiles.c.is_active == True
+            user_profiles.c.uuid == id
         )
         
         result = await self.session.execute(stmt)
@@ -122,26 +121,14 @@ class PostgresUserRepository(Repository[UserProfile]):
         
         return self._row_to_user(row)
     
-    async def delete(self, id: str) -> None:
-        """
-        Soft delete user (set is_active=False).
-        
-        Args:
-            id: User UUID
-        """
-        stmt = update(user_profiles).where(
-            user_profiles.c.uuid == id
-        ).values(
-            is_active=False,
-            updated_at=datetime.now(UTC)
-        )
-        
+    async def delete(self, entity_id: str) -> bool:
+        """Delete a user (hard delete)."""
+        stmt = delete(user_profiles).where(user_profiles.c.uuid == entity_id)
         result = await self.session.execute(stmt)
-        
         if result.rowcount == 0:
-            raise ValueError(f"User not found: {id}")
-        
-        logger.info(f"Deleted user: {id}")
+            raise ValueError(f"User not found: {entity_id}")
+        logger.info(f"Deleted user: {entity_id}")
+        return True
     
     async def list(self, filters: Optional[Dict[str, Any]] = None, limit: Optional[int] = None) -> List[UserProfile]:
         """

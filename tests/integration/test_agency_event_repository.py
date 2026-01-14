@@ -78,7 +78,7 @@ class TestAgencyEventRepository:
             goal_id=test_goal.goal_id,
             event_type="decision",
             source="engine",
-            payload_json={"action": "goal_created", "details": "Test goal created"},
+            payload={"action": "goal_created", "details": "Test goal created"},
         )
         
         created = await uow.agency_events.create(event)
@@ -96,7 +96,7 @@ class TestAgencyEventRepository:
             user_id=test_user.uuid,
             event_type="metric",
             source="arbiter",
-            payload_json={"metric": "success_rate", "value": 0.85},
+            payload={"metric": "success_rate", "value": 0.85},
         )
         
         await uow.agency_events.create(event)
@@ -115,22 +115,22 @@ class TestAgencyEventRepository:
             user_id=test_user.uuid,
             event_type="plan_update",
             source="planner",
-            payload_json={"status": "draft"},
+            payload={"status": "draft"},
         )
         
         await uow.agency_events.create(event)
         await uow.commit()
         
         # Update the event
-        event.payload_json = {"status": "active", "updated": True}
+        event.payload = {"status": "active", "updated": True}
         updated = await uow.agency_events.update(event)
         await uow.commit()
         
-        assert updated.payload_json["status"] == "active"
+        assert updated.payload["status"] == "active"
         
         # Verify update persisted
         found = await uow.agency_events.get_by_id(event.id)
-        assert found.payload_json["updated"] is True
+        assert found.payload["updated"] is True
     
     @pytest.mark.asyncio
     async def test_delete_event(self, uow, test_user):
@@ -140,7 +140,7 @@ class TestAgencyEventRepository:
             user_id=test_user.uuid,
             event_type="error",
             source="engine",
-            payload_json={"error": "test_error"},
+            payload={"error": "test_error"},
         )
         
         await uow.agency_events.create(event)
@@ -166,7 +166,7 @@ class TestAgencyEventRepository:
                 goal_id=test_goal.goal_id if i < 2 else None,
                 event_type="decision" if i < 2 else "metric",
                 source="engine",
-                payload_json={"index": i},
+                payload={"index": i},
             )
             await uow.agency_events.create(event)
         
@@ -193,7 +193,7 @@ class TestAgencyEventRepository:
                 user_id=test_user.uuid,
                 event_type="trigger",
                 source="engine",
-                payload_json={"count": i},
+                payload={"count": i},
             )
             await uow.agency_events.create(event)
         
@@ -212,7 +212,7 @@ class TestAgencyEventRepository:
                 goal_id=test_goal.goal_id,
                 event_type="decision",
                 source="engine",
-                payload_json={"step": i},
+                payload={"step": i},
             )
             await uow.agency_events.create(event)
         
@@ -232,7 +232,7 @@ class TestAgencyEventRepository:
                 user_id=test_user.uuid,
                 event_type="metric" if i < 2 else "error",
                 source="arbiter",
-                payload_json={"value": i},
+                payload={"value": i},
             )
             await uow.agency_events.create(event)
         

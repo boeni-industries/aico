@@ -79,6 +79,8 @@ class Plan(BaseModel):
 
     plan_id: str
     goal_id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
     status: PlanStatus = PlanStatus.DRAFT
     steps: List[PlanStep] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)

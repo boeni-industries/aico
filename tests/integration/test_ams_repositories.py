@@ -5,6 +5,12 @@ Tests the TrajectoryRepository and FeedbackRepository with real PostgreSQL datab
 """
 
 import pytest
+
+pytest.skip(
+    "Superseded by test_ams_repositories_fixed.py (current PostgreSQL schema + repositories).",
+    allow_module_level=True,
+)
+
 import uuid
 from datetime import datetime, UTC, timedelta
 

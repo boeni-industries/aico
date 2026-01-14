@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.scheduler.models import SchedulerTask
+from aico.data.scheduler.models import SchedulerTask
 from aico.data.tables import scheduler_tasks
 from aico.data.repositories.base import Repository
 

@@ -507,6 +507,8 @@ agency_plans = Table(
     metadata,
     Column('plan_id', String, primary_key=True),
     Column('goal_id', String, nullable=False),
+    Column('title', String),
+    Column('description', String),
     Column('steps_json', JSONB, nullable=False),
     Column('status', String, nullable=False, server_default='draft'),
     Column('metadata_json', JSONB),

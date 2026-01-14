@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.knowledge_graph.models import Node
+from aico.data.kg.models import KGNode as Node
 from aico.data.tables import kg_nodes
 from aico.data.repositories.base import Repository
 
@@ -76,14 +76,20 @@ class PostgresNodesRepository(Repository[Node]):
     
     async def update(self, entity: Node) -> Node:
         """Update an existing KG node."""
+        from datetime import datetime as dt
+
+        valid_until = entity.valid_until
+        if isinstance(valid_until, str):
+            valid_until = dt.fromisoformat(valid_until.replace('Z', '+00:00'))
+
         stmt = (
             update(kg_nodes)
             .where(kg_nodes.c.id == entity.id)
             .values(
                 properties=entity.properties,
                 confidence=entity.confidence,
-                updated_at=entity.updated_at,
-                valid_until=entity.valid_until,
+                updated_at=datetime.now(UTC),
+                valid_until=valid_until,
                 is_current=entity.is_current,
                 canonical_id=entity.canonical_id,
             )

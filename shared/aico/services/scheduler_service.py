@@ -110,17 +110,49 @@ class SchedulerService:
             raise
 
     async def disable_task(self, task_id: str) -> bool:
-        """Disable a task (set is_active=False)."""
+        """Disable a task (set enabled=False)."""
         try:
             task = await self.get_task(task_id)
             if not task:
                 return False
             
-            task.is_active = False
-            await self.update_task(task.__dict__)
+            task_data = {
+                "task_id": task.task_id,
+                "task_class": task.task_class,
+                "schedule": task.schedule,
+                "config": task.config,
+                "enabled": False,
+                "created_at": task.created_at,
+                "updated_at": datetime.now(UTC),
+            }
+            await self.update_task(task_data)
             return True
         except Exception as e:
             logger.error(f"[SCHEDULER_SERVICE] Failed to disable task: {e}", extra={"task_id": task_id})
+            raise
+
+    async def enable_task(self, task_id: str) -> bool:
+        """Enable a task."""
+        try:
+            task = await self.get_task(task_id)
+            if not task:
+                return False
+            
+            task_data = {
+                "task_id": task.task_id,
+                "task_class": task.task_class,
+                "schedule": task.schedule,
+                "config": task.config,
+                "enabled": True,
+                "created_at": task.created_at,
+                "updated_at": datetime.now(UTC),
+            }
+            
+            await self.update_task(task_data)
+            logger.info("[SCHEDULER_SERVICE] Enabled task", extra={"task_id": task_id})
+            return True
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to enable task: {e}", extra={"task_id": task_id})
             raise
 
     # ==================== Execution Operations ====================

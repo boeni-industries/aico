@@ -6,7 +6,7 @@ import pytest
 import uuid
 from datetime import datetime, UTC
 
-from aico.data.user.relationship_models import UserSkillConfidence
+from aico.data.user.models import UserSkillConfidence
 from aico.data.user.models import UserProfile
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
@@ -52,29 +52,29 @@ class TestUserSkillConfidenceRepository:
         skill_conf = UserSkillConfidence(
             user_id=test_user.uuid,
             skill_id=f"test_skill_1_{uuid.uuid4().hex[:8]}",
-            confidence_level=0.8,
+            confidence_score=0.8,
             usage_count=5,
-            last_used=datetime.now(UTC).isoformat(),
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+            positive_count=4,
+            negative_count=1,
+            last_used_at=datetime.now(UTC),
         )
         
         created = await uow.user_skill_confidence.create(skill_conf)
         await uow.commit()
         
         assert created.user_id == test_user.uuid
-        assert created.confidence_level == 0.8
+        assert created.confidence_score == 0.8
     
     @pytest.mark.asyncio
     async def test_get_skill_confidence_by_id(self, uow, test_user):
         skill_conf = UserSkillConfidence(
             user_id=test_user.uuid,
             skill_id=f"test_skill_2_{uuid.uuid4().hex[:8]}",
-            confidence_level=0.9,
+            confidence_score=0.9,
             usage_count=10,
-            last_used=datetime.now(UTC).isoformat(),
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+            positive_count=8,
+            negative_count=2,
+            last_used_at=datetime.now(UTC),
         )
         
         created = await uow.user_skill_confidence.create(skill_conf)
@@ -82,29 +82,29 @@ class TestUserSkillConfidenceRepository:
         
         found = await uow.user_skill_confidence.get_by_id(f"{test_user.uuid}:{created.skill_id}")
         assert found is not None
-        assert found.confidence_level == 0.9
+        assert found.confidence_score == 0.9
     
     @pytest.mark.asyncio
     async def test_update_skill_confidence(self, uow, test_user):
         skill_conf = UserSkillConfidence(
             user_id=test_user.uuid,
             skill_id=f"test_skill_3_{uuid.uuid4().hex[:8]}",
-            confidence_level=0.5,
+            confidence_score=0.5,
             usage_count=1,
-            last_used=datetime.now(UTC).isoformat(),
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+            positive_count=1,
+            negative_count=0,
+            last_used_at=datetime.now(UTC),
         )
         
         created = await uow.user_skill_confidence.create(skill_conf)
         await uow.commit()
         
-        created.confidence_level = 0.7
+        created.confidence_score = 0.7
         created.usage_count = 3
         updated = await uow.user_skill_confidence.update(created)
         await uow.commit()
         
-        assert updated.confidence_level == 0.7
+        assert updated.confidence_score == 0.7
         
         found = await uow.user_skill_confidence.get_by_id(f"{test_user.uuid}:{created.skill_id}")
         assert found.usage_count == 3
@@ -114,11 +114,11 @@ class TestUserSkillConfidenceRepository:
         skill_conf = UserSkillConfidence(
             user_id=test_user.uuid,
             skill_id="test_skill_4",
-            confidence_level=0.6,
+            confidence_score=0.6,
             usage_count=2,
-            last_used=datetime.now(UTC).isoformat(),
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+            positive_count=1,
+            negative_count=1,
+            last_used_at=datetime.now(UTC),
         )
         
         await uow.user_skill_confidence.create(skill_conf)
@@ -138,11 +138,11 @@ class TestUserSkillConfidenceRepository:
             skill_conf = UserSkillConfidence(
                 user_id=test_user.uuid,
                 skill_id=f"list_skill_{i}_{uuid.uuid4().hex[:8]}",
-                confidence_level=0.5 + (i * 0.1),
+                confidence_score=0.5 + (i * 0.1),
                 usage_count=i,
-                last_used=datetime.now(UTC).isoformat(),
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
+                positive_count=i,
+                negative_count=0,
+                last_used_at=datetime.now(UTC),
             )
             await uow.user_skill_confidence.create(skill_conf)
         
@@ -157,11 +157,11 @@ class TestUserSkillConfidenceRepository:
             skill_conf = UserSkillConfidence(
                 user_id=test_user.uuid,
                 skill_id=f"count_skill_{i}_{uuid.uuid4().hex[:8]}",
-                confidence_level=0.5,
+                confidence_score=0.5,
                 usage_count=i,
-                last_used=datetime.now(UTC).isoformat(),
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
+                positive_count=i,
+                negative_count=0,
+                last_used_at=datetime.now(UTC),
             )
             await uow.user_skill_confidence.create(skill_conf)
         
@@ -176,11 +176,11 @@ class TestUserSkillConfidenceRepository:
             skill_conf = UserSkillConfidence(
                 user_id=test_user.uuid,
                 skill_id=f"user_skill_{i}_{uuid.uuid4().hex[:8]}",
-                confidence_level=0.5 + (i * 0.1),
+                confidence_score=0.5 + (i * 0.1),
                 usage_count=i,
-                last_used=datetime.now(UTC).isoformat(),
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
+                positive_count=i,
+                negative_count=0,
+                last_used_at=datetime.now(UTC),
             )
             await uow.user_skill_confidence.create(skill_conf)
         

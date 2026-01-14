@@ -278,8 +278,10 @@ CREATE INDEX IF NOT EXISTS idx_plan_executions_user ON "agency_plan_executions"(
 CREATE TABLE IF NOT EXISTS agency_plans (
                 plan_id TEXT PRIMARY KEY,
                 goal_id TEXT NOT NULL,
+                title TEXT,
+                description TEXT,
                 status TEXT NOT NULL DEFAULT 'draft',    -- draft, active, completed, abandoned
-                steps_json JSONB NOT NULL,                -- JSONB array of steps for early phases
+                steps_json JSONB NOT NULL,
                 metadata_json JSONB,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

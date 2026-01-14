@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.user.models import UserProfile
+from aico.data.user.models import UserProfile
 from aico.data.tables import user_profiles
 from aico.data.repositories.base import Repository
 
@@ -73,7 +73,7 @@ class PostgresUserProfilesRepository(Repository[UserProfile]):
         return entity
     
     async def delete(self, entity_id: str) -> bool:
-        """Delete a user profile."""
+        """Delete a user (hard delete)."""
         stmt = delete(user_profiles).where(user_profiles.c.uuid == entity_id)
         result = await self.session.execute(stmt)
         return result.rowcount > 0

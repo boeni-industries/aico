@@ -78,7 +78,7 @@ class TestAgencyReflectionNotesRepository:
             related_goal_id=test_goal.goal_id,
             title="My First Reflection",
             content="Today I learned something important about my goal.",
-            tags_json={"tags": ["learning", "progress"]},
+            tags={"tags": ["learning", "progress"]},
         )
         
         created = await uow.agency_reflection_notes.create(note)
@@ -114,7 +114,7 @@ class TestAgencyReflectionNotesRepository:
             user_id=test_user.uuid,
             title="Original Title",
             content="Original content",
-            tags_json={"tags": ["draft"]},
+            tags={"tags": ["draft"]},
         )
         
         await uow.agency_reflection_notes.create(note)
@@ -123,7 +123,7 @@ class TestAgencyReflectionNotesRepository:
         # Update the note
         note.title = "Updated Title"
         note.content = "Updated content with more details"
-        note.tags_json = {"tags": ["final", "reviewed"]}
+        note.tags = {"tags": ["final", "reviewed"]}
         updated = await uow.agency_reflection_notes.update(note)
         await uow.commit()
         
@@ -132,7 +132,8 @@ class TestAgencyReflectionNotesRepository:
         # Verify update persisted
         found = await uow.agency_reflection_notes.get_by_id(note.note_id)
         assert found.content == "Updated content with more details"
-        assert found.tags_json["tags"] == ["final", "reviewed"]
+        assert found.tags is not None
+        assert found.tags["tags"] == ["final", "reviewed"]
     
     @pytest.mark.asyncio
     async def test_delete_note(self, uow, test_user):

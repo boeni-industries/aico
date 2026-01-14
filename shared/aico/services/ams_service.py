@@ -58,7 +58,19 @@ class AMSService:
         try:
             return await self.uow.ams_trajectories.list(filters={"user_id": user_id}, limit=limit)
         except Exception as e:
-            logger.error(f"[AMS_SERVICE] Failed to list trajectories: {e}", extra={"user_id": user_id})
+            logger.error(f"[AMS_SERVICE] Failed to list user trajectories: {e}", extra={"user_id": user_id})
+            raise
+
+    async def delete_trajectory(self, trajectory_id: str) -> bool:
+        """Delete a trajectory."""
+        try:
+            success = await self.uow.ams_trajectories.delete(trajectory_id)
+            await self.uow.commit()
+            logger.info("[AMS_SERVICE] Deleted trajectory", extra={"trajectory_id": trajectory_id})
+            return success
+        except Exception as e:
+            logger.error(f"[AMS_SERVICE] Failed to delete trajectory: {e}", extra={"trajectory_id": trajectory_id})
+            await self.uow.rollback()
             raise
 
     async def update_trajectory(self, trajectory_data: Dict[str, Any]) -> Dict[str, Any]:

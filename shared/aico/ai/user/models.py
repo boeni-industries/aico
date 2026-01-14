@@ -12,6 +12,7 @@ from enum import Enum
 
 class UserType(str, Enum):
     """User type enumeration."""
+    HUMAN = "human"
     PARENT = "parent"
     CHILD = "child"
     ADMIN = "admin"

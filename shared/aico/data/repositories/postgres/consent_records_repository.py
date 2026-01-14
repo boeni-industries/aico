@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.consent.models import ConsentRecord
+from aico.data.consent.models import ConsentRecord
 from aico.data.tables import consent_records
 from aico.data.repositories.base import Repository
 
@@ -28,7 +28,7 @@ class PostgresConsentRecordsRepository(Repository[ConsentRecord]):
             user_id=entity.user_id,
             consent_scope=entity.consent_scope,
             decision=entity.decision,
-            context_json=json.dumps(entity.context) if entity.context else None,
+            context_json=json.dumps(entity.context_json) if entity.context_json else None,
             granted_at=entity.granted_at,
             expires_at=entity.expires_at,
         )
@@ -61,8 +61,8 @@ class PostgresConsentRecordsRepository(Repository[ConsentRecord]):
             .where(consent_records.c.consent_id == entity.consent_id)
             .values(
                 decision=entity.decision,
+                context_json=json.dumps(entity.context_json) if entity.context_json else None,
                 expires_at=entity.expires_at,
-                context_json=json.dumps(entity.context) if entity.context else None,
             )
         )
         await self.session.execute(stmt)

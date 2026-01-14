@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.auth.models import Session
+from aico.data.auth.models import Session
 from aico.data.tables import auth_sessions
 from aico.data.repositories.base import Repository
 
@@ -23,14 +23,14 @@ class PostgresSessionRepository(Repository[Session]):
     async def create(self, entity: Session) -> Session:
         """Create a new session."""
         stmt = auth_sessions.insert().values(
-            uuid=entity.uuid,
-            user_uuid=entity.user_uuid,
-            device_uuid=entity.device_uuid,
-            jwt_token_hash=entity.jwt_token_hash,
+            uuid=entity.session_id,
+            user_uuid=entity.user_id,
+            device_uuid=entity.device_id,
+            jwt_token_hash=getattr(entity, 'jwt_token_hash', None),
             expires_at=entity.expires_at,
             created_at=entity.created_at,
             is_active=entity.is_active,
-            session_type=entity.session_type,
+            session_type=getattr(entity, 'session_type', 'web'),
         )
         await self.session.execute(stmt)
         return entity
@@ -45,9 +45,9 @@ class PostgresSessionRepository(Repository[Session]):
             return None
         
         return Session(
-            uuid=row.uuid,
-            user_uuid=row.user_uuid,
-            device_uuid=row.device_uuid,
+            session_id=row.uuid,
+            user_id=row.user_uuid,
+            device_id=row.device_uuid,
             jwt_token_hash=row.jwt_token_hash,
             expires_at=row.expires_at,
             created_at=row.created_at,
@@ -59,7 +59,7 @@ class PostgresSessionRepository(Repository[Session]):
         """Update an existing session."""
         stmt = (
             update(auth_sessions)
-            .where(auth_sessions.c.uuid == entity.uuid)
+            .where(auth_sessions.c.uuid == entity.session_id)
             .values(
                 jwt_token_hash=entity.jwt_token_hash,
                 is_active=entity.is_active,

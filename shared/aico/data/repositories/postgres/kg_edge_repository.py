@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.knowledge_graph.models import KGEdge
+from aico.data.kg.models import KGEdge
 from aico.data.tables import kg_edges
 from aico.data.repositories.base import Repository
 
@@ -73,9 +73,7 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
             .values(
                 properties=entity.properties,
                 confidence=entity.confidence,
-                source_text=entity.source_text,
-                updated_at=datetime.now(UTC),
-                valid_from=entity.valid_from,
+                updated_at=entity.updated_at or datetime.now(UTC),
                 valid_until=entity.valid_until,
                 is_current=entity.is_current,
             )

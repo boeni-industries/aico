@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.knowledge_graph.models import Edge
+from aico.data.kg.models import KGEdge as Edge
 from aico.data.tables import kg_edges
 from aico.data.repositories.base import Repository
 
@@ -82,10 +82,10 @@ class PostgresEdgesRepository(Repository[Edge]):
             .values(
                 properties=entity.properties,
                 confidence=entity.confidence,
-                updated_at=entity.updated_at,
+                source_text=entity.source_text,
+                updated_at=datetime.now(UTC),
                 valid_until=entity.valid_until,
                 is_current=entity.is_current,
-                reason=entity.reason,
             )
         )
         await self.session.execute(stmt)
@@ -97,21 +97,21 @@ class PostgresEdgesRepository(Repository[Edge]):
         result = await self.session.execute(stmt)
         return result.rowcount > 0
     
-    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[Edge]:
+    async def list_all(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[Edge]:
         """List KG edges with optional filters."""
         stmt = select(kg_edges)
         
         if filters:
-            conditions = []
             if 'user_id' in filters:
-                conditions.append(kg_edges.c.user_id == filters['user_id'])
+                stmt = stmt.where(kg_edges.c.user_id == filters['user_id'])
+            if 'source_id' in filters:
+                stmt = stmt.where(kg_edges.c.source_id == filters['source_id'])
+            if 'target_id' in filters:
+                stmt = stmt.where(kg_edges.c.target_id == filters['target_id'])
             if 'relation_type' in filters:
-                conditions.append(kg_edges.c.relation_type == filters['relation_type'])
+                stmt = stmt.where(kg_edges.c.relation_type == filters['relation_type'])
             if 'is_current' in filters:
-                conditions.append(kg_edges.c.is_current == filters['is_current'])
-            
-            if conditions:
-                stmt = stmt.where(and_(*conditions))
+                stmt = stmt.where(kg_edges.c.is_current == filters['is_current'])
         
         stmt = stmt.order_by(kg_edges.c.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
@@ -126,14 +126,18 @@ class PostgresEdgesRepository(Repository[Edge]):
                 properties=row.properties,
                 confidence=row.confidence,
                 source_text=row.source_text,
-                created_at=row.created_at.isoformat() if row.created_at else None,
-                updated_at=row.updated_at.isoformat() if row.updated_at else None,
-                valid_from=row.valid_from.isoformat() if row.valid_from else None,
-                valid_until=row.valid_until.isoformat() if row.valid_until else None,
+                created_at=row.created_at if isinstance(row.created_at, str) else (row.created_at.isoformat() if row.created_at else None),
+                updated_at=row.updated_at if isinstance(row.updated_at, str) else (row.updated_at.isoformat() if row.updated_at else None),
+                valid_from=row.valid_from if isinstance(row.valid_from, str) else (row.valid_from.isoformat() if row.valid_from else None),
+                valid_until=row.valid_until if isinstance(row.valid_until, str) else (row.valid_until.isoformat() if row.valid_until else None),
                 is_current=row.is_current,
             )
             for row in result.fetchall()
         ]
+    
+    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[Edge]:
+        """List KG edges - alias for list_all."""
+        return await self.list_all(filters, limit, offset)
     
     async def count(self, filters: Optional[dict] = None) -> int:
         """Count KG edges with optional filters."""
@@ -178,10 +182,10 @@ class PostgresEdgesRepository(Repository[Edge]):
                 properties=row.properties,
                 confidence=row.confidence,
                 source_text=row.source_text,
-                created_at=row.created_at.isoformat() if row.created_at else None,
-                updated_at=row.updated_at.isoformat() if row.updated_at else None,
-                valid_from=row.valid_from.isoformat() if row.valid_from else None,
-                valid_until=row.valid_until.isoformat() if row.valid_until else None,
+                created_at=row.created_at if isinstance(row.created_at, str) else (row.created_at.isoformat() if row.created_at else None),
+                updated_at=row.updated_at if isinstance(row.updated_at, str) else (row.updated_at.isoformat() if row.updated_at else None),
+                valid_from=row.valid_from if isinstance(row.valid_from, str) else (row.valid_from.isoformat() if row.valid_from else None),
+                valid_until=row.valid_until if isinstance(row.valid_until, str) else (row.valid_until.isoformat() if row.valid_until else None),
                 is_current=row.is_current,
             )
             for row in result.fetchall()

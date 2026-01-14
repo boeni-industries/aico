@@ -109,17 +109,22 @@ class TestUserService:
         success = await user_service.delete_user(created.uuid)
         assert success is True
         
-        deleted = await user_service.get_user(created.uuid)
-        assert deleted.is_active is False
+        # Verify user is deactivated by fetching again
+        deactivated = await user_service.get_user(created.uuid)
+        assert deactivated is not None
+        assert deactivated.is_active is False
 
     @pytest.mark.asyncio
     async def test_create_session(self, user_service, test_user):
         """Test creating a user session."""
+        from datetime import timedelta
         session_data = {
             "session_id": str(uuid.uuid4()),
             "user_id": test_user.uuid,
             "device_id": str(uuid.uuid4()),
             "is_active": True,
+            "jwt_token_hash": "test_hash_" + str(uuid.uuid4()),
+            "expires_at": datetime.now(UTC) + timedelta(hours=24),
             "created_at": datetime.now(UTC),
         }
         
@@ -130,11 +135,14 @@ class TestUserService:
     @pytest.mark.asyncio
     async def test_invalidate_session(self, user_service, test_user):
         """Test invalidating a session."""
+        from datetime import timedelta
         session_data = {
             "session_id": str(uuid.uuid4()),
             "user_id": test_user.uuid,
             "device_id": str(uuid.uuid4()),
             "is_active": True,
+            "jwt_token_hash": "test_hash_" + str(uuid.uuid4()),
+            "expires_at": datetime.now(UTC) + timedelta(hours=24),
             "created_at": datetime.now(UTC),
         }
         created = await user_service.create_session(session_data)

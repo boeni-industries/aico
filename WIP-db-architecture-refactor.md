@@ -16,6 +16,12 @@
 - ✅ **Postgres Ready** (containerized, schema installed)
 - ✅ **Full LibSQL Removal** (after migration complete)
 
+**Data Model Boundary (Best Practice):**
+- ✅ **Domain models live in `aico.ai.*`** (business logic / services)
+- ✅ **Persistence models live in `aico.data.<ctx>.models`** (repository contract; 1:1 with DB schema)
+- ✅ **Repositories + Unit of Work only operate on persistence models**
+- ✅ **Services map between domain ↔ persistence models** (explicit adapters/mappers; no SQL in services)
+
 **See Also:** `CODEBASE_ARCHITECTURE_ANALYSIS.md` for detailed findings.
 
 ---
@@ -43,6 +49,32 @@
 - **ChromaDB** - Vector embeddings (✅ keep as-is)
 - **LMDB** - Working memory (✅ keep as-is)
 - **LibSQL** - ❌ **TO BE COMPLETELY REMOVED** after migration
+
+---
+
+## 1.1 Data Access Architecture (Best Practice)
+
+**Goal:** One clear DB access path, explicit model boundaries, zero raw SQL outside repositories.
+
+**Layer Responsibilities:**
+- **`shared/aico/data/postgres/schema.sql`**: deployment source of truth for schema
+- **`shared/aico/data/tables.py`**: SQLAlchemy Core table definitions (types + constraints mirrored from schema)
+- **`shared/aico/data/<ctx>/models.py`**: persistence models (repository contract; 1:1 with DB schema)
+- **`shared/aico/data/repositories/*`**: only place where SQLAlchemy Core queries are written
+- **`shared/aico/data/uow.py`**: transaction boundary + repository access
+- **`shared/aico/services/*`**: business operations; may map domain ↔ persistence; no SQL
+- **`shared/aico/ai/*`**: domain models + engines; no SQL
+
+**Rules (Non-Negotiable):**
+- No raw SQL outside `shared/aico/data/repositories/`
+- No SQLAlchemy usage outside `shared/aico/data/repositories/` and `shared/aico/data/tables.py`
+- Repositories accept/return persistence models (`aico.data.<ctx>.models`)
+- Services/engines must not depend on DB schema details (columns, JSONB, TIMESTAMPTZ)
+- Any domain↔persistence conversion lives in services (or dedicated mappers), not inside routers
+
+**Testing Strategy:**
+- Repository integration tests validate schema ↔ repository ↔ persistence model contracts
+- Service integration tests validate domain behavior and mapping correctness
 
 ---
 
@@ -129,11 +161,10 @@ async with uow_factory() as uow:
 ### 2.3 Migration Progress Tracking
 
 **Data Layer (Repositories + Tests):**
-- ✅ 77/77 repositories implemented (100%)
-- ✅ 468/468 integration tests passing (100%)
-- ✅ All FK constraints validated
-- ✅ All unique constraints validated
-- ✅ Schema fully deployed
+- ✅ Core repository + Unit of Work patterns implemented
+- ✅ Service integration tests passing (see `tests/integration/test_*_service.py`)
+- ⚠️ Repository integration test suite currently blocked by missing persistence-model layer modules (e.g. `aico.data.<ctx>.models`) and import mismatches; this will be resolved by restoring the persistence model layer as the canonical repository contract
+- ✅ Schema deployed via `shared/aico/data/postgres/schema.sql`
 
 **API Layer (Backend Routers):**
 - ✅ 1/20 routers migrated (users - partial)
@@ -189,7 +220,7 @@ async with uow_factory() as uow:
 
 ### Phase 2: Data Layer - Repositories & Tests (Week 3-4) ✅ **COMPLETE**
 
-**Status:** **77 repositories implemented, 468 integration tests passing (100%)**
+**Status:** **Repositories implemented; repository-test suite being aligned to the persistence model layer (`aico.data.<ctx>.models`) as the canonical contract**
 
 **Repository Coverage by Domain:**
 
@@ -219,16 +250,18 @@ async with uow_factory() as uow:
 
 13. ✅ **Lesson (1 repository)** - LessonRepository
 
-**Test Coverage:** 64 integration test files, 468 tests, 100% passing
+**Test Coverage:**
+- Service integration tests (current): `tests/integration/test_*_service.py`
+- Repository integration tests (current): require persistence model layer alignment to ensure consistent imports and 1:1 schema contracts
 
 **Deliverables:**
 - ✅ All 77 repositories implemented with full CRUD operations
-- ✅ Complete test coverage for all repositories
-- ✅ All FK constraints, unique constraints, and schema validations working
+- ⚠️ Repository integration tests: pending persistence model layer alignment (`aico.data.<ctx>.models`) and import cleanups
+- ⚠️ Schema validation status: verify via repository integration tests once collection is unblocked
 - ✅ Unit of Work pattern fully integrated
 - ✅ Connection pooling operational
 
-### Phase 3: Business Logic Layer Migration (Week 5-6) ✅ **COMPLETE**
+### Phase 3: Business Logic Layer Migration (Week 5-6) ⚠️ **PARTIAL**
 
 **Goal:** Replace raw SQL in shared business logic modules with repository calls
 
@@ -288,53 +321,20 @@ async with uow_factory() as uow:
 - ✅ **6 service classes created** (Agency, KG, AMS, Scheduler, User, Memory)
 - ✅ **All services compile successfully**
 - ✅ **~1,450 SQL calls replaced** with repository operations
-- ✅ **ARCHITECTURAL REFACTORING 100% COMPLETE:** Single domain model approach fully implemented
-  - ✅ Created 7 new domain model modules (user, auth, scheduler, ams, system, consent, conversation)
-  - ✅ **Migrated ALL 77/77 repositories** to use domain models with internal DB mapping
-  - ✅ **Deleted all 25+ old `aico.data.*/models.py` files** - no duplication remains
-  - ✅ All 77 repositories compile successfully without old models
-  - ✅ All 6 services compile successfully
-  - ✅ Standard Domain-Driven Design repository pattern fully implemented
-  - ✅ Domain models in `aico.ai.*` are single source of truth
-  - ✅ Repositories handle DB mapping internally (enum conversions, JSON serialization)
-  - ✅ Zero model duplication - clean architecture achieved
-- ✅ **SERVICE INTEGRATION TESTING: 100% COMPLETE - ALL 24 TESTS PASSING**
-  - ✅ **AgencyService: 7/7 tests passing** - Goals, plans, CRUD, filtering, status updates
-  - ✅ **KGService: 4/4 tests passing** - Node/edge creation, retrieval, listing
-  - ✅ **UserService: 4/4 tests passing** - User CRUD, email lookup, active users
-  - ✅ **SchedulerService: 3/3 tests passing** - Task creation, retrieval, active task listing
-  - ✅ **AMSService: 3/3 tests passing** - Trajectory creation, retrieval, user trajectory listing
-  - ✅ **MemoryService: 3/3 tests passing** - Memory metadata CRUD operations
-  - **All 6 services fully functional with domain models aligned to PostgreSQL schema**
-  - **Fixed domain model mismatches**: SchedulerTask, AMSTrajectory, AMSUserMemory rewritten to match actual database schema
-- ✅ **CONSUMER MIGRATION: 100% COMPLETE**
-  - ✅ **AgencyEngine** migrated to use AgencyService (with circular import fix)
-  - ✅ **PlanExecutor** migrated to use AgencyService
-  - ✅ **goal_extractor** migrated to use AgencyService
-  - ✅ **Backend test fixtures** migrated to AgencyService
-  - ✅ **Backend integration tests** migrated to AgencyService
-  - ✅ **Legacy cleanup:** GoalStore and PlanStore marked as deleted in `store.py`
-  - ✅ **Module exports:** Removed GoalStore/PlanStore from `__init__.py`
-  - ✅ **All critical consumers migrated** - Phase 4 will migrate API layer consumers
-- ✅ **PHASE 3 STATUS: 100% COMPLETE**
-  - ✅ Architecture: Clean DDD with domain models (single source of truth)
-  - ✅ Repositories: All 77 using domain models with internal DB mapping
-  - ✅ Services: All 6 created, tested, and fully functional
-  - ✅ **Integration tests:** All services tested and passing
-  - ✅ **Consumer migration:** All critical consumers migrated
-  - ✅ **Legacy cleanup:** GoalStore/PlanStore deleted from active use
-- ✅ **PHASE 3 DELIVERABLES: 100% COMPLETE**
-  - ✅ Replace raw SQL in business logic with repository calls
-  - ✅ Create service layer for all 6 domains
-  - ✅ Migrate critical consumers (AgencyEngine, executors, extractors)
-  - ✅ Verify services work through integration tests
-  - ✅ **PHASE 3 COMPLETE - READY FOR PHASE 4**
+- ✅ **Data model boundary clarified (best practice):**
+  - ✅ Domain models in `aico.ai.*` (business logic / services)
+  - ✅ Persistence models in `aico.data.<ctx>.models` (repository contract; 1:1 with DB schema)
+  - ✅ Repositories + Unit of Work operate on persistence models only
+  - ✅ Services provide explicit mapping/adapters between domain ↔ persistence
+- ✅ **SERVICE INTEGRATION TESTING:** Service test suite passing (`tests/integration/test_*_service.py`)
+- ⚠️ **REPOSITORY INTEGRATION TESTING:** Requires persistence model layer alignment so `pytest tests/` collects and runs repository tests cleanly
+- ⚠️ **PHASE 3 STATUS:** Core business-logic refactor complete (services + UoW usage). Persistence-model layer restoration and repository-test alignment is a remaining work item.
 
 ### Phase 4: API Layer Migration (Week 7-8) ⚠️ **PENDING**
 
 **Goal:** Replace all raw SQL in API routers with service/repository calls
 
-**Prerequisites:** ✅ Business logic layer migrated (Phase 3 complete)
+**Prerequisites:** ⚠️ Service layer migrated; persistence-model layer alignment + repository-test suite restoration pending
 
 **API Routers to Migrate (20 routers, ~100+ endpoints):**
 

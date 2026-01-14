@@ -162,7 +162,7 @@ class KGService:
             logger.info("[KG_SERVICE] Updated edge", extra={"edge_id": edge.id})
             return updated
         except Exception as e:
-            logger.error(f"[KG_SERVICE] Failed to update edge: {e}")
+            logger.error(f"[KG_SERVICE] Failed to update edge: {e}", extra={"edge_id": edge.id})
             await self.uow.rollback()
             raise
 

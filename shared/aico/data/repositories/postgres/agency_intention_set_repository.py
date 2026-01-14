@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import select, insert, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from aico.data.tables import agency_intention_set
-from aico.ai.agency.models import AgencyIntentionSet
+from aico.data.agency.goal_models import AgencyIntentionSet
 
 
 class PostgresAgencyIntentionSetRepository:

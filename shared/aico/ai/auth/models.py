@@ -17,8 +17,10 @@ class Session(BaseModel):
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     is_active: bool = True
-    expires_at: datetime
+    expires_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
+    jwt_token_hash: Optional[str] = None
+    session_type: str = "web"
     metadata: dict = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now())
 

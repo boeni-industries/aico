@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.agency.models import AgencyReflectionNote
+from aico.data.agency.models import AgencyReflectionNote
 from aico.data.tables import agency_reflection_notes
 from aico.data.repositories.base import Repository
 
@@ -53,7 +53,7 @@ class PostgresAgencyReflectionNotesRepository(Repository[AgencyReflectionNote]):
             related_plan_id=row.related_plan_id,
             title=row.title,
             content=row.content,
-            tags_json=row.tags_json,
+            tags=json.loads(row.tags_json) if row.tags_json else None,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

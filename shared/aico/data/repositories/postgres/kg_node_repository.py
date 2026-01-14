@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.knowledge_graph.models import KGNode
+from aico.data.kg.models import KGNode
 from aico.data.tables import kg_nodes
 from aico.data.repositories.base import Repository
 
@@ -22,6 +22,29 @@ class PostgresKGNodeRepository(Repository[KGNode]):
     
     async def create(self, entity: KGNode) -> KGNode:
         """Create a new KG node."""
+        from datetime import datetime as dt
+        
+        # Parse string timestamps to datetime objects if needed
+        created_at = entity.created_at
+        if isinstance(created_at, str):
+            created_at = dt.fromisoformat(created_at.replace('Z', '+00:00'))
+        elif not created_at:
+            created_at = datetime.now(UTC)
+            
+        updated_at = entity.updated_at
+        if isinstance(updated_at, str):
+            updated_at = dt.fromisoformat(updated_at.replace('Z', '+00:00'))
+        elif not updated_at:
+            updated_at = datetime.now(UTC)
+            
+        valid_from = entity.valid_from
+        if isinstance(valid_from, str):
+            valid_from = dt.fromisoformat(valid_from.replace('Z', '+00:00'))
+            
+        valid_until = entity.valid_until
+        if isinstance(valid_until, str):
+            valid_until = dt.fromisoformat(valid_until.replace('Z', '+00:00'))
+        
         stmt = kg_nodes.insert().values(
             id=entity.id,
             user_id=entity.user_id,
@@ -29,11 +52,11 @@ class PostgresKGNodeRepository(Repository[KGNode]):
             properties=entity.properties,
             confidence=entity.confidence,
             source_text=entity.source_text,
-            created_at=entity.created_at or datetime.now(UTC),
-            updated_at=entity.updated_at or datetime.now(UTC),
+            created_at=created_at,
+            updated_at=updated_at,
             language=entity.language,
-            valid_from=entity.valid_from,
-            valid_until=entity.valid_until,
+            valid_from=valid_from,
+            valid_until=valid_until,
             is_current=entity.is_current,
             canonical_id=entity.canonical_id,
             aliases_json=entity.aliases_json,
@@ -57,11 +80,11 @@ class PostgresKGNodeRepository(Repository[KGNode]):
             properties=row.properties,
             confidence=row.confidence,
             source_text=row.source_text,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            created_at=row.created_at.isoformat() if row.created_at else None,
+            updated_at=row.updated_at.isoformat() if row.updated_at else None,
             language=row.language,
-            valid_from=row.valid_from,
-            valid_until=row.valid_until,
+            valid_from=row.valid_from.isoformat() if row.valid_from else None,
+            valid_until=row.valid_until.isoformat() if row.valid_until else None,
             is_current=row.is_current,
             canonical_id=row.canonical_id,
             aliases_json=row.aliases_json,
@@ -69,6 +92,17 @@ class PostgresKGNodeRepository(Repository[KGNode]):
     
     async def update(self, entity: KGNode) -> KGNode:
         """Update an existing KG node."""
+        from datetime import datetime as dt
+        
+        # Parse string timestamps to datetime objects if needed
+        valid_from = entity.valid_from
+        if isinstance(valid_from, str):
+            valid_from = dt.fromisoformat(valid_from.replace('Z', '+00:00'))
+        
+        valid_until = entity.valid_until
+        if isinstance(valid_until, str):
+            valid_until = dt.fromisoformat(valid_until.replace('Z', '+00:00'))
+        
         stmt = (
             update(kg_nodes)
             .where(kg_nodes.c.id == entity.id)
@@ -78,8 +112,8 @@ class PostgresKGNodeRepository(Repository[KGNode]):
                 source_text=entity.source_text,
                 updated_at=datetime.now(UTC),
                 language=entity.language,
-                valid_from=entity.valid_from,
-                valid_until=entity.valid_until,
+                valid_from=valid_from,
+                valid_until=valid_until,
                 is_current=entity.is_current,
                 canonical_id=entity.canonical_id,
                 aliases_json=entity.aliases_json,
@@ -123,11 +157,11 @@ class PostgresKGNodeRepository(Repository[KGNode]):
                 properties=row.properties,
                 confidence=row.confidence,
                 source_text=row.source_text,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
+                created_at=row.created_at.isoformat() if row.created_at else None,
+                updated_at=row.updated_at.isoformat() if row.updated_at else None,
                 language=row.language,
-                valid_from=row.valid_from,
-                valid_until=row.valid_until,
+                valid_from=row.valid_from.isoformat() if row.valid_from else None,
+                valid_until=row.valid_until.isoformat() if row.valid_until else None,
                 is_current=row.is_current,
                 canonical_id=row.canonical_id,
                 aliases_json=row.aliases_json,

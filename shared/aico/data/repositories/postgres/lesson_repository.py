@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.agency.models import Lesson
+from aico.data.agency.models import Lesson
 from aico.data.tables import agency_lessons
 from aico.data.repositories.base import Repository
 
@@ -58,30 +58,25 @@ class PostgresLessonRepository(Repository[Lesson]):
         if not row:
             return None
         
-        from aico.ai.agency.models import LessonType, TargetKind, LessonScope, LessonStatus, ProposedChange
         import json
         
         return Lesson(
             lesson_id=row.lesson_id,
             user_id=row.user_id,
-            lesson_type=LessonType(row.lesson_type),
-            target_kind=TargetKind(row.target_kind),
+            lesson_type=row.lesson_type,
+            target_kind=row.target_kind,
             target_id=row.target_id,
-            summary_text=row.summary_text,
-            proposed_change=json.loads(row.proposed_change) if row.proposed_change else {},
+            observation=row.observation,
+            proposed_change=json.loads(row.proposed_change) if row.proposed_change else None,
+            rationale=row.rationale,
             confidence=row.confidence,
-            metrics_basis=json.loads(row.metrics_basis) if row.metrics_basis else None,
-            scope=LessonScope(row.scope),
-            status=LessonStatus(row.status),
-            superseded_by=row.superseded_by,
+            impact_estimate=row.impact_estimate,
+            scope=row.scope,
+            status=row.status,
+            approved_at=row.approved_at,
+            rejected_at=row.rejected_at,
             applied_at=row.applied_at,
-            applied_by=row.applied_by,
-            source_reflection_run_id=row.source_reflection_run_id,
-            evidence_window_start=row.evidence_window_start,
-            evidence_window_end=row.evidence_window_end,
-            related_goal_ids=row.related_goal_ids.split(',') if row.related_goal_ids else [],
-            related_trajectory_ids=row.related_trajectory_ids.split(',') if row.related_trajectory_ids else [],
-            related_event_ids=row.related_event_ids.split(',') if row.related_event_ids else [],
+            metadata=json.loads(row.metadata_json) if row.metadata_json else None,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

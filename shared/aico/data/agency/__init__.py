@@ -11,6 +11,8 @@ from aico.data.agency.execution_models import (
     AgencyPlanExecution,
     AgencyStepExecution,
 )
+from aico.data.agency.models import AgencyEvent, Goal
+from aico.data.agency.followup_models import AgencyFollowup
 from aico.data.agency.goal_models import (
     AgencyGoalDependency,
     AgencyGoalOutcome,
@@ -26,11 +28,15 @@ from aico.data.agency.skill_models import (
     AgencySkillExecution,
     AgencySkillLearningData,
 )
+from aico.data.agency.lesson_models import Lesson
 
 __all__ = [
     'AgencyExecutionSnapshot',
     'AgencyPlanExecution',
     'AgencyStepExecution',
+    'AgencyEvent',
+    'AgencyFollowup',
+    'Goal',
     'AgencyGoalDependency',
     'AgencyGoalOutcome',
     'AgencyGoalSkillExecution',
@@ -40,4 +46,5 @@ __all__ = [
     'AgencySkillGap',
     'AgencySkillExecution',
     'AgencySkillLearningData',
+    'Lesson',
 ]

@@ -94,14 +94,16 @@ class UserService:
             if not user:
                 return False
             
+            # Update is_active directly on the user object
             user.is_active = False
-            user.updated_at = datetime.now(UTC)
-            await self.update_user(user.__dict__)
+            updated = await self.uow.users.update(user)
+            await self.uow.commit()
             
             logger.info("[USER_SERVICE] Deleted user", extra={"user_id": user_id})
             return True
         except Exception as e:
             logger.error(f"[USER_SERVICE] Failed to delete user: {e}", extra={"user_id": user_id})
+            await self.uow.rollback()
             raise
 
     async def get_active_users(self) -> List[Any]:
