@@ -68,49 +68,50 @@
 - Unit of Work implementation
 - Connection pool working
 
-### Phase 2: Core Repositories (Week 3-4)
-**Goal:** Implement critical data access layers
+### Phase 2: Core Repositories (Week 3-4) ✅ MOSTLY COMPLETE
 
-**Modules:**
-1. **User/Auth** (~200 queries)
-   - UserRepository, SessionRepository, CredentialsRepository
-   - Replace: `shared/aico/data/user/service.py`
+**Completed:**
+1. ✅ **User/Auth** (~200 queries) - 3 repositories, 24 tests
+   - UserRepository (15 tests), SessionRepository (9 tests), CredentialsRepository (10 tests)
+   - Replaced: `shared/aico/data/user/service.py`
 
-2. **Agency** (~800 queries)
-   - GoalRepository, PlanRepository, PolicyRepository, SkillRepository
-   - Replace: `shared/aico/ai/agency/store.py` and related
+2. ✅ **Agency** - 2 repositories, 17 tests
+   - GoalRepository (8 tests), PlanRepository (9 tests)
+   - Partial replacement of: `shared/aico/ai/agency/store.py`
 
-3. **Knowledge Graph** (~300 queries)
-   - NodeRepository, EdgeRepository, MetadataRepository
-   - Replace: `shared/aico/ai/knowledge_graph/storage.py`
+3. ✅ **Knowledge Graph** - 2 repositories, 17 tests
+   - KGNodeRepository (8 tests), KGEdgeRepository (9 tests)
+   - Partial replacement of: `shared/aico/ai/knowledge_graph/storage.py`
 
-**Deliverables:**
-- 10+ repository implementations
-- Unit tests for each repository
-- Integration tests with Postgres
+**Status:** 68/68 integration tests passing, 7 repositories implemented
 
-### Phase 3: API Layer (Week 5)
-**Goal:** Update FastAPI endpoints
+**Remaining:**
+- ❌ PolicyRepository, SkillRepository (Agency)
+- ❌ MetadataRepository (KG)
+- ❌ LessonRepository (Agency - schema mismatch, deferred)
 
-**Tasks:**
-1. Update dependency injection
-   - Replace `get_database()` with `get_uow()`
-   - Inject UnitOfWork into route handlers
+### Phase 3: API Layer (Week 5) ⚠️ IN PROGRESS
 
-2. Refactor API routes
-   - `backend/api/users/router.py` - Use UserRepository
-   - `backend/api/agency/router.py` - Use Agency repositories
-   - `backend/api/kg/router.py` - Use KG repositories
-   - Remove all raw SQL from route handlers
+**Completed:**
+1. ✅ **Users API** - 6 endpoints migrated
+   - `backend/api/users/router.py` - create_user, get_user, update_user, delete_user, list_users, authenticate_user
+   - Using UserRepository, SessionRepository, CredentialsRepository
+   - Dependency injection: `get_uow()` implemented
 
-3. Update service layer
+**Remaining:**
+2. ❌ **Agency API** - Not started
+   - `backend/api/agency/router.py` - Use GoalRepository, PlanRepository
+   - Remove raw SQL from route handlers
+
+3. ❌ **KG API** - Not started
+   - `backend/api/kg/router.py` - Use KGNodeRepository, KGEdgeRepository
+   - Remove raw SQL from route handlers
+
+4. ❌ **Service Layer** - Not established
    - Create service classes that orchestrate repositories
    - Move business logic out of routes
 
-**Deliverables:**
-- All API routes using repositories
-- Zero raw SQL in API layer
-- Service layer established
+**Status:** 6 endpoints migrated, ~50+ endpoints remaining
 
 ### Phase 4: Remaining Modules (Week 6-7)
 **Goal:** Complete repository migration

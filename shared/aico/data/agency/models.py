@@ -50,3 +50,21 @@ class Lesson:
     superseded_by: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+@dataclass
+class Policy:
+    """Agency policy rule model."""
+    rule_id: str
+    rule_name: str
+    target_type: str
+    conditions: str
+    effect: str
+    scope: str
+    user_id: Optional[str] = None
+    user_message_template: Optional[str] = None
+    priority: int = 50
+    version: int = 1
+    active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

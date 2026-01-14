@@ -47,12 +47,13 @@ class UnitOfWork:
         self._goal_repository = None
         self._plan_repository = None
         self._lesson_repository = None
+        self._policy_repository = None
         self._kg_node_repository = None
         self._kg_edge_repository = None
         self._trajectory_repository = None
         self._feedback_repository = None
-        self._task_repository = None
-        self._execution_repository = None
+        self._scheduler_task_repository = None
+        self._task_execution_repository = None
     
     async def __aenter__(self):
         """Enter context - create session."""
@@ -149,6 +150,14 @@ class UnitOfWork:
         return self._lesson_repository
     
     @property
+    def policies(self):
+        """Get PolicyRepository instance."""
+        if self._policy_repository is None:
+            from .repositories.postgres.policy_repository import PostgresPolicyRepository
+            self._policy_repository = PostgresPolicyRepository(self._session)
+        return self._policy_repository
+    
+    @property
     def kg_nodes(self):
         """Get KGNodeRepository instance."""
         if self._kg_node_repository is None:
@@ -181,12 +190,12 @@ class UnitOfWork:
         return self._feedback_repository
     
     @property
-    def tasks(self):
-        """Get TaskRepository instance."""
-        if self._task_repository is None:
-            from .repositories.postgres.task_repository import PostgresTaskRepository
-            self._task_repository = PostgresTaskRepository(self._session)
-        return self._task_repository
+    def scheduler_tasks(self):
+        """Get SchedulerTaskRepository instance."""
+        if self._scheduler_task_repository is None:
+            from .repositories.postgres.scheduler_task_repository import PostgresSchedulerTaskRepository
+            self._scheduler_task_repository = PostgresSchedulerTaskRepository(self._session)
+        return self._scheduler_task_repository
     
     @property
     def executions(self):

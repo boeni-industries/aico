@@ -2,6 +2,7 @@
 AMS (Adaptive Modeling System) Data Models
 
 Dataclasses for AMS entities (trajectories, feedback).
+Matches actual PostgreSQL schema.
 """
 
 from dataclasses import dataclass
@@ -11,28 +12,36 @@ from typing import Optional, Dict, Any
 
 @dataclass
 class Trajectory:
-    """AMS trajectory model."""
+    """AMS trajectory model - matches ams_trajectories table."""
     trajectory_id: str
     user_id: str
-    start_time: datetime
-    status: str
-    goal_id: Optional[str] = None
-    end_time: Optional[datetime] = None
-    outcome: Optional[str] = None
-    metadata_json: Optional[Dict[str, Any]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    timestamp: datetime
+    conversation_id: Optional[str] = None
+    selected_skill_id: Optional[str] = None
+    context_bucket: Optional[str] = None
+    feedback_reward: Optional[int] = None
+    archived: bool = False
+    agency_context: Optional[str] = None
+    message_id: Optional[str] = None
+    turn_number: Optional[int] = None
+    user_input: Optional[str] = None
+    ai_response: Optional[str] = None
 
 
 @dataclass
-class Feedback:
-    """AMS feedback model."""
+class BehavioralFeedback:
+    """AMS behavioral feedback model - matches ams_behavioral_feedback table."""
     feedback_id: str
     user_id: str
-    trajectory_id: Optional[str]
-    feedback_type: str
-    content: str
-    rating: Optional[float] = None
-    metadata_json: Optional[Dict[str, Any]] = None
-    created_at: Optional[datetime] = None
+    timestamp: str  # TEXT in schema
+    message_id: Optional[str] = None
+    skill_id: Optional[str] = None
+    reward: Optional[int] = None
+    reason: Optional[str] = None
+    processed: int = 0
+    outcome: Optional[str] = None
+    execution_time_ms: Optional[int] = None
+    context_json: Optional[Dict[str, Any]] = None
+    user_satisfaction: Optional[float] = None
+    free_text: Optional[str] = None
     processed_at: Optional[datetime] = None

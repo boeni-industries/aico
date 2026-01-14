@@ -175,30 +175,41 @@ ams_trajectories = Table(
     'ams_trajectories',
     metadata,
     Column('trajectory_id', String, primary_key=True),
-    Column('user_id', String, ForeignKey('user_profiles.uuid', ondelete='CASCADE'), nullable=False),
-    Column('context_hash', String, nullable=False),
-    Column('action_taken', String, nullable=False),
-    Column('outcome', String, nullable=False),
-    Column('reward', Float, nullable=False),
-    Column('context_data', JSONB, nullable=False),
-    Column('metadata_json', JSONB),
-    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
-    Index('idx_ams_trajectories_user', 'user_id'),
-    Index('idx_ams_trajectories_context', 'context_hash'),
+    Column('user_id', String, nullable=False),
+    Column('conversation_id', String),
+    Column('selected_skill_id', String),
+    Column('context_bucket', String),
+    Column('feedback_reward', Integer),
+    Column('timestamp', TIMESTAMP(timezone=True), nullable=False),
+    Column('archived', Boolean, default=False),
+    Column('agency_context', String),
+    Column('message_id', String),
+    Column('turn_number', Integer),
+    Column('user_input', String),
+    Column('ai_response', String),
+    Index('idx_trajectories_archived', 'archived'),
+    Index('idx_trajectories_conversation', 'conversation_id'),
+    Index('idx_trajectories_user', 'user_id'),
 )
 
 ams_behavioral_feedback = Table(
     'ams_behavioral_feedback',
     metadata,
     Column('feedback_id', String, primary_key=True),
-    Column('user_id', String, ForeignKey('user_profiles.uuid', ondelete='CASCADE'), nullable=False),
-    Column('trajectory_id', String),
-    Column('feedback_type', String, nullable=False),
-    Column('feedback_value', Float, nullable=False),
-    Column('context_data', JSONB),
-    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
-    Index('idx_ams_feedback_user', 'user_id'),
-    Index('idx_ams_feedback_trajectory', 'trajectory_id'),
+    Column('user_id', String, nullable=False),
+    Column('message_id', String),
+    Column('skill_id', String),
+    Column('reward', Integer),
+    Column('reason', String),
+    Column('timestamp', String, nullable=False),
+    Column('processed', Integer, default=0),
+    Column('outcome', String),
+    Column('execution_time_ms', Integer),
+    Column('context_json', JSONB),
+    Column('user_satisfaction', Float),
+    Column('free_text', String),
+    Index('idx_behavioral_feedback_processed', 'processed'),
+    Index('idx_behavioral_feedback_skill', 'skill_id'),
 )
 
 # ============================================================================
@@ -209,17 +220,12 @@ scheduler_tasks = Table(
     'scheduler_tasks',
     metadata,
     Column('task_id', String, primary_key=True),
-    Column('task_name', String, nullable=False),
-    Column('task_type', String, nullable=False),
-    Column('schedule_expression', String, nullable=False),
-    Column('enabled', Boolean, nullable=False, default=True),
-    Column('last_run_at', TIMESTAMP(timezone=True)),
-    Column('next_run_at', TIMESTAMP(timezone=True)),
-    Column('metadata_json', JSONB),
-    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
-    Column('updated_at', TIMESTAMP(timezone=True), nullable=False),
-    Index('idx_scheduler_tasks_enabled', 'enabled'),
-    Index('idx_scheduler_tasks_next_run', 'next_run_at'),
+    Column('task_class', String, nullable=False),
+    Column('schedule', String, nullable=False),
+    Column('config', Text),
+    Column('enabled', Boolean, default=True),
+    Column('created_at', TIMESTAMP(timezone=True)),
+    Column('updated_at', TIMESTAMP(timezone=True)),
 )
 
 scheduler_task_executions = Table(
@@ -237,6 +243,29 @@ scheduler_task_executions = Table(
 )
 
 # ============================================================================
+# Agency Policy Tables
+# ============================================================================
+
+agency_policy_rules = Table(
+    'agency_policy_rules',
+    metadata,
+    Column('rule_id', String, primary_key=True),
+    Column('rule_name', String, nullable=False),
+    Column('user_id', String),
+    Column('target_type', String, nullable=False),
+    Column('conditions', Text, nullable=False),
+    Column('effect', String, nullable=False),
+    Column('user_message_template', Text),
+    Column('priority', Integer, default=50),
+    Column('scope', String, nullable=False),
+    Column('version', Integer, default=1),
+    Column('active', Boolean, default=True),
+    Column('created_at', Text, nullable=False),
+    Column('updated_at', Text, nullable=False),
+    Index('idx_policy_rules_user', 'user_id'),
+)
+
+# ============================================================================
 # Export all tables for easy import
 # ============================================================================
 
@@ -248,6 +277,7 @@ __all__ = [
     'agency_goals',
     'agency_plans',
     'agency_lessons',
+    'agency_policy_rules',
     'kg_nodes',
     'kg_edges',
     'ams_trajectories',

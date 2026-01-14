@@ -25,14 +25,17 @@ class PostgresTrajectoryRepository(Repository[Trajectory]):
         stmt = ams_trajectories.insert().values(
             trajectory_id=entity.trajectory_id,
             user_id=entity.user_id,
-            goal_id=entity.goal_id,
-            start_time=entity.start_time,
-            end_time=entity.end_time,
-            status=entity.status,
-            outcome=entity.outcome,
-            metadata_json=entity.metadata_json,
-            created_at=entity.created_at or datetime.now(UTC),
-            updated_at=entity.updated_at or datetime.now(UTC),
+            conversation_id=entity.conversation_id,
+            selected_skill_id=entity.selected_skill_id,
+            context_bucket=entity.context_bucket,
+            feedback_reward=entity.feedback_reward,
+            timestamp=entity.timestamp,
+            archived=entity.archived,
+            agency_context=entity.agency_context,
+            message_id=entity.message_id,
+            turn_number=entity.turn_number,
+            user_input=entity.user_input,
+            ai_response=entity.ai_response,
         )
         await self.session.execute(stmt)
         return entity
@@ -49,14 +52,17 @@ class PostgresTrajectoryRepository(Repository[Trajectory]):
         return Trajectory(
             trajectory_id=row.trajectory_id,
             user_id=row.user_id,
-            goal_id=row.goal_id,
-            start_time=row.start_time,
-            end_time=row.end_time,
-            status=row.status,
-            outcome=row.outcome,
-            metadata_json=row.metadata_json,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            timestamp=row.timestamp,
+            conversation_id=row.conversation_id,
+            selected_skill_id=row.selected_skill_id,
+            context_bucket=row.context_bucket,
+            feedback_reward=row.feedback_reward,
+            archived=row.archived,
+            agency_context=row.agency_context,
+            message_id=row.message_id,
+            turn_number=row.turn_number,
+            user_input=row.user_input,
+            ai_response=row.ai_response,
         )
     
     async def update(self, entity: Trajectory) -> Trajectory:
@@ -65,11 +71,11 @@ class PostgresTrajectoryRepository(Repository[Trajectory]):
             update(ams_trajectories)
             .where(ams_trajectories.c.trajectory_id == entity.trajectory_id)
             .values(
-                end_time=entity.end_time,
-                status=entity.status,
-                outcome=entity.outcome,
-                metadata_json=entity.metadata_json,
-                updated_at=datetime.now(UTC),
+                feedback_reward=entity.feedback_reward,
+                archived=entity.archived,
+                agency_context=entity.agency_context,
+                user_input=entity.user_input,
+                ai_response=entity.ai_response,
             )
         )
         await self.session.execute(stmt)
@@ -89,29 +95,32 @@ class PostgresTrajectoryRepository(Repository[Trajectory]):
             conditions = []
             if 'user_id' in filters:
                 conditions.append(ams_trajectories.c.user_id == filters['user_id'])
-            if 'goal_id' in filters:
-                conditions.append(ams_trajectories.c.goal_id == filters['goal_id'])
-            if 'status' in filters:
-                conditions.append(ams_trajectories.c.status == filters['status'])
+            if 'conversation_id' in filters:
+                conditions.append(ams_trajectories.c.conversation_id == filters['conversation_id'])
+            if 'archived' in filters:
+                conditions.append(ams_trajectories.c.archived == filters['archived'])
             
             if conditions:
                 stmt = stmt.where(and_(*conditions))
         
-        stmt = stmt.order_by(ams_trajectories.c.start_time.desc()).limit(limit).offset(offset)
+        stmt = stmt.order_by(ams_trajectories.c.timestamp.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         
         return [
             Trajectory(
                 trajectory_id=row.trajectory_id,
                 user_id=row.user_id,
-                goal_id=row.goal_id,
-                start_time=row.start_time,
-                end_time=row.end_time,
-                status=row.status,
-                outcome=row.outcome,
-                metadata_json=row.metadata_json,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
+                timestamp=row.timestamp,
+                conversation_id=row.conversation_id,
+                selected_skill_id=row.selected_skill_id,
+                context_bucket=row.context_bucket,
+                feedback_reward=row.feedback_reward,
+                archived=row.archived,
+                agency_context=row.agency_context,
+                message_id=row.message_id,
+                turn_number=row.turn_number,
+                user_input=row.user_input,
+                ai_response=row.ai_response,
             )
             for row in result.fetchall()
         ]
@@ -124,8 +133,8 @@ class PostgresTrajectoryRepository(Repository[Trajectory]):
             conditions = []
             if 'user_id' in filters:
                 conditions.append(ams_trajectories.c.user_id == filters['user_id'])
-            if 'status' in filters:
-                conditions.append(ams_trajectories.c.status == filters['status'])
+            if 'archived' in filters:
+                conditions.append(ams_trajectories.c.archived == filters['archived'])
             
             if conditions:
                 stmt = stmt.where(and_(*conditions))
@@ -134,13 +143,13 @@ class PostgresTrajectoryRepository(Repository[Trajectory]):
         return result.scalar() or 0
     
     async def get_active_trajectories_for_user(self, user_id: str) -> List[Trajectory]:
-        """Get all active trajectories for a user."""
+        """Get all active (non-archived) trajectories for a user."""
         stmt = select(ams_trajectories).where(
             and_(
                 ams_trajectories.c.user_id == user_id,
-                ams_trajectories.c.status == 'active'
+                ams_trajectories.c.archived == False
             )
-        ).order_by(ams_trajectories.c.start_time.desc())
+        ).order_by(ams_trajectories.c.timestamp.desc())
         
         result = await self.session.execute(stmt)
         
@@ -148,29 +157,27 @@ class PostgresTrajectoryRepository(Repository[Trajectory]):
             Trajectory(
                 trajectory_id=row.trajectory_id,
                 user_id=row.user_id,
-                goal_id=row.goal_id,
-                start_time=row.start_time,
-                end_time=row.end_time,
-                status=row.status,
-                outcome=row.outcome,
-                metadata_json=row.metadata_json,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
+                timestamp=row.timestamp,
+                conversation_id=row.conversation_id,
+                selected_skill_id=row.selected_skill_id,
+                context_bucket=row.context_bucket,
+                feedback_reward=row.feedback_reward,
+                archived=row.archived,
+                agency_context=row.agency_context,
+                message_id=row.message_id,
+                turn_number=row.turn_number,
+                user_input=row.user_input,
+                ai_response=row.ai_response,
             )
             for row in result.fetchall()
         ]
     
-    async def complete_trajectory(self, trajectory_id: str, outcome: str) -> bool:
-        """Mark a trajectory as completed with an outcome."""
+    async def archive_trajectory(self, trajectory_id: str) -> bool:
+        """Archive a trajectory."""
         stmt = (
             update(ams_trajectories)
             .where(ams_trajectories.c.trajectory_id == trajectory_id)
-            .values(
-                status='completed',
-                outcome=outcome,
-                end_time=datetime.now(UTC),
-                updated_at=datetime.now(UTC)
-            )
+            .values(archived=True)
         )
         result = await self.session.execute(stmt)
         return result.rowcount > 0
