@@ -2,7 +2,7 @@
 System Metrics Collection from InfluxDB
 
 Provides comprehensive metrics for the Studio Metrics dashboard by querying
-InfluxDB directly. Replaces LibSQL-based metrics with InfluxDB Flux queries.
+InfluxDB directly. Replaces PostgreSQL-based metrics with InfluxDB Flux queries.
 
 All metrics are sourced from OpenTelemetry exporters writing to InfluxDB:
 - API Gateway performance metrics (api_request measurement)

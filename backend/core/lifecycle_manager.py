@@ -281,7 +281,7 @@ class BackendLifecycleManager:
             return zmq.Context()
         
         # User service factory
-        def create_user_service(container: ServiceContainer, database: EncryptedLibSQLConnection) -> UserService:
+        def create_user_service(container: ServiceContainer, database: Any) -> UserService:
             return UserService(database)
         
         # Config service factory

@@ -142,7 +142,7 @@ def get_db_connection(request: Request):
         request: FastAPI request object
         
     Returns:
-        EncryptedLibSQLConnection instance
+        EncryptedPostgreSQLConnection instance
     """
     try:
         if not hasattr(request.app.state, 'service_container'):

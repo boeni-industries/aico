@@ -309,7 +309,7 @@ class MemoryManager(BaseAIProcessor):
                         return
                 
                 db_path = AICOPaths.get_database_path()
-                db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
+                db_key = key_manager.derive_database_key(master_key, "postgres", "aico.db")
                 db_connection = Any  # PostgreSQL migration(db_path, encryption_key=db_key)
                 logger.info("🕸️ [KG] Created new database connection")
             
@@ -1015,7 +1015,6 @@ class MemoryManager(BaseAIProcessor):
             print(f"\n🕸️ [KG] Step 3: Skipping per-message resolution (context-aware extraction used)")
             superseded_ids = set()
             
-            # 4. Save to storage (libSQL + ChromaDB with embeddings)
             print(f"\n🕸️ [KG] Step 4: Saving to storage...")
             storage_start = time.time()
             await self._kg_storage.save_graph(new_graph, superseded_node_ids=superseded_ids)

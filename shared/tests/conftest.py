@@ -58,7 +58,7 @@ def pytest_sessionfinish(session, exitstatus):
                 # No key available, skip cleanup
                 return
         
-        encryption_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+        encryption_key = key_manager.derive_database_key(master_key, "postgres", str(db_path))
         db = None          
         # Delete all test users (nickname='pytest')
         cursor = db.execute("SELECT COUNT(*) FROM user_profiles WHERE nickname = 'pytest'")

@@ -26,7 +26,7 @@ def check_database_sessions():
         from aico.core.paths import AICOPaths
         
         config = ConfigurationManager()
-        db_config = config.get("database.libsql", {})
+        db_config = config.get("core.database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -45,14 +45,14 @@ def check_database_sessions():
         cached_key = key_manager._get_cached_session()
         if cached_key:
             key_manager._extend_session()
-            db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
+            db_key = key_manager.derive_database_key(cached_key, "postgres", str(db_path))
         else:
             # Try stored key from keyring
             import keyring
             stored_key = keyring.get_password(key_manager.service_name, "master_key")
             if stored_key:
                 master_key = bytes.fromhex(stored_key)
-                db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+                db_key = key_manager.derive_database_key(master_key, "postgres", str(db_path))
             else:
                 print("No master key available for database access")
                 return

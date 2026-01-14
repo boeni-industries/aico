@@ -7,12 +7,9 @@ with User-Agent parsing for multiplatform support.
 
 import uuid
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
-
-from ..data.libsql.connection import LibSQLConnection
-
 
 @dataclass
 class DeviceInfo:
@@ -35,7 +32,7 @@ class DeviceService:
     management with multiplatform support.
     """
     
-    def __init__(self, db_connection: LibSQLConnection):
+    def __init__(self, db_connection: PostgreSQLConnection):
         self.db = db_connection
     
     def register_or_update_device(

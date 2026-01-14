@@ -18,7 +18,6 @@ except ImportError:
     # Fallback indicates version system is broken
     __version__ = "x.x.x"
 
-# LibSQL removed - migrated to PostgreSQL
 # Re-export main components for convenience
 from aico.ai.user.models import UserProfile
 from .uow import UnitOfWork

@@ -17,8 +17,8 @@ bcrypt.__about__ = bcrypt
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
-from aico.data.libsql.connection import LibSQLConnection
 from passlib.context import CryptContext
+from typing import Any
 
 from .models import UserProfile, AuthenticationData
 
@@ -28,7 +28,7 @@ class UserService:
     Core user management service providing CRUD operations and authentication
     """
     
-    def __init__(self, db_connection: LibSQLConnection):
+    def __init__(self, db_connection: Any):
         self.db = db_connection
         self.logger = get_logger("shared.user_service.core")
         

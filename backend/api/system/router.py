@@ -19,7 +19,6 @@ logger = get_logger("backend.api.system")
 
 router = APIRouter()
 
-# Include new modular metrics router (InfluxDB-based, zero LibSQL dependencies)
 from backend.api.metrics import router as metrics_router
 router.include_router(metrics_router)
 

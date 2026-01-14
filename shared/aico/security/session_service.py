@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
-from ..data.libsql.connection import LibSQLConnection
 from .device_service import DeviceService
 
 
@@ -38,7 +37,7 @@ class SessionService:
     - Secure session cleanup and expiration
     """
     
-    def __init__(self, db_connection: LibSQLConnection):
+    def __init__(self, db_connection: Any):
         self.db = db_connection
         self.device_service = DeviceService(db_connection)
     

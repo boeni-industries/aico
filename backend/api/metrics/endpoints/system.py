@@ -180,7 +180,6 @@ async def get_system_health_metrics():
             # Calculate real queue backlog from message bus
             queue_backlog = int(msg_backlog)
             
-            # Calculate storage size (LibSQL + LMDB + ChromaDB)
             import os
             from pathlib import Path
             storage_size_mb = 0.0

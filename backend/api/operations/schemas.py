@@ -180,8 +180,8 @@ class ChromaDBBrowseResponse(BaseModel):
 
 class DatabaseDetailsResponse(BaseModel):
     """Response model for database details"""
-    database_type: str = Field(..., description="Database type (libsql, chromadb, lmdb)")
-    tables: Optional[list[TableInfo]] = Field(None, description="Tables (LibSQL)")
+    database_type: str = Field(..., description="Database type (postgres, chromadb, lmdb)")
+    tables: Optional[list[TableInfo]] = Field(None, description="Tables (PostgreSQL)")
     collections: Optional[list[CollectionInfo]] = Field(None, description="Collections (ChromaDB)")
     databases: Optional[list[LMDBDatabaseInfo]] = Field(None, description="Databases (LMDB)")
 

@@ -41,7 +41,7 @@ class PropertyGraphStorage:
         Initialize storage with encrypted database and ChromaDB client.
         
         Args:
-            db_connection: Encrypted LibSQL connection (injected)
+            db_connection: Encrypted PostgreSQL connection (injected)
             chromadb_client: ChromaDB client for semantic search
             modelservice_client: Modelservice client for embedding generation
         """
@@ -90,7 +90,7 @@ class PropertyGraphStorage:
                             valid_until = excluded.valid_until,
                             is_current = excluded.is_current
                         """,
-                        node.to_libsql_tuple()
+                        node.to_postgres_tuple()
                     )
                     self.db.commit()
                 print(f"🕸️ [STORAGE_DB] INSERT committed for node {node.id}")
@@ -163,7 +163,7 @@ class PropertyGraphStorage:
                         valid_until = excluded.valid_until,
                         is_current = excluded.is_current
                     """,
-                    edge.to_libsql_tuple()
+                    edge.to_postgres_tuple()
                 )
         
         def _sync_save_to_chroma():
@@ -234,11 +234,9 @@ class PropertyGraphStorage:
             print(f"  [STORAGE] Marked {len(superseded_node_ids)} nodes as historical")
         
         # ALWAYS clean up ALL historical embeddings AND orphaned embeddings from ChromaDB
-        # This ensures ChromaDB stays perfectly in sync with libSQL current nodes/edges
         print(f"  [STORAGE] Cleaning up ChromaDB embeddings...")
         
         def _sync_cleanup_chromadb():
-            # Get all current node IDs from libSQL
             cursor = self.db.execute("SELECT id FROM kg_nodes WHERE is_current = 1")
             current_node_ids = set(row[0] for row in cursor.fetchall())
             
@@ -250,7 +248,6 @@ class PropertyGraphStorage:
                 logger.warning(f"Failed to get ChromaDB node IDs: {e}")
                 chroma_node_ids = set()
             
-            # Find orphaned node embeddings (in ChromaDB but not in current libSQL nodes)
             orphaned_node_ids = chroma_node_ids - current_node_ids
             
             # Delete orphaned node embeddings
@@ -262,7 +259,6 @@ class PropertyGraphStorage:
                 except Exception as e:
                     logger.warning(f"Failed to delete orphaned node embeddings: {e}")
             
-            # Get all current edge IDs from libSQL
             cursor = self.db.execute("SELECT id FROM kg_edges WHERE is_current = 1")
             current_edge_ids = set(row[0] for row in cursor.fetchall())
             
@@ -274,7 +270,6 @@ class PropertyGraphStorage:
                 logger.warning(f"Failed to get ChromaDB edge IDs: {e}")
                 chroma_edge_ids = set()
             
-            # Find orphaned edge embeddings (in ChromaDB but not in current libSQL edges)
             orphaned_edge_ids = chroma_edge_ids - current_edge_ids
             
             # Delete orphaned edge embeddings
@@ -293,7 +288,6 @@ class PropertyGraphStorage:
         
         await asyncio.to_thread(_sync_cleanup_chromadb)
         
-        # Save to libSQL (structured queries)
         def _sync_save_all():
             # Track node ID mappings for edge reference updates
             node_id_mapping = {}  # attempted_id -> actual_id
@@ -460,7 +454,7 @@ class PropertyGraphStorage:
         
         print(f"\n  💾 [STORAGE] Saving to libSQL: {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
         logger.info(f"[LAYER 1] Acquiring transaction lock for {len(graph.edges)} edges")
-        libsql_start = time.time()
+        postgres_start = time.time()
         
         # LAYER 1: Transaction-level lock to prevent race conditions
         # This ensures only ONE transaction can insert edges at a time
@@ -468,8 +462,8 @@ class PropertyGraphStorage:
             logger.debug(f"[LAYER 1] Lock acquired, starting transaction")
             await asyncio.to_thread(_sync_save_all)
             logger.debug(f"[LAYER 1] Transaction complete, lock released")
-        libsql_time = time.time() - libsql_start
-        print(f"  💾 [STORAGE] ✅ libSQL complete in {libsql_time:.2f}s")
+        postgres_time = time.time() - postgres_start
+        print(f"  💾 [STORAGE] ✅ libSQL complete in {postgres_time:.2f}s")
         
         # Save to ChromaDB (semantic search) - reuse cached embeddings from resolution
         node_docs = [node.to_chromadb_document() for node in graph.nodes]
@@ -551,8 +545,8 @@ class PropertyGraphStorage:
         # Final summary
         total_storage_time = time.time() - storage_start
         print(f"\n  💾 [STORAGE] ✅ STORAGE COMPLETE in {total_storage_time:.2f}s")
-        print(f"  💾 [STORAGE]    libSQL:     {libsql_time:.2f}s ({libsql_time/total_storage_time*100:.1f}%)")
-        print(f"  💾 [STORAGE]    ChromaDB:   {total_storage_time - libsql_time:.2f}s ({(total_storage_time - libsql_time)/total_storage_time*100:.1f}%)")
+        print(f"  💾 [STORAGE]    libSQL:     {postgres_time:.2f}s ({postgres_time/total_storage_time*100:.1f}%)")
+        print(f"  💾 [STORAGE]    ChromaDB:   {total_storage_time - postgres_time:.2f}s ({(total_storage_time - postgres_time)/total_storage_time*100:.1f}%)")
         print(f"  💾 [STORAGE]    Saved: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
     
     async def get_node(self, node_id: str) -> Optional[Node]:
@@ -660,7 +654,6 @@ class PropertyGraphStorage:
         if not results["ids"] or not results["ids"][0]:
             return []
         
-        # Fetch full nodes from libSQL
         node_ids = results["ids"][0]
         nodes = []
         for node_id in node_ids:

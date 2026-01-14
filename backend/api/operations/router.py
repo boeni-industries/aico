@@ -67,7 +67,7 @@ async def get_database_stats(
     db_connection: Annotated[object, Depends(get_db_connection)]
 ) -> DatabaseStatsResponse:
     """
-    Get database statistics for all databases (LibSQL, ChromaDB, LMDB).
+    Get database statistics for all databases (PostgreSQL, ChromaDB, LMDB).
     
     Returns metrics including size, table/collection counts, and health status.
     """
@@ -925,7 +925,6 @@ async def get_database_details(
     - **lmdb**: Returns list of databases with key counts
     """
     if database_type == "postgresql":
-        # PostgreSQL details require separate connection, not the LibSQL db_connection
         return await database_admin.get_postgresql_details()
     elif database_type == "chromadb":
         return await database_admin.get_chromadb_details(request)

@@ -68,7 +68,6 @@ async def get_memory_metrics(
         except Exception as e:
             logger.debug(f"Failed to query semantic metrics from InfluxDB: {e}")
         
-        # Knowledge Graph - stats from libSQL
         kg_node_count = 0
         kg_edge_count = 0
         entity_distribution = {}

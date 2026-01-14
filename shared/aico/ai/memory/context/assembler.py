@@ -148,7 +148,6 @@ class ContextAssembler:
                     logger.warning(f"Agency lesson retrieval failed: {e}")
             
             # 4.5 Get knowledge graph context (entities and relationships)
-            # Uses libSQL for structured queries (no embeddings needed)
             kg_context = {}
             if self.kg_storage and self.kg_modelservice:  # ENABLED
                 try:
@@ -160,7 +159,6 @@ class ContextAssembler:
                     
                     print(f"🕸️ [KG_CONTEXT] Getting recent KG entities from libSQL...")
                     
-                    # Get recent nodes from libSQL (no embeddings needed, fast query)
                     # Moved from semantic search to avoid embedding queue saturation
                     kg_nodes = await self.kg_storage.get_user_nodes(
                         user_id,

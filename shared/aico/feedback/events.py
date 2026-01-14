@@ -27,7 +27,7 @@ class FeedbackEventStore:
         Initialize FeedbackEventStore with encrypted database connection.
         
         Args:
-            db_connection: Encrypted LibSQL connection (injected via dependency injection)
+            db_connection: Encrypted PostgreSQL connection (injected via dependency injection)
         """
         self.db = db_connection
     

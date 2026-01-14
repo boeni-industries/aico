@@ -109,7 +109,7 @@ class Node:
             }
         }
     
-    def to_libsql_tuple(self) -> tuple:
+    def to_postgres_tuple(self) -> tuple:
         """Convert to tuple for libSQL insertion."""
         return (
             self.id,
@@ -221,7 +221,7 @@ class Edge:
             }
         }
     
-    def to_libsql_tuple(self) -> tuple:
+    def to_postgres_tuple(self) -> tuple:
         """Convert to tuple for libSQL insertion."""
         return (
             self.id,
