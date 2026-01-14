@@ -1,13 +1,28 @@
 """
 AMS (Adaptive Modeling System) Data Models
 
-Dataclasses for AMS entities (trajectories, feedback).
+Dataclasses for AMS entities (trajectories, feedback, skills).
 Matches actual PostgreSQL schema.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict, Any
+
+
+@dataclass
+class BehavioralSkill:
+    """Behavioral skill model - matches ams_behavioral_skills table."""
+    skill_id: str
+    skill_name: str
+    skill_type: str
+    trigger_context: str
+    procedure_template: str
+    dimension_vector: str
+    supported_languages: Optional[str] = None
+    status: str = 'active'
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass
