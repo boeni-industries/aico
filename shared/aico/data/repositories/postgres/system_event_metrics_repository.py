@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.system.metrics_models import SystemEventMetric
+from aico.ai.system.models import SystemEventMetric
 from aico.data.tables import system_event_metrics
 from aico.data.repositories.base import Repository
 

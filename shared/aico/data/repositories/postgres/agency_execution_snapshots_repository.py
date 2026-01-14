@@ -4,7 +4,7 @@ from typing import List, Optional
 from sqlalchemy import select, insert, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from aico.data.tables import agency_execution_snapshots
-from aico.data.agency.execution_models import AgencyExecutionSnapshot
+from aico.ai.agency.models import AgencyExecutionSnapshot
 
 
 class PostgresAgencyExecutionSnapshotsRepository:

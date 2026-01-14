@@ -9,10 +9,11 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.agency.models import AgencyEvent
+from aico.ai.agency.models import AgencyEvent
 from aico.data.tables import agency_events
 from aico.data.repositories.base import Repository
 
+import json
 
 class PostgresAgencyEventRepository(Repository[AgencyEvent]):
     """PostgreSQL implementation of agency event repository."""
@@ -28,7 +29,7 @@ class PostgresAgencyEventRepository(Repository[AgencyEvent]):
             plan_id=entity.plan_id,
             event_type=entity.event_type,
             source=entity.source,
-            payload_json=entity.payload_json,
+            payload_json=json.dumps(entity.payload) if entity.payload else None,
             created_at=entity.created_at or datetime.now(UTC),
         ).returning(agency_events.c.id)
         
@@ -63,7 +64,7 @@ class PostgresAgencyEventRepository(Repository[AgencyEvent]):
             update(agency_events)
             .where(agency_events.c.id == entity.id)
             .values(
-                payload_json=entity.payload_json,
+                payload_json=json.dumps(entity.payload) if entity.payload else None,
             )
         )
         await self.session.execute(stmt)

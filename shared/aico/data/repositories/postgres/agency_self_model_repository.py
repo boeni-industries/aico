@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import select, insert, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from aico.data.tables import agency_self_model
-from aico.data.agency.reflection_models import AgencySelfModel
+from aico.ai.agency.models import AgencySelfModel
 
 
 class PostgresAgencySelfModelRepository:

@@ -8,7 +8,7 @@ from typing import Optional, List
 from sqlalchemy import select, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.kg.property_models import KGEdgeProperty
+from aico.ai.knowledge_graph.models import KGEdgeProperty
 from aico.data.tables import kg_edge_properties
 from aico.data.repositories.base import Repository
 

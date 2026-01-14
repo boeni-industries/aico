@@ -4,7 +4,7 @@ from typing import List, Optional
 from sqlalchemy import select, insert, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from aico.data.tables import agency_skill_learning_data
-from aico.data.agency.skill_models import AgencySkillLearningData
+from aico.ai.agency.models import AgencySkillLearningData
 
 
 class PostgresAgencySkillLearningDataRepository:

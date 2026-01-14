@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.ethics.policy_models import EthicsPolicyRule
+from aico.ai.ethics.models import EthicsPolicyRule
 from aico.data.tables import ethics_policy_rules
 from aico.data.repositories.base import Repository
 

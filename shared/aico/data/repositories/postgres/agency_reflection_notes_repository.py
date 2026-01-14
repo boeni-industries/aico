@@ -9,10 +9,11 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.agency.models import AgencyReflectionNote
+from aico.ai.agency.models import AgencyReflectionNote
 from aico.data.tables import agency_reflection_notes
 from aico.data.repositories.base import Repository
 
+import json
 
 class PostgresAgencyReflectionNotesRepository(Repository[AgencyReflectionNote]):
     """PostgreSQL implementation of agency reflection notes repository."""
@@ -29,7 +30,7 @@ class PostgresAgencyReflectionNotesRepository(Repository[AgencyReflectionNote]):
             related_plan_id=entity.related_plan_id,
             title=entity.title,
             content=entity.content,
-            tags_json=entity.tags_json,
+            tags_json=json.dumps(entity.tags) if entity.tags else None,
             created_at=entity.created_at or datetime.now(UTC),
             updated_at=entity.updated_at or datetime.now(UTC),
         )
@@ -65,7 +66,7 @@ class PostgresAgencyReflectionNotesRepository(Repository[AgencyReflectionNote]):
             .values(
                 title=entity.title,
                 content=entity.content,
-                tags_json=entity.tags_json,
+                tags_json=json.dumps(entity.tags) if entity.tags else None,
                 updated_at=datetime.now(UTC),
             )
         )

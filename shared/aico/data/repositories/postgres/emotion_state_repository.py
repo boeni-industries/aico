@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.emotion.models import EmotionState
+from aico.ai.emotion.models import EmotionState
 from aico.data.tables import emotion_state
 from aico.data.repositories.base import Repository
 

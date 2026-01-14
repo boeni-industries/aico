@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aico.data.repositories.base import Repository
 from aico.data.tables import user_profiles
-from aico.data.user.models import UserProfile
+from aico.ai.user.models import UserProfile
 from aico.core.logging import get_logger
 
 logger = get_logger("shared.data.repositories.postgres.user")

@@ -4,7 +4,7 @@ from typing import List, Optional
 from sqlalchemy import select, insert, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from aico.data.tables import agency_goal_outcomes
-from aico.data.agency.goal_models import AgencyGoalOutcome
+from aico.ai.agency.models import AgencyGoalOutcome
 
 
 class PostgresAgencyGoalOutcomesRepository:

@@ -9,10 +9,11 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.ams.models import BehavioralFeedback
+from aico.ai.ams.models import BehavioralFeedback
 from aico.data.tables import ams_behavioral_feedback
 from aico.data.repositories.base import Repository
 
+import json
 
 class PostgresAMSBehavioralFeedbackRepository(Repository[BehavioralFeedback]):
     """PostgreSQL implementation of AMS behavioral feedback repository."""
@@ -33,7 +34,7 @@ class PostgresAMSBehavioralFeedbackRepository(Repository[BehavioralFeedback]):
             processed=entity.processed,
             outcome=entity.outcome,
             execution_time_ms=entity.execution_time_ms,
-            context_json=entity.context_json,
+            context_json=json.dumps(entity.context) if entity.context else None,
             user_satisfaction=entity.user_satisfaction,
             free_text=entity.free_text,
         )

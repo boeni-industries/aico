@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.consent.audit_models import ConsentAuditLog
+from aico.ai.consent.models import ConsentAuditLog
 from aico.data.tables import consent_audit_log
 from aico.data.repositories.base import Repository
 

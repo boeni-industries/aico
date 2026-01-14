@@ -9,10 +9,11 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.agency.models import Plan
+from aico.ai.agency.models import Plan
 from aico.data.tables import agency_plans
 from aico.data.repositories.base import Repository
 
+import json
 
 class PostgresPlanRepository(Repository[Plan]):
     """PostgreSQL implementation of plan repository."""
@@ -26,8 +27,8 @@ class PostgresPlanRepository(Repository[Plan]):
             plan_id=entity.plan_id,
             goal_id=entity.goal_id,
             status=entity.status,
-            steps_json=entity.steps_json,
-            metadata_json=entity.metadata_json,
+            steps_json=json.dumps(entity.steps) if entity.steps else None,
+            metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
             created_at=entity.created_at or datetime.now(UTC),
             updated_at=entity.updated_at or datetime.now(UTC),
         )
@@ -60,8 +61,8 @@ class PostgresPlanRepository(Repository[Plan]):
             .where(agency_plans.c.plan_id == entity.plan_id)
             .values(
                 status=entity.status,
-                steps_json=entity.steps_json,
-                metadata_json=entity.metadata_json,
+                steps_json=json.dumps(entity.steps) if entity.steps else None,
+                metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
                 updated_at=datetime.now(UTC),
             )
         )

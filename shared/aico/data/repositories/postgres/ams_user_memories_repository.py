@@ -9,10 +9,11 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.ams.models import AMSUserMemory
+from aico.ai.ams.models import AMSUserMemory
 from aico.data.tables import ams_user_memories
 from aico.data.repositories.base import Repository
 
+import json
 
 class PostgresAMSUserMemoriesRepository(Repository[AMSUserMemory]):
     """PostgreSQL implementation of AMS user memories repository."""
@@ -32,14 +33,14 @@ class PostgresAMSUserMemoriesRepository(Repository[AMSUserMemory]):
             valid_from=entity.valid_from,
             valid_until=entity.valid_until,
             content=entity.content,
-            entities_json=entity.entities_json,
+            entities_json=json.dumps(entity.entities) if entity.entities else None,
             extraction_method=entity.extraction_method,
             source_conversation_id=entity.source_conversation_id,
             source_message_id=entity.source_message_id,
             created_at=entity.created_at or datetime.now(UTC),
             updated_at=entity.updated_at or datetime.now(UTC),
             user_note=entity.user_note,
-            tags_json=entity.tags_json,
+            tags_json=json.dumps(entity.tags) if entity.tags else None,
             is_favorite=entity.is_favorite,
             revisit_count=entity.revisit_count,
             last_revisited=entity.last_revisited,
@@ -49,7 +50,7 @@ class PostgresAMSUserMemoriesRepository(Repository[AMSUserMemory]):
             conversation_title=entity.conversation_title,
             conversation_summary=entity.conversation_summary,
             turn_range=entity.turn_range,
-            key_moments_json=entity.key_moments_json,
+            key_moments_json=json.dumps(entity.key_moments) if entity.key_moments else None,
             temporal_metadata=entity.temporal_metadata,
             language=entity.language,
         )
@@ -107,7 +108,7 @@ class PostgresAMSUserMemoriesRepository(Repository[AMSUserMemory]):
                 valid_until=entity.valid_until,
                 content=entity.content,
                 user_note=entity.user_note,
-                tags_json=entity.tags_json,
+                tags_json=json.dumps(entity.tags) if entity.tags else None,
                 is_favorite=entity.is_favorite,
                 revisit_count=entity.revisit_count,
                 last_revisited=entity.last_revisited,

@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.arbiter.models import ArbiterABTest
+from aico.ai.arbiter.models import ArbiterABTest
 from aico.data.tables import arbiter_ab_tests
 from aico.data.repositories.base import Repository
 

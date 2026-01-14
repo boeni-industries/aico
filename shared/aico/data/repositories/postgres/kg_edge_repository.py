@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.kg.models import KGEdge
+from aico.ai.knowledge_graph.models import KGEdge
 from aico.data.tables import kg_edges
 from aico.data.repositories.base import Repository
 

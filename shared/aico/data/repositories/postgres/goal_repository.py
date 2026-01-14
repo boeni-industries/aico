@@ -9,9 +9,10 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.agency.models import Goal
+from aico.ai.agency.models import Goal
 from aico.data.tables import agency_goals
 from aico.data.repositories.base import Repository
+import json
 
 
 class PostgresGoalRepository(Repository[Goal]):
@@ -25,13 +26,13 @@ class PostgresGoalRepository(Repository[Goal]):
         stmt = agency_goals.insert().values(
             goal_id=entity.goal_id,
             user_id=entity.user_id,
-            origin=entity.origin,
+            origin=entity.origin.value if hasattr(entity.origin, 'value') else entity.origin,
             goal_type=entity.goal_type,
             title=entity.title,
             description=entity.description,
-            status=entity.status,
-            priority=entity.priority,
-            metadata_json=entity.metadata_json,
+            status=entity.status.value if hasattr(entity.status, 'value') else entity.status,
+            priority=entity.priority.value if hasattr(entity.priority, 'value') else entity.priority,
+            metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
             created_at=entity.created_at or datetime.now(UTC),
             updated_at=entity.updated_at or datetime.now(UTC),
         )
@@ -40,6 +41,8 @@ class PostgresGoalRepository(Repository[Goal]):
     
     async def get_by_id(self, entity_id: str) -> Optional[Goal]:
         """Get goal by ID."""
+        from aico.ai.agency.models import GoalOrigin, GoalStatus, GoalPriority
+        
         stmt = select(agency_goals).where(agency_goals.c.goal_id == entity_id)
         result = await self.session.execute(stmt)
         row = result.fetchone()
@@ -50,13 +53,13 @@ class PostgresGoalRepository(Repository[Goal]):
         return Goal(
             goal_id=row.goal_id,
             user_id=row.user_id,
-            origin=row.origin,
+            origin=GoalOrigin(row.origin),
             goal_type=row.goal_type,
             title=row.title,
             description=row.description,
-            status=row.status,
-            priority=row.priority,
-            metadata_json=row.metadata_json,
+            status=GoalStatus(row.status),
+            priority=GoalPriority(row.priority),
+            metadata=json.loads(row.metadata_json) if row.metadata_json else {},
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -69,9 +72,9 @@ class PostgresGoalRepository(Repository[Goal]):
             .values(
                 title=entity.title,
                 description=entity.description,
-                status=entity.status,
-                priority=entity.priority,
-                metadata_json=entity.metadata_json,
+                status=entity.status.value if hasattr(entity.status, 'value') else entity.status,
+                priority=entity.priority.value if hasattr(entity.priority, 'value') else entity.priority,
+                metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
                 updated_at=datetime.now(UTC),
             )
         )
@@ -102,24 +105,27 @@ class PostgresGoalRepository(Repository[Goal]):
             if conditions:
                 stmt = stmt.where(and_(*conditions))
         
-        stmt = stmt.order_by(agency_goals.c.created_at.desc()).limit(limit).offset(offset)
+        stmt = stmt.limit(limit).offset(offset)
         result = await self.session.execute(stmt)
+        rows = result.fetchall()
+        
+        from aico.ai.agency.models import GoalOrigin, GoalStatus, GoalPriority
         
         return [
             Goal(
                 goal_id=row.goal_id,
                 user_id=row.user_id,
-                origin=row.origin,
+                origin=GoalOrigin(row.origin),
                 goal_type=row.goal_type,
                 title=row.title,
                 description=row.description,
-                status=row.status,
-                priority=row.priority,
-                metadata_json=row.metadata_json,
+                status=GoalStatus(row.status),
+                priority=GoalPriority(row.priority),
+                metadata=json.loads(row.metadata_json) if row.metadata_json else {},
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
-            for row in result.fetchall()
+            for row in rows
         ]
     
     async def count(self, filters: Optional[dict] = None) -> int:
