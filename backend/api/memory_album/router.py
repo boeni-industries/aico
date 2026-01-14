@@ -10,7 +10,8 @@ from aico.core.logging import get_logger
 from aico.ai.memory.memory_album import MemoryAlbumStore
 from aico.feedback.events import FeedbackEventStore
 from aico.feedback.types import FeedbackEventType, ActionCategory
-from backend.core.lifecycle_manager import get_database
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 from backend.api.conversation.dependencies import get_current_user
 from .schemas import (
     RememberRequest, UpdateMemoryRequest,
@@ -131,26 +132,18 @@ async def get_memories(
             # Get user profile for this fact
             logger.debug(f"Looking up user profile for user_id: {fact.get('user_id')}")
             
-            user_profile = db.execute("""
-                SELECT uuid, full_name, nickname
-                FROM user_profiles
-                WHERE uuid = ?
-            """, (fact['user_id'],)).fetchone()
+            user_profile = await uow.users.get_by_id(fact['user_id'])
             
             fact_with_user = dict(fact)
             if user_profile:
-                logger.debug(f"Found user profile: {user_profile[1]} ({user_profile[2]})")
-                fact_with_user['user_uuid'] = user_profile[0]
-                fact_with_user['user_full_name'] = user_profile[1]
-                fact_with_user['user_nickname'] = user_profile[2]
+                fact_with_user['user_uuid'] = user_profile.uuid
+                fact_with_user['user_full_name'] = user_profile.full_name
+                fact_with_user['user_nickname'] = user_profile.nickname
             else:
                 logger.warning(f"No user profile found for user_id: {fact.get('user_id')}")
-                # Check if any users exist in the table
-                all_users = db.execute("SELECT uuid, full_name FROM user_profiles LIMIT 5").fetchall()
-                logger.warning(f"Sample users in database: {all_users}")
                 
                 fact_with_user['user_uuid'] = fact['user_id']
-                fact_with_user['user_full_name'] = 'Unknown User'
+                fact_with_user['user_full_name'] = 'Unknown'
                 fact_with_user['user_nickname'] = None
             
             enriched_facts.append(fact_with_user)
@@ -230,7 +223,7 @@ async def update_memory(
     fact_id: str,
     request: UpdateMemoryRequest,
     current_user = Depends(get_current_user),
-    db = Depends(get_database)
+    uow: UnitOfWork = Depends(get_uow)
 ):
     """
     Update memory metadata (notes, tags, favorites).
@@ -239,7 +232,7 @@ async def update_memory(
     try:
         user_uuid = current_user['user_uuid']
         
-        memory_store = MemoryAlbumStore(db)
+        memory_store = MemoryAlbumStore(uow)
         
         # Update the fact metadata
         success = await memory_store.update_fact_metadata(
@@ -256,22 +249,13 @@ async def update_memory(
                 detail="Memory not found or access denied"
             )
         
-        # Retrieve the specific updated fact by querying with fact_id
-        cursor = db.execute("""
-            SELECT 
-                fact_id, content, category, fact_type,
-                user_note, tags_json, is_favorite, emotional_tone, memory_type,
-                source_conversation_id, source_message_id,
-                revisit_count, last_revisited,
-                content_type, conversation_title, conversation_summary,
-                turn_range, key_moments_json,
-                created_at, updated_at
-            FROM ams_user_memories
-            WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
-        """, (fact_id, user_uuid))
+        # Retrieve the specific updated fact from repository
+        all_memories = await uow.ams_user_memories.list(
+            filters={"fact_id": fact_id, "user_id": user_uuid, "extraction_method": "user_curated"},
+            limit=1
+        )
         
-        row = cursor.fetchone()
-        cursor.close()
+        row = all_memories[0] if all_memories else None
         
         if not row:
             raise HTTPException(
@@ -279,55 +263,30 @@ async def update_memory(
                 detail="Memory not found after update"
             )
         
-        # Convert row to dict
-        columns = ['fact_id', 'content', 'category', 'fact_type', 'user_note', 'tags_json',
-                   'is_favorite', 'emotional_tone', 'memory_type', 'source_conversation_id',
-                   'source_message_id', 'revisit_count', 'last_revisited', 'content_type',
-                   'conversation_title', 'conversation_summary', 'turn_range', 'key_moments_json',
-                   'created_at', 'updated_at']
-        updated_fact = dict(zip(columns, row))
-        
-        # Parse JSON fields
-        tags = None
-        if updated_fact.get('tags_json'):
-            try:
-                tags = json.loads(updated_fact['tags_json'])
-            except:
-                tags = []
-        
-        key_moments = None
-        if updated_fact.get('key_moments_json'):
-            try:
-                key_moments = json.loads(updated_fact['key_moments_json'])
-            except:
-                key_moments = []
-        
-        logger.info(f"Memory updated: {fact_id}", extra={
-            "user_uuid": user_uuid,
-            "fact_id": fact_id,
-        })
+        user_profile = await uow.users.get_by_id(user_uuid)
         
         return MemoryResponse(
-            fact_id=updated_fact['fact_id'],
-            content=updated_fact['content'],
-            content_type=updated_fact.get('content_type', 'message'),
-            category=updated_fact['category'],
-            fact_type=updated_fact['fact_type'],
-            user_note=updated_fact.get('user_note'),
-            tags=tags,
-            is_favorite=bool(updated_fact.get('is_favorite', 0)),
-            emotional_tone=updated_fact.get('emotional_tone'),
-            memory_type=updated_fact.get('memory_type'),
-            source_conversation_id=updated_fact['source_conversation_id'],
-            source_message_id=updated_fact.get('source_message_id'),
-            revisit_count=updated_fact.get('revisit_count', 0),
-            last_revisited=updated_fact.get('last_revisited'),
-            created_at=updated_fact['created_at'],
-            updated_at=updated_fact['updated_at'],
-            conversation_title=updated_fact.get('conversation_title'),
-            conversation_summary=updated_fact.get('conversation_summary'),
-            turn_range=updated_fact.get('turn_range'),
-            key_moments=key_moments,
+            fact_id=row.fact_id,
+            content=row.content,
+            category=row.category,
+            fact_type=row.fact_type,
+            user_note=row.user_note,
+            tags=json.loads(row.tags_json) if row.tags_json else [],
+            is_favorite=bool(row.is_favorite),
+            emotional_tone=row.emotional_tone,
+            memory_type=row.memory_type,
+            revisit_count=row.revisit_count,
+            last_revisited=row.last_revisited,
+            created_at=row.created_at.isoformat() if hasattr(row.created_at, 'isoformat') else str(row.created_at),
+            updated_at=row.updated_at.isoformat() if hasattr(row.updated_at, 'isoformat') else str(row.updated_at),
+            user_uuid=user_profile.uuid if user_profile else user_uuid,
+            user_full_name=user_profile.full_name if user_profile else 'Unknown',
+            user_nickname=user_profile.nickname if user_profile else None,
+            content_type=row.content_type,
+            conversation_title=row.conversation_title,
+            conversation_summary=row.conversation_summary,
+            turn_range=row.turn_range,
+            key_moments=json.loads(row.key_moments_json) if row.key_moments_json else None
         )
         
     except HTTPException:
@@ -348,7 +307,7 @@ async def update_memory(
 async def delete_memory(
     fact_id: str,
     current_user = Depends(get_current_user),
-    db = Depends(get_database)
+    uow: UnitOfWork = Depends(get_uow)
 ):
     """
     Delete a memory from the album.
@@ -356,19 +315,22 @@ async def delete_memory(
     try:
         user_uuid = current_user['user_uuid']
         
-        memory_store = MemoryAlbumStore(db)
-        
-        # Delete the fact
-        success = await memory_store.delete_fact(
-            fact_id=fact_id,
-            user_id=user_uuid,
+        # Delete the memory using repository
+        # First verify it exists and belongs to user
+        memories = await uow.ams_user_memories.list(
+            filters={"fact_id": fact_id, "user_id": user_uuid},
+            limit=1
         )
         
-        if not success:
+        if not memories:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Memory not found or access denied"
             )
+        
+        # Delete it
+        await uow.ams_user_memories.delete(fact_id)
+        await uow.commit()
         
         logger.info(f"Memory deleted: {fact_id}", extra={
             "user_uuid": user_uuid,

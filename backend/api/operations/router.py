@@ -26,6 +26,8 @@ from backend.api.operations.schemas import (
     TopologyResponse, ServiceNode, ServiceConnection
 )
 from backend.api.system.dependencies import get_current_user, get_db_connection
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 from backend.api.metrics.start_time import start_time
 from backend.api.system.router import format_uptime
 from backend.api.operations import database_admin
@@ -431,7 +433,7 @@ async def get_database_stats(
 @router.get("/sessions", response_model=ActiveSessionsResponse)
 async def get_active_sessions(
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> ActiveSessionsResponse:
     """
     Get active user sessions.
@@ -444,28 +446,34 @@ async def get_active_sessions(
         # Query auth_sessions and user_profiles tables for active sessions
         try:
             # Get active sessions (last activity within 1 hour)
-            cutoff_time = (datetime.utcnow() - timedelta(hours=1)).isoformat()
+            cutoff_time = datetime.utcnow() - timedelta(hours=1)
             
-            result = db_connection.execute(
-                """
-                SELECT 
-                    p.uuid,
-                    p.full_name,
-                    p.nickname,
-                    COUNT(DISTINCT s.uuid) as session_count,
-                    MAX(s.created_at) as last_activity
-                FROM user_profiles p
-                LEFT JOIN auth_sessions s ON p.uuid = s.user_uuid
-                WHERE s.is_active = 1 
-                  AND s.created_at > ?
-                GROUP BY p.uuid, p.full_name, p.nickname
-                ORDER BY last_activity DESC
-                """,
-                [cutoff_time]
-            ).fetchall()
+            # Get all active sessions from last hour
+            recent_sessions = await uow.sessions.list(
+                filters={"is_active": True},
+                limit=10000
+            )
+            recent_sessions = [s for s in recent_sessions if s.created_at and s.created_at >= cutoff_time]
             
-            for row in result:
-                user_uuid, full_name, nickname, session_count, last_activity = row
+            # Get all users
+            all_users = await uow.users.list(limit=10000)
+            users_by_uuid = {u.uuid: u for u in all_users}
+            
+            # Group sessions by user
+            sessions_by_user = {}
+            for session in recent_sessions:
+                if session.user_uuid not in sessions_by_user:
+                    sessions_by_user[session.user_uuid] = []
+                sessions_by_user[session.user_uuid].append(session)
+            
+            # Build user session list
+            for user_uuid, user_sessions in sessions_by_user.items():
+                user_profile = users_by_uuid.get(user_uuid)
+                if not user_profile:
+                    continue
+                
+                session_count = len(user_sessions)
+                last_activity = max(s.created_at for s in user_sessions if s.created_at)
                 
                 # Format last activity
                 try:
@@ -485,10 +493,10 @@ async def get_active_sessions(
                 
                 sessions.append(UserSession(
                     user_uuid=user_uuid,
-                    full_name=full_name,
-                    nickname=nickname,
+                    full_name=user_profile.full_name,
+                    nickname=user_profile.nickname,
                     session_count=session_count,
-                    last_activity=activity_str,
+                    last_activity=last_activity.isoformat() if hasattr(last_activity, 'isoformat') else last_activity
                 ))
         except Exception as e:
             logger.warning(f"Failed to query user sessions: {e}")

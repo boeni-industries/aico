@@ -11,6 +11,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from aico.core.logging import get_logger
 from .schemas import EmotionStateResponse, EmotionHistoryResponse, EmotionHistoryItem
 from .dependencies import get_current_user, get_emotion_engine
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 
 logger = get_logger("aico.api.emotion.router")
 
@@ -61,6 +63,7 @@ async def get_current_emotion(
 async def get_emotion_history(
     user: Annotated[dict, Depends(get_current_user)],
     emotion_engine: Annotated[object, Depends(get_emotion_engine)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     limit: int = Query(50, ge=1, le=1000, description="Maximum number of records to return"),
     hours: Optional[int] = Query(None, ge=1, description="Only return emotions from last N hours"),
     days: Optional[int] = Query(None, ge=1, description="Only return emotions from last N days"),
@@ -98,55 +101,47 @@ async def get_emotion_history(
         feeling: Filter by specific emotion label
     """
     try:
-        # Build SQL query with filters
-        query = "SELECT timestamp, feeling, valence, arousal, intensity FROM emotion_history WHERE 1=1"
-        params = []
+        # Build filters for repository query
+        filters = {}
         
         # Time-based filters
         if since:
             try:
                 # Validate ISO timestamp
-                datetime.fromisoformat(since.replace('Z', '+00:00'))
-                query += " AND timestamp >= ?"
-                params.append(since)
+                since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+                filters["timestamp_gte"] = since_dt
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid 'since' timestamp format. Use ISO 8601 format.")
         elif hours:
             cutoff = datetime.utcnow() - timedelta(hours=hours)
-            query += " AND timestamp >= ?"
-            params.append(cutoff.isoformat())
+            filters["timestamp_gte"] = cutoff
         elif days:
             cutoff = datetime.utcnow() - timedelta(days=days)
-            query += " AND timestamp >= ?"
-            params.append(cutoff.isoformat())
+            filters["timestamp_gte"] = cutoff
         
         # Emotion filter
         if feeling:
-            query += " AND feeling = ?"
-            params.append(feeling)
+            filters["feeling"] = feeling
         
-        # Order and limit
-        query += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(limit)
+        # Get emotion history from repository
+        emotion_records = await uow.emotion_history.list(filters=filters, limit=limit)
         
-        # Execute query
-        db_connection = emotion_engine.db_connection
-        cursor = db_connection.execute(query, params)
-        rows = cursor.fetchall()
+        # Sort by timestamp DESC (most recent first)
+        emotion_records.sort(key=lambda e: e.timestamp if e.timestamp else datetime.min, reverse=True)
         
-        if not rows:
+        if not emotion_records:
             return EmotionHistoryResponse(count=0, history=[])
         
-        # Convert to response format (already in DESC order - most recent first)
+        # Convert to response format
         history_items = [
             EmotionHistoryItem(
-                timestamp=row[0],
-                feeling=row[1],
-                valence=row[2],
-                arousal=row[3],
-                intensity=row[4]
+                timestamp=record.timestamp.isoformat() if hasattr(record.timestamp, 'isoformat') else record.timestamp,
+                feeling=record.feeling,
+                valence=record.valence,
+                arousal=record.arousal,
+                intensity=record.intensity
             )
-            for row in rows
+            for record in emotion_records
         ]
         
         logger.info(f"Retrieved {len(history_items)} emotion history records with filters: "

@@ -12,6 +12,8 @@ import time
 
 from aico.core.logging import get_logger
 from backend.api.system.dependencies import get_current_user, get_db_connection
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 
 logger = get_logger("backend.api.system")
 
@@ -62,7 +64,7 @@ def format_uptime(seconds: float) -> str:
 @router.get("/overview", response_model=SystemOverviewResponse)
 async def get_system_overview(
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> SystemOverviewResponse:
     """
     Get system overview metrics.
@@ -133,16 +135,11 @@ async def get_system_overview(
         # Get active goals count from agency_goals table
         active_goals = 0
         try:
-            result = db_connection.execute(
-                """
-                SELECT COUNT(*) 
-                FROM agency_goals 
-                WHERE user_id = ? 
-                AND status IN ('active', 'in_progress')
-                """,
-                [user_id]
-            ).fetchone()
-            active_goals = result[0] if result else 0
+            all_goals = await uow.agency_goals.list(
+                filters={"user_id": user_id},
+                limit=10000
+            )
+            active_goals = sum(1 for g in all_goals if g.status in ['active', 'in_progress'])
         except Exception as e:
             logger.debug(f"Goals count unavailable: {e}")
         timer.stop("db_goals_query")

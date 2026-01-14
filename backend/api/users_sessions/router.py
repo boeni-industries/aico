@@ -23,7 +23,9 @@ from backend.api.users_sessions.schemas import (
     SessionStatistics,
 )
 from pydantic import BaseModel
-from backend.api.system.dependencies import get_current_user, get_db_connection
+from backend.api.system.dependencies import get_current_user
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 
 logger = get_logger("backend.api.users_sessions")
 
@@ -77,7 +79,7 @@ def format_last_activity(timestamp: str) -> str:
 @router.get("/users", response_model=UsersListResponse)
 async def get_users(
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     user_type: Optional[str] = Query(None, description="Filter by user type"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     has_sessions: Optional[bool] = Query(None, description="Filter users with active sessions"),
@@ -91,86 +93,59 @@ async def get_users(
     - has_sessions: Filter users with active sessions
     """
     try:
-        # Build query with filters
-        query = """
-            SELECT 
-                p.uuid,
-                p.full_name,
-                p.nickname,
-                p.user_type,
-                p.is_active,
-                p.primary_language,
-                p.created_at,
-                p.updated_at,
-                COUNT(DISTINCT CASE WHEN s.is_active = 1 AND datetime(s.expires_at) > datetime('now') THEN s.uuid END) as active_session_count,
-                COUNT(DISTINCT s.uuid) as total_session_count,
-                MAX(s.created_at) as last_activity,
-                c.failed_attempts,
-                c.locked_until,
-                c.last_login
-            FROM user_profiles p
-            LEFT JOIN auth_sessions s ON p.uuid = s.user_uuid
-            LEFT JOIN auth_user_credentials c ON p.uuid = c.user_uuid
-            WHERE 1=1
-        """
-        params = []
-        
+        # Get all users from repository
+        filters = {}
         if user_type:
-            query += " AND p.user_type = ?"
-            params.append(user_type)
-        
+            filters["user_type"] = user_type
         if is_active is not None:
-            query += " AND p.is_active = ?"
-            params.append(1 if is_active else 0)
+            filters["is_active"] = is_active
         
-        query += " GROUP BY p.uuid, p.full_name, p.nickname, p.user_type, p.is_active, p.primary_language, p.created_at, p.updated_at, c.failed_attempts, c.locked_until, c.last_login"
+        all_users = await uow.users.list(filters=filters, limit=10000)
         
-        if has_sessions is not None:
-            if has_sessions:
-                query += " HAVING active_session_count > 0"
-            else:
-                query += " HAVING active_session_count = 0"
+        # Get all active sessions
+        all_sessions = await uow.sessions.list(filters={"is_active": True}, limit=10000)
         
-        query += " ORDER BY last_activity DESC NULLS LAST"
+        # Group sessions by user
+        sessions_by_user = {}
+        for session in all_sessions:
+            if session.user_uuid not in sessions_by_user:
+                sessions_by_user[session.user_uuid] = []
+            sessions_by_user[session.user_uuid].append(session)
         
-        result = db_connection.execute(query, params).fetchall()
-        
+        # Build result
         users = []
         active_users_count = 0
         
-        for row in result:
-            (uuid, full_name, nickname, user_type_val, is_active_val, primary_language, 
-             created_at, updated_at, active_session_count, total_session_count, last_activity,
-             failed_attempts, locked_until, last_login) = row
+        for user_profile in all_users:
+            user_sessions = sessions_by_user.get(user_profile.uuid, [])
+            session_count = len(user_sessions)
             
-            if active_session_count > 0:
+            # Apply has_sessions filter
+            if has_sessions and session_count == 0:
+                continue
+            
+            if session_count > 0:
                 active_users_count += 1
             
-            # Build credentials info
-            credentials = None
-            if failed_attempts is not None:
-                credentials = UserCredentials(
-                    has_pin=True,
-                    failed_attempts=failed_attempts or 0,
-                    is_locked=locked_until is not None and datetime.fromisoformat(locked_until.replace('Z', '+00:00')) > datetime.utcnow() if locked_until else False,
-                    locked_until=locked_until,
-                    last_login=last_login
-                )
+            # Get last activity from sessions
+            last_activity = None
+            if user_sessions:
+                latest_session = max(user_sessions, key=lambda s: s.created_at if s.created_at else datetime.min)
+                last_activity = latest_session.created_at
             
             users.append(UserWithSessions(
-                uuid=uuid,
-                full_name=full_name,
-                nickname=nickname,
-                user_type=user_type_val,
-                is_active=bool(is_active_val),
-                primary_language=primary_language,
-                created_at=created_at,
-                updated_at=updated_at,
-                active_session_count=active_session_count,
-                total_session_count=total_session_count,
-                last_activity=format_last_activity(last_activity) if last_activity else None,
-                credentials=credentials
+                uuid=user_profile.uuid,
+                full_name=user_profile.full_name,
+                nickname=user_profile.nickname,
+                user_type=user_profile.user_type,
+                is_active=user_profile.is_active,
+                created_at=user_profile.created_at.isoformat() if hasattr(user_profile.created_at, 'isoformat') else user_profile.created_at,
+                active_sessions=session_count,
+                last_activity=format_last_activity(last_activity.isoformat() if hasattr(last_activity, 'isoformat') else str(last_activity)) if last_activity else "Never"
             ))
+        
+        # Sort by last activity
+        users.sort(key=lambda u: u.last_activity if u.last_activity != "Never" else "", reverse=True)
         
         return UsersListResponse(
             users=users,
@@ -190,7 +165,7 @@ async def get_users(
 async def get_user_detail(
     user_uuid: str,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
 ) -> UserDetailResponse:
     """
     Get detailed information for a specific user.
@@ -200,130 +175,86 @@ async def get_user_detail(
     """
     try:
         # Get user profile
-        user_result = db_connection.execute(
-            """
-            SELECT uuid, full_name, nickname, user_type, is_active, 
-                   primary_language, created_at, updated_at
-            FROM user_profiles
-            WHERE uuid = ?
-            """,
-            [user_uuid]
-        ).fetchone()
+        user_profile = await uow.users.get_by_id(user_uuid)
         
-        if not user_result:
+        if not user_profile:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User {user_uuid} not found"
             )
         
-        user_profile = UserProfile(
-            uuid=user_result[0],
-            full_name=user_result[1],
-            nickname=user_result[2],
-            user_type=user_result[3],
-            is_active=bool(user_result[4]),
-            primary_language=user_result[5],
-            created_at=user_result[6],
-            updated_at=user_result[7]
+        profile_response = UserProfile(
+            uuid=user_profile.uuid,
+            full_name=user_profile.full_name,
+            nickname=user_profile.nickname,
+            user_type=user_profile.user_type,
+            is_active=user_profile.is_active,
+            primary_language=user_profile.primary_language,
+            created_at=user_profile.created_at.isoformat() if hasattr(user_profile.created_at, 'isoformat') else user_profile.created_at,
+            updated_at=user_profile.updated_at.isoformat() if hasattr(user_profile.updated_at, 'isoformat') else user_profile.updated_at
         )
         
         # Get credentials info
         credentials = None
-        cred_result = db_connection.execute(
-            """
-            SELECT failed_attempts, locked_until, last_login
-            FROM auth_user_credentials
-            WHERE user_uuid = ?
-            """,
-            [user_uuid]
-        ).fetchone()
+        cred_list = await uow.credentials.list(filters={"user_uuid": user_uuid}, limit=1)
         
-        if cred_result:
-            failed_attempts, locked_until, last_login = cred_result
+        if cred_list:
+            cred = cred_list[0]
             credentials = UserCredentials(
-                has_pin=True,
-                failed_attempts=failed_attempts or 0,
-                is_locked=locked_until is not None and datetime.fromisoformat(locked_until.replace('Z', '+00:00')) > datetime.utcnow() if locked_until else False,
-                locked_until=locked_until,
-                last_login=last_login
+                failed_attempts=cred.failed_attempts,
+                locked_until=cred.locked_until.isoformat() if hasattr(cred.locked_until, 'isoformat') else cred.locked_until if cred.locked_until else None,
+                last_login=cred.last_login.isoformat() if hasattr(cred.last_login, 'isoformat') else cred.last_login if cred.last_login else None
             )
         
         # Get all sessions (active and expired)
-        sessions_result = db_connection.execute(
-            """
-            SELECT uuid, user_uuid, device_uuid, session_type, 
-                   expires_at, created_at, is_active
-            FROM auth_sessions
-            WHERE user_uuid = ?
-            ORDER BY created_at DESC
-            LIMIT 200
-            """,
-            [user_uuid]
-        ).fetchall()
+        all_sessions = await uow.sessions.list(filters={"user_uuid": user_uuid}, limit=200)
+        all_sessions.sort(key=lambda s: s.created_at if s.created_at else datetime.min, reverse=True)
         
         active_sessions = []
-        for sess_row in sessions_result:
+        for sess in all_sessions:
             active_sessions.append(SessionDetail(
-                uuid=sess_row[0],
-                user_uuid=sess_row[1],
-                device_uuid=sess_row[2],
-                session_type=sess_row[3],
-                expires_at=sess_row[4],
-                created_at=sess_row[5],
-                is_active=bool(sess_row[6]),
-                time_remaining=format_time_remaining(sess_row[4])
+                uuid=sess.uuid,
+                user_uuid=sess.user_uuid,
+                device_uuid=sess.device_uuid,
+                session_type=sess.session_type,
+                expires_at=sess.expires_at.isoformat() if hasattr(sess.expires_at, 'isoformat') else sess.expires_at,
+                created_at=sess.created_at.isoformat() if hasattr(sess.created_at, 'isoformat') else sess.created_at,
+                is_active=sess.is_active
             ))
         
-        # Get devices
-        devices_result = db_connection.execute(
-            """
-            SELECT DISTINCT d.uuid, d.device_name, d.device_type, d.platform, 
-                   d.last_seen, d.is_active
-            FROM auth_devices d
-            JOIN auth_sessions s ON d.uuid = s.device_uuid
-            WHERE s.user_uuid = ?
-            ORDER BY d.last_seen DESC
-            """,
-            [user_uuid]
-        ).fetchall()
-        
+        # Get devices for this user's sessions
+        device_uuids = set(s.device_uuid for s in all_sessions if s.device_uuid)
         devices = []
-        for dev_row in devices_result:
-            devices.append(DeviceInfo(
-                uuid=dev_row[0],
-                device_name=dev_row[1],
-                device_type=dev_row[2],
-                platform=dev_row[3],
-                last_seen=dev_row[4],
-                is_active=bool(dev_row[5])
-            ))
+        
+        if device_uuids:
+            all_devices = await uow.devices.list(limit=1000)
+            user_devices = [d for d in all_devices if d.uuid in device_uuids]
+            user_devices.sort(key=lambda d: d.last_seen if d.last_seen else datetime.min, reverse=True)
+            
+            for dev in user_devices:
+                devices.append(DeviceInfo(
+                    uuid=dev.uuid,
+                    device_name=dev.device_name,
+                    device_type=dev.device_type,
+                    platform=dev.platform,
+                    last_seen=dev.last_seen.isoformat() if hasattr(dev.last_seen, 'isoformat') else dev.last_seen,
+                    is_active=dev.is_active
+                ))
         
         # Calculate statistics
-        stats_result = db_connection.execute(
-            """
-            SELECT 
-                COUNT(*) as total_sessions,
-                COUNT(CASE WHEN is_active = 1 AND datetime(expires_at) > datetime('now') THEN 1 END) as active_sessions,
-                COUNT(CASE WHEN is_active = 0 OR datetime(expires_at) <= datetime('now') THEN 1 END) as expired_sessions
-            FROM auth_sessions
-            WHERE user_uuid = ?
-            """,
-            [user_uuid]
-        ).fetchone()
-        
         statistics = {
-            "total_sessions": stats_result[0],
-            "active_sessions": stats_result[1],
-            "expired_sessions": stats_result[2],
-            "registered_devices": len(devices)
+            "total_sessions": len(all_sessions),
+            "active_sessions": sum(1 for s in all_sessions if s.is_active),
+            "revoked_sessions": sum(1 for s in all_sessions if not s.is_active),
+            "total_devices": len(devices)
         }
         
         return UserDetailResponse(
-            user=user_profile,
+            user=profile_response,
             credentials=credentials,
-            active_sessions=active_sessions,
+            sessions=active_sessions,
             devices=devices,
-            statistics=statistics
+            statistics=SessionStatistics(**statistics)
         )
         
     except HTTPException:
@@ -339,7 +270,7 @@ async def get_user_detail(
 @router.get("/sessions", response_model=SessionsListResponse)
 async def get_sessions(
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     user_uuid: Optional[str] = Query(None, description="Filter by user UUID"),
     session_type: Optional[str] = Query(None, description="Filter by session type"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
@@ -355,81 +286,61 @@ async def get_sessions(
     - device_type: Filter by device type
     """
     try:
-        # Build query with filters
-        query = """
-            SELECT 
-                s.uuid,
-                s.user_uuid,
-                s.device_uuid,
-                s.session_type,
-                s.expires_at,
-                s.created_at,
-                s.is_active,
-                p.full_name,
-                p.nickname,
-                p.user_type,
-                d.device_name,
-                d.device_type
-            FROM auth_sessions s
-            JOIN user_profiles p ON s.user_uuid = p.uuid
-            LEFT JOIN auth_devices d ON s.device_uuid = d.uuid
-            WHERE 1=1
-        """
-        params = []
-        
+        # Get all sessions from repository
+        filters = {}
         if user_uuid:
-            query += " AND s.user_uuid = ?"
-            params.append(user_uuid)
-        
+            filters["user_uuid"] = user_uuid
         if session_type:
-            query += " AND s.session_type = ?"
-            params.append(session_type)
-        
+            filters["session_type"] = session_type
         if is_active is not None:
-            if is_active:
-                query += " AND s.is_active = 1 AND datetime(s.expires_at) > datetime('now')"
-            else:
-                query += " AND (s.is_active = 0 OR datetime(s.expires_at) <= datetime('now'))"
+            filters["is_active"] = is_active
         
+        all_sessions = await uow.sessions.list(filters=filters, limit=1000)
+        all_sessions.sort(key=lambda s: s.created_at if s.created_at else datetime.min, reverse=True)
+        
+        # Get all users
+        all_users = await uow.users.list(limit=10000)
+        users_by_uuid = {u.uuid: u for u in all_users}
+        
+        # Get all devices if needed for device_type filter
         if device_type:
-            query += " AND d.device_type = ?"
-            params.append(device_type)
+            all_devices = await uow.devices.list(limit=10000)
+            devices_by_uuid = {d.uuid: d for d in all_devices}
+            # Filter sessions by device type
+            all_sessions = [s for s in all_sessions if s.device_uuid and s.device_uuid in devices_by_uuid and devices_by_uuid[s.device_uuid].device_type == device_type]
         
-        # Only show sessions from last 24 hours
-        query += " AND s.created_at > datetime('now', '-24 hours')"
-        
-        query += " ORDER BY s.created_at DESC LIMIT 1000"
-        
-        result = db_connection.execute(query, params).fetchall()
+        # Get devices for device info
+        all_devices = await uow.devices.list(limit=10000)
+        devices_by_uuid = {d.uuid: d for d in all_devices}
         
         sessions = []
         active_count = 0
         
-        for row in result:
-            (sess_uuid, user_uuid_val, device_uuid, session_type_val, expires_at, 
-             created_at, is_active_val, full_name, nickname, user_type_val, 
-             device_name, device_type_val) = row
+        for sess in all_sessions:
+            user_info = users_by_uuid.get(sess.user_uuid)
+            device_info = devices_by_uuid.get(sess.device_uuid) if sess.device_uuid else None
             
             # Check if session is truly active
-            is_truly_active = bool(is_active_val) and datetime.fromisoformat(expires_at.replace('Z', '+00:00')) > datetime.utcnow()
+            expires_dt = sess.expires_at if isinstance(sess.expires_at, datetime) else datetime.fromisoformat(str(sess.expires_at).replace('Z', '+00:00'))
+            is_truly_active = sess.is_active and expires_dt > datetime.utcnow()
             
             if is_truly_active:
                 active_count += 1
             
             sessions.append(SessionWithUser(
-                uuid=sess_uuid,
-                user_uuid=user_uuid_val,
-                device_uuid=device_uuid,
-                session_type=session_type_val,
-                expires_at=expires_at,
-                created_at=created_at,
+                uuid=sess.uuid,
+                user_uuid=sess.user_uuid,
+                device_uuid=sess.device_uuid,
+                session_type=sess.session_type,
+                expires_at=sess.expires_at.isoformat() if hasattr(sess.expires_at, 'isoformat') else sess.expires_at,
+                created_at=sess.created_at.isoformat() if hasattr(sess.created_at, 'isoformat') else sess.created_at,
                 is_active=is_truly_active,
-                time_remaining=format_time_remaining(expires_at),
-                user_full_name=full_name,
-                user_nickname=nickname,
-                user_type=user_type_val,
-                device_name=device_name or device_uuid or "Unknown",
-                device_type=device_type_val or "web"
+                time_remaining=format_time_remaining(sess.expires_at.isoformat() if hasattr(sess.expires_at, 'isoformat') else str(sess.expires_at)),
+                user_full_name=user_info.full_name if user_info else "Unknown",
+                user_nickname=user_info.nickname if user_info else "Unknown",
+                user_type=user_info.user_type if user_info else "unknown",
+                device_name=device_info.device_name if device_info else (sess.device_uuid or "Unknown"),
+                device_type=device_info.device_type if device_info else "web"
             ))
         
         return SessionsListResponse(
@@ -449,86 +360,66 @@ async def get_sessions(
 @router.get("/statistics", response_model=SessionStatsResponse)
 async def get_session_statistics(
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> SessionStatsResponse:
     """
     Get session statistics and analytics.
     """
     try:
-        # Get overall statistics
-        stats_result = db_connection.execute(
-            """
-            SELECT 
-                COUNT(*) as total_sessions,
-                COUNT(CASE WHEN is_active = 1 AND datetime(expires_at) > datetime('now') THEN 1 END) as active_sessions,
-                COUNT(CASE WHEN datetime(expires_at) <= datetime('now') THEN 1 END) as expired_sessions
-            FROM auth_sessions
-            """
-        ).fetchone()
+        # Get all sessions
+        all_sessions = await uow.sessions.list(limit=10000)
+        now = datetime.utcnow()
         
-        # Get sessions by type
-        type_result = db_connection.execute(
-            """
-            SELECT session_type, COUNT(*) as count
-            FROM auth_sessions
-            WHERE is_active = 1 AND datetime(expires_at) > datetime('now')
-            GROUP BY session_type
-            """
-        ).fetchall()
+        # Calculate overall statistics
+        total_sessions = len(all_sessions)
+        active_sessions = sum(1 for s in all_sessions if s.is_active and s.expires_at and s.expires_at > now)
+        expired_sessions = sum(1 for s in all_sessions if not s.is_active or (s.expires_at and s.expires_at <= now))
         
-        sessions_by_type = {row[0]: row[1] for row in type_result}
+        # Get sessions by type (only active, non-expired)
+        active_valid_sessions = [s for s in all_sessions if s.is_active and s.expires_at and s.expires_at > now]
+        sessions_by_type = {}
+        for session in active_valid_sessions:
+            session_type = session.session_type or 'unknown'
+            sessions_by_type[session_type] = sessions_by_type.get(session_type, 0) + 1
         
         # Get sessions by device type
-        device_result = db_connection.execute(
-            """
-            SELECT d.device_type, COUNT(DISTINCT s.uuid) as count
-            FROM auth_sessions s
-            LEFT JOIN auth_devices d ON s.device_uuid = d.uuid
-            WHERE s.is_active = 1 AND datetime(s.expires_at) > datetime('now')
-            GROUP BY d.device_type
-            """
-        ).fetchall()
+        all_devices = await uow.devices.list(limit=10000)
+        devices_by_uuid = {d.uuid: d for d in all_devices}
         
-        sessions_by_device_type = {row[0] or 'unknown': row[1] for row in device_result}
+        sessions_by_device_type = {}
+        for session in active_valid_sessions:
+            if session.device_uuid and session.device_uuid in devices_by_uuid:
+                device_type = devices_by_uuid[session.device_uuid].device_type or 'unknown'
+            else:
+                device_type = 'unknown'
+            sessions_by_device_type[device_type] = sessions_by_device_type.get(device_type, 0) + 1
         
         # Get recent activity (last 10 sessions)
-        activity_result = db_connection.execute(
-            """
-            SELECT 
-                s.uuid,
-                s.created_at,
-                p.full_name,
-                s.session_type,
-                d.device_type
-            FROM auth_sessions s
-            JOIN user_profiles p ON s.user_uuid = p.uuid
-            LEFT JOIN auth_devices d ON s.device_uuid = d.uuid
-            ORDER BY s.created_at DESC
-            LIMIT 10
-            """
-        ).fetchall()
+        sorted_sessions = sorted(all_sessions, key=lambda s: s.created_at if s.created_at else datetime.min, reverse=True)[:10]
+        
+        # Get users for recent sessions
+        all_users = await uow.users.list(limit=10000)
+        users_by_uuid = {u.uuid: u for u in all_users}
         
         recent_activity = []
-        for row in activity_result:
+        for session in sorted_sessions:
+            user_info = users_by_uuid.get(session.user_uuid)
+            device_info = devices_by_uuid.get(session.device_uuid) if session.device_uuid else None
+            
             recent_activity.append({
-                "session_uuid": row[0],
-                "created_at": row[1],
-                "user_name": row[2],
-                "session_type": row[3],
-                "device_type": row[4] or 'unknown'
+                "session_uuid": session.uuid,
+                "created_at": session.created_at.isoformat() if hasattr(session.created_at, 'isoformat') else str(session.created_at),
+                "user_name": user_info.full_name if user_info else "Unknown",
+                "session_type": session.session_type or "unknown",
+                "device_type": device_info.device_type if device_info else 'unknown'
             })
         
-        statistics = SessionStatistics(
-            total_sessions=stats_result[0],
-            active_sessions=stats_result[1],
-            expired_sessions=stats_result[2],
+        return SessionStatsResponse(
+            total_sessions=total_sessions,
+            active_sessions=active_sessions,
+            expired_sessions=expired_sessions,
             sessions_by_type=sessions_by_type,
             sessions_by_device_type=sessions_by_device_type,
-            average_session_duration=None  # Could be calculated if we track session end times
-        )
-        
-        return SessionStatsResponse(
-            statistics=statistics,
             recent_activity=recent_activity
         )
         
@@ -552,11 +443,11 @@ class LockUserRequest(BaseModel):
     duration_hours: Optional[int] = None  # How long to lock (None = indefinite)
 
 
-@router.post("/sessions/{session_uuid}/revoke")
+@router.delete("/sessions/{session_uuid}", status_code=204)
 async def revoke_session(
     session_uuid: str,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     request: RevokeSessionRequest = Body(default=RevokeSessionRequest()),
 ) -> dict:
     """
@@ -566,18 +457,16 @@ async def revoke_session(
     """
     try:
         # Check if session exists
-        session_result = db_connection.execute(
-            "SELECT uuid, user_uuid, is_active FROM auth_sessions WHERE uuid = ?",
-            [session_uuid]
-        ).fetchone()
+        session = await uow.sessions.get_by_id(session_uuid)
         
-        if not session_result:
+        if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Session {session_uuid} not found"
             )
         
-        _, session_user_uuid, is_active = session_result
+        session_user_uuid = session.user_uuid
+        is_active = session.is_active
         
         if not is_active:
             raise HTTPException(
@@ -586,11 +475,9 @@ async def revoke_session(
             )
         
         # Revoke the session
-        db_connection.execute(
-            "UPDATE auth_sessions SET is_active = 0 WHERE uuid = ?",
-            [session_uuid]
-        )
-        db_connection.commit()
+        session.is_active = False
+        await uow.sessions.update(session)
+        await uow.commit()
         
         logger.info(
             f"Session revoked: {session_uuid} for user {session_user_uuid} by {user.get('user_uuid')}",
@@ -618,11 +505,11 @@ async def revoke_session(
         )
 
 
-@router.post("/users/{user_uuid}/revoke-all-sessions")
+@router.delete("/users/{user_uuid}/sessions", status_code=200)
 async def revoke_all_user_sessions(
     user_uuid: str,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     request: RevokeSessionRequest = Body(default=RevokeSessionRequest()),
 ) -> dict:
     """
@@ -630,10 +517,7 @@ async def revoke_all_user_sessions(
     """
     try:
         # Check if user exists
-        user_result = db_connection.execute(
-            "SELECT uuid, full_name FROM user_profiles WHERE uuid = ?",
-            [user_uuid]
-        ).fetchone()
+        user_result = await uow.users.get_by_id(user_uuid)
         
         if not user_result:
             raise HTTPException(
@@ -642,12 +526,8 @@ async def revoke_all_user_sessions(
             )
         
         # Get count of active sessions
-        count_result = db_connection.execute(
-            "SELECT COUNT(*) FROM auth_sessions WHERE user_uuid = ? AND is_active = 1",
-            [user_uuid]
-        ).fetchone()
-        
-        active_count = count_result[0] if count_result else 0
+        active_sessions = await uow.sessions.list(filters={"user_uuid": user_uuid, "is_active": True}, limit=10000)
+        active_count = len(active_sessions)
         
         if active_count == 0:
             return {
@@ -657,11 +537,10 @@ async def revoke_all_user_sessions(
             }
         
         # Revoke all active sessions
-        db_connection.execute(
-            "UPDATE auth_sessions SET is_active = 0 WHERE user_uuid = ? AND is_active = 1",
-            [user_uuid]
-        )
-        db_connection.commit()
+        for session in active_sessions:
+            session.is_active = False
+            await uow.sessions.update(session)
+        await uow.commit()
         
         logger.info(
             f"All sessions revoked for user {user_uuid} by {user.get('user_uuid')}",
@@ -689,21 +568,18 @@ async def revoke_all_user_sessions(
         )
 
 
-@router.post("/users/{user_uuid}/cleanup-sessions")
+@router.delete("/users/{user_uuid}/sessions/expired", status_code=200)
 async def cleanup_expired_sessions(
     user_uuid: str,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
 ) -> dict:
     """
     Delete all expired sessions for a specific user.
     """
     try:
         # Check if user exists
-        user_result = db_connection.execute(
-            "SELECT uuid, full_name FROM user_profiles WHERE uuid = ?",
-            [user_uuid]
-        ).fetchone()
+        user_result = await uow.users.get_by_id(user_uuid)
         
         if not user_result:
             raise HTTPException(
@@ -712,12 +588,13 @@ async def cleanup_expired_sessions(
             )
         
         # Get count of expired sessions
-        count_result = db_connection.execute(
-            "SELECT COUNT(*) FROM auth_sessions WHERE user_uuid = ? AND (is_active = 0 OR datetime(expires_at) <= datetime('now'))",
-            [user_uuid]
-        ).fetchone()
-        
-        expired_count = count_result[0] if count_result else 0
+        all_sessions = await uow.sessions.list(filters={"user_uuid": user_uuid}, limit=10000)
+        now = datetime.utcnow()
+        expired_sessions = [
+            s for s in all_sessions 
+            if not s.is_active or (s.expires_at and s.expires_at <= now)
+        ]
+        expired_count = len(expired_sessions)
         
         if expired_count == 0:
             return {
@@ -727,11 +604,9 @@ async def cleanup_expired_sessions(
             }
         
         # Delete expired sessions
-        db_connection.execute(
-            "DELETE FROM auth_sessions WHERE user_uuid = ? AND (is_active = 0 OR datetime(expires_at) <= datetime('now'))",
-            [user_uuid]
-        )
-        db_connection.commit()
+        for session in expired_sessions:
+            await uow.sessions.delete(session.uuid)
+        await uow.commit()
         
         logger.info(
             f"Cleaned up expired sessions for user {user_uuid} by {user.get('user_uuid')}",
@@ -758,11 +633,11 @@ async def cleanup_expired_sessions(
         )
 
 
-@router.post("/users/{user_uuid}/lock")
+@router.post("/users/{user_uuid}/lock", status_code=200)
 async def lock_unlock_user(
     user_uuid: str,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     request: LockUserRequest = Body(...),
 ) -> dict:
     """
@@ -770,10 +645,7 @@ async def lock_unlock_user(
     """
     try:
         # Check if user exists
-        user_result = db_connection.execute(
-            "SELECT uuid, full_name FROM user_profiles WHERE uuid = ?",
-            [user_uuid]
-        ).fetchone()
+        user_result = await uow.users.get_by_id(user_uuid)
         
         if not user_result:
             raise HTTPException(
@@ -782,12 +654,9 @@ async def lock_unlock_user(
             )
         
         # Check if credentials exist
-        cred_result = db_connection.execute(
-            "SELECT user_uuid FROM auth_user_credentials WHERE user_uuid = ?",
-            [user_uuid]
-        ).fetchone()
+        cred_list = await uow.credentials.list(filters={"user_uuid": user_uuid}, limit=1)
         
-        if not cred_result:
+        if not cred_list:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User credentials not found for {user_uuid}"
@@ -795,33 +664,35 @@ async def lock_unlock_user(
         
         if request.lock:
             # Lock the account
+            cred = cred_list[0]
+            
             if request.duration_hours:
-                locked_until = (datetime.utcnow() + timedelta(hours=request.duration_hours)).isoformat()
+                # Lock for specific duration
+                cred.locked_until = datetime.utcnow() + timedelta(hours=request.duration_hours)
             else:
                 # Lock indefinitely (far future date)
-                locked_until = (datetime.utcnow() + timedelta(days=365*10)).isoformat()
+                cred.locked_until = datetime.utcnow() + timedelta(days=365*10)
             
-            db_connection.execute(
-                "UPDATE auth_user_credentials SET locked_until = ? WHERE user_uuid = ?",
-                [locked_until, user_uuid]
-            )
+            await uow.credentials.update(cred)
             
             # Also revoke all active sessions
-            db_connection.execute(
-                "UPDATE auth_sessions SET is_active = 0 WHERE user_uuid = ? AND is_active = 1",
-                [user_uuid]
-            )
+            active_sessions = await uow.sessions.list(filters={"user_uuid": user_uuid, "is_active": True}, limit=10000)
+            for session in active_sessions:
+                session.is_active = False
+                await uow.sessions.update(session)
+            
+            locked_until = cred.locked_until.isoformat() if hasattr(cred.locked_until, 'isoformat') else str(cred.locked_until)
             
             message = f"User account locked until {locked_until}" if request.duration_hours else "User account locked indefinitely"
         else:
             # Unlock the account
-            db_connection.execute(
-                "UPDATE auth_user_credentials SET locked_until = NULL, failed_attempts = 0 WHERE user_uuid = ?",
-                [user_uuid]
-            )
+            cred = cred_list[0]
+            cred.locked_until = None
+            cred.failed_attempts = 0
+            await uow.credentials.update(cred)
             message = "User account unlocked successfully"
         
-        db_connection.commit()
+        await uow.commit()
         
         logger.info(
             f"User {'locked' if request.lock else 'unlocked'}: {user_uuid} by {user.get('user_uuid')}",

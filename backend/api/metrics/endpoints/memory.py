@@ -19,7 +19,9 @@ import lmdb
 from ..models import MemoryMetrics, MetricValue
 from ..influx_client import MetricsInfluxClient
 from aico.core.logging import get_logger
-from backend.api.system.dependencies import get_db_connection
+from backend.api.system.dependencies import get_current_user, get_db_connection
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 
 logger = get_logger("backend.api.metrics.memory")
 
@@ -28,8 +30,9 @@ router = APIRouter()
 
 @router.get("/memory", response_model=MemoryMetrics)
 async def get_memory_metrics(
-    db_connection: Annotated[object, Depends(get_db_connection)]
-):
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
+) -> MemoryMetrics:
     """Get memory system metrics from LMDB, InfluxDB, PostgreSQL, and ChromaDB."""
     try:
         # Working Memory - count entries in LMDB sub-databases
@@ -72,32 +75,32 @@ async def get_memory_metrics(
         relationship_distribution = {}
         
         try:
-            # Total nodes
-            result = db_connection.execute(
-                "SELECT COUNT(*) FROM kg_nodes"
-            ).fetchone()
-            kg_node_count = result[0] if result else 0
+            # Get all KG nodes and edges from repository
+            all_nodes = await uow.kg_nodes.list(limit=100000)
+            all_edges = await uow.kg_edges.list(limit=100000)
             
-            # Total edges
-            result = db_connection.execute(
-                "SELECT COUNT(*) FROM kg_edges"
-            ).fetchone()
-            kg_edge_count = result[0] if result else 0
+            # Total counts
+            kg_node_count = len(all_nodes)
+            kg_edge_count = len(all_edges)
             
             # Entity type distribution (top 10 current entity types)
-            entity_types = db_connection.execute(
-                "SELECT label, COUNT(*) as cnt FROM kg_nodes WHERE is_current = 1 GROUP BY label ORDER BY cnt DESC LIMIT 10"
-            ).fetchall()
-            entity_distribution = {row[0]: row[1] for row in entity_types}
+            current_nodes = [n for n in all_nodes if n.is_current]
+            label_counts = {}
+            for node in current_nodes:
+                label = node.label or 'unknown'
+                label_counts[label] = label_counts.get(label, 0) + 1
+            entity_distribution = dict(sorted(label_counts.items(), key=lambda x: x[1], reverse=True)[:10])
             
             # Relationship type distribution (top 10 current relationship types)
-            relation_types = db_connection.execute(
-                "SELECT relation_type, COUNT(*) as cnt FROM kg_edges WHERE is_current = 1 GROUP BY relation_type ORDER BY cnt DESC LIMIT 10"
-            ).fetchall()
-            relationship_distribution = {row[0]: row[1] for row in relation_types}
+            current_edges = [e for e in all_edges if e.is_current]
+            relation_counts = {}
+            for edge in current_edges:
+                rel_type = edge.relation_type or 'unknown'
+                relation_counts[rel_type] = relation_counts.get(rel_type, 0) + 1
+            relationship_distribution = dict(sorted(relation_counts.items(), key=lambda x: x[1], reverse=True)[:10])
             
         except Exception as e:
-            logger.debug(f"Failed to query KG stats from libSQL: {e}")
+            logger.debug(f"Failed to query KG stats from repository: {e}")
         
         # Storage Breakdown - calculate sizes
         storage_breakdown = {}
@@ -113,9 +116,9 @@ async def get_memory_metrics(
                 chromadb_size = sum(os.path.getsize(os.path.join(dp, f)) for dp, dn, filenames in os.walk(chromadb_path) for f in filenames)
                 storage_breakdown["ChromaDB"] = round(chromadb_size / (1024 * 1024), 2)
             
-            # libSQL KG size (approximate from row counts)
+            # PostgreSQL KG size (approximate from row counts)
             kg_size_estimate = (kg_node_count * 0.5 + kg_edge_count * 0.3) / 1024  # Rough estimate in MB
-            storage_breakdown["libSQL"] = round(kg_size_estimate, 2)
+            storage_breakdown["PostgreSQL"] = round(kg_size_estimate, 2)
             
         except Exception as e:
             logger.debug(f"Failed to calculate storage sizes: {e}")
@@ -124,11 +127,13 @@ async def get_memory_metrics(
         consolidation_health = 100.0
         last_consolidation = "N/A"
         try:
-            result = db_connection.execute(
-                "SELECT started_at FROM scheduler_task_executions WHERE task_id = 'ams.memory_consolidation' AND status = 'completed' ORDER BY started_at DESC LIMIT 1"
-            ).fetchone()
-            if result:
-                last_consolidation = result[0]
+            # Get last consolidation from scheduler executions
+            executions = await uow.scheduler_task_executions.list(
+                filters={"task_id": "ams.memory_consolidation", "status": "completed"},
+                limit=1
+            )
+            if executions:
+                last_consolidation = executions[0].started_at.isoformat() if hasattr(executions[0].started_at, 'isoformat') else str(executions[0].started_at)
                 # Health is good if consolidation ran in last 24h
                 from datetime import datetime, timezone
                 last_run = datetime.fromisoformat(result[0].replace('Z', '+00:00'))

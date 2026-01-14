@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
 
 from backend.api.conversation.dependencies import get_current_user
-from aico.data.libsql import EncryptedLibSQLConnection
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 from aico.core.logging import get_logger
 
 logger = get_logger("backend.api.conversation.proactive")
@@ -39,21 +40,13 @@ class InitiationStatus(BaseModel):
     engagement_score: Optional[float]
 
 
-def get_db_connection(request: Request):
-    """Get database connection from service container."""
-    if not hasattr(request.app.state, 'service_container'):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Service container not initialized"
-        )
-    container = request.app.state.service_container
-    return container.get_service("database")
+# Removed get_db_connection - using UnitOfWork instead
 
 
 @router.get("/pending", response_model=list[InitiationStatus])
 async def get_pending_initiations(
-    request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow)
 ):
     """Get all pending proactive initiations for current user.
     
@@ -62,33 +55,28 @@ async def get_pending_initiations(
     """
     try:
         user_id = current_user['user_uuid']
-        db = get_db_connection(request)
         
         print(f"📋 [PROACTIVE_API] Fetching pending initiations for user {user_id[:8]}")
         logger.info(f"📋 [PROACTIVE_API] Fetching pending initiations for user {user_id}")
         
-        cursor = db.execute(
-            """SELECT initiation_id, user_id, conversation_id, question,
-                      initiated_at, resolution_status, resolved_at,
-                      user_response_time, engagement_score
-               FROM conversation_initiations
-               WHERE user_id = ? AND resolution_status = 'pending'
-               ORDER BY initiated_at DESC""",
-            (user_id,)
+        # Get pending initiations from repository
+        all_initiations = await uow.conversation_initiations.list(
+            filters={"user_id": user_id, "resolution_status": "pending"},
+            limit=10
         )
         
         initiations = []
-        for row in cursor.fetchall():
+        for initiation in sorted(all_initiations, key=lambda i: i.initiated_at if i.initiated_at else datetime.min, reverse=True):
             initiations.append(InitiationStatus(
-                initiation_id=row['initiation_id'],
-                user_id=row['user_id'],
-                conversation_id=row['conversation_id'],
-                question=row['question'],
-                initiated_at=row['initiated_at'],
-                resolution_status=row['resolution_status'],
-                resolved_at=row['resolved_at'],
-                user_response_time=row['user_response_time'],
-                engagement_score=row['engagement_score']
+                initiation_id=initiation.initiation_id,
+                user_id=initiation.user_id,
+                conversation_id=initiation.conversation_id,
+                question=initiation.question,
+                initiated_at=initiation.initiated_at.isoformat() if hasattr(initiation.initiated_at, 'isoformat') else str(initiation.initiated_at),
+                resolution_status=initiation.resolution_status,
+                resolved_at=initiation.resolved_at.isoformat() if initiation.resolved_at and hasattr(initiation.resolved_at, 'isoformat') else (str(initiation.resolved_at) if initiation.resolved_at else None),
+                user_response_time=initiation.user_response_time,
+                engagement_score=initiation.engagement_score
             ))
         
         print(f"📋 [PROACTIVE_API] ✅ Found {len(initiations)} pending initiations")
@@ -108,8 +96,8 @@ async def get_pending_initiations(
 @router.post("/respond")
 async def respond_to_initiation(
     response: InitiationResponse,
-    request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow)
 ):
     """Record user response to proactive initiation.
     
@@ -117,7 +105,6 @@ async def respond_to_initiation(
     """
     try:
         user_id = current_user['user_uuid']
-        db = get_db_connection(request)
         
         print(f"📝 [PROACTIVE_API] Recording response to initiation {response.initiation_id[:8]}")
         logger.info(
@@ -126,14 +113,8 @@ async def respond_to_initiation(
         )
         
         # Verify initiation exists and belongs to user
-        cursor = db.execute(
-            """SELECT initiation_id, user_id, initiated_at, resolution_status, trigger_reason
-               FROM conversation_initiations
-               WHERE initiation_id = ?""",
-            (response.initiation_id,)
-        )
+        initiation = await uow.conversation_initiations.get_by_id(response.initiation_id)
         
-        initiation = cursor.fetchone()
         if not initiation:
             print(f"📝 [PROACTIVE_API] ⚠️ Initiation not found: {response.initiation_id[:8]}")
             raise HTTPException(
@@ -141,46 +122,33 @@ async def respond_to_initiation(
                 detail="Initiation not found"
             )
         
-        if initiation['user_id'] != user_id:
+        if initiation.user_id != user_id:
             print(f"📝 [PROACTIVE_API] ⚠️ Unauthorized access attempt")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to respond to this initiation"
             )
         
-        if initiation['resolution_status'] != 'pending':
-            print(f"📝 [PROACTIVE_API] ⚠️ Initiation already resolved: {initiation['resolution_status']}")
+        if initiation.resolution_status != 'pending':
+            print(f"📝 [PROACTIVE_API] ⚠️ Initiation already resolved: {initiation.resolution_status}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Initiation already {initiation['resolution_status']}"
+                detail=f"Initiation already {initiation.resolution_status}"
             )
         
         # Calculate response time
-        initiated_at = datetime.fromisoformat(initiation['initiated_at'])
-        if initiated_at.tzinfo is None:
-            initiated_at = initiated_at.replace(tzinfo=timezone.utc)
         resolved_at = datetime.now(timezone.utc)
+        initiated_at = initiation.initiated_at if isinstance(initiation.initiated_at, datetime) else datetime.fromisoformat(str(initiation.initiated_at).replace('Z', '+00:00'))
         response_time = int((resolved_at - initiated_at).total_seconds())
         
         # Update initiation status
-        db.execute(
-            """UPDATE conversation_initiations
-               SET resolution_status = ?,
-                   resolved_at = ?,
-                   user_response_time = ?,
-                   engagement_score = ?,
-                   updated_at = ?
-               WHERE initiation_id = ?""",
-            (
-                response.response_type,
-                resolved_at.isoformat(),
-                response_time,
-                response.engagement_score,
-                resolved_at.isoformat(),
-                response.initiation_id
-            )
-        )
-        db.commit()
+        initiation.resolution_status = response.response_type
+        initiation.resolved_at = resolved_at
+        initiation.user_response_time = response_time
+        initiation.engagement_score = response.engagement_score
+        
+        await uow.conversation_initiations.update(initiation)
+        await uow.commit()
         
         print(f"📝 [PROACTIVE_API] ✅ Updated initiation status to '{response.response_type}'")
         logger.info(
@@ -264,34 +232,31 @@ async def get_initiation_history(
     """
     try:
         user_id = current_user['user_uuid']
-        db = get_db_connection(request)
         
         print(f"📜 [PROACTIVE_API] Fetching history for user {user_id[:8]}")
         logger.info(f"📜 [PROACTIVE_API] Fetching initiation history for user {user_id}")
         
-        cursor = db.execute(
-            """SELECT initiation_id, user_id, conversation_id, question,
-                      initiated_at, resolution_status, resolved_at,
-                      user_response_time, engagement_score
-               FROM conversation_initiations
-               WHERE user_id = ?
-               ORDER BY initiated_at DESC
-               LIMIT ?""",
-            (user_id, limit)
+        # Get all initiations for user
+        all_initiations = await uow.conversation_initiations.list(
+            filters={"user_id": user_id},
+            limit=limit
         )
         
+        # Sort by initiated_at descending
+        sorted_initiations = sorted(all_initiations, key=lambda i: i.initiated_at if i.initiated_at else datetime.min, reverse=True)
+        
         initiations = []
-        for row in cursor.fetchall():
+        for initiation in sorted_initiations:
             initiations.append(InitiationStatus(
-                initiation_id=row['initiation_id'],
-                user_id=row['user_id'],
-                conversation_id=row['conversation_id'],
-                question=row['question'],
-                initiated_at=row['initiated_at'],
-                resolution_status=row['resolution_status'],
-                resolved_at=row['resolved_at'],
-                user_response_time=row['user_response_time'],
-                engagement_score=row['engagement_score']
+                initiation_id=initiation.initiation_id,
+                user_id=initiation.user_id,
+                conversation_id=initiation.conversation_id,
+                question=initiation.question,
+                initiated_at=initiation.initiated_at.isoformat() if hasattr(initiation.initiated_at, 'isoformat') else str(initiation.initiated_at),
+                resolution_status=initiation.resolution_status,
+                resolved_at=initiation.resolved_at.isoformat() if initiation.resolved_at and hasattr(initiation.resolved_at, 'isoformat') else (str(initiation.resolved_at) if initiation.resolved_at else None),
+                user_response_time=initiation.user_response_time,
+                engagement_score=initiation.engagement_score
             ))
         
         print(f"📜 [PROACTIVE_API] ✅ Returning {len(initiations)} historical initiations")

@@ -39,10 +39,9 @@ from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.ai.agency import AgencyEngine
 from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorLevel
-from aico.core.paths import get_default_database_path
-from aico.data.libsql import EncryptedLibSQLConnection
-from aico.security import AICOKeyManager
 from aico.ai import ai_registry
+from aico.data.uow import UnitOfWork
+from backend.core.postgres_dependencies import get_uow
 
 logger = get_logger("backend.api.agency")
 router = APIRouter()
@@ -71,38 +70,7 @@ async def get_agency_engine() -> AgencyEngine:
         raise HTTPException(status_code=500, detail=f"Agency service unavailable: {str(e)}")
 
 
-async def get_values_ethics_service() -> ValuesEthicsService:
-    """Get ValuesEthicsService instance"""
-    try:
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        
-        # Get encrypted database connection
-        db_path = get_default_database_path()
-        key_manager = AICOKeyManager(config)
-        
-        cached_key = key_manager._get_cached_session()
-        if cached_key:
-            key_manager._extend_session()
-            db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-        else:
-            import keyring
-            stored_key = keyring.get_password(key_manager.service_name, "master_key")
-            if stored_key:
-                master_key = bytes.fromhex(stored_key)
-                key_manager._cache_session(master_key)
-                db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            else:
-                raise HTTPException(status_code=500, detail="Database authentication failed")
-        
-        db = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        service = ValuesEthicsService(db)
-        
-        return service
-        
-    except Exception as e:
-        logger.error(f"Failed to initialize ValuesEthicsService: {e}")
-        raise HTTPException(status_code=500, detail=f"Values/Ethics service unavailable: {str(e)}")
+# Removed get_values_ethics_service - using repositories via UnitOfWork instead
 
 
 # ============================================================================
@@ -238,22 +206,44 @@ async def get_curiosity_status(
 @router.get("/profile", response_model=ValueProfileResponse)
 async def get_value_profile(
     user: Annotated[dict, Depends(get_current_user)],
-    service: Annotated[ValuesEthicsService, Depends(get_values_ethics_service)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ):
     """
     Get user value profile - curiosity settings, proactive level, sensitive areas.
     """
     try:
         user_id = user["user_uuid"]
-        profile = service._get_or_create_profile(user_id)
+        
+        # Get profile from repository
+        profiles = await uow.ethics_value_profiles.list(filters={"user_id": user_id}, limit=1)
+        
+        if not profiles:
+            # Create default profile
+            from aico.data.ethics.models import EthicsValueProfile
+            import uuid as uuid_lib
+            
+            profile = EthicsValueProfile(
+                profile_id=str(uuid_lib.uuid4()),
+                user_id=user_id,
+                curiosity_intensity=0.5,
+                proactive_behavior_level="balanced",
+                sensitive_life_areas=[],
+                allowed_curiosity_domains=[],
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            profile = await uow.ethics_value_profiles.create(profile)
+            await uow.commit()
+        else:
+            profile = profiles[0]
         
         return ValueProfileResponse(
             profile_id=profile.profile_id,
             user_id=profile.user_id,
             curiosity_intensity=profile.curiosity_intensity,
             proactive_behavior_level=profile.proactive_behavior_level,
-            sensitive_life_areas=profile.sensitive_life_areas,
-            allowed_curiosity_domains=profile.allowed_curiosity_domains
+            sensitive_life_areas=profile.sensitive_life_areas if profile.sensitive_life_areas else [],
+            allowed_curiosity_domains=profile.allowed_curiosity_domains if profile.allowed_curiosity_domains else []
         )
         
     except Exception as e:
@@ -265,14 +255,20 @@ async def get_value_profile(
 async def update_value_profile(
     request: UpdateValueProfileRequest,
     user: Annotated[dict, Depends(get_current_user)],
-    service: Annotated[ValuesEthicsService, Depends(get_values_ethics_service)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ):
     """
     Update user value profile settings.
     """
     try:
         user_id = user["user_uuid"]
-        profile = service._get_or_create_profile(user_id)
+        
+        # Get existing profile
+        profiles = await uow.ethics_value_profiles.list(filters={"user_id": user_id}, limit=1)
+        if not profiles:
+            raise HTTPException(status_code=404, detail="Value profile not found")
+        
+        profile = profiles[0]
         
         # Apply updates
         if request.curiosity_intensity is not None:
@@ -281,46 +277,40 @@ async def update_value_profile(
         if request.proactive_behavior_level is not None:
             profile.proactive_behavior_level = request.proactive_behavior_level
         
+        # Handle sensitive areas as list
+        sensitive_areas = profile.sensitive_life_areas if profile.sensitive_life_areas else []
+        if isinstance(sensitive_areas, str):
+            sensitive_areas = json.loads(sensitive_areas)
+        
         if request.add_sensitive_areas:
             for area in request.add_sensitive_areas:
-                if area not in profile.sensitive_life_areas:
-                    profile.sensitive_life_areas.append(area)
+                if area not in sensitive_areas:
+                    sensitive_areas.append(area)
         
         if request.remove_sensitive_areas:
-            profile.sensitive_life_areas = [
-                area for area in profile.sensitive_life_areas
+            sensitive_areas = [
+                area for area in sensitive_areas
                 if area not in request.remove_sensitive_areas
             ]
         
-        # Save to database
-        service.db.execute(
-            """
-            UPDATE ethics_value_profiles 
-            SET curiosity_intensity = ?, 
-                proactive_behavior_level = ?,
-                sensitive_life_areas = ?,
-                updated_at = ?
-            WHERE profile_id = ?
-            """,
-            (
-                profile.curiosity_intensity,
-                profile.proactive_behavior_level.value,
-                json.dumps(profile.sensitive_life_areas),
-                datetime.utcnow().isoformat(),
-                profile.profile_id
-            )
-        )
-        service.db.commit()
+        profile.sensitive_life_areas = sensitive_areas
+        profile.updated_at = datetime.utcnow()
+        
+        # Update via repository
+        profile = await uow.ethics_value_profiles.update(profile)
+        await uow.commit()
         
         return ValueProfileResponse(
             profile_id=profile.profile_id,
             user_id=profile.user_id,
             curiosity_intensity=profile.curiosity_intensity,
             proactive_behavior_level=profile.proactive_behavior_level,
-            sensitive_life_areas=profile.sensitive_life_areas,
-            allowed_curiosity_domains=profile.allowed_curiosity_domains
+            sensitive_life_areas=profile.sensitive_life_areas if profile.sensitive_life_areas else [],
+            allowed_curiosity_domains=profile.allowed_curiosity_domains if profile.allowed_curiosity_domains else []
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to update value profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -333,36 +323,35 @@ async def update_value_profile(
 @router.get("/policies", response_model=PolicyListResponse)
 async def list_policies(
     user: Annotated[dict, Depends(get_current_user)],
-    service: Annotated[ValuesEthicsService, Depends(get_values_ethics_service)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     target_type: Optional[str] = Query(None, description="Filter by target type")
 ):
     """
     List policy rules - what's allowed, warned, or blocked.
     """
     try:
-        query = "SELECT * FROM ethics_policy_rules WHERE enabled = 1"
-        params = []
-        
+        # Build filters
+        filters = {"enabled": True}
         if target_type:
-            query += " AND target_type = ?"
-            params.append(target_type)
+            filters["target_type"] = target_type
         
-        query += " ORDER BY priority ASC"
+        # Get policies from repository
+        policies = await uow.ethics_policy_rules.list(filters=filters, limit=1000)
         
-        cursor = service.db.execute(query, tuple(params))
-        policies = cursor.fetchall()
+        # Sort by priority
+        policies.sort(key=lambda p: p.priority if p.priority else 999)
         
         policy_list = [
             PolicyRuleResponse(
-                rule_id=p[0],
-                rule_name=p[1],
-                target_type=p[2],
-                effect=PolicyEffect(p[4]),
-                scope=p[8],
-                priority=p[6],
-                conditions=json.loads(p[3]) if p[3] and isinstance(p[3], str) else (p[3] if p[3] else {}),
-                user_message=p[5],
-                enabled=bool(p[7])
+                rule_id=p.rule_id,
+                rule_name=p.rule_name,
+                target_type=p.target_type,
+                effect=PolicyEffect(p.effect),
+                scope=p.scope,
+                priority=p.priority,
+                conditions=json.loads(p.conditions) if p.conditions and isinstance(p.conditions, str) else (p.conditions if p.conditions else {}),
+                user_message=p.user_message,
+                enabled=p.enabled
             )
             for p in policies
         ]
@@ -385,30 +374,36 @@ async def list_policies(
 async def grant_consent(
     request: ConsentRequest,
     user: Annotated[dict, Depends(get_current_user)],
-    service: Annotated[ValuesEthicsService, Depends(get_values_ethics_service)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ):
     """
     Grant or deny consent for a specific action.
     """
     try:
+        from aico.data.consent.models import ConsentRecord
+        import uuid as uuid_lib
+        
         user_id = user["user_uuid"]
         consent_id = f"consent-{user_id}-{datetime.utcnow().timestamp()}"
         
-        service.db.execute(
-            """
-            INSERT INTO consent_records (consent_id, user_id, consent_scope, decision, granted_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (consent_id, user_id, json.dumps(request.scope), request.decision, datetime.utcnow().isoformat())
-        )
-        service.db.commit()
-        
-        return ConsentResponse(
+        # Create consent record
+        consent = ConsentRecord(
             consent_id=consent_id,
             user_id=user_id,
-            scope=request.scope,
+            consent_scope=json.dumps(request.scope),
             decision=request.decision,
             granted_at=datetime.utcnow()
+        )
+        
+        consent = await uow.consent_records.create(consent)
+        await uow.commit()
+        
+        return ConsentResponse(
+            consent_id=consent.consent_id,
+            user_id=consent.user_id,
+            scope=request.scope,
+            decision=consent.decision,
+            granted_at=consent.granted_at
         )
         
     except Exception as e:
@@ -419,7 +414,7 @@ async def grant_consent(
 @router.get("/consent", response_model=ConsentListResponse)
 async def list_consents(
     user: Annotated[dict, Depends(get_current_user)],
-    service: Annotated[ValuesEthicsService, Depends(get_values_ethics_service)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ):
     """
     List user's consents.
@@ -427,19 +422,19 @@ async def list_consents(
     try:
         user_id = user["user_uuid"]
         
-        cursor = service.db.execute(
-            "SELECT consent_id, user_id, consent_scope, decision, granted_at FROM consent_records WHERE user_id = ? ORDER BY granted_at DESC",
-            (user_id,)
-        )
-        consents = cursor.fetchall()
+        # Get consents from repository
+        consents = await uow.consent_records.list(filters={"user_id": user_id}, limit=1000)
+        
+        # Sort by granted_at descending
+        consents.sort(key=lambda c: c.granted_at if c.granted_at else datetime.min, reverse=True)
         
         consent_list = [
             ConsentResponse(
-                consent_id=c[0],
-                user_id=c[1],
-                scope=json.loads(c[2]) if c[2] else {},
-                decision=c[3],
-                granted_at=datetime.fromisoformat(c[4]) if c[4] else datetime.utcnow()
+                consent_id=c.consent_id,
+                user_id=c.user_id,
+                scope=json.loads(c.consent_scope) if c.consent_scope and isinstance(c.consent_scope, str) else {},
+                decision=c.decision,
+                granted_at=c.granted_at if c.granted_at else datetime.utcnow()
             )
             for c in consents
         ]
@@ -458,7 +453,7 @@ async def list_consents(
 async def revoke_consent(
     consent_id: str,
     user: Annotated[dict, Depends(get_current_user)],
-    service: Annotated[ValuesEthicsService, Depends(get_values_ethics_service)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ):
     """
     Revoke a consent.
@@ -466,12 +461,22 @@ async def revoke_consent(
     try:
         user_id = user["user_uuid"]
         
-        service.db.execute(
-            "UPDATE consent_records SET decision = ? WHERE consent_id = ? AND user_id = ?",
-            ("denied", consent_id, user_id)
-        )
-        service.db.commit()
+        # Get consent
+        consent = await uow.consent_records.get_by_id(consent_id)
+        if not consent:
+            raise HTTPException(status_code=404, detail="Consent not found")
         
+        # Verify ownership
+        if consent.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Update decision to denied
+        consent.decision = "denied"
+        await uow.consent_records.update(consent)
+        await uow.commit()
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to revoke consent: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -698,7 +703,7 @@ async def replan_goal(
 async def get_agency_state(
     user: Annotated[dict, Depends(get_current_user)],
     engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
-    service: Annotated[ValuesEthicsService, Depends(get_values_ethics_service)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ):
     """
     Get complete agency state - intentions, curiosity, profile, and pending consents.
@@ -711,7 +716,7 @@ async def get_agency_state(
         # Get all components in parallel
         intention_set_task = get_intention_set(user, engine, limit=10)
         curiosity_task = get_curiosity_status(user, engine)
-        profile_task = get_value_profile(user, service)
+        profile_task = get_value_profile(user, uow)
         
         intention_set, curiosity_status, value_profile = await asyncio.gather(
             intention_set_task,
