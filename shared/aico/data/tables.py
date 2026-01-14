@@ -7,8 +7,8 @@ These tables mirror the schema in shared/aico/data/postgres/schema.sql
 
 from sqlalchemy import (
     Table, Column, MetaData,
-    String, Integer, BigInteger, Boolean, Float, DateTime, Text,
-    ForeignKey, Index, JSON, LargeBinary
+    String, Integer, BigInteger, Boolean, Float, Text,
+    ForeignKey, Index, JSON, LargeBinary, PrimaryKeyConstraint
 )
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 
@@ -18,6 +18,20 @@ metadata = MetaData(schema="aico_core")
 # ============================================================================
 # User & Authentication Tables
 # ============================================================================
+
+auth_access_policies = Table(
+    'auth_access_policies',
+    metadata,
+    Column('uuid', String, primary_key=True),
+    Column('user_uuid', String, nullable=False),
+    Column('resource_type', String, nullable=False),
+    Column('resource_uuid', String),
+    Column('permission', String, nullable=False),
+    Column('is_active', Boolean, default=True),
+    Column('created_at', TIMESTAMP(timezone=True)),
+    Index('idx_access_policies_resource', 'resource_type', 'resource_uuid'),
+    Index('idx_access_policies_user', 'user_uuid'),
+)
 
 user_profiles = Table(
     'user_profiles',
@@ -47,6 +61,65 @@ user_proactive_preferences = Table(
     Column('cluster_reminders', Integer, default=1),
     Column('auto_snooze_duration_minutes', Integer, default=60),
     Column('updated_at', String, nullable=False),
+)
+
+user_feedback_requests = Table(
+    'user_feedback_requests',
+    metadata,
+    Column('request_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('goal_id', String),
+    Column('skill_id', String),
+    Column('execution_id', String),
+    Column('feedback_type', String, nullable=False),
+    Column('question', String, nullable=False),
+    Column('response', String),
+    Column('rating', Float),
+    Column('responded_at', String),
+    Column('created_at', String, nullable=False),
+    Index('idx_feedback_requests_responded', 'responded_at'),
+    Index('idx_feedback_requests_user', 'user_id'),
+)
+
+user_relationships = Table(
+    'user_relationships',
+    metadata,
+    Column('uuid', String, primary_key=True),
+    Column('user_uuid', String, nullable=False),
+    Column('related_user_uuid', String, nullable=False),
+    Column('relationship_type', String, nullable=False),
+    Column('is_active', Boolean, default=True),
+    Column('created_at', TIMESTAMP(timezone=True)),
+    Column('updated_at', TIMESTAMP(timezone=True)),
+    Index('idx_user_relationships_related', 'related_user_uuid'),
+    Index('idx_user_relationships_user', 'user_uuid'),
+)
+
+user_skill_confidence = Table(
+    'user_skill_confidence',
+    metadata,
+    Column('user_id', String, nullable=False),
+    Column('skill_id', String, nullable=False),
+    Column('confidence_score', Float, default=0.5),
+    Column('usage_count', Integer, default=0),
+    Column('positive_count', Integer, default=0),
+    Column('negative_count', Integer, default=0),
+    Column('last_used_at', TIMESTAMP(timezone=True)),
+    Index('idx_user_skill_confidence', 'user_id', 'confidence_score'),
+)
+
+user_time_preferences = Table(
+    'user_time_preferences',
+    metadata,
+    Column('preference_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('time_period', String, nullable=False),
+    Column('productivity_score', Float, nullable=False, default=1.0),
+    Column('active', Boolean, default=True),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String, nullable=False),
+    Index('idx_user_time_preferences_user', 'user_id', 'active'),
+    Index('idx_user_time_preferences_active', 'active'),
 )
 
 auth_devices = Table(
@@ -95,8 +168,24 @@ auth_user_credentials = Table(
 )
 
 # ============================================================================
-# Agency Core Tables
+# Agency Tables
 # ============================================================================
+
+agency_arbiter_adjustments = Table(
+    'agency_arbiter_adjustments',
+    metadata,
+    Column('adjustment_key', String, primary_key=True),
+    Column('adjustment_value', Float, nullable=False),
+    Column('lesson_id', String, nullable=False),
+    Column('user_id', String),
+    Column('applied_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('confidence', Float, nullable=False),
+    Column('active', Boolean, default=True),
+    Column('notes', String),
+    Index('idx_arbiter_adjustments_active', 'active'),
+    Index('idx_arbiter_adjustments_lesson', 'lesson_id'),
+    Index('idx_arbiter_adjustments_user', 'user_id', 'active'),
+)
 
 agency_events = Table(
     'agency_events',
@@ -261,6 +350,26 @@ agency_lessons = Table(
 # Knowledge Graph Tables
 # ============================================================================
 
+kg_node_properties = Table(
+    'kg_node_properties',
+    metadata,
+    Column('node_id', String, nullable=False),
+    Column('key', String, nullable=False),
+    Column('value', String, nullable=False),
+    PrimaryKeyConstraint('node_id', 'key', 'value'),
+    Index('idx_kg_node_properties_kv', 'key', 'value'),
+)
+
+kg_edge_properties = Table(
+    'kg_edge_properties',
+    metadata,
+    Column('edge_id', String, nullable=False),
+    Column('key', String, nullable=False),
+    Column('value', String, nullable=False),
+    PrimaryKeyConstraint('edge_id', 'key', 'value'),
+    Index('idx_kg_edge_properties_kv', 'key', 'value'),
+)
+
 kg_nodes = Table(
     'kg_nodes',
     metadata,
@@ -278,6 +387,7 @@ kg_nodes = Table(
     Column('is_current', Boolean, nullable=False, default=True),
     Column('canonical_id', String),
     Column('aliases_json', JSONB),
+    Column('reason', String),
     Index('idx_kg_nodes_user', 'user_id'),
     Index('idx_kg_nodes_label', 'label'),
     Index('idx_kg_nodes_current', 'is_current'),
@@ -299,6 +409,7 @@ kg_edges = Table(
     Column('valid_from', TIMESTAMP(timezone=True)),
     Column('valid_until', TIMESTAMP(timezone=True)),
     Column('is_current', Boolean, nullable=False, default=True),
+    Column('reason', String),
     Index('idx_kg_edges_user', 'user_id'),
     Index('idx_kg_edges_source', 'source_id'),
     Index('idx_kg_edges_target', 'target_id'),
@@ -307,8 +418,155 @@ kg_edges = Table(
 )
 
 # ============================================================================
-# AMS/Behavioral Tables
+# Proactive System Tables
 # ============================================================================
+
+proactive_analytics = Table(
+    'proactive_analytics',
+    metadata,
+    Column('id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('event_type', String, nullable=False),
+    Column('event_data', String),
+    Column('confidence_score', Float),
+    Column('triggered_action', String),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    Index('idx_proactive_analytics_user', 'user_id'),
+    Index('idx_proactive_analytics_type', 'event_type'),
+)
+
+proactive_reminder_clusters = Table(
+    'proactive_reminder_clusters',
+    metadata,
+    Column('cluster_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('cluster_name', String, nullable=False),
+    Column('reminder_ids', String),
+    Column('pattern_description', String),
+    Column('confidence_score', Float),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    Index('idx_proactive_clusters_user', 'user_id'),
+)
+
+# ============================================================================
+# Workflow Tables
+# ============================================================================
+
+workflow_executions = Table(
+    'workflow_executions',
+    metadata,
+    Column('execution_id', String, primary_key=True),
+    Column('workflow_type', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('status', String, nullable=False),
+    Column('started_at', String, nullable=False),
+    Column('completed_at', String),
+    Column('current_stage', String),
+    Column('total_stages', Integer),
+    Column('metadata', String),
+    Column('error_message', String),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String, nullable=False),
+    Index('idx_workflow_executions_status', 'status'),
+    Index('idx_workflow_executions_type', 'workflow_type', 'status'),
+    Index('idx_workflow_executions_user', 'user_id'),
+)
+
+workflow_stages = Table(
+    'workflow_stages',
+    metadata,
+    Column('stage_id', String, primary_key=True),
+    Column('execution_id', String, nullable=False),
+    Column('stage_name', String, nullable=False),
+    Column('stage_order', Integer, nullable=False),
+    Column('status', String, nullable=False),
+    Column('started_at', String),
+    Column('completed_at', String),
+    Column('input_data', String),
+    Column('output_data', String),
+    Column('error_message', String),
+    Column('retry_count', Integer, default=0),
+    Column('created_at', String, nullable=False),
+    Index('idx_workflow_stages_execution', 'execution_id', 'stage_order'),
+)
+
+# ============================================================================
+# System Event Metrics Tables
+# ============================================================================
+
+system_event_metrics = Table(
+    'system_event_metrics',
+    metadata,
+    Column('metric_id', String, primary_key=True),
+    Column('metric_name', String, nullable=False),
+    Column('metric_type', String, nullable=False),
+    Column('event_type', String),
+    Column('event_category', String),
+    Column('time_bucket', String, nullable=False),
+    Column('bucket_start', String, nullable=False),
+    Column('value', Float, nullable=False),
+    Column('count', Integer, default=1),
+    Column('metadata', String),
+    Column('created_at', String, nullable=False),
+    Index('idx_event_metrics_bucket', 'time_bucket', 'bucket_start'),
+    Index('idx_event_metrics_name', 'metric_name', 'bucket_start'),
+    Index('idx_event_metrics_type', 'event_type', 'bucket_start'),
+)
+
+system_event_replay_sessions = Table(
+    'system_event_replay_sessions',
+    metadata,
+    Column('session_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('replay_name', String),
+    Column('start_time', String, nullable=False),
+    Column('end_time', String, nullable=False),
+    Column('event_filters', String),
+    Column('replay_speed', Float, default=1.0),
+    Column('status', String, nullable=False),
+    Column('started_at', String, nullable=False),
+    Column('events_replayed', Integer, default=0),
+    Column('completed_at', String),
+    Column('created_at', String, nullable=False),
+    Index('idx_replay_sessions_user', 'user_id'),
+    Index('idx_replay_sessions_status', 'status'),
+)
+
+# ============================================================================
+# AMS Tables
+# ============================================================================
+
+ams_context_preference_vectors = Table(
+    'ams_context_preference_vectors',
+    metadata,
+    Column('user_id', String, nullable=False),
+    Column('context_bucket', Integer, nullable=False),
+    Column('dimensions', String, nullable=False),
+    Column('last_updated_at', TIMESTAMP(timezone=True), nullable=False),
+    Index('idx_ams_context_preferences_user', 'user_id'),
+    Index('idx_ams_context_preferences_updated', 'last_updated_at'),
+)
+
+ams_context_skill_stats = Table(
+    'ams_context_skill_stats',
+    metadata,
+    Column('user_id', String, nullable=False),
+    Column('context_bucket', Integer, nullable=False),
+    Column('skill_id', String, nullable=False),
+    Column('alpha', Float, nullable=False, default=1.0),
+    Column('beta', Float, nullable=False, default=1.0),
+    Column('last_updated_at', TIMESTAMP(timezone=True), nullable=False),
+    Index('idx_ams_context_skill_stats_user', 'user_id', 'context_bucket'),
+)
+
+ams_consolidation_state = Table(
+    'ams_consolidation_state',
+    metadata,
+    Column('id', String, primary_key=True),
+    Column('state_json', JSONB, nullable=False),
+    Column('updated_at', TIMESTAMP(timezone=True)),
+    Index('idx_consolidation_state_updated', 'updated_at'),
+)
 
 ams_behavioral_skills = Table(
     'ams_behavioral_skills',
@@ -343,9 +601,44 @@ ams_trajectories = Table(
     Column('turn_number', Integer),
     Column('user_input', String),
     Column('ai_response', String),
-    Index('idx_trajectories_archived', 'archived'),
-    Index('idx_trajectories_conversation', 'conversation_id'),
-    Index('idx_trajectories_user', 'user_id'),
+)
+
+ams_user_memories = Table(
+    'ams_user_memories',
+    metadata,
+    Column('fact_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('fact_type', String, nullable=False),
+    Column('category', String, nullable=False),
+    Column('confidence', Float, nullable=False),
+    Column('is_immutable', Boolean, nullable=False, default=False),
+    Column('valid_from', TIMESTAMP(timezone=True), nullable=False),
+    Column('valid_until', TIMESTAMP(timezone=True)),
+    Column('content', String, nullable=False),
+    Column('entities_json', JSONB),
+    Column('extraction_method', String, nullable=False),
+    Column('source_conversation_id', String, nullable=False),
+    Column('source_message_id', String),
+    Column('created_at', TIMESTAMP(timezone=True)),
+    Column('updated_at', TIMESTAMP(timezone=True)),
+    Column('user_note', String),
+    Column('tags_json', JSONB),
+    Column('is_favorite', Boolean, default=False),
+    Column('revisit_count', Integer, default=0),
+    Column('last_revisited', TIMESTAMP(timezone=True)),
+    Column('emotional_tone', String),
+    Column('memory_type', String),
+    Column('content_type', String, default='message'),
+    Column('conversation_title', String),
+    Column('conversation_summary', String),
+    Column('turn_range', String),
+    Column('key_moments_json', JSONB),
+    Column('temporal_metadata', String),
+    Column('language', String),
+    Index('idx_facts_category', 'category'),
+    Index('idx_facts_confidence', 'confidence'),
+    Index('idx_facts_content_type', 'user_id', 'content_type'),
+    Index('idx_facts_favorite', 'user_id', 'is_favorite'),
 )
 
 ams_behavioral_feedback = Table(
@@ -366,6 +659,178 @@ ams_behavioral_feedback = Table(
     Column('free_text', String),
     Index('idx_behavioral_feedback_processed', 'processed'),
     Index('idx_behavioral_feedback_skill', 'skill_id'),
+    Index('idx_behavioral_feedback_user', 'user_id'),
+)
+
+# ============================================================================
+# Arbiter Tables
+# ============================================================================
+
+arbiter_ab_tests = Table(
+    'arbiter_ab_tests',
+    metadata,
+    Column('test_id', String, primary_key=True),
+    Column('test_name', String, nullable=False),
+    Column('arm_a_id', String, nullable=False),
+    Column('arm_b_id', String, nullable=False),
+    Column('start_date', String, nullable=False),
+    Column('end_date', String, nullable=False),
+    Column('status', String, default='active'),
+    Column('winner_arm_id', String),
+    Column('confidence_score', Float),
+    Column('notes', String),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String),
+    Index('idx_ab_tests_dates', 'start_date', 'end_date'),
+    Index('idx_ab_tests_status', 'status'),
+)
+
+arbiter_bandit_arms = Table(
+    'arbiter_bandit_arms',
+    metadata,
+    Column('arm_id', String, primary_key=True),
+    Column('weights_json', JSONB, nullable=False),
+    Column('pulls', Integer, default=0),
+    Column('total_reward', Float, default=0.0),
+    Column('success_count', Integer, default=0),
+    Column('failure_count', Integer, default=0),
+    Column('last_pulled', String),
+    Column('active', Boolean, default=True),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String, nullable=False),
+    Index('idx_bandit_arms_active', 'active'),
+    Index('idx_bandit_arms_pulls', 'pulls'),
+)
+
+# ============================================================================
+# Consent Tables
+# ============================================================================
+
+consent_user_consents = Table(
+    'consent_user_consents',
+    metadata,
+    Column('consent_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('consent_type', String, nullable=False),
+    Column('scope', String, nullable=False),
+    Column('scope_identifier', String),
+    Column('granted', Integer, nullable=False),
+    Column('expires_at', String),
+    Column('inherited_from', String),
+    Column('granted_at', String, nullable=False),
+    Column('revoked_at', String),
+    Column('created_at', String, nullable=False),
+    Column('updated_at', String, nullable=False),
+    Index('idx_consents_scope', 'scope', 'scope_identifier'),
+    Index('idx_consents_type', 'consent_type', 'granted'),
+    Index('idx_consents_user', 'user_id'),
+)
+
+consent_records = Table(
+    'consent_records',
+    metadata,
+    Column('consent_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('consent_scope', String, nullable=False),
+    Column('decision', String, nullable=False),
+    Column('context_json', JSONB),
+    Column('granted_at', TIMESTAMP(timezone=True)),
+    Column('expires_at', TIMESTAMP(timezone=True)),
+    Index('idx_consents_expires', 'expires_at'),
+    Index('idx_consents_user_scope', 'user_id', 'consent_scope'),
+)
+
+consent_audit_log = Table(
+    'consent_audit_log',
+    metadata,
+    Column('audit_id', String, primary_key=True),
+    Column('consent_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('action', String, nullable=False),
+    Column('reason', String),
+    Column('metadata', String),
+    Column('created_at', String, nullable=False),
+    Index('idx_consent_audit_consent', 'consent_id'),
+    Index('idx_consent_audit_created', 'created_at'),
+    Index('idx_consent_audit_user', 'user_id'),
+)
+
+# ============================================================================
+# Ethics Tables
+# ============================================================================
+
+ethics_decisions_cache = Table(
+    'ethics_decisions_cache',
+    metadata,
+    Column('cache_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('target_type', String, nullable=False),
+    Column('target_id', String, nullable=False),
+    Column('decision', String, nullable=False),
+    Column('reasoning', String),
+    Column('policy_rules_applied', String),
+    Column('confidence', Float, default=1.0),
+    Column('cached_at', String, nullable=False),
+    Column('expires_at', String),
+    Column('hit_count', Integer, default=0),
+    Column('last_hit_at', String),
+    Index('idx_ethics_cache_expires', 'expires_at'),
+    Index('idx_ethics_cache_target', 'target_type', 'target_id'),
+    Index('idx_ethics_cache_user', 'user_id'),
+)
+
+ethics_gate_audit = Table(
+    'ethics_gate_audit',
+    metadata,
+    Column('audit_id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('target_type', String, nullable=False),
+    Column('target_id', String, nullable=False),
+    Column('decision', String, nullable=False),
+    Column('reasoning', String),
+    Column('policy_rules_applied', String),
+    Column('check_level', Integer, default=1),
+    Column('cached', Integer, default=0),
+    Column('processing_time_ms', Integer),
+    Column('created_at', String, nullable=False),
+    Index('idx_ethics_audit_created', 'created_at'),
+    Index('idx_ethics_audit_decision', 'decision'),
+    Index('idx_ethics_audit_target', 'target_type'),
+    Index('idx_ethics_audit_user', 'user_id'),
+)
+
+ethics_policy_rules = Table(
+    'ethics_policy_rules',
+    metadata,
+    Column('rule_id', String, primary_key=True),
+    Column('rule_name', String, nullable=False),
+    Column('target_type', String, nullable=False),
+    Column('conditions_json', JSONB, nullable=False),
+    Column('effect', String, nullable=False),
+    Column('user_message_template', String),
+    Column('priority', Integer, default=100),
+    Column('enabled', Boolean, default=True),
+    Column('scope', String, default='global'),
+    Column('scope_id', String),
+    Column('created_at', TIMESTAMP(timezone=True)),
+    Column('updated_at', TIMESTAMP(timezone=True)),
+    Index('idx_policy_rules_scope', 'scope', 'scope_id'),
+    Index('idx_policy_rules_target', 'target_type', 'enabled'),
+)
+
+ethics_value_profiles = Table(
+    'ethics_value_profiles',
+    metadata,
+    Column('profile_id', String, primary_key=True),
+    Column('user_id', String, nullable=False, unique=True),
+    Column('sensitive_life_areas', String),
+    Column('allowed_curiosity_domains', String),
+    Column('curiosity_intensity', Float, default=0.5),
+    Column('proactive_behavior_level', String, default='balanced'),
+    Column('storage_preferences', String),
+    Column('created_at', TIMESTAMP(timezone=True)),
+    Column('updated_at', TIMESTAMP(timezone=True)),
+    Index('idx_value_profiles_user', 'user_id'),
 )
 
 # ============================================================================
@@ -378,24 +843,36 @@ scheduler_tasks = Table(
     Column('task_id', String, primary_key=True),
     Column('task_class', String, nullable=False),
     Column('schedule', String, nullable=False),
-    Column('config', Text),
+    Column('config', String),
     Column('enabled', Boolean, default=True),
     Column('created_at', TIMESTAMP(timezone=True)),
     Column('updated_at', TIMESTAMP(timezone=True)),
 )
 
+scheduler_task_locks = Table(
+    'scheduler_task_locks',
+    metadata,
+    Column('task_id', String, primary_key=True),
+    Column('execution_id', String, nullable=False),
+    Column('locked_at', TIMESTAMP(timezone=True)),
+    Column('expires_at', TIMESTAMP(timezone=True), nullable=False),
+    Index('idx_task_locks_expires_at', 'expires_at'),
+)
+
 scheduler_task_executions = Table(
     'scheduler_task_executions',
     metadata,
-    Column('execution_id', String, primary_key=True),
-    Column('task_id', String, ForeignKey('scheduler_tasks.task_id'), nullable=False),
+    Column('id', BigInteger, primary_key=True, autoincrement=True),
+    Column('task_id', String, nullable=False),
+    Column('execution_id', String, nullable=False),
     Column('status', String, nullable=False),
     Column('started_at', TIMESTAMP(timezone=True), nullable=False),
     Column('completed_at', TIMESTAMP(timezone=True)),
-    Column('error_message', Text),
-    Column('result_data', JSONB),
-    Index('idx_scheduler_executions_task', 'task_id'),
-    Index('idx_scheduler_executions_status', 'status'),
+    Column('result', String),
+    Column('error_message', String),
+    Column('duration_seconds', Float),
+    Index('idx_task_executions_task_id', 'task_id'),
+    Index('idx_task_executions_started_at', 'started_at'),
 )
 
 # ============================================================================
@@ -520,9 +997,14 @@ __all__ = [
     'metadata',
     'user_profiles',
     'user_proactive_preferences',
+    'user_feedback_requests',
+    'user_relationships',
+    'user_skill_confidence',
+    'user_time_preferences',
     'auth_devices',
     'auth_sessions',
     'auth_user_credentials',
+    'agency_arbiter_adjustments',
     'agency_events',
     'agency_events_log',
     'agency_followups',
@@ -534,11 +1016,29 @@ __all__ = [
     'agency_policy_rules',
     'kg_nodes',
     'kg_edges',
+    'ams_consolidation_state',
     'ams_behavioral_skills',
     'ams_trajectories',
+    'ams_user_memories',
     'ams_behavioral_feedback',
+    'ams_context_preference_vectors',
+    'ams_context_skill_stats',
+    'arbiter_ab_tests',
+    'arbiter_bandit_arms',
+    'consent_user_consents',
+    'consent_records',
+    'consent_audit_log',
+    'ethics_decisions_cache',
+    'ethics_gate_audit',
+    'ethics_policy_rules',
+    'ethics_value_profiles',
     'scheduler_tasks',
+    'scheduler_task_locks',
     'scheduler_task_executions',
+    'workflow_executions',
+    'workflow_stages',
+    'system_event_metrics',
+    'system_event_replay_sessions',
     'conversation_initiations',
     'emotion_state',
     'emotion_history',

@@ -42,8 +42,15 @@ class UnitOfWork:
         
         # Lazy-loaded repositories
         self._user_repository = None
+        self._user_profiles_repository = None
+        self._user_relationships_repository = None
+        self._user_skill_confidence_repository = None
+        self._user_time_preferences_repository = None
         self._user_proactive_preferences_repository = None
         self._device_repository = None
+        self._auth_devices_repository = None
+        self._auth_sessions_repository = None
+        self._auth_user_credentials_repository = None
         self._session_repository = None
         self._credentials_repository = None
         self._agency_event_repository = None
@@ -51,6 +58,7 @@ class UnitOfWork:
         self._agency_followups_repository = None
         self._agency_reflection_notes_repository = None
         self._agency_reminders_repository = None
+        self._agency_arbiter_adjustments_repository = None
         self._goal_repository = None
         self._plan_repository = None
         self._lesson_repository = None
@@ -58,13 +66,48 @@ class UnitOfWork:
         self._kg_node_repository = None
         self._kg_edge_repository = None
         self._ams_behavioral_skills_repository = None
+        self._ams_behavioral_feedback_repository = None
+        self._ams_context_preference_vectors_repository = None
+        self._ams_context_skill_stats_repository = None
+        self._ams_consolidation_state_repository = None
+        self._ams_trajectories_repository = None
+        self._ams_user_memories_repository = None
+        self._arbiter_ab_tests_repository = None
+        self._arbiter_bandit_arms_repository = None
+        self._consent_user_consents_repository = None
+        self._consent_records_repository = None
+        self._consent_audit_log_repository = None
         self._trajectory_repository = None
         self._feedback_repository = None
-        self._scheduler_task_repository = None
+        self._scheduler_tasks_repository = None
+        self._scheduler_task_locks_repository = None
+        self._scheduler_task_executions_repository = None
         self._task_execution_repository = None
+        self._conversation_initiations_repository = None
         self._conversation_initiation_repository = None
+        self._workflow_executions_repository = None
+        self._workflow_stages_repository = None
+        self._system_event_metrics_repository = None
+        self._system_event_replay_sessions_repository = None
+        self._system_events_repository = None
         self._system_event_repository = None
         self._emotion_state_repository = None
+        self._emotion_history_repository = None
+        self._user_feedback_requests_repository = None
+        self._ethics_decisions_cache_repository = None
+        self._ethics_gate_audit_repository = None
+        self._ethics_policy_rules_repository = None
+        self._ethics_value_profiles_repository = None
+        self._kg_nodes_repository = None
+        self._kg_edges_repository = None
+        self._kg_node_properties_repository = None
+        self._kg_edge_properties_repository = None
+        self._proactive_analytics_repository = None
+        self._proactive_reminder_clusters_repository = None
+        self._auth_access_policies_repository = None
+        self._user_skill_confidence_repository = None
+        self._auth_access_policies_repository = None
+        self._user_skill_confidence_repository = None
     
     async def __aenter__(self):
         """Enter context - create session."""
@@ -121,6 +164,38 @@ class UnitOfWork:
         return self._user_repository
     
     @property
+    def user_profiles(self):
+        """Get UserProfilesRepository instance."""
+        if self._user_profiles_repository is None:
+            from .repositories.postgres.user_profiles_repository import PostgresUserProfilesRepository
+            self._user_profiles_repository = PostgresUserProfilesRepository(self._session)
+        return self._user_profiles_repository
+    
+    @property
+    def user_relationships(self):
+        """Get UserRelationshipsRepository instance."""
+        if self._user_relationships_repository is None:
+            from .repositories.postgres.user_relationships_repository import PostgresUserRelationshipsRepository
+            self._user_relationships_repository = PostgresUserRelationshipsRepository(self._session)
+        return self._user_relationships_repository
+    
+    @property
+    def user_skill_confidence(self):
+        """Get UserSkillConfidenceRepository instance."""
+        if self._user_skill_confidence_repository is None:
+            from .repositories.postgres.user_skill_confidence_repository import PostgresUserSkillConfidenceRepository
+            self._user_skill_confidence_repository = PostgresUserSkillConfidenceRepository(self._session)
+        return self._user_skill_confidence_repository
+    
+    @property
+    def user_time_preferences(self):
+        """Get UserTimePreferencesRepository instance."""
+        if self._user_time_preferences_repository is None:
+            from .repositories.postgres.user_time_preferences_repository import PostgresUserTimePreferencesRepository
+            self._user_time_preferences_repository = PostgresUserTimePreferencesRepository(self._session)
+        return self._user_time_preferences_repository
+    
+    @property
     def user_proactive_preferences(self):
         """Get UserProactivePreferencesRepository instance."""
         if self._user_proactive_preferences_repository is None:
@@ -135,6 +210,30 @@ class UnitOfWork:
             from .repositories.postgres.device_repository import PostgresDeviceRepository
             self._device_repository = PostgresDeviceRepository(self._session)
         return self._device_repository
+    
+    @property
+    def auth_devices(self):
+        """Get AuthDevicesRepository instance."""
+        if self._auth_devices_repository is None:
+            from .repositories.postgres.auth_devices_repository import PostgresAuthDevicesRepository
+            self._auth_devices_repository = PostgresAuthDevicesRepository(self._session)
+        return self._auth_devices_repository
+    
+    @property
+    def auth_sessions(self):
+        """Get AuthSessionsRepository instance."""
+        if self._auth_sessions_repository is None:
+            from .repositories.postgres.auth_sessions_repository import PostgresAuthSessionsRepository
+            self._auth_sessions_repository = PostgresAuthSessionsRepository(self._session)
+        return self._auth_sessions_repository
+    
+    @property
+    def auth_user_credentials(self):
+        """Get AuthUserCredentialsRepository instance."""
+        if self._auth_user_credentials_repository is None:
+            from .repositories.postgres.auth_user_credentials_repository import PostgresAuthUserCredentialsRepository
+            self._auth_user_credentials_repository = PostgresAuthUserCredentialsRepository(self._session)
+        return self._auth_user_credentials_repository
     
     @property
     def sessions(self):
@@ -193,6 +292,14 @@ class UnitOfWork:
         return self._agency_reminders_repository
     
     @property
+    def agency_arbiter_adjustments(self):
+        """Get AgencyArbiterAdjustmentsRepository instance."""
+        if self._agency_arbiter_adjustments_repository is None:
+            from .repositories.postgres.agency_arbiter_adjustments_repository import PostgresAgencyArbiterAdjustmentsRepository
+            self._agency_arbiter_adjustments_repository = PostgresAgencyArbiterAdjustmentsRepository(self._session)
+        return self._agency_arbiter_adjustments_repository
+    
+    @property
     def goals(self):
         """Get GoalRepository instance."""
         if self._goal_repository is None:
@@ -249,6 +356,94 @@ class UnitOfWork:
         return self._ams_behavioral_skills_repository
     
     @property
+    def ams_behavioral_feedback(self):
+        """Get AMSBehavioralFeedbackRepository instance."""
+        if self._ams_behavioral_feedback_repository is None:
+            from .repositories.postgres.ams_behavioral_feedback_repository import PostgresAMSBehavioralFeedbackRepository
+            self._ams_behavioral_feedback_repository = PostgresAMSBehavioralFeedbackRepository(self._session)
+        return self._ams_behavioral_feedback_repository
+    
+    @property
+    def ams_context_preference_vectors(self):
+        """Get AMSContextPreferenceVectorsRepository instance."""
+        if self._ams_context_preference_vectors_repository is None:
+            from .repositories.postgres.ams_context_preference_vectors_repository import PostgresAMSContextPreferenceVectorsRepository
+            self._ams_context_preference_vectors_repository = PostgresAMSContextPreferenceVectorsRepository(self._session)
+        return self._ams_context_preference_vectors_repository
+    
+    @property
+    def ams_context_skill_stats(self):
+        """Get AMSContextSkillStatsRepository instance."""
+        if self._ams_context_skill_stats_repository is None:
+            from .repositories.postgres.ams_context_skill_stats_repository import PostgresAMSContextSkillStatsRepository
+            self._ams_context_skill_stats_repository = PostgresAMSContextSkillStatsRepository(self._session)
+        return self._ams_context_skill_stats_repository
+    
+    @property
+    def ams_consolidation_state(self):
+        """Get AMSConsolidationStateRepository instance."""
+        if self._ams_consolidation_state_repository is None:
+            from .repositories.postgres.ams_consolidation_state_repository import PostgresAMSConsolidationStateRepository
+            self._ams_consolidation_state_repository = PostgresAMSConsolidationStateRepository(self._session)
+        return self._ams_consolidation_state_repository
+    
+    @property
+    def ams_trajectories(self):
+        """Get AMSTrajectoriesRepository instance."""
+        if self._ams_trajectories_repository is None:
+            from .repositories.postgres.ams_trajectories_repository import PostgresAMSTrajectoriesRepository
+            self._ams_trajectories_repository = PostgresAMSTrajectoriesRepository(self._session)
+        return self._ams_trajectories_repository
+    
+    @property
+    def ams_user_memories(self):
+        """Get AMSUserMemoriesRepository instance."""
+        if self._ams_user_memories_repository is None:
+            from .repositories.postgres.ams_user_memories_repository import PostgresAMSUserMemoriesRepository
+            self._ams_user_memories_repository = PostgresAMSUserMemoriesRepository(self._session)
+        return self._ams_user_memories_repository
+    
+    @property
+    def arbiter_ab_tests(self):
+        """Get ArbiterABTestsRepository instance."""
+        if self._arbiter_ab_tests_repository is None:
+            from .repositories.postgres.arbiter_ab_tests_repository import PostgresArbiterABTestsRepository
+            self._arbiter_ab_tests_repository = PostgresArbiterABTestsRepository(self._session)
+        return self._arbiter_ab_tests_repository
+    
+    @property
+    def arbiter_bandit_arms(self):
+        """Get ArbiterBanditArmsRepository instance."""
+        if self._arbiter_bandit_arms_repository is None:
+            from .repositories.postgres.arbiter_bandit_arms_repository import PostgresArbiterBanditArmsRepository
+            self._arbiter_bandit_arms_repository = PostgresArbiterBanditArmsRepository(self._session)
+        return self._arbiter_bandit_arms_repository
+    
+    @property
+    def consent_user_consents(self):
+        """Get ConsentUserConsentsRepository instance."""
+        if self._consent_user_consents_repository is None:
+            from .repositories.postgres.consent_user_consents_repository import PostgresConsentUserConsentsRepository
+            self._consent_user_consents_repository = PostgresConsentUserConsentsRepository(self._session)
+        return self._consent_user_consents_repository
+    
+    @property
+    def consent_records(self):
+        """Get ConsentRecordsRepository instance."""
+        if self._consent_records_repository is None:
+            from .repositories.postgres.consent_records_repository import PostgresConsentRecordsRepository
+            self._consent_records_repository = PostgresConsentRecordsRepository(self._session)
+        return self._consent_records_repository
+    
+    @property
+    def consent_audit_log(self):
+        """Get ConsentAuditLogRepository instance."""
+        if self._consent_audit_log_repository is None:
+            from .repositories.postgres.consent_audit_log_repository import PostgresConsentAuditLogRepository
+            self._consent_audit_log_repository = PostgresConsentAuditLogRepository(self._session)
+        return self._consent_audit_log_repository
+    
+    @property
     def trajectories(self):
         """Get TrajectoryRepository instance."""
         if self._trajectory_repository is None:
@@ -266,22 +461,78 @@ class UnitOfWork:
     
     @property
     def scheduler_tasks(self):
-        """Get SchedulerTaskRepository instance."""
-        if self._scheduler_task_repository is None:
-            from .repositories.postgres.scheduler_task_repository import PostgresSchedulerTaskRepository
-            self._scheduler_task_repository = PostgresSchedulerTaskRepository(self._session)
-        return self._scheduler_task_repository
+        """Get SchedulerTasksRepository instance."""
+        if self._scheduler_tasks_repository is None:
+            from .repositories.postgres.scheduler_tasks_repository import PostgresSchedulerTasksRepository
+            self._scheduler_tasks_repository = PostgresSchedulerTasksRepository(self._session)
+        return self._scheduler_tasks_repository
+    
+    @property
+    def scheduler_task_locks(self):
+        """Get SchedulerTaskLocksRepository instance."""
+        if self._scheduler_task_locks_repository is None:
+            from .repositories.postgres.scheduler_task_locks_repository import PostgresSchedulerTaskLocksRepository
+            self._scheduler_task_locks_repository = PostgresSchedulerTaskLocksRepository(self._session)
+        return self._scheduler_task_locks_repository
+    
+    @property
+    def scheduler_task_executions(self):
+        """Get SchedulerTaskExecutionsRepository instance."""
+        if self._scheduler_task_executions_repository is None:
+            from .repositories.postgres.scheduler_task_executions_repository import PostgresSchedulerTaskExecutionsRepository
+            self._scheduler_task_executions_repository = PostgresSchedulerTaskExecutionsRepository(self._session)
+        return self._scheduler_task_executions_repository
     
     @property
     def conversation_initiations(self):
-        """Get ConversationInitiationRepository instance."""
-        if self._conversation_initiation_repository is None:
-            from .repositories.postgres.conversation_initiation_repository import PostgresConversationInitiationRepository
-            self._conversation_initiation_repository = PostgresConversationInitiationRepository(self._session)
-        return self._conversation_initiation_repository
+        """Get ConversationInitiationsRepository instance."""
+        if self._conversation_initiations_repository is None:
+            from .repositories.postgres.conversation_initiations_repository import PostgresConversationInitiationsRepository
+            self._conversation_initiations_repository = PostgresConversationInitiationsRepository(self._session)
+        return self._conversation_initiations_repository
+    
+    @property
+    def workflow_executions(self):
+        """Get WorkflowExecutionsRepository instance."""
+        if self._workflow_executions_repository is None:
+            from .repositories.postgres.workflow_executions_repository import PostgresWorkflowExecutionsRepository
+            self._workflow_executions_repository = PostgresWorkflowExecutionsRepository(self._session)
+        return self._workflow_executions_repository
+    
+    @property
+    def workflow_stages(self):
+        """Get WorkflowStagesRepository instance."""
+        if self._workflow_stages_repository is None:
+            from .repositories.postgres.workflow_stages_repository import PostgresWorkflowStagesRepository
+            self._workflow_stages_repository = PostgresWorkflowStagesRepository(self._session)
+        return self._workflow_stages_repository
+    
+    @property
+    def system_event_metrics(self):
+        """Get SystemEventMetricsRepository instance."""
+        if self._system_event_metrics_repository is None:
+            from .repositories.postgres.system_event_metrics_repository import PostgresSystemEventMetricsRepository
+            self._system_event_metrics_repository = PostgresSystemEventMetricsRepository(self._session)
+        return self._system_event_metrics_repository
+    
+    @property
+    def system_event_replay_sessions(self):
+        """Get SystemEventReplaySessionsRepository instance."""
+        if self._system_event_replay_sessions_repository is None:
+            from .repositories.postgres.system_event_replay_sessions_repository import PostgresSystemEventReplaySessionsRepository
+            self._system_event_replay_sessions_repository = PostgresSystemEventReplaySessionsRepository(self._session)
+        return self._system_event_replay_sessions_repository
     
     @property
     def system_events(self):
+        """Get SystemEventsRepository instance."""
+        if self._system_events_repository is None:
+            from .repositories.postgres.system_events_repository import PostgresSystemEventsRepository
+            self._system_events_repository = PostgresSystemEventsRepository(self._session)
+        return self._system_events_repository
+    
+    @property
+    def old_system_events(self):
         """Get SystemEventRepository instance."""
         if self._system_event_repository is None:
             from .repositories.postgres.system_event_repository import PostgresSystemEventRepository
@@ -295,6 +546,118 @@ class UnitOfWork:
             from .repositories.postgres.emotion_state_repository import PostgresEmotionStateRepository
             self._emotion_state_repository = PostgresEmotionStateRepository(self._session)
         return self._emotion_state_repository
+    
+    @property
+    def emotion_history(self):
+        """Get EmotionHistoryRepository instance."""
+        if self._emotion_history_repository is None:
+            from .repositories.postgres.emotion_history_repository import PostgresEmotionHistoryRepository
+            self._emotion_history_repository = PostgresEmotionHistoryRepository(self._session)
+        return self._emotion_history_repository
+    
+    @property
+    def user_feedback_requests(self):
+        """Get UserFeedbackRequestsRepository instance."""
+        if self._user_feedback_requests_repository is None:
+            from .repositories.postgres.user_feedback_requests_repository import PostgresUserFeedbackRequestsRepository
+            self._user_feedback_requests_repository = PostgresUserFeedbackRequestsRepository(self._session)
+        return self._user_feedback_requests_repository
+    
+    @property
+    def ethics_decisions_cache(self):
+        """Get EthicsDecisionsCacheRepository instance."""
+        if self._ethics_decisions_cache_repository is None:
+            from .repositories.postgres.ethics_decisions_cache_repository import PostgresEthicsDecisionsCacheRepository
+            self._ethics_decisions_cache_repository = PostgresEthicsDecisionsCacheRepository(self._session)
+        return self._ethics_decisions_cache_repository
+    
+    @property
+    def ethics_gate_audit(self):
+        """Get EthicsGateAuditRepository instance."""
+        if self._ethics_gate_audit_repository is None:
+            from .repositories.postgres.ethics_gate_audit_repository import PostgresEthicsGateAuditRepository
+            self._ethics_gate_audit_repository = PostgresEthicsGateAuditRepository(self._session)
+        return self._ethics_gate_audit_repository
+    
+    @property
+    def ethics_policy_rules(self):
+        """Get EthicsPolicyRulesRepository instance."""
+        if self._ethics_policy_rules_repository is None:
+            from .repositories.postgres.ethics_policy_rules_repository import PostgresEthicsPolicyRulesRepository
+            self._ethics_policy_rules_repository = PostgresEthicsPolicyRulesRepository(self._session)
+        return self._ethics_policy_rules_repository
+    
+    @property
+    def ethics_value_profiles(self):
+        """Get EthicsValueProfilesRepository instance."""
+        if self._ethics_value_profiles_repository is None:
+            from .repositories.postgres.ethics_value_profiles_repository import PostgresEthicsValueProfilesRepository
+            self._ethics_value_profiles_repository = PostgresEthicsValueProfilesRepository(self._session)
+        return self._ethics_value_profiles_repository
+    
+    @property
+    def kg_nodes(self):
+        """Get KGNodesRepository instance."""
+        if self._kg_nodes_repository is None:
+            from .repositories.postgres.kg_nodes_repository import PostgresKGNodesRepository
+            self._kg_nodes_repository = PostgresKGNodesRepository(self._session)
+        return self._kg_nodes_repository
+    
+    @property
+    def kg_edges(self):
+        """Get KGEdgesRepository instance."""
+        if self._kg_edges_repository is None:
+            from .repositories.postgres.kg_edges_repository import PostgresKGEdgesRepository
+            self._kg_edges_repository = PostgresKGEdgesRepository(self._session)
+        return self._kg_edges_repository
+    
+    @property
+    def kg_node_properties(self):
+        """Get KGNodePropertiesRepository instance."""
+        if self._kg_node_properties_repository is None:
+            from .repositories.postgres.kg_node_properties_repository import PostgresKGNodePropertiesRepository
+            self._kg_node_properties_repository = PostgresKGNodePropertiesRepository(self._session)
+        return self._kg_node_properties_repository
+    
+    @property
+    def kg_edge_properties(self):
+        """Get KGEdgePropertiesRepository instance."""
+        if self._kg_edge_properties_repository is None:
+            from .repositories.postgres.kg_edge_properties_repository import PostgresKGEdgePropertiesRepository
+            self._kg_edge_properties_repository = PostgresKGEdgePropertiesRepository(self._session)
+        return self._kg_edge_properties_repository
+    
+    @property
+    def proactive_analytics(self):
+        """Get ProactiveAnalyticsRepository instance."""
+        if self._proactive_analytics_repository is None:
+            from .repositories.postgres.proactive_analytics_repository import PostgresProactiveAnalyticsRepository
+            self._proactive_analytics_repository = PostgresProactiveAnalyticsRepository(self._session)
+        return self._proactive_analytics_repository
+    
+    @property
+    def proactive_reminder_clusters(self):
+        """Get ProactiveReminderClustersRepository instance."""
+        if self._proactive_reminder_clusters_repository is None:
+            from .repositories.postgres.proactive_reminder_clusters_repository import PostgresProactiveReminderClustersRepository
+            self._proactive_reminder_clusters_repository = PostgresProactiveReminderClustersRepository(self._session)
+        return self._proactive_reminder_clusters_repository
+    
+    @property
+    def auth_access_policies(self):
+        """Get AuthAccessPoliciesRepository instance."""
+        if self._auth_access_policies_repository is None:
+            from .repositories.postgres.auth_access_policies_repository import PostgresAuthAccessPoliciesRepository
+            self._auth_access_policies_repository = PostgresAuthAccessPoliciesRepository(self._session)
+        return self._auth_access_policies_repository
+    
+    @property
+    def user_skill_confidence(self):
+        """Get UserSkillConfidenceRepository instance."""
+        if self._user_skill_confidence_repository is None:
+            from .repositories.postgres.user_skill_confidence_repository import PostgresUserSkillConfidenceRepository
+            self._user_skill_confidence_repository = PostgresUserSkillConfidenceRepository(self._session)
+        return self._user_skill_confidence_repository
     
     @property
     def executions(self):

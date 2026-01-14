@@ -26,6 +26,7 @@ class KGNode:
     is_current: bool = True
     canonical_id: Optional[str] = None
     aliases_json: Optional[Dict[str, Any]] = None
+    reason: Optional[str] = None
 
 
 @dataclass
@@ -44,3 +45,4 @@ class KGEdge:
     valid_from: Optional[datetime] = None
     valid_until: Optional[datetime] = None
     is_current: bool = True
+    reason: Optional[str] = None

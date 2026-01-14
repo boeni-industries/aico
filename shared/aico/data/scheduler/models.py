@@ -32,3 +32,4 @@ class TaskExecution:
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     result: Optional[str] = None
+    duration_seconds: Optional[float] = None

@@ -44,6 +44,40 @@ class Trajectory:
 
 
 @dataclass
+class AMSUserMemory:
+    """AMS user memory model - matches ams_user_memories table."""
+    fact_id: str
+    user_id: str
+    fact_type: str
+    category: str
+    confidence: float
+    is_immutable: bool
+    valid_from: datetime
+    content: str
+    extraction_method: str
+    source_conversation_id: str
+    valid_until: Optional[datetime] = None
+    entities_json: Optional[Dict[str, Any]] = None
+    source_message_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    user_note: Optional[str] = None
+    tags_json: Optional[Dict[str, Any]] = None
+    is_favorite: bool = False
+    revisit_count: int = 0
+    last_revisited: Optional[datetime] = None
+    emotional_tone: Optional[str] = None
+    memory_type: Optional[str] = None
+    content_type: str = 'message'
+    conversation_title: Optional[str] = None
+    conversation_summary: Optional[str] = None
+    turn_range: Optional[str] = None
+    key_moments_json: Optional[Dict[str, Any]] = None
+    temporal_metadata: Optional[str] = None
+    language: Optional[str] = None
+
+
+@dataclass
 class BehavioralFeedback:
     """AMS behavioral feedback model - matches ams_behavioral_feedback table."""
     feedback_id: str
