@@ -8,7 +8,7 @@ import pytest
 import uuid
 from datetime import datetime, timedelta, UTC
 
-from aico.data.auth.models import Session, UserCredentials
+from aico.data.auth.models import AuthSession, AuthUserCredentials
 from aico.data.user.models import UserProfile
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
@@ -53,7 +53,7 @@ class TestSessionRepository:
     @pytest.mark.asyncio
     async def test_create_session(self, uow, test_user):
         """Test creating a new session."""
-        session = Session(
+        session = AuthSession(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             device_uuid=str(uuid.uuid4()),
@@ -73,7 +73,7 @@ class TestSessionRepository:
     @pytest.mark.asyncio
     async def test_get_session_by_id(self, uow, test_user):
         """Test retrieving session by ID."""
-        session = Session(
+        session = AuthSession(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             device_uuid=str(uuid.uuid4()),
@@ -95,7 +95,7 @@ class TestSessionRepository:
         """Test getting all active sessions for a user."""
         # Create multiple sessions
         for i in range(3):
-            session = Session(
+            session = AuthSession(
                 uuid=str(uuid.uuid4()),
                 user_uuid=test_user.uuid,
                 device_uuid=str(uuid.uuid4()),
@@ -115,7 +115,7 @@ class TestSessionRepository:
     @pytest.mark.asyncio
     async def test_invalidate_session(self, uow, test_user):
         """Test invalidating a session."""
-        session = Session(
+        session = AuthSession(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             device_uuid=str(uuid.uuid4()),
@@ -144,7 +144,7 @@ class TestSessionRepository:
         # Create multiple sessions
         session_ids = []
         for i in range(3):
-            session = Session(
+            session = AuthSession(
                 uuid=str(uuid.uuid4()),
                 user_uuid=test_user.uuid,
                 device_uuid=str(uuid.uuid4()),
@@ -171,7 +171,7 @@ class TestSessionRepository:
     @pytest.mark.asyncio
     async def test_update_session(self, uow, test_user):
         """Test updating a session."""
-        session = Session(
+        session = AuthSession(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             device_uuid=str(uuid.uuid4()),
@@ -199,7 +199,7 @@ class TestSessionRepository:
     @pytest.mark.asyncio
     async def test_delete_session(self, uow, test_user):
         """Test deleting a session."""
-        session = Session(
+        session = AuthSession(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             device_uuid=str(uuid.uuid4()),
@@ -226,7 +226,7 @@ class TestSessionRepository:
         """Test listing sessions with filters."""
         # Create multiple sessions with different states
         for i in range(3):
-            session = Session(
+            session = AuthSession(
                 uuid=str(uuid.uuid4()),
                 user_uuid=test_user.uuid,
                 device_uuid=str(uuid.uuid4()),
@@ -252,7 +252,7 @@ class TestSessionRepository:
         """Test counting sessions."""
         # Create multiple sessions
         for i in range(3):
-            session = Session(
+            session = AuthSession(
                 uuid=str(uuid.uuid4()),
                 user_uuid=test_user.uuid,
                 device_uuid=str(uuid.uuid4()),
@@ -275,7 +275,7 @@ class TestCredentialsRepository:
     @pytest.mark.asyncio
     async def test_create_credentials(self, uow, test_user):
         """Test creating user credentials."""
-        credentials = UserCredentials(
+        credentials = AuthUserCredentials(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             pin_hash="hashed_pin_123",
@@ -294,7 +294,7 @@ class TestCredentialsRepository:
     @pytest.mark.asyncio
     async def test_get_credentials_by_user_uuid(self, uow, test_user):
         """Test retrieving credentials by user UUID."""
-        credentials = UserCredentials(
+        credentials = AuthUserCredentials(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             pin_hash="hashed_pin_456",
@@ -313,7 +313,7 @@ class TestCredentialsRepository:
     @pytest.mark.asyncio
     async def test_increment_failed_attempts(self, uow, test_user):
         """Test incrementing failed login attempts."""
-        credentials = UserCredentials(
+        credentials = AuthUserCredentials(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             pin_hash="hashed_pin_789",
@@ -338,7 +338,7 @@ class TestCredentialsRepository:
     @pytest.mark.asyncio
     async def test_reset_failed_attempts(self, uow, test_user):
         """Test resetting failed login attempts."""
-        credentials = UserCredentials(
+        credentials = AuthUserCredentials(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             pin_hash="hashed_pin_reset",
@@ -363,7 +363,7 @@ class TestCredentialsRepository:
     @pytest.mark.asyncio
     async def test_lock_and_unlock_account(self, uow, test_user):
         """Test locking and unlocking user account."""
-        credentials = UserCredentials(
+        credentials = AuthUserCredentials(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             pin_hash="hashed_pin_lock",
@@ -399,7 +399,7 @@ class TestCredentialsRepository:
     @pytest.mark.asyncio
     async def test_update_last_login(self, uow, test_user):
         """Test updating last login timestamp."""
-        credentials = UserCredentials(
+        credentials = AuthUserCredentials(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             pin_hash="hashed_pin_login",
@@ -423,7 +423,7 @@ class TestCredentialsRepository:
     @pytest.mark.asyncio
     async def test_update_credentials(self, uow, test_user):
         """Test updating credentials."""
-        credentials = UserCredentials(
+        credentials = AuthUserCredentials(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             pin_hash="original_hash",
@@ -451,7 +451,7 @@ class TestCredentialsRepository:
     @pytest.mark.asyncio
     async def test_delete_credentials(self, uow, test_user):
         """Test deleting credentials."""
-        credentials = UserCredentials(
+        credentials = AuthUserCredentials(
             uuid=str(uuid.uuid4()),
             user_uuid=test_user.uuid,
             pin_hash="to_delete",
@@ -491,7 +491,7 @@ class TestCredentialsRepository:
             await uow.users.create(user)
             user_ids.append(user.uuid)
             
-            credentials = UserCredentials(
+            credentials = AuthUserCredentials(
                 uuid=str(uuid.uuid4()),
                 user_uuid=user.uuid,
                 pin_hash=f"list_hash_{i}",
@@ -524,7 +524,7 @@ class TestCredentialsRepository:
             )
             await uow.users.create(user)
             
-            credentials = UserCredentials(
+            credentials = AuthUserCredentials(
                 uuid=str(uuid.uuid4()),
                 user_uuid=user.uuid,
                 pin_hash=f"count_hash_{i}",
