@@ -53,7 +53,6 @@ console = Console()
 
 from cli.commands.config import app as config_app
 from cli.commands.version import app as version_app
-from cli.commands.database import app as database_app
 from cli.commands.security import app as security_app
 from cli.commands.dev import app as dev_app
 from cli.commands.logs import app as logs_app

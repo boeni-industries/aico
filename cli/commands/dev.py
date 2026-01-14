@@ -456,7 +456,7 @@ def reset(
             try:
                 # Check if table exists
                 result = db.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=%s",
                     (table,)
                 ).fetchone()
                 

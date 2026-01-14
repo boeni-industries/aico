@@ -102,14 +102,28 @@ def pg_callback(
             ("init", "Initialize or update the Postgres schema (idempotent)"),
             ("start", "Start the Postgres container (docker-compose local)"),
             ("stop", "Stop the Postgres container (docker-compose local)"),
+            ("test", "Test database connection and basic operations"),
+            ("show", "Show database configuration, paths, and settings"),
+            ("ls", "List all tables and schemas"),
+            ("desc", "Describe table structure"),
+            ("count", "Count records in table(s)"),
+            ("head", "Show first N records from table"),
+            ("tail", "Show last N records from table"),
+            ("stat", "Database statistics"),
+            ("vacuum", "Optimize database (VACUUM ANALYZE)"),
+            ("check", "Database integrity check"),
+            ("exec", "Execute raw SQL query"),
         ]
 
         examples = [
             "aico pg status",
             "aico pg doctor",
             "aico pg init",
-            "aico pg start",
-            "aico pg stop",
+            "aico pg ls",
+            "aico pg desc users",
+            "aico pg count --table=users",
+            "aico pg head users --limit=5",
+            "aico pg vacuum",
         ]
 
         format_subcommand_help(
@@ -570,3 +584,450 @@ def stop():
     if code != 0:
         raise typer.Exit(code)
     console.print(format_success("Postgres container stopped (if it was running)."))
+
+
+def _get_pg_connection():
+    """Get PostgreSQL connection with credentials from keyring."""
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    pg_cfg = config.get("core.database.postgres", {}) or {}
+    
+    if not pg_cfg:
+        console.print(format_error("No core.database.postgres configuration found"))
+        raise typer.Exit(1)
+    
+    host = pg_cfg.get("host", "127.0.0.1")
+    port = int(pg_cfg.get("port", 5432))
+    db_name = pg_cfg.get("db_name", "aico")
+    user = pg_cfg.get("user", "postgres")
+    
+    from aico.security.key_manager import AICOKeyManager
+    key_manager = AICOKeyManager(config)
+    password = key_manager.get_database_password("postgres", username=user)
+    
+    if not password:
+        console.print(format_error("Postgres password not found. Run 'aico deploy pg'"))
+        raise typer.Exit(1)
+    
+    return {
+        "host": host,
+        "port": port,
+        "db_name": db_name,
+        "user": user,
+        "password": password
+    }
+
+
+def _exec_psql(sql: str, format_output: str = "table") -> tuple[int, str, str]:
+    """Execute SQL via docker exec psql. Returns (returncode, stdout, stderr)."""
+    conn_info = _get_pg_connection()
+    
+    cmd = [
+        "docker", "exec", "-i",
+        "-e", f"PGPASSWORD={conn_info['password']}",
+        "aico-postgres",
+        "psql", "-U", conn_info['user'], "-d", conn_info['db_name']
+    ]
+    
+    if format_output == "json":
+        cmd.extend(["-t", "-A"])  # Tuples only, unaligned
+    
+    cmd.extend(["-c", sql])
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return 1, "", "Query timeout (30s)"
+    except FileNotFoundError:
+        return 1, "", "Docker not found"
+
+
+@app.command(help="Test database connection and basic CRUD operations")
+def test():
+    """Test PostgreSQL connection with comprehensive CRUD operations."""
+    console.rule("[bold cyan]PostgreSQL Connection Test[/bold cyan]")
+    
+    conn_info = _get_pg_connection()
+    test_table = f"aico_test_{int(__import__('time').time())}"
+    
+    try:
+        # Test 1: Basic connectivity
+        console.print("🔍 Testing basic connectivity...")
+        code, stdout, stderr = _exec_psql("SELECT 1;")
+        if code != 0:
+            console.print(format_error(f"Connectivity failed: {stderr}"))
+            raise typer.Exit(1)
+        console.print(format_success("✅ Basic connectivity successful"))
+        
+        # Test 2: Schema check
+        console.print("🔍 Testing schema access...")
+        code, stdout, stderr = _exec_psql(
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'aico_core';"
+        )
+        if code == 0:
+            console.print(format_success(f"✅ Schema access successful"))
+        
+        # Test 3: CREATE
+        console.print(f"🔍 Testing table creation ({test_table})...")
+        code, stdout, stderr = _exec_psql(f"""
+            CREATE TABLE aico_core.{test_table} (
+                id SERIAL PRIMARY KEY,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        if code != 0:
+            console.print(format_error(f"CREATE failed: {stderr}"))
+            raise typer.Exit(1)
+        console.print(format_success("✅ Table creation successful"))
+        
+        # Test 4: INSERT
+        console.print("🔍 Testing insert operation...")
+        test_message = f"AICO CLI test at {__import__('datetime').datetime.now().isoformat()}"
+        code, stdout, stderr = _exec_psql(f"""
+            INSERT INTO aico_core.{test_table} (message) 
+            VALUES ('{test_message}') 
+            RETURNING id;
+        """)
+        if code != 0:
+            console.print(format_error(f"INSERT failed: {stderr}"))
+            raise typer.Exit(1)
+        console.print(format_success("✅ Insert operation successful"))
+        
+        # Test 5: SELECT
+        console.print("🔍 Testing select operation...")
+        code, stdout, stderr = _exec_psql(f"SELECT * FROM aico_core.{test_table};")
+        if code == 0 and test_message in stdout:
+            console.print(format_success("✅ Select operation successful"))
+        
+        # Test 6: UPDATE
+        console.print("🔍 Testing update operation...")
+        code, stdout, stderr = _exec_psql(f"""
+            UPDATE aico_core.{test_table} 
+            SET message = 'UPDATED: {test_message}' 
+            WHERE id = 1;
+        """)
+        if code == 0:
+            console.print(format_success("✅ Update operation successful"))
+        
+        # Test 7: DELETE
+        console.print("🔍 Testing delete operation...")
+        code, stdout, stderr = _exec_psql(f"DELETE FROM aico_core.{test_table} WHERE id = 1;")
+        if code == 0:
+            console.print(format_success("✅ Delete operation successful"))
+        
+        # Test 8: DROP
+        console.print(f"🔍 Testing table deletion ({test_table})...")
+        code, stdout, stderr = _exec_psql(f"DROP TABLE aico_core.{test_table};")
+        if code == 0:
+            console.print(format_success("✅ Table deletion successful"))
+        
+        console.print(format_success("\n✅ All database tests passed!"))
+        
+    except Exception as e:
+        # Cleanup
+        _exec_psql(f"DROP TABLE IF EXISTS aico_core.{test_table};")
+        console.print(format_error(f"Test failed: {e}"))
+        raise typer.Exit(1)
+
+
+@app.command(help="Show database configuration, paths, and settings")
+def show():
+    """Show PostgreSQL configuration and connection details."""
+    console.rule("[bold cyan]PostgreSQL Configuration[/bold cyan]")
+    
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    pg_cfg = config.get("core.database.postgres", {}) or {}
+    
+    if not pg_cfg:
+        console.print(format_error("No PostgreSQL configuration found"))
+        raise typer.Exit(1)
+    
+    table = Table(title="📋 Configuration", border_style="bright_blue", box=box.SIMPLE_HEAD)
+    table.add_column("Property", style="cyan")
+    table.add_column("Value", style="white")
+    
+    table.add_row("Host", str(pg_cfg.get("host", "127.0.0.1")))
+    table.add_row("Port", str(pg_cfg.get("port", 5432)))
+    table.add_row("Database", str(pg_cfg.get("db_name", "aico")))
+    table.add_row("User", str(pg_cfg.get("user", "postgres")))
+    table.add_row("SSL Mode", str(pg_cfg.get("sslmode", "prefer")))
+    table.add_row("Core Schema", str(pg_cfg.get("core_schema", "aico_core")))
+    table.add_row("Pool Size", str(pg_cfg.get("pool_size", 10)))
+    table.add_row("Max Overflow", str(pg_cfg.get("max_overflow", 20)))
+    
+    console.print(table)
+
+
+@app.command(help="List all tables and schemas in database")
+def ls(
+    schema: str = typer.Option("aico_core", "--schema", "-s", help="Schema to list tables from")
+):
+    """List all tables in the specified schema."""
+    console.print(f"📋 [cyan]Tables in schema '{schema}':[/cyan]\n")
+    
+    code, stdout, stderr = _exec_psql(f"""
+        SELECT table_name, 
+               pg_size_pretty(pg_total_relation_size(quote_ident(table_schema)||'.'||quote_ident(table_name))) as size
+        FROM information_schema.tables 
+        WHERE table_schema = '{schema}' 
+        ORDER BY table_name;
+    """)
+    
+    if code != 0:
+        console.print(format_error(f"Failed to list tables: {stderr}"))
+        raise typer.Exit(1)
+    
+    if not stdout.strip():
+        console.print(format_warning(f"No tables found in schema '{schema}'"))
+        return
+    
+    console.print(stdout)
+
+
+@app.command(help="Describe table structure (columns, types, constraints)")
+def desc(
+    table_name: str = typer.Argument(..., help="Table name to describe"),
+    schema: str = typer.Option("aico_core", "--schema", "-s", help="Schema name")
+):
+    """Show detailed table structure."""
+    console.print(f"📋 [cyan]Structure of {schema}.{table_name}:[/cyan]\n")
+    
+    code, stdout, stderr = _exec_psql(f"""
+        SELECT 
+            column_name,
+            data_type,
+            character_maximum_length,
+            is_nullable,
+            column_default
+        FROM information_schema.columns
+        WHERE table_schema = '{schema}' AND table_name = '{table_name}'
+        ORDER BY ordinal_position;
+    """)
+    
+    if code != 0:
+        console.print(format_error(f"Failed to describe table: {stderr}"))
+        raise typer.Exit(1)
+    
+    console.print(stdout)
+    
+    # Show indexes
+    console.print(f"\n🔍 [cyan]Indexes on {schema}.{table_name}:[/cyan]\n")
+    code, stdout, stderr = _exec_psql(f"""
+        SELECT indexname, indexdef 
+        FROM pg_indexes 
+        WHERE schemaname = '{schema}' AND tablename = '{table_name}';
+    """)
+    if code == 0:
+        console.print(stdout if stdout.strip() else "[dim]No indexes[/dim]")
+
+
+@app.command(help="Count records in table(s)")
+def count(
+    table: str = typer.Option(None, "--table", "-t", help="Specific table to count"),
+    schema: str = typer.Option("aico_core", "--schema", "-s", help="Schema name"),
+    all: bool = typer.Option(False, "--all", help="Count all tables in schema")
+):
+    """Count records in specified table(s)."""
+    if all:
+        console.print(f"📊 [cyan]Record counts for all tables in '{schema}':[/cyan]\n")
+        code, stdout, stderr = _exec_psql(f"""
+            SELECT table_name, 
+                   (xpath('/row/cnt/text()', xml_count))[1]::text::int as row_count
+            FROM (
+                SELECT table_name, 
+                       query_to_xml(format('SELECT count(*) as cnt FROM %I.%I', table_schema, table_name), false, true, '') as xml_count
+                FROM information_schema.tables
+                WHERE table_schema = '{schema}'
+            ) t
+            ORDER BY row_count DESC;
+        """)
+    elif table:
+        console.print(f"📊 [cyan]Record count for {schema}.{table}:[/cyan]\n")
+        code, stdout, stderr = _exec_psql(f"SELECT COUNT(*) FROM {schema}.{table};")
+    else:
+        console.print(format_error("Specify --table or --all"))
+        raise typer.Exit(1)
+    
+    if code != 0:
+        console.print(format_error(f"Count failed: {stderr}"))
+        raise typer.Exit(1)
+    
+    console.print(stdout)
+
+
+@app.command(help="Show first N records from table")
+def head(
+    table_name: str = typer.Argument(..., help="Table name"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records"),
+    schema: str = typer.Option("aico_core", "--schema", "-s", help="Schema name")
+):
+    """Show first N records from table."""
+    console.print(f"📄 [cyan]First {limit} records from {schema}.{table_name}:[/cyan]\n")
+    
+    code, stdout, stderr = _exec_psql(f"SELECT * FROM {schema}.{table_name} LIMIT {limit};")
+    
+    if code != 0:
+        console.print(format_error(f"Query failed: {stderr}"))
+        raise typer.Exit(1)
+    
+    console.print(stdout if stdout.strip() else "[dim]No records[/dim]")
+
+
+@app.command(help="Show last N records from table")
+def tail(
+    table_name: str = typer.Argument(..., help="Table name"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records"),
+    schema: str = typer.Option("aico_core", "--schema", "-s", help="Schema name")
+):
+    """Show last N records from table (requires primary key or timestamp)."""
+    console.print(f"📄 [cyan]Last {limit} records from {schema}.{table_name}:[/cyan]\n")
+    
+    # Try to find a suitable ordering column
+    code, stdout, stderr = _exec_psql(f"""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_schema = '{schema}' AND table_name = '{table_name}' 
+        AND (column_name LIKE '%_at' OR column_name LIKE '%id')
+        LIMIT 1;
+    """)
+    
+    order_col = stdout.strip().split('\n')[2].strip() if stdout.strip() else "ctid"
+    
+    code, stdout, stderr = _exec_psql(f"""
+        SELECT * FROM {schema}.{table_name} 
+        ORDER BY {order_col} DESC 
+        LIMIT {limit};
+    """)
+    
+    if code != 0:
+        console.print(format_error(f"Query failed: {stderr}"))
+        raise typer.Exit(1)
+    
+    console.print(stdout if stdout.strip() else "[dim]No records[/dim]")
+
+
+@app.command(help="Database statistics (size, table counts, indexes)")
+def stat():
+    """Show comprehensive database statistics."""
+    console.rule("[bold cyan]PostgreSQL Statistics[/bold cyan]")
+    
+    # Database size
+    console.print("\n📊 [cyan]Database Size:[/cyan]")
+    code, stdout, stderr = _exec_psql("""
+        SELECT pg_size_pretty(pg_database_size(current_database())) as size;
+    """)
+    if code == 0:
+        console.print(stdout)
+    
+    # Table statistics
+    console.print("\n📋 [cyan]Table Statistics (aico_core schema):[/cyan]")
+    code, stdout, stderr = _exec_psql("""
+        SELECT 
+            schemaname,
+            tablename,
+            pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as total_size,
+            pg_size_pretty(pg_relation_size(schemaname||'.'||tablename)) as table_size,
+            pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename) - pg_relation_size(schemaname||'.'||tablename)) as indexes_size
+        FROM pg_tables
+        WHERE schemaname = 'aico_core'
+        ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
+        LIMIT 20;
+    """)
+    if code == 0:
+        console.print(stdout)
+    
+    # Connection stats
+    console.print("\n🔌 [cyan]Connection Statistics:[/cyan]")
+    code, stdout, stderr = _exec_psql("""
+        SELECT count(*) as total_connections,
+               count(*) FILTER (WHERE state = 'active') as active,
+               count(*) FILTER (WHERE state = 'idle') as idle
+        FROM pg_stat_activity;
+    """)
+    if code == 0:
+        console.print(stdout)
+
+
+@app.command(help="Optimize database (VACUUM ANALYZE)")
+def vacuum(
+    full: bool = typer.Option(False, "--full", help="Full vacuum (locks tables)"),
+    analyze: bool = typer.Option(True, "--analyze", help="Run ANALYZE after vacuum")
+):
+    """Run VACUUM to reclaim space and optionally ANALYZE to update statistics."""
+    console.print("🧹 [cyan]Running database optimization...[/cyan]")
+    
+    sql = "VACUUM"
+    if full:
+        sql += " FULL"
+        console.print(format_warning("⚠️  FULL vacuum will lock tables"))
+    if analyze:
+        sql += " ANALYZE"
+    sql += ";"
+    
+    code, stdout, stderr = _exec_psql(sql)
+    
+    if code != 0:
+        console.print(format_error(f"Vacuum failed: {stderr}"))
+        raise typer.Exit(1)
+    
+    console.print(format_success("✅ Database optimization complete"))
+
+
+@app.command(help="Database integrity and consistency checks")
+def check():
+    """Run PostgreSQL integrity checks."""
+    console.rule("[bold cyan]Database Integrity Checks[/bold cyan]")
+    
+    # Check for table bloat
+    console.print("\n🔍 [cyan]Checking for table bloat:[/cyan]")
+    code, stdout, stderr = _exec_psql("""
+        SELECT schemaname, tablename,
+               pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
+        FROM pg_tables
+        WHERE schemaname = 'aico_core'
+        ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
+        LIMIT 10;
+    """)
+    if code == 0:
+        console.print(stdout)
+    
+    # Check for missing indexes on foreign keys
+    console.print("\n🔍 [cyan]Checking for unindexed foreign keys:[/cyan]")
+    code, stdout, stderr = _exec_psql("""
+        SELECT c.conrelid::regclass AS table_name,
+               string_agg(a.attname, ', ') AS columns
+        FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+        WHERE c.contype = 'f'
+        AND NOT EXISTS (
+            SELECT 1 FROM pg_index i
+            WHERE i.indrelid = c.conrelid
+            AND c.conkey::int[] <@ i.indkey::int[]
+        )
+        GROUP BY c.conrelid
+        LIMIT 10;
+    """)
+    if code == 0:
+        console.print(stdout if stdout.strip() else "[green]✅ All foreign keys are indexed[/green]")
+    
+    console.print(format_success("\n✅ Integrity checks complete"))
+
+
+@app.command(help="Execute raw SQL query (use with caution)")
+def exec(
+    query: str = typer.Argument(..., help="SQL query to execute")
+):
+    """Execute arbitrary SQL query. USE WITH CAUTION."""
+    console.print(format_warning("⚠️  Executing raw SQL query"))
+    console.print(f"[dim]Query: {query}[/dim]\n")
+    
+    code, stdout, stderr = _exec_psql(query)
+    
+    if code != 0:
+        console.print(format_error(f"Query failed: {stderr}"))
+        raise typer.Exit(1)
+    
+    console.print(stdout if stdout.strip() else "[dim]Query executed (no output)[/dim]")

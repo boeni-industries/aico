@@ -28,8 +28,8 @@ sys.path.insert(0, str(shared_path))
 
 from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
-from aico.data.libsql import EncryptedLibSQLConnection
 from aico.security import AICOKeyManager
+from cli.utils.pg_connection import get_pg_connection
 
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
@@ -46,48 +46,9 @@ app = typer.Typer(
 
 
 def get_db_connection():
-    """Get database connection for skill gap operations."""
-    from aico.core.paths import get_default_database_path
-    
-    db_path = get_default_database_path()
-    
-    if not db_path.exists():
-        console.print("[red]✗[/red] Database not found. Run 'aico database init' first.")
-        raise typer.Exit(1)
-    
+    """Get PostgreSQL database connection for skill gap operations."""
     try:
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        key_manager = AICOKeyManager(config)
-        
-        if not key_manager.has_stored_key():
-            console.print("[red]✗[/red] Master key not found. Run 'aico security setup' first.")
-            raise typer.Exit(1)
-        
-        cached_key = key_manager._get_cached_session()
-        if cached_key:
-            key_manager._extend_session()
-            db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-            return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
-        import keyring
-        stored_key = keyring.get_password(key_manager.service_name, "master_key")
-        if stored_key:
-            master_key = bytes.fromhex(stored_key)
-            key_manager._cache_session(master_key)
-            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
-        password = typer.prompt("Enter master password", hide_input=True)
-        if not password or not password.strip():
-            console.print("[red]✗[/red] Password cannot be empty")
-            raise typer.Exit(1)
-        
-        master_key = key_manager.authenticate(password, interactive=False, force_fresh=False)
-        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        
-        return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
+        return get_pg_connection()
     except Exception as e:
         console.print(f"[red]✗[/red] Error connecting to database: {e}")
         raise typer.Exit(1)
@@ -116,7 +77,7 @@ def list_gaps(
             SELECT gap_id, step_description, frequency_count, 
                    priority_score, llm_suggested_skills,
                    first_seen_at, last_seen_at
-            FROM agency_skill_gaps
+            FROM aico_core.agency_skill_gaps
         """
         
         if sort_by == "frequency":
@@ -218,8 +179,8 @@ def show_gap(
                    step_metadata, frequency_count, priority_score,
                    suggested_skill_spec, notes, first_seen_at, 
                    last_seen_at, created_at
-            FROM agency_skill_gaps
-            WHERE gap_id = ?
+            FROM aico_core.agency_skill_gaps
+            WHERE gap_id = %s
             """,
             (gap_id,)
         ).fetchone()
@@ -293,7 +254,7 @@ def show_stats():
         db = get_db_connection()
         
         total_gaps = db.execute(
-            "SELECT COUNT(*) FROM agency_skill_gaps"
+            "SELECT COUNT(*) FROM aico_core.agency_skill_gaps"
         ).fetchone()[0]
         
         console.print(Panel(
@@ -305,7 +266,7 @@ def show_stats():
         top_gaps = db.execute(
             """
             SELECT step_description, frequency_count, priority_score
-            FROM agency_skill_gaps
+            FROM aico_core.agency_skill_gaps
             ORDER BY frequency_count DESC, priority_score DESC
             LIMIT 5
             """
@@ -318,14 +279,14 @@ def show_stats():
                 console.print(f"  [{freq}x] {short_desc}")
         
         avg_priority = db.execute(
-            "SELECT AVG(priority_score) FROM agency_skill_gaps"
+            "SELECT AVG(priority_score) FROM aico_core.agency_skill_gaps"
         ).fetchone()[0]
         
         if avg_priority:
             console.print(f"\n[bold]Average Priority Score:[/bold] {avg_priority:.2f}")
         
         all_suggested = db.execute(
-            "SELECT llm_suggested_skills FROM agency_skill_gaps"
+            "SELECT llm_suggested_skills FROM aico_core.agency_skill_gaps"
         ).fetchall()
         
         skill_counts = {}
@@ -361,7 +322,7 @@ def clear_gaps(
         db = get_db_connection()
         
         # Count gaps to be deleted
-        count_query = "SELECT COUNT(*) FROM agency_skill_gaps"
+        count_query = "SELECT COUNT(*) FROM aico_core.agency_skill_gaps"
         count = db.execute(count_query).fetchone()[0]
         
         if count == 0:
@@ -377,7 +338,7 @@ def clear_gaps(
                 return
         
         # Delete gaps
-        db.execute("DELETE FROM agency_skill_gaps")
+        db.execute("DELETE FROM aico_core.agency_skill_gaps")
         
         db.commit()
         
@@ -417,8 +378,8 @@ def export_gaps(
                 SELECT gap_id, step_description, llm_suggested_skills,
                        frequency_count, priority_score,
                        suggested_skill_spec, first_seen_at, last_seen_at
-                FROM agency_skill_gaps
-                WHERE gap_id = ?
+                FROM aico_core.agency_skill_gaps
+                WHERE gap_id = %s
                 """,
                 (gap_id,)
             ).fetchall()
@@ -428,7 +389,7 @@ def export_gaps(
                 SELECT gap_id, step_description, llm_suggested_skills,
                        frequency_count, priority_score,
                        suggested_skill_spec, first_seen_at, last_seen_at
-                FROM agency_skill_gaps
+                FROM aico_core.agency_skill_gaps
                 ORDER BY frequency_count DESC, priority_score DESC
                 """
             ).fetchall()

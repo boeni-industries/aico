@@ -30,9 +30,9 @@ else:
 sys.path.insert(0, str(shared_path))
 
 from aico.core.config import ConfigurationManager
-from aico.core.paths import get_default_database_path
-from aico.data.libsql import EncryptedLibSQLConnection
+from aico.core.paths import AICOPaths
 from aico.security import AICOKeyManager
+from cli.utils.pg_connection import get_pg_connection
 
 console = Console()
 
@@ -43,57 +43,18 @@ app = typer.Typer(
 
 
 def get_db_connection():
-    """Get database connection."""
-    db_path = get_default_database_path()
-    
-    if not db_path.exists():
-        console.print("[red]✗[/red] Database not found. Run 'aico database init' first.")
-        raise typer.Exit(1)
-    
+    """Get PostgreSQL database connection for proactive operations."""
     try:
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        key_manager = AICOKeyManager(config)
-        
-        if not key_manager.has_stored_key():
-            console.print("[red]✗[/red] Master key not found. Run 'aico security setup' first.")
-            raise typer.Exit(1)
-        
-        # Try session-based authentication first
-        cached_key = key_manager._get_cached_session()
-        if cached_key:
-            key_manager._extend_session()
-            db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-            return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
-        # Try stored key from keyring
-        import keyring
-        stored_key = keyring.get_password(key_manager.service_name, "master_key")
-        if stored_key:
-            master_key = bytes.fromhex(stored_key)
-            key_manager._cache_session(master_key)
-            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
-        # Need password
-        password = typer.prompt("Enter master password", hide_input=True)
-        if not password or not password.strip():
-            console.print("[red]✗[/red] Password cannot be empty")
-            raise typer.Exit(1)
-        
-        master_key = key_manager.authenticate(password, interactive=False, force_fresh=False)
-        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        
-        return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
+        return get_pg_connection()
     except Exception as e:
         console.print(f"[red]✗[/red] Error connecting to database: {e}")
         raise typer.Exit(1)
 
 
-def get_current_user_id(db: EncryptedLibSQLConnection) -> str:
+def get_current_user_id(db) -> str:
     """Get current user ID from database."""
-    cursor = db.execute("SELECT uuid FROM user_profiles WHERE is_active = 1 LIMIT 1")
+    cursor = db.cursor()
+    cursor.execute("SELECT uuid FROM aico_core.user_profiles WHERE is_active = true LIMIT 1")
     user = cursor.fetchone()
     if not user:
         console.print("[red]✗[/red] No active user found")
@@ -127,23 +88,23 @@ def list_initiations(
                    initiated_at, resolution_status, resolved_at,
                    user_response_time, engagement_score, trigger_reason
             FROM conversation_initiations
-            WHERE user_id = ?
+            WHERE user_id = %s
         """
         params = [user_id]
         
         if status:
-            query += " AND resolution_status = ?"
+            query += " AND resolution_status = %s"
             params.append(status)
         
         if since:
-            query += " AND initiated_at >= ?"
+            query += " AND initiated_at >= %s"
             params.append(since)
         
         if until:
-            query += " AND initiated_at <= ?"
+            query += " AND initiated_at <= %s"
             params.append(until)
         
-        query += " ORDER BY initiated_at DESC LIMIT ?"
+        query += " ORDER BY initiated_at DESC LIMIT %s"
         params.append(limit)
         
         cursor = db.execute(query, tuple(params))
@@ -203,7 +164,7 @@ def list_initiations(
                     AVG(user_response_time) as avg_response_time,
                     AVG(engagement_score) as avg_engagement
                 FROM conversation_initiations
-                WHERE user_id = ?
+                WHERE user_id = %s
                 GROUP BY resolution_status
             """
             cursor = db.execute(stats_query, (user_id,))
@@ -260,7 +221,7 @@ def show_initiation(
                    initiated_at, resolution_status, resolved_at,
                    user_response_time, engagement_score, created_at, updated_at
             FROM conversation_initiations
-            WHERE initiation_id LIKE ? AND user_id = ?
+            WHERE initiation_id LIKE ? AND user_id = %s
         """, (f"{initiation_id}%", user_id))
         
         init = cursor.fetchone()
@@ -339,7 +300,7 @@ def respond_to_initiation(
         cursor = db.execute("""
             SELECT initiation_id, resolution_status, initiated_at, trigger_reason
             FROM conversation_initiations
-            WHERE initiation_id LIKE ? AND user_id = ?
+            WHERE initiation_id LIKE ? AND user_id = %s
         """, (f"{initiation_id}%", user_id))
         
         init = cursor.fetchone()
@@ -364,8 +325,8 @@ def respond_to_initiation(
                 resolved_at = ?,
                 user_response_time = ?,
                 engagement_score = ?,
-                updated_at = ?
-            WHERE initiation_id = ?
+                updated_at = %s
+            WHERE initiation_id = %s
         """, (
             response_type,
             resolved_at.isoformat(),
@@ -635,7 +596,7 @@ def test_initiation(
                     trigger_source, trigger_reason, question,
                     context, urgency, expected_answer_type,
                     initiated_at, resolution_status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, %s)
             """, (
                 initiation_id,
                 user_id,

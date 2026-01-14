@@ -33,8 +33,8 @@ sys.path.insert(0, str(shared_path))
 
 from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
+from cli.utils.pg_connection import get_pg_connection
 
 console = Console()
 
@@ -75,51 +75,12 @@ app = typer.Typer(
 )
 
 
-def _get_db_connection() -> EncryptedLibSQLConnection:
-    """Get authenticated database connection with session support"""
+def _get_db_connection():
+    """Get PostgreSQL database connection"""
     try:
-        config = ConfigurationManager()
-        key_manager = AICOKeyManager(config)
-        db_path = AICOPaths.resolve_database_path("aico.db", "auto")
-        
-        # Try session-based authentication first
-        cached_key = key_manager._get_cached_session()
-        if cached_key:
-            # Use active session
-            key_manager._extend_session()
-            db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-            conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-            conn.connect()
-            return conn
-        
-        # Try stored key from keyring
-        import keyring
-        stored_key = keyring.get_password(key_manager.service_name, "master_key")
-        if stored_key:
-            master_key = bytes.fromhex(stored_key)
-            key_manager._cache_session(master_key)  # Cache for future use
-            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-            conn.connect()
-            return conn
-        
-        # Need password
-        password = typer.prompt("Enter master password", hide_input=True)
-        
-        # Reject empty passwords
-        if not password or not password.strip():
-            console.print("❌ [red]Password cannot be empty[/red]")
-            raise typer.Exit(1)
-        
-        master_key = key_manager.authenticate(password, interactive=False, force_fresh=False)
-        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        conn.connect()
-        
-        return conn
-        
+        return get_pg_connection()
     except Exception as e:
-        console.print(f"❌ [red]Error connecting to database: {e}[/red]")
+        console.print(f"[red]✗[/red] Error connecting to database: {e}")
         raise typer.Exit(1)
 
 
@@ -234,14 +195,14 @@ def history(
         db = _get_db_connection()
         
         # Build query
-        query = "SELECT timestamp, feeling, valence, arousal, intensity FROM emotion_history"
+        query = "SELECT timestamp, feeling, valence, arousal, intensity FROM aico_core.emotion_history"
         params = []
         
         if feeling:
-            query += " WHERE feeling = ?"
+            query += " WHERE feeling = %s"
             params.append(feeling)
         
-        query += " ORDER BY timestamp DESC LIMIT ?"
+        query += " ORDER BY timestamp DESC LIMIT %s"
         params.append(limit)
         
         cursor = db.execute(query, tuple(params))
@@ -367,7 +328,7 @@ def export(
         
         # Get history
         cursor = db.execute(
-            "SELECT timestamp, feeling, valence, arousal, intensity FROM emotion_history ORDER BY timestamp"
+            "SELECT timestamp, feeling, valence, arousal, intensity FROM aico_core.emotion_history ORDER BY timestamp"
         )
         history = cursor.fetchall()
         
@@ -426,7 +387,7 @@ def stats(
         # Get history for analysis
         cursor = db.execute(
             """SELECT feeling, valence, arousal, intensity 
-               FROM emotion_history 
+               FROM aico_core.emotion_history 
                WHERE timestamp >= datetime('now', '-' || ? || ' days')
                ORDER BY timestamp""",
             (days,)

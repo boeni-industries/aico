@@ -70,49 +70,17 @@ app = typer.Typer(
     help="Knowledge graph management and inspection.",
     callback=kg_callback,
     invoke_without_command=True,
-    context_settings={"help_option_names": []}
+    no_args_is_help=False
 )
 
 
-def _get_database_connection(db_path: str) -> 'EncryptedLibSQLConnection':
-    """Get authenticated database connection."""
-    from aico.core.config import ConfigurationManager
-    from aico.security import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-    import keyring
-    
-    config = ConfigurationManager()
-    config.initialize(lightweight=True)
-    key_manager = AICOKeyManager(config)
-    
-    if not key_manager.has_stored_key():
-        console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
+def _get_database_connection():
+    """Get PostgreSQL database connection."""
+    try:
+        return get_pg_connection()
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error connecting to database: {e}")
         raise typer.Exit(1)
-    
-    # Try session-based authentication first
-    cached_key = key_manager._get_cached_session()
-    if cached_key:
-        key_manager._extend_session()
-        db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-        return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-    
-    # Try stored key from keyring
-    stored_key = keyring.get_password(key_manager.service_name, "master_key")
-    if stored_key:
-        master_key = bytes.fromhex(stored_key)
-        key_manager._cache_session(master_key)
-        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-    
-    # Need password
-    password = typer.prompt("Enter master password", hide_input=True)
-    if not password or not password.strip():
-        console.print("[red]Error: Password cannot be empty[/red]")
-        raise typer.Exit(1)
-    
-    master_key = key_manager.authenticate(password, interactive=False)
-    db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-    return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
 
 
 @app.command(name="status", help="Show knowledge graph statistics.")
@@ -129,22 +97,22 @@ def status():
             with db_connection:
                 # Get node statistics
                 node_stats = db_connection.execute(
-                    "SELECT COUNT(*) as total, COUNT(DISTINCT user_id) as users FROM kg_nodes WHERE is_current = 1"
+                    "SELECT COUNT(*) as total, COUNT(DISTINCT user_id) as users FROM aico_core.kg_nodes WHERE is_current = 1"
                 ).fetchone()
                 
                 # Get edge statistics
                 edge_stats = db_connection.execute(
-                    "SELECT COUNT(*) as total FROM kg_edges WHERE is_current = 1"
+                    "SELECT COUNT(*) as total FROM aico_core.kg_edges WHERE is_current = 1"
                 ).fetchone()
                 
                 # Get node type distribution
                 node_types = db_connection.execute(
-                    "SELECT label, COUNT(*) as count FROM kg_nodes WHERE is_current = 1 GROUP BY label ORDER BY count DESC LIMIT 10"
+                    "SELECT label, COUNT(*) as count FROM aico_core.kg_nodes WHERE is_current = 1 GROUP BY label ORDER BY count DESC LIMIT 10"
                 ).fetchall()
                 
                 # Get edge type distribution
                 edge_types = db_connection.execute(
-                    "SELECT relation_type, COUNT(*) as count FROM kg_edges WHERE is_current = 1 GROUP BY relation_type ORDER BY count DESC LIMIT 10"
+                    "SELECT relation_type, COUNT(*) as count FROM aico_core.kg_edges WHERE is_current = 1 GROUP BY relation_type ORDER BY count DESC LIMIT 10"
                 ).fetchall()
             
             # Display results
@@ -506,12 +474,12 @@ def list_edges(
                     n1.properties as source_props,
                     n2.label as target_label,
                     n2.properties as target_props
-                FROM kg_edges e
+                FROM aico_core.kg_edges e
                 JOIN kg_nodes n1 ON e.source_id = n1.id
                 JOIN kg_nodes n2 ON e.target_id = n2.id
                 WHERE e.user_id = ? AND e.is_current = 1
                 ORDER BY e.created_at DESC
-                LIMIT ?
+                LIMIT %s
             """
             
             results = db_connection.execute(query, (user_id, limit)).fetchall()
@@ -575,14 +543,14 @@ def clear(
             # Clear libSQL tables
             if user_id:
                 # Clear user-specific data from libSQL
-                db_connection.execute("DELETE FROM kg_edges WHERE user_id = ?", (user_id,))
-                db_connection.execute("DELETE FROM kg_nodes WHERE user_id = ?", (user_id,))
+                db_connection.execute("DELETE FROM aico_core.kg_edges WHERE user_id = %s", (user_id,))
+                db_connection.execute("DELETE FROM aico_core.kg_nodes WHERE user_id = %s", (user_id,))
                 db_connection.commit()
                 console.print(f"[green]✓[/green] Cleared libSQL tables for user: {user_id}")
             else:
                 # Clear all data from libSQL
-                db_connection.execute("DELETE FROM kg_edges")
-                db_connection.execute("DELETE FROM kg_nodes")
+                db_connection.execute("DELETE FROM aico_core.kg_edges")
+                db_connection.execute("DELETE FROM aico_core.kg_nodes")
                 db_connection.commit()
                 console.print("[green]✓[/green] Cleared all libSQL tables")
             
@@ -810,18 +778,18 @@ def deduplicate(
                         # Mark duplicates as historical
                         for dup in duplicates_to_mark:
                             db_connection.execute(
-                                "UPDATE kg_nodes SET is_current = 0, updated_at = datetime('now') WHERE id = ?",
+                                "UPDATE kg_nodes SET is_current = 0, updated_at = datetime('now') WHERE id = %s",
                                 (dup.id,)
                             )
                         
                         # Update edges to point to canonical node
                         for dup in duplicates_to_mark:
                             db_connection.execute(
-                                "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ?",
+                                "UPDATE kg_edges SET source_id = %s, updated_at = datetime('now') WHERE source_id = %s",
                                 (canonical.id, dup.id)
                             )
                             db_connection.execute(
-                                "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ?",
+                                "UPDATE kg_edges SET target_id = %s, updated_at = datetime('now') WHERE target_id = %s",
                                 (canonical.id, dup.id)
                             )
                         
