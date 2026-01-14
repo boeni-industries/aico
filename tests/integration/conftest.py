@@ -10,11 +10,133 @@ Provides:
 import pytest
 import uuid
 from datetime import datetime, UTC
+from pathlib import Path
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
 from aico.ai.user.models import UserProfile
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_database():
+    """
+    Automatically create and setup test database before all tests.
+    
+    This fixture:
+    1. Creates a fresh 'aico_test' database
+    2. Applies the schema from schema.sql
+    3. Runs before any tests (autouse=True)
+    4. Optionally drops the database after tests (commented out for inspection)
+    """
+    import os
+    from aico.core.config import ConfigurationManager
+    from aico.security import AICOKeyManager
+    
+    # Get database credentials from config (same as connection.py)
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    
+    pg_config = config.get("core.database.postgres", {})
+    host = pg_config.get("host", "localhost")
+    port = pg_config.get("port", 5432)
+    database = pg_config.get("database", "aico")
+    user = pg_config.get("user", "postgres")
+    
+    # Get password from environment or AICOKeyManager (same as connection.py)
+    password = os.environ.get("AICO_PG_PASSWORD")
+    
+    if not password:
+        try:
+            key_manager = AICOKeyManager(config)
+            password = key_manager.get_database_password("postgres", username="postgres")
+        except Exception:
+            pass
+    
+    if not password:
+        raise RuntimeError("PostgreSQL password not found. Set AICO_PG_PASSWORD environment variable.")
+    
+    # Connect to postgres (admin database) to create test database
+    admin_url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/postgres"
+    admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
+    
+    import asyncio
+    
+    async def _setup():
+        try:
+            # Drop and recreate test database
+            async with admin_engine.connect() as conn:
+                # Terminate existing connections to test database
+                await conn.execute(text("""
+                    SELECT pg_terminate_backend(pg_stat_activity.pid)
+                    FROM pg_stat_activity
+                    WHERE pg_stat_activity.datname = 'aico_test'
+                    AND pid <> pg_backend_pid()
+                """))
+                
+                # Drop and create fresh test database
+                await conn.execute(text("DROP DATABASE IF EXISTS aico_test"))
+                await conn.execute(text("CREATE DATABASE aico_test"))
+            
+            # Connect to test database and apply schema
+            test_url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/aico_test"
+            test_engine = create_async_engine(test_url, poolclass=NullPool)
+            
+            # Use raw asyncpg connection to execute multi-statement schema
+            import asyncpg
+            raw_conn = await asyncpg.connect(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                database='aico_test'
+            )
+            
+            try:
+                # Read and execute schema.sql
+                schema_path = Path(__file__).parent.parent.parent / "shared" / "aico" / "data" / "postgres" / "schema.sql"
+                schema_sql = schema_path.read_text()
+                
+                # Execute entire schema as one script (asyncpg handles multiple statements)
+                await raw_conn.execute(schema_sql)
+            finally:
+                await raw_conn.close()
+            
+            await test_engine.dispose()
+        finally:
+            await admin_engine.dispose()
+    
+    # Run async setup synchronously
+    asyncio.run(_setup())
+    
+    # CRITICAL: Override database name BEFORE any imports that create session factory
+    os.environ["AICO_POSTGRES_DATABASE"] = "aico_test"
+    
+    # Force reset of global session factory to pick up new database name
+    import aico.data.postgres.connection as conn_module
+    conn_module._engine = None
+    conn_module._session_factory = None
+    conn_module._pool = None
+    
+    yield  # Run all tests
+    
+    # Cleanup after all tests (optional - comment out to inspect data)
+    # async def _cleanup():
+    #     admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
+    #     try:
+    #         async with admin_engine.connect() as conn:
+    #             await conn.execute(text("""
+    #                 SELECT pg_terminate_backend(pg_stat_activity.pid)
+    #                 FROM pg_stat_activity
+    #                 WHERE pg_stat_activity.datname = 'aico_test'
+    #                 AND pid <> pg_backend_pid()
+    #             """))
+    #             await conn.execute(text("DROP DATABASE IF EXISTS aico_test"))
+    #     finally:
+    #         await admin_engine.dispose()
+    # asyncio.run(_cleanup())
 
 
 @pytest.fixture

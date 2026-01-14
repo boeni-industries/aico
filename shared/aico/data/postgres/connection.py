@@ -54,7 +54,7 @@ async def get_postgres_pool() -> asyncpg.Pool:
     
     host = pg_config.get("host", "localhost")
     port = pg_config.get("port", 5432)
-    database = pg_config.get("database", "aico")
+    database = os.environ.get("AICO_POSTGRES_DATABASE", pg_config.get("database", "aico"))
     user = pg_config.get("user", "postgres")
     
     # Get password from environment or AICOKeyManager
@@ -183,8 +183,9 @@ async def get_session_factory() -> async_sessionmaker:
         raise RuntimeError("PostgreSQL configuration not found in core.yaml")
     
     host = pg_config.get("host", "localhost")
+    import os
     port = pg_config.get("port", 5432)
-    database = pg_config.get("database", "aico")
+    database = os.environ.get("AICO_POSTGRES_DATABASE", pg_config.get("database", "aico"))
     user = pg_config.get("user", "postgres")
     
     # Get password from environment or AICOKeyManager

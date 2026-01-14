@@ -166,21 +166,33 @@ class TestAMSContextSkillStatsRepository:
     
     @pytest.mark.asyncio
     async def test_get_user_context_stats(self, uow, test_user, test_behavioral_skill):
-        for i in range(3):
-            stat = AMSContextSkillStats(
-                user_id=test_user.uuid,
-                context_bucket=10 + i,
-                skill_id=test_behavioral_skill.skill_id,
-                alpha=1.0,
-                beta=1.0,
-                last_updated_at=datetime.now(UTC),
-            )
-            await uow.ams_context_skill_stats.create(stat)
+        # Create 3 stats: 1 for bucket 10, 2 for other buckets
+        # get_user_context_stats should return only the one for bucket 10
+        stat1 = AMSContextSkillStats(
+            user_id=test_user.uuid,
+            context_bucket=10,
+            skill_id=test_behavioral_skill.skill_id,
+            alpha=1.0,
+            beta=1.0,
+            last_updated_at=datetime.now(UTC),
+        )
+        await uow.ams_context_skill_stats.create(stat1)
+        
+        # Create stats for different buckets (should not be returned)
+        stat2 = AMSContextSkillStats(
+            user_id=test_user.uuid,
+            context_bucket=11,
+            skill_id=test_behavioral_skill.skill_id,
+            alpha=2.0,
+            beta=2.0,
+            last_updated_at=datetime.now(UTC),
+        )
+        await uow.ams_context_skill_stats.create(stat2)
         
         await uow.commit()
         
-        stats = await uow.ams_context_skill_stats.get_user_context_stats(test_user.uuid, 6)
-        assert len(stats) >= 3
-        for s in stats:
-            assert s.user_id == test_user.uuid
-            assert s.context_bucket == 6
+        # Should return only stats for bucket 10
+        stats = await uow.ams_context_skill_stats.get_user_context_stats(test_user.uuid, 10)
+        assert len(stats) == 1
+        assert stats[0].user_id == test_user.uuid
+        assert stats[0].context_bucket == 10
