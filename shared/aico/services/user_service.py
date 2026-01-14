@@ -119,13 +119,13 @@ class UserService:
     async def create_session(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new user session."""
         try:
-            from aico.ai.auth.models import Session
+            from aico.data.auth.models import AuthSession as Session
             
             session = Session(**session_data)
             created = await self.uow.sessions.create(session)
             await self.uow.commit()
             
-            logger.info("[USER_SERVICE] Created session", extra={"session_id": created.session_id, "user_id": created.user_id})
+            logger.info("[USER_SERVICE] Created session", extra={"session_id": created.uuid, "user_id": created.user_uuid})
             return created
         except Exception as e:
             logger.error(f"[USER_SERVICE] Failed to create session: {e}")
@@ -170,6 +170,19 @@ class UserService:
             logger.error(f"[USER_SERVICE] Failed to invalidate session: {e}", extra={"session_id": session_id})
             await self.uow.rollback()
             raise
+    
+    # Backward compatibility aliases
+    async def create_AuthSession(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new user session (alias for create_session)."""
+        return await self.create_session(session_data)
+    
+    async def invalidate_AuthSession(self, session_id: str) -> bool:
+        """Invalidate a session (alias for invalidate_session)."""
+        return await self.invalidate_session(session_id)
+    
+    async def get_AuthSession(self, session_id: str) -> Optional[Any]:
+        """Get a session by ID (alias for get_session)."""
+        return await self.get_session(session_id)
 
     async def invalidate_user_sessions(self, user_id: str) -> int:
         """Invalidate all sessions for a user."""
@@ -178,7 +191,7 @@ class UserService:
             count = 0
             
             for session in sessions:
-                await self.invalidate_session(session.session_id)
+                await self.invalidate_session(session.uuid)
                 count += 1
             
             logger.info(f"[USER_SERVICE] Invalidated {count} sessions for user", extra={"user_id": user_id})

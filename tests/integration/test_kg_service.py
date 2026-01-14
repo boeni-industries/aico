@@ -1,11 +1,12 @@
 """
-Integration tests for KGService.
+Integration tests for KG Service.
 
-Tests the knowledge graph service layer using actual repositories and database.
+Tests the KGService with real PostgreSQL database.
 """
 
 import pytest
 import uuid
+import json
 from datetime import datetime, UTC
 
 from aico.services.kg_service import KGService

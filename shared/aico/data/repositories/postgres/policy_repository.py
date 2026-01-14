@@ -22,7 +22,9 @@ class PostgresPolicyRepository(Repository[Policy]):
     
     async def create(self, entity: Policy) -> Policy:
         """Create a new policy rule."""
+        from datetime import datetime, UTC
         now = datetime.now(UTC).isoformat()
+        
         stmt = agency_policy_rules.insert().values(
             rule_id=entity.rule_id,
             rule_name=entity.rule_name,
@@ -35,8 +37,8 @@ class PostgresPolicyRepository(Repository[Policy]):
             scope=entity.scope,
             version=entity.version,
             active=entity.active,
-            created_at=entity.created_at.isoformat() if entity.created_at else now,
-            updated_at=entity.updated_at.isoformat() if entity.updated_at else now,
+            created_at=getattr(entity, 'created_at', None) or now,
+            updated_at=getattr(entity, 'updated_at', None) or now,
         )
         await self.session.execute(stmt)
         return entity
@@ -50,7 +52,7 @@ class PostgresPolicyRepository(Repository[Policy]):
         if not row:
             return None
         
-        from dateutil import parser as date_parser
+        
         
         return Policy(
             rule_id=row.rule_id,
@@ -64,8 +66,8 @@ class PostgresPolicyRepository(Repository[Policy]):
             scope=row.scope,
             version=row.version,
             active=row.active,
-            created_at=date_parser.parse(row.created_at) if isinstance(row.created_at, str) else row.created_at,
-            updated_at=date_parser.parse(row.updated_at) if isinstance(row.updated_at, str) else row.updated_at,
+            created_at=row.created_at if hasattr(row, 'created_at') else None,
+            updated_at=row.updated_at if hasattr(row, 'updated_at') else None,
         )
     
     async def update(self, entity: Policy) -> Policy:
@@ -113,8 +115,6 @@ class PostgresPolicyRepository(Repository[Policy]):
         stmt = stmt.order_by(agency_policy_rules.c.priority.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         
-        from dateutil import parser as date_parser
-        
         return [
             Policy(
                 rule_id=row.rule_id,
@@ -128,8 +128,8 @@ class PostgresPolicyRepository(Repository[Policy]):
                 scope=row.scope,
                 version=row.version,
                 active=row.active,
-                created_at=date_parser.parse(row.created_at) if isinstance(row.created_at, str) else row.created_at,
-                updated_at=date_parser.parse(row.updated_at) if isinstance(row.updated_at, str) else row.updated_at,
+                created_at=row.created_at if isinstance(row.created_at, str) else row.created_at,
+                updated_at=row.updated_at if isinstance(row.updated_at, str) else row.updated_at,
             )
             for row in result.fetchall()
         ]
@@ -176,7 +176,7 @@ class PostgresPolicyRepository(Repository[Policy]):
         
         result = await self.session.execute(stmt)
         
-        from dateutil import parser as date_parser
+        
         
         return [
             Policy(
@@ -191,8 +191,8 @@ class PostgresPolicyRepository(Repository[Policy]):
                 scope=row.scope,
                 version=row.version,
                 active=row.active,
-                created_at=date_parser.parse(row.created_at) if isinstance(row.created_at, str) else row.created_at,
-                updated_at=date_parser.parse(row.updated_at) if isinstance(row.updated_at, str) else row.updated_at,
+                created_at=row.created_at if hasattr(row, 'created_at') else None,
+                updated_at=row.updated_at if hasattr(row, 'updated_at') else None,
             )
             for row in result.fetchall()
         ]

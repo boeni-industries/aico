@@ -34,7 +34,7 @@ class PostgresFeedbackRepository(Repository[BehavioralFeedback]):
             processed=entity.processed,
             outcome=entity.outcome,
             execution_time_ms=entity.execution_time_ms,
-            context_json=json.dumps(entity.context) if entity.context else None,
+            context_json=json.dumps(entity.context_json) if entity.context_json else None,
             user_satisfaction=entity.user_satisfaction,
             free_text=entity.free_text,
         )

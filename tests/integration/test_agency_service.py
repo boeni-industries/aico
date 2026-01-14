@@ -6,6 +6,7 @@ Tests the service layer using actual repositories and database.
 
 import pytest
 import uuid
+import json
 from datetime import datetime, UTC
 
 from aico.services.agency_service import AgencyService

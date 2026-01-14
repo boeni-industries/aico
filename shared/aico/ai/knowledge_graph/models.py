@@ -25,11 +25,15 @@ class Node:
         source_text: Original text this node was extracted from
         created_at: When node was created (ISO 8601)
         updated_at: When node was last updated (ISO 8601)
+        language: Optional ISO/BCP-47 language code
         valid_from: When fact became true (event time, ISO 8601)
         valid_until: When fact stopped being true (event time, ISO 8601, None = current)
         is_current: Whether fact is currently valid (1 = current, 0 = historical)
         canonical_id: Stable ID across entity merges
         aliases: Known name variations
+        aliases_json: JSON-serialized aliases for persistence layer compatibility
+        reason: Optional reason for node creation/update
+        embedding: Cached embedding from resolution
     """
     id: str
     user_id: str
@@ -45,6 +49,8 @@ class Node:
     is_current: int = 1
     canonical_id: Optional[str] = None
     aliases: Optional[List[str]] = None
+    aliases_json: Optional[str] = None
+    reason: Optional[str] = None
     embedding: Optional[List[float]] = None  # Cached embedding from resolution
     
     @classmethod
@@ -133,15 +139,16 @@ class Edge:
         user_id: Owner user ID
         source_id: Source node ID
         target_id: Target node ID
-        relation_type: Relationship type (KNOWS, WORKS_ON, DEPENDS_ON, etc.)
+        relation_type: Relationship type (HAS_SKILL, WORKS_ON, etc.)
         properties: Arbitrary key-value properties (JSON-serializable)
         confidence: Extraction confidence (0-1)
         source_text: Original text this edge was extracted from
         created_at: When edge was created (ISO 8601)
         updated_at: When edge was last updated (ISO 8601)
-        valid_from: When relationship became true (event time, ISO 8601)
+        valid_from: When relationship started (event time, ISO 8601)
         valid_until: When relationship ended (event time, ISO 8601, None = current)
         is_current: Whether relationship is currently valid (1 = current, 0 = historical)
+        reason: Optional reason for edge creation/update
     """
     id: str
     user_id: str
@@ -156,6 +163,8 @@ class Edge:
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     is_current: int = 1
+    reason: Optional[str] = None
+    embedding: Optional[List[float]] = None  # Cached embedding from resolution
     
     @classmethod
     def create(

@@ -6,6 +6,7 @@ Tests the KGNodeRepository and KGEdgeRepository with real PostgreSQL database.
 
 import pytest
 import uuid
+import json
 from datetime import datetime, UTC
 
 from aico.data.kg.models import KGNode, KGEdge
@@ -69,7 +70,7 @@ class TestKGNodeRepository:
         
         assert created.id == node.id
         assert created.label == "PERSON"
-        assert created.properties["name"] == "John Doe"
+        assert json.loads(created.properties)["name"] == "John Doe"
     
     @pytest.mark.asyncio
     async def test_get_node_by_id(self, uow, test_user):
@@ -90,7 +91,7 @@ class TestKGNodeRepository:
         found = await uow.kg_nodes.get_by_id(node.id)
         assert found is not None
         assert found.label == "LOCATION"
-        assert found.properties["name"] == "Paris"
+        assert json.loads(found.properties)["name"] == "Paris"
     
     @pytest.mark.asyncio
     async def test_update_node(self, uow, test_user):
@@ -109,12 +110,14 @@ class TestKGNodeRepository:
         await uow.commit()
         
         # Update the node
-        node.properties["name"] = "ACME Corporation"
+        props = json.loads(node.properties)
+        props["name"] = "ACME Corporation"
+        node.properties = json.dumps(props)
         node.confidence = 0.95
         updated = await uow.kg_nodes.update(node)
         await uow.commit()
         
-        assert updated.properties["name"] == "ACME Corporation"
+        assert json.loads(updated.properties)["name"] == "ACME Corporation"
         
         # Verify update persisted
         found = await uow.kg_nodes.get_by_id(node.id)
@@ -230,8 +233,9 @@ class TestKGNodeRepository:
         await uow.kg_nodes.create(node)
         await uow.commit()
         
-        # Mark as superseded
-        success = await uow.kg_nodes.mark_as_superseded(node.id)
+        # Mark as superseded by new node
+        new_node_id = str(uuid.uuid4())
+        success = await uow.kg_nodes.mark_as_superseded(node.id, new_node_id)
         await uow.commit()
         
         assert success is True
@@ -465,8 +469,9 @@ class TestKGEdgeRepository:
         await uow.kg_edges.create(edge)
         await uow.commit()
         
-        # Mark as superseded
-        success = await uow.kg_edges.mark_as_superseded(edge.id)
+        # Mark as superseded by new edge
+        new_edge_id = str(uuid.uuid4())
+        success = await uow.kg_edges.mark_as_superseded(edge.id, new_edge_id)
         await uow.commit()
         
         assert success is True

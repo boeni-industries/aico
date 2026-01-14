@@ -8,6 +8,7 @@ from pydantic import BaseModel, field_validator
 
 
 class KGNode(BaseModel):
+    """Knowledge Graph Node (Persistence Model)."""
     id: str
     user_id: str
     label: str
@@ -15,8 +16,8 @@ class KGNode(BaseModel):
     confidence: float = 1.0
     source_text: Optional[str] = None
 
-    created_at: Union[str, datetime]
-    updated_at: Union[str, datetime]
+    created_at: Optional[Union[str, datetime]] = None
+    updated_at: Optional[Union[str, datetime]] = None
 
     language: Optional[str] = None
     valid_from: Optional[Union[str, datetime]] = None
@@ -24,7 +25,7 @@ class KGNode(BaseModel):
 
     is_current: bool = True
     canonical_id: Optional[str] = None
-    aliases_json: Optional[Union[str, Dict[str, Any]]] = None
+    aliases_json: Optional[str] = None
     reason: Optional[str] = None
 
     @field_validator('properties', 'aliases_json', mode='before')
@@ -55,13 +56,14 @@ class KGEdge(BaseModel):
     confidence: float = 1.0
     source_text: Optional[str] = None
 
-    created_at: Union[str, datetime]
+    created_at: Optional[Union[str, datetime]] = None
     updated_at: Optional[Union[str, datetime]] = None
 
     valid_from: Optional[Union[str, datetime]] = None
     valid_until: Optional[Union[str, datetime]] = None
 
     is_current: bool = True
+    reason: Optional[str] = None
     reason: Optional[str] = None
 
     @field_validator('properties', mode='before')

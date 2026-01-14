@@ -4,6 +4,7 @@ EdgesRepository - PostgreSQL implementation
 Handles CRUD operations for knowledge graph edges.
 """
 
+import json
 from typing import Optional, List
 from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
@@ -23,12 +24,25 @@ class PostgresEdgesRepository(Repository[Edge]):
     async def create(self, entity: Edge) -> Edge:
         """Create a new KG edge."""
         from datetime import datetime
+        now = datetime.now(UTC)
         
-        # Convert ISO string timestamps to datetime objects
-        created_at = datetime.fromisoformat(entity.created_at) if isinstance(entity.created_at, str) else entity.created_at
-        updated_at = datetime.fromisoformat(entity.updated_at) if isinstance(entity.updated_at, str) else entity.updated_at
-        valid_from = datetime.fromisoformat(entity.valid_from) if entity.valid_from and isinstance(entity.valid_from, str) else entity.valid_from
-        valid_until = datetime.fromisoformat(entity.valid_until) if entity.valid_until and isinstance(entity.valid_until, str) else entity.valid_until
+        # Handle datetime conversion - convert strings to datetime objects for DB
+        created_at = entity.created_at if hasattr(entity, 'created_at') and entity.created_at else now
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        
+        updated_at = entity.updated_at if hasattr(entity, 'updated_at') and entity.updated_at else now
+        if isinstance(updated_at, str):
+            updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+        
+        # Convert valid_from/valid_until from ISO strings to datetime objects if needed
+        valid_from = entity.valid_from
+        if isinstance(valid_from, str):
+            valid_from = datetime.fromisoformat(valid_from.replace('Z', '+00:00'))
+        
+        valid_until = entity.valid_until
+        if isinstance(valid_until, str):
+            valid_until = datetime.fromisoformat(valid_until.replace('Z', '+00:00'))
         
         stmt = kg_edges.insert().values(
             id=entity.id,
@@ -36,7 +50,7 @@ class PostgresEdgesRepository(Repository[Edge]):
             source_id=entity.source_id,
             target_id=entity.target_id,
             relation_type=entity.relation_type,
-            properties=entity.properties,
+            properties=entity.properties if isinstance(entity.properties, str) else (json.dumps(entity.properties) if entity.properties else None),
             confidence=entity.confidence,
             source_text=entity.source_text,
             created_at=created_at,
@@ -44,6 +58,7 @@ class PostgresEdgesRepository(Repository[Edge]):
             valid_from=valid_from,
             valid_until=valid_until,
             is_current=entity.is_current,
+            reason=entity.reason,
         )
         await self.session.execute(stmt)
         return entity
@@ -190,3 +205,55 @@ class PostgresEdgesRepository(Repository[Edge]):
             )
             for row in result.fetchall()
         ]
+    
+    async def get_edges_for_node(self, node_id: str, direction: str = 'both') -> List[Edge]:
+        """Get edges for a specific node (alias for get_node_edges)."""
+        return await self.get_node_edges(node_id, direction)
+    
+    async def get_edges_by_relation_type(self, user_id: str, relation_type: str) -> List[Edge]:
+        """Get edges by relation type for a specific user."""
+        stmt = select(kg_edges).where(
+            and_(
+                kg_edges.c.user_id == user_id,
+                kg_edges.c.relation_type == relation_type,
+                kg_edges.c.is_current == True
+            )
+        ).order_by(kg_edges.c.created_at.desc())
+        
+        result = await self.session.execute(stmt)
+        
+        return [
+            Edge(
+                id=row.id,
+                user_id=row.user_id,
+                source_id=row.source_id,
+                target_id=row.target_id,
+                relation_type=row.relation_type,
+                properties=row.properties if isinstance(row.properties, str) else (json.dumps(row.properties) if row.properties else None),
+                confidence=row.confidence,
+                source_text=row.source_text,
+                created_at=row.created_at if isinstance(row.created_at, str) else (row.created_at.isoformat() if row.created_at else None),
+                updated_at=row.updated_at if isinstance(row.updated_at, str) else (row.updated_at.isoformat() if row.updated_at else None),
+                valid_from=row.valid_from if isinstance(row.valid_from, str) else (row.valid_from.isoformat() if row.valid_from else None),
+                valid_until=row.valid_until if isinstance(row.valid_until, str) else (row.valid_until.isoformat() if row.valid_until else None),
+                is_current=row.is_current,
+                reason=row.reason if hasattr(row, 'reason') else None,
+            )
+            for row in result.fetchall()
+        ]
+    
+    async def mark_as_superseded(self, edge_id: str, superseded_by: str) -> bool:
+        """Mark an edge as superseded by another edge."""
+        from datetime import datetime
+        
+        stmt = (
+            update(kg_edges)
+            .where(kg_edges.c.id == edge_id)
+            .values(
+                is_current=False,
+                valid_until=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount > 0

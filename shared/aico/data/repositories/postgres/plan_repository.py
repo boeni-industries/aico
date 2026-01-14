@@ -23,14 +23,22 @@ class PostgresPlanRepository(Repository[Plan]):
     
     async def create(self, entity: Plan) -> Plan:
         """Create a new plan."""
+        # Handle steps field from domain model
+        steps_val = getattr(entity, 'steps', None) or getattr(entity, 'steps_json', None)
+        steps_json_val = steps_val if isinstance(steps_val, str) else (json.dumps(steps_val) if steps_val else None)
+        
+        # Handle metadata field
+        metadata_val = getattr(entity, 'metadata', None)
+        metadata_json_val = metadata_val if isinstance(metadata_val, str) else (json.dumps(metadata_val) if metadata_val else None)
+        
         stmt = agency_plans.insert().values(
             plan_id=entity.plan_id,
             goal_id=entity.goal_id,
             title=entity.title,
             description=entity.description,
             status=entity.status,
-            steps_json=json.dumps(entity.steps_json) if entity.steps_json else None,
-            metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
+            steps_json=steps_json_val,
+            metadata_json=metadata_json_val,
             created_at=entity.created_at or datetime.now(UTC),
             updated_at=entity.updated_at or datetime.now(UTC),
         )
@@ -60,13 +68,21 @@ class PostgresPlanRepository(Repository[Plan]):
     
     async def update(self, entity: Plan) -> Plan:
         """Update an existing plan."""
+        # Handle steps field from domain model
+        steps_val = getattr(entity, 'steps', None) or getattr(entity, 'steps_json', None)
+        steps_json_val = steps_val if isinstance(steps_val, str) else (json.dumps(steps_val) if steps_val else None)
+        
+        # Handle metadata field
+        metadata_val = getattr(entity, 'metadata', None)
+        metadata_json_val = metadata_val if isinstance(metadata_val, str) else (json.dumps(metadata_val) if metadata_val else None)
+        
         stmt = (
             update(agency_plans)
             .where(agency_plans.c.plan_id == entity.plan_id)
             .values(
                 status=entity.status,
-                steps_json=json.dumps(entity.steps_json) if entity.steps_json else None,
-                metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
+                steps_json=steps_json_val,
+                metadata_json=metadata_json_val,
                 updated_at=datetime.now(UTC),
             )
         )

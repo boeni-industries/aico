@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timedelta, UTC
 
 from aico.data.auth.models import AuthSession, AuthUserCredentials
+from aico.data.auth import UserCredentials, Session
 from aico.data.user.models import UserProfile
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork

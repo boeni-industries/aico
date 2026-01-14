@@ -59,7 +59,7 @@ class TestTrajectoryRepository:
             timestamp=datetime.now(UTC),
             conversation_id=str(uuid.uuid4()),
             selected_skill_id="test_skill",
-            context_bucket="bucket_1",
+            context_json_bucket="bucket_1",
             archived=False,
         )
         
