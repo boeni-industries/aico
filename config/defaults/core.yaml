@@ -11,13 +11,8 @@ system:
     frontend_subdirectory: "frontend"  # Frontend state persistence and cache
   log_level: "INFO"
 
-# Core database configuration (LibSQL today, Postgres/Timescale target)
+# Core database configuration (PostgreSQL + InfluxDB)
 database:
-  # Legacy encrypted LibSQL database (to be removed after migration)
-  libsql:
-    filename: "aico.db"
-    directory_mode: "auto"  # Reuse existing path resolution via AICOPaths
-
   postgres:
     # Logical database name and schemas inside a single Postgres cluster
     db_name: "aico"

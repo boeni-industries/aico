@@ -8,7 +8,7 @@ encryption:
   
   # Key derivation settings
   key_derivation:
-    # PBKDF2 settings (for LibSQL compatibility)
+    # PBKDF2 settings (for PostgreSQL database encryption)
     pbkdf2:
       iterations: 100000
     

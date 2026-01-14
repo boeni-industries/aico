@@ -2,11 +2,6 @@
 defaults:
   # Path resolution mode: "auto" (OS-specific), "current" (dev), or explicit path
   directory_mode: "auto"
-
-libsql:
-  # Filename only - directory resolved by path system
-  filename: "aico.db"
-  directory_mode: "auto"  # Override default if needed
   # Encryption always enforced - security by design
   journal_mode: "WAL"
   
