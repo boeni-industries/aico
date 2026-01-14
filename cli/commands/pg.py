@@ -1,6 +1,6 @@
 """AICO CLI Postgres Commands
 
-Command group for managing the Postgres/Timescale backend that will replace LibSQL.
+Command group for managing the PostgreSQL/Timescale backend.
 
 This module is intentionally minimal for now and will be extended as the
 Postgres migration is implemented. It follows the same patterns as the

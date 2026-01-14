@@ -275,7 +275,7 @@ def query(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from cli.utils.pg_connection import get_pg_connection
         from aico.ai.knowledge_graph import PropertyGraphStorage
         from aico.ai.knowledge_graph.query import GQLQueryExecutor
         import chromadb
@@ -359,7 +359,7 @@ def query(
                     where=where_filter
                 )
                 
-                # Fetch full nodes from LibSQL
+                # Fetch full nodes from PostgreSQL
                 nodes = []
                 if results["ids"] and results["ids"][0]:
                     storage = PropertyGraphStorage(db_connection, chromadb_client, None)
@@ -403,7 +403,7 @@ def list_entities(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from cli.utils.pg_connection import get_pg_connection
         from aico.ai.knowledge_graph import PropertyGraphStorage
         import chromadb
         from chromadb.config import Settings
@@ -513,17 +513,17 @@ def list_edges(
     asyncio.run(_list_edges())
 
 
-@app.command(name="clear", help="Clear ALL KG data: libSQL tables, ChromaDB embeddings, and caches (DESTRUCTIVE).")
+@app.command(name="clear", help="Clear ALL KG data: PostgreSQL tables, ChromaDB embeddings, and caches (DESTRUCTIVE).")
 @destructive
 def clear(
     user_id: Optional[str] = typer.Option(None, "--user-id", "-u", help="User ID (if not specified, clears ALL data for ALL users)")
 ):
-    """Clear knowledge graph data from ALL storage layers (libSQL, ChromaDB, cache)."""
+    """Clear knowledge graph data from ALL storage layers (PostgreSQL, ChromaDB, cache)."""
     async def _clear():
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from cli.utils.pg_connection import get_pg_connection
         from aico.ai.knowledge_graph import clear_entity_embedding_cache
         import chromadb
         from chromadb.config import Settings
@@ -540,19 +540,19 @@ def clear(
                 settings=Settings(anonymized_telemetry=False, allow_reset=True)
             )
             
-            # Clear libSQL tables
+            # Clear PostgreSQL tables
             if user_id:
-                # Clear user-specific data from libSQL
+                # Clear user-specific data from PostgreSQL
                 db_connection.execute("DELETE FROM aico_core.kg_edges WHERE user_id = %s", (user_id,))
                 db_connection.execute("DELETE FROM aico_core.kg_nodes WHERE user_id = %s", (user_id,))
                 db_connection.commit()
-                console.print(f"[green]✓[/green] Cleared libSQL tables for user: {user_id}")
+                console.print(f"[green]✓[/green] Cleared PostgreSQL tables for user: {user_id}")
             else:
-                # Clear all data from libSQL
+                # Clear all data from PostgreSQL
                 db_connection.execute("DELETE FROM aico_core.kg_edges")
                 db_connection.execute("DELETE FROM aico_core.kg_nodes")
                 db_connection.commit()
-                console.print("[green]✓[/green] Cleared all libSQL tables")
+                console.print("[green]✓[/green] Cleared all PostgreSQL tables")
             
             # Clear ChromaDB collections
             try:
@@ -830,7 +830,7 @@ def traverse(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from cli.utils.pg_connection import get_pg_connection
         from aico.ai.knowledge_graph import PropertyGraphStorage
         from aico.ai.knowledge_graph.graph_traversal import GraphQueryEngine
         import chromadb
@@ -891,7 +891,7 @@ def find_path(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from cli.utils.pg_connection import get_pg_connection
         from aico.ai.knowledge_graph import PropertyGraphStorage
         from aico.ai.knowledge_graph.graph_traversal import GraphQueryEngine
         import chromadb
@@ -944,7 +944,7 @@ def insights(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from cli.utils.pg_connection import get_pg_connection
         from aico.ai.knowledge_graph import PropertyGraphStorage
         from aico.ai.knowledge_graph.analytics import GraphAnalytics
         import chromadb
@@ -1030,7 +1030,7 @@ def subgraph(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from cli.utils.pg_connection import get_pg_connection
         from aico.ai.knowledge_graph import PropertyGraphStorage
         from aico.ai.knowledge_graph.graph_traversal import GraphQueryEngine
         import chromadb

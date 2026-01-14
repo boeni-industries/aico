@@ -205,8 +205,8 @@ def wipe(
                 
                 # Clear database-specific passwords (multiple patterns)
                 db_patterns = [
-                    "libsql_password", "duckdb_password", "chroma_password", "rocksdb_password",
-                    "libsql_aico_password", "duckdb_aico_password", "chroma_aico_password",
+                    "postgres_password", "duckdb_password", "chroma_password", "rocksdb_password",
+                    "postgres_aico_password", "duckdb_aico_password", "chroma_aico_password",
                     "aico_password", "database_password"
                 ]
                 
@@ -437,15 +437,12 @@ def reset(
     _require_explicit_confirmation(operation_name, items_description)
     
     try:
-        from aico.data.libsql import EncryptedLibSQLConnection
-        from aico.core.paths import get_default_database_path
+        from cli.utils.pg_connection import get_pg_connection
         
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         
-        db_path = get_default_database_path()
-        db = EncryptedLibSQLConnection(str(db_path))
-        db.connect()
+        db = get_pg_connection()
         
         console.print(f"🔄 [yellow]Resetting {', '.join(subsystems)} subsystem(s)...[/yellow]")
         
@@ -454,11 +451,13 @@ def reset(
         
         for table in tables_to_clear:
             try:
-                # Check if table exists
-                result = db.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name=%s",
+                # Check if table exists in PostgreSQL
+                cursor = db.cursor()
+                cursor.execute(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'aico_core' AND table_name = %s",
                     (table,)
-                ).fetchone()
+                )
+                result = cursor.fetchone()
                 
                 if result:
                     # Count rows before deletion

@@ -1260,7 +1260,7 @@ def test():
         db_times = []
         for i in range(3):
             start_time = time.time()
-            db_key = key_manager.derive_database_key(master_key, "libsql", test_db_path)
+            db_key = key_manager.derive_database_key(master_key, "postgres", test_db_path)
             db_time = (time.time() - start_time) * 1000
             db_times.append(db_time)
             
@@ -1375,7 +1375,7 @@ def user_create(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
     from aico.data.user import UserService
     
     try:
@@ -1383,7 +1383,7 @@ def user_create(
         config_manager = ConfigurationManager()
         
         # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -1392,10 +1392,10 @@ def user_create(
         # Initialize key manager and get database key
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
         # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
         # Create user
@@ -1442,20 +1442,20 @@ def role_assign(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         authz_service = AuthorizationService(db_conn)
         
         # Validate role exists
@@ -1495,20 +1495,20 @@ def role_revoke(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         authz_service = AuthorizationService(db_conn)
         
         # Revoke role
@@ -1542,20 +1542,20 @@ def role_list(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         authz_service = AuthorizationService(db_conn)
         
         if user_uuid:
@@ -1640,21 +1640,21 @@ def role_show(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
         from aico.core.authorization import AuthorizationService
         from aico.core.topics import AICOTopics
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         authz_service = AuthorizationService(db_conn)
         
         all_roles = authz_service.list_all_roles()
@@ -1736,20 +1736,20 @@ def role_check(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         authz_service = AuthorizationService(db_conn)
         
         # Check permission
@@ -1802,20 +1802,20 @@ def role_bootstrap(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         authz_service = AuthorizationService(db_conn)
         
         # Bootstrap admin role
@@ -1856,7 +1856,7 @@ def user_list(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
     from aico.data.user import UserService
     
     console = Console()
@@ -1875,7 +1875,7 @@ def user_list(
         config_manager = ConfigurationManager()
         
         # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -1884,10 +1884,10 @@ def user_list(
         # Initialize key manager and get database key
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
         # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
         if detailed:
@@ -2108,7 +2108,7 @@ def user_auth(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
     from aico.data.user import UserService
     
     try:
@@ -2116,7 +2116,7 @@ def user_auth(
         config_manager = ConfigurationManager()
         
         # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -2125,10 +2125,10 @@ def user_auth(
         # Initialize key manager and get database key
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
         # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
         # Authenticate user
@@ -2215,7 +2215,7 @@ def user_update(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
     from aico.data.user import UserService
     
     # Get default user type from configuration
@@ -2246,7 +2246,7 @@ def user_update(
         config_manager = ConfigurationManager()
         
         # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -2255,10 +2255,10 @@ def user_update(
         # Initialize key manager and get database key
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
         # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
         # Update user
@@ -2307,7 +2307,7 @@ def user_delete(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
     from aico.data.user import UserService
     
     try:
@@ -2315,7 +2315,7 @@ def user_delete(
         config_manager = ConfigurationManager()
         
         # Use configuration-based path resolution
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -2324,10 +2324,10 @@ def user_delete(
         # Initialize key manager and get database key
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
         # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
         # Get user first to confirm deletion
@@ -2429,7 +2429,7 @@ def user_cleanup():
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
     from aico.data.user import UserService
     
     try:
@@ -2437,7 +2437,7 @@ def user_cleanup():
         config_manager = ConfigurationManager()
         
         # Use configuration-based path resolution
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -2446,10 +2446,10 @@ def user_cleanup():
         # Initialize key manager and get database key
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
         # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
         # Get all soft-deleted users (is_active = FALSE)
@@ -2583,7 +2583,7 @@ def user_set_pin(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
     from aico.data.user import UserService
     
     try:
@@ -2591,7 +2591,7 @@ def user_set_pin(
         config_manager = ConfigurationManager()
         
         # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -2600,10 +2600,10 @@ def user_set_pin(
         # Initialize key manager and get database key
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
         # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
         # Set PIN
@@ -2648,7 +2648,7 @@ def user_stats():
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.encrypted import EncryptedPostgreSQLConnection
     from aico.data.user import UserService
     
     console = Console()
@@ -2658,7 +2658,7 @@ def user_stats():
         config_manager = ConfigurationManager()
         
         # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("database.postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -2667,10 +2667,10 @@ def user_stats():
         # Initialize key manager and get database key
         key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        db_key = key_manager.derive_database_key(master_key, "postgres", db_path)
         
         # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        db_conn = EncryptedPostgreSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
         # Get stats

@@ -82,9 +82,7 @@ app = typer.Typer(
 # Add subcommands with platform-aware characters
 app.add_typer(config_app, name="config", help=f"{chars['config']} Configuration management")
 app.add_typer(version_app, name="version", help=f"{chars['package']} Version and build information") 
-app.add_typer(database_app, name="db", help=f"{chars['database']} Database management")
 app.add_typer(lmdb_app, name="lmdb", help=f"{chars['database']} LMDB working memory management")
-app.add_typer(chroma_app, name="chroma", help=f"{chars['database']} ChromaDB semantic memory management")
 app.add_typer(kg_app, name="kg", help="💡 Knowledge graph management")
 app.add_typer(pg_app, name="pg", help=f"{chars['database']} Postgres/Timescale backend management (experimental)")
 app.add_typer(influx_app, name="influx", help=f"{chars['database']} InfluxDB time-series database management")
@@ -132,11 +130,10 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
         
         commands = [
             (chars["package"], "version", "Manage and synchronize versions across all AICO system parts"),
-            (chars["database"], "db", "Database initialization, status, and management"),
             (chars["database"], "lmdb", "LMDB working memory management"),
             (chars["database"], "chroma", "ChromaDB semantic memory management"),
-            (chars["database"], "pg", "Postgres/Timescale backend management (experimental)"),
-            (chars["database"], "influx", "InfluxDB time-series database management (experimental)"),
+            (chars["database"], "pg", "PostgreSQL database management"),
+            (chars["database"], "influx", "InfluxDB time-series database management"),
             ("🚀", "deploy", "Deployment orchestration for Postgres/InfluxDB backends"),
             ("💡", "kg", "Knowledge graph management and inspection"),
             (chars["security"], "security", "Master password setup and security management"),

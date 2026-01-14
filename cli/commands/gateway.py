@@ -1090,37 +1090,15 @@ def auth_login():
         jwt_secret = key_manager.get_jwt_secret("api_gateway")
         
         # Auto-detect active user from database
-        from aico.core.paths import get_default_database_path
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from cli.utils.pg_connection import get_pg_connection
         try:
-            db_path = get_default_database_path()
+            db = get_pg_connection()
+            cursor = db.cursor()
+            cursor.execute("SELECT uuid FROM aico_core.user_profiles WHERE is_active = true LIMIT 1")
+            user_row = cursor.fetchone()
             
-            # Get database key using same pattern as agency.py
-            cached_key = key_manager._get_cached_session()
-            if cached_key:
-                key_manager._extend_session()
-                db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-            else:
-                # Try stored key from keyring
-                import keyring
-                stored_key = keyring.get_password(key_manager.service_name, "master_key")
-                if stored_key:
-                    master_key = bytes.fromhex(stored_key)
-                    key_manager._cache_session(master_key)
-                    db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-                else:
-                    # No key available - fallback to config
-                    user_id = config_manager.get("core.user.id", "aico-cli")
-                    db_key = None
-            
-            if db_key:
-                db = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-                cursor = db.execute("SELECT uuid FROM user_profiles WHERE is_active = 1 LIMIT 1")
-                user_row = cursor.fetchone()
-                if user_row:
-                    user_id = user_row["uuid"]
-                else:
-                    user_id = config_manager.get("core.user.id", "aico-cli")
+            if user_row:
+                user_id = user_row["uuid"]
             else:
                 user_id = config_manager.get("core.user.id", "aico-cli")
         except Exception:
