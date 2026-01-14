@@ -181,14 +181,14 @@ def receive_log():
 
 **Implementation:**
 - Subscribe to `logs.*` topics on ZeroMQ bus
-- Store in dedicated `logs` table in libSQL (encrypted)
+- Store in dedicated `logs` table in PostgreSQL (encrypted)
 - Enable fast search, filtering, correlation
 - Support privacy and retention policies
 - Provide CLI/dashboard for log viewing
 
 **Benefits:** Fast issue tracing with `module`, `function`, `file`, `line` context
 
-**Example: Log Table Schema (libSQL)**
+**Example: Log Table Schema (PostgreSQL)**
 ```sql
 CREATE TABLE logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,11 +218,11 @@ CREATE TABLE logs (
 
 ## ETL to Analytics Engine
 
-For advanced analytics, periodic ETL (Extract-Transform-Load) can move log data from libSQL to analytical databases (DuckDB planned). This process prepares logs for observability, dashboards, and automated insights:
+For advanced analytics, periodic ETL (Extract-Transform-Load) can move log data from PostgreSQL to analytical databases (DuckDB planned). This process prepares logs for observability, dashboards, and automated insights:
 
 - **Why?** Analytical databases are optimized for queries, aggregations, and dashboarding on large datasets.
 - **When?** Run ETL on a schedule (e.g., hourly, daily) or trigger on demand.
-- **Status:** Currently uses libSQL only; DuckDB integration planned.
+- **Status:** Currently uses PostgreSQL only; DuckDB integration planned.
 
 ### What Happens During ETL?
 
@@ -270,7 +270,7 @@ def transform_log(row):
     return row
 ```
 
-### Example: Aggregation in libSQL (Current)
+### Example: Aggregation in PostgreSQL (Current)
 ```sql
 -- Daily error counts by module
 SELECT
@@ -304,7 +304,7 @@ ORDER BY day DESC, error_count DESC;
 1. **Flutter** → JSON log → WebSocket/HTTP → Backend bridge
 2. **Backend bridge** → ZeroMQ republish
 3. **Backend modules** → Direct ZeroMQ logging
-4. **Central collector** → Subscribe `logs.*` → Store in libSQL
+4. **Central collector** → Subscribe `logs.*` → Store in PostgreSQL
 
 ---
 

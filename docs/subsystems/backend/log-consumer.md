@@ -11,7 +11,7 @@ The Log Consumer Service persists application logs from the ZeroMQ message bus t
 - **AICOLogConsumer**: Main service class with ZMQ subscription and database persistence
 - **Plugin Integration**: Runs as `log_consumer` plugin in backend service container
 - **Message Bus Subscription**: Connects to port 5556 with `logs.*` topic filtering
-- **Database Storage**: Persists to encrypted `aico.db` logs table
+- **Database Storage**: Persists to encrypted `PostgreSQL database` logs table
 
 ### Message Flow ✅
 
@@ -49,7 +49,7 @@ self.subscriber.setsockopt(zmq.SUBSCRIBE, b"logs.")
 
 ### Database Schema ✅
 
-**Logs Table** (encrypted libSQL):
+**Logs Table** (encrypted PostgreSQL):
 ```sql
 CREATE TABLE logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,7 +123,7 @@ aico bus test
 ## Security ✅
 
 **Data Protection**:
-- **Encrypted Database**: All logs stored in encrypted `aico.db`
+- **Encrypted Database**: All logs stored in encrypted `PostgreSQL database`
 - **Local Processing**: No external log transmission
 - **Access Control**: Database restricted to backend service
 - **CurveZMQ**: Message bus encryption for transport security

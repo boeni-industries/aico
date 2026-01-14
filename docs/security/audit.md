@@ -13,7 +13,7 @@ AICO's security audit system provides comprehensive logging and monitoring of se
 ### Operational Features
 - **Centralized Logging**: All security events logged via AICO logging system
 - **Message Bus Integration**: Audit events distributed through encrypted ZMQ message bus
-- **Database Storage**: Encrypted audit trail stored in libSQL database
+- **Database Storage**: Encrypted audit trail stored in PostgreSQL database
 - **CLI Access**: `aico logs` command provides audit trail inspection
 - **Component Coverage**: Authentication, system operations, and configuration changes logged
 
@@ -102,7 +102,7 @@ aico logs export --format=json --output=audit.json
 
 ### Current Integration ✅
 - **ZeroMQ Message Bus**: Audit events flow through encrypted message bus
-- **LibSQL Storage**: Encrypted audit trail in main database
+- **PostgreSQL Storage**: Encrypted audit trail in main database
 - **Structured Logging**: JSON format with consistent metadata
 - **CLI Interface**: Direct access via `aico logs` commands
 
@@ -199,7 +199,7 @@ class AuditCollector:
         self.socket.connect("tcp://localhost:5555")
         self.socket.setsockopt_string(zmq.SUBSCRIBE, "audit.")
         
-        # Initialize the store using the existing libSQL database
+        # Initialize the store using the existing PostgreSQL database
         self.store = AuditStore()
     
     def start(self):
@@ -217,13 +217,13 @@ class AuditCollector:
 
 ### 3. Audit Store
 
-A store that leverages libSQL with hash chaining for integrity verification:
+A store that leverages PostgreSQL with hash chaining for integrity verification:
 
 ```python
 class AuditStore:
     def __init__(self):
-        # Reuse the existing libSQL database
-        self.db = libsql.connect("aico.db")
+        # Reuse the existing PostgreSQL database
+        self.db = PostgreSQL.connect("PostgreSQL database")
         self.initialize_schema()
     
     def initialize_schema(self):

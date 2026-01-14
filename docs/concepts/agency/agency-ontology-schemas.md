@@ -344,8 +344,8 @@ This section ties the ontology to concrete components described in other agency 
 
 ## 7. Representation and Implementation Notes
 
-- **Primary store**: property/knowledge graph (nodes/edges) backed by the shared libSQL store used by AMS and the World Model, plus:
-  - **JSON-like schemas** for PerceptualEvents, MemoryItems, Goals, Skills, and auxiliary libSQL tables for policy (ValueProfile/PolicyRule) and skill registries.
+- **Primary store**: property/knowledge graph (nodes/edges) backed by the shared PostgreSQL store used by AMS and the World Model, plus:
+  - **JSON-like schemas** for PerceptualEvents, MemoryItems, Goals, Skills, and auxiliary PostgreSQL tables for policy (ValueProfile/PolicyRule) and skill registries.
 - **We do not require** heavy OWL reasoning in v1.  
   Reasoning is largely delegated to:
   - LLM-based components (goal interpretation, planning, explanation).

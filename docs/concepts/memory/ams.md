@@ -89,7 +89,7 @@ Biological brains solve this through **complementary learning systems**: the hip
 │                          ↓ Integration                       │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │     Slow Learning System (Cortical Component)         │  │
-│  │  - Semantic Memory (ChromaDB + libSQL)                │  │
+│  │  - Semantic Memory (ChromaDB + PostgreSQL)                │  │
 │  │  - Temporal Knowledge Graph (property graph)          │  │
 │  │  - Behavioral Learning Store (skill library)          │  │
 │  │  - Preference evolution tracking                      │  │
@@ -414,8 +414,8 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 - **Usage**: Hybrid search fusion with semantic results
 
 **4. Knowledge Graph**
-- **Library**: `libSQL` (embedded SQLite)
-- **Storage**: Local file-based (SQLite format)
+- **Library**: `PostgreSQL` (embedded PostgreSQL)
+- **Storage**: Local file-based (PostgreSQL format)
 - **Purpose**: Store entities, relations, temporal metadata
 - **Memory**: ~50-100MB for typical graphs
 - **Compute**: ~1-10ms per graph query
@@ -453,7 +453,7 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 - **Compute Time**: 30-50ms total
   - Working memory retrieval: 5-10ms (LMDB)
   - Semantic query (with embedding): 60-80ms (embedding + vector search)
-  - Knowledge graph query: 5-10ms (libSQL)
+  - Knowledge graph query: 5-10ms (PostgreSQL)
   - Fusion & ranking: 5-10ms (RRF algorithm)
 - **Memory Impact**: +50-100MB during query
 - **Frequency**: Every user message
@@ -463,7 +463,7 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 - **Components**: Skill library + User preferences
 - **Compute Time**: 5-15ms (preference vectors pre-computed, no embedding generation)
   - Skill matching: 2-5ms (pattern matching)
-  - Preference lookup: 1-3ms (libSQL, returns cached vector)
+  - Preference lookup: 1-3ms (PostgreSQL, returns cached vector)
   - Preference alignment: 2-5ms (Euclidean distance with skill dimension vectors)
   - Template application: 1-2ms (string operations)
 - **Memory Impact**: Minimal (~5-10MB)
@@ -531,7 +531,7 @@ These tasks are registered using the standard scheduler configuration format and
 **Peak Resource Usage** (all operations combined)
 - **Memory**: +400-600MB (during consolidation)
 - **CPU**: 1-2 cores (background tasks)
-- **Disk I/O**: Moderate (ChromaDB writes, libSQL updates)
+- **Disk I/O**: Moderate (ChromaDB writes, PostgreSQL updates)
 - **Network**: None (all local)
 
 **Optimization Strategies**:
@@ -1174,11 +1174,11 @@ class ContextPreferenceManager:
 
 ### Data Storage & Retrieval
 
-#### 4. **Database: libSQL (SQLite with Extensions)**
+#### 4. **Database: PostgreSQL (PostgreSQL with Extensions)**
 
 **Purpose**: Store skills, preferences, and feedback events.
 
-**Library**: **REUSE EXISTING** - `libsql-client` (Python)
+**Library**: **REUSE EXISTING** - `PostgreSQL-client` (Python)
 - Already used throughout AICO for encrypted local storage
 - Supports JSON columns for flexible schema (trigger_context, preference_vector)
 - Full-text search capabilities for skill descriptions
@@ -1488,7 +1488,7 @@ memory:
 | **Intent Classification** | `xlm-roberta-base` | ✅ Existing | Context extraction |
 | **Entity Extraction** | `gliner_medium-v2.1` | ✅ Existing | Topic/subject detection |
 | **Sentiment Analysis** | `bert-base-multilingual-uncased-sentiment` | ✅ Existing | Emotional context |
-| **Database** | libSQL | ✅ Existing | Skill/preference storage |
+| **Database** | PostgreSQL | ✅ Existing | Skill/preference storage |
 | **Contextual Bandit** | Thompson Sampling (custom) | ➕ New | Statistical skill selection |
 | **Preference Vectors** | Explicit dimensions (custom) | ➕ New | Context-aware style preferences |
 | **Logging** | ZeroMQ message bus | ✅ Existing | Unified logging |
@@ -1502,7 +1502,7 @@ memory:
 
 **No new dependencies required** - all behavioral learning uses existing AICO infrastructure:
 - NumPy for statistical computations and vector operations (already present)
-- libSQL for skill storage (already present)
+- PostgreSQL for skill storage (already present)
 - Existing embedding models for feedback classification only (already present)
 
 **Installation**:
@@ -1542,7 +1542,7 @@ uv pip install -e ".[backend,modelservice,cli,test]"
 **AICO's behavioral learning system follows strict privacy-by-design principles:**
 
 ### Local-First Architecture
-- **All data stored locally**: Skills, preferences, and trajectories stored in encrypted libSQL database
+- **All data stored locally**: Skills, preferences, and trajectories stored in encrypted PostgreSQL database
 - **No cloud dependencies**: System operates entirely on-device
 - **Encrypted at rest**: SQLCipher encryption for all behavioral learning data
 - **Secure key management**: Uses AICO's key derivation system (`aico.security.AICOKeyManager`)
@@ -1763,10 +1763,10 @@ class TemporalMetadata:
     superseded_by: Optional[str] = None
 ```
 
-**Storage Location**: Temporal metadata is stored as JSON in the `temporal_metadata` column of semantic memory tables (ChromaDB metadata + libSQL):
+**Storage Location**: Temporal metadata is stored as JSON in the `temporal_metadata` column of semantic memory tables (ChromaDB metadata + PostgreSQL):
 
 ```sql
--- Add to semantic facts table in libSQL
+-- Add to semantic facts table in PostgreSQL
 ALTER TABLE semantic_facts ADD COLUMN temporal_metadata TEXT;  -- JSON
 
 -- Example stored value:

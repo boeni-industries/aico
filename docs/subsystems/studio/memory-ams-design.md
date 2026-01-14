@@ -5,7 +5,7 @@
 The Memory & AMS section presents AICO's **complete memory architecture** as a coherent, layered system:
 
 - Working Memory (fast, short-term, LMDB).
-- Semantic Memory + Knowledge Graph (slow, long-term, ChromaDB + libSQL + KG).
+- Semantic Memory + Knowledge Graph (slow, long-term, ChromaDB + PostgreSQL + KG).
 - Adaptive Memory System (AMS) as the orchestration layer.
 - Memory Album as the user-curated view.
 

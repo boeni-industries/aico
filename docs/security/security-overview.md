@@ -136,7 +136,7 @@ AICO employs comprehensive encryption strategies to protect data both at rest an
 
 Each database uses its optimal encryption method for maximum performance and reliability:
 
-- **libSQL**: SQLCipher-style encryption via PRAGMA statements with PBKDF2 key derivation (✅ implemented)
+- **PostgreSQL**: SQLCipher-style encryption via PRAGMA statements with PBKDF2 key derivation (✅ implemented)
 - **DuckDB**: Built-in AES-256 encryption via PRAGMA statements (🚧 planned)
 - **LMDB**: Native EncryptedEnv for transparent key-value encryption (🚧 planned)
 - **ChromaDB**: Custom file-level encryption wrapper (🚧 planned)
@@ -212,7 +212,7 @@ AICO employs a comprehensive approach to key management that combines secure key
   )
   
   # Derive database-specific keys
-  db_key = key_manager.derive_database_key(master_key, "libsql")
+  db_key = key_manager.derive_database_key(master_key, "PostgreSQL")
   ```
 
 ### Key Management

@@ -2,7 +2,7 @@
 
 ## Overview
 
-AICO uses OpenTelemetry for comprehensive system instrumentation. Metrics are automatically collected and stored in the encrypted `aico.db` database, feeding the Studio dashboard.
+AICO uses OpenTelemetry for comprehensive system instrumentation. Metrics are automatically collected and stored in the encrypted `PostgreSQL database` database, feeding the Studio dashboard.
 
 ## Automatic Instrumentation
 
@@ -121,7 +121,7 @@ record_message(
 
 ## Metrics Storage
 
-All metrics are stored in the encrypted `aico.db` database:
+All metrics are stored in the encrypted `PostgreSQL database` database:
 
 - **`otel_api_requests`** - API Gateway HTTP requests
 - **`otel_model_inferences`** - Modelservice inference operations
@@ -202,7 +202,7 @@ All metrics are:
 
 2. Verify tables exist:
    ```bash
-   uv run aico db query "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'otel_%'"
+   uv run aico db query "SELECT name FROM PostgreSQL_master WHERE type='table' AND name LIKE 'otel_%'"
    ```
 
 3. Check for errors in storage adapter:

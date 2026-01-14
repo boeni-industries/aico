@@ -73,7 +73,7 @@ Across all domains, AICO distinguishes between **raw signals** (text, audio/vide
   + Supplies summaries and facts for use in planning and reflection.
 
 - **World Model Service (Knowledge/Property Graph + Schemas)**  
-  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings, following the core types and relations defined in `agency-ontology-schemas.md` (Person/User/AICOAgent, Activities/Goals/Hobbies, MemoryItem, WorldStateFact, LifeArea, Skill, Place, Device, PerceptualEvent links, etc.), built on the shared AMS knowledge graph and libSQL store.  
+  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings, following the core types and relations defined in `agency-ontology-schemas.md` (Person/User/AICOAgent, Activities/Goals/Hobbies, MemoryItem, WorldStateFact, LifeArea, Skill, Place, Device, PerceptualEvent links, etc.), built on the shared AMS knowledge graph and PostgreSQL store.  
   + Detects inconsistencies, drifts, and unknowns in AICO’s understanding of the user and environment, including conflicts between facts, sparse coverage in key LifeAreas, and unstable routines.  
   + Exposes schema- and graph-augmented queries, denormalised views, embedding-based similarity queries, and hypothesis APIs to planning, curiosity, and self-reflection.
 

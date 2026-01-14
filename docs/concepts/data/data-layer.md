@@ -2,300 +2,367 @@
 title: Data Layer
 ---
 
-# Data Layer
+# Data Layer Architecture
 
-AICO's data layer provides local-first, privacy-preserving storage for the AI companion system. Currently implemented with libSQL, with additional databases planned for specialized workloads.
+AICO's data layer implements **Clean Architecture** principles with a multi-database approach optimized for different data access patterns.
 
-## Current Implementation vs. Future Plans
+## Database Architecture
 
-**Currently Implemented:**
-- ✅ **libSQL**: Primary encrypted storage for all structured data
-- ✅ **ChromaDB**: Vector database for conversation embeddings and semantic search
-- ✅ **LMDB**: High-performance key-value store for session data
+**Production Databases:**
+- ✅ **PostgreSQL 18.1** (Docker): Core application data (users, conversations, knowledge graph, agency)
+- ✅ **InfluxDB 2.x** (Docker): Time-series telemetry (metrics, logs, performance data)
+- ✅ **ChromaDB**: Vector embeddings for semantic search
+- ✅ **LMDB**: Working memory with 30-day TTL
 
-**Planned for Future:**
+**Planned:**
 - ⏳ **DuckDB**: Analytics engine for conversation analysis
 
-## Architecture Overview
+## Architecture Principles
 
-```mermaid
-classDiagram
-    class AICO_DATA_LAYER {
-        <<Current + Planned>>
-    }
-    
-    class libSQL {
-        ✅ PRIMARY STORAGE
-        Encrypted structured data
-        Facts, feedback, users, logs
-        ACID transactions
-    }
-    
-    class ChromaDB {
-        ✅ VECTOR DATABASE
-        Conversation embeddings
-        Semantic search
-    }
-    
-    class LMDB {
-        ✅ WORKING MEMORY
-        Active session data
-        Sub-ms latency
-    }
-    
-    class DuckDB {
-        ⏳ ANALYTICS ENGINE
-        Conversation analysis
-        OLAP queries
-    }
-    
-    AICO_DATA_LAYER --> libSQL
-    AICO_DATA_LAYER --> ChromaDB
-    AICO_DATA_LAYER --> LMDB
-    AICO_DATA_LAYER -.-> DuckDB
+### Clean Architecture Layers
+1. **Domain Models**: Pure business logic (Pydantic models)
+2. **Repositories**: Data access abstraction
+3. **UnitOfWork**: Transaction and session management
+4. **Database Adapters**: Technology-specific implementations
+
+### Database Specialization
+Each database serves a specific purpose optimized for its workload:
+- **PostgreSQL**: ACID transactions, referential integrity, relational data
+- **InfluxDB**: High-performance time-series data, automatic downsampling
+- **ChromaDB**: Vector similarity search, semantic retrieval
+- **LMDB**: Fast key-value working memory, sub-millisecond access
+
+---
+
+## PostgreSQL - Core Application Data
+
+**Purpose**: Transactional application data requiring ACID guarantees
+
+**Deployment**: Docker container (`postgres:18.1`) with persistent volume
+
+**Schema Organization**:
+```sql
+Database: aico
+Schema: aico_core  -- All application tables
 ```
 
-**Current Architecture Principles:**
-- **Local-first**: All data stored locally by default
-- **Privacy-first**: Encryption at rest for sensitive data
-- **File-based**: No daemon processes required
-- **Cross-platform**: Works on Windows, macOS, and Linux
-- **Single-user**: Optimized for personal AI companion use
+**Data Stored**:
+- **Users & Auth**: `user_profiles`, `auth_sessions`, `auth_user_credentials`
+- **Conversations**: `conversations`, `messages`, `conversation_participants`
+- **Knowledge Graph**: `kg_nodes`, `kg_edges`, `kg_node_properties`
+- **Agency**: `agency_goals`, `agency_plans`, `agency_skill_executions`
+- **Memory**: `semantic_memory_metadata`, `user_preferences`, `facts`
 
-## Database Components
+**Technology Stack**:
+- PostgreSQL 18.1 in Docker container
+- asyncpg for async operations (backend API)
+- psycopg2 for sync operations (CLI tools)
+- SQLAlchemy Core for query building
+- Connection pooling via SQLAlchemy Engine
 
-### 1. Primary Storage: libSQL ✅
-
-**Status**: Currently implemented and fully functional.
-
-**Key Features**:
-- SQLite-compatible with encryption at rest
-- Schema management with automatic migrations
-- ACID transactions for data consistency
-- Cross-platform file-based storage
-
-**Current Data Storage**:
-- System logs and audit trails
-- User authentication and security data
-- Configuration settings and preferences
-- Facts metadata (user-curated and AI-extracted)
-- Feedback events (user actions, signals, ratings)
-- Task scheduling and execution history
-
-**Implementation Example**:
+**Backend API Pattern (Repository + UnitOfWork)**:
 ```python
-from aico.data import EncryptedLibSQLConnection
+from aico.data.uow import UnitOfWork
 
-# Connect with encryption
-conn = EncryptedLibSQLConnection(
-    db_path="~/.aico/user.db",
-    encryption_key=derived_key
+async def create_conversation(user_id: str, title: str):
+    async with UnitOfWork() as uow:
+        conversation = await uow.conversations.create({
+            "user_id": user_id,
+            "title": title
+        })
+        await uow.commit()
+        return conversation
+```
+
+**CLI Tools Pattern (Direct SQL)**:
+```python
+from cli.utils.pg_connection import get_pg_connection
+
+def list_users():
+    db = get_pg_connection()
+    cursor = db.cursor()
+    cursor.execute("SELECT uuid, full_name FROM aico_core.user_profiles")
+    return cursor.fetchall()
+```
+
+---
+
+## InfluxDB - Time-Series Telemetry
+
+**Purpose**: High-performance metrics, logs, and observability data
+
+**Deployment**: Docker container (`influxdb:2-alpine`) with persistent volume
+
+**Data Organization**:
+```
+Organization: aico
+Bucket: aico_telemetry
+Retention: 30 days (configurable)
+```
+
+**Data Stored**:
+- **System Metrics**: CPU, memory, disk usage
+- **API Metrics**: Request/response times, error rates  
+- **Model Metrics**: Inference latency, token counts
+- **Application Logs**: Structured log events with timestamps
+
+**Technology Stack**:
+- InfluxDB 2.x in Docker container
+- influxdb-client-python
+- OpenTelemetry instrumentation
+- Flux query language
+
+**Access Pattern**:
+```python
+from influxdb_client import InfluxDBClient, Point
+
+client = InfluxDBClient(url="http://localhost:8086", token=token, org="aico")
+write_api = client.write_api()
+
+point = Point("api_request") \
+    .tag("endpoint", "/api/v1/conversation") \
+    .field("duration_ms", 45.2) \
+    .time(datetime.now(UTC))
+
+write_api.write(bucket="aico_telemetry", record=point)
+```
+
+---
+
+## ChromaDB - Vector Embeddings
+
+**Purpose**: Semantic search and similarity matching
+
+**Collections**:
+- `conversation_segments`: Conversation history with embeddings
+- `kg_node_embeddings`: Knowledge graph entity embeddings
+- `kg_edge_embeddings`: Relationship embeddings
+
+**Technology Stack**:
+- ChromaDB (persistent mode)
+- Sentence-transformers via modelservice
+- Cosine similarity search
+- Metadata filtering
+
+**Access Pattern**:
+```python
+import chromadb
+
+client = chromadb.PersistentClient(path="/path/to/chroma")
+collection = client.get_or_create_collection("conversation_segments")
+
+# Store with embeddings
+collection.upsert(
+    ids=["msg_123"],
+    embeddings=[[0.1, 0.2, ...]],  # From modelservice
+    documents=["User message text"],
+    metadatas=[{"user_id": "uuid"}]
 )
 
-# Execute queries with automatic encryption
-conn.execute("INSERT INTO logs (timestamp, level, message) VALUES (?, ?, ?)",
-            [timestamp, "INFO", "User logged in"])
+# Semantic search
+results = collection.query(
+    query_embeddings=[[0.1, 0.2, ...]],
+    n_results=10
+)
 ```
 
-### 2. Analytics Engine: DuckDB ⏳
+---
 
-**Status**: Planned for future implementation.
+## LMDB - Working Memory
 
-**Planned Purpose**: Analytical processing of conversation data and user interaction patterns.
+**Purpose**: High-performance ephemeral storage for active conversation context
 
-**Future Capabilities**:
-- Conversation pattern analysis and insights
-- User behavior analytics and trends
-- Performance metrics and system statistics
-- Advanced aggregations and time-series analysis
-
-**Integration Plan**:
-- Export data from libSQL for analysis
-- Columnar storage for analytical workloads
-- Integration with AI model training pipelines
-
-### 3. Vector Database: ChromaDB ✅
-
-**Status**: Currently implemented.
-
-**Purpose**: Storage and retrieval of conversation embeddings for semantic search.
-
-**Current Capabilities**:
-- Conversation segment embeddings with cosine similarity
-- Hybrid search (BM25 + semantic)
-- Context-aware conversation history retrieval
-- Configurable relevance thresholds
-
-**Implementation**:
-- Collection: `conversation_segments`
-- Embeddings: Generated via ModelService (paraphrase-multilingual)
-- Storage: `/data/chroma/`
-- Integration: SemanticMemoryStore in `/shared/aico/ai/memory/semantic.py`
-
-### 4. Cache Layer: LMDB ✅
-
-**Status**: Currently implemented.
-
-**Purpose**: High-performance ephemeral storage for active conversation context.
-
-**Current Capabilities**:
-- Working memory for active conversations
-- Recent message caching (TTL: 24 hours)
+**Features**:
+- 30-day TTL for conversation continuity
 - Sub-millisecond read/write latency
+- Memory-mapped for performance
 - Named databases for different data types
 
 **Implementation**:
 - Database: `session_memory`
 - Storage: `/data/lmdb/`
 - Integration: WorkingMemoryStore in `/shared/aico/ai/memory/working.py`
-- Coordination: `session_metadata` table in libSQL tracks LMDB sessions
+- Coordination: PostgreSQL tracks LMDB sessions via `session_metadata` table
 
-## Current Data Integration
+---
 
-**Three-Tier Architecture** (Currently Implemented):
+## Repository Pattern
 
-1. **libSQL** - Structured data with ACID guarantees
-   - Facts metadata (user-curated and AI-extracted)
-   - Feedback events (actions, signals, ratings)
-   - Users, auth, logs, tasks
-   - Schema v6: Extended for Memory Album
+The Repository pattern abstracts data access, providing clean interfaces for domain operations.
 
-2. **ChromaDB** - Vector embeddings for semantic search
-   - Conversation segments with embeddings
-   - Hybrid search (BM25 + semantic)
-   - Managed by SemanticMemoryStore
+**Base Repository**:
+```python
+class Repository:
+    def __init__(self, connection, table):
+        self.connection = connection
+        self.table = table
+    
+    async def get_by_id(self, id: str):
+        query = select(self.table).where(self.table.c.id == id)
+        result = await self.connection.execute(query)
+        return result.fetchone()
+    
+    async def create(self, data: dict):
+        query = insert(self.table).values(**data).returning(self.table)
+        result = await self.connection.execute(query)
+        return result.fetchone()
+```
 
-3. **LMDB** - Fast ephemeral working memory
-   - Active conversation context
-   - Recent messages (24h TTL)
-   - Managed by WorkingMemoryStore
+**Specialized Repository**:
+```python
+class ConversationRepository(Repository):
+    async def get_by_user(self, user_id: str):
+        query = select(self.table).where(self.table.c.user_id == user_id)
+        result = await self.connection.execute(query)
+        return result.fetchall()
+```
 
-**Coordination**:
-- `session_metadata` table in libSQL coordinates LMDB sessions
-- MemoryManager orchestrates all three stores
-- Shared modules in `/shared/aico/ai/memory/`
+---
 
-**Future Multi-Database Integration** (Planned):
-- DuckDB for analytical queries
-- Event-driven updates across databases
-- Cross-database consistency with eventual consistency model
+## UnitOfWork Pattern
 
-## Federated Device Sync ⏳
+Manages database transactions and repository lifecycle.
 
-**Status**: Not yet implemented - see [Data Federation](data-federation.md) for planned architecture.
+```python
+class UnitOfWork:
+    async def __aenter__(self):
+        self.connection = await get_async_connection()
+        self.transaction = await self.connection.begin()
+        return self
+    
+    async def commit(self):
+        await self.transaction.commit()
+    
+    @property
+    def conversations(self):
+        if not self._conversations:
+            self._conversations = ConversationRepository(self.connection)
+        return self._conversations
+```
 
-**Current**: Single-device operation only
-**Future**: Multi-device sync with encrypted data replication
+**Usage**:
+```python
+async with UnitOfWork() as uow:
+    conversation = await uow.conversations.create(data)
+    await uow.commit()
+```
 
-## Security and Privacy
+---
 
-**Current Implementation**:
-- **libSQL Encryption**: AES-256-GCM encryption at rest with Argon2id key derivation
-- **Local Storage**: All data stored locally on user's device
-- **Master Key**: Stored securely in system keyring
-- **Zero Cloud Dependencies**: No external services required
+## Database Integration Flow
 
-**Future Security**:
-- **Multi-Database Encryption**: Consistent encryption across all databases
-- **Federated Sync**: End-to-end encryption for device synchronization
-- **Zero-Knowledge**: No third-party access to user data
+**Write Flow** (New conversation message):
+1. **LMDB**: Store in working memory (immediate access)
+2. **PostgreSQL**: Create metadata record with conversation_id, user_id, timestamp
+3. **Modelservice**: Generate 768-dim embedding via sentence-transformers
+4. **ChromaDB**: Store embedding with metadata for semantic search
+
+**Read Flow** (Retrieve relevant context):
+1. **Query**: User asks question
+2. **Modelservice**: Generate query embedding
+3. **ChromaDB**: Semantic search returns top-N similar segments
+4. **PostgreSQL**: Fetch full metadata for returned segment IDs
+5. **LMDB**: Check working memory for recent context
+6. **Fusion**: Combine semantic + recency + relationship scores
+
+**Why This Architecture**:
+- **PostgreSQL**: ACID guarantees for metadata, referential integrity for relationships
+- **InfluxDB**: Optimized for time-series data, automatic retention policies
+- **ChromaDB**: Optimized for vector similarity search (cosine distance)
+- **LMDB**: Ultra-fast access for active conversations
+- **Separation**: Each database handles what it does best
+
+---
 
 ## Performance Characteristics
 
-**Current Performance**:
+**Resource Usage**:
 
 | Database | Read/Write | Use Case | Latency |
 |----------|-----------|----------|---------|
-| **libSQL** | High | Structured queries | ~1-10ms |
+| **PostgreSQL** | High | Structured queries | ~1-10ms |
+| **InfluxDB** | Very High | Time-series writes | ~1-5ms |
 | **ChromaDB** | High | Semantic search | ~10-50ms |
 | **LMDB** | Very High | Working memory | <1ms |
 
 **Characteristics**:
-- **libSQL**: ACID transactions, encryption overhead minimal
+- **PostgreSQL**: ACID transactions, connection pooling
+- **InfluxDB**: High-throughput writes, automatic downsampling
 - **ChromaDB**: Cosine similarity, hybrid search (BM25 + semantic)
 - **LMDB**: Memory-mapped, multi-reader/single-writer
 
-**Future Multi-Database Performance**:
-- **DuckDB**: Analytical queries on exported data
-- **Query Routing**: Automatic selection of optimal database
-- **Caching Strategy**: Hot data in LMDB, cold data in libSQL
+---
 
-## Architecture Rationale
+## Best Practices
 
-**Current Three-Database Approach**:
-- **Specialization**: Each database optimized for its workload
-- **Performance**: LMDB for speed, ChromaDB for search, libSQL for structure
-- **Reliability**: Proven technologies (SQLite, LMDB, ChromaDB)
-- **Coordination**: MemoryManager orchestrates across all three
+### Database Selection
 
-**Future Benefits with DuckDB**:
-- **Analytics**: Dedicated engine for conversation analysis
-- **Separation**: Analytical queries don't impact operational databases
-- **Columnar Storage**: Optimized for aggregations and time-series
+Choose the right database for your use case:
+- **PostgreSQL**: User data, conversations, knowledge graph, agency data
+- **InfluxDB**: Metrics, logs, performance data, time-series events
+- **ChromaDB**: Embeddings, semantic search, similarity matching
+- **LMDB**: Active session data, conversation context, temporary cache
 
-## Current Database Architecture
-
-**Repository Pattern**: AICO uses the repository pattern for clean data access:
+### Repository Usage
 
 ```python
-from aico.data.logs import LogRepository
-from aico.data.user import UserService
+# ✅ Good - Repository pattern in backend
+async with UnitOfWork() as uow:
+    user = await uow.users.get_by_id(user_id)
+    await uow.commit()
 
-# Domain-specific repositories
-log_repo = LogRepository(connection)
-user_service = UserService(connection)
-
-# Clean API for data operations
-log_repo.insert_log(level="INFO", message="User action")
-user_profile = user_service.get_profile(user_id)
+# ✅ Good - Direct SQL in CLI tools
+db = get_pg_connection()
+cursor = db.cursor()
+cursor.execute("SELECT * FROM aico_core.user_profiles")
 ```
 
-**Current Implementation Layers**:
-1. **Domain Services**: Business logic (UserService, LogRepository)
-2. **Data Access**: Database connections and transactions
-3. **Database Layer**: libSQL with encryption and schema management
-
-**Benefits**:
-- **Clean Separation**: Business logic separated from database details
-- **Testability**: Easy to mock repositories for unit testing
-- **Maintainability**: Schema changes isolated to data layer
-- **Future-Ready**: Easy to add new databases when implemented
-
-## Schema Management ✅
-
-**Current Implementation**: AICO uses a decorator-based schema registry for automatic schema discovery and application:
+### Transaction Management
 
 ```python
-from aico.data import register_schema, SchemaVersion
+# ✅ Good - Explicit commit for writes
+async with UnitOfWork() as uow:
+    await uow.conversations.create(data)
+    await uow.commit()
 
-@register_schema("core", "core", priority=1)
-CORE_SCHEMA = {
-    1: SchemaVersion(
-        version=1,
-        name="Core System",
-        description="Logs, users, and system tables",
-        sql_statements=[
-            "CREATE TABLE logs (...)",
-            "CREATE TABLE users (...)"
-        ]
-    )
-}
+# ✅ Good - No commit for read-only
+async with UnitOfWork() as uow:
+    conversations = await uow.conversations.list_all()
+    return conversations
 ```
 
-**Features**:
-- **Automatic Discovery**: Schemas registered via decorators
-- **Version Management**: Incremental migrations with rollback support
-- **Transaction Safety**: All migrations wrapped in transactions
-- **Plugin Support**: Plugin schemas isolated from core schemas
+---
 
-**Usage**:
-```python
-# Automatic schema application on startup
-from aico.data.libsql.registry import SchemaRegistry
+## Docker Deployment
 
-# Apply all core schemas
-applied = SchemaRegistry.apply_core_schemas(connection)
-print(f"Applied schemas: {applied}")
+PostgreSQL and InfluxDB run in Docker containers for consistent deployment.
+
+**Deployment Commands**:
+```bash
+# Deploy PostgreSQL
+aico deploy pg
+
+# Deploy InfluxDB
+aico deploy influx
+
+# Reset databases (⚠️ DANGEROUS - deletes all data)
+aico deploy pg --nuke
+aico deploy influx --nuke
 ```
 
+**Container Details**:
+- PostgreSQL: `postgres:18.1` on port 5432
+- InfluxDB: `influxdb:2-alpine` on port 8086
+- Persistent volumes for data storage
+- Docker bridge network for inter-container communication
 
+See [Getting Started Guide](../../guides/developer/getting-started.md) for detailed deployment instructions.
+
+---
+
+## Related Documentation
+
+- [Architecture Overview](../../architecture/architecture-overview.md) - System architecture
+- [Tech Stack](../../architecture/tech-stack.md) - Technology decisions
+- [Backend Patterns](../../guides/developer/backend-patterns.md) - Repository/UnitOfWork patterns
+- [Getting Started](../../guides/developer/getting-started.md) - Database deployment

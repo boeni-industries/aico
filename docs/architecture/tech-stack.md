@@ -82,17 +82,44 @@ This document centralizes all technology decisions for the AICO system. It provi
 
 ## Data & Storage Layer
 
-AICO employs a specialized multi-database architecture optimized for local-first operation. See [Data Layer](../concepts/data/data-layer.md) for comprehensive details.
+AICO employs a **specialized multi-database architecture** optimized for different data access patterns. See [Data Layer](../concepts/data/data-layer.md) for comprehensive details.
+
+### Core Databases
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **libSQL 0.1.8** | Primary relational storage | SQLite-compatible engine with SQLCipher-style encryption, schema v17 with 17 migrations |
-| **LMDB** | Working memory (30-day TTL) | Memory-mapped key-value store for conversation history, sub-millisecond access |
-| **ChromaDB 1.0.16+** | Vector database | Embedded vector storage for semantic memory and KG embeddings with cosine similarity |
-| **libSQL + ChromaDB** | Knowledge graph storage | Encrypted relational storage + vector index for property graph nodes and edges |
-| **SQLCipher** | Database encryption | AES-256-GCM encryption for all structured data at rest |
-| **Drift (Flutter)** | Frontend database | Type-safe SQL with SQLCipher encryption for local message cache |
-| **P2P Sync Protocol** | Federated device sync (planned) | Custom protocol for secure device-to-device synchronization |
+| **PostgreSQL 18.1** | Core application data | ACID transactions, referential integrity, JSON support. Stores users, conversations, knowledge graph, agency data |
+| **InfluxDB 2.x** | Time-series telemetry | High-performance metrics and logs. Stores system metrics, API latency, model performance, structured logs |
+| **ChromaDB 1.0.16+** | Vector embeddings | Semantic search with cosine similarity. Stores conversation embeddings, KG entity embeddings |
+| **LMDB** | Working memory (30-day TTL) | Memory-mapped key-value store for active session data, sub-millisecond access |
+| **DuckDB** | Analytics (planned) | OLAP queries for conversation analysis and reporting |
+
+### Database Architecture Patterns
+
+| Pattern | Technology | Purpose |
+|---------|-----------|----------|
+| **Repository Pattern** | SQLAlchemy Core | Data access abstraction for domain models |
+| **UnitOfWork Pattern** | asyncpg/psycopg2 | Transaction management and connection pooling |
+| **Domain Models** | Pydantic 2.11+ | Type-safe business entities |
+| **Connection Pooling** | SQLAlchemy Engine | Efficient connection reuse for PostgreSQL |
+
+### Database Drivers
+
+| Driver | Use Case | Justification |
+|--------|----------|---------------|
+| **asyncpg** | Backend API (async) | High-performance async PostgreSQL driver |
+| **psycopg2-binary** | CLI tools (sync) | Synchronous PostgreSQL driver for admin tools |
+| **influxdb-client** | Telemetry writes | InfluxDB 2.x Python client |
+| **chromadb** | Vector operations | Persistent vector storage with metadata filtering |
+
+### Encryption & Security
+
+| Technology | Purpose | Justification |
+|------------|---------|---------------|
+| **AES-256-GCM** | Database encryption | Authenticated encryption for PostgreSQL data |
+| **PBKDF2** | Key derivation | Database-specific encryption keys |
+| **Drift + SQLCipher** | Frontend database | Type-safe SQL with encryption for Flutter message cache |
+| **Keyring** | Credential storage | Platform-native secure storage (Keychain/Credential Manager) |
 
 ## Communication Layer
 
@@ -112,7 +139,7 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **SQLCipher** | Database encryption | AES-256-GCM encryption for libSQL and Drift databases |
+| **SQLCipher** | Database encryption | AES-256-GCM encryption for PostgreSQL and Drift databases |
 | **CurveZMQ** | Transport encryption | Elliptic curve encryption for all ZMQ message bus traffic |
 | **Argon2id** | Key derivation | Memory-hard KDF for master key derivation from password |
 | **PBKDF2** | Key derivation | Additional KDF for database encryption keys (100k iterations) |
@@ -126,15 +153,35 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 ## Deployment & Distribution Layer
 
-> AICO is currently designed for local-first, non-containerized installs. Docker/Podman are **not** used in the reference setup.
+> **🐳 Docker Deployment**: AICO uses Docker containers for database services (PostgreSQL, InfluxDB) with plans to containerize additional components.
+
+### Containerized Services
 
 | Technology | Purpose | Status |
 |------------|---------|--------|
-| **Local Python/uv env** | Backend/modelservice runtime | ✅ Current reference setup (no containers) |
+| **Docker** | Container runtime | ✅ Required for database services |
+| **PostgreSQL 18.1 (Docker)** | Core database container | ✅ Production deployment |
+| **InfluxDB 2.x (Docker)** | Telemetry database container | ✅ Production deployment |
+| **ChromaDB (planned)** | Vector database container | 🚧 Future containerization |
+| **Docker Compose** | Multi-container orchestration | 🚧 Planned for full stack deployment |
+
+### Application Runtime
+
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **Local Python/uv env** | Backend/modelservice runtime | ✅ Current reference setup |
 | **Flutter builds** | Frontend distribution | ✅ Native builds for desktop/mobile |
 | **Electron** | Desktop packaging | 🚧 Planned wrapper for packaged desktop app |
 | **Delta Updates** | Efficient updates | 🚧 Planned update mechanism |
 | **Cryptographic Signatures** | Update verification | 🚧 Planned for packaged releases |
+
+### Container Benefits
+
+- **Consistent Environments**: Same database versions across dev/test/prod
+- **Easy Version Management**: Pin specific PostgreSQL/InfluxDB versions
+- **Isolated Dependencies**: No system-wide database installation required
+- **Simple Cleanup**: Remove containers and volumes for fresh start
+- **Cross-Platform**: Works identically on Windows, macOS, Linux
 
 ## Development & Testing Layer
 
@@ -171,9 +218,9 @@ AICO employs a specialized multi-database architecture optimized for local-first
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
 | **Custom Logging System** | Unified logging | AICO-specific logging with subsystem/module hierarchy |
-| **ZMQ Log Transport** | Log delivery | Protobuf-based log message delivery via message bus |
-| **Log Consumer Service** | Log persistence | Background service for encrypted log storage |
-| **libSQL** | Log storage | Encrypted database with 7-day retention policy |
+| **InfluxDB** | Log storage | Time-series database for structured logs with 30-day retention |
+| **OpenTelemetry** | Instrumentation | Standardized metrics and tracing instrumentation |
+| **Prometheus (optional)** | Metrics export | Optional Prometheus-compatible metrics endpoint |
 | **Pydantic 2.11+** | Schema validation | Type-safe validation of API requests and responses |
 | **Fallback Logging** | Reliability | Direct database writes during broker startup |
 

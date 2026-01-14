@@ -86,7 +86,7 @@ flowchart TD
     
     subgraph "AICO Infrastructure"
         BUS["Message Bus<br/>(ZeroMQ)"]
-        DB["Encrypted Database<br/>(libSQL)"]
+        DB["Encrypted Database<br/>(PostgreSQL)"]
         LOG["Logging System"]
         CONFIG["Configuration"]
     end
@@ -146,7 +146,7 @@ The executor maintains a registry of running tasks to prevent duplicate executio
 
 ### TaskStore (Persistence)
 
-The `TaskStore` manages persistent storage of task definitions, execution history, and performance metrics using AICO's encrypted libSQL database. It ensures task schedules survive system restarts and provides comprehensive audit trails.
+The `TaskStore` manages persistent storage of task definitions, execution history, and performance metrics using AICO's encrypted PostgreSQL database. It ensures task schedules survive system restarts and provides comprehensive audit trails.
 
 Storage capabilities:
 - **Task persistence**: Stores task definitions with schedules and configuration
@@ -592,7 +592,7 @@ if config_manager.get("scheduler", {}).get("enabled", True):
 **Phase 1: Core Scheduler (Day 1-2)**
 - `backend/scheduler/core.py` - TaskScheduler, TaskRegistry, TaskExecutor classes
 - `backend/scheduler/tasks/base.py` - BaseTask abstract class
-- `backend/scheduler/storage.py` - TaskStore with libSQL integration
+- `backend/scheduler/storage.py` - TaskStore with PostgreSQL integration
 - Database schema addition to core schema
 
 **Phase 2: Built-in Tasks (Day 3)**

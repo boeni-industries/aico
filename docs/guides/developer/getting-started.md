@@ -125,7 +125,7 @@ You should see `Python 3.13.5`.
 
 > **ℹ️ Data Encryption Approach**
 > 
-> AICO uses application-level encryption with SQLCipher for all databases (libSQL in the backend and Drift on the frontend). Semantic memory and knowledge graph embeddings use ChromaDB, and working memory/cache uses LMDB, all with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
+> AICO uses application-level encryption with SQLCipher for all databases (PostgreSQL in the backend and Drift on the frontend). Semantic memory and knowledge graph embeddings use ChromaDB, and working memory/cache uses LMDB, all with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
 ### 3. UV Workspace Setup (Single Virtual Environment)
 AICO uses UV workspace management with a unified `pyproject.toml` at the root and a single shared virtual environment for all Python components.
@@ -349,6 +349,217 @@ The project follows a monorepo structure with shared libraries and unified tooli
 
 ## Database Setup
 
+AICO uses a multi-database architecture. PostgreSQL and InfluxDB run in **Docker containers** for consistent deployment across platforms.
+
+> **🐳 Docker Deployment**
+> 
+> PostgreSQL and InfluxDB are containerized using Docker for:
+> - **Consistent environments** across development, testing, and production
+> - **Easy version management** (PostgreSQL 18.1, InfluxDB 2.x)
+> - **Isolated dependencies** without system-wide installation
+> - **Simple cleanup** with container removal
+> 
+> **Future**: Additional components (ChromaDB, analytics services) will be containerized as the architecture evolves.
+
+### Prerequisites
+
+**Install Docker**:
+- Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for your platform
+- Verify installation: `docker --version`
+- Ensure Docker daemon is running
+
+### PostgreSQL Deployment
+
+PostgreSQL stores all core application data (users, conversations, knowledge graph, agency).
+
+**Initial Deployment**:
+```bash
+aico deploy pg
+```
+
+This command:
+1. **Pulls PostgreSQL 18.1 Docker image** (if not present)
+2. **Starts PostgreSQL container** with persistent volume
+3. Connects to the containerized instance
+4. Creates the `aico` database if it doesn't exist
+5. Creates the `aico_core` schema
+6. Applies all schema migrations
+7. Sets up initial tables and indexes
+
+**Container Details**:
+- Image: `postgres:18.1`
+- Port: `5432` (mapped to host)
+- Volume: Persistent storage for database files
+- Network: Docker bridge network for inter-container communication
+
+**⚠️ DANGEROUS: Reset Database**:
+```bash
+aico deploy pg --nuke
+```
+
+**WARNING**: The `--nuke` flag will:
+- **STOP and REMOVE the PostgreSQL container**
+- **DELETE the persistent volume**
+- **ERASE ALL DATA permanently**
+- Pull fresh image and recreate container
+- Apply all migrations to new database
+
+**Use cases for --nuke**:
+- ✅ Development: Starting fresh after schema changes
+- ✅ Testing: Clean slate for integration tests
+- ❌ **NEVER in production** - you will lose all user data
+
+**Prerequisites**:
+- Docker installed and running
+- Database credentials configured in `core.yaml`
+- Password stored in system keyring via `aico security setup`
+
+### InfluxDB Deployment
+
+InfluxDB stores time-series telemetry data (metrics, logs, performance).
+
+**Initial Deployment**:
+```bash
+aico deploy influx
+```
+
+This command:
+1. **Pulls InfluxDB 2.x Docker image** (if not present)
+2. **Starts InfluxDB container** with persistent volume
+3. Connects to the containerized instance
+4. Creates the `aico` organization if it doesn't exist
+5. Creates the `aico_telemetry` bucket
+6. Sets up retention policies (default: 30 days)
+7. Configures API token for writes
+
+**Container Details**:
+- Image: `influxdb:2-alpine`
+- Port: `8086` (mapped to host)
+- Volume: Persistent storage for time-series data
+- Network: Docker bridge network
+
+**⚠️ DANGEROUS: Reset Telemetry Database**:
+```bash
+aico deploy influx --nuke
+```
+
+**WARNING**: The `--nuke` flag will:
+- **STOP and REMOVE the InfluxDB container**
+- **DELETE the persistent volume**
+- **ERASE ALL metrics and logs permanently**
+- Pull fresh image and recreate container
+- Recreate bucket and retention policies
+
+**Use cases for --nuke**:
+- ✅ Development: Clear old test metrics
+- ✅ Testing: Fresh telemetry environment
+- ⚠️ Production: Only if you want to clear historical metrics
+
+**Prerequisites**:
+- Docker installed and running
+- InfluxDB URL configured in `core.yaml` (http://localhost:8086)
+- API token stored in system keyring
+
+### Verification
+
+**Check PostgreSQL**:
+```bash
+aico pg tables  # List all tables in aico_core schema
+aico pg users   # List users (should be empty initially)
+```
+
+**Create Your User Account**
+
+After deploying databases, create your user:
+
+```bash
+aico security create-user
+```
+
+This will:
+1. Prompt for your full name and nickname
+2. Create a secure PIN
+3. Store user in PostgreSQL
+4. Set up authentication credentials
+
+**Check InfluxDB**:
+```bash
+aico logs query --limit 10  # Query recent logs
+```
+
+### Database Configuration
+
+Edit `config/defaults/core.yaml`:
+
+```yaml
+database:
+  postgres:
+    db_name: "aico"
+    core_schema: "aico_core"
+    host: "127.0.0.1"
+    port: 5432
+    user: "postgres"
+    # Password stored in keyring
+  
+  influx:
+    url: "http://127.0.0.1:8086"
+    org: "aico"
+    bucket: "aico_telemetry"
+    # Token stored in keyring
+```
+
+### Troubleshooting
+
+**PostgreSQL connection failed**:
+```bash
+# Check if PostgreSQL container is running
+docker ps | grep postgres
+
+# View PostgreSQL container logs
+docker logs aico-postgres
+
+# Connect to PostgreSQL container directly
+docker exec -it aico-postgres psql -U postgres -c "SELECT version();"
+
+# Verify password in keyring
+aico security keyring list
+
+# Re-setup credentials
+aico security setup
+```
+
+**InfluxDB connection failed**:
+```bash
+# Check if InfluxDB container is running
+docker ps | grep influx
+
+# View InfluxDB container logs
+docker logs aico-influx
+
+# Check InfluxDB health endpoint
+curl http://localhost:8086/health
+
+# Verify token
+aico security keyring list
+```
+
+**Docker issues**:
+```bash
+# Check Docker daemon status
+docker info
+
+# List all AICO containers
+docker ps -a | grep aico
+
+# Remove stopped containers
+docker rm aico-postgres aico-influx
+
+# Remove volumes (⚠️ deletes data)
+docker volume rm aico-postgres-data aico-influx-data
+```
+
+## Database Setup (Legacy)
+
 AICO uses encrypted databases for all data storage with security by design. The setup process automatically handles directory creation, security initialization, and database configuration.
 
 ### Quick Setup (Recommended)
@@ -382,7 +593,7 @@ aico config show
 
 #### 2. Database Initialization
 ```bash
-# Create encrypted libSQL database with automatic security setup
+# Create encrypted PostgreSQL database with automatic security setup
 aico db init
 
 # Test database connection and encryption
@@ -439,8 +650,8 @@ After setup, you'll have cross-platform directories:
 # Linux Example: ~/.local/share/aico/
 aico/
 ├── data/
-│   ├── aico.db              # Main libSQL database (encrypted)
-│   ├── aico.db.salt         # Encryption salt
+│   ├── PostgreSQL database              # Main PostgreSQL database (encrypted)
+│   ├── PostgreSQL database.salt         # Encryption salt
 │   ├── analytics.db         # Analytics database (planned, backend TBD)
 │   └── chroma/              # Vector database directory (ChromaDB)
 ├── config/
@@ -461,7 +672,7 @@ aico config show
 aico db show
 
 # Get specific configuration values
-aico config get database.libsql.journal_mode
+aico config get database.PostgreSQL.journal_mode
 aico config get system.paths.directory_mode
 ```
 

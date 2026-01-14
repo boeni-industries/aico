@@ -17,7 +17,7 @@ The working memory system serves as AICO's active consciousness during conversat
 - **Recovery Mechanism**: Periodic snapshots enable seamless session restoration
 
 **Dual-Storage Architecture:**
-The system employs a two-tier approach for optimal performance and resilience. LMDB provides the high-performance ephemeral layer where active conversations live, enabling sub-millisecond context retrieval. Simultaneously, periodic snapshots flow to encrypted libSQL storage, ensuring conversations can resume seamlessly even after unexpected system restarts.
+The system employs a two-tier approach for optimal performance and resilience. LMDB provides the high-performance ephemeral layer where active conversations live, enabling sub-millisecond context retrieval. Simultaneously, periodic snapshots flow to encrypted PostgreSQL storage, ensuring conversations can resume seamlessly even after unexpected system restarts.
 
 ### Thread Resolution Strategy
 
@@ -61,13 +61,13 @@ shared/aico/ai/memory/
 **Storage Technologies:**
 - **Working Memory**: LMDB for high-performance ephemeral storage
 - **Semantic Memory**: ChromaDB for vector similarity search over conversation segments
-- **Knowledge Graph**: Hybrid ChromaDB + libSQL via `shared/aico/ai/knowledge_graph/`
-- **Behavioral Learning**: Encrypted libSQL for skills, trajectories, and preference vectors
+- **Knowledge Graph**: Hybrid ChromaDB + PostgreSQL via `shared/aico/ai/knowledge_graph/`
+- **Behavioral Learning**: Encrypted PostgreSQL for skills, trajectories, and preference vectors
 
 **Integration Patterns:**
 The memory system integrates with AICO's architecture through established patterns:
 - **ConfigurationManager**: Unified configuration following AICO's hierarchical config system
-- **EncryptedLibSQLConnection**: Reuses existing encrypted database infrastructure
+- **PostgreSQL (via UnitOfWork)**: Reuses existing encrypted database infrastructure
 - **BaseAIProcessor**: Inherits from shared AI processing interface for message bus integration
 - **Logging**: Uses AICO's structured logging system with proper module identification
 

@@ -115,7 +115,7 @@ Four core responsibilities:
 ## 6. Persistence & Metrics
 
 - **Persistence**  
-  - AgencyMode, PauseState, and CapabilityConfig are persisted in libSQL config tables, aligned with Values & Ethics and Skill/Tool registries.  
+  - AgencyMode, PauseState, and CapabilityConfig are persisted in PostgreSQL config tables, aligned with Values & Ethics and Skill/Tool registries.  
   - AuditEntries are stored append-only in a dedicated audit log table, with optional promotion into AMS/KG where needed.  
   - No separate store for policies; those live in the Values & Ethics component.
 

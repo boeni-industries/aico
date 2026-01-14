@@ -9,7 +9,7 @@ AICO's instrumentation system provides unified, privacy-respecting observability
 
 ### Technology Foundation
 - **OpenTelemetry (OTel)**: CNCF-graduated standard for traces, metrics, and logs
-- **Auto-Instrumentation**: Zero-code instrumentation for FastAPI, SQLite, and other frameworks
+- **Auto-Instrumentation**: Zero-code instrumentation for FastAPI, PostgreSQL, and other frameworks
 - **Vendor-Neutral**: Export to any backend (Prometheus, Jaeger, Grafana, etc.)
 - **Local-First**: All telemetry stored locally by default, with optional export in dev mode
 - **Apache 2.0 License**: Fully open-source and compatible with AICO's licensing
@@ -63,11 +63,11 @@ AICO’s instrumentation system is designed to be **privacy-first, local-first, 
 - **Traces:** Distributed tracing with automatic context propagation via ZeroMQ envelopes
 - **Metrics:** Counters, gauges, histograms for performance and health monitoring
 - **Logs:** Structured logs with trace correlation and semantic attributes
-- **Auto-Instrumentation:** FastAPI, SQLite, HTTP clients instrumented automatically
+- **Auto-Instrumentation:** FastAPI, PostgreSQL, HTTP clients instrumented automatically
 - **Custom Instrumentation:** Business logic instrumented via OTel SDK
 
 ### Storage & Export
-- **Local Storage (Always):** SQLite-based metrics store for Studio dashboard
+- **Local Storage (Always):** PostgreSQL-based metrics store for Studio dashboard
 - **Prometheus Exporter (Pro/Dev/Production):** `/metrics` endpoint for Prometheus scraping
   - Casual: Disabled by default
   - Pro: Opt-in, local only
@@ -139,7 +139,7 @@ meter = metrics.get_meter("aico.backend")
 
 ### Layer 2: Auto-Instrumentation
 - **FastAPI:** `opentelemetry-instrumentation-fastapi` (automatic middleware)
-- **SQLite:** `opentelemetry-instrumentation-sqlite3` (query tracing)
+- **PostgreSQL:** `opentelemetry-instrumentation-PostgreSQL3` (query tracing)
 - **HTTP Clients:** `opentelemetry-instrumentation-requests` (outbound calls)
 - **ZeroMQ:** Custom propagator for message bus context
 
@@ -173,7 +173,7 @@ inference_duration = meter.create_histogram(
 ### Layer 4: Storage & Export
 
 **Casual Mode (Default):**
-- Local SQLite metrics database for Studio dashboard
+- Local PostgreSQL metrics database for Studio dashboard
 - No external export
 - No metrics endpoint exposed
 
@@ -230,7 +230,7 @@ graph TD;
   Scheduler --> Meter
   Bus --> Tracer
   
-  Tracer --> LocalStore[Local Storage<br/>SQLite]
+  Tracer --> LocalStore[Local Storage<br/>PostgreSQL]
   Meter --> LocalStore
   Logger --> LocalStore
   
@@ -253,7 +253,7 @@ graph TD;
 opentelemetry-api = "^1.20.0"
 opentelemetry-sdk = "^1.20.0"
 opentelemetry-instrumentation-fastapi = "^0.41b0"
-opentelemetry-instrumentation-sqlite3 = "^0.41b0"
+opentelemetry-instrumentation-PostgreSQL3 = "^0.41b0"
 ```
 
 ### Dev Mode (Optional)

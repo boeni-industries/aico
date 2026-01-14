@@ -229,7 +229,7 @@ def metadata(self) -> PluginMetadata:
 - Shared database connection
 
 **Storage**:
-- Shared access to encrypted libSQL database
+- Shared access to encrypted PostgreSQL database
 - Configuration via YAML files
 - No plugin-specific storage isolation
 

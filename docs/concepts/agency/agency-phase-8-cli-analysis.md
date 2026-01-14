@@ -22,7 +22,7 @@ title: Phase 8 - Agency CLI & Analysis
   - **Reflection:** lessons_generated, lessons_applied, reflection run timestamps (1,437 runs)
   - **Goals & Planning:** goal_lifecycle_events, plan execution tracking (108 goals, 108 plans, 3,710 executions)
   - **Skills & Curiosity:** skill_performance (486 skills, 48 executions tracked)
-- Stored in queryable LibSQL tables with comprehensive indexing
+- Stored in queryable PostgreSQL tables with comprehensive indexing
 - **Active data:** 382 agency_events, 224 agency_events_log, 582 event_metrics
 
 ### Event & Outcome Instrumentation ✅

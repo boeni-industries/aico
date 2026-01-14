@@ -49,7 +49,7 @@ It:
 - **QueueConfig**  
   - per queue: `max_concurrent`, `max_cpu_share`, `max_battery_share`, `allowed_lifecycle_states`, etc.
 
-Tasks and queue configs are stored in the shared libSQL-backed task system, not in this doc’s component alone.
+Tasks and queue configs are stored in the shared PostgreSQL-backed task system, not in this doc’s component alone.
 
 ## 4. Operations & Behaviour
 
@@ -103,7 +103,7 @@ Tasks and queue configs are stored in the shared libSQL-backed task system, not 
 ## 6. Persistence & Metrics
 
 - **Persistence**  
-  - Tasks, their status, and queue configurations are persisted in a task database (libSQL) shared with other backend services.  
+  - Tasks, their status, and queue configurations are persisted in a task database (PostgreSQL) shared with other backend services.  
   - LifecycleState, AgencyMode, and PolicyRules live in their respective components but are read by Scheduler at decision time.
 
 - **Metrics**  

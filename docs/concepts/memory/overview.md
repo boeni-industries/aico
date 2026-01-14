@@ -34,14 +34,14 @@ Long-term knowledge storage with semantic search and graph relationships.
 - **Relevance Thresholds**: Filters out irrelevant matches automatically
 - Stores conversation chunks with embeddings for retrieval
 
-**Knowledge Graph (ChromaDB + libSQL):**
+**Knowledge Graph (ChromaDB + PostgreSQL):**
 - **Entity Extraction**: Multi-pass extraction with GLiNER + LLM
 - **Entity Resolution**: 3-step deduplication (blocking → matching → merging)
 - **Graph Fusion**: Conflict resolution and temporal updates
 - **Structured Storage**: Nodes (entities) and edges (relationships) with properties
 - **Production Data**: 204 nodes, 27 edges, 552 indexed properties
 
-### 3. Behavioral Learning (libSQL) 🔄 PLANNED
+### 3. Behavioral Learning (PostgreSQL) 🔄 PLANNED
 User interaction patterns and behavioral adaptation.
 - **Pattern Learning**: Track response preferences, topic interests, engagement signals
 - **Adaptive Personalization**: Adjust response style based on learned patterns
@@ -52,7 +52,7 @@ User interaction patterns and behavioral adaptation.
 
 ### Local-First Architecture
 - **No External Dependencies**: All memory processing happens locally
-- **Embedded Databases**: Uses libSQL and ChromaDB for persistence
+- **Embedded Databases**: Uses PostgreSQL and ChromaDB for persistence
 - **Privacy-First**: All personal data remains on user's device
 - **Offline Capable**: Full functionality without internet connection
 

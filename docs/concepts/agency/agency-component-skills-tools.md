@@ -162,7 +162,7 @@ The mapping `Skill.skill_id → [Tool]` lives in a **Skill Registry** persisted 
 
 ### 5.1 Where tools execute
 
-- **Backend services** – default for most tools (safe, auditable, same libSQL/WM context).  
+- **Backend services** – default for most tools (safe, auditable, same PostgreSQL/WM context).  
 - **Local client** – optional, for device-local actions; requires explicit user permission and a secure bridge.  
 - **Third-party APIs** – only via configured HTTP tools with explicit `auth_profile` and strong Value & Ethics checks.
 

@@ -30,7 +30,7 @@ Build the **essential** system infrastructure required for MVP companion feature
 - [x] **Message Routing**: Basic topic-based routing
 
 ### Basic Data Layer
-- [x] **libSQL Setup**: Modern SQLite fork for local database (encryption can come later)
+- [x] **PostgreSQL Setup**: Modern PostgreSQL fork for local database (encryption can come later)
 - [x] **Basic Schema**: Minimal tables for system state and config
 - [x] **Migration System**: Simple schema versioning
 
@@ -38,7 +38,7 @@ Build the **essential** system infrastructure required for MVP companion feature
 - [x] **Master Password Setup**: Require user to set a master password on first run. Never store the password—use it transiently for key derivation only. Derived keys stored securely for automatic service authentication.
 - [x] **Unified Key Management**: Implement `AICOKeyManager` class supporting three scenarios: initial setup (interactive), user authentication (interactive), and service startup (automatic). Uses Argon2id-based key derivation from user master password with platform-native secure storage.
 - [x] **Persistent Service Authentication**: Backend services can restart automatically without user password re-entry. Master key retrieved from secure storage (macOS Keychain, Windows Credential Manager, Linux Secret Service) on service startup, enabling zero-effort security for non-technical users.
-- [x] **Database Encryption Setup**: Implement application-level encryption using database-native features (SQLCipher for libSQL, DuckDB encryption, LMDB EncryptedEnv). All data at rest is encrypted by default with optimal performance.
+- [x] **Database Encryption Setup**: Implement application-level encryption using database-native features (SQLCipher for PostgreSQL, DuckDB encryption, LMDB EncryptedEnv). All data at rest is encrypted by default with optimal performance.
 - [x] **File Encryption Wrapper**: Create `EncryptedFile` wrapper class using AES-256-GCM for files without native encryption support (configs, logs, ChromaDB files). Drop-in replacement for Python's `open()` function.
 - [x] **Database Key Derivation**: Extend `AICOKeyManager` with `derive_database_key()` and `derive_file_encryption_key()` methods for purpose-specific key generation from master key.
 - [x] **Access Control Skeleton**: Add a basic access control mechanism (deny by default, allow for core system processes only). All access is explicit, with a foundation for future ABAC/RBAC policies.
@@ -61,7 +61,7 @@ Build the **essential** system infrastructure required for MVP companion feature
 - [x] **WebSocket Support**: Real-time bidirectional communication
 
 ### Data Layer Enhancement
-- [x] **libSQL Encryption**: Enable built-in database encryption
+- [x] **PostgreSQL Encryption**: Enable built-in database encryption
 - [x] **Basic Schema**: Minimal schema for MVP AI features (expand incrementally)
 
 ### Flutter Enhancement

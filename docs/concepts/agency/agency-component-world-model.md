@@ -119,7 +119,7 @@ This section will specify the concrete data structures and schemas the World Mod
 
 At the ontology level, the World Model **reuses** all core entities defined in `agency-ontology-schemas.md` (Person, User, AICOAgent, Activity/Project/Task/Habit/Hobby, Goal, EmotionState, Relationship, Place, Device, MemoryItem, WorldStateFact, Skill, PerceptualEvent) and adds a **small, explicit set of extensions**. These must be treated as concrete schema changes to the shared AMS knowledge graph.
 
-The World Model graph is expected to **build on and extend** the existing knowledge graph infrastructure used by AMS (`/docs/concepts/memory`), using the **same underlying persistence/DB** (current implementation: libSQL-backed property graph) but richer schemas and views.
+The World Model graph is expected to **build on and extend** the existing knowledge graph infrastructure used by AMS (`/docs/concepts/memory`), using the **same underlying persistence/DB** (current implementation: PostgreSQL-backed property graph) but richer schemas and views.
 
 Concretely, v1 of the World Model requires the following **schema extensions**:
 
@@ -152,11 +152,11 @@ Concretely, v1 of the World Model requires the following **schema extensions**:
   - **Routine timelines** – view that orders `Routine` and their linked activities/habits over time.  
   - **Relationship-centric egonets** – view for a person’s local social graph (Persons, Relationships, shared Activities/Goals).
 
-All of the above are to be introduced by **updating `agency-ontology-schemas.md` and the libSQL/graph schema used by AMS**, not by creating a separate graph database for the World Model.
+All of the above are to be introduced by **updating `agency-ontology-schemas.md` and the PostgreSQL/graph schema used by AMS**, not by creating a separate graph database for the World Model.
 
 ### 3.2 Storage and Indexing Views
 
-The World Model shares the **same physical store** as AMS (libSQL-backed property/knowledge graph) but exposes several **logical views** optimised for different consumers. Conceptually, the same entities are accessible via:
+The World Model shares the **same physical store** as AMS (PostgreSQL-backed property/knowledge graph) but exposes several **logical views** optimised for different consumers. Conceptually, the same entities are accessible via:
 
 - **Graph views (primary source of record)**  
   - Nodes and edges as per `agency-ontology-schemas.md` (Person, Activity, Routine, LifeArea, WorldStateFact, etc.).  
@@ -166,7 +166,7 @@ The World Model shares the **same physical store** as AMS (libSQL-backed propert
     - life-area and routine analyses.
 
 - **Denormalised SQL tables / materialised views**  
-  These are read-optimised projections over the graph, implemented as SQL tables or materialised views in the same libSQL database. Examples:
+  These are read-optimised projections over the graph, implemented as SQL tables or materialised views in the same PostgreSQL database. Examples:
   - `wm_projects_by_life_area` – rows linking `project_id` ↔ `life_area_id` with cached aggregates (e.g. number of active tasks, last_activity_at).  
   - `wm_routines` – routine-level table (`routine_id`, schedule descriptors, stability metrics) plus derived fields useful for scheduling and explanation.  
   - `wm_social_egonets` – per-person summary rows (counts of relationships by type, centrality scores, last_interaction_at).  
@@ -175,7 +175,7 @@ The World Model shares the **same physical store** as AMS (libSQL-backed propert
 
 - **Embedding indices**  
   For soft similarity and pattern discovery, the World Model maintains embedding stores (can be implemented as:
-  - separate tables in libSQL with `vector`-like columns, or
+  - separate tables in PostgreSQL with `vector`-like columns, or
   - external vector DB, as long as IDs map back to graph entities).
 
   Typical indices:

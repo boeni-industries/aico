@@ -45,7 +45,7 @@ aico/
       extractor.py                 # Multi-pass extraction
       entity_resolution.py         # Semantic blocking, LLM matching/merging
       fusion.py                    # Graph fusion, conflict resolution
-      storage.py                   # ChromaDB + libSQL backend
+      storage.py                   # ChromaDB + PostgreSQL backend
       graph_traversal.py           # Traversal/path finding
       analytics.py                 # Graph analytics
       query/                       # GQL query execution and helpers
@@ -140,7 +140,7 @@ This turns incremental extractions into a coherent, evolving knowledge graph.
 
 ## Storage Strategy
 
-### Hybrid: ChromaDB + libSQL
+### Hybrid: ChromaDB + PostgreSQL
 
 The knowledge graph module uses a hybrid storage approach leveraging AICO's existing stack:
 
@@ -166,7 +166,7 @@ chromadb.get_collection('kg_nodes').add(
 )
 ```
 
-#### libSQL Tables (Relational Index)
+#### PostgreSQL Tables (Relational Index)
 
 Properties are stored both as JSON (source of truth) and as flattened key/value rows for efficient filtering. Database-level triggers keep these representations in sync.
 
@@ -178,7 +178,7 @@ At a high level, the memory system uses the knowledge graph module by:
 
 1. Running multi-pass extraction on conversation text.
 2. Resolving entities against the user-specific graph.
-3. Persisting to the hybrid ChromaDB + libSQL backend.
+3. Persisting to the hybrid ChromaDB + PostgreSQL backend.
 4. Retrieving structured context (entities + relationships) during context assembly.
 
 Current implementation details:
@@ -320,7 +320,7 @@ core:
 
 ---
 
-### **libSQL Database Changes**
+### **PostgreSQL Database Changes**
 
 **❌ Remove (Schema Version 6):**
 - `facts_metadata` table → replaced by `kg_nodes`
@@ -397,15 +397,15 @@ core:
 **Deliverables:**
 - Create `aico/ai/knowledge_graph/` module structure
 - Implement `models.py` (PropertyGraph, Node, Edge dataclasses)
-- Implement `storage.py` (ChromaDB + libSQL hybrid backend)
-- Create libSQL Schema Version 7:
+- Implement `storage.py` (ChromaDB + PostgreSQL hybrid backend)
+- Create PostgreSQL Schema Version 7:
   - `kg_nodes` table with JSON properties
   - `kg_edges` table with JSON properties
   - `kg_node_properties` table (property index)
   - `kg_edge_properties` table (property index)
-  - Database triggers for automatic property indexing (verified working in libsql 0.1.8)
+  - Database triggers for automatic property indexing (verified working in PostgreSQL 0.1.8)
 - Initialize ChromaDB collections (kg_nodes, kg_edges)
-- Implement dual-write to both ChromaDB and libSQL
+- Implement dual-write to both ChromaDB and PostgreSQL
 - Basic CRUD operations (create, read, update, delete)
 - Document property conventions for future applications
 - Unit tests for data models and storage
@@ -608,7 +608,7 @@ async def find_dependencies(
 
 **SQL Implementation:**
 ```sql
--- Recursive CTE for graph traversal (libSQL supports this)
+-- Recursive CTE for graph traversal (PostgreSQL supports this)
 WITH RECURSIVE graph_traversal(node_id, depth, path) AS (
     SELECT id, 0, id FROM kg_nodes WHERE id = ?
     UNION ALL
@@ -1004,11 +1004,11 @@ memory:
 ```
 
 **What's NOT configurable (hardcoded in implementation):**
-- Storage backend: `chromadb+libsql` (hybrid, required)
+- Storage backend: `chromadb+PostgreSQL` (hybrid, required)
 - Processing mode: Progressive response with parallel processing
 - Property conventions: Documented in Phase 0
 - Model selection: Uses existing `modelservice` configuration
-- Collections: `kg_nodes`, `kg_edges` (both ChromaDB and libSQL)
+- Collections: `kg_nodes`, `kg_edges` (both ChromaDB and PostgreSQL)
 - Paths: Resolved via `AICOPaths.get_semantic_memory_path()`
 
 ---
@@ -1043,7 +1043,7 @@ Deduplication accuracy: 95%+ ✅
 ### Local-First, Privacy-First
 - ✅ All processing local except LLM matching/merging (gpt-4o-mini, optional)
 - ✅ Property graph enables fine-grained privacy boundaries
-- ✅ Hybrid storage (ChromaDB + libSQL) keeps data local
+- ✅ Hybrid storage (ChromaDB + PostgreSQL) keeps data local
 - ✅ No external dependencies for core functionality
 
 ### Modular, Message-Driven Design
@@ -1055,7 +1055,7 @@ Deduplication accuracy: 95%+ ✅
 
 ### Extensibility
 - ✅ Plugin-ready: other modules can use knowledge graph
-- ✅ Storage backend abstraction (ChromaDB+libSQL now, Neo4j future)
+- ✅ Storage backend abstraction (ChromaDB+PostgreSQL now, Neo4j future)
 - ✅ Model abstraction (swap LLMs via modelservice)
 
 ### Autonomous Agency (Future)
@@ -1153,7 +1153,7 @@ AICO uses **GrandCypher**, a pure Python implementation of Cypher (90% compatibl
 
 **Benefits:**
 - ✅ **ISO Standard Syntax** - Future-proof, industry-wide adoption expected
-- ✅ **No Neo4j Dependency** - Works with our libSQL + ChromaDB backend
+- ✅ **No Neo4j Dependency** - Works with our PostgreSQL + ChromaDB backend
 - ✅ **Pure Python** - Easy installation, no C compilation required
 - ✅ **Extensible** - Can add GQL features as standard evolves
 - ✅ **Production-Ready** - Used by research labs and production systems
@@ -1308,7 +1308,7 @@ Potential additions:
 
 **Phase 1-5: Core Implementation** (100%)
 - ✅ Property graph models with temporal support
-- ✅ Hybrid storage (ChromaDB + libSQL)
+- ✅ Hybrid storage (ChromaDB + PostgreSQL)
 - ✅ Multi-pass extraction with gleanings
 - ✅ **Enhanced** multi-tier entity resolution (60-80% LLM reduction)
 - ✅ Graph fusion with conflict resolution

@@ -51,7 +51,7 @@ aico/
 
 **Characteristics**:
 - Medium speed (100ms-1s per test)
-- Use test database (in-memory SQLite or test instance)
+- Use test database (in-memory PostgreSQL or test instance)
 - Real component interactions, minimal mocking
 - Test cross-component contracts
 
@@ -109,7 +109,7 @@ aico/
 ### Test Database Strategy
 
 **Shared & Backend**:
-- Use in-memory SQLite for unit/integration tests
+- Use in-memory PostgreSQL for unit/integration tests
 - Apply schema migrations in test fixtures
 - Isolated DB per test (via fixtures)
 
@@ -118,7 +118,7 @@ aico/
 @pytest.fixture
 async def test_db():
     """Provide isolated test database."""
-    db = EncryptedLibSQLConnection(":memory:", encryption_key=test_key)
+    db = UnitOfWork()  # PostgreSQL with connection pooling
     # Apply schema
     from aico.data.schemas.core import apply_schema
     apply_schema(db, target_version=20)

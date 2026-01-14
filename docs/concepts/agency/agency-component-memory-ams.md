@@ -21,11 +21,11 @@ It does not replace the existing Memory/AMS system; it **integrates** with it us
   - Short-lived buffers for recent conversation context and transient state.  
   - Fast access, limited size, no long-term guarantees.
 
-- **Semantic memory** (ChromaDB + libSQL)  
+- **Semantic memory** (ChromaDB + PostgreSQL)  
   - Text segments, embeddings, and hybrid search indices.  
   - Used for “what has happened” retrieval via similarity and metadata filtering.
 
-- **Knowledge graph / World Model** (shared libSQL-backed KG + schemas)  
+- **Knowledge graph / World Model** (shared PostgreSQL-backed KG + schemas)  
   - Structured entities and relations (`Person`, `Activity`, `Goal`, `WorldStateFact`, `Skill`, etc.) as defined in the ontology and World Model docs.  
   - Provides stable, queryable facts and links that agency uses as its externalised “world state”.
 
@@ -91,7 +91,7 @@ The exact concrete APIs are defined in the existing Memory/AMS and World Model i
 ## 5. Integration with Other Components
 
 - **World Model Service**  
-  - Shares the underlying libSQL/KG with AMS.  
+  - Shares the underlying PostgreSQL/KG with AMS.  
   - Exposes schema-aware APIs for `WorldStateFact` and entity/relationship queries used by agency.
 
 - **Goals & Intentions / Arbiter / Planner**  
@@ -111,7 +111,7 @@ The exact concrete APIs are defined in the existing Memory/AMS and World Model i
 
 ## 6. Persistence Notes
 
-- All long-lived memory structures (`MemoryItem`, semantic embeddings, KG/WorldStateFact, AMS patterns) are persisted in the existing **Memory/AMS + World Model** stack (libSQL + ChromaDB + KG schemas).  
+- All long-lived memory structures (`MemoryItem`, semantic embeddings, KG/WorldStateFact, AMS patterns) are persisted in the existing **Memory/AMS + World Model** stack (PostgreSQL + ChromaDB + KG schemas).  
 - Agency **does not introduce a separate memory store**; it reuses the shared stack and adds:
   - conventions for how goals/plans/skills log to it,  
   - expectations for how AMS and World Model expose learned patterns and facts.

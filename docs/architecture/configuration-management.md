@@ -139,7 +139,7 @@ The system manages configuration across five primary domains:
 - **Audit**: Logging levels, retention periods, compliance settings
 
 ### Database Configuration
-- **LibSQL**: Connection paths, encryption settings, journal modes
+- **PostgreSQL**: Connection paths, encryption settings, journal modes
 - **ChromaDB**: Vector storage paths, collection names, distance functions
 - **Analytics DB (planned)**: Future analytical database settings, memory limits, threading
 
@@ -164,7 +164,7 @@ config.initialize()
 
 # Get configuration with fallback
 api_port = config.get("api.port", 8771)
-db_path = config.get("database.libsql.path", "aico.db")
+db_path = config.get("database.PostgreSQL.path", "PostgreSQL database")
 
 # Set configuration values
 config.set("personality.traits.openness", 0.8, persist=True)
@@ -242,7 +242,7 @@ aico config validate
 ### Backend Configuration Access
 ```python
 # Get database configuration
-db_config = config_manager.get("database.libsql")
+db_config = config_manager.get("database.PostgreSQL")
 
 # Get API settings with fallback
 api_port = config_manager.get("api.port", 8771)

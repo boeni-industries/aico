@@ -51,7 +51,7 @@ Emotion and personality integration are scaffolded but largely optional today; m
 - Receives the global config and a shared encrypted database connection.  
 - Initializes:
   - **Working memory** (LMDB) for fast conversation history.  
-  - **Semantic memory** (ChromaDB + libSQL) when enabled.  
+  - **Semantic memory** (ChromaDB + PostgreSQL) when enabled.  
   - **Knowledge graph** (PropertyGraphStorage, MultiPassExtractor, EntityResolver, GraphFusion).  
   - **AMS components** (ConsolidationScheduler, IdleDetector, EvolutionTracker, behavioral learning scaffolding).
 
@@ -70,7 +70,7 @@ AMS consolidation is driven by the **Task Scheduler** via `backend/scheduler/tas
 
 - Maintains an internal emotional state (C‑CPM‑inspired multi‑stage appraisal).  
 - Publishes state to the message bus on `AICOTopics.EMOTION_STATE_CURRENT`.  
-- Persists state and history to encrypted libSQL tables (`emotion_state`, `emotion_history`).
+- Persists state and history to encrypted PostgreSQL tables (`emotion_state`, `emotion_history`).
 
 The conversation engine is currently wired to have access to the emotion engine via the service container, but most conditioning is still in early integration stages; nonetheless, the architecture assumes that agency will be able to query **current emotional state** and recent emotional history.
 
@@ -95,7 +95,7 @@ The conversation engine already exposes:
 
 `MemoryManager`, the shared World Model Service, and AMS already implement:
 
-- Long‑term storage and retrieval of facts, segments, and graph structure (libSQL-backed KG + embeddings).  
+- Long‑term storage and retrieval of facts, segments, and graph structure (PostgreSQL-backed KG + embeddings).  
 - Background consolidation (sleep‑like phases) orchestrated by the scheduler.  
 - Behavioral learning scaffolding (skill store, Thompson Sampling, preference manager) for skill‑based interaction.
 
@@ -219,7 +219,7 @@ Future work should refine these contracts into concrete protobuf schemas and RES
 
 ## 6. Persistence & Migrations for Agency
 
-Agency reuses all existing libSQL/Chroma/LMDB schemas; the **only new schema required for agency-specific logic** is for the Values & Ethics policy tables. In addition, a **separate core localisation prep migration** has already been implemented to support multilingual agency:
+Agency reuses all existing PostgreSQL/Chroma/LMDB schemas; the **only new schema required for agency-specific logic** is for the Values & Ethics policy tables. In addition, a **separate core localisation prep migration** has already been implemented to support multilingual agency:
 
 - `SchemaVersion 19` in `shared/aico/data/schemas/core.py` adds:
   - `users.primary_language` – per-user language preference (ISO/BCP-47).

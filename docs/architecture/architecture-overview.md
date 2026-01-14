@@ -29,7 +29,7 @@ AICO's features are organized into logical modules for development and deploymen
 
 ### 👥 Social Relationship Intelligence
 **Production Implementation:**
-- **Property Graph Storage**: NetworkX + libSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties
+- **Property Graph Storage**: NetworkX + PostgreSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties
 - **Multi-Pass Entity Extraction**: GLiNER zero-shot recognition + LLM relationship extraction
 - **Entity Resolution**: 3-step deduplication (semantic blocking → LLM matching → merging)
 - **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
@@ -109,7 +109,7 @@ AICO's features are organized into logical modules for development and deploymen
 
 ### 🔒 Privacy & Security
 **Production Implementation:**
-- **SQLCipher Encryption**: AES-256-GCM for all databases (libSQL + Drift)
+- **SQLCipher Encryption**: AES-256-GCM for all databases (PostgreSQL + Drift)
 - **CurveZMQ**: 100% encrypted message bus with mandatory mutual authentication
 - **Argon2id**: Memory-hard KDF for master key derivation
 - **PBKDF2**: Database encryption key derivation (100k iterations)
@@ -156,7 +156,7 @@ AICO's features are organized into logical modules for development and deploymen
 - **Topic-Based Pub/Sub** - Hierarchical topics with wildcard pattern matching
 - **Three-Tier Memory** - Working (LMDB) + Semantic (ChromaDB) + Adaptive (AMS)
 - **Hybrid Search V3** - Semantic + BM25 + IDF filtering + RRF fusion
-- **Property Graph** - NetworkX + libSQL + ChromaDB for knowledge graph with temporal reasoning
+- **Property Graph** - NetworkX + PostgreSQL + ChromaDB for knowledge graph with temporal reasoning
 - **Thompson Sampling** - Contextual bandit for skill selection and behavioral learning
 - **Qwen3 Abliterated 8B** - Uncensored foundation model for character consistency
 - **Plugin Architecture** - Modular backend with lifecycle management
@@ -345,7 +345,7 @@ The AICO system consists of the following main parts:
 ### Backend Service
 Python-based persistent service providing core AICO functionality:
 - **Plugin-based architecture** with FastAPI and ZeroMQ message bus
-- **Encrypted data storage** using libSQL with SQLCipher
+- **Encrypted data storage** using PostgreSQL with SQLCipher
 - **Continuous operation** enabling autonomous agency and background processing
 - **Modular design** with lifecycle management and dependency injection
 
@@ -500,202 +500,99 @@ The AICO backend runs as a persistent system service, handling all AI processing
 - **Resource-Aware Processing:** Intelligent resource management with configurable policies
 - **Process Management:** Signal-based shutdown coordination and background task management
 
-### Local LLM Integration
+### Data Layer
 
-AICO uses a **native binary integration pattern** for local LLM deployment:
+AICO uses a **multi-database architecture** with specialized databases for different data types:
 
-- **LLM Module:** Manages Ollama and other model runners as native binaries (not containers or daemons). The backend handles all packaging, download, installation, and update for maximum user experience.
-- **Ollama Integration:** Communicates with the Ollama binary over HTTP/gRPC. No Docker or container engine is required.
-- **Cross-Platform:** Prebuilt binaries for all major OSes are fetched and managed automatically.
-- **Message Bus Communication:** LLM Module communicates via ZeroMQ like all other modules.
-- **Resource Coordination:** Integrates with existing Resource Monitor for CPU/memory/battery policies.
-- **Context Integration:** Receives real-time personality and emotion context for prompt conditioning.
-- **Fallback:** In-process model serving (e.g., via llama.cpp Python bindings) may be supported for lightweight or experimental models in the future.
+### 1. PostgreSQL - Core Application Data
 
-#### Why Native Binary?
-Native binaries provide the best user experience, performance, and compatibility for local-first, privacy-first AI. Docker is not required, reducing installation complexity and system bloat.
+**Purpose**: Transactional application data
+- User profiles and authentication
+- Conversations and messages  
+- Knowledge graph (nodes, edges, properties)
+- Agency system (goals, plans, skills)
+- Memory metadata and preferences
 
-#### Comparison Table
-| Feature/Aspect            | Native Binary Integration (AICO)         | Docker-based (not used) | In-Process Model (future option) |
-|--------------------------|------------------------------------------|-------------------------|-----------------------------------|
-| User Installation        | Handled automatically by AICO            | Requires Docker install | Pure Python/pip, but limited      |
-| Platform Support         | Windows, macOS, Linux (prebuilt)         | All with Docker         | Python-supported only             |
-| Performance              | High (native, multi-threaded, GPU)       | High                    | Good for small models             |
-| Resource Isolation       | Excellent (separate process)             | Good                    | Poor (main process only)          |
-| Model Support            | Any CLI/server model runner (Ollama)     | Any in container        | Python-bindable models            |
-| Upgrade Path             | Handled by AICO, independent             | Docker images           | Python deps, less robust          |
-| Simplicity for User      | Maximum (zero manual steps)              | Low                     | Maximum (if supported)            |
-| GPU/Advanced HW          | Supported by runner                      | Supported               | Sometimes, with setup             |
-| Debuggability            | Good (logs, subprocess mgmt)             | Moderate                | High (in Python)                  |
-| Security                 | Good (sandboxable subprocess)            | Good                    | Good, but less isolated           |
-| Best For                 | All users, especially non-experts        | Advanced/server         | Dev, testing, light use           |
+**Architecture Pattern**: Repository + UnitOfWork
+- **Domain Models**: Clean business entities (Pydantic)
+- **Repositories**: Data access abstraction layer
+- **UnitOfWork**: Transaction management and connection pooling
+- **SQLAlchemy Core**: Modern SQL abstraction (not ORM)
 
-This approach maintains architectural consistency, simplifies deployment, and enables tight integration with AICO's personality and emotion systems while preserving privacy through local-only processing.
+**Technology Stack**:
+- PostgreSQL 18.1 (Docker container) with `aico_core` schema
+- asyncpg for async operations (backend API)
+- psycopg2 for sync operations (CLI tools)
+- Connection pooling via SQLAlchemy
+- Docker volume for persistent storage
 
-### Core Backend Components
+**Key Features**:
+- ACID transactions
+- Referential integrity
+- JSON/JSONB for flexible data
+- Full-text search capabilities
 
-#### API Gateway
-The API Gateway provides a unified, secure entry point:
+### 2. InfluxDB - Time-Series Telemetry
 
-```python
-# Example: API Gateway initialization
-from backend.core.lifecycle_manager import BackendLifecycleManager
+**Purpose**: Metrics, logs, and time-series data
+- System performance metrics
+- API request/response times
+- Model inference latency
+- Resource utilization
+- Application logs (structured)
 
-lifecycle_manager = BackendLifecycleManager(config_manager)
-app = await lifecycle_manager.startup()
-```
+**Technology Stack**:
+- InfluxDB 2.x (Docker container) with `aico_telemetry` bucket
+- OpenTelemetry instrumentation
+- Direct HTTP API integration
+- Docker volume for persistent time-series data
 
-- **Single Port Design:** All endpoints on port 8771 with FastAPI
-- **Encryption Middleware:** Request/response encryption with selective bypass
-- **Domain Routing:** `/api/v1/admin/`, `/api/v1/scheduler/`, `/api/v1/logs/`
-- **Plugin Architecture:** Modular middleware and protocol adapters
+**Key Features**:
+- High-performance time-series storage
+- Automatic downsampling
+- Retention policies
+- Grafana-compatible queries
 
-#### Job Scheduler & Task Queue
-- **Task Management:** Internal job/task queue manages all long-running, background, or proactive jobs (skill brushing, summarization, research).
-- **Priority Scheduling:** UI/interactive tasks always run first; background jobs are paused/throttled if system is busy.
-- **Resource-Aware Scheduling:** Job Scheduler can defer or cancel tasks based on system load and user preferences.
+### 3. ChromaDB - Vector Embeddings
 
-#### Resource Monitor
-- **System Monitoring:** Tracks CPU, memory, battery, and system load metrics in real-time.
-- **Policy Enforcement:** User-configurable policies (e.g., "only run background jobs when on AC power" or "limit CPU usage to 20%").
-- **Adaptive Behavior:** Modules (especially Agency and Learning) query Resource Monitor before starting background work.
+**Purpose**: Semantic memory and similarity search
+- Conversation segment embeddings
+- Knowledge graph entity embeddings
+- Semantic search and retrieval
 
-#### Autonomous Agency Engine
-- **Idle Detection:** Detects system/user idle periods for opportunistic background tasks.
-- **Background Learning:** Performs learning, research, skill updates during spare time.
-- **User-Configurable Limits:** Users control which activities are allowed and resource limits.
+**Technology Stack**:
+- ChromaDB with persistent storage
+- Sentence-transformers for embeddings
+- Cosine similarity search
 
-#### Message Bus & Log Consumer
+**Key Features**:
+- Hybrid search (semantic + keyword)
+- Automatic embedding generation
+- Metadata filtering
 
-```python
-# Example: Message bus usage
-from aico.core.bus import MessageBusClient, create_client
-
-client = create_client("api_gateway")
-await client.connect()
-
-# Publish encrypted message
-await client.publish("logs/backend/main", {"level": "INFO", "message": "Service started"})
-
-# Subscribe to topics
-def log_handler(topic: str, message: dict):
-    print(f"Received: {topic} - {message}")
-
-await client.subscribe("logs/", log_handler)
-```
-
-- **ZeroMQ Broker:** High-performance routing with CurveZMQ encryption
-- **Topic Hierarchy:** Structured topics (`logs/`, `events/`) with prefix matching
-- **Log Consumer:** Dedicated service persisting logs to encrypted libSQL database
-- **Protobuf Serialization:** Binary format for performance and type safety
-
-#### Plugin Manager
-- **Plugin Discovery:** Automatically discovers and loads available plugins.
-- **Sandbox Execution:** Runs plugins in isolated environments for security.
-- **Permission Management:** Controls plugin access to system resources and data.
-
-#### Update System
-The Update System manages automatic updates for both frontend and backend components while ensuring user control and system reliability.
-
-**Update Architecture:**
-- **Update Orchestrator (Backend):** Centralized update management running in the backend service
-- **Update Checker:** Periodically checks for updates to both frontend and backend components
-- **Update Downloader:** Securely downloads updates with signature verification
-- **Update Installer:** Coordinates installation of frontend and backend updates
-- **Rollback Manager:** Provides rollback capabilities if updates fail
-
-**Update Flow:**
-1. **Automatic Checking:** Backend periodically checks for updates (configurable interval, default: daily)
-2. **User Notification:** Frontend displays update notifications with details and changelog
-3. **User Consent:** User approves/schedules updates through the frontend UI
-4. **Coordinated Installation:** Backend orchestrates installation of both components
-5. **Restart Coordination:** Manages restart sequence (backend first, then frontend reconnection)
-6. **Verification:** Ensures both components are running correctly post-update
-
-**Update Types:**
-- **Backend Updates:** Service restarts automatically, frontend reconnects seamlessly
-- **Frontend Updates:** Downloaded and applied when frontend restarts
-- **Coordinated Updates:** Both components updated in sequence with user consent
-- **Security Updates:** Can be marked as critical with expedited user notification
-
-**User Control:**
-- **Update Preferences:** Users can configure automatic vs manual updates
-- **Scheduling:** Users can schedule updates for convenient times
-- **Rollback Option:** One-click rollback if issues occur post-update
-- **Update Channels:** Stable, beta, or development update channels
-
-#### Goal System
-- **Goal Generation:** Creates self-formulated objectives and sub-goals.
-- **Goal Prioritization:** Manages goal importance and scheduling.
-- **Goal Tracking:** Monitors progress toward objectives.
-
-#### Planning System
-- **Plan Formulation:** Creates multi-step strategic plans to achieve goals.
-- **Plan Execution:** Manages plan implementation and task coordination.
-- **Plan Adaptation:** Adjusts plans based on changing circumstances.
-
-#### Curiosity Engine
-- **Novelty Detection:** Identifies new or interesting information and experiences.
-- **Exploration Strategy:** Determines what to explore and learn about.
-- **Interest Model:** Maintains and evolves areas of curiosity and interest.
-
-#### Initiative Manager
-- **Proactive Engagement:** Initiates conversations and interactions with users.
-- **Conversation Starter:** Generates contextually appropriate conversation topics.
-
-#### Personality Simulation
-- **Trait Vector System:** Manages personality traits (Big Five, HEXACO).
-- **Value System:** Maintains ethical principles and preferences.
-- **Expression Mapper:** Translates personality traits to behavioral parameters.
-- **Consistency Validator:** Ensures behavioral coherence over time.
-
-#### Emotion Simulation
-- **Appraisal Engine:** Processes emotional appraisals using Component Process Model.
-- **Affect Derivation:** Maps appraisals to emotional states.
-- **Expression Synthesis:** Coordinates emotional expression across modalities.
-
-#### Emotion Recognition
-- **Facial Analysis:** Computer vision-based emotion detection from facial expressions.
-- **Voice Analysis:** Audio-based emotion and sentiment recognition.
-- **Text Analysis:** Natural language emotion understanding.
-
-#### LLM Module
-- **Model Management:** Manages local LLM models (Ollama) as native binaries, including automatic download, installation, update, and lifecycle management. No Docker or container engine is required.
-- **Cross-Platform:** Prebuilt binaries for Ollama are available for Windows (10+), macOS (12+), and Linux (x86_64/AMD64). The backend detects the user's OS and fetches the correct binary as needed.
-- **Maximum UX:** Users do not need to manually install or configure anything; all model runner management is handled automatically by AICO.
-- **Inference Engine:** Handles quantized model inference with resource-aware processing.
-- **Resource Coordination:** Integrates with Resource Monitor for CPU/memory/battery policy enforcement.
-
-#### Conversation Engine
-- **Conversation Flow:** Manages dialogue state, context, and multi-turn conversations.
-- **Prompt Conditioning:** Incorporates personality and emotional context into prompts via message bus.
-- **Response Processing:** Processes LLM responses and coordinates with other modules.
-
-#### Memory System
-- **Episodic Memory:** Stores personal experiences and interaction history.
-- **Semantic Memory:** Maintains knowledge base and learned concepts.
-- **Behavioral Learning:** Stores learned skills and behavioral patterns.
-- **Memory Consolidation:** Long-term memory formation and optimization.
+#### Learning System
+- **Continual Learning:** Ongoing learning from interactions and experiences.
+- **Skill Acquisition:** Learning new capabilities and behaviors.
 
 #### Data & Storage Layer
 
 ```python
 # Example: Encrypted database usage
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+from aico.data.uow import UnitOfWork
 from aico.security import AICOKeyManager
 
 key_manager = AICOKeyManager(config_manager)
 master_key = key_manager.authenticate()
-db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
+db_key = key_manager.derive_database_key(master_key, "PostgreSQL", "PostgreSQL database")
 
-conn = EncryptedLibSQLConnection("aico.db", encryption_key=db_key)
+conn = UnitOfWork()  # PostgreSQL with connection pooling
 with conn:
     conn.execute("INSERT INTO logs (message) VALUES (?)", ["Hello World"])
 ```
 
-- **Primary Storage (libSQL):** Encrypted SQLite-compatible engine with SQLCipher-style integration
+- **Primary Storage (PostgreSQL):** Encrypted PostgreSQL-compatible engine with SQLCipher-style integration
 - **Vector Database (ChromaDB):** Embedding storage for semantic search and KG embeddings
-- **Analytical Engine:** libSQL + ChromaDB hybrid queries for analytics
+- **Analytical Engine:** PostgreSQL + ChromaDB hybrid queries for analytics
 - **Unified Schema:** Single core schema with atomic migrations
 
 #### Learning System
@@ -760,7 +657,7 @@ aico/
 │       │   ├── key_manager.py  # Key derivation and session management
 │       │   └── __init__.py
 │       ├── data/               # Data layer
-│       │   └── libsql/
+│       │   └── PostgreSQL/
 │       │       └── encrypted.py # Encrypted database connections
 │       └── proto/              # Protocol Buffers
 │           ├── aico_core_logging_pb2.py

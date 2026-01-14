@@ -32,7 +32,7 @@ This document outlines the implementation plan for integrating OpenTelemetry int
     ┌────▼─────┐    ┌────▼─────┐    ┌────▼─────┐
     │  Local   │    │Prometheus│    │   OTLP   │
     │ Storage  │    │ Exporter │    │ Exporter │
-    │ (SQLite) │    │(/metrics)│    │ (Jaeger) │
+    │ (PostgreSQL) │    │(/metrics)│    │ (Jaeger) │
     └────┬─────┘    └────┬─────┘    └────┬─────┘
          │               │                │
     ┌────▼─────┐    ┌────▼─────┐    ┌────▼─────┐
@@ -54,7 +54,7 @@ opentelemetry-sdk = "^1.20.0"
 
 # Auto-instrumentation
 opentelemetry-instrumentation-fastapi = "^0.41b0"
-opentelemetry-instrumentation-sqlite3 = "^0.41b0"
+opentelemetry-instrumentation-PostgreSQL3 = "^0.41b0"
 opentelemetry-instrumentation-requests = "^0.41b0"
 
 [project.optional-dependencies]
@@ -171,20 +171,20 @@ dev = [
 
 ## Phase 3: Local Storage Adapter
 
-### 3.1 OpenTelemetry to SQLite Bridge
+### 3.1 OpenTelemetry to PostgreSQL Bridge
 **File:** `backend/core/otel_storage_adapter.py` (new)
 
-**Purpose:** Bridge OpenTelemetry metrics to local SQLite for Studio dashboard
+**Purpose:** Bridge OpenTelemetry metrics to local PostgreSQL for Studio dashboard
 
 **Design:**
 - Implements OTel MetricReader interface
-- Periodically exports metrics to SQLite
+- Periodically exports metrics to PostgreSQL
 - Maintains existing metrics table schema
 - Aggregates metrics for dashboard queries
 
 **Key Methods:**
 - `collect()` - Gather metrics from OTel SDK
-- `export()` - Write to SQLite tables
+- `export()` - Write to PostgreSQL tables
 - `aggregate()` - Calculate rates, percentiles, trends
 
 **Tables:**
@@ -196,7 +196,7 @@ dev = [
 
 **Changes:**
 - Remove all mock data
-- Query SQLite metrics tables (populated by OTel adapter)
+- Query PostgreSQL metrics tables (populated by OTel adapter)
 - Use HealthCalculator for scoring
 - Return real data only
 
@@ -370,7 +370,7 @@ instrumentation:
    - Message bus metrics
 
 3. **Week 3: Storage & API**
-   - OTel to SQLite adapter
+   - OTel to PostgreSQL adapter
    - Refactor metrics API endpoints
    - Remove all mock data
    - Integrate health calculator

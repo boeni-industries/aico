@@ -42,11 +42,11 @@ Lifecycle state is persisted in the shared store and made available to Scheduler
 ### 3.1 Persistence
 
 - **LifecycleState**  
-  - Stored in the shared libSQL-backed store (and/or KG) alongside other agency runtime state.  
+  - Stored in the shared PostgreSQL-backed store (and/or KG) alongside other agency runtime state.  
   - Single current row/node per AICO agent; read by Scheduler, Arbiter, Curiosity, Embodiment, and Conversation.
 
 - **DailyRhythmConfig**  
-  - Stored in configuration tables/files in the same libSQL environment as other agency config (values, skills, policies).  
+  - Stored in configuration tables/files in the same PostgreSQL environment as other agency config (values, skills, policies).  
   - Loaded into memory by the Lifecycle component and editable via user/developer settings.
 
 - **Lifecycle history (optional)**  

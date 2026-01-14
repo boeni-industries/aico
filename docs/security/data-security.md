@@ -41,22 +41,18 @@ AICO employs a hybrid application-level encryption strategy that provides robust
 
 Each database uses its optimal encryption method for maximum performance and reliability:
 
-- **libSQL**: SQLCipher-style encryption via PRAGMA statements with PBKDF2 key derivation
+- **PostgreSQL**: SQLCipher-style encryption via PRAGMA statements with PBKDF2 key derivation
 - **DuckDB**: Built-in AES-256 encryption via PRAGMA statements
 - **LMDB**: Native EncryptedEnv for transparent key-value encryption
 - **ChromaDB**: Custom file-level encryption wrapper
 
 **Implementation Example**:
 ```python
-# LibSQL with encryption
-from aico.data.libsql import EncryptedLibSQLConnection
+# PostgreSQL with encryption
+from aico.data.uow import UnitOfWork
 
 # Create encrypted database connection
-conn = EncryptedLibSQLConnection(
-    db_path="data/aico.db",
-    master_password="user_master_password",
-    store_in_keyring=True  # Secure password storage
-)
+conn = UnitOfWork()  # PostgreSQL with connection pooling
 
 # Use with context manager for automatic cleanup
 with conn:
@@ -75,8 +71,8 @@ with conn:
 # - SQLCipher-style PRAGMA key encryption
 # - System keyring integration for password storage
 
-# AICO uses a single encrypted LibSQL database
-# All data is stored in the main aico.db file
+# AICO uses a single encrypted PostgreSQL database
+# All data is stored in the main PostgreSQL database file
 
 # Generic File Encryption
 
@@ -93,9 +89,9 @@ with EncryptedFile("data/sensitive_data.enc", "rb", key_manager=km) as f:
     data = f.read()  # Automatically decrypted and audited
 ```
 
-### LibSQL Encryption Implementation
+### PostgreSQL Encryption Implementation
 
-AICO's LibSQL encryption implementation provides transparent, secure database encryption using industry-standard cryptographic practices:
+AICO's PostgreSQL encryption implementation provides transparent, secure database encryption using industry-standard cryptographic practices:
 
 #### Architecture Overview
 
@@ -105,7 +101,7 @@ flowchart TD
     C[Random Salt] --> B
     B --> D[256-bit Encryption Key]
     D --> E[PRAGMA key]
-    E --> F[Encrypted LibSQL Database]
+    E --> F[Encrypted PostgreSQL Database]
     
     G[System Keyring] --> A
     H[Salt File] --> C
@@ -157,10 +153,10 @@ connection.execute(f"PRAGMA key = 'x\"{key.hex()}\"'")
 **Usage Patterns:**
 ```python
 # Simple encrypted database
-conn = EncryptedLibSQLConnection("data/aico.db", master_password="secret")
+conn = UnitOfWork()  # PostgreSQL with connection pooling
 
 # With keyring storage
-conn = EncryptedLibSQLConnection("data/aico.db", store_in_keyring=True)
+conn = UnitOfWork()  # PostgreSQL with connection pooling
 
 # Verify encryption is working
 if conn.verify_encryption():
@@ -170,8 +166,8 @@ if conn.verify_encryption():
 **File Structure:**
 ```
 data/
-├── aico.db        # Encrypted LibSQL database
-├── aico.db.salt   # Salt file (0o600 permissions)
+├── PostgreSQL database        # Encrypted PostgreSQL database
+├── PostgreSQL database.salt   # Salt file (0o600 permissions)
 └── ...
 ```
 
@@ -181,8 +177,8 @@ AICO maintains organized encrypted storage with clear separation:
 
 ```
 data/
-├── aico.db              # Single encrypted LibSQL database
-├── aico.db.salt         # Salt file for encryption
+├── PostgreSQL database              # Single encrypted PostgreSQL database
+├── PostgreSQL database.salt         # Salt file for encryption
 └── logs/                # Log files (if separate from database)
 ```
 
@@ -216,7 +212,7 @@ AICO implements a unified key management approach for application-level encrypti
 AICO uses different key derivation functions optimized for specific use cases:
 
 **PBKDF2-SHA256 for Database Encryption:**
-- Used in LibSQL encrypted connections
+- Used in PostgreSQL encrypted connections
 - 100,000 iterations for balance of security and performance
 - Widely supported and battle-tested
 - Suitable for database encryption scenarios
@@ -251,10 +247,7 @@ key_manager = AICOKeyManager()
 master_key = key_manager.get_or_create_master_key()
 
 # Database encryption
-conn = EncryptedLibSQLConnection(
-    "data/aico.db",
-    key_manager=key_manager
-)
+conn = UnitOfWork()  # PostgreSQL with connection pooling
 ```
 
 #### Security Properties
@@ -347,10 +340,7 @@ schema_manager.store_metadata(key, value)  # Automatically encrypted
 # Schema operations use same encryption as user data
 class SecureSchemaOperations:
     def __init__(self, master_password: str):
-        self.connection = EncryptedLibSQLConnection(
-            db_path="data/aico.db",
-            master_password=master_password  # Same key as user data
-        )
+        self.connection = UnitOfWork()  # PostgreSQL with connection pooling
     
     def apply_schema_migration(self, schema_definitions):
         """Apply schema migration with full encryption"""

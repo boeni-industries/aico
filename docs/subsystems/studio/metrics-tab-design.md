@@ -146,7 +146,7 @@ The **Metrics Tab** within Operations delivers a jaw-dropping, comprehensive per
   - Shows last consolidation run, success rate
   
 - **Storage Breakdown** (stacked bar)
-  - LMDB size, ChromaDB size, SQLite size
+  - LMDB size, ChromaDB size, PostgreSQL size
 
 ---
 

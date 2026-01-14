@@ -46,7 +46,7 @@ Each stage builds deeper companionship rather than just adding features.
 AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.
 
 ### 👥 **Social Relationship Intelligence** ✅ *Production*
-- **Property Graph Storage**: Hybrid storage using libSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties
+- **Property Graph Storage**: Hybrid storage using PostgreSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties
 - **Multi-Pass Entity Extraction**: GLiNER zero-shot recognition + LLM relationship extraction
 - **Entity Resolution**: 3-step deduplication (semantic blocking → LLM matching → merging)
 - **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
@@ -61,7 +61,7 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 **Three-Tier Architecture** with brain-inspired complementary learning:
 - **Working Memory (LMDB)**: 30-day TTL, sub-millisecond access, conversation-scoped
 - **Semantic Memory (ChromaDB)**: Hybrid Search V3 with semantic + BM25 + IDF filtering + RRF fusion
-- **Knowledge Graph (libSQL + ChromaDB)**: Hybrid property graph with temporal reasoning and multi-hop queries
+- **Knowledge Graph (PostgreSQL + ChromaDB)**: Hybrid property graph with temporal reasoning and multi-hop queries
 - **Adaptive Memory System (AMS)**: Memory consolidation, Thompson Sampling, RLHF behavioral learning
 - **Memory Album**: User-curated conversation and message-level memories with emotional tone
 - **Real-time Streaming**: WebSocket-based token streaming for responsive conversations
@@ -124,7 +124,7 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 - AR/VR integration and spatial computing
 
 ### 🔒 **Privacy & Security** ✅ *Production*
-- **SQLCipher Encryption**: AES-256-GCM for all databases (libSQL + Drift)
+- **SQLCipher Encryption**: AES-256-GCM for all databases (PostgreSQL + Drift)
 - **CurveZMQ**: 100% encrypted message bus with mandatory mutual authentication
 - **Argon2id**: Memory-hard KDF for master key derivation
 - **PBKDF2**: Database encryption key derivation (100k iterations)
@@ -254,7 +254,7 @@ AICO is an open experiment—all code and progress are public. Whether you want 
   - **Component**: Individual functional units (e.g., Trait Vector, Appraisal Engine)
 
 - **Key Technologies:**
-  - **Backend:** Python 3.13, FastAPI 0.116+, ZeroMQ 27.0+ (CurveZMQ), Protocol Buffers 6.32, libSQL 0.1.8 (SQLCipher), ChromaDB 1.0.16+, LMDB
+  - **Backend:** Python 3.13, FastAPI 0.116+, ZeroMQ 27.0+ (CurveZMQ), Protocol Buffers 6.32, PostgreSQL 0.1.8 (SQLCipher), ChromaDB 1.0.16+, LMDB
   - **Frontend:** Flutter 3.27+, Dart 3.8+, Riverpod 3.0, Drift 2.29 (SQLCipher), Dio 5.4, Protocol Buffers 5.0
   - **Modelservice:** ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), BERT/RoBERTa (sentiment/emotion), Piper/XTTS TTS
 - **AI Models:** Qwen3 Abliterated 8B (conversation), vision model (planned), additional small models as needed

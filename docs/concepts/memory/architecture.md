@@ -74,8 +74,8 @@ AICO's memory system implements a sophisticated four-tier architecture designed 
 - **Scope**: Conversation chunks scoped by conversation_id and user_id
 - **Performance**: Full-corpus BM25 for accurate IDF statistics
 
-**B. Knowledge Graph (ChromaDB + libSQL)**
-- **Storage**: Hybrid ChromaDB (vectors) + libSQL (relational queries)
+**B. Knowledge Graph (ChromaDB + PostgreSQL)**
+- **Storage**: Hybrid ChromaDB (vectors) + PostgreSQL (relational queries)
 - **Extraction**: Multi-pass with GLiNER (entities) + LLM (relationships)
 - **Entity Resolution**: 3-step process (semantic blocking → LLM matching → LLM merging)
 - **Graph Fusion**: Conflict resolution, temporal updates, canonical IDs
@@ -234,7 +234,7 @@ class EmbeddingService:
 **Purpose**: Learn user interaction patterns, preferences, and behavioral adaptation
 
 **Planned Implementation**:
-- **Storage**: libSQL for fast pattern queries (no embeddings needed)
+- **Storage**: PostgreSQL for fast pattern queries (no embeddings needed)
 - **Scope**: User-level behavioral patterns across all conversations
 - **Learning**: Continuous observation and pattern extraction
 - **Adaptation**: Real-time response style and content adjustment
@@ -345,7 +345,7 @@ class AICOMemoryManager:
         # Storage backends
         self.working_memory = LMDBStore(config.working_memory_path)  # Conversation history + context
         self.semantic_store = ChromaDBStore(config.semantic_db_path)  # Segments + KG
-        self.procedural_store = LibSQLStore(config.procedural_db_path)  # User patterns (planned)
+        self.procedural_store = PostgreSQLStore(config.procedural_db_path)  # User patterns (planned)
         
         # Unified model service integration
         self.model_service = ModelServiceIntegration(config)
@@ -389,7 +389,31 @@ class AICOMemoryManager:
 1. **Real-time Updates**: Working memory receives and stores all conversation messages
 2. **Semantic Extraction**: Background process extracts segments and KG facts from conversations
 3. **Pattern Learning**: Procedural memory updated based on interaction outcomes (planned)
-4. **Memory Consolidation**: Periodic cleanup and optimization of stored data
+4. **Database Integration Flow
+
+**Write Flow** (New conversation message):
+1. **LMDB**: Store in working memory (immediate access)
+2. **PostgreSQL**: Create metadata record with conversation_id, user_id, timestamp
+3. **Modelservice**: Generate 768-dim embedding via sentence-transformers
+4. **ChromaDB**: Store embedding with metadata for semantic search
+
+**Read Flow** (Retrieve relevant context):
+1. **Query**: User asks question
+2. **Modelservice**: Generate query embedding
+3. **ChromaDB**: Semantic search returns top-N similar segments
+4. **PostgreSQL**: Fetch full metadata for returned segment IDs
+5. **LMDB**: Check working memory for recent context
+6. **Fusion**: Combine semantic + recency + relationship scores
+
+**Why This Architecture**:
+- **PostgreSQL**: ACID guarantees for metadata, referential integrity for relationships
+- **ChromaDB**: Optimized for vector similarity search (cosine distance)
+- **LMDB**: Ultra-fast access for active conversations
+- **Separation**: Each database handles what it does best
+
+## Memory Consolidation
+
+The consolidation process transfers experiences from working memory to long-term storage:d data
 
 **Consistency Management**:
 - **Conflict Detection**: Identify contradictory information across memory tiers
@@ -550,7 +574,7 @@ shared/aico/ai/memory/
 - Supports environment-specific and user-specific configuration overrides
 
 **Database Integration:**
-- Reuses `EncryptedLibSQLConnection` for persistent storage components
+- Reuses `PostgreSQL (via UnitOfWork)` for persistent storage components
 - Follows existing schema management and migration patterns
 - Maintains encryption-at-rest for all persistent data using AICO's key management
 

@@ -304,7 +304,7 @@ The data layer implements the Repository pattern with abstract interfaces, separ
 
 - **Secure Storage**: User credentials, API tokens
 - **Shared Preferences**: App settings, theme preferences
-- **SQLite**: Message cache, offline data
+- **PostgreSQL**: Message cache, offline data
 - **File Storage**: Avatar assets, temporary files
 
 ### UI Architecture

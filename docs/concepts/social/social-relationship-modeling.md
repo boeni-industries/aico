@@ -91,7 +91,7 @@ ChromaDB (Vector Store)
     ├── Behavioral event vectors
     └── Context-aware interaction history
 
-SQLite Metadata Store
+PostgreSQL Metadata Store
 ├── User profiles (minimal metadata)
 ├── Relationship metadata (confidence, timestamps)
 └── Interaction logs (audit trail)
@@ -127,7 +127,7 @@ SQLite Metadata Store
 2. **Node2Vec** (gensim) - Initial user behavioral embeddings
 3. **PyTorch** - Custom relationship vector training and GNN implementation
 4. **ChromaDB** - Vector storage and similarity search operations
-5. **SQLite** - Metadata storage and interaction audit trails
+5. **PostgreSQL** - Metadata storage and interaction audit trails
 
 ### **Processing Pipeline**
 1. **Interaction Capture**: Real-time conversation and behavior analysis

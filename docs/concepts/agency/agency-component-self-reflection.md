@@ -330,7 +330,7 @@ While reflection data currently lives in dedicated tables, future enhancements m
 
 ### 5.6 Policy Amendments (When `policy_mode = allow_amend`)
 
-When policy auto-amendment is enabled, Self-Reflection uses the **Values & Ethics service** to apply small changes to policy configuration, which is then persisted in the existing **policy tables** (e.g. ValueProfiles, PolicyRules) in the shared libSQL store.
+When policy auto-amendment is enabled, Self-Reflection uses the **Values & Ethics service** to apply small changes to policy configuration, which is then persisted in the existing **policy tables** (e.g. ValueProfiles, PolicyRules) in the shared PostgreSQL store.
 
 For every applied amendment, the system must:
 
@@ -347,7 +347,7 @@ For every applied amendment, the system must:
   - Decision rationale summary (from `summary_text`)
   
 - **Persist the actual rule change** by calling Values & Ethics APIs, which in turn:
-  - Update the appropriate `PolicyRule` / ValueProfile rows in libSQL
+  - Update the appropriate `PolicyRule` / ValueProfile rows in PostgreSQL
   - Optionally project significant changes into the World Model as `WorldStateFact`s about AICO's internal configuration
   - Mark the lesson as applied: `UPDATE agency_lessons SET applied_at = NOW(), applied_by = 'values_ethics_service'`
 

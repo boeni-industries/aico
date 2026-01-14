@@ -60,7 +60,7 @@
 - **ID:** `overview.agency.active_goals`
 - **Description:** Number of currently active goals in the Agency system.
 - **Source:**
-  - `agency_goals` table (status column) in the libSQL schema.
+  - `agency_goals` table (status column) in the PostgreSQL schema.
 - **Computation:** `COUNT(*) FROM agency_goals WHERE status = 'active'`.
 - **Update cadence:** 15–30 seconds.
 - **Primary surfaces:**
@@ -290,7 +290,7 @@ Each left‑hand domain exposes one primary KPI on the Overview cards.
 
 ## 4. Memory & AMS Metrics
 
-> Metrics over libSQL schema (e.g. `ams_user_memories`, trajectories), LMDB working memory, and Chroma/KG.
+> Metrics over PostgreSQL schema (e.g. `ams_user_memories`, trajectories), LMDB working memory, and Chroma/KG.
 
 ### 4.1 Working Memory (LMDB)
 
@@ -302,13 +302,13 @@ Each left‑hand domain exposes one primary KPI on the Overview cards.
 - **Description:** Utilization of the 30‑day TTL window.
 - **Source:** LMDB key timestamps.
 
-### 4.2 Semantic Memory & KG (libSQL + Chroma)
+### 4.2 Semantic Memory & KG (PostgreSQL + Chroma)
 
 - **ID:** `memory.semantic.vector_count`
 - **Description:** Number of vectors stored in Chroma.
 
 - **ID:** `memory.kg.node_edge_counts`
-- **Description:** Node and edge counts in the knowledge graph (libSQL + Chroma indices).
+- **Description:** Node and edge counts in the knowledge graph (PostgreSQL + Chroma indices).
 
 ### 4.3 AMS
 
