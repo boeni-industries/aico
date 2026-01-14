@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
-from aico.data.user.models import UserProfile
+from aico.ai.user.models import UserProfile
 
 
 @pytest.fixture

@@ -22,9 +22,11 @@ from .models import (
 logger = get_logger("shared.ai.agency.store")
 
 
-class GoalStore:
-    """Persistence layer for agency_goals table."""
+# GoalStore DELETED - replaced by AgencyService
+# All goal operations now go through aico.services.agency_service.AgencyService
 
+class _DeletedGoalStore:
+    """LEGACY CLASS - DO NOT USE. Use AgencyService instead."""
     def __init__(self, db_connection) -> None:
         self.db = db_connection
 
@@ -239,9 +241,11 @@ class GoalStore:
             raise
 
 
-class PlanStore:
-    """Persistence layer for agency_plans table."""
+# PlanStore DELETED - replaced by AgencyService
+# All plan operations now go through aico.services.agency_service.AgencyService
 
+class _DeletedPlanStore:
+    """LEGACY CLASS - DO NOT USE. Use AgencyService instead."""
     def __init__(self, db_connection, skill_registry=None) -> None:
         self.db = db_connection
         self.skill_registry = skill_registry

@@ -54,7 +54,7 @@ class PostgresAgencyEventRepository(Repository[AgencyEvent]):
             plan_id=row.plan_id,
             event_type=row.event_type,
             source=row.source,
-            payload_json=row.payload_json,
+            payload=json.loads(row.payload_json) if row.payload_json else {},
             created_at=row.created_at,
         )
     

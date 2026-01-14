@@ -1,5 +1,5 @@
 """
-KGNodesRepository - PostgreSQL implementation
+NodesRepository - PostgreSQL implementation
 
 Handles CRUD operations for knowledge graph nodes.
 """
@@ -9,19 +9,27 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.ai.knowledge_graph.models import KGNode
+from aico.ai.knowledge_graph.models import Node
 from aico.data.tables import kg_nodes
 from aico.data.repositories.base import Repository
 
 
-class PostgresKGNodesRepository(Repository[KGNode]):
+class PostgresNodesRepository(Repository[Node]):
     """PostgreSQL implementation of KG nodes repository."""
     
     def __init__(self, session: AsyncSession):
         self.session = session
     
-    async def create(self, entity: KGNode) -> KGNode:
+    async def create(self, entity: Node) -> Node:
         """Create a new KG node."""
+        from datetime import datetime
+        
+        # Convert ISO string timestamps to datetime objects
+        created_at = datetime.fromisoformat(entity.created_at) if isinstance(entity.created_at, str) else entity.created_at
+        updated_at = datetime.fromisoformat(entity.updated_at) if isinstance(entity.updated_at, str) else entity.updated_at
+        valid_from = datetime.fromisoformat(entity.valid_from) if entity.valid_from and isinstance(entity.valid_from, str) else entity.valid_from
+        valid_until = datetime.fromisoformat(entity.valid_until) if entity.valid_until and isinstance(entity.valid_until, str) else entity.valid_until
+        
         stmt = kg_nodes.insert().values(
             id=entity.id,
             user_id=entity.user_id,
@@ -29,20 +37,18 @@ class PostgresKGNodesRepository(Repository[KGNode]):
             properties=entity.properties,
             confidence=entity.confidence,
             source_text=entity.source_text,
-            created_at=entity.created_at,
-            updated_at=entity.updated_at,
-            valid_from=entity.valid_from,
-            valid_until=entity.valid_until,
+            created_at=created_at,
+            updated_at=updated_at,
+            language=entity.language,
+            valid_from=valid_from,
+            valid_until=valid_until,
             is_current=entity.is_current,
             canonical_id=entity.canonical_id,
-            aliases_json=entity.aliases_json,
-            language=entity.language,
-            reason=entity.reason,
         )
         await self.session.execute(stmt)
         return entity
     
-    async def get_by_id(self, entity_id: str) -> Optional[KGNode]:
+    async def get_by_id(self, entity_id: str) -> Optional[Node]:
         """Get KG node by ID."""
         stmt = select(kg_nodes).where(kg_nodes.c.id == entity_id)
         result = await self.session.execute(stmt)
@@ -51,25 +57,24 @@ class PostgresKGNodesRepository(Repository[KGNode]):
         if not row:
             return None
         
-        return KGNode(
+        # Construct Node directly to preserve database ID and timestamps
+        return Node(
             id=row.id,
             user_id=row.user_id,
             label=row.label,
             properties=row.properties,
             confidence=row.confidence,
             source_text=row.source_text,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            valid_from=row.valid_from,
-            valid_until=row.valid_until,
+            created_at=row.created_at.isoformat() if row.created_at and hasattr(row.created_at, 'isoformat') else row.created_at,
+            updated_at=row.updated_at.isoformat() if row.updated_at and hasattr(row.updated_at, 'isoformat') else row.updated_at,
+            language=row.language,
+            valid_from=row.valid_from.isoformat() if row.valid_from and hasattr(row.valid_from, 'isoformat') else row.valid_from,
+            valid_until=row.valid_until.isoformat() if row.valid_until and hasattr(row.valid_until, 'isoformat') else row.valid_until,
             is_current=row.is_current,
             canonical_id=row.canonical_id,
-            aliases_json=row.aliases_json,
-            language=row.language,
-            reason=row.reason,
         )
     
-    async def update(self, entity: KGNode) -> KGNode:
+    async def update(self, entity: Node) -> Node:
         """Update an existing KG node."""
         stmt = (
             update(kg_nodes)
@@ -81,8 +86,6 @@ class PostgresKGNodesRepository(Repository[KGNode]):
                 valid_until=entity.valid_until,
                 is_current=entity.is_current,
                 canonical_id=entity.canonical_id,
-                aliases_json=entity.aliases_json,
-                reason=entity.reason,
             )
         )
         await self.session.execute(stmt)
@@ -94,7 +97,7 @@ class PostgresKGNodesRepository(Repository[KGNode]):
         result = await self.session.execute(stmt)
         return result.rowcount > 0
     
-    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[KGNode]:
+    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[Node]:
         """List KG nodes with optional filters."""
         stmt = select(kg_nodes)
         
@@ -114,22 +117,20 @@ class PostgresKGNodesRepository(Repository[KGNode]):
         result = await self.session.execute(stmt)
         
         return [
-            KGNode(
+            Node(
                 id=row.id,
                 user_id=row.user_id,
                 label=row.label,
                 properties=row.properties,
                 confidence=row.confidence,
                 source_text=row.source_text,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-                valid_from=row.valid_from,
-                valid_until=row.valid_until,
+                created_at=row.created_at.isoformat() if row.created_at and hasattr(row.created_at, 'isoformat') else row.created_at,
+                updated_at=row.updated_at.isoformat() if row.updated_at and hasattr(row.updated_at, 'isoformat') else row.updated_at,
+                language=row.language,
+                valid_from=row.valid_from.isoformat() if row.valid_from and hasattr(row.valid_from, 'isoformat') else row.valid_from,
+                valid_until=row.valid_until.isoformat() if row.valid_until and hasattr(row.valid_until, 'isoformat') else row.valid_until,
                 is_current=row.is_current,
                 canonical_id=row.canonical_id,
-                aliases_json=row.aliases_json,
-                language=row.language,
-                reason=row.reason,
             )
             for row in result.fetchall()
         ]
@@ -149,7 +150,7 @@ class PostgresKGNodesRepository(Repository[KGNode]):
         result = await self.session.execute(stmt)
         return result.scalar() or 0
     
-    async def get_user_nodes(self, user_id: str, label: Optional[str] = None) -> List[KGNode]:
+    async def get_user_nodes(self, user_id: str, label: Optional[str] = None) -> List[Node]:
         """Get current nodes for a user, optionally filtered by label."""
         conditions = [
             kg_nodes.c.user_id == user_id,
@@ -164,22 +165,20 @@ class PostgresKGNodesRepository(Repository[KGNode]):
         result = await self.session.execute(stmt)
         
         return [
-            KGNode(
+            Node(
                 id=row.id,
                 user_id=row.user_id,
                 label=row.label,
                 properties=row.properties,
                 confidence=row.confidence,
                 source_text=row.source_text,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-                valid_from=row.valid_from,
-                valid_until=row.valid_until,
+                created_at=row.created_at.isoformat() if row.created_at and hasattr(row.created_at, 'isoformat') else row.created_at,
+                updated_at=row.updated_at.isoformat() if row.updated_at and hasattr(row.updated_at, 'isoformat') else row.updated_at,
+                language=row.language,
+                valid_from=row.valid_from.isoformat() if row.valid_from and hasattr(row.valid_from, 'isoformat') else row.valid_from,
+                valid_until=row.valid_until.isoformat() if row.valid_until and hasattr(row.valid_until, 'isoformat') else row.valid_until,
                 is_current=row.is_current,
                 canonical_id=row.canonical_id,
-                aliases_json=row.aliases_json,
-                language=row.language,
-                reason=row.reason,
             )
             for row in result.fetchall()
         ]

@@ -28,11 +28,7 @@ from .libsql import (
     SchemaRegistry,
     register_schema
 )
-from .user import (
-    UserProfile,
-    AuthenticationData,
-    UserService
-)
+from aico.ai.user.models import UserProfile
 
 __all__ = [
     "LibSQLConnection",

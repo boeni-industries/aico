@@ -20,19 +20,12 @@ class TaskStatus(str, Enum):
 
 
 class SchedulerTask(BaseModel):
-    """Scheduler task domain model."""
+    """Scheduler task domain model matching PostgreSQL schema."""
     task_id: str
-    task_type: str
-    user_id: Optional[str] = None
-    schedule: str
-    next_run_at: Optional[datetime] = None
-    last_run_at: Optional[datetime] = None
-    is_active: bool = True
-    retry_count: int = 0
-    max_retries: int = 3
-    timeout_seconds: int = 300
-    priority: int = 50
-    metadata: dict = Field(default_factory=dict)
+    task_class: str  # Python class path for the task
+    schedule: str  # Cron expression or schedule string
+    config: Optional[str] = None  # JSON configuration
+    enabled: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now())
     updated_at: datetime = Field(default_factory=lambda: datetime.now())
 

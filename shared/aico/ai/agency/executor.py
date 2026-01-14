@@ -17,7 +17,7 @@ from aico.core.logging import get_logger
 from aico.data.libsql import EncryptedLibSQLConnection
 
 from .models import Plan, PlanStep, StepStatus, PlanStatus
-from .store import PlanStore
+from aico.services.agency_service import AgencyService
 
 
 logger = get_logger("shared.ai.agency.executor")
@@ -147,14 +147,12 @@ class PlanExecutor:
     def __init__(
         self,
         db: EncryptedLibSQLConnection,
-        plan_store: PlanStore,
-        goal_store: "GoalStore",
+        agency_service: AgencyService,
         skill_invoker: Optional[Any] = None,
         logger=None,
     ):
         self.db = db
-        self.plan_store = plan_store
-        self.goal_store = goal_store
+        self.agency_service = agency_service
         self.skill_invoker = skill_invoker
         self.logger = logger or globals()["logger"]
     
@@ -178,7 +176,7 @@ class PlanExecutor:
             PlanExecution instance
         """
         # Get plan
-        plan = await self.plan_store.get_plan(plan_id)
+        plan = await self.agency_service.get_plan(plan_id)
         if not plan:
             raise ValueError(f"Plan {plan_id} not found")
         
@@ -467,7 +465,7 @@ class PlanExecutor:
         
         try:
             # Get plan and step details
-            plan = await self.plan_store.get_plan(execution.plan_id)
+            plan = await self.agency_service.get_plan(execution.plan_id)
             
             if not plan:
                 raise ValueError(f"Plan {execution.plan_id} not found")
@@ -603,7 +601,7 @@ class PlanExecutor:
         skill_input = {}
         
         # Get goal information for context
-        goal = await self.goal_store.get_goal(execution.goal_id)
+        goal = await self.agency_service.get_goal(execution.goal_id)
         
         # Extract common parameters from step metadata
         metadata = step.metadata or {}

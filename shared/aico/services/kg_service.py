@@ -34,13 +34,13 @@ class KGService:
     async def create_node(self, node_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new KG node."""
         try:
-            from aico.data.kg.models import KGNode
+            from aico.ai.knowledge_graph.models import Node
             
-            node = KGNode(**node_data)
+            node = node_data if isinstance(node_data, Node) else Node(**node_data)
             created = await self.uow.kg_nodes.create(node)
             await self.uow.commit()
             
-            logger.info("[KG_SERVICE] Created node", extra={"node_id": created.node_id, "user_id": created.user_id})
+            logger.info("[KG_SERVICE] Created node", extra={"node_id": created.id, "user_id": created.user_id})
             return created
         except Exception as e:
             logger.error(f"[KG_SERVICE] Failed to create node: {e}")
@@ -70,13 +70,13 @@ class KGService:
     async def update_node(self, node_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update a node."""
         try:
-            from aico.data.kg.models import KGNode
+            from aico.ai.knowledge_graph.models import Node
             
-            node = KGNode(**node_data)
+            node = node_data if isinstance(node_data, Node) else Node(**node_data)
             updated = await self.uow.kg_nodes.update(node)
             await self.uow.commit()
             
-            logger.info("[KG_SERVICE] Updated node", extra={"node_id": node.node_id})
+            logger.info("[KG_SERVICE] Updated node", extra={"node_id": node.id})
             return updated
         except Exception as e:
             logger.error(f"[KG_SERVICE] Failed to update node: {e}")
@@ -101,14 +101,14 @@ class KGService:
     async def create_edge(self, edge_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new KG edge (relationship)."""
         try:
-            from aico.data.kg.models import KGEdge
+            from aico.ai.knowledge_graph.models import Edge
             
-            edge = KGEdge(**edge_data)
+            edge = edge_data if isinstance(edge_data, Edge) else Edge(**edge_data)
             created = await self.uow.kg_edges.create(edge)
             await self.uow.commit()
             
             logger.info("[KG_SERVICE] Created edge", extra={
-                "edge_id": created.edge_id,
+                "edge_id": created.id,
                 "source_id": created.source_id,
                 "target_id": created.target_id
             })
@@ -153,13 +153,13 @@ class KGService:
     async def update_edge(self, edge_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an edge."""
         try:
-            from aico.data.kg.models import KGEdge
+            from aico.ai.knowledge_graph.models import Edge
             
-            edge = KGEdge(**edge_data)
+            edge = edge_data if isinstance(edge_data, Edge) else Edge(**edge_data)
             updated = await self.uow.kg_edges.update(edge)
             await self.uow.commit()
             
-            logger.info("[KG_SERVICE] Updated edge", extra={"edge_id": edge.edge_id})
+            logger.info("[KG_SERVICE] Updated edge", extra={"edge_id": edge.id})
             return updated
         except Exception as e:
             logger.error(f"[KG_SERVICE] Failed to update edge: {e}")
@@ -184,7 +184,7 @@ class KGService:
     async def set_node_property(self, node_id: str, key: str, value: Any) -> bool:
         """Set a property on a node."""
         try:
-            from aico.data.kg.models import KGNodeProperty
+            # Node properties are stored in the properties dict of Node
             
             prop = KGNodeProperty(
                 node_id=node_id,
@@ -214,7 +214,7 @@ class KGService:
     async def set_edge_property(self, edge_id: str, key: str, value: Any) -> bool:
         """Set a property on an edge."""
         try:
-            from aico.data.kg.models import KGEdgeProperty
+            # Edge properties are stored in the properties dict of Edge
             
             prop = KGEdgeProperty(
                 edge_id=edge_id,

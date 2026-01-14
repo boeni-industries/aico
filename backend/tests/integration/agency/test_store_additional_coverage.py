@@ -20,9 +20,10 @@ from aico.ai.agency.models import (
     StepStatus,
     AgencyEvent,
 )
+from aico.services.agency_service import AgencyService
+from aico.data.uow import UnitOfWork
+from aico.data.postgres.connection import get_session_factory
 from aico.ai.agency.store import (
-    GoalStore,
-    PlanStore,
     AgencyEventStore,
     ReflectionStore,
 )
@@ -38,56 +39,68 @@ class TestGoalStoreErrorHandling:
     @pytest.mark.asyncio
     async def test_create_goal_database_error(self, test_config, test_db, sample_goal):
         """Test error handling when database fails during goal creation."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Mock database to raise error
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.create_goal(sample_goal)
+                await agency_service.create_goal(sample_goal)
     
     @pytest.mark.asyncio
     async def test_get_goal_database_error(self, test_config, test_db):
         """Test error handling when database fails during goal retrieval."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.get_goal("goal-123")
+                await agency_service.get_goal("goal-123")
     
     @pytest.mark.asyncio
     async def test_list_goals_database_error(self, test_config, test_db, test_user):
         """Test error handling when database fails during goal listing."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.list_goals(test_user)
+                await agency_service.list_goals(test_user)
     
     @pytest.mark.asyncio
     async def test_update_goal_status_database_error(self, test_config, test_db):
         """Test error handling when database fails during status update."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.update_goal_status("goal-123", GoalStatus.ACTIVE)
+                await agency_service.update_goal_status("goal-123", GoalStatus.ACTIVE)
     
     @pytest.mark.asyncio
     async def test_get_goals_by_status_empty_statuses(self, test_config, test_db, test_user):
         """Test get_goals_by_status with empty status list."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
-        goals = await store.get_goals_by_status(test_user, [])
+        goals = await agency_service.get_goals_by_status(test_user, [])
         
         assert goals == []
     
     @pytest.mark.asyncio
     async def test_get_goals_by_status_single_status(self, test_config, test_db, test_user, sample_goal):
         """Test get_goals_by_status with single status."""
-        store = GoalStore(test_db)
-        await store.create_goal(sample_goal)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
+        await agency_service.create_goal(sample_goal)
         
-        goals = await store.get_goals_by_status(test_user, [GoalStatus.PENDING])
+        goals = await agency_service.get_goals_by_status(test_user, [GoalStatus.PENDING])
         
         assert len(goals) == 1
         assert goals[0].goal_id == sample_goal.goal_id
@@ -95,11 +108,13 @@ class TestGoalStoreErrorHandling:
     @pytest.mark.asyncio
     async def test_get_goals_by_status_multiple_statuses(self, test_config, test_db, test_user, sample_goal):
         """Test get_goals_by_status with multiple statuses."""
-        store = GoalStore(test_db)
-        await store.create_goal(sample_goal)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
+        await agency_service.create_goal(sample_goal)
         
         # Update one to active
-        await store.update_goal_status(sample_goal.goal_id, GoalStatus.ACTIVE)
+        await agency_service.update_goal_status(sample_goal.goal_id, GoalStatus.ACTIVE)
         
         # Create another pending goal
         goal2 = Goal(
@@ -109,26 +124,30 @@ class TestGoalStoreErrorHandling:
             goal_type="exploration",
             title="Second Goal",
         )
-        await store.create_goal(goal2)
+        await agency_service.create_goal(goal2)
         
         # Query for both statuses
-        goals = await store.get_goals_by_status(test_user, [GoalStatus.PENDING, GoalStatus.ACTIVE])
+        goals = await agency_service.get_goals_by_status(test_user, [GoalStatus.PENDING, GoalStatus.ACTIVE])
         
         assert len(goals) == 2
     
     @pytest.mark.asyncio
     async def test_get_goals_by_status_database_error(self, test_config, test_db, test_user):
         """Test error handling in get_goals_by_status."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.get_goals_by_status(test_user, [GoalStatus.PENDING])
+                await agency_service.get_goals_by_status(test_user, [GoalStatus.PENDING])
     
     @pytest.mark.asyncio
     async def test_create_goal_with_empty_metadata(self, test_config, test_db, test_user):
         """Test creating goal with empty metadata."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         goal = Goal(
             goal_id="goal-empty-meta",
@@ -139,27 +158,29 @@ class TestGoalStoreErrorHandling:
             metadata={},  # Empty dict instead of None
         )
         
-        created = await store.create_goal(goal)
+        created = await agency_service.create_goal(goal)
         
         assert created.goal_id == goal.goal_id
         
         # Retrieve and verify
-        retrieved = await store.get_goal(goal.goal_id)
+        retrieved = await agency_service.get_goal(goal.goal_id)
         assert retrieved is not None
         assert retrieved.metadata == {}
     
     @pytest.mark.asyncio
     async def test_list_goals_with_status_filter(self, test_config, test_db, test_user, sample_goal):
         """Test listing goals with status filter."""
-        store = GoalStore(test_db)
-        await store.create_goal(sample_goal)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
+        await agency_service.create_goal(sample_goal)
         
         # Filter for completed (should be empty)
-        completed = await store.list_goals(test_user, status=GoalStatus.COMPLETED)
+        completed = await agency_service.list_goals(test_user, status=GoalStatus.COMPLETED)
         assert len(completed) == 0
         
         # Filter for pending (should find our goal)
-        pending = await store.list_goals(test_user, status=GoalStatus.PENDING)
+        pending = await agency_service.list_goals(test_user, status=GoalStatus.PENDING)
         assert len(pending) == 1
         assert pending[0].goal_id == sample_goal.goal_id
 
@@ -174,7 +195,7 @@ class TestPlanStoreErrorHandling:
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.create_plan(sample_plan)
+                await agency_service.create_plan(sample_plan)
     
     @pytest.mark.asyncio
     async def test_get_plan_database_error(self, test_config, test_db):
@@ -183,7 +204,7 @@ class TestPlanStoreErrorHandling:
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.get_plan("plan-123")
+                await agency_service.get_plan("plan-123")
     
     @pytest.mark.asyncio
     async def test_list_plans_for_goal_database_error(self, test_config, test_db):
@@ -192,7 +213,7 @@ class TestPlanStoreErrorHandling:
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.list_plans_for_goal("goal-123")
+                await agency_service.list_plans_for_goal("goal-123")
     
     @pytest.mark.asyncio
     async def test_update_plan_status_database_error(self, test_config, test_db):
@@ -201,7 +222,7 @@ class TestPlanStoreErrorHandling:
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.update_plan_status("plan-123", PlanStatus.ACTIVE)
+                await agency_service.update_plan_status("plan-123", PlanStatus.ACTIVE)
     
     @pytest.mark.asyncio
     async def test_save_steps_database_error(self, test_config, test_db):
@@ -218,7 +239,7 @@ class TestPlanStoreErrorHandling:
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.save_steps("plan-123", steps)
+                await agency_service.save_steps("plan-123", steps)
     
     @pytest.mark.asyncio
     async def test_create_plan_with_empty_metadata_dict(self, test_config, test_db, test_user, sample_goal):
@@ -352,7 +373,7 @@ class TestAgencyEventStoreErrorHandling:
         
         with patch.object(test_db, 'execute', side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                await store.log_event(event)
+                await agency_service.log_event(event)
     
     @pytest.mark.asyncio
     async def test_log_event_with_goal_and_plan_ids(self, test_config, test_db, test_user, sample_goal, sample_plan):
@@ -375,7 +396,7 @@ class TestAgencyEventStoreErrorHandling:
         )
         
         # Should not raise exception
-        await store.log_event(event)
+        await agency_service.log_event(event)
     
     @pytest.mark.asyncio
     async def test_log_event_without_goal_plan_ids(self, test_config, test_db, test_user):
@@ -390,7 +411,7 @@ class TestAgencyEventStoreErrorHandling:
         )
         
         # Should not raise exception
-        await store.log_event(event)
+        await agency_service.log_event(event)
 
 
 class TestReflectionStoreErrorHandling:
@@ -412,7 +433,7 @@ class TestReflectionStoreErrorHandling:
             tags=["tag1", "tag2"],
         )
         
-        created = await store.create_note(note)
+        created = await agency_service.create_note(note)
         
         assert created.note_id == note.note_id
         assert created.created_at is not None
@@ -441,7 +462,7 @@ class TestReflectionStoreErrorHandling:
             content="Reflection on goal progress",
         )
         
-        created = await store.create_note(note)
+        created = await agency_service.create_note(note)
         
         assert created.note_id == note.note_id
         assert created.related_goal_id == sample_goal.goal_id
@@ -463,7 +484,7 @@ class TestReflectionStoreErrorHandling:
             tags=[],  # Empty list instead of None
         )
         
-        created = await store.create_note(note)
+        created = await agency_service.create_note(note)
         
         assert created.note_id == note.note_id
 
@@ -474,7 +495,9 @@ class TestGoalStoreEdgeCases:
     @pytest.mark.asyncio
     async def test_get_goal_with_null_description(self, test_config, test_db, test_user):
         """Test retrieving goal with null description."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         goal = Goal(
             goal_id="goal-no-desc",
@@ -485,16 +508,18 @@ class TestGoalStoreEdgeCases:
             description=None,
         )
         
-        await store.create_goal(goal)
+        await agency_service.create_goal(goal)
         
-        retrieved = await store.get_goal(goal.goal_id)
+        retrieved = await agency_service.get_goal(goal.goal_id)
         assert retrieved is not None
         assert retrieved.description is None
     
     @pytest.mark.asyncio
     async def test_list_goals_without_status_filter(self, test_config, test_db, test_user):
         """Test listing all goals without status filter."""
-        store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Create goals with different statuses
         goal1 = Goal(
@@ -514,11 +539,11 @@ class TestGoalStoreEdgeCases:
             status=GoalStatus.ACTIVE,
         )
         
-        await store.create_goal(goal1)
-        await store.create_goal(goal2)
+        await agency_service.create_goal(goal1)
+        await agency_service.create_goal(goal2)
         
         # List all goals
-        all_goals = await store.list_goals(test_user)
+        all_goals = await agency_service.list_goals(test_user)
         
         assert len(all_goals) == 2
 

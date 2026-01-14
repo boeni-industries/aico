@@ -39,17 +39,25 @@ class MemoryService:
     async def create_memory_metadata(self, memory_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create memory metadata record."""
         try:
-            from aico.data.ams.models import AMSUserMemory
+            from aico.ai.ams.models import AMSUserMemory
             
             memory = AMSUserMemory(**memory_data)
             created = await self.uow.ams_user_memories.create(memory)
             await self.uow.commit()
             
-            logger.info("[MEMORY_SERVICE] Created memory metadata", extra={"memory_id": created.memory_id})
+            logger.info("[MEMORY_SERVICE] Created memory metadata", extra={"fact_id": created.fact_id})
             return created
         except Exception as e:
             logger.error(f"[MEMORY_SERVICE] Failed to create memory metadata: {e}")
             await self.uow.rollback()
+            raise
+
+    async def get_memory_metadata(self, fact_id: str) -> Optional[Any]:
+        """Get memory metadata by fact ID."""
+        try:
+            return await self.uow.ams_user_memories.get_by_id(fact_id)
+        except Exception as e:
+            logger.error(f"[MEMORY_SERVICE] Failed to get memory metadata: {e}", extra={"fact_id": fact_id})
             raise
 
     async def get_user_memories(self, user_id: str, memory_type: Optional[str] = None) -> List[Any]:
@@ -63,6 +71,10 @@ class MemoryService:
         except Exception as e:
             logger.error(f"[MEMORY_SERVICE] Failed to get user memories: {e}", extra={"user_id": user_id})
             raise
+
+    async def list_user_memories(self, user_id: str) -> List[Any]:
+        """List all memories for a user (alias for get_user_memories)."""
+        return await self.get_user_memories(user_id)
 
     async def get_episodic_memories(self, user_id: str) -> List[Any]:
         """Get episodic memory metadata for a user."""

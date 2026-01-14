@@ -236,7 +236,9 @@ def mock_llm_plan_response_failure() -> Dict[str, Any]:
 @pytest.fixture
 async def seeded_goals(test_db, sample_goals):
     """Seed database with sample goals."""
-    from aico.ai.agency.store import GoalStore
+    from aico.services.agency_service import AgencyService
+    from aico.data.uow import UnitOfWork
+    from aico.data.postgres.connection import get_session_factory
     
     # Clean up any existing goals with these IDs first
     test_db.execute("PRAGMA foreign_keys = OFF")
@@ -245,9 +247,12 @@ async def seeded_goals(test_db, sample_goals):
     test_db.commit()
     test_db.execute("PRAGMA foreign_keys = ON")
     
-    store = GoalStore(test_db)
+    session_factory = await get_session_factory()
+    uow = UnitOfWork(session_factory)
+    agency_service = AgencyService(uow)
     for goal in sample_goals:
-        await store.create_goal(goal)
+        await agency_service.create_goal(goal)
+    await uow.commit()
     
     return sample_goals
 
@@ -255,7 +260,9 @@ async def seeded_goals(test_db, sample_goals):
 @pytest.fixture
 async def seeded_goal_with_plan(test_db, sample_goal, sample_plan):
     """Seed database with a goal and its plan."""
-    from aico.ai.agency.store import GoalStore, PlanStore
+    from aico.services.agency_service import AgencyService
+    from aico.data.uow import UnitOfWork
+    from aico.data.postgres.connection import get_session_factory
     
     # Clean up any existing goal/plan with these IDs first
     test_db.execute("PRAGMA foreign_keys = OFF")
@@ -264,11 +271,13 @@ async def seeded_goal_with_plan(test_db, sample_goal, sample_plan):
     test_db.commit()
     test_db.execute("PRAGMA foreign_keys = ON")
     
-    goal_store = GoalStore(test_db)
-    plan_store = PlanStore(test_db)
+    session_factory = await get_session_factory()
+    uow = UnitOfWork(session_factory)
+    agency_service = AgencyService(uow)
     
-    await goal_store.create_goal(sample_goal)
-    await plan_store.create_plan(sample_plan)
+    await agency_service.create_goal(sample_goal)
+    await agency_service.create_plan(sample_plan)
+    await uow.commit()
     
     return sample_goal, sample_plan
 

@@ -247,14 +247,18 @@ class TestIntentionSetManagement:
     @pytest.mark.asyncio
     async def test_update_intention_set_with_urgent_goal(self, test_config, test_db, test_user, sample_goal):
         """Test updating intention set with urgent goal."""
-        from aico.ai.agency.store import GoalStore
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
         
         arbiter = GoalArbiter(test_db, config=test_config)
-        goal_store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Create goal in DB first to satisfy FK
         sample_goal.priority = GoalPriority.HIGH
-        await goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         intention_set = await arbiter.update_intention_set(
             user_id=test_user,
@@ -268,10 +272,14 @@ class TestIntentionSetManagement:
     @pytest.mark.asyncio
     async def test_update_intention_set_respects_capacity(self, test_config, test_db, test_user):
         """Test intention set respects max_active capacity."""
-        from aico.ai.agency.store import GoalStore
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
         
         arbiter = GoalArbiter(test_db, config=test_config)
-        goal_store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Create a few goals in DB
         goals = []
@@ -287,7 +295,7 @@ class TestIntentionSetManagement:
                 status=GoalStatus.PENDING,
                 created_at=datetime.now(UTC),
             )
-            await goal_store.create_goal(goal)
+            await agency_service.create_goal(goal)
             goals.append(goal)
         
         intention_set = await arbiter.update_intention_set(
@@ -303,13 +311,17 @@ class TestIntentionSetManagement:
     @pytest.mark.asyncio
     async def test_update_intention_set_updates_existing(self, test_config, test_db, test_user, sample_goal):
         """Test updating intention set updates existing intentions."""
-        from aico.ai.agency.store import GoalStore
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
         
         arbiter = GoalArbiter(test_db, config=test_config)
-        goal_store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Create goal in DB
-        await goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # First update
         await arbiter.update_intention_set(
@@ -334,10 +346,14 @@ class TestIntentionSetManagement:
     @pytest.mark.asyncio
     async def test_update_intention_set_background_goals(self, test_config, test_db, test_user):
         """Test background priority goals are proposed but not activated."""
-        from aico.ai.agency.store import GoalStore
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
         
         arbiter = GoalArbiter(test_db, config=test_config)
-        goal_store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Create low-scoring goal
         goal = Goal(
@@ -351,7 +367,7 @@ class TestIntentionSetManagement:
             status=GoalStatus.PENDING,
             created_at=datetime.now(UTC) - timedelta(days=7),
         )
-        await goal_store.create_goal(goal)
+        await agency_service.create_goal(goal)
         
         intention_set = await arbiter.update_intention_set(
             user_id=test_user,
@@ -365,13 +381,17 @@ class TestIntentionSetManagement:
     @pytest.mark.asyncio
     async def test_activate_intention(self, test_config, test_db, test_user, sample_goal):
         """Test activating a proposed intention."""
-        from aico.ai.agency.store import GoalStore
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
         
         arbiter = GoalArbiter(test_db, config=test_config)
-        goal_store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Create goal in DB first
-        await goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Create intention
         scored_goal = arbiter.score_goal(sample_goal)
@@ -394,13 +414,17 @@ class TestIntentionSetManagement:
     @pytest.mark.asyncio
     async def test_deactivate_intention_dropped(self, test_config, test_db, test_user, sample_goal):
         """Test deactivating intention with 'dropped' reason."""
-        from aico.ai.agency.store import GoalStore
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
         
         arbiter = GoalArbiter(test_db, config=test_config)
-        goal_store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Create goal in DB first
-        await goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Create active intention
         scored_goal = arbiter.score_goal(sample_goal)
@@ -415,13 +439,17 @@ class TestIntentionSetManagement:
     @pytest.mark.asyncio
     async def test_deactivate_intention_paused(self, test_config, test_db, test_user, sample_goal):
         """Test deactivating intention with 'paused' reason."""
-        from aico.ai.agency.store import GoalStore
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
         
         arbiter = GoalArbiter(test_db, config=test_config)
-        goal_store = GoalStore(test_db)
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        agency_service = AgencyService(uow)
         
         # Create goal in DB first
-        await goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Create active intention
         scored_goal = arbiter.score_goal(sample_goal)

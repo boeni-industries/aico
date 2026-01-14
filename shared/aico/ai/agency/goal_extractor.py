@@ -675,11 +675,15 @@ Return ONLY valid JSON, no other text."""
             
             # Get all pending goals for user
             print(f"🔍 [SIMILARITY] About to import GoalStore...")
-            from aico.ai.agency.store import GoalStore
+            from aico.services.agency_service import AgencyService
+            from aico.data.uow import UnitOfWork
+            from aico.data.postgres.connection import get_session_factory
             print(f"🔍 [SIMILARITY] Creating GoalStore with db_connection={self._db_connection}")
-            goal_store = GoalStore(self._db_connection)
+            session_factory = await get_session_factory()
+            uow = UnitOfWork(session_factory)
+            agency_service = AgencyService(uow)
             print(f"🔍 [SIMILARITY] Calling list_goals(user_id={user_id}, status=PENDING)...")
-            pending_goals = await goal_store.list_goals(
+            pending_goals = await agency_service.list_goals(
                 user_id=user_id,
                 status=GoalStatus.PENDING
             )
@@ -752,7 +756,9 @@ Return ONLY valid JSON, no other text."""
         """
         try:
             from datetime import datetime, UTC
-            from aico.ai.agency.store import GoalStore
+            from aico.services.agency_service import AgencyService
+            from aico.data.uow import UnitOfWork
+            from aico.data.postgres.connection import get_session_factory
             
             now = datetime.now(UTC)
             
@@ -789,8 +795,10 @@ Return ONLY valid JSON, no other text."""
             goal.metadata["mention_frequency"] = mention_frequency
             
             # Save updated goal
-            goal_store = GoalStore(self._db_connection)
-            await goal_store.update_goal(goal)
+            session_factory = await get_session_factory()
+            uow = UnitOfWork(session_factory)
+            agency_service = AgencyService(uow)
+            await agency_service.update_goal(goal)
             
             logger.info(
                 f"[GOAL_EXTRACTOR] Reinforced goal {goal.goal_id}: "

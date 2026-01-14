@@ -9,8 +9,7 @@ import uuid
 from datetime import datetime, UTC
 
 from aico.services.agency_service import AgencyService
-from aico.data.agency.models import Goal, Plan
-from aico.ai.agency.models import GoalOrigin, GoalStatus, GoalPriority, PlanStatus
+from aico.ai.agency.models import Goal, GoalOrigin, GoalStatus, GoalPriority, Plan, PlanStatus
 
 
 @pytest.fixture
@@ -107,7 +106,6 @@ class TestAgencyService:
         plan = Plan(
             plan_id=str(uuid.uuid4()),
             goal_id=test_goal.goal_id,
-            user_id=test_goal.user_id,
             title="Test Plan",
             description="Plan description",
             status=PlanStatus.ACTIVE,
@@ -130,7 +128,6 @@ class TestAgencyService:
         plan = Plan(
             plan_id=str(uuid.uuid4()),
             goal_id=test_goal.goal_id,
-            user_id=test_goal.user_id,
             title="Active Plan",
             description="Active plan description",
             status=PlanStatus.ACTIVE,
@@ -146,3 +143,89 @@ class TestAgencyService:
         assert active_plan is not None
         assert active_plan.status == PlanStatus.ACTIVE
         assert active_plan.goal_id == test_goal.goal_id
+
+    @pytest.mark.asyncio
+    async def test_delete_goal(self, agency_service, test_user):
+        """Test deleting a goal."""
+        goal = Goal(
+            goal_id=str(uuid.uuid4()),
+            user_id=test_user.uuid,
+            origin=GoalOrigin.USER,
+            goal_type="temporary",
+            title="Goal to Delete",
+            status=GoalStatus.ACTIVE,
+            priority=GoalPriority.NORMAL,
+            metadata={},
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        created = await agency_service.create_goal(goal)
+        
+        success = await agency_service.delete_goal(created.goal_id)
+        assert success is True
+        
+        deleted = await agency_service.get_goal(created.goal_id)
+        assert deleted is None
+
+    @pytest.mark.asyncio
+    async def test_get_plan(self, agency_service, test_goal):
+        """Test retrieving a plan by ID."""
+        plan = Plan(
+            plan_id=str(uuid.uuid4()),
+            goal_id=test_goal.goal_id,
+            title="Test Plan",
+            status=PlanStatus.DRAFT,
+            steps=[],
+            metadata={},
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        created = await agency_service.create_plan(plan)
+        
+        retrieved = await agency_service.get_plan(created.plan_id)
+        assert retrieved is not None
+        assert retrieved.plan_id == created.plan_id
+        assert retrieved.title == "Test Plan"
+
+    @pytest.mark.asyncio
+    async def test_update_plan(self, agency_service, test_goal):
+        """Test updating a plan."""
+        plan = Plan(
+            plan_id=str(uuid.uuid4()),
+            goal_id=test_goal.goal_id,
+            title="Original Plan",
+            status=PlanStatus.DRAFT,
+            steps=[],
+            metadata={},
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        created = await agency_service.create_plan(plan)
+        
+        created.title = "Updated Plan"
+        created.status = PlanStatus.ACTIVE
+        updated = await agency_service.update_plan(created)
+        
+        assert updated.title == "Updated Plan"
+        assert updated.status == PlanStatus.ACTIVE
+
+    @pytest.mark.asyncio
+    async def test_delete_plan(self, agency_service, test_goal):
+        """Test deleting a plan."""
+        plan = Plan(
+            plan_id=str(uuid.uuid4()),
+            goal_id=test_goal.goal_id,
+            title="Plan to Delete",
+            status=PlanStatus.DRAFT,
+            steps=[],
+            metadata={},
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        created = await agency_service.create_plan(plan)
+        
+        success = await agency_service.delete_plan(created.plan_id)
+        assert success is True
+        
+        deleted = await agency_service.get_plan(created.plan_id)
+        assert deleted is None

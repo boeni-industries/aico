@@ -10,7 +10,8 @@ from .models import (
     AgencyEvent,
     ReflectionNote,
 )
-from .store import GoalStore, PlanStore, AgencyEventStore, ReflectionStore
+from .store import AgencyEventStore, ReflectionStore
+# GoalStore and PlanStore REMOVED - use aico.services.agency_service.AgencyService instead
 from .planner import Planner
 from .engine import AgencyEngine
 from .values_ethics import (
@@ -53,8 +54,6 @@ __all__ = [
     "StepStatus",
     "AgencyEvent",
     "ReflectionNote",
-    "GoalStore",
-    "PlanStore",
     "AgencyEventStore",
     "ReflectionStore",
     "Planner",

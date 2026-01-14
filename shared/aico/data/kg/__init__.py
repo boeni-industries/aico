@@ -1,6 +1,5 @@
-"""Knowledge Graph data models and repositories."""
+"""Knowledge graph data models and repositories."""
 
-from aico.data.kg.models import KGNode, KGEdge
-from aico.data.kg.property_models import KGNodeProperty, KGEdgeProperty
+from aico.ai.knowledge_graph.models import Node, Edge
 
-__all__ = ['KGNode', 'KGEdge', 'KGNodeProperty', 'KGEdgeProperty']
+__all__ = ['Node', 'Edge']

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Dict, Optional, Tuple, Awaitable, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Awaitable, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aico.services.agency_service import AgencyService
 from datetime import datetime, UTC
 
 from aico.core.config import ConfigurationManager
@@ -18,7 +21,7 @@ from .models import (
     Plan,
     AgencyEvent,
 )
-from .store import GoalStore, PlanStore, AgencyEventStore, ReflectionStore
+# AgencyService imported where needed to avoid circular dependency
 from .planner import Planner
 from .values_ethics import ValuesEthicsService, PolicyEffect
 from .arbiter import GoalArbiter, IntentionSet
@@ -56,6 +59,7 @@ class AgencyEngine(BaseAIProcessor):
         self,
         config: ConfigurationManager,
         db_connection: Union[LibSQLConnection, EncryptedLibSQLConnection],
+        agency_service: "AgencyService",
         llm_plan_refiner: Optional[Callable] = None,
         world_model: Optional["WorldModelService"] = None,
         personality_service: Optional["PersonalityService"] = None,
@@ -77,8 +81,9 @@ class AgencyEngine(BaseAIProcessor):
         self.config = config
         self._db_connection = db_connection
         self._memory_manager = memory_manager
-
-        self.goal_store = GoalStore(db_connection)
+        self.agency_service = agency_service
+        
+        # Legacy stores still needed for events and reflections (not yet migrated to services)
         self.event_store = AgencyEventStore(db_connection)
         self.reflection_store = ReflectionStore(db_connection)
         
@@ -150,7 +155,7 @@ class AgencyEngine(BaseAIProcessor):
         # Skill Registry initialized
         
         # Initialize PlanStore with skill_registry for auto-fixing old plans
-        self.plan_store = PlanStore(db_connection, skill_registry=self.skill_registry)
+        # PlanStore replaced by AgencyService
         
         # Now that skill_registry is initialized, set it on the planner
         self.planner.skill_registry = self.skill_registry
@@ -292,7 +297,7 @@ class AgencyEngine(BaseAIProcessor):
             goal.metadata["ethics_warning"] = ethics_result.user_message
             pass  # Goal allowed with warning
 
-        goal = await self.goal_store.create_goal(goal)
+        goal = await self.agency_service.create_goal(goal)
 
         await self.event_store.log_event(
             AgencyEvent(
@@ -729,7 +734,7 @@ class AgencyEngine(BaseAIProcessor):
                     f"[AGENCY_ENGINE] Goal '{signal.topic}' already exists (exact match, "
                     f"id={existing_goal['goal_id']}, status={existing_goal['status']}), skipping duplicate"
                 )
-                goal = await self.goal_store.get_goal(existing_goal['goal_id'])
+                goal = await self.agency_service.get_goal(existing_goal['goal_id'])
                 return goal, None
             
             # 2. Semantic similarity check (for near-duplicates with different wording)
@@ -773,7 +778,7 @@ class AgencyEngine(BaseAIProcessor):
                         f"'{existing['title']}' (similarity={combined_similarity:.2f}, id={existing['goal_id']}), "
                         f"skipping duplicate"
                     )
-                    goal = await self.goal_store.get_goal(existing['goal_id'])
+                    goal = await self.agency_service.get_goal(existing['goal_id'])
                     return goal, None
             
             # Create goal with appropriate origin
@@ -820,7 +825,7 @@ class AgencyEngine(BaseAIProcessor):
                 logger.warning(f"[AGENCY_ENGINE] LLM plan refinement failed: {e}, using base plan")
         
         # Persist the plan (base or refined)
-        plan = await self.plan_store.create_plan(plan)
+        plan = await self.agency_service.create_plan(plan)
 
         await self.event_store.log_event(
             AgencyEvent(
@@ -845,7 +850,7 @@ class AgencyEngine(BaseAIProcessor):
     async def get_goal(self, goal_id: str) -> Optional[Goal]:
         """Fetch a single goal by ID."""
 
-        return await self.goal_store.get_goal(goal_id)
+        return await self.agency_service.get_goal(goal_id)
 
     async def list_goals_for_user(
         self,
@@ -854,7 +859,7 @@ class AgencyEngine(BaseAIProcessor):
     ) -> list[Goal]:
         """List goals for a user, optionally filtered by status."""
 
-        return await self.goal_store.list_goals(user_id=user_id, status=status)
+        return await self.agency_service.list_goals(user_id=user_id, status=status)
 
     async def _change_goal_status(
         self,
@@ -867,12 +872,13 @@ class AgencyEngine(BaseAIProcessor):
     ) -> Optional[Goal]:
         """Internal helper to transition goal status and log telemetry."""
 
-        goal = await self.goal_store.get_goal(goal_id)
+        goal = await self.agency_service.get_goal(goal_id)
         if not goal:
             logger.warning("[AGENCY_ENGINE] Attempted to change status of unknown goal", extra={"goal_id": goal_id})
             return None
 
-        await self.goal_store.update_goal_status(goal_id, new_status)
+        goal.status = new_status
+        await self.agency_service.update_goal(goal)
 
         await self.event_store.log_event(
             AgencyEvent(
@@ -890,7 +896,7 @@ class AgencyEngine(BaseAIProcessor):
         )
 
         # Return updated goal snapshot (caller can ignore if not needed)
-        updated = await self.goal_store.get_goal(goal_id)
+        updated = await self.agency_service.get_goal(goal_id)
         return updated
 
     async def activate_goal(self, goal_id: str) -> Optional[Goal]:
@@ -966,10 +972,12 @@ class AgencyEngine(BaseAIProcessor):
             Updated IntentionSet
         """
         # Get all pending and active goals for this user
-        pending_goals = await self.goal_store.get_goals_by_status(
-            user_id=user_id,
-            statuses=[GoalStatus.PENDING, GoalStatus.ACTIVE]
-        )
+        # Get pending goals
+        pending_goals = await self.agency_service.list_goals(user_id, status=GoalStatus.PENDING)
+        # Get active goals
+        active_goals = await self.agency_service.get_active_goals(user_id)
+        # Combine
+        pending_goals = pending_goals + active_goals
         
         # Update intention set with arbiter
         intention_set = await self.arbiter.update_intention_set(
@@ -1118,10 +1126,9 @@ class AgencyEngine(BaseAIProcessor):
             Dictionary of goal_type -> performance metrics
         """
         # Get all goal types that have been used
-        rows = self.goal_store.db.execute(
-            """SELECT DISTINCT goal_type FROM agency_goals WHERE user_id = ?""",
-            (user_id,)
-        ).fetchall()
+        # Get all goals for user and extract unique types
+        all_goals = await self.agency_service.list_goals(user_id)
+        goal_types = list(set(g.goal_type for g in all_goals if g.goal_type))
         
         performance_context = {}
         for row in rows:
@@ -1299,7 +1306,7 @@ class AgencyEngine(BaseAIProcessor):
         """Check if agency engine is healthy and operational."""
         try:
             # Check if stores are accessible
-            test_goals = await self.goal_store.list_goals("health_check_user", status=None)
+            test_goals = await self.agency_service.list_goals("health_check_user")
             return True
         except Exception as e:
             logger.error(f"[AGENCY_ENGINE] Health check failed: {e}")

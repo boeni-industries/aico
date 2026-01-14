@@ -507,15 +507,13 @@ agency_plans = Table(
     metadata,
     Column('plan_id', String, primary_key=True),
     Column('goal_id', String, nullable=False),
-    Column('user_id', String, nullable=False),
-    Column('plan_type', String, nullable=False),
     Column('steps_json', JSONB, nullable=False),
     Column('status', String, nullable=False, server_default='draft'),
+    Column('metadata_json', JSONB),
     Column('created_at', TIMESTAMP(timezone=True), server_default=func.now()),
     Column('updated_at', TIMESTAMP(timezone=True), server_default=func.now()),
     Index('idx_agency_plans_goal', 'goal_id'),
     Index('idx_agency_plans_status', 'status'),
-    Index('idx_agency_plans_user', 'user_id'),
 )
 
 agency_plan_executions = Table(

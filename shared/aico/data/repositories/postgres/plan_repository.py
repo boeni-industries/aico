@@ -23,11 +23,20 @@ class PostgresPlanRepository(Repository[Plan]):
     
     async def create(self, entity: Plan) -> Plan:
         """Create a new plan."""
+        # Convert steps list to JSON
+        steps_data = []
+        if entity.steps:
+            for step in entity.steps:
+                if hasattr(step, 'dict'):
+                    steps_data.append(step.dict())
+                elif isinstance(step, dict):
+                    steps_data.append(step)
+        
         stmt = agency_plans.insert().values(
             plan_id=entity.plan_id,
             goal_id=entity.goal_id,
-            status=entity.status,
-            steps_json=json.dumps(entity.steps) if entity.steps else None,
+            status=entity.status.value if hasattr(entity.status, 'value') else entity.status,
+            steps_json=json.dumps(steps_data),
             metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
             created_at=entity.created_at or datetime.now(UTC),
             updated_at=entity.updated_at or datetime.now(UTC),
@@ -37,6 +46,8 @@ class PostgresPlanRepository(Repository[Plan]):
     
     async def get_by_id(self, entity_id: str) -> Optional[Plan]:
         """Get plan by ID."""
+        from aico.ai.agency.models import PlanStatus
+        
         stmt = select(agency_plans).where(agency_plans.c.plan_id == entity_id)
         result = await self.session.execute(stmt)
         row = result.fetchone()
@@ -47,9 +58,9 @@ class PostgresPlanRepository(Repository[Plan]):
         return Plan(
             plan_id=row.plan_id,
             goal_id=row.goal_id,
-            status=row.status,
-            steps_json=row.steps_json,
-            metadata_json=row.metadata_json,
+            status=PlanStatus(row.status),
+            steps=json.loads(row.steps_json) if row.steps_json else [],
+            metadata=json.loads(row.metadata_json) if row.metadata_json else {},
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -60,8 +71,8 @@ class PostgresPlanRepository(Repository[Plan]):
             update(agency_plans)
             .where(agency_plans.c.plan_id == entity.plan_id)
             .values(
-                status=entity.status,
-                steps_json=json.dumps(entity.steps) if entity.steps else None,
+                status=entity.status.value if hasattr(entity.status, 'value') else entity.status,
+                steps_json=json.dumps([s.dict() if hasattr(s, 'dict') else s for s in entity.steps]) if entity.steps else "[]",
                 metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
                 updated_at=datetime.now(UTC),
             )

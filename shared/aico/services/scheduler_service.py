@@ -32,7 +32,7 @@ class SchedulerService:
     async def create_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new scheduled task."""
         try:
-            from aico.data.scheduler.models import SchedulerTask
+            from aico.ai.scheduler.models import SchedulerTask
             
             task = SchedulerTask(**task_data)
             created = await self.uow.scheduler_tasks.create(task)
@@ -83,7 +83,7 @@ class SchedulerService:
     async def update_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update a task."""
         try:
-            from aico.data.scheduler.models import SchedulerTask
+            from aico.ai.scheduler.models import SchedulerTask
             
             task = SchedulerTask(**task_data)
             updated = await self.uow.scheduler_tasks.update(task)
@@ -128,7 +128,7 @@ class SchedulerService:
     async def create_execution(self, execution_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a task execution record."""
         try:
-            from aico.data.scheduler.models import SchedulerTaskExecution
+            from aico.ai.scheduler.models import SchedulerTaskExecution
             
             execution = SchedulerTaskExecution(**execution_data)
             created = await self.uow.scheduler_task_executions.create(execution)
@@ -160,7 +160,7 @@ class SchedulerService:
     async def update_execution(self, execution_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an execution record."""
         try:
-            from aico.data.scheduler.models import SchedulerTaskExecution
+            from aico.ai.scheduler.models import SchedulerTaskExecution
             
             execution = SchedulerTaskExecution(**execution_data)
             updated = await self.uow.scheduler_task_executions.update(execution)
@@ -178,7 +178,7 @@ class SchedulerService:
     async def acquire_lock(self, task_id: str, worker_id: str, ttl_seconds: int = 300) -> bool:
         """Acquire a lock for task execution."""
         try:
-            from aico.data.scheduler.models import SchedulerTaskLock
+            from aico.ai.scheduler.models import SchedulerTaskLock
             
             lock = SchedulerTaskLock(
                 task_id=task_id,

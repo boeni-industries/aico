@@ -32,7 +32,7 @@ class UserService:
     async def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new user profile."""
         try:
-            from aico.data.user.models import UserProfile
+            from aico.ai.user.models import UserProfile
             
             user = UserProfile(**user_data)
             created = await self.uow.users.create(user)
@@ -73,7 +73,7 @@ class UserService:
     async def update_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update a user profile."""
         try:
-            from aico.data.user.models import UserProfile
+            from aico.ai.user.models import UserProfile
             
             user = UserProfile(**user_data)
             user.updated_at = datetime.now(UTC)
@@ -117,7 +117,7 @@ class UserService:
     async def create_session(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new user session."""
         try:
-            from aico.data.auth.models import Session
+            from aico.ai.auth.models import Session
             
             session = Session(**session_data)
             created = await self.uow.sessions.create(session)

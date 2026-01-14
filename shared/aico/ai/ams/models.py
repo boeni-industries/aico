@@ -10,14 +10,20 @@ from pydantic import BaseModel, Field
 
 
 class AMSTrajectory(BaseModel):
-    """AMS trajectory domain model."""
+    """AMS trajectory domain model matching PostgreSQL schema."""
     trajectory_id: str
     user_id: str
-    trajectory_type: str
-    content: str
-    context: Optional[dict] = Field(default_factory=dict)
-    metadata: dict = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    conversation_id: Optional[str] = None
+    selected_skill_id: Optional[str] = None
+    context_bucket: Optional[str] = None
+    feedback_reward: Optional[int] = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now())
+    archived: bool = False
+    agency_context: Optional[str] = None
+    message_id: Optional[str] = None
+    turn_number: Optional[int] = None
+    user_input: Optional[str] = None
+    ai_response: Optional[str] = None
 
 
 class AMSBehavioralFeedback(BaseModel):
@@ -64,15 +70,36 @@ class AMSContextSkillStats(BaseModel):
 
 
 class AMSUserMemory(BaseModel):
-    """AMS user memory domain model."""
-    memory_id: str
+    """AMS user memory domain model matching PostgreSQL schema."""
+    fact_id: str  # Primary key (not memory_id)
     user_id: str
-    memory_type: str
+    fact_type: str  # identity, preference, relationship, temporal
+    category: str  # personal_info, preferences, relationships
+    confidence: float
+    is_immutable: bool = False
+    valid_from: datetime
+    valid_until: Optional[datetime] = None
     content: str
-    importance: float = 0.5
-    metadata: dict = Field(default_factory=dict)
+    entities_json: Optional[str] = None  # JSON array of extracted entities
+    extraction_method: str
+    source_conversation_id: str
+    source_message_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now())
     updated_at: datetime = Field(default_factory=lambda: datetime.now())
+    user_note: Optional[str] = None
+    tags_json: Optional[str] = None  # JSON array
+    is_favorite: bool = False
+    revisit_count: int = 0
+    last_revisited: Optional[datetime] = None
+    emotional_tone: Optional[str] = None
+    memory_type: Optional[str] = None
+    content_type: str = "message"
+    conversation_title: Optional[str] = None
+    conversation_summary: Optional[str] = None
+    turn_range: Optional[str] = None
+    key_moments_json: Optional[str] = None  # JSON
+    temporal_metadata: Optional[str] = None
+    language: Optional[str] = None
 
 
 # Aliases for backward compatibility

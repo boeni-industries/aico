@@ -32,7 +32,7 @@ class AMSService:
     async def create_trajectory(self, trajectory_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new trajectory."""
         try:
-            from aico.data.ams.models import AMSTrajectory
+            from aico.ai.ams.models import AMSTrajectory
             
             trajectory = AMSTrajectory(**trajectory_data)
             created = await self.uow.ams_trajectories.create(trajectory)
@@ -64,7 +64,7 @@ class AMSService:
     async def update_trajectory(self, trajectory_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update a trajectory."""
         try:
-            from aico.data.ams.models import AMSTrajectory
+            from aico.ai.ams.models import AMSTrajectory
             
             trajectory = AMSTrajectory(**trajectory_data)
             updated = await self.uow.ams_trajectories.update(trajectory)
@@ -82,7 +82,7 @@ class AMSService:
     async def create_feedback(self, feedback_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create behavioral feedback."""
         try:
-            from aico.data.ams.models import AMSBehavioralFeedback
+            from aico.ai.ams.models import AMSBehavioralFeedback
             
             feedback = AMSBehavioralFeedback(**feedback_data)
             created = await self.uow.ams_behavioral_feedback.create(feedback)
@@ -108,7 +108,7 @@ class AMSService:
     async def create_skill(self, skill_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a behavioral skill."""
         try:
-            from aico.data.ams.models import AMSBehavioralSkill
+            from aico.ai.ams.models import AMSBehavioralSkill
             
             skill = AMSBehavioralSkill(**skill_data)
             created = await self.uow.ams_behavioral_skills.create(skill)
