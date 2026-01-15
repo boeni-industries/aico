@@ -1056,74 +1056,66 @@ class EmotionEngine(BaseService):
     # ============================================================================
     
     async def _load_persisted_state(self) -> None:
-        """Load emotional state from database on startup"""
+        """Load emotional state from database on startup via UoW"""
         try:
-            # Load current state
-            cursor = self.db_connection.execute(
-                "SELECT timestamp, subjective_feeling, mood_valence, mood_arousal, intensity, "
-                "warmth, directness, formality, engagement, closeness, care_focus "
-                "FROM emotion_state WHERE id = 1"
-            )
-            row = cursor.fetchone()
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
             
-            if row:
-                # Reconstruct emotional state from database
-                # Create neutral appraisal for backward compatibility with old persisted states
-                neutral_appraisal = AppraisalResult(
-                    relevance=0.5,
-                    goal_impact="neutral",
-                    coping_capability="high_capability",
-                    social_appropriateness="neutral_response"
-                )
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Load current state (id=1)
+                state_row = await uow.emotion_state.get_current_state()
                 
-                self.current_state = EmotionalState(
-                    timestamp=datetime.fromisoformat(row[0]).replace(tzinfo=UTC),
-                    cognitive_component=neutral_appraisal,
-                    physiological_arousal=row[3],  # Use arousal from DB
-                    motivational_tendency="neutral",
-                    motor_expression="relaxed",
-                    subjective_feeling=EmotionLabel(row[1]),
-                    mood_valence=row[2],
-                    mood_arousal=row[3],
-                    intensity=row[4],
-                    warmth=row[5],
-                    directness=row[6],
-                    formality=row[7],
-                    engagement=row[8],
-                    closeness=row[9],
-                    care_focus=row[10]
-                )
-                self.logger.info(f"🎭 Loaded persisted emotional state: {self.current_state.subjective_feeling.value}")
-            else:
-                # No persisted state, create neutral baseline
-                self.current_state = self._create_neutral_state()
-                self.logger.info("🎭 No persisted state found, initialized with neutral baseline")
-            
-            # Load history (last N entries)
-            cursor = self.db_connection.execute(
-                "SELECT timestamp, feeling, valence, arousal, intensity "
-                "FROM emotion_history "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?",
-                (self.max_history_size,)
-            )
-            
-            # Reverse to get chronological order
-            history_rows = list(reversed(cursor.fetchall()))
-            self.state_history = [
-                {
-                    "timestamp": row[0],
-                    "feeling": row[1],
-                    "valence": row[2],
-                    "arousal": row[3],
-                    "intensity": row[4]
-                }
-                for row in history_rows
-            ]
-            
-            if self.state_history:
-                self.logger.info(f"🎭 Loaded {len(self.state_history)} historical emotional states")
+                if state_row:
+                    # Reconstruct emotional state from database
+                    neutral_appraisal = AppraisalResult(
+                        relevance=0.5,
+                        goal_impact="neutral",
+                        coping_capability="high_capability",
+                        social_appropriateness="neutral_response"
+                    )
+                    
+                    self.current_state = EmotionalState(
+                        timestamp=datetime.fromisoformat(state_row.timestamp).replace(tzinfo=UTC) if isinstance(state_row.timestamp, str) else state_row.timestamp.replace(tzinfo=UTC),
+                        cognitive_component=neutral_appraisal,
+                        physiological_arousal=state_row.mood_arousal,
+                        motivational_tendency="neutral",
+                        motor_expression="relaxed",
+                        subjective_feeling=EmotionLabel(state_row.subjective_feeling),
+                        mood_valence=state_row.mood_valence,
+                        mood_arousal=state_row.mood_arousal,
+                        intensity=state_row.intensity,
+                        warmth=state_row.warmth,
+                        directness=state_row.directness,
+                        formality=state_row.formality,
+                        engagement=state_row.engagement,
+                        closeness=state_row.closeness,
+                        care_focus=state_row.care_focus
+                    )
+                    self.logger.info(f"🎭 Loaded persisted emotional state: {self.current_state.subjective_feeling.value}")
+                else:
+                    # No persisted state, create neutral baseline
+                    self.current_state = self._create_neutral_state()
+                    self.logger.info("🎭 No persisted state found, initialized with neutral baseline")
                 
+                # Load history (last N entries)
+                history_rows = await uow.emotion_history.get_recent_for_user('system', limit=self.max_history_size)
+                
+                # Convert to chronological order (repository returns desc)
+                self.state_history = [
+                    {
+                        "timestamp": row.timestamp if isinstance(row.timestamp, str) else row.timestamp.isoformat(),
+                        "feeling": row.feeling,
+                        "valence": row.valence,
+                        "arousal": row.arousal,
+                        "intensity": row.intensity
+                    }
+                    for row in reversed(history_rows)
+                ]
+                
+                if self.state_history:
+                    self.logger.info(f"🎭 Loaded {len(self.state_history)} historical emotional states")
+                    
         except Exception as e:
             self.logger.error(f"Error loading persisted emotional state: {e}")
             # Fallback to neutral state
@@ -1131,47 +1123,56 @@ class EmotionEngine(BaseService):
             self.state_history = []
     
     async def _persist_state(self, state: EmotionalState) -> None:
-        """Persist emotional state to database"""
+        """Persist emotional state to database via UoW"""
         try:
-            # Update current state (single row with id=1)
-            self.db_connection.execute(
-                """INSERT OR REPLACE INTO emotion_state 
-                   (id, user_id, timestamp, subjective_feeling, mood_valence, mood_arousal, 
-                    intensity, warmth, directness, formality, engagement, closeness, care_focus, updated_at)
-                   VALUES (1, 'system', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
-                (
-                    state.timestamp.isoformat(),
-                    state.subjective_feeling.value,
-                    state.mood_valence,
-                    state.mood_arousal,
-                    state.intensity,
-                    state.warmth,
-                    state.directness,
-                    state.formality,
-                    state.engagement,
-                    state.closeness,
-                    state.care_focus
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.data.emotion.models import EmotionState as EmotionStateModel, EmotionHistory
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Check if current state exists (id=1)
+                existing_state = await uow.emotion_state.get_current_state()
+                
+                state_model = EmotionStateModel(
+                    id=1,
+                    user_id='system',
+                    timestamp=state.timestamp.isoformat(),
+                    subjective_feeling=state.subjective_feeling.value,
+                    mood_valence=state.mood_valence,
+                    mood_arousal=state.mood_arousal,
+                    intensity=state.intensity,
+                    warmth=state.warmth,
+                    directness=state.directness,
+                    formality=state.formality,
+                    engagement=state.engagement,
+                    closeness=state.closeness,
+                    care_focus=state.care_focus,
+                    updated_at=datetime.now(UTC).isoformat()
                 )
-            )
-            
-            # Add to history
-            compact_state = state.to_compact_dict()
-            self.db_connection.execute(
-                """INSERT INTO emotion_history 
-                   (user_id, timestamp, feeling, valence, arousal, intensity)
-                   VALUES ('system', ?, ?, ?, ?, ?)""",
-                (
-                    compact_state["timestamp"],
-                    compact_state["label"]["primary"],
-                    compact_state["mood"]["valence"],
-                    compact_state["mood"]["arousal"],
-                    compact_state["label"]["intensity"]
+                
+                if existing_state:
+                    await uow.emotion_state.update(state_model)
+                else:
+                    await uow.emotion_state.create(state_model)
+                
+                # Add to history
+                compact_state = state.to_compact_dict()
+                history_model = EmotionHistory(
+                    user_id='system',
+                    timestamp=compact_state["timestamp"],
+                    feeling=compact_state["label"]["primary"],
+                    valence=compact_state["mood"]["valence"],
+                    arousal=compact_state["mood"]["arousal"],
+                    intensity=compact_state["label"]["intensity"],
+                    created_at=datetime.now(UTC).isoformat()
                 )
-            )
-            
-            self.db_connection.commit()
-            self.logger.debug(f"🎭 Persisted emotional state: {state.subjective_feeling.value}")
-            
+                
+                await uow.emotion_history.create(history_model)
+                await uow.commit()
+                
+                self.logger.debug(f"🎭 Persisted emotional state: {state.subjective_feeling.value}")
+                
         except Exception as e:
             self.logger.error(f"Error persisting emotional state: {e}")
 

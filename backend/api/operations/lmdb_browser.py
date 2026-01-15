@@ -265,9 +265,14 @@ async def find_orphaned_lmdb_entries(database_name: str, db_connection) -> dict:
                 detail=f"Database '{database_name}' not found"
             )
         
-        # Get all valid user UUIDs from database using injected connection
-        cursor = db_connection.execute("SELECT uuid FROM user_profiles")
-        valid_user_ids = {row[0] for row in cursor.fetchall()}
+        # Get all valid user UUIDs from database via UoW
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            all_users = await uow.user_profiles.list(limit=100000)
+            valid_user_ids = {u.uuid for u in all_users}
         
         # Find entries with invalid user_ids
         orphaned_entries = []

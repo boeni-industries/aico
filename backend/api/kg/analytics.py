@@ -12,11 +12,16 @@ import json
 import math
 import asyncio
 
+from aico.data.postgres.connection import get_session_factory
+from aico.data.uow import UnitOfWork
+from aico.data.kg.repository import KGNodeRepository, KGEdgeRepository
+
 
 class KGAnalyticsEngine:
     """Comprehensive knowledge graph analytics calculator."""
     
-    def __init__(self, db: None          self.db = db
+    def __init__(self, user_id: str):
+        # No longer takes db connection - will use UoW
         self.user_id = user_id
         self._nodes_cache = None
         self._edges_cache = None
@@ -30,105 +35,109 @@ class KGAnalyticsEngine:
         except:
             pass
     
-    def _load_graph_data(self):
-        """Load and cache graph data for analysis."""
-        if self._nodes_cache is None:
-            cursor = self.db.execute(
-                "SELECT * FROM kg_nodes WHERE user_id = ? AND is_current = 1",
-                [self.user_id]
-            )
-            self._nodes_cache = cursor.fetchall()
-        
-        if self._edges_cache is None:
-            cursor = self.db.execute(
-                "SELECT * FROM kg_edges WHERE user_id = ? AND is_current = 1",
-                [self.user_id]
-            )
-            self._edges_cache = cursor.fetchall()
+    async def _load_graph_data(self):
+        """Load and cache graph data for analysis via UoW."""
+        if self._nodes_cache is None or self._edges_cache is None:
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Load current nodes for user
+                nodes_models = await uow.kg_nodes.list(
+                    filters={'user_id': self.user_id, 'is_current': True},
+                    limit=100000
+                )
+                self._nodes_cache = nodes_models
+                
+                # Load current edges for user
+                edges_models = await uow.kg_edges.list(
+                    filters={'user_id': self.user_id, 'is_current': True},
+                    limit=100000
+                )
+                self._edges_cache = edges_models
         
         return self._nodes_cache, self._edges_cache
     
-    def _build_adjacency_list(self) -> Dict[str, Set[str]]:
+    async def _build_adjacency_list(self) -> Dict[str, Set[str]]:
         """Build adjacency list for graph algorithms."""
         if self._adjacency_cache is not None:
             return self._adjacency_cache
         
-        _, edges = self._load_graph_data()
+        _, edges = await self._load_graph_data()
         adjacency = defaultdict(set)
         
-        # Building adjacency list
-        
-        # Edges are already filtered for is_current=1 in _load_graph_data
+        # Building adjacency list from edge models
         for edge in edges:
-            source_id = edge[2]
-            target_id = edge[3]
+            source_id = edge.source_id
+            target_id = edge.target_id
             adjacency[source_id].add(target_id)
             adjacency[target_id].add(source_id)  # Undirected
-        
-        # Adjacency list built
         
         self._adjacency_cache = adjacency
         return adjacency
     
     # ========== PRIORITY 1: HEALTH & QUALITY METRICS ==========
     
-    def calculate_health_metrics(self) -> Dict[str, Any]:
-        """Calculate health and quality metrics."""
-        nodes, edges = self._load_graph_data()
+    async def calculate_health_metrics(self) -> Dict[str, Any]:
+        """Calculate health and quality metrics from repository data."""
+        nodes, edges = await self._load_graph_data()
         
-        # Orphaned edges
-        orphaned_edges = self.db.execute("""
-            SELECT COUNT(*)
-            FROM kg_edges e
-            WHERE e.user_id = ? AND e.is_current = 1
-            AND (
-                NOT EXISTS (SELECT 1 FROM kg_nodes n WHERE n.id = e.source_id AND n.is_current = 1)
-                OR NOT EXISTS (SELECT 1 FROM kg_nodes n WHERE n.id = e.target_id AND n.is_current = 1)
-            )
-        """, [self.user_id]).fetchone()[0]
+        # Build node ID set for orphan detection
+        node_ids = {node.id for node in nodes}
         
-        # Duplicate nodes (same label + name)
-        duplicate_nodes = self.db.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT label, json_extract(properties, '$.name') as name, COUNT(*) as cnt
-                FROM kg_nodes
-                WHERE user_id = ? AND is_current = 1
-                GROUP BY label, json_extract(properties, '$.name')
-                HAVING cnt > 1
-            )
-        """, [self.user_id]).fetchone()[0]
+        # Orphaned edges (edges pointing to non-existent nodes)
+        orphaned_edges = sum(
+            1 for edge in edges
+            if edge.source_id not in node_ids or edge.target_id not in node_ids
+        )
+        
+        # Duplicate nodes (same label + name in properties)
+        label_name_counts = defaultdict(int)
+        for node in nodes:
+            props = json.loads(node.properties) if isinstance(node.properties, str) else node.properties
+            name = props.get('name', '') if props else ''
+            key = (node.label, name)
+            label_name_counts[key] += 1
+        duplicate_nodes = sum(1 for count in label_name_counts.values() if count > 1)
         
         # Stale nodes (not updated in 30+ days)
-        thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
-        stale_nodes = self.db.execute("""
-            SELECT COUNT(*)
-            FROM kg_nodes
-            WHERE user_id = ? AND is_current = 1 AND updated_at < ?
-        """, [self.user_id, thirty_days_ago]).fetchone()[0]
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        stale_nodes = sum(
+            1 for node in nodes
+            if node.updated_at and (
+                datetime.fromisoformat(node.updated_at.replace('Z', '+00:00')) if isinstance(node.updated_at, str)
+                else node.updated_at
+            ) < thirty_days_ago
+        )
         
-        total_current_nodes = sum(1 for n in nodes if n[9] == 1)  # is_current column
+        total_current_nodes = len(nodes)
         stale_percent = (stale_nodes / total_current_nodes * 100) if total_current_nodes > 0 else 0
         
         # Property completeness
-        total_properties = sum(
-            len(json.loads(node[3])) if node[3] else 0  # properties column
-            for node in nodes if node[9] == 1
-        )
+        total_properties = 0
+        for node in nodes:
+            props = json.loads(node.properties) if isinstance(node.properties, str) else node.properties
+            total_properties += len(props) if props else 0
         avg_properties = total_properties / total_current_nodes if total_current_nodes > 0 else 0
         
         # Growth in last 24 hours
-        yesterday = (datetime.now() - timedelta(days=1)).isoformat()
-        nodes_24h = self.db.execute("""
-            SELECT COUNT(*)
-            FROM kg_nodes
-            WHERE user_id = ? AND created_at >= ?
-        """, [self.user_id, yesterday]).fetchone()[0]
+        yesterday = datetime.now() - timedelta(days=1)
+        nodes_24h = sum(
+            1 for node in nodes
+            if node.created_at and (
+                datetime.fromisoformat(node.created_at.replace('Z', '+00:00')) if isinstance(node.created_at, str)
+                else node.created_at
+            ) >= yesterday
+        )
         
-        edges_24h = self.db.execute("""
-            SELECT COUNT(*)
-            FROM kg_edges
-            WHERE user_id = ? AND created_at >= ?
-        """, [self.user_id, yesterday]).fetchone()[0]
+        edges_24h = sum(
+            1 for edge in edges
+            if edge.created_at and (
+                datetime.fromisoformat(edge.created_at.replace('Z', '+00:00')) if isinstance(edge.created_at, str)
+                else edge.created_at
+            ) >= yesterday
+        )
         
         return {
             "orphaned_edges": orphaned_edges,
@@ -142,23 +151,20 @@ class KGAnalyticsEngine:
     
     # ========== PRIORITY 2: GRAPH STRUCTURE METRICS ==========
     
-    def calculate_structure_metrics(self) -> Dict[str, Any]:
+    async def calculate_structure_metrics(self) -> Dict[str, Any]:
         """Calculate graph structure and topology metrics."""
-        nodes, edges = self._load_graph_data()
-        adjacency = self._build_adjacency_list()
+        nodes, edges = await self._load_graph_data()
+        adjacency = await self._build_adjacency_list()
         
-        current_nodes = [n for n in nodes if n[9] == 1]
-        current_edges = [e for e in edges if e[10] == 1]
-        
-        n = len(current_nodes)
-        m = len(current_edges)
+        n = len(nodes)
+        m = len(edges)
         
         # Graph density: actual edges / possible edges
         max_edges = n * (n - 1) / 2 if n > 1 else 1
         density = m / max_edges if max_edges > 0 else 0
         
         # Degree statistics
-        degrees = [len(adjacency[node[0]]) for node in current_nodes]
+        degrees = [len(adjacency[node.id]) for node in nodes]
         avg_degree = sum(degrees) / n if n > 0 else 0
         max_degree = max(degrees) if degrees else 0
         min_degree = min(degrees) if degrees else 0
@@ -210,30 +216,28 @@ class KGAnalyticsEngine:
     
     # ========== PRIORITY 3: KNOWLEDGE INSIGHTS ==========
     
-    def calculate_temporal_metrics(self) -> Dict[str, Any]:
-        """Calculate temporal activity metrics."""
+    async def calculate_temporal_metrics(self) -> Dict[str, Any]:
+        """Calculate temporal activity metrics from cached data."""
+        nodes, _ = await self._load_graph_data()
+        
         # Growth rates
         now = datetime.now()
-        seven_days_ago = (now - timedelta(days=7)).isoformat()
-        thirty_days_ago = (now - timedelta(days=30)).isoformat()
+        seven_days_ago = now - timedelta(days=7)
+        thirty_days_ago = now - timedelta(days=30)
         
-        nodes_7d = self.db.execute("""
-            SELECT COUNT(*)
-            FROM kg_nodes
-            WHERE user_id = ? AND created_at >= ?
-        """, [self.user_id, seven_days_ago]).fetchone()[0]
+        nodes_7d = sum(1 for n in nodes 
+                      if n.created_at and (
+                          datetime.fromisoformat(n.created_at.replace('Z', '+00:00')) if isinstance(n.created_at, str)
+                          else n.created_at
+                      ) >= seven_days_ago)
         
-        nodes_30d = self.db.execute("""
-            SELECT COUNT(*)
-            FROM kg_nodes
-            WHERE user_id = ? AND created_at >= ?
-        """, [self.user_id, thirty_days_ago]).fetchone()[0]
+        nodes_30d = sum(1 for n in nodes 
+                       if n.created_at and (
+                           datetime.fromisoformat(n.created_at.replace('Z', '+00:00')) if isinstance(n.created_at, str)
+                           else n.created_at
+                       ) >= thirty_days_ago)
         
-        total_nodes = self.db.execute("""
-            SELECT COUNT(*)
-            FROM kg_nodes
-            WHERE user_id = ? AND is_current = 1
-        """, [self.user_id]).fetchone()[0]
+        total_nodes = len(nodes)
         
         growth_7d = (nodes_7d / total_nodes * 100) if total_nodes > 0 else 0
         growth_30d = (nodes_30d / total_nodes * 100) if total_nodes > 0 else 0
@@ -242,14 +246,16 @@ class KGAnalyticsEngine:
         activity_by_day = {}
         for i in range(7):
             day = now - timedelta(days=i)
-            day_start = day.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-            day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999).isoformat()
+            day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
             
-            count = self.db.execute("""
-                SELECT COUNT(*)
-                FROM kg_nodes
-                WHERE user_id = ? AND created_at >= ? AND created_at <= ?
-            """, [self.user_id, day_start, day_end]).fetchone()[0]
+            count = sum(1 for n in nodes 
+                       if n.created_at and (
+                           day_start <= (
+                               datetime.fromisoformat(n.created_at.replace('Z', '+00:00')) if isinstance(n.created_at, str)
+                               else n.created_at
+                           ) <= day_end
+                       ))
             
             activity_by_day[day.strftime("%Y-%m-%d")] = count
         
@@ -265,10 +271,10 @@ class KGAnalyticsEngine:
     
     # ========== PRIORITY 4: ADVANCED ANALYTICS ==========
     
-    def calculate_centrality_metrics(self) -> Dict[str, Any]:
+    async def calculate_centrality_metrics(self) -> Dict[str, Any]:
         """Calculate centrality and importance metrics."""
-        nodes, edges = self._load_graph_data()
-        adjacency = self._build_adjacency_list()
+        nodes, edges = await self._load_graph_data()
+        adjacency = await self._build_adjacency_list()
         
         # Nodes are already filtered for is_current=1 in _load_graph_data
         current_nodes = nodes

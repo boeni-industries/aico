@@ -73,17 +73,22 @@ class ThompsonSamplingUpdateTask(BaseTask):
             lookback_days = context.get_config("lookback_days", 7)
             lookback_date = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
             
-            # Get feedback events from last N days
-            # Only process events with valid skill_id (not NULL or empty)
-            feedback_events = context.db_connection.execute(
-                """SELECT user_id, skill_id, reward, timestamp
-                   FROM ams_behavioral_feedback
-                   WHERE reward != 0
-                   AND timestamp >= ?
-                   AND skill_id IS NOT NULL
-                   AND skill_id != ''""",
-                (lookback_date,)
-            ).fetchall()
+            # Get feedback events from last N days via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                all_feedback = await uow.ams_behavioral_feedback.list(
+                    filters={'reward__ne': 0},
+                    limit=100000
+                )
+                # Filter in memory for timestamp and valid skill_id
+                feedback_events = [
+                    (f.user_id, f.skill_id, f.reward, f.timestamp)
+                    for f in all_feedback
+                    if f.timestamp >= lookback_date and f.skill_id and f.skill_id.strip()
+                ]
             
             if not feedback_events:
                 print("  [AMS_TS] No feedback events to process")
@@ -142,31 +147,39 @@ class ThompsonSamplingUpdateTask(BaseTask):
                 
                 print(f"      New: α={new_alpha:.2f}, β={new_beta:.2f}")
                 
-                # Upsert into ams_context_skill_stats
-                context.db_connection.execute(
-                    """INSERT INTO ams_context_skill_stats (
-                        user_id, context_bucket, skill_id, alpha, beta, last_updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(user_id, context_bucket, skill_id)
-                    DO UPDATE SET
-                        alpha = excluded.alpha,
-                        beta = excluded.beta,
-                        last_updated_at = excluded.last_updated_at""",
-                    (
-                        user_id,
-                        context_bucket,
-                        skill_id,
-                        new_alpha,
-                        new_beta,
-                        datetime.now(timezone.utc).isoformat()
+                # Upsert into ams_context_skill_stats via UoW
+                async with UnitOfWork(session_factory) as uow:
+                    from aico.data.ams.models import AMSContextSkillStats
+                    from datetime import datetime, UTC
+                    
+                    # Check if exists
+                    existing = await uow.ams_context_skill_stats.get(
+                        filters={
+                            'user_id': user_id,
+                            'context_bucket': context_bucket,
+                            'skill_id': skill_id
+                        }
                     )
-                )
+                    
+                    stats_data = AMSContextSkillStats(
+                        user_id=user_id,
+                        context_bucket=context_bucket,
+                        skill_id=skill_id,
+                        alpha=new_alpha,
+                        beta=new_beta,
+                        last_updated_at=datetime.now(UTC)
+                    )
+                    
+                    if existing:
+                        await uow.ams_context_skill_stats.update(stats_data)
+                    else:
+                        await uow.ams_context_skill_stats.create(stats_data)
+                    
+                    await uow.commit()
                 
                 updated_count += 1
                 
                 logger.debug(f" [AMS_TS] Updated {user_id}/{skill_id}: α={new_alpha:.1f}, β={new_beta:.1f}")
-            
-            context.db_connection.commit()
             
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"\n [AMS_TS] Updated {updated_count} skill confidences in {duration:.2f}s")

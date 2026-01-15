@@ -7,7 +7,6 @@ import requests
 import json
 import asyncio
 import websockets
-import sqlite3
 from pathlib import Path
 
 # Test credentials

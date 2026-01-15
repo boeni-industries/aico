@@ -531,191 +531,199 @@ class KGConsolidationTask(BaseTask):
             print(f"🕸️ [KG_TASK] 🔍 Total: {len(total_superseded_ids)} duplicate entities to merge")
             print(f"🕸️ [KG_TASK] 🔍 Node mapping: {len(node_mapping)} superseded -> canonical mappings")
             
-            # Mark superseded nodes as historical and update edges
+            # Mark superseded nodes as historical and update edges via UoW
             edges_updated = 0
             
-            # Get database connection
-            db = memory_manager._kg_storage.db
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from datetime import datetime, UTC
             
-            # Mark duplicates as historical (only if not already historical)
-            for node_id in total_superseded_ids:
-                # Check if node exists and is current
-                cursor = db.execute(
-                    "SELECT user_id, label, properties, is_current FROM kg_nodes WHERE id = ?",
-                    (node_id,)
-                )
-                row = cursor.fetchone()
-                if not row:
-                    continue
-                
-                user_id_val, label, properties, is_current = row
-                
-                # Skip if already historical
-                if is_current == 0:
-                    continue
-                
-                # Check if a historical version with same (user_id, label, properties, is_current=0) already exists
-                cursor = db.execute(
-                    "SELECT id FROM kg_nodes WHERE user_id = ? AND label = ? AND properties = ? AND is_current = 0 LIMIT 1",
-                    (user_id_val, label, properties)
-                )
-                historical_exists = cursor.fetchone()
-                
-                if historical_exists:
-                    # Historical version already exists - delete this node instead of updating
-                    logger.warning(
-                        f"[POST_DEDUP] Historical node already exists for {label}. "
-                        f"Deleting duplicate node {node_id} instead of marking historical."
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Mark duplicates as historical (only if not already historical)
+                for node_id in total_superseded_ids:
+                    # Check if node exists and is current
+                    node = await uow.kg_nodes.get(filters={'id': node_id})
+                    if not node:
+                        continue
+                    
+                    # Skip if already historical
+                    if not node.is_current:
+                        continue
+                    
+                    # Check if a historical version already exists
+                    historical_nodes = await uow.kg_nodes.list(
+                        filters={
+                            'user_id': node.user_id,
+                            'label': node.label,
+                            'properties': node.properties,
+                            'is_current': False
+                        },
+                        limit=1
                     )
-                    # First delete edges referencing this node
-                    db.execute("DELETE FROM kg_edges WHERE source_id = ? OR target_id = ?", (node_id, node_id))
-                    # Then delete the node
-                    db.execute("DELETE FROM kg_nodes WHERE id = ?", (node_id,))
-                else:
-                    # Safe to mark as historical
-                    db.execute(
-                        "UPDATE kg_nodes SET is_current = 0, updated_at = datetime('now') WHERE id = ?",
-                        (node_id,)
-                    )
-            
-            # Update edges to point to canonical nodes
-            print(f"🕸️ [KG_TASK] 🔄 Updating edges to point to canonical nodes...")
-            for superseded_id, canonical_id in node_mapping.items():
-                # Update edges where superseded node is the source
-                try:
-                    result = db.execute(
-                        "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ? AND user_id = ?",
-                        (canonical_id, superseded_id, user_id)
-                    )
-                    edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
-                except Exception as e:
-                    if "UNIQUE constraint failed" in str(e):
-                        # UNIQUE constraint violation - this edge would become a duplicate after update
-                        # Delete the edge instead of updating it
+                    
+                    if historical_nodes:
+                        # Historical version already exists - delete this node instead
                         logger.warning(
-                            f"[POST_DEDUP] UNIQUE constraint prevented edge update (source_id). "
-                            f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                            f"[POST_DEDUP] Historical node already exists for {node.label}. "
+                            f"Deleting duplicate node {node_id} instead of marking historical."
                         )
-                        result = db.execute(
-                            "DELETE FROM kg_edges WHERE source_id = ? AND user_id = ?",
-                            (superseded_id, user_id)
+                        # First delete edges referencing this node
+                        edges_to_delete = await uow.kg_edges.list(
+                            filters={'source_id': node_id},
+                            limit=10000
                         )
-                        print(f"🕸️ [KG_TASK] 🛡️  Deleted {result.rowcount if hasattr(result, 'rowcount') else 0} duplicate edges (source update)")
+                        edges_to_delete.extend(await uow.kg_edges.list(
+                            filters={'target_id': node_id},
+                            limit=10000
+                        ))
+                        for edge in edges_to_delete:
+                            await uow.kg_edges.delete(edge.id)
+                        
+                        # Then delete the node
+                        await uow.kg_nodes.delete(node_id)
                     else:
-                        raise
-                
-                # Update edges where superseded node is the target
-                try:
-                    result = db.execute(
-                        "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ? AND user_id = ?",
-                        (canonical_id, superseded_id, user_id)
+                        # Safe to mark as historical
+                        node.is_current = False
+                        node.updated_at = datetime.now(UTC)
+                        await uow.kg_nodes.update(node)
+            
+                # Update edges to point to canonical nodes
+                print(f"🕸️ [KG_TASK] 🔄 Updating edges to point to canonical nodes...")
+                for superseded_id, canonical_id in node_mapping.items():
+                    # Update edges where superseded node is the source
+                    source_edges = await uow.kg_edges.list(
+                        filters={'source_id': superseded_id, 'user_id': user_id},
+                        limit=10000
                     )
-                    edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
-                except Exception as e:
-                    if "UNIQUE constraint failed" in str(e):
-                        # UNIQUE constraint violation - this edge would become a duplicate after update
-                        # Delete the edge instead of updating it
-                        logger.warning(
-                            f"[POST_DEDUP] UNIQUE constraint prevented edge update (target_id). "
-                            f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
-                        )
-                        result = db.execute(
-                            "DELETE FROM kg_edges WHERE target_id = ? AND user_id = ?",
-                            (superseded_id, user_id)
-                        )
-                        print(f"🕸️ [KG_TASK] 🛡️  Deleted {result.rowcount if hasattr(result, 'rowcount') else 0} duplicate edges (target update)")
-                    else:
-                        raise
-            
-            print(f"🕸️ [KG_TASK] ✅ Updated {edges_updated} edge references")
-            
-            # CRITICAL FIX: Update orphaned edges from previous batches
-            # These are edges pointing to nodes that were merged AFTER the edge was created
-            print(f"🕸️ [KG_TASK] 🔄 Checking for orphaned edges from previous batches...")
-            
-            # Find all current edges pointing to historical nodes
-            cursor = db.execute("""
-                SELECT DISTINCT e.id, e.source_id, e.target_id, e.relation_type,
-                       CASE WHEN ns.is_current = 0 THEN 1 ELSE 0 END as source_historical,
-                       CASE WHEN nt.is_current = 0 THEN 1 ELSE 0 END as target_historical
-                FROM kg_edges e
-                LEFT JOIN kg_nodes ns ON e.source_id = ns.id
-                LEFT JOIN kg_nodes nt ON e.target_id = nt.id
-                WHERE e.is_current = 1 
-                AND e.user_id = ?
-                AND (ns.is_current = 0 OR nt.is_current = 0)
-            """, (user_id,))
-            
-            orphaned_edges = cursor.fetchall()
-            orphaned_fixed = 0
-            orphaned_deleted = 0
-            
-            for edge_id, source_id, target_id, relation_type, source_hist, target_hist in orphaned_edges:
-                # For each orphaned edge, find the canonical node it should point to
-                fixed = False
-                
-                # If source is historical, find its canonical replacement
-                if source_hist:
-                    cursor = db.execute("""
-                        SELECT id FROM kg_nodes 
-                        WHERE user_id = ? 
-                        AND label = (SELECT label FROM kg_nodes WHERE id = ?)
-                        AND properties = (SELECT properties FROM kg_nodes WHERE id = ?)
-                        AND is_current = 1
-                        LIMIT 1
-                    """, (user_id, source_id, source_id))
-                    canonical_source = cursor.fetchone()
-                    if canonical_source:
+                    
+                    for edge in source_edges:
                         try:
-                            db.execute(
-                                "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE id = ?",
-                                (canonical_source[0], edge_id)
-                            )
-                            orphaned_fixed += 1
-                            fixed = True
+                            edge.source_id = canonical_id
+                            edge.updated_at = datetime.now(UTC)
+                            await uow.kg_edges.update(edge)
+                            edges_updated += 1
                         except Exception as e:
-                            if "UNIQUE constraint failed" in str(e):
-                                db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
-                                orphaned_deleted += 1
-                                fixed = True
-                
-                # If target is historical, find its canonical replacement
-                if target_hist and not fixed:
-                    cursor = db.execute("""
-                        SELECT id FROM kg_nodes 
-                        WHERE user_id = ? 
-                        AND label = (SELECT label FROM kg_nodes WHERE id = ?)
-                        AND properties = (SELECT properties FROM kg_nodes WHERE id = ?)
-                        AND is_current = 1
-                        LIMIT 1
-                    """, (user_id, target_id, target_id))
-                    canonical_target = cursor.fetchone()
-                    if canonical_target:
+                            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                                logger.warning(
+                                    f"[POST_DEDUP] UNIQUE constraint prevented edge update (source_id). "
+                                    f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                                )
+                                await uow.kg_edges.delete(edge.id)
+                            else:
+                                raise
+                    
+                    # Update edges where superseded node is the target
+                    target_edges = await uow.kg_edges.list(
+                        filters={'target_id': superseded_id, 'user_id': user_id},
+                        limit=10000
+                    )
+                    
+                    for edge in target_edges:
                         try:
-                            db.execute(
-                                "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE id = ?",
-                                (canonical_target[0], edge_id)
-                            )
-                            orphaned_fixed += 1
-                            fixed = True
+                            edge.target_id = canonical_id
+                            edge.updated_at = datetime.now(UTC)
+                            await uow.kg_edges.update(edge)
+                            edges_updated += 1
                         except Exception as e:
-                            if "UNIQUE constraint failed" in str(e):
-                                db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
-                                orphaned_deleted += 1
-                                fixed = True
+                            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                                logger.warning(
+                                    f"[POST_DEDUP] UNIQUE constraint prevented edge update (target_id). "
+                                    f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                                )
+                                await uow.kg_edges.delete(edge.id)
+                            else:
+                                raise
+            
+                print(f"🕸️ [KG_TASK] ✅ Updated {edges_updated} edge references")
                 
-                # If we couldn't find a canonical node, delete the edge as last resort
-                if not fixed:
-                    db.execute("DELETE FROM kg_edges WHERE id = ?", (edge_id,))
-                    orphaned_deleted += 1
-            
-            if orphaned_fixed > 0:
-                print(f"🕸️ [KG_TASK] ✅ Fixed {orphaned_fixed} orphaned edges from previous batches")
-            if orphaned_deleted > 0:
-                print(f"🕸️ [KG_TASK] 🧹 Deleted {orphaned_deleted} orphaned edges (no canonical node found)")
-                logger.warning(f"[POST_DEDUP] Deleted {orphaned_deleted} orphaned edges with no canonical replacement")
-            
-            db.commit()
+                # CRITICAL FIX: Update orphaned edges from previous batches
+                print(f"🕸️ [KG_TASK] 🔄 Checking for orphaned edges from previous batches...")
+                
+                # Find all current edges for this user
+                all_edges = await uow.kg_edges.list(
+                    filters={'user_id': user_id, 'is_current': True},
+                    limit=100000
+                )
+                
+                orphaned_fixed = 0
+                orphaned_deleted = 0
+                
+                for edge in all_edges:
+                    # Check if source or target nodes are historical
+                    source_node = await uow.kg_nodes.get(filters={'id': edge.source_id})
+                    target_node = await uow.kg_nodes.get(filters={'id': edge.target_id})
+                    
+                    source_historical = source_node and not source_node.is_current
+                    target_historical = target_node and not target_node.is_current
+                    
+                    if not source_historical and not target_historical:
+                        continue
+                    
+                    fixed = False
+                    
+                    # If source is historical, find its canonical replacement
+                    if source_historical and source_node:
+                        canonical_sources = await uow.kg_nodes.list(
+                            filters={
+                                'user_id': user_id,
+                                'label': source_node.label,
+                                'properties': source_node.properties,
+                                'is_current': True
+                            },
+                            limit=1
+                        )
+                        
+                        if canonical_sources:
+                            try:
+                                edge.source_id = canonical_sources[0].id
+                                edge.updated_at = datetime.now(UTC)
+                                await uow.kg_edges.update(edge)
+                                orphaned_fixed += 1
+                                fixed = True
+                            except Exception as e:
+                                if "unique" in str(e).lower():
+                                    await uow.kg_edges.delete(edge.id)
+                                    orphaned_deleted += 1
+                                    fixed = True
+                    
+                    # If target is historical, find its canonical replacement
+                    if target_historical and target_node and not fixed:
+                        canonical_targets = await uow.kg_nodes.list(
+                            filters={
+                                'user_id': user_id,
+                                'label': target_node.label,
+                                'properties': target_node.properties,
+                                'is_current': True
+                            },
+                            limit=1
+                        )
+                        
+                        if canonical_targets:
+                            try:
+                                edge.target_id = canonical_targets[0].id
+                                edge.updated_at = datetime.now(UTC)
+                                await uow.kg_edges.update(edge)
+                                orphaned_fixed += 1
+                                fixed = True
+                            except Exception as e:
+                                if "unique" in str(e).lower():
+                                    await uow.kg_edges.delete(edge.id)
+                                    orphaned_deleted += 1
+                                    fixed = True
+                    
+                    # If we couldn't find a canonical node, delete the edge as last resort
+                    if not fixed:
+                        await uow.kg_edges.delete(edge.id)
+                        orphaned_deleted += 1
+                
+                if orphaned_fixed > 0:
+                    print(f"🕸️ [KG_TASK] ✅ Fixed {orphaned_fixed} orphaned edges from previous batches")
+                if orphaned_deleted > 0:
+                    print(f"🕸️ [KG_TASK] 🧹 Deleted {orphaned_deleted} orphaned edges (no canonical node found)")
+                    logger.warning(f"[POST_DEDUP] Deleted {orphaned_deleted} orphaned edges with no canonical replacement")
+                
+                await uow.commit()
             
             return {
                 'duplicates_merged': len(total_superseded_ids),

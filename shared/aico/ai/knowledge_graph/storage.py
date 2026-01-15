@@ -551,7 +551,7 @@ class PropertyGraphStorage:
     
     async def get_node(self, node_id: str) -> Optional[Node]:
         """
-        Get node by ID from libSQL.
+        Get node by ID from PostgreSQL.
         
         Args:
             node_id: Node ID

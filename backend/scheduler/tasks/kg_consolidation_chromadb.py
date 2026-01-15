@@ -27,9 +27,17 @@ async def cleanup_chromadb_historical(memory_manager) -> Dict[str, int]:
         node_collection = memory_manager._kg_storage._node_collection
         edge_collection = memory_manager._kg_storage._edge_collection
         
-        # Query ALL historical nodes from database
-        cursor = db.execute("SELECT id FROM kg_nodes WHERE is_current = 0")
-        historical_node_ids = [row[0] for row in cursor.fetchall()]
+        # Query ALL historical nodes from database via UoW
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            historical_nodes = await uow.kg_nodes.list(
+                filters={'is_current': False},
+                limit=100000
+            )
+            historical_node_ids = [n.id for n in historical_nodes]
         
         # Delete historical node embeddings
         nodes_deleted = 0
@@ -41,9 +49,12 @@ async def cleanup_chromadb_historical(memory_manager) -> Dict[str, int]:
             except Exception as e:
                 logger.warning(f"Failed to delete ChromaDB embeddings for historical nodes: {e}")
         
-        # Query ALL historical edges from database
-        cursor = db.execute("SELECT id FROM kg_edges WHERE is_current = 0")
-        historical_edge_ids = [row[0] for row in cursor.fetchall()]
+            # Query ALL historical edges from database
+            historical_edges = await uow.kg_edges.list(
+                filters={'is_current': False},
+                limit=100000
+            )
+            historical_edge_ids = [e.id for e in historical_edges]
         
         # Delete historical edge embeddings
         edges_deleted = 0

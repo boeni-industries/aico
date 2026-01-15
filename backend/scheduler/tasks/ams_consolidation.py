@@ -158,19 +158,21 @@ class MemoryConsolidationTask(BaseTask):
                     error="No database connection in context"
                 )
             
-            # Query users for today's shard
-            users_query = """
-                SELECT uuid FROM user_profiles 
-                WHERE is_active = 1
-                AND (CAST(substr(uuid, 1, 8) AS INTEGER) % ?) = ?
-            """
+            # Query users for today's shard via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
             
-            users = db_connection.execute(
-                users_query,
-                (user_shard_days, today_shard)
-            ).fetchall()
-            
-            user_ids = [row[0] for row in users]
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                all_users = await uow.user_profiles.list(
+                    filters={'is_active': True},
+                    limit=100000
+                )
+                # Filter by shard in memory
+                user_ids = [
+                    u.uuid for u in all_users
+                    if (int(u.uuid[:8], 16) % user_shard_days) == today_shard
+                ]
             print(f"🧠 [AMS_TASK] Found {len(user_ids)} users for shard {today_shard}/{user_shard_days}")
             logger.info(f"🧠 [AMS_TASK] Found {len(user_ids)} users for shard {today_shard}/{user_shard_days}")
             

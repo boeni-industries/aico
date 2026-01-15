@@ -157,7 +157,7 @@ class ContextAssembler:
                         item.content for item in working_items[-3:] if item.content
                     ]) if working_items else current_message
                     
-                    print(f"🕸️ [KG_CONTEXT] Getting recent KG entities from libSQL...")
+                    print(f"🕸️ [KG_CONTEXT] Getting recent KG entities from PostgreSQL...")
                     
                     # Moved from semantic search to avoid embedding queue saturation
                     kg_nodes = await self.kg_storage.get_user_nodes(

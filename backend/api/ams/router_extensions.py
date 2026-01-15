@@ -4,10 +4,12 @@ AMS Router Extensions
 Additional helper functions for skill overview and memory evolution tracking.
 """
 
-import sqlite3
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from aico.core.logging import get_logger
+from aico.data.postgres.connection import get_session_factory
+from aico.data.uow import UnitOfWork
+from aico.services.ams_service import AMSService
 
 from .schemas import (
     SkillDetailResponse,
@@ -20,67 +22,61 @@ from .schemas import (
 logger = get_logger("backend.api.ams.extensions")
 
 
-def get_skill_overview(db: sqlite3.Connection, user_id: str) -> SkillOverviewResponse:
+async def get_skill_overview(user_id: str) -> SkillOverviewResponse:
     """
     Get comprehensive overview of all available skills with usage data.
-    
-    Queries ams_behavioral_skills and user_skill_confidence tables to provide
-    complete skill inventory with performance metrics.
+    Uses UoW and AMSService instead of raw SQL.
     """
     try:
-        # Get all available skills
-        cursor = db.execute("""
-            SELECT 
-                s.skill_id,
-                s.skill_name,
-                s.skill_type,
-                s.status,
-                s.created_at,
-                usc.confidence_score,
-                usc.usage_count,
-                usc.positive_count,
-                usc.negative_count,
-                usc.last_used_at
-            FROM ams_behavioral_skills s
-            LEFT JOIN user_skill_confidence usc 
-                ON s.skill_id = usc.skill_id AND usc.user_id = ?
-            ORDER BY 
-                CASE WHEN usc.usage_count IS NULL THEN 0 ELSE 1 END DESC,
-                usc.usage_count DESC,
-                s.skill_name ASC
-        """, (user_id,))
-        
-        skills = []
-        active_count = 0
-        
-        for row in cursor.fetchall():
-            # Convert confidence from 0.0-1.0 to 0-100 percentage if it exists
-            confidence = (row[5] * 100) if row[5] is not None else None
-            usage_count = row[6] if row[6] is not None else None
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
             
-            if usage_count and usage_count > 0:
-                active_count += 1
+            # Get all skills and user confidence data
+            all_skills = await ams_service.get_all_skills()
+            user_confidence = await ams_service.get_user_skill_confidence(user_id)
             
-            skills.append(SkillDetailResponse(
-                skill_id=row[0],
-                skill_name=row[1],
-                skill_type=row[2],
-                status=row[3],
-                confidence_score=confidence,
-                usage_count=usage_count,
-                positive_count=row[7],
-                negative_count=row[8],
-                last_used_at=row[9],
-                created_at=row[4],
+            # Build confidence lookup
+            confidence_map = {uc.skill_id: uc for uc in user_confidence}
+            
+            skills = []
+            active_count = 0
+            
+            for skill in all_skills:
+                uc = confidence_map.get(skill.skill_id)
+                confidence = (uc.confidence_score * 100) if uc and uc.confidence_score else None
+                usage_count = uc.usage_count if uc else None
+                
+                if usage_count and usage_count > 0:
+                    active_count += 1
+                
+                skills.append(SkillDetailResponse(
+                    skill_id=skill.skill_id,
+                    skill_name=skill.skill_name,
+                    skill_type=skill.skill_type,
+                    status=skill.status,
+                    confidence_score=confidence,
+                    usage_count=usage_count,
+                    positive_count=uc.positive_count if uc else None,
+                    negative_count=uc.negative_count if uc else None,
+                    last_used_at=uc.last_used_at if uc else None,
+                    created_at=skill.created_at,
+                ))
+            
+            # Sort: used skills first, then by usage count, then by name
+            skills.sort(key=lambda s: (
+                0 if s.usage_count else 1,
+                -(s.usage_count or 0),
+                s.skill_name
             ))
+            
+            return SkillOverviewResponse(
+                total_skills=len(skills),
+                active_skills=active_count,
+                skills=skills,
+            )
         
-        return SkillOverviewResponse(
-            total_skills=len(skills),
-            active_skills=active_count,
-            skills=skills,
-        )
-        
-    except (sqlite3.OperationalError, RuntimeError, ValueError) as e:
+    except Exception as e:
         logger.warning(f"Skill overview query failed: {e}")
         return SkillOverviewResponse(
             total_skills=0,
@@ -89,7 +85,7 @@ def get_skill_overview(db: sqlite3.Connection, user_id: str) -> SkillOverviewRes
         )
 
 
-def get_memory_evolution(db: sqlite3.Connection, user_id: str) -> MemoryEvolutionResponse:
+async def get_memory_evolution(user_id: str) -> MemoryEvolutionResponse:
     """
     Get memory evolution metrics showing how memory grows over time.
     
@@ -99,36 +95,82 @@ def get_memory_evolution(db: sqlite3.Connection, user_id: str) -> MemoryEvolutio
     try:
         current_time = datetime.utcnow()
         
-        # Get current memory metrics
-        # Working memory - stored in ams_trajectories
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM ams_trajectories WHERE user_id = ? AND archived = 0
-        """, (user_id,))
-        working_memory_count = cursor.fetchone()[0] or 0
-        
-        # Semantic facts - stored in ams_user_memories
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM ams_user_memories WHERE user_id = ?
-        """, (user_id,))
-        semantic_facts_count = cursor.fetchone()[0] or 0
-        
-        # Knowledge graph entities - using actual table name kg_nodes
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM kg_nodes WHERE user_id = ?
-        """, (user_id,))
-        kg_entities = cursor.fetchone()[0] or 0
-        
-        # Knowledge graph relationships - using actual table name kg_edges
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM kg_edges WHERE user_id = ?
-        """, (user_id,))
-        kg_relationships = cursor.fetchone()[0] or 0
-        
-        # Total conversations - using ams_trajectories
-        cursor = db.execute("""
-            SELECT COUNT(DISTINCT conversation_id) FROM ams_trajectories WHERE user_id = ?
-        """, (user_id,))
-        total_conversations = cursor.fetchone()[0] or 0
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            # Get current memory metrics via repositories
+            trajectories = await uow.ams_trajectories.list(
+                filters={'user_id': user_id, 'archived': False},
+                limit=100000
+            )
+            working_memory_count = len(trajectories)
+            
+            user_memories = await uow.ams_user_memories.list(
+                filters={'user_id': user_id},
+                limit=100000
+            )
+            semantic_facts_count = len(user_memories)
+            
+            kg_nodes = await uow.kg_nodes.list(
+                filters={'user_id': user_id},
+                limit=100000
+            )
+            kg_entities = len(kg_nodes)
+            
+            kg_edges = await uow.kg_edges.list(
+                filters={'user_id': user_id},
+                limit=100000
+            )
+            kg_relationships = len(kg_edges)
+            
+            # Count unique conversations
+            unique_conversations = set(t.conversation_id for t in trajectories)
+            total_conversations = len(unique_conversations)
+            
+            # Calculate 7-day growth
+            seven_days_ago = current_time - timedelta(days=7)
+            
+            facts_7d = sum(1 for m in user_memories 
+                          if m.created_at and (
+                              datetime.fromisoformat(m.created_at.replace('Z', '+00:00')) if isinstance(m.created_at, str)
+                              else m.created_at
+                          ) > seven_days_ago)
+            
+            entities_7d = sum(1 for n in kg_nodes 
+                             if n.created_at and (
+                                 datetime.fromisoformat(n.created_at.replace('Z', '+00:00')) if isinstance(n.created_at, str)
+                                 else n.created_at
+                             ) > seven_days_ago)
+            
+            relationships_7d = sum(1 for e in kg_edges 
+                                  if e.created_at and (
+                                      datetime.fromisoformat(e.created_at.replace('Z', '+00:00')) if isinstance(e.created_at, str)
+                                      else e.created_at
+                                  ) > seven_days_ago)
+            
+            consolidations_7d = 0
+            
+            # Calculate 30-day growth
+            thirty_days_ago = current_time - timedelta(days=30)
+            
+            facts_30d = sum(1 for m in user_memories 
+                           if m.created_at and (
+                               datetime.fromisoformat(m.created_at.replace('Z', '+00:00')) if isinstance(m.created_at, str)
+                               else m.created_at
+                           ) > thirty_days_ago)
+            
+            entities_30d = sum(1 for n in kg_nodes 
+                              if n.created_at and (
+                                  datetime.fromisoformat(n.created_at.replace('Z', '+00:00')) if isinstance(n.created_at, str)
+                                  else n.created_at
+                              ) > thirty_days_ago)
+            
+            relationships_30d = sum(1 for e in kg_edges 
+                                   if e.created_at and (
+                                       datetime.fromisoformat(e.created_at.replace('Z', '+00:00')) if isinstance(e.created_at, str)
+                                       else e.created_at
+                                   ) > thirty_days_ago)
+            
+            consolidations_30d = 0
         
         current_metrics = MemoryMetricsSnapshot(
             timestamp=current_time.isoformat(),
@@ -139,31 +181,6 @@ def get_memory_evolution(db: sqlite3.Connection, user_id: str) -> MemoryEvolutio
             total_conversations=total_conversations,
         )
         
-        # Calculate 7-day growth
-        seven_days_ago = current_time - timedelta(days=7)
-        
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM ams_user_memories 
-            WHERE user_id = ? AND created_at > ?
-        """, (user_id, seven_days_ago.isoformat()))
-        facts_7d = cursor.fetchone()[0] or 0
-        
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM kg_nodes 
-            WHERE user_id = ? AND created_at > ?
-        """, (user_id, seven_days_ago.isoformat()))
-        entities_7d = cursor.fetchone()[0] or 0
-        
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM kg_edges 
-            WHERE user_id = ? AND created_at > ?
-        """, (user_id, seven_days_ago.isoformat()))
-        relationships_7d = cursor.fetchone()[0] or 0
-        
-        # Consolidation sessions are stored in ams_consolidation_state as JSON
-        # Cannot easily query historical session count from current schema
-        consolidations_7d = 0
-        
         growth_7d = MemoryGrowthStats(
             period_days=7,
             facts_added=facts_7d,
@@ -171,31 +188,6 @@ def get_memory_evolution(db: sqlite3.Connection, user_id: str) -> MemoryEvolutio
             relationships_added=relationships_7d,
             consolidation_sessions=consolidations_7d,
         )
-        
-        # Calculate 30-day growth
-        thirty_days_ago = current_time - timedelta(days=30)
-        
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM ams_user_memories 
-            WHERE user_id = ? AND created_at > ?
-        """, (user_id, thirty_days_ago.isoformat()))
-        facts_30d = cursor.fetchone()[0] or 0
-        
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM kg_nodes 
-            WHERE user_id = ? AND created_at > ?
-        """, (user_id, thirty_days_ago.isoformat()))
-        entities_30d = cursor.fetchone()[0] or 0
-        
-        cursor = db.execute("""
-            SELECT COUNT(*) FROM kg_edges 
-            WHERE user_id = ? AND created_at > ?
-        """, (user_id, thirty_days_ago.isoformat()))
-        relationships_30d = cursor.fetchone()[0] or 0
-        
-        # Consolidation sessions are stored in ams_consolidation_state as JSON
-        # Cannot easily query historical session count from current schema
-        consolidations_30d = 0
         
         growth_30d = MemoryGrowthStats(
             period_days=30,
@@ -239,7 +231,7 @@ def get_memory_evolution(db: sqlite3.Connection, user_id: str) -> MemoryEvolutio
             insights=insights[:5],
         )
         
-    except (sqlite3.OperationalError, RuntimeError, ValueError) as e:
+    except Exception as e:
         logger.warning(f"Memory evolution query failed: {e}")
         
         # Return default values

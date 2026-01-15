@@ -239,16 +239,26 @@ class AgencyPlanExecutorTask(BaseTask):
     ) -> list[Dict[str, Any]]:
         """Get active plan executions (running or pending)."""
         try:
-            rows = context.db_connection.execute(
-                """SELECT execution_id, plan_id, goal_id, user_id
-                   FROM agency_plan_executions
-                   WHERE status IN ('pending', 'running')
-                   ORDER BY created_at ASC
-                   LIMIT ?""",
-                (limit,)
-            ).fetchall()
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
             
-            executions = [dict(row) for row in rows]
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Get active executions via repository
+                all_executions = await uow.agency_plan_executions.list(
+                    filters={'status__in': ['pending', 'running']},
+                    limit=limit
+                )
+                
+                executions = [
+                    {
+                        'execution_id': e.execution_id,
+                        'plan_id': e.plan_id,
+                        'goal_id': e.goal_id,
+                        'user_id': e.user_id
+                    }
+                    for e in all_executions
+                ]
             
             logger.debug(
                 f"🎬 [PLAN_EXECUTOR_TASK] Found {len(executions)} active executions"
@@ -266,30 +276,54 @@ class AgencyPlanExecutorTask(BaseTask):
     ) -> list[Dict[str, Any]]:
         """Get plans for active intentions that don't have executions."""
         try:
-            # Get plans for active intentions without running executions
-            rows = context.db_connection.execute(
-                """SELECT DISTINCT p.plan_id, p.goal_id, g.user_id
-                   FROM agency_plans p
-                   JOIN agency_goals g ON p.goal_id = g.goal_id
-                   JOIN agency_intention_set i ON g.goal_id = i.goal_id
-                   WHERE i.status = 'active'
-                     AND p.status IN ('draft', 'active')
-                     AND NOT EXISTS (
-                         SELECT 1 FROM agency_plan_executions pe
-                         WHERE pe.plan_id = p.plan_id
-                           AND pe.status IN ('pending', 'running')
-                     )
-                   ORDER BY i.arbiter_score DESC
-                   LIMIT ?""",
-                (limit,)
-            ).fetchall()
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.agency_service import AgencyService
             
-            plans = [dict(row) for row in rows]
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                agency_service = AgencyService(uow)
+                
+                # Get active intentions
+                active_intentions = await uow.agency_intention_set.list(
+                    filters={'status': 'active'},
+                    limit=1000
+                )
+                
+                # Get plans for these goals
+                plans_needing_exec = []
+                for intention in active_intentions[:limit*2]:  # Check more than limit
+                    plans = await agency_service.get_goal_plans(intention.goal_id)
+                    
+                    for plan in plans:
+                        if plan.status in ['draft', 'active']:
+                            # Check if execution exists
+                            executions = await uow.agency_plan_executions.list(
+                                filters={
+                                    'plan_id': plan.plan_id,
+                                    'status__in': ['pending', 'running']
+                                },
+                                limit=1
+                            )
+                            
+                            if not executions:
+                                goal = await agency_service.get_goal(intention.goal_id)
+                                plans_needing_exec.append({
+                                    'plan_id': plan.plan_id,
+                                    'goal_id': plan.goal_id,
+                                    'user_id': goal.user_id if goal else None
+                                })
+                                
+                                if len(plans_needing_exec) >= limit:
+                                    break
+                    
+                    if len(plans_needing_exec) >= limit:
+                        break
             
             logger.debug(
-                f"🎬 [PLAN_EXECUTOR_TASK] Found {len(plans)} plans needing execution"
+                f"🎬 [PLAN_EXECUTOR_TASK] Found {len(plans_needing_exec)} plans needing execution"
             )
-            return plans
+            return plans_needing_exec
             
         except Exception as e:
             logger.error(

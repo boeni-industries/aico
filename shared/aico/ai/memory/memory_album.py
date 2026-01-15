@@ -19,16 +19,15 @@ class MemoryAlbumStore:
     """
     Manages user-curated memories in user_memories table.
     Shared between backend and CLI for consistent memory management.
+    Uses UnitOfWork pattern for PostgreSQL access.
     """
     
-    def __init__(self, db_connection: Any  # PostgreSQL migration):
+    def __init__(self):
         """
-        Initialize MemoryAlbumStore with encrypted database connection.
-        
-        Args:
-            db_connection: Encrypted PostgreSQL connection (injected via dependency injection)
+        Initialize MemoryAlbumStore.
+        No longer takes db_connection - uses UnitOfWork pattern.
         """
-        self.db = db_connection
+        pass
     
     async def store_user_curated_fact(
         self,
@@ -67,48 +66,35 @@ class MemoryAlbumStore:
             fact_id: The ID of the stored fact
         """
         
-        fact_id = f"fact_{uuid.uuid4().hex}"
-        # Store UTC time with explicit timezone marker
-        now = datetime.now(timezone.utc).isoformat()
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        cursor = self.db.execute(
-            """
-            INSERT INTO ams_user_memories (
-                fact_id, user_id, fact_type, category, confidence,
-                is_immutable, valid_from, content, extraction_method,
-                source_conversation_id, source_message_id,
-                user_note, tags_json, emotional_tone, memory_type,
-                content_type, conversation_title, conversation_summary,
-                turn_range, key_moments_json,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                fact_id,
-                user_id,
-                fact_type,
-                category,
-                1.0,  # User-curated = 100% confidence
-                False,
-                now,
-                content,
-                "user_curated",  # KEY: Distinguishes from AI-extracted
-                conversation_id,
-                message_id,
-                user_note,
-                json.dumps(tags or []),
-                emotional_tone,
-                memory_type,
-                content_type,
-                conversation_title,
-                conversation_summary,
-                turn_range,
-                json.dumps(key_moments or []),
-                now,
-                now,
-            )
-        )
-        cursor.close()
+        fact_id = f"fact_{uuid.uuid4().hex}"
+        now = datetime.now(timezone.utc)
+        
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
+            
+            memory_data = {
+                'memory_id': fact_id,
+                'user_id': user_id,
+                'memory_type': memory_type,
+                'content': content,
+                'category': category,
+                'confidence': 1.0,  # User-curated = 100% confidence
+                'extraction_method': 'user_curated',
+                'source_conversation_id': conversation_id,
+                'source_message_id': message_id,
+                'user_note': user_note,
+                'tags': tags or [],
+                'emotional_tone': emotional_tone,
+                'created_at': now,
+                'updated_at': now
+            }
+            
+            await ams_service.create_user_memory(memory_data)
         
         logger.info(f"Stored user-curated fact: {fact_id}", extra={
             "user_id": user_id,

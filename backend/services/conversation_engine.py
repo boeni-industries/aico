@@ -1371,74 +1371,72 @@ class ConversationEngine(BaseService):
             if not memory_manager._behavioral_enabled:
                 return
             
-            # Get database connection
-            if not hasattr(memory_manager, '_db_connection') or not memory_manager._db_connection:
-                return
-            
-            db = memory_manager._db_connection
-            
             # Generate trajectory ID
             import uuid
             import json
             trajectory_id = str(uuid.uuid4())
-            
-            # Get turn number (count messages in conversation)
             conversation_id = user_message.message.conversation_id
-            turn_number = db.execute(
-                "SELECT COUNT(*) FROM ams_trajectories WHERE user_id = ? AND conversation_id = ?",
-                (user_context.user_id, conversation_id)
-            ).fetchone()[0] + 1
             
-            # Extract agency context for logging
-            agency_context_json = None
-            if agency_data and agency_data.get("success"):
-                agency_context = {
-                    "intention_set": agency_data.get("data", {}).get("intention_set"),
-                    "active_goals": agency_data.get("data", {}).get("active_goals"),
-                    "ethics_decisions": agency_data.get("data", {}).get("ethics_decisions"),
-                    "confidence": agency_data.get("confidence"),
-                    "processing_time_ms": agency_data.get("processing_time_ms")
-                }
-                # Remove None values
-                agency_context = {k: v for k, v in agency_context.items() if v is not None}
-                if agency_context:
-                    agency_context_json = json.dumps(agency_context)
+            # Use UnitOfWork to persist trajectory via repository
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            try:
+                session_factory = await get_session_factory()
+                async with UnitOfWork(session_factory) as uow:
+                    # Get turn number by counting existing trajectories
+                    turn_number = await uow.ams_trajectories.count(
+                        filters={"user_id": user_context.user_id, "conversation_id": conversation_id}
+                    ) + 1
                     
-                    # Log agency decisions as structured log entry
-                    self.logger.info(
-                        f"🎯 [AGENCY] Turn {turn_number} - Agency context",
-                        extra={
-                            "conversation_id": conversation_id,
-                            "turn_number": turn_number,
-                            "agency_context": agency_context,
-                            "subsystem": "agency",
-                            "subsystem": "conversation_engine"
+                    # Extract agency context for logging
+                    agency_context_json = None
+                    if agency_data and agency_data.get("success"):
+                        agency_context = {
+                            "intention_set": agency_data.get("data", {}).get("intention_set"),
+                            "active_goals": agency_data.get("data", {}).get("active_goals"),
+                            "ethics_decisions": agency_data.get("data", {}).get("ethics_decisions"),
+                            "confidence": agency_data.get("confidence"),
+                            "processing_time_ms": agency_data.get("processing_time_ms")
                         }
+                        # Remove None values
+                        agency_context = {k: v for k, v in agency_context.items() if v is not None}
+                        if agency_context:
+                            agency_context_json = json.dumps(agency_context)
+                            
+                            # Log agency decisions as structured log entry
+                            self.logger.info(
+                                f"🎯 [AGENCY] Turn {turn_number} - Agency context",
+                                extra={
+                                    "conversation_id": conversation_id,
+                                    "turn_number": turn_number,
+                                    "agency_context": agency_context,
+                                    "subsystem": "agency"
+                                }
+                            )
+                    
+                    # Create trajectory via repository
+                    from aico.data.ams.models import AMSTrajectory
+                    trajectory = AMSTrajectory(
+                        trajectory_id=trajectory_id,
+                        user_id=user_context.user_id,
+                        conversation_id=conversation_id,
+                        turn_number=turn_number,
+                        user_input=user_message.message.text,
+                        selected_skill_id=selected_skill_id,
+                        ai_response=ai_response,
+                        message_id=user_message.message_id,
+                        agency_context=agency_context_json,
+                        timestamp=datetime.now(UTC)
                     )
-            
-            # Insert trajectory with message_id for feedback linking
-            db.execute(
-                """INSERT INTO ams_trajectories (
-                    trajectory_id, user_id, conversation_id, turn_number,
-                    user_input, selected_skill_id, ai_response, message_id, 
-                    agency_context, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    trajectory_id,
-                    user_context.user_id,
-                    conversation_id,
-                    turn_number,
-                    user_message.message.text,
-                    selected_skill_id,
-                    ai_response,
-                    user_message.message_id,  # Use message_id from ConversationMessage (not message.id)
-                    agency_context_json,  # Store agency context as JSON
-                    datetime.now(UTC).isoformat()
-                )
-            )
-            db.commit()
-            
-            self.logger.info(f"📝 [TRAJECTORY] Logged turn {turn_number} for conversation {conversation_id}")
+                    
+                    await uow.ams_trajectories.create(trajectory)
+                    await uow.commit()
+                    
+                    self.logger.info(f"📝 [TRAJECTORY] Logged turn {turn_number} for conversation {conversation_id}")
+            except Exception as db_error:
+                self.logger.error(f"📝 [TRAJECTORY] Database error logging trajectory: {db_error}")
+                raise
             
         except Exception as e:
             self.logger.error(f"📝 [TRAJECTORY] Failed to log trajectory: {e}")

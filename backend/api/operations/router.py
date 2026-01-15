@@ -5,7 +5,6 @@ REST API endpoints for operations monitoring, database metrics, and active sessi
 """
 
 import os
-import sqlite3
 import time
 import shutil
 import uuid

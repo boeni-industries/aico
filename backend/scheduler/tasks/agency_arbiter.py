@@ -187,15 +187,17 @@ class AgencyArbiterTask(BaseTask):
             List of user UUIDs
         """
         try:
-            rows = context.db_connection.execute(
-                """SELECT DISTINCT user_id 
-                   FROM agency_goals 
-                   WHERE status = 'pending'
-                   LIMIT ?""",
-                (limit,)
-            ).fetchall()
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.agency_service import AgencyService
             
-            user_ids = [row["user_id"] for row in rows]
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                agency_service = AgencyService(uow)
+                pending_goals = await agency_service.get_goals_by_status('pending', limit=limit*10)
+                
+                # Get unique user IDs
+                user_ids = list(set(g.user_id for g in pending_goals))[:limit]
             
             logger.debug(f"🎯 [ARBITER_TASK] Found {len(user_ids)} users with pending goals")
             return user_ids
@@ -216,15 +218,27 @@ class AgencyArbiterTask(BaseTask):
             List of goal dictionaries
         """
         try:
-            rows = context.db_connection.execute(
-                """SELECT goal_id, title, origin, priority, created_at
-                   FROM agency_goals 
-                   WHERE user_id = ? AND status = 'pending'
-                   ORDER BY created_at DESC""",
-                (user_id,)
-            ).fetchall()
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.agency_service import AgencyService
             
-            goals = [dict(row) for row in rows]
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                agency_service = AgencyService(uow)
+                goal_models = await agency_service.get_user_goals(user_id, status='pending')
+                
+                # Convert to dicts
+                goals = [
+                    {
+                        'goal_id': g.goal_id,
+                        'title': g.title,
+                        'origin': g.origin.value if hasattr(g.origin, 'value') else g.origin,
+                        'priority': g.priority.value if hasattr(g.priority, 'value') else g.priority,
+                        'created_at': g.created_at
+                    }
+                    for g in goal_models
+                ]
+            
             return goals
             
         except Exception as e:

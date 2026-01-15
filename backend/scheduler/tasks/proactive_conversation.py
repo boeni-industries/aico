@@ -97,9 +97,17 @@ class ProactiveConversationTask(BaseTask):
             adaptivity_scorer = AdaptivityScorer()
             civility_scorer = CivilityScorer()
             
-            # Get all active users
-            cursor = db.execute("SELECT uuid FROM user_profiles WHERE is_active = 1")
-            all_user_ids = [row[0] for row in cursor.fetchall()]
+            # Get all active users via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                active_users = await uow.user_profiles.list(
+                    filters={'is_active': True},
+                    limit=100000
+                )
+                all_user_ids = [u.uuid for u in active_users]
             
             if not all_user_ids:
                 logger.info("🗣️ [PROACTIVE] No active users found")
@@ -109,24 +117,23 @@ class ProactiveConversationTask(BaseTask):
                     skipped=True,
                 )
             
-            # LAYER 1: Batch pre-filter users with recent pending initiations
-            # This prevents expensive feature extraction for users we'll skip anyway
-            placeholders = ','.join('?' * len(all_user_ids))
-            users_with_pending = db.execute(
-                f"""SELECT DISTINCT user_id
-                   FROM conversation_initiations
-                   WHERE user_id IN ({placeholders})
-                   AND resolution_status = 'pending'
-                   AND datetime(initiated_at) > datetime('now', '-24 hours')""",
-                all_user_ids
-            ).fetchall()
-            
-            users_to_skip = {row[0] for row in users_with_pending}
-            user_ids = [uid for uid in all_user_ids if uid not in users_to_skip]
+            # LAYER 1: Batch pre-filter users with recent pending initiations via UoW
+            async with UnitOfWork(session_factory) as uow:
+                yesterday = datetime.now(UTC) - timedelta(days=1)
+                
+                pending_initiations = await uow.conversation_initiations.list(
+                    filters={'status': 'pending'},
+                    limit=100000
+                )
+                users_with_pending = {
+                    init.user_id for init in pending_initiations
+                    if init.user_id in all_user_ids and init.created_at >= yesterday
+                }
+            user_ids = [uid for uid in all_user_ids if uid not in users_with_pending]
             
             logger.info(
                 f"🗣️ [PROACTIVE] Pre-filtered {len(all_user_ids)} users: "
-                f"{len(user_ids)} eligible, {len(users_to_skip)} skipped (recent pending)"
+                f"{len(user_ids)} eligible, {len(users_with_pending)} skipped (recent pending)"
             )
             
             initiations_created = 0
@@ -228,21 +235,21 @@ class ProactiveConversationTask(BaseTask):
                         if cache_hit:
                             continue
                         
-                        # LAYER 2: Check database for duplicate strategy AND question content
-                        # Only if cache miss (most runs will hit cache, saving DB queries)
-                        duplicate = db.execute(
-                            """SELECT COUNT(*) as count
-                               FROM conversation_initiations
-                               WHERE user_id = ?
-                               AND (
-                                   trigger_reason = ?
-                                   OR question LIKE ?
-                               )
-                               AND datetime(initiated_at) > datetime('now', '-24 hours')""",
-                            (user_id, f"proactive_check_strategy_{strategy_id}", f"%{question_prefix}%")
-                        ).fetchone()
+                        # LAYER 2: Check database for duplicate strategy AND question content via UoW
+                        async with UnitOfWork(session_factory) as uow:
+                            week_ago = datetime.now(UTC) - timedelta(days=7)
+                            user_initiations = await uow.conversation_initiations.list(
+                                filters={
+                                    'user_id': user_id,
+                                    'trigger_source': strategy_id,
+                                    'status': 'pending'
+                                },
+                                limit=1000
+                            )
+                            duplicate = sum(1 for init in user_initiations
+                                          if init.question == message and init.created_at >= week_ago)
                         
-                        if duplicate and duplicate['count'] > 0:
+                        if duplicate > 0:
                             logger.debug(
                                 f"🗣️ [PROACTIVE] User {user_id[:8]} already has similar initiation "
                                 f"(strategy {strategy_id} or matching question), skipping"
@@ -258,29 +265,24 @@ class ProactiveConversationTask(BaseTask):
                         initiation_id = str(uuid.uuid4())
                         conversation_id = f"{user_id}_{int(datetime.now(timezone.utc).timestamp())}"
                         
-                        db.execute(
-                            """INSERT INTO conversation_initiations (
-                                initiation_id, user_id, conversation_id,
-                                trigger_source, trigger_reason, question,
-                                context, urgency, expected_answer_type,
-                                initiated_at, resolution_status, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                            (
-                                initiation_id,
-                                user_id,
-                                conversation_id,
-                                "scheduler",
-                                f"proactive_check_strategy_{strategy_id}",
-                                message,
-                                f"Adaptivity: {adaptivity:.2f}, Civility: {civility:.2f}, Strategy: {strategy_id}",
-                                "medium",
-                                "text",
-                                datetime.now(timezone.utc).isoformat(),
-                                "pending",
-                                datetime.now(timezone.utc).isoformat()
+                        # Insert via UoW
+                        async with UnitOfWork(session_factory) as uow:
+                            from aico.data.agency.models import ConversationInitiation
+                            
+                            initiation = ConversationInitiation(
+                                initiation_id=initiation_id,
+                                user_id=user_id,
+                                conversation_id=conversation_id,
+                                trigger_source=strategy_id,
+                                trigger_reason=f"proactive_check_strategy_{strategy_id}",
+                                question=message,
+                                civility_score=civility,
+                                status='pending',
+                                created_at=datetime.now(UTC)
                             )
-                        )
-                        db.commit()
+                            
+                            await uow.conversation_initiations.create(initiation)
+                            await uow.commit()
                         
                         # Update in-memory cache
                         if user_id not in self._recent_initiations_cache:
