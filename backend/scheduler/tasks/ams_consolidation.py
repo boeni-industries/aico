@@ -148,15 +148,7 @@ class MemoryConsolidationTask(BaseTask):
             # Get today's shard index (0-6 for 7-day sharding)
             today_shard = datetime.now(timezone.utc).day % user_shard_days
             
-            # Get database connection from context
-            db_connection = context.db_connection
-            if not db_connection:
-                logger.error("🧠 [AMS_TASK] Database connection not available")
-                return TaskResult(
-                    success=False,
-                    message="Database connection not available",
-                    error="No database connection in context"
-                )
+            # Database access will be via UoW in consolidate_user_memories
             
             # Query users for today's shard via UoW
             from aico.data.postgres.connection import get_session_factory
@@ -209,7 +201,7 @@ class MemoryConsolidationTask(BaseTask):
                         user_id=user_id,
                         working_store=memory_manager._working_store,
                         semantic_store=memory_manager._semantic_store,
-                        db_connection=db_connection,
+                        db_connection=None,  # ConsolidationScheduler uses UoW internally
                         max_messages=100
                     )
                     

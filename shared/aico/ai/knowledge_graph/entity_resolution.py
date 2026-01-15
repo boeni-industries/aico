@@ -216,6 +216,14 @@ class EntityResolver:
         if not nodes:
             return
         
+        # Ensure properties are dicts (defensive deserialization)
+        for node in nodes:
+            if isinstance(node.properties, str):
+                try:
+                    node.properties = json.loads(node.properties)
+                except (json.JSONDecodeError, TypeError):
+                    node.properties = {}
+        
         # Generate embeddings for nodes
         texts = [self._node_to_text(node) for node in nodes]
         response = await self.modelservice.generate_embeddings(texts=texts)
@@ -822,6 +830,13 @@ Return valid JSON only."""
     
     def _node_to_text(self, node: Node) -> str:
         """Convert node to text for embedding."""
+        # Ensure properties is a dict (defensive deserialization)
+        if isinstance(node.properties, str):
+            try:
+                node.properties = json.loads(node.properties)
+            except (json.JSONDecodeError, TypeError):
+                node.properties = {}
+        
         # Handle properties that might be lists (data corruption)
         props_parts = []
         for k, v in node.properties.items():

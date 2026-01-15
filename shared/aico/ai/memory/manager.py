@@ -57,9 +57,12 @@ Performance & Reliability:
 """
 
 from typing import Dict, List, Optional, Any
-from datetime import datetime
-import asyncio
+from datetime import datetime, timezone
 from dataclasses import dataclass
+import asyncio
+import time
+import logging
+import json
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
@@ -968,14 +971,21 @@ class MemoryManager(BaseAIProcessor):
             context_time = time.time() - context_start
             
             # Build context for extractor (entity names and IDs for LLM to reference)
-            entity_context = [
-                {
+            entity_context = []
+            for node in existing_nodes:
+                # Ensure properties is a dict (defensive deserialization)
+                props = node.properties
+                if isinstance(props, str):
+                    try:
+                        props = json.loads(props)
+                    except (json.JSONDecodeError, TypeError):
+                        props = {}
+                
+                entity_context.append({
                     "id": node.id,
                     "label": node.label,
-                    "name": node.properties.get("name", "")
-                }
-                for node in existing_nodes
-            ]
+                    "name": props.get("name", "")
+                })
             print(f"🕸️ [KG] ✅ Loaded {len(entity_context)} existing entities in {context_time:.2f}s")
             
             # 2. Extract entities and relationships (with existing entity context)

@@ -282,7 +282,7 @@ async def get_graph_stats(
         # Calculate health metrics
         avg_degree = current_edge_count / max(current_node_count, 1)
         isolated_nodes = sum(1 for node in current_nodes if not any(
-            e.from_id == node.id or e.to_id == node.id for e in current_edges
+            e.source_id == node.id or e.target_id == node.id for e in current_edges
         ))
         
         health_metrics = HealthMetrics(

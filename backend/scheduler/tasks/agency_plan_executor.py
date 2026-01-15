@@ -293,7 +293,8 @@ class AgencyPlanExecutorTask(BaseTask):
                 # Get plans for these goals
                 plans_needing_exec = []
                 for intention in active_intentions[:limit*2]:  # Check more than limit
-                    plans = await agency_service.get_goal_plans(intention.goal_id)
+                    # Use list_plans instead of get_goal_plans
+                    plans = await agency_service.list_plans(intention.goal_id)
                     
                     for plan in plans:
                         if plan.status in ['draft', 'active']:

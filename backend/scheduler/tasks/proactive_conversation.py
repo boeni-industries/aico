@@ -89,19 +89,16 @@ class ProactiveConversationTask(BaseTask):
                 extract_contextual_features
             )
             
-            # Get database connection
-            db = context.db_connection
+            # Initialize learning components (bandit will use UoW internally)
+            from aico.data.postgres.connection import get_session_factory
+            session_factory = await get_session_factory()
             
-            # Initialize learning components
-            bandit = ContextualBanditLearner(db)
+            bandit = ContextualBanditLearner(session_factory)
             adaptivity_scorer = AdaptivityScorer()
             civility_scorer = CivilityScorer()
             
             # Get all active users via UoW
-            from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
-            
-            session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 active_users = await uow.user_profiles.list(
                     filters={'is_active': True},
@@ -145,7 +142,7 @@ class ProactiveConversationTask(BaseTask):
                     users_checked += 1
                     
                     # Extract contextual features (only for eligible users)
-                    context_features = extract_contextual_features(db, user_id)
+                    context_features = await extract_contextual_features(session_factory, user_id)
                     
                     # Score on Adaptivity dimension
                     patience_score = adaptivity_scorer.calculate_patience_score(
@@ -159,7 +156,7 @@ class ProactiveConversationTask(BaseTask):
                     # Load user preferences
                     try:
                         from aico.ai.agency.skills.communication.user_preferences import load_user_preferences
-                        user_prefs = load_user_preferences(db, user_id)
+                        user_prefs = await load_user_preferences(session_factory, user_id)
                     except Exception as pref_error:
                         logger.warning(f"🗣️ [PROACTIVE] Failed to load preferences: {pref_error}")
                         user_prefs = {}

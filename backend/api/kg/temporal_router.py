@@ -198,7 +198,21 @@ async def get_changes(
         nodes_changed = nodes_changed[:limit]
         
         for node in nodes_changed:
-            properties = json.loads(node.properties) if isinstance(node.properties, str) else (node.properties or {})
+            # Convert JSONB to plain dict
+            properties = node.properties
+            if properties is None:
+                properties = {}
+            elif isinstance(properties, dict):
+                # Already a dict, use as-is
+                properties = dict(properties)
+            else:
+                # Fallback: try to parse as JSON string
+                try:
+                    properties = json.loads(str(properties))
+                    if not isinstance(properties, dict):
+                        properties = {}
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    properties = {}
             
             # Determine change type
             if node.created_at and from_timestamp <= node.created_at <= to_timestamp:
@@ -237,7 +251,21 @@ async def get_changes(
         edges_changed = edges_changed[:limit]
         
         for edge in edges_changed:
-            properties = json.loads(edge.properties) if isinstance(edge.properties, str) else (edge.properties or {})
+            # Convert JSONB to plain dict
+            properties = edge.properties
+            if properties is None:
+                properties = {}
+            elif isinstance(properties, dict):
+                # Already a dict, use as-is
+                properties = dict(properties)
+            else:
+                # Fallback: try to parse as JSON string
+                try:
+                    properties = json.loads(str(properties))
+                    if not isinstance(properties, dict):
+                        properties = {}
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    properties = {}
             
             if edge.created_at and from_timestamp <= edge.created_at <= to_timestamp:
                 change_type = "edge_created"

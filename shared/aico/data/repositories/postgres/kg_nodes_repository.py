@@ -74,11 +74,19 @@ class PostgresNodesRepository(Repository[Node]):
             return None
         
         # Construct Node directly to preserve database ID and timestamps
+        # Parse properties from JSON string to dict
+        properties = row.properties
+        if isinstance(properties, str):
+            try:
+                properties = json.loads(properties)
+            except (json.JSONDecodeError, TypeError):
+                properties = {}
+        
         return Node(
             id=row.id,
             user_id=row.user_id,
             label=row.label,
-            properties=row.properties if isinstance(row.properties, str) else json.dumps(row.properties),
+            properties=properties,  # Always a dict
             confidence=row.confidence,
             source_text=row.source_text,
             created_at=row.created_at.isoformat() if hasattr(row.created_at, 'isoformat') else row.created_at,
@@ -142,12 +150,21 @@ class PostgresNodesRepository(Repository[Node]):
         stmt = stmt.order_by(kg_nodes.c.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         
-        return [
-            Node(
+        nodes = []
+        for row in result.fetchall():
+            # Parse properties from JSON string to dict
+            properties = row.properties
+            if isinstance(properties, str):
+                try:
+                    properties = json.loads(properties)
+                except (json.JSONDecodeError, TypeError):
+                    properties = {}
+            
+            nodes.append(Node(
                 id=row.id,
                 user_id=row.user_id,
                 label=row.label,
-                properties=row.properties,
+                properties=properties,  # Always a dict
                 confidence=row.confidence,
                 source_text=row.source_text,
                 created_at=row.created_at.isoformat() if row.created_at and hasattr(row.created_at, 'isoformat') else row.created_at,
@@ -157,9 +174,8 @@ class PostgresNodesRepository(Repository[Node]):
                 valid_until=row.valid_until.isoformat() if row.valid_until and hasattr(row.valid_until, 'isoformat') else row.valid_until,
                 is_current=row.is_current,
                 canonical_id=row.canonical_id,
-            )
-            for row in result.fetchall()
-        ]
+            ))
+        return nodes
     
     async def count(self, filters: Optional[dict] = None) -> int:
         """Count KG nodes with optional filters."""
@@ -190,12 +206,21 @@ class PostgresNodesRepository(Repository[Node]):
         
         result = await self.session.execute(stmt)
         
-        return [
-            Node(
+        nodes = []
+        for row in result.fetchall():
+            # Parse properties from JSON string to dict
+            properties = row.properties
+            if isinstance(properties, str):
+                try:
+                    properties = json.loads(properties)
+                except (json.JSONDecodeError, TypeError):
+                    properties = {}
+            
+            nodes.append(Node(
                 id=row.id,
                 user_id=row.user_id,
                 label=row.label,
-                properties=row.properties,
+                properties=properties,  # Always a dict
                 confidence=row.confidence,
                 source_text=row.source_text,
                 created_at=row.created_at.isoformat() if row.created_at and hasattr(row.created_at, 'isoformat') else row.created_at,
@@ -205,9 +230,8 @@ class PostgresNodesRepository(Repository[Node]):
                 valid_until=row.valid_until.isoformat() if row.valid_until and hasattr(row.valid_until, 'isoformat') else row.valid_until,
                 is_current=row.is_current,
                 canonical_id=row.canonical_id,
-            )
-            for row in result.fetchall()
-        ]
+            ))
+        return nodes
     
     async def get_by_label_for_user(self, user_id: str, label: str) -> List[Node]:
         """Get nodes by label for a specific user, ordered by confidence."""
@@ -221,12 +245,21 @@ class PostgresNodesRepository(Repository[Node]):
         
         result = await self.session.execute(stmt)
         
-        return [
-            Node(
+        nodes = []
+        for row in result.fetchall():
+            # Parse properties from JSON string to dict
+            properties = row.properties
+            if isinstance(properties, str):
+                try:
+                    properties = json.loads(properties)
+                except (json.JSONDecodeError, TypeError):
+                    properties = {}
+            
+            nodes.append(Node(
                 id=row.id,
                 user_id=row.user_id,
                 label=row.label,
-                properties=row.properties if isinstance(row.properties, str) else json.dumps(row.properties),
+                properties=properties,  # Always a dict
                 confidence=row.confidence,
                 source_text=row.source_text,
                 created_at=row.created_at.isoformat() if hasattr(row.created_at, 'isoformat') else row.created_at,
@@ -238,9 +271,8 @@ class PostgresNodesRepository(Repository[Node]):
                 canonical_id=row.canonical_id,
                 aliases_json=row.aliases_json if isinstance(row.aliases_json, str) else (json.dumps(row.aliases_json) if row.aliases_json else None),
                 reason=row.reason,
-            )
-            for row in result.fetchall()
-        ]
+            ))
+        return nodes
     
     async def mark_as_superseded(self, node_id: str, superseded_by: str) -> bool:
         """Mark a node as superseded by another node."""

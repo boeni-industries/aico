@@ -189,15 +189,16 @@ class AgencyArbiterTask(BaseTask):
         try:
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
-            from aico.services.agency_service import AgencyService
+            from aico.services.agency_service import AgencyService, GoalStatus
             
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 agency_service = AgencyService(uow)
-                pending_goals = await agency_service.get_goals_by_status('pending', limit=limit*10)
+                # Use service-layer helper to retrieve pending goals across users
+                pending_goals = await agency_service.get_goals_by_status(GoalStatus.PENDING, limit=limit * 10)
                 
-                # Get unique user IDs
-                user_ids = list(set(g.user_id for g in pending_goals))[:limit]
+                # Get unique user IDs from pending goals
+                user_ids = list({g.user_id for g in pending_goals})[:limit]
             
             logger.debug(f"🎯 [ARBITER_TASK] Found {len(user_ids)} users with pending goals")
             return user_ids

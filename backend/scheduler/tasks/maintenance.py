@@ -279,13 +279,15 @@ class HealthCheckTask(BaseTask):
     async def _check_database_health(self, context: TaskContext) -> bool:
         """Check database connectivity and basic operations"""
         try:
-            # Simple query to test database
-            def db_call():
-                cursor = context.db_connection.execute("SELECT 1")
-                return cursor.fetchone()
-            
-            result = await asyncio.to_thread(db_call)
-            return result is not None
+            # Simple query to test database via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Try to list a single user profile to verify DB connectivity
+                await uow.user_profiles.list(limit=1)
+            return True
             
         except Exception as e:
             self.logger.error(f"Database health check failed: {e}")
@@ -344,22 +346,28 @@ class DatabaseVacuumTask(BaseTask):
     async def execute(self, context: TaskContext) -> TaskResult:
         """Execute database vacuum task"""
         try:
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
             analyze_tables = context.get_config("analyze_tables", True)
 
             results = {}
 
-            # Perform a standard vacuum operation.
+            # Perform a standard vacuum operation via raw SQL through UoW session
             # This reclaims space and defragments the database.
             self.logger.info("Starting database VACUUM...")
-            context.db_connection.execute("VACUUM")
-            results["vacuum_type"] = "standard"
-            
-            # Analyze tables for query optimization
-            if analyze_tables:
-                context.db_connection.execute("ANALYZE")
-                results["tables_analyzed"] = True
-            
-            context.db_connection.commit()
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # VACUUM and ANALYZE must be run outside transaction, so use raw connection
+                await uow.session.execute("VACUUM")
+                results["vacuum_type"] = "standard"
+                
+                # Analyze tables for query optimization
+                if analyze_tables:
+                    await uow.session.execute("ANALYZE")
+                    results["tables_analyzed"] = True
+                
+                await uow.commit()
             
             message = f"Database vacuum completed: {results}"
             

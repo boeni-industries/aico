@@ -79,19 +79,24 @@ class FeedbackClassificationTask(BaseTask):
                     data={"enabled": False}
                 )
             
-            # Get unprocessed feedback events
+            # Get unprocessed feedback events via UoW
             batch_size = context.get_config("batch_size", 100)
             
-            unprocessed_feedback = context.db_connection.execute(
-                """SELECT feedback_id, user_id, free_text 
-                   FROM ams_behavioral_feedback 
-                   WHERE processed = FALSE 
-                   AND free_text IS NOT NULL 
-                   AND free_text != ''
-                   AND (reason IS NULL OR reason = '')
-                   LIMIT ?""",
-                (batch_size,)
-            ).fetchall()
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Get unprocessed feedback with free text
+                all_feedback = await uow.ams_behavioral_feedback.list(
+                    filters={'processed': False},
+                    limit=batch_size * 2
+                )
+                # Filter in memory for non-empty free_text and empty reason
+                unprocessed_feedback = [
+                    f for f in all_feedback
+                    if f.free_text and f.free_text.strip() and (not f.reason or not f.reason.strip())
+                ][:batch_size]
             
             if not unprocessed_feedback:
                 print("ℹ️  [AMS_FEEDBACK] No unprocessed feedback to classify")
@@ -123,7 +128,10 @@ class FeedbackClassificationTask(BaseTask):
             
             print(f"   Using similarity threshold: {similarity_threshold}")
             
-            for idx, (event_id, user_id, free_text) in enumerate(unprocessed_feedback, 1):
+            for idx, feedback in enumerate(unprocessed_feedback, 1):
+                event_id = feedback.feedback_id
+                user_id = feedback.user_id
+                free_text = feedback.free_text
                 try:
                     print(f"  [{idx}/{len(unprocessed_feedback)}] Classifying: {event_id[:8]}... - '{free_text[:50]}...'")
                     
@@ -142,12 +150,11 @@ class FeedbackClassificationTask(BaseTask):
                         top_category = max(categories.items(), key=lambda x: x[1])[0]
                         
                         # Update feedback event with top category as reason
-                        context.db_connection.execute(
-                            """UPDATE ams_behavioral_feedback 
-                               SET reason = ?, processed = TRUE
-                               WHERE feedback_id = ?""",
-                            (top_category, event_id)
-                        )
+                        async with UnitOfWork(session_factory) as uow:
+                            feedback.reason = top_category
+                            feedback.processed = True
+                            await uow.ams_behavioral_feedback.update(feedback)
+                            await uow.commit()
                         
                         classified_count += 1
                         print(f"    ✅ Classified as: {top_category} (confidence: {categories[top_category]:.2f})")
@@ -164,7 +171,7 @@ class FeedbackClassificationTask(BaseTask):
                     print(f"    Traceback: {traceback.format_exc()}")
                     logger.error(f"🧠 [AMS_FEEDBACK] Failed to classify {event_id}: {e}", extra={"traceback": traceback.format_exc()})
             
-            context.db_connection.commit()
+            # Commits are handled per-update in async context
             
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"\n✅ [AMS_FEEDBACK] Classified {classified_count}/{len(unprocessed_feedback)} events in {duration:.2f}s")

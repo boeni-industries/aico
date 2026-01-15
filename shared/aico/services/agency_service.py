@@ -76,6 +76,27 @@ class AgencyService:
             logger.error(f"[AGENCY_SERVICE] Failed to list goals: {e}", extra={"user_id": user_id})
             raise
 
+    async def get_goals_by_status(self, status: GoalStatus | str, limit: int = 100) -> List[Goal]:
+        """Retrieve goals across users filtered by status.
+
+        This replaces legacy GoalStore.get_goals_by_status for scheduler tasks
+        like AgencyArbiterTask.
+        """
+        try:
+            if isinstance(status, GoalStatus):
+                status_value = status.value
+            else:
+                status_value = status
+
+            filters = {"status": status_value}
+            return await self.uow.goals.list(filters=filters, limit=limit)
+        except Exception as e:
+            logger.error(
+                f"[AGENCY_SERVICE] Failed to get goals by status: {e}",
+                extra={"status": getattr(status, "value", status)},
+            )
+            raise
+
     async def update_goal(self, goal: Goal) -> Goal:
         """Update an existing goal."""
         try:

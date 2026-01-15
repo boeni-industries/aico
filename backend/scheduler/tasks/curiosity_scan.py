@@ -79,10 +79,17 @@ class CuriosityScanTask(BaseTask):
                     skipped=True,
                 )
             
-            # Get all active users from database
-            db = context.db_connection
-            cursor = db.execute("SELECT DISTINCT uuid FROM user_profiles WHERE is_active = 1")
-            user_ids = [row[0] for row in cursor.fetchall()]
+            # Get all active users from database via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                active_users = await uow.user_profiles.list(
+                    filters={'is_active': True},
+                    limit=100000
+                )
+            user_ids = [u.uuid for u in active_users]
             
             if not user_ids:
                 _get_logger().warning("[CURIOSITY_SCAN] No active users found")

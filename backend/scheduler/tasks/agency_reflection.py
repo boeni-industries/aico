@@ -77,11 +77,17 @@ class AgencyReflectionTask(BaseTask):
                     skipped=True
                 )
             
-            # Initialize agency engine
-            agency_engine = AgencyEngine(
-                config=context.config_manager,
-                db_connection=context.db_connection,
-            )
+            # Get agency engine from AI registry
+            from aico.ai import ai_registry
+            agency_engine = ai_registry.get("agency")
+            
+            if not agency_engine:
+                logger.error("[REFLECTION] Agency engine not found in AI registry")
+                return TaskResult(
+                    success=False,
+                    message="Agency engine not available",
+                    error="AgencyEngine not registered in ai_registry"
+                )
             
             # Get active users
             user_ids = await self._get_active_users(context)
@@ -178,18 +184,22 @@ class AgencyReflectionTask(BaseTask):
             List of user UUIDs
         """
         try:
-            # Query users with recent activity
+            # Query users with recent activity via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.agency_service import AgencyService
+            
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
+            session_factory = await get_session_factory()
             
-            rows = context.db_connection.execute(
-                """SELECT DISTINCT user_id 
-                   FROM agency_goals 
-                   WHERE created_at > ?
-                   LIMIT 100""",  # Limit to prevent overwhelming the system
-                (cutoff_date.isoformat(),)
-            ).fetchall()
-            
-            user_ids = [row["user_id"] for row in rows]
+            async with UnitOfWork(session_factory) as uow:
+                # Get recent goals
+                recent_goals = await uow.goals.list(
+                    filters={'created_at__gte': cutoff_date.isoformat()},
+                    limit=1000
+                )
+                # Get unique user IDs
+                user_ids = list(set(g.user_id for g in recent_goals))[:100]
             
             logger.debug(f"[REFLECTION] Found {len(user_ids)} active users")
             return user_ids

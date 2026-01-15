@@ -49,45 +49,42 @@ class AgencyFollowUpTask(BaseTask):
                     skipped=True
                 )
             
-            # Query open goals across all users
-            # For Phase 1, we'll scan directly via the DB to avoid per-user loops
-            db = context.db_connection
-            
-            # Find active goals that haven't had a follow-up recently
+            # Query open goals across all users via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.agency_service import AgencyService
+
             cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=min_hours)).isoformat()
-            
-            rows = db.execute(
-                """
-                SELECT g.goal_id, g.user_id, g.title, g.status, g.updated_at
-                FROM agency_goals g
-                WHERE g.status IN ('active', 'pending')
-                ORDER BY g.updated_at ASC
-                LIMIT ?
-                """,
-                (max_followups,)
-            ).fetchall()
+            session_factory = await get_session_factory()
             
             candidates: List[Dict[str, Any]] = []
-            for row in rows:
-                goal_id, user_id, title, status, updated_at = row
+            
+            async with UnitOfWork(session_factory) as uow:
+                agency_service = AgencyService(uow)
                 
-                # Check if this goal has had recent activity in agency_events
-                recent_events = db.execute(
-                    """
-                    SELECT COUNT(*) FROM agency_events
-                    WHERE goal_id = ? AND created_at > ?
-                    """,
-                    (goal_id, cutoff_time)
-                ).fetchone()[0]
+                # Get active and pending goals
+                active_goals = await agency_service.get_goals_by_status('active', limit=max_followups * 2)
+                pending_goals = await agency_service.get_goals_by_status('pending', limit=max_followups * 2)
+                all_goals = (active_goals + pending_goals)[:max_followups]
                 
-                if recent_events == 0:
-                    candidates.append({
-                        "goal_id": goal_id,
-                        "user_id": user_id,
-                        "title": title,
-                        "status": status,
-                        "updated_at": updated_at,
-                    })
+                for goal in all_goals:
+                    # Check if this goal has had recent activity in agency_events
+                    recent_events = await uow.agency_events.list(
+                        filters={
+                            'goal_id': goal.goal_id,
+                            'created_at__gte': cutoff_time
+                        },
+                        limit=1
+                    )
+                    
+                    if not recent_events:
+                        candidates.append({
+                            "goal_id": goal.goal_id,
+                            "user_id": goal.user_id,
+                            "title": goal.title,
+                            "status": goal.status.value if hasattr(goal.status, 'value') else goal.status,
+                            "updated_at": goal.updated_at,
+                        })
             
             # Phase 1: Log candidates and send simple proactive follow-ups
             if candidates:
@@ -100,49 +97,43 @@ class AgencyFollowUpTask(BaseTask):
                 # Later phases: more sophisticated selection, actual conversation messages
                 followup_sent_count = 0
                 max_followups_to_send = min(1, len(candidates))  # Conservative: 1 per run
-                
-                for candidate in candidates[:max_followups_to_send]:
-                    # Log candidate identification event
-                    db.execute(
-                        """
-                        INSERT INTO agency_events (user_id, goal_id, plan_id, event_type, source, payload_json, created_at)
-                        VALUES (?, ?, NULL, ?, ?, ?, ?)
-                        """,
-                        (
-                            candidate["user_id"],
-                            candidate["goal_id"],
-                            "followup_candidate_identified",
-                            "agency_followup_task",
-                            f'{{"title": "{candidate["title"]}"}}',
-                            datetime.now(timezone.utc).isoformat(),
+
+                async with UnitOfWork(session_factory) as uow:
+                    from aico.data.agency.models import AgencyEvent
+                    
+                    for candidate in candidates[:max_followups_to_send]:
+                        # Log candidate identification event
+                        event1 = AgencyEvent(
+                            user_id=candidate["user_id"],
+                            goal_id=candidate["goal_id"],
+                            plan_id=None,
+                            event_type="followup_candidate_identified",
+                            source="agency_followup_task",
+                            payload_json=f'{{"title": "{candidate["title"]}"}}',
+                            created_at=datetime.now(timezone.utc)
                         )
-                    )
-                    
-                    # Send proactive follow-up (Phase 1: just log as agency_event)
-                    # Later phases: enqueue actual conversation message via message bus
-                    followup_message = f"Checking in on your goal: {candidate['title']}"
-                    
-                    db.execute(
-                        """
-                        INSERT INTO agency_events (user_id, goal_id, plan_id, event_type, source, payload_json, created_at)
-                        VALUES (?, ?, NULL, ?, ?, ?, ?)
-                        """,
-                        (
-                            candidate["user_id"],
-                            candidate["goal_id"],
-                            "proactive_followup_sent",
-                            "agency_followup_task",
-                            f'{{"message": "{followup_message}", "title": "{candidate["title"]}"}}',
-                            datetime.now(timezone.utc).isoformat(),
+                        await uow.agency_events.create(event1)
+
+                        # Send proactive follow-up (Phase 1: just log as agency_event)
+                        followup_message = f"Checking in on your goal: {candidate['title']}"
+                        
+                        event2 = AgencyEvent(
+                            user_id=candidate["user_id"],
+                            goal_id=candidate["goal_id"],
+                            plan_id=None,
+                            event_type="proactive_followup_sent",
+                            source="agency_followup_task",
+                            payload_json=f'{{"message": "{followup_message}", "title": "{candidate["title"]}"}}',
+                            created_at=datetime.now(timezone.utc)
                         )
-                    )
-                    
-                    followup_sent_count += 1
-                    self.logger.info(
-                        f"[AGENCY_FOLLOWUP] Sent proactive follow-up for goal: {candidate['goal_id']}"
-                    )
-                
-                db.commit()
+                        await uow.agency_events.create(event2)
+                        
+                        await uow.commit()
+
+                        followup_sent_count += 1
+                        self.logger.info(
+                            f"[AGENCY_FOLLOWUP] Sent proactive follow-up for goal: {candidate['goal_id']}"
+                        )
                 
                 self.logger.info(
                     f"[AGENCY_FOLLOWUP] Sent {followup_sent_count} proactive follow-ups out of {len(candidates)} candidates"

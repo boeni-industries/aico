@@ -27,6 +27,7 @@ class KGNode(BaseModel):
     canonical_id: Optional[str] = None
     aliases_json: Optional[str] = None
     reason: Optional[str] = None
+    embedding: Optional[list] = None  # Cached embedding for entity resolution
 
     @field_validator('properties', 'aliases_json', mode='before')
     @classmethod
