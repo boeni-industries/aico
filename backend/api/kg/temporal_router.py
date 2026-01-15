@@ -22,10 +22,8 @@ from backend.api.kg.schemas import (
     GraphComparisonResponse,
     GraphDiff
 )
-from backend.api.kg.dependencies import (
-    get_current_user,
-    get_db_connection
-)
+from backend.api.kg.dependencies import get_current_user
+from backend.core.postgres_dependencies import get_uow
 
 router = APIRouter()
 logger = get_logger("backend.api.kg.temporal")
@@ -35,7 +33,7 @@ logger = get_logger("backend.api.kg.temporal")
 async def get_node_history(
     node_id: str,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[object, Depends(get_uow)]
 ) -> NodeHistoryResponse:
     """
     Get complete version history for a node.
@@ -48,7 +46,7 @@ async def get_node_history(
     Args:
         node_id: The ID of the node to fetch history for
         user: Current authenticated user (injected)
-        db_connection: Database connection (injected)
+        uow: Unit of Work (injected)
     
     Returns:
         NodeHistoryResponse with all versions of the node
@@ -67,63 +65,59 @@ async def get_node_history(
         
         # First, get the canonical_id for this node
         logger.debug(f"[TEMPORAL] Querying canonical_id for node {node_id}")
-        node_row = db_connection.execute(
-            """
-            SELECT canonical_id FROM kg_nodes 
-            WHERE id = ? AND user_id = ?
-            """,
-            [node_id, user_id]
-        ).fetchone()
+        node = await uow.kg_nodes.get(filters={'id': node_id, 'user_id': user_id})
         
-        if not node_row:
+        if not node:
             logger.warning(f"[TEMPORAL] Node {node_id} not found for user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Node {node_id} not found"
             )
         
-        canonical_id = node_row[0] or node_id
+        canonical_id = node.canonical_id or node_id
         logger.info(f"[TEMPORAL] Found canonical_id: {canonical_id} for node {node_id}")
         
         # Fetch all versions with this canonical_id
         logger.debug(f"[TEMPORAL] Fetching all versions for canonical_id {canonical_id}")
-        versions_raw = db_connection.execute(
-            """
-            SELECT id, user_id, label, properties, confidence, source_text,
-                   created_at, updated_at, valid_from, valid_until, is_current,
-                   canonical_id, aliases_json, reason
-            FROM kg_nodes 
-            WHERE (canonical_id = ? OR id = ?) AND user_id = ?
-            ORDER BY created_at DESC
-            """,
-            [canonical_id, canonical_id, user_id]
-        ).fetchall()
-        logger.debug(f"[TEMPORAL] Query returned {len(versions_raw)} raw rows")
+        all_versions = await uow.kg_nodes.list(
+            filters={'user_id': user_id},
+            limit=10000
+        )
+        
+        # Filter for matching canonical_id or id
+        versions_filtered = [
+            n for n in all_versions 
+            if n.canonical_id == canonical_id or n.id == canonical_id
+        ]
+        
+        # Sort by created_at descending
+        versions_filtered.sort(key=lambda n: n.created_at or '', reverse=True)
+        
+        logger.debug(f"[TEMPORAL] Query returned {len(versions_filtered)} versions")
         
         versions = []
-        for idx, row in enumerate(versions_raw):
+        for idx, node_ver in enumerate(versions_filtered):
             try:
                 version = NodeVersion(
-                    id=row[0],
-                    user_id=row[1],
-                    label=row[2],
-                    properties=json.loads(row[3]) if row[3] else {},
-                    confidence=row[4],
-                    source_text=row[5],
-                    created_at=row[6],
-                    updated_at=row[7],
-                    valid_from=row[8],
-                    valid_until=row[9],
-                    is_current=row[10],
-                    canonical_id=row[11],
-                    aliases=json.loads(row[12]) if row[12] else [],
-                    reason=row[13]
+                    id=node_ver.id,
+                    user_id=node_ver.user_id,
+                    label=node_ver.label,
+                    properties=json.loads(node_ver.properties) if isinstance(node_ver.properties, str) else (node_ver.properties or {}),
+                    confidence=node_ver.confidence,
+                    source_text=node_ver.source_text,
+                    created_at=node_ver.created_at,
+                    updated_at=node_ver.updated_at,
+                    valid_from=node_ver.valid_from,
+                    valid_until=node_ver.valid_until,
+                    is_current=node_ver.is_current,
+                    canonical_id=node_ver.canonical_id,
+                    aliases=json.loads(node_ver.aliases_json) if node_ver.aliases_json else [],
+                    reason=node_ver.reason
                 )
                 versions.append(version)
-                logger.debug(f"[TEMPORAL] Version {idx+1}: id={row[0]}, is_current={row[10]}, valid_from={row[8]}, reason={row[13]}")
+                logger.debug(f"[TEMPORAL] Version {idx+1}: id={node_ver.id}, is_current={node_ver.is_current}, valid_from={node_ver.valid_from}, reason={node_ver.reason}")
             except Exception as e:
                 logger.error(f"[TEMPORAL] Failed to parse version {idx+1}: {e}")
-                logger.error(f"[TEMPORAL] Row data: {row}")
                 raise
         
         logger.info(f"[TEMPORAL] ✅ Successfully built {len(versions)} versions for canonical_id {canonical_id}")
@@ -152,7 +146,7 @@ async def get_changes(
     from_timestamp: str = Query(..., description="Start timestamp (ISO 8601)"),
     to_timestamp: str = Query(..., description="End timestamp (ISO 8601)"),
     user: Annotated[dict, Depends(get_current_user)] = None,
-    db_connection: Annotated[object, Depends(get_db_connection)] = None,
+    uow: Annotated[object, Depends(get_uow)] = None,
     limit: int = Query(100, ge=1, le=1000)
 ) -> ChangesResponse:
     """
@@ -187,28 +181,29 @@ async def get_changes(
         
         changes = []
         
-        # Get node changes (created or updated in time range)
-        nodes_changed = db_connection.execute(
-            """
-            SELECT id, label, properties, created_at, updated_at, 
-                   valid_from, valid_until, is_current, source_text
-            FROM kg_nodes
-            WHERE user_id = ? 
-              AND (created_at BETWEEN ? AND ? OR updated_at BETWEEN ? AND ?)
-            ORDER BY updated_at DESC
-            LIMIT ?
-            """,
-            [user_id, from_timestamp, to_timestamp, from_timestamp, to_timestamp, limit]
-        ).fetchall()
+        # Get all nodes for user and filter in memory
+        all_nodes = await uow.kg_nodes.list(
+            filters={'user_id': user_id},
+            limit=100000
+        )
         
-        for row in nodes_changed:
-            node_id, label, props_json, created_at, updated_at, valid_from, valid_until, is_current, source_text = row
-            properties = json.loads(props_json) if props_json else {}
+        nodes_changed = [
+            n for n in all_nodes
+            if (n.created_at and from_timestamp <= n.created_at <= to_timestamp) or
+               (n.updated_at and from_timestamp <= n.updated_at <= to_timestamp)
+        ]
+        
+        # Sort by updated_at descending and limit
+        nodes_changed.sort(key=lambda n: n.updated_at or n.created_at or '', reverse=True)
+        nodes_changed = nodes_changed[:limit]
+        
+        for node in nodes_changed:
+            properties = json.loads(node.properties) if isinstance(node.properties, str) else (node.properties or {})
             
             # Determine change type
-            if created_at >= from_timestamp and created_at <= to_timestamp:
+            if node.created_at and from_timestamp <= node.created_at <= to_timestamp:
                 change_type = "node_created"
-            elif valid_until and valid_until >= from_timestamp and valid_until <= to_timestamp:
+            elif node.valid_until and from_timestamp <= node.valid_until <= to_timestamp:
                 change_type = "node_deleted"
             else:
                 change_type = "node_updated"
@@ -216,37 +211,37 @@ async def get_changes(
             changes.append(ChangeRecord(
                 change_type=change_type,
                 entity_type="node",
-                entity_id=node_id,
-                entity_label=label,
-                timestamp=updated_at,
+                entity_id=node.id,
+                entity_label=node.label,
+                timestamp=node.updated_at,
                 properties_changed=list(properties.keys()) if change_type == "node_updated" else None,
-                old_values=None,  # Would need to query previous version
+                old_values=None,
                 new_values=properties if change_type != "node_deleted" else None,
-                source_text=source_text,
-                reason=None  # Would need to be stored in database
+                source_text=node.source_text,
+                reason=None
             ))
         
         # Get edge changes
-        edges_changed = db_connection.execute(
-            """
-            SELECT id, source_id, target_id, relation_type, properties, 
-                   created_at, updated_at, valid_from, valid_until, is_current, source_text
-            FROM kg_edges
-            WHERE user_id = ? 
-              AND (created_at BETWEEN ? AND ? OR updated_at BETWEEN ? AND ?)
-            ORDER BY updated_at DESC
-            LIMIT ?
-            """,
-            [user_id, from_timestamp, to_timestamp, from_timestamp, to_timestamp, limit]
-        ).fetchall()
+        all_edges = await uow.kg_edges.list(
+            filters={'user_id': user_id},
+            limit=100000
+        )
         
-        for row in edges_changed:
-            edge_id, source_id, target_id, relation_type, props_json, created_at, updated_at, valid_from, valid_until, is_current, source_text = row
-            properties = json.loads(props_json) if props_json else {}
+        edges_changed = [
+            e for e in all_edges
+            if (e.created_at and from_timestamp <= e.created_at <= to_timestamp) or
+               (e.updated_at and from_timestamp <= e.updated_at <= to_timestamp)
+        ]
+        
+        edges_changed.sort(key=lambda e: e.updated_at or e.created_at or '', reverse=True)
+        edges_changed = edges_changed[:limit]
+        
+        for edge in edges_changed:
+            properties = json.loads(edge.properties) if isinstance(edge.properties, str) else (edge.properties or {})
             
-            if created_at >= from_timestamp and created_at <= to_timestamp:
+            if edge.created_at and from_timestamp <= edge.created_at <= to_timestamp:
                 change_type = "edge_created"
-            elif valid_until and valid_until >= from_timestamp and valid_until <= to_timestamp:
+            elif edge.valid_until and from_timestamp <= edge.valid_until <= to_timestamp:
                 change_type = "edge_deleted"
             else:
                 change_type = "edge_updated"
@@ -254,13 +249,13 @@ async def get_changes(
             changes.append(ChangeRecord(
                 change_type=change_type,
                 entity_type="edge",
-                entity_id=edge_id,
-                entity_label=relation_type,
-                timestamp=updated_at,
+                entity_id=edge.id,
+                entity_label=edge.relation_type,
+                timestamp=edge.updated_at,
                 properties_changed=list(properties.keys()) if change_type == "edge_updated" else None,
                 old_values=None,
                 new_values=properties if change_type != "edge_deleted" else None,
-                source_text=source_text,
+                source_text=edge.source_text,
                 reason=None
             ))
         
@@ -290,7 +285,7 @@ async def get_changes(
 async def get_temporal_graph_state(
     request: TemporalGraphRequest,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[object, Depends(get_uow)]
 ) -> TemporalGraphResponse:
     """
     Get the state of the knowledge graph at a specific point in time.
@@ -304,7 +299,7 @@ async def get_temporal_graph_state(
     Args:
         request: TemporalGraphRequest with as_of timestamp and options
         user: Current authenticated user (injected)
-        db_connection: Database connection (injected)
+        uow: Unit of Work (injected)
     
     Returns:
         TemporalGraphResponse with nodes and edges at specified time
@@ -322,82 +317,76 @@ async def get_temporal_graph_state(
         as_of = request.as_of
         logger.info(f"Fetching graph state as of {as_of} for user {user_id}")
         
-        # Get nodes that were current at the specified time
-        # A node is current at time T if:
-        # - (valid_from IS NULL OR valid_from <= T) - node existed at time T
-        # - AND (valid_until IS NULL OR valid_until > T) - node wasn't deleted yet
-        # Nodes without valid_from are treated as "always existed" (legacy nodes)
-        nodes_raw = db_connection.execute(
-            """
-            SELECT id, user_id, label, properties, confidence, source_text,
-                   created_at, updated_at, valid_from, valid_until, is_current,
-                   canonical_id, aliases_json, reason
-            FROM kg_nodes 
-            WHERE user_id = ? 
-              AND (valid_from IS NULL OR valid_from <= ?)
-              AND (valid_until IS NULL OR valid_until > ?)
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            [user_id, as_of, as_of, request.node_limit or 10000]
-        ).fetchall()
+        # Get all nodes for user and filter in memory
+        all_nodes = await uow.kg_nodes.list(
+            filters={'user_id': user_id},
+            limit=request.node_limit or 10000
+        )
+        
+        # Filter nodes that were current at the specified time
+        nodes_filtered = [
+            n for n in all_nodes
+            if (not n.valid_from or n.valid_from <= as_of) and
+               (not n.valid_until or n.valid_until > as_of)
+        ]
+        
+        # Sort by created_at descending
+        nodes_filtered.sort(key=lambda n: n.created_at or '', reverse=True)
         
         nodes = []
-        for row in nodes_raw:
+        for node in nodes_filtered:
             nodes.append(NodeVersion(
-                id=row[0],
-                user_id=row[1],
-                label=row[2],
-                properties=json.loads(row[3]) if row[3] else {},
-                confidence=row[4],
-                source_text=row[5],
-                created_at=row[6],
-                updated_at=row[7],
-                valid_from=row[8],
-                valid_until=row[9],
-                is_current=row[10],
-                canonical_id=row[11],
-                aliases=json.loads(row[12]) if row[12] else [],
-                reason=row[13]
+                id=node.id,
+                user_id=node.user_id,
+                label=node.label,
+                properties=json.loads(node.properties) if isinstance(node.properties, str) else (node.properties or {}),
+                confidence=node.confidence,
+                source_text=node.source_text,
+                created_at=node.created_at,
+                updated_at=node.updated_at,
+                valid_from=node.valid_from,
+                valid_until=node.valid_until,
+                is_current=node.is_current,
+                canonical_id=node.canonical_id,
+                aliases=json.loads(node.aliases_json) if node.aliases_json else [],
+                reason=node.reason
             ))
         
         edges = []
         if request.include_edges:
-            # Same logic for edges - include edges without valid_from (legacy edges)
-            edges_raw = db_connection.execute(
-                """
-                SELECT id, source_id, target_id, relation_type, properties,
-                       confidence, source_text, created_at, updated_at,
-                       valid_from, valid_until, is_current
-                FROM kg_edges 
-                WHERE user_id = ? 
-                  AND (valid_from IS NULL OR valid_from <= ?)
-                  AND (valid_until IS NULL OR valid_until > ?)
-                ORDER BY created_at DESC
-                """,
-                [user_id, as_of, as_of]
-            ).fetchall()
+            all_edges = await uow.kg_edges.list(
+                filters={'user_id': user_id},
+                limit=100000
+            )
             
-            logger.info(f"[TEMPORAL_DEBUG] Queried edges at {as_of}: found {len(edges_raw)} raw edges")
+            edges_filtered = [
+                e for e in all_edges
+                if (not e.valid_from or e.valid_from <= as_of) and
+                   (not e.valid_until or e.valid_until > as_of)
+            ]
             
-            for row in edges_raw:
+            edges_filtered.sort(key=lambda e: e.created_at or '', reverse=True)
+            
+            logger.info(f"[TEMPORAL_DEBUG] Queried edges at {as_of}: found {len(edges_filtered)} edges")
+            
+            for edge in edges_filtered:
                 edge_data = {
-                    "id": row[0],
-                    "source_id": row[1],
-                    "target_id": row[2],
-                    "relation_type": row[3],
-                    "properties": json.loads(row[4]) if row[4] else {},
-                    "confidence": row[5],
-                    "source_text": row[6],
-                    "created_at": row[7],
-                    "updated_at": row[8],
-                    "valid_from": row[9],
-                    "valid_until": row[10],
-                    "is_current": row[11]
+                    "id": edge.id,
+                    "source_id": edge.source_id,
+                    "target_id": edge.target_id,
+                    "relation_type": edge.relation_type,
+                    "properties": json.loads(edge.properties) if isinstance(edge.properties, str) else (edge.properties or {}),
+                    "confidence": edge.confidence,
+                    "source_text": edge.source_text,
+                    "created_at": edge.created_at,
+                    "updated_at": edge.updated_at,
+                    "valid_from": edge.valid_from,
+                    "valid_until": edge.valid_until,
+                    "is_current": edge.is_current
                 }
                 edges.append(edge_data)
             
-            if len(edges_raw) > 0:
+            if len(edges_filtered) > 0:
                 logger.info(f"[TEMPORAL_DEBUG] Sample edge: {edges[0]['id']}, valid_from={edges[0]['valid_from']}, valid_until={edges[0]['valid_until']}")
         
         logger.info(f"Found {len(nodes)} nodes and {len(edges)} edges at {as_of}")
@@ -424,7 +413,7 @@ async def get_temporal_graph_state(
 async def compare_graph_states(
     request: GraphComparisonRequest,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[object, Depends(get_uow)]
 ) -> GraphComparisonResponse:
     """
     Compare the knowledge graph state between two timestamps.
@@ -438,7 +427,7 @@ async def compare_graph_states(
     Args:
         request: GraphComparisonRequest with from/to timestamps
         user: Current authenticated user (injected)
-        db_connection: Database connection (injected)
+        uow: Unit of Work (injected)
     
     Returns:
         GraphComparisonResponse with detailed diff and statistics
@@ -457,93 +446,63 @@ async def compare_graph_states(
         to_ts = request.to_timestamp
         logger.info(f"Comparing graph states from {from_ts} to {to_ts} for user {user_id}")
         
-        # Get nodes at from_timestamp
-        nodes_from = set()
-        nodes_from_raw = db_connection.execute(
-            """
-            SELECT id FROM kg_nodes 
-            WHERE user_id = ? 
-              AND valid_from <= ?
-              AND (valid_until IS NULL OR valid_until > ?)
-            """,
-            [user_id, from_ts, from_ts]
-        ).fetchall()
-        nodes_from = {row[0] for row in nodes_from_raw}
+        # Get all nodes for user
+        all_nodes = await uow.kg_nodes.list(
+            filters={'user_id': user_id},
+            limit=100000
+        )
         
-        # Get nodes at to_timestamp
-        nodes_to = set()
-        nodes_to_raw = db_connection.execute(
-            """
-            SELECT id FROM kg_nodes 
-            WHERE user_id = ? 
-              AND valid_from <= ?
-              AND (valid_until IS NULL OR valid_until > ?)
-            """,
-            [user_id, to_ts, to_ts]
-        ).fetchall()
-        nodes_to = {row[0] for row in nodes_to_raw}
+        # Filter nodes at from_timestamp
+        nodes_from = {
+            n.id for n in all_nodes
+            if (not n.valid_from or n.valid_from <= from_ts) and
+               (not n.valid_until or n.valid_until > from_ts)
+        }
+        
+        # Filter nodes at to_timestamp
+        nodes_to = {
+            n.id for n in all_nodes
+            if (not n.valid_from or n.valid_from <= to_ts) and
+               (not n.valid_until or n.valid_until > to_ts)
+        }
         
         # Calculate differences
         added_nodes = nodes_to - nodes_from
         removed_nodes = nodes_from - nodes_to
         
-        # Get modified nodes (nodes that exist in both but have different updated_at)
+        # Get modified nodes (nodes that exist in both but were updated between timestamps)
         common_nodes = nodes_from & nodes_to
-        modified_nodes = []
-        for node_id in common_nodes:
-            # Check if node was updated between timestamps
-            update_check = db_connection.execute(
-                """
-                SELECT COUNT(*) FROM kg_nodes
-                WHERE id = ? AND user_id = ?
-                  AND updated_at > ? AND updated_at <= ?
-                """,
-                [node_id, user_id, from_ts, to_ts]
-            ).fetchone()
-            if update_check[0] > 0:
-                modified_nodes.append(node_id)
+        modified_nodes = [
+            n.id for n in all_nodes
+            if n.id in common_nodes and n.updated_at and from_ts < n.updated_at <= to_ts
+        ]
         
         # Same for edges
-        edges_from = set()
-        edges_from_raw = db_connection.execute(
-            """
-            SELECT id FROM kg_edges 
-            WHERE user_id = ? 
-              AND valid_from <= ?
-              AND (valid_until IS NULL OR valid_until > ?)
-            """,
-            [user_id, from_ts, from_ts]
-        ).fetchall()
-        edges_from = {row[0] for row in edges_from_raw}
+        all_edges = await uow.kg_edges.list(
+            filters={'user_id': user_id},
+            limit=100000
+        )
         
-        edges_to = set()
-        edges_to_raw = db_connection.execute(
-            """
-            SELECT id FROM kg_edges 
-            WHERE user_id = ? 
-              AND valid_from <= ?
-              AND (valid_until IS NULL OR valid_until > ?)
-            """,
-            [user_id, to_ts, to_ts]
-        ).fetchall()
-        edges_to = {row[0] for row in edges_to_raw}
+        edges_from = {
+            e.id for e in all_edges
+            if (not e.valid_from or e.valid_from <= from_ts) and
+               (not e.valid_until or e.valid_until > from_ts)
+        }
+        
+        edges_to = {
+            e.id for e in all_edges
+            if (not e.valid_from or e.valid_from <= to_ts) and
+               (not e.valid_until or e.valid_until > to_ts)
+        }
         
         added_edges = edges_to - edges_from
         removed_edges = edges_from - edges_to
         
         common_edges = edges_from & edges_to
-        modified_edges = []
-        for edge_id in common_edges:
-            update_check = db_connection.execute(
-                """
-                SELECT COUNT(*) FROM kg_edges
-                WHERE id = ? AND user_id = ?
-                  AND updated_at > ? AND updated_at <= ?
-                """,
-                [edge_id, user_id, from_ts, to_ts]
-            ).fetchone()
-            if update_check[0] > 0:
-                modified_edges.append(edge_id)
+        modified_edges = [
+            e.id for e in all_edges
+            if e.id in common_edges and e.updated_at and from_ts < e.updated_at <= to_ts
+        ]
         
         diff = GraphDiff(
             nodes_added=len(added_nodes),
