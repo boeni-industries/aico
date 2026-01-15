@@ -1307,7 +1307,7 @@ class ConversationEngine(BaseService):
             
             # Get available skills
             print(f"🎯 [SKILL] Fetching available skills...")
-            candidate_skills = await skill_store.list_skills(skill_type=None, limit=100)
+            candidate_skills = await skill_store.list_skills(skill_type=None)
             
             if not candidate_skills:
                 self.logger.warning("🎯 [SKILL] No skills available for selection")
@@ -1416,8 +1416,8 @@ class ConversationEngine(BaseService):
                             )
                     
                     # Create trajectory via repository
-                    from aico.data.ams.models import AMSTrajectory
-                    trajectory = AMSTrajectory(
+                    from aico.data.ams.models import Trajectory
+                    trajectory = Trajectory(
                         trajectory_id=trajectory_id,
                         user_id=user_context.user_id,
                         conversation_id=conversation_id,
@@ -1523,7 +1523,7 @@ class ConversationEngine(BaseService):
             
             # Get agency engine to access event store and database connection
             agency_engine = ai_registry.get("agency")
-            event_store = agency_engine.event_store if agency_engine else None
+            event_store = agency_engine.agency_service.event_store if agency_engine and hasattr(agency_engine, 'agency_service') else None
             db_connection = self.container.get_service("database") if hasattr(self, 'container') else None
             
             extractor = UserGoalExtractor(event_store=event_store, db_connection=db_connection)

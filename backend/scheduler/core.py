@@ -289,27 +289,20 @@ class TaskExecutor:
         
         self.logger.debug(f"Executing task: {task_id} (execution_id: {execution_id})")
         
-        # Check if task is already running
+        # Check if task is already running in this process
         if task_id in self.running_tasks:
             self.logger.warning(f"Task {task_id} is already running, skipping")
             return TaskResult(success=False, message="Task already running", skipped=True)
         
-        # Acquire execution lock via SchedulerService
+        # Add to running tasks (local process coordination)
+        self.running_tasks[task_id] = asyncio.current_task()
+        
+        # Get session factory for database operations
         from aico.data.postgres.connection import get_session_factory
         from aico.data.uow import UnitOfWork
         from aico.services.scheduler_service import SchedulerService
         
         session_factory = await get_session_factory()
-        async with UnitOfWork(session_factory) as uow:
-            scheduler_service = SchedulerService(uow)
-            lock_acquired = await scheduler_service.acquire_lock(task_id=task_id, worker_id=execution_id, ttl_seconds=3600)
-        
-        if not lock_acquired:
-            self.logger.warning(f"Could not acquire lock for task {task_id}")
-            return TaskResult(success=False, message="Could not acquire execution lock", skipped=True)
-
-        # Add to running tasks *after* acquiring lock
-        self.running_tasks[task_id] = asyncio.current_task()
 
         start_time = datetime.now(timezone.utc)
         task_instance = None
@@ -395,11 +388,6 @@ class TaskExecutor:
                         await task_instance.cleanup()
                     except Exception as e:
                         self.logger.warning(f"Task cleanup failed for {task_id}: {e}")
-                
-                # Release lock via SchedulerService
-                async with UnitOfWork(session_factory) as uow:
-                    scheduler_service = SchedulerService(uow)
-                    await scheduler_service.release_lock(task_id=task_id, worker_id=execution_id)
 
             # Remove from running tasks
             try:
@@ -590,21 +578,6 @@ class TaskScheduler(BaseService):
         scheduler_config = config_manager.get("scheduler", {})
         max_queue_size = scheduler_config.get("max_queue_size", 1000)
         self.priority_queue = PriorityTaskQueue(max_queue_size=max_queue_size)
-        
-        # Clean up any stale locks from previous runs (e.g., if backend crashed)
-        self.logger.info("Cleaning up stale task locks from previous runs...")
-        from aico.data.postgres.connection import get_session_factory
-        from aico.data.uow import UnitOfWork
-        from aico.services.scheduler_service import SchedulerService
-        
-        session_factory = await get_session_factory()
-        async with UnitOfWork(session_factory) as uow:
-            scheduler_service = SchedulerService(uow)
-            # Clean up all locks (simple approach - delete all)
-            all_locks = await scheduler_service.check_lock('')  # Get all locks
-            # Note: SchedulerService doesn't have bulk delete, so we'll rely on cleanup_expired_locks
-            await scheduler_service.cleanup_expired_locks()
-        self.logger.info("Stale task locks cleared")
         
         self.logger.info("Task scheduler initialized with priority queue")
     

@@ -46,3 +46,24 @@ async def get_uow() -> AsyncGenerator[UnitOfWork, None]:
     async with uow:
         yield uow
         # Auto-commit on success, auto-rollback on exception
+
+
+def get_uow_factory():
+    """
+    Get a UoW factory function for non-FastAPI usage.
+    
+    Returns a callable that creates UnitOfWork instances.
+    Used by components like MemoryManager that need to create UoW instances on demand.
+    
+    Usage:
+        uow_factory = get_uow_factory()
+        async with uow_factory() as uow:
+            user = await uow.users.get_by_id(uuid)
+    """
+    if _session_factory is None:
+        raise RuntimeError("PostgreSQL session factory not initialized. Call initialize_postgres_dependencies() first.")
+    
+    def factory():
+        return UnitOfWork(_session_factory)
+    
+    return factory

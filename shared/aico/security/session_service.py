@@ -1,9 +1,23 @@
 """
 Session Management Service for AICO Authentication
 
+⚠️ DEPRECATED: This service uses LibSQL/SQLite syntax and is incompatible with PostgreSQL.
+Use AsyncSessionService from aico.security.async_session_service instead.
+
+This module is kept for backward compatibility but should not be used in new code.
+All session management should use the repository pattern with UnitOfWork.
+
 Provides session-backed JWT token management with database persistence,
 refresh token rotation, and secure session lifecycle management.
 """
+
+import warnings
+
+warnings.warn(
+    "SessionService is deprecated. Use AsyncSessionService with UnitOfWork pattern instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import uuid
 import hashlib

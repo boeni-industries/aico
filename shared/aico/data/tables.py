@@ -1067,16 +1067,6 @@ scheduler_tasks = Table(
     Column('updated_at', TIMESTAMP(timezone=True)),
 )
 
-scheduler_task_locks = Table(
-    'scheduler_task_locks',
-    metadata,
-    Column('task_id', String, primary_key=True),
-    Column('execution_id', String, nullable=False),
-    Column('locked_at', TIMESTAMP(timezone=True)),
-    Column('expires_at', TIMESTAMP(timezone=True), nullable=False),
-    Index('idx_task_locks_expires_at', 'expires_at'),
-)
-
 scheduler_task_executions = Table(
     'scheduler_task_executions',
     metadata,
@@ -1251,7 +1241,6 @@ __all__ = [
     'ethics_policy_rules',
     'ethics_value_profiles',
     'scheduler_tasks',
-    'scheduler_task_locks',
     'scheduler_task_executions',
     'workflow_executions',
     'workflow_stages',

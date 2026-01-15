@@ -80,7 +80,6 @@ class UnitOfWork:
         self._trajectory_repository = None
         self._feedback_repository = None
         self._scheduler_tasks_repository = None
-        self._scheduler_task_locks_repository = None
         self._scheduler_task_executions_repository = None
         self._task_execution_repository = None
         self._conversation_initiations_repository = None
@@ -466,14 +465,6 @@ class UnitOfWork:
             from .repositories.postgres.scheduler_tasks_repository import PostgresSchedulerTasksRepository
             self._scheduler_tasks_repository = PostgresSchedulerTasksRepository(self._session)
         return self._scheduler_tasks_repository
-    
-    @property
-    def scheduler_task_locks(self):
-        """Get SchedulerTaskLocksRepository instance."""
-        if self._scheduler_task_locks_repository is None:
-            from .repositories.postgres.scheduler_task_locks_repository import PostgresSchedulerTaskLocksRepository
-            self._scheduler_task_locks_repository = PostgresSchedulerTaskLocksRepository(self._session)
-        return self._scheduler_task_locks_repository
     
     @property
     def scheduler_task_executions(self):

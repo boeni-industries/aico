@@ -196,7 +196,8 @@ def list_tasks(
             
             query += " ORDER BY task_id"
             
-            cursor = db.execute(query, params)
+            cursor = db.cursor()
+            cursor.execute(query, params)
             tasks = cursor.fetchall()
             
             if not tasks:
@@ -207,12 +208,12 @@ def list_tasks(
                 task_list = []
                 for task in tasks:
                     task_list.append({
-                        "task_id": task[0],
-                        "task_class": task[1],
-                        "schedule": task[2],
-                        "enabled": bool(task[3]),
-                        "created_at": task[4],
-                        "updated_at": task[5]
+                        "task_id": task['task_id'],
+                        "task_class": task['task_class'],
+                        "schedule": task['schedule'],
+                        "enabled": bool(task['enabled']),
+                        "created_at": task['created_at'],
+                        "updated_at": task['updated_at']
                     })
                 console.print(json.dumps(task_list, indent=2))
             else:
@@ -231,16 +232,16 @@ def list_tasks(
                 table.add_column("Created", style="dim")
                 
                 for task in tasks:
-                    status = "Enabled" if task[3] else "[dim]Disabled[/dim]"
-                    created_at = format_timestamp_local(task[4]) if task[4] else "Unknown"
+                    status = "Enabled" if task['enabled'] else "[dim]Disabled[/dim]"
+                    created_at = format_timestamp_local(task['created_at']) if task['created_at'] else "Unknown"
                     
                     # Generate human-readable description using backend cron parser
-                    description = _describe_cron(task[2])
+                    description = _describe_cron(task['schedule'])
                     
                     table.add_row(
-                        task[0],  # task_id
-                        task[1],  # task_class
-                        task[2],  # schedule
+                        task['task_id'],
+                        task['task_class'],
+                        task['schedule'],
                         description,
                         status,
                         created_at
@@ -265,7 +266,8 @@ def show_task(
     try:
         with _get_database_connection() as db:
             # Get task details
-            cursor = db.execute(
+            cursor = db.cursor()
+            cursor.execute(
                 "SELECT task_id, task_class, schedule, config, enabled, created_at, updated_at "
                 "FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,)
             )
@@ -277,19 +279,19 @@ def show_task(
             
             if format_output == "json":
                 task_data = {
-                    "task_id": task[0],
-                    "task_class": task[1],
-                    "schedule": task[2],
-                    "config": json.loads(task[3]) if task[3] else {},
-                    "enabled": bool(task[4]),
-                    "created_at": task[5],
-                    "updated_at": task[6]
+                    "task_id": task['task_id'],
+                    "task_class": task['task_class'],
+                    "schedule": task['schedule'],
+                    "config": json.loads(task['config']) if task['config'] else {},
+                    "enabled": bool(task['enabled']),
+                    "created_at": task['created_at'],
+                    "updated_at": task['updated_at']
                 }
                 console.print(json.dumps(task_data, indent=2))
             else:
                 # Table format following AICO style
                 table = Table(
-                    title=f"✨ [bold cyan]Task Details: {task[0]}[/bold cyan]",
+                    title=f"✨ [bold cyan]Task Details: {task['task_id']}[/bold cyan]",
                     title_justify="left",
                     border_style="bright_blue",
                     header_style="bold yellow",
@@ -299,15 +301,15 @@ def show_task(
                 table.add_column("Property", style="cyan")
                 table.add_column("Value", style="green")
                 
-                status = "Enabled" if task[4] else "Disabled"
-                config = json.loads(task[3]) if task[3] else {}
+                status = "Enabled" if task['enabled'] else "Disabled"
+                config = json.loads(task['config']) if task['config'] else {}
                 
-                table.add_row("Task ID", task[0])
-                table.add_row("Class", task[1])
-                table.add_row("Schedule", task[2])
+                table.add_row("Task ID", task['task_id'])
+                table.add_row("Class", task['task_class'])
+                table.add_row("Schedule", task['schedule'])
                 table.add_row("Status", status)
-                table.add_row("Created", format_timestamp_local(task[5]) if task[5] else "Unknown")
-                table.add_row("Updated", format_timestamp_local(task[6]) if task[6] else "Unknown")
+                table.add_row("Created", format_timestamp_local(task['created_at']) if task['created_at'] else "Unknown")
+                table.add_row("Updated", format_timestamp_local(task['updated_at']) if task['updated_at'] else "Unknown")
                 
                 console.print()
                 console.print(table)
@@ -358,7 +360,8 @@ def create_task(
         
         with _get_database_connection() as db:
             # Check if task already exists
-            cursor = db.execute("SELECT task_id FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
+            cursor = db.cursor()
+            cursor.execute("SELECT task_id FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
             if cursor.fetchone():
                 console.print(f"[red]Task already exists: {task_id}[/red]")
                 raise typer.Exit(1)
@@ -367,9 +370,9 @@ def create_task(
             now = datetime.now().isoformat()
             config_json = json.dumps(config) if config else None
             
-            db.execute("""
-                INSERT INTO scheduler_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, %s)
+            cursor.execute("""
+                INSERT INTO aico_core.scheduler_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (task_id, task_class, schedule, config_json, enabled, now, now))
             
             db.commit()
@@ -398,7 +401,8 @@ def update_task(
         
         with _get_database_connection() as db:
             # Check task exists
-            cursor = db.execute("SELECT * FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
+            cursor = db.cursor()
+            cursor.execute("SELECT * FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
             task = cursor.fetchone()
             if not task:
                 console.print(f"[red]Task not found: {task_id}[/red]")
@@ -414,7 +418,7 @@ def update_task(
                 if len(cron_fields) != 5:
                     console.print("[red]Invalid cron expression. Must have 5 fields[/red]")
                     raise typer.Exit(1)
-                updates.append("schedule = ?")
+                updates.append("schedule = %s")
                 params.append(schedule)
             
             if config_file:
@@ -426,24 +430,24 @@ def update_task(
                 try:
                     with open(config_path, 'r') as f:
                         config = json.load(f)
-                    updates.append("config = ?")
+                    updates.append("config = %s")
                     params.append(json.dumps(config))
                 except json.JSONDecodeError as e:
                     console.print(f"[red]Invalid JSON in config file: {e}[/red]")
                     raise typer.Exit(1)
             
             if enabled is not None:
-                updates.append("enabled = ?")
+                updates.append("enabled = %s")
                 params.append(enabled)
             
             # Add updated timestamp
-            updates.append("updated_at = ?")
+            updates.append("updated_at = %s")
             params.append(datetime.now().isoformat())
             params.append(task_id)
             
             # Execute update
-            query = f"UPDATE scheduler_tasks SET {', '.join(updates)} WHERE task_id = %s"
-            db.execute(query, params)
+            query = f"UPDATE aico_core.scheduler_tasks SET {', '.join(updates)} WHERE task_id = %s"
+            cursor.execute(query, params)
             db.commit()
             
             console.print(f"[green]Updated task '{task_id}'[/green]")
@@ -459,8 +463,9 @@ def enable_task(task_id: str = typer.Argument(..., help="Task ID to enable")):
     """Enable a scheduled task"""
     try:
         with _get_database_connection() as db:
-            cursor = db.execute(
-                "UPDATE scheduler_tasks SET enabled = TRUE, updated_at = %s WHERE task_id = %s",
+            cursor = db.cursor()
+            cursor.execute(
+                "UPDATE aico_core.scheduler_tasks SET enabled = TRUE, updated_at = %s WHERE task_id = %s",
                 (datetime.now().isoformat(), task_id)
             )
             
@@ -482,8 +487,9 @@ def disable_task(task_id: str = typer.Argument(..., help="Task ID to disable")):
     """Disable a scheduled task"""
     try:
         with _get_database_connection() as db:
-            cursor = db.execute(
-                "UPDATE scheduler_tasks SET enabled = FALSE, updated_at = %s WHERE task_id = %s",
+            cursor = db.cursor()
+            cursor.execute(
+                "UPDATE aico_core.scheduler_tasks SET enabled = FALSE, updated_at = %s WHERE task_id = %s",
                 (datetime.now().isoformat(), task_id)
             )
             
@@ -524,7 +530,8 @@ def trigger_task(
             
             # Check task exists before triggering
             with _get_database_connection() as db:
-                cursor = db.execute("SELECT task_id FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
+                cursor = db.cursor()
+                cursor.execute("SELECT task_id FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
                 if not cursor.fetchone():
                     console.print(f"[red]Task not found: {task_id}[/red]")
                     raise typer.Exit(1)
@@ -558,7 +565,8 @@ def delete_task(
                 raise typer.Exit()
         
         with _get_database_connection() as db:
-            cursor = db.execute("DELETE FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
+            cursor = db.cursor()
+            cursor.execute("DELETE FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
             
             if cursor.rowcount == 0:
                 console.print(f"[red]Task not found: {task_id}[/red]")
@@ -638,7 +646,8 @@ def task_history(
 def _show_single_execution(execution_id: str, format_output: str):
     """Show details for a single task execution."""
     with _get_database_connection() as db:
-        cursor = db.execute("""
+        cursor = db.cursor()
+        cursor.execute("""
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
             FROM aico_core.scheduler_task_executions 
             WHERE execution_id = %s
@@ -652,19 +661,19 @@ def _show_single_execution(execution_id: str, format_output: str):
 
         if format_output == "json":
             exec_data = {
-                "execution_id": execution[0],
-                "task_id": execution[1],
-                "status": execution[2],
-                "started_at": execution[3],
-                "completed_at": execution[4],
-                "result": json.loads(execution[5]) if execution[5] else None,
-                "error_message": execution[6],
-                "duration_seconds": execution[7]
+                "execution_id": execution['execution_id'],
+                "task_id": execution['task_id'],
+                "status": execution['status'],
+                "started_at": execution['started_at'],
+                "completed_at": execution['completed_at'],
+                "result": json.loads(execution['result']) if execution['result'] else None,
+                "error_message": execution['error_message'],
+                "duration_seconds": execution['duration_seconds']
             }
             console.print(json.dumps(exec_data, indent=2))
         else:
             table = Table(
-                title=f"✨ [bold cyan]Execution Details: {execution[0]}[/bold cyan]",
+                title=f"✨ [bold cyan]Execution Details: {execution['execution_id']}[/bold cyan]",
                 title_justify="left",
                 border_style="bright_blue",
                 header_style="bold yellow",
@@ -674,34 +683,35 @@ def _show_single_execution(execution_id: str, format_output: str):
             table.add_column("Property", style="cyan")
             table.add_column("Value", style="green")
 
-            table.add_row("Execution ID", execution[0])
-            table.add_row("Task ID", execution[1])
-            table.add_row("Status", execution[2].title())
-            table.add_row("Started", format_timestamp_local(execution[3]) if execution[3] else "N/A")
-            table.add_row("Completed", format_timestamp_local(execution[4]) if execution[4] else "N/A")
-            table.add_row("Duration", f"{execution[7]:.2f}s" if execution[7] is not None else "N/A")
+            table.add_row("Execution ID", execution['execution_id'])
+            table.add_row("Task ID", execution['task_id'])
+            table.add_row("Status", execution['status'].title())
+            table.add_row("Started", format_timestamp_local(execution['started_at']) if execution['started_at'] else "N/A")
+            table.add_row("Completed", format_timestamp_local(execution['completed_at']) if execution['completed_at'] else "N/A")
+            table.add_row("Duration", f"{execution['duration_seconds']:.2f}s" if execution['duration_seconds'] is not None else "N/A")
 
             console.print()
             console.print(table)
 
-            if execution[5]:
+            if execution['result']:
                 console.print("\n[bold cyan]Result:[/bold cyan]")
                 try:
-                    result_json = json.loads(execution[5])
+                    result_json = json.loads(execution['result'])
                     console.print(json.dumps(result_json, indent=2))
                 except json.JSONDecodeError:
-                    console.print(f"[yellow]{execution[5]}[/yellow]")
+                    console.print(f"[yellow]{execution['result']}[/yellow]")
             
-            if execution[6]:
+            if execution['error_message']:
                 console.print("\n[bold red]Error:[/bold red]")
-                console.print(f"[yellow]{execution[6]}[/yellow]")
+                console.print(f"[yellow]{execution['error_message']}[/yellow]")
             
             console.print()
 
 def _show_task_history(task_id: str, limit: int, format_output: str, status: Optional[str] = None):
     """Show execution history for a specific task."""
     with _get_database_connection() as db:
-        cursor = db.execute("SELECT task_id FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
+        cursor = db.cursor()
+        cursor.execute("SELECT task_id FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
         if not cursor.fetchone():
             console.print(f"[red]Task not found: {task_id}[/red]")
             raise typer.Exit(1)
@@ -721,7 +731,7 @@ def _show_task_history(task_id: str, limit: int, format_output: str, status: Opt
         query += " ORDER BY started_at DESC LIMIT %s"
         params.append(limit)
         
-        cursor = db.execute(query, tuple(params))
+        cursor.execute(query, tuple(params))
         executions = cursor.fetchall()
         
         if not executions:
@@ -750,7 +760,8 @@ def _show_recent_history(limit: int, format_output: str, status: Optional[str] =
         query += " ORDER BY started_at DESC LIMIT %s"
         params.append(limit)
         
-        cursor = db.execute(query, tuple(params))
+        cursor = db.cursor()
+        cursor.execute(query, tuple(params))
         
         executions = cursor.fetchall()
         
@@ -769,14 +780,14 @@ def _display_history_table(executions: List, title: str, format_output: str):
         exec_list = []
         for exec_data in executions:
             exec_list.append({
-                "execution_id": exec_data[0],
-                "task_id": exec_data[1],
-                "status": exec_data[2],
-                "started_at": exec_data[3],
-                "completed_at": exec_data[4],
-                "result": json.loads(exec_data[5]) if exec_data[5] else None,
-                "error_message": exec_data[6],
-                "duration_seconds": exec_data[7]
+                "execution_id": exec_data['execution_id'],
+                "task_id": exec_data['task_id'],
+                "status": exec_data['status'],
+                "started_at": exec_data['started_at'],
+                "completed_at": exec_data['completed_at'],
+                "result": json.loads(exec_data['result']) if exec_data['result'] else None,
+                "error_message": exec_data['error_message'],
+                "duration_seconds": exec_data['duration_seconds']
             })
         console.print(json.dumps(exec_list, indent=2))
     else:
@@ -803,25 +814,25 @@ def _display_history_table(executions: List, title: str, format_output: str):
                 "cancelled": "Cancelled",
                 "skipped": "Skipped"
             }
-            status = status_map.get(exec_data[2], exec_data[2])
+            status = status_map.get(exec_data['status'], exec_data['status'])
             
-            duration = f"{exec_data[7]:.1f}s" if exec_data[7] is not None else ""
+            duration = f"{exec_data['duration_seconds']:.1f}s" if exec_data['duration_seconds'] is not None else ""
             
             result = ""
-            if exec_data[5]:
+            if exec_data['result']:
                 try:
-                    result_data = json.loads(exec_data[5])
+                    result_data = json.loads(exec_data['result'])
                     result = result_data.get('message', 'Success') or ""
                 except:
                     result = "Invalid result data"
-            elif exec_data[6]:
-                result = exec_data[6] or ""
+            elif exec_data['error_message']:
+                result = exec_data['error_message'] or ""
             
             table.add_row(
-                exec_data[0],
-                exec_data[1],
+                exec_data['execution_id'],
+                exec_data['task_id'],
                 status,
-                format_timestamp_local(exec_data[3]) if exec_data[3] else "Unknown",
+                format_timestamp_local(exec_data['started_at']) if exec_data['started_at'] else "Unknown",
                 duration,
                 result[:50] + "..." if len(result) > 50 else result
             )
@@ -838,17 +849,18 @@ def scheduler_status():
     try:
         with _get_database_connection() as db:
             # Get task counts
-            cursor = db.execute("SELECT COUNT(*) FROM aico_core.scheduler_tasks")
-            total_tasks = cursor.fetchone()[0]
+            cursor = db.cursor()
+            cursor.execute("SELECT COUNT(*) FROM aico_core.scheduler_tasks")
+            total_tasks = cursor.fetchone()['count']
             
-            cursor = db.execute("SELECT COUNT(*) FROM aico_core.scheduler_tasks WHERE enabled = TRUE")
-            enabled_tasks = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM aico_core.scheduler_tasks WHERE enabled = TRUE")
+            enabled_tasks = cursor.fetchone()['count']
             
             # Get recent execution stats
-            cursor = db.execute("""
+            cursor.execute("""
                 SELECT status, COUNT(*) 
                 FROM aico_core.scheduler_task_executions 
-                WHERE started_at > datetime('now', '-24 hours')
+                WHERE started_at > NOW() - INTERVAL '24 hours'
                 GROUP BY status
             """)
             recent_executions = dict(cursor.fetchall())
@@ -930,10 +942,11 @@ def cleanup_history(
             cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
             
             # Count what would be deleted
-            cursor = db.execute(
+            cursor = db.cursor()
+            cursor.execute(
                 "SELECT COUNT(*) FROM aico_core.scheduler_task_executions WHERE started_at < %s", (cutoff_date,)
             )
-            count = cursor.fetchone()[0]
+            count = cursor.fetchone()['count']
             
             if count == 0:
                 console.print(f"[yellow]No execution records older than {retention_days} days found[/yellow]")
@@ -943,7 +956,7 @@ def cleanup_history(
                 console.print(f"[yellow]DRY RUN: Would delete {count} execution record(s) older than {retention_days} days[/yellow]")
                 
                 # Show sample of what would be deleted
-                cursor = db.execute("""
+                cursor.execute("""
                     SELECT task_id, status, started_at 
                     FROM aico_core.scheduler_task_executions 
                     WHERE started_at < %s
@@ -960,7 +973,7 @@ def cleanup_history(
                         console.print(f"  [dim]... and {count - 10} more[/dim]")
             else:
                 # Actually delete
-                cursor = db.execute(
+                cursor.execute(
                     "DELETE FROM aico_core.scheduler_task_executions WHERE started_at < %s", (cutoff_date,)
                 )
                 db.commit()
@@ -1022,7 +1035,8 @@ def cancel_stale_runs(
             cutoff_time = (datetime.now() - timedelta(hours=max_hours)).isoformat()
             
             # Find stale running executions
-            cursor = db.execute("""
+            cursor = db.cursor()
+            cursor.execute("""
                 SELECT execution_id, task_id, started_at 
                 FROM aico_core.scheduler_task_executions 
                 WHERE status = 'running' AND started_at < %s
@@ -1065,12 +1079,12 @@ def cancel_stale_runs(
                 console.print()
             else:
                 # Actually cancel them
-                cursor = db.execute("""
-                    UPDATE scheduler_task_executions 
+                cursor.execute("""
+                    UPDATE aico_core.scheduler_task_executions 
                     SET status = 'failed',
-                        error_message = 'Cancelled: stale execution (running > ' || ? || ' hours)',
+                        error_message = 'Cancelled: stale execution (running > ' || %s || ' hours)',
                         completed_at = CURRENT_TIMESTAMP,
-                        duration_seconds = (julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 86400
+                        duration_seconds = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at))
                     WHERE status = 'running' AND started_at < %s
                 """, (max_hours, cutoff_time))
                 

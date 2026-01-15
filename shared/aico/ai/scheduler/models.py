@@ -41,11 +41,3 @@ class SchedulerTaskExecution(BaseModel):
     result: Optional[dict] = None
     duration_ms: Optional[int] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now())
-
-
-class SchedulerTaskLock(BaseModel):
-    """Scheduler task lock domain model."""
-    task_id: str
-    worker_id: str
-    acquired_at: datetime
-    expires_at: float

@@ -324,6 +324,7 @@ async def authenticate_user(
         
         # Extract User-Agent from request headers for device detection
         user_agent = request_obj.headers.get("user-agent", "")
+        device_uuid = "web-client"  # TODO: Generate proper device UUID from client
         
         # Generate JWT access token with proper roles and permissions
         jwt_token = auth_manager.generate_jwt_token(
@@ -331,8 +332,7 @@ async def authenticate_user(
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
-            device_uuid="web-client",
-            user_agent=user_agent
+            device_uuid=device_uuid
         )
         
         # Generate refresh token for token renewal
@@ -341,8 +341,49 @@ async def authenticate_user(
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
-            device_uuid="web-client"
+            device_uuid=device_uuid
         )
+        
+        # Create session record in database using AsyncSessionService + UoW
+        try:
+            from aico.security.async_session_service import AsyncSessionService
+            session_service = AsyncSessionService()
+            
+            # Create session for access token
+            await session_service.create_session(
+                uow=uow,
+                user_uuid=user.uuid,
+                device_uuid=device_uuid,
+                jwt_token=jwt_token,
+                expires_in_minutes=15,  # Access token expiry
+                session_type="rest"
+            )
+            
+            # Create session for refresh token
+            await session_service.create_session(
+                uow=uow,
+                user_uuid=user.uuid,
+                device_uuid=device_uuid,
+                jwt_token=refresh_token,
+                expires_in_minutes=7*24*60,  # 7 days for refresh token
+                session_type="refresh"
+            )
+            
+            # Commit session records
+            await uow.commit()
+            
+            logger.info("Sessions created successfully", extra={
+                "user_uuid": user.uuid,
+                "device_uuid": device_uuid
+            })
+            
+        except Exception as e:
+            logger.error(f"Failed to create session records: {e}", extra={
+                "user_uuid": user.uuid,
+                "error_type": type(e).__name__
+            })
+            # Don't fail authentication if session creation fails
+            # Sessions are for tracking/revocation, not required for auth to work
         
         response = AuthenticationResponse(
             success=True,

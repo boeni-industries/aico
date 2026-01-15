@@ -24,15 +24,15 @@ class PreferenceManager:
     like verbosity, formality, technical_depth, etc.
     """
     
-    def __init__(self, db_connection, learning_rate: float = 0.1):
+    def __init__(self, uow_factory, learning_rate: float = 0.1):
         """
         Initialize preference manager.
         
         Args:
-            db_connection: Encrypted libSQL database connection
+            uow_factory: Unit of Work factory for PostgreSQL access
             learning_rate: How quickly preferences adapt to feedback
         """
-        self.db = db_connection
+        self.uow_factory = uow_factory
         self.learning_rate = learning_rate
     
     async def get_preference_vector(
@@ -49,256 +49,173 @@ class PreferenceManager:
             
         Returns:
             PreferenceVector (creates neutral if not exists)
-            
-        Raises:
-            RuntimeError: If ams_context_preference_vectors table doesn't exist
         """
-        try:
-            row = self.db.execute(
-                """SELECT dimensions, last_updated_at FROM ams_context_preference_vectors
-                   WHERE user_id = ? AND context_bucket = ?""",
-                (user_id, context_bucket)
-            ).fetchone()
-        except Exception as e:
-            if "no such table" in str(e).lower():
-                logger.error(f"CRITICAL: ams_context_preference_vectors table does not exist: {e}")
-                raise RuntimeError(
-                    "ams_context_preference_vectors table does not exist. "
-                    "Run database migration to create missing AMS tables."
-                ) from e
-            else:
-                logger.error(f"Database error querying preference vectors: {e}")
-                raise
-        
-        if row:
-            return PreferenceVector(
-                user_id=user_id,
-                context_bucket=context_bucket,
-                dimensions=json.loads(row[0]),
-                last_updated_at=datetime.fromisoformat(row[1])
+        async with self.uow_factory() as uow:
+            vectors = await uow.ams_context_preference_vectors.list(
+                filters={'user_id': user_id, 'context_bucket': context_bucket},
+                limit=1
             )
-        else:
-            # Create neutral preference vector (all 0.5)
-            pref = PreferenceVector.create_neutral(user_id, context_bucket)
-            await self._save_preference_vector(pref)
-            return pref
+            
+            if vectors:
+                return vectors[0]
+            else:
+                # Create neutral preference vector
+                neutral_vector = PreferenceVector(
+                    user_id=user_id,
+                    context_bucket=context_bucket,
+                    dimensions=[0.5] * 16,  # Neutral (0.5) for all 16 dimensions
+                    last_updated_at=datetime.now(timezone.utc)
+                )
+                await uow.ams_context_preference_vectors.create(neutral_vector)
+                await uow.commit()
+                return neutral_vector
     
-    async def update_from_feedback(
+    async def update_preferences(
         self,
         user_id: str,
         context_bucket: int,
         skill: Skill,
-        reward: int
+        feedback_score: float
     ) -> PreferenceVector:
         """
-        Update user preferences based on feedback using gradient-based learning.
+        Update user preferences based on skill execution feedback.
         
         Args:
             user_id: User ID
             context_bucket: Context bucket
-            skill: Skill that was applied
-            reward: Feedback reward (-1 or 1, 0 ignored)
+            skill: Skill that was executed
+            feedback_score: Feedback score (0.0 = bad, 1.0 = good)
             
         Returns:
             Updated preference vector
         """
-        if reward == 0:
-            return await self.get_preference_vector(user_id, context_bucket)
-        
         # Get current preferences
-        pref = await self.get_preference_vector(user_id, context_bucket)
+        current_prefs = await self.get_preference_vector(user_id, context_bucket)
         
-        # Gradient-based update: move toward/away from skill dimensions
-        direction = reward * self.learning_rate
-        new_dimensions = []
+        # Get skill's dimension vector (what style this skill represents)
+        skill_dims = skill.dimension_vector
         
+        # Update preferences using gradient descent
+        # Move preferences toward skill dimensions if feedback is positive
+        # Move away if feedback is negative
+        updated_dims = []
         for i in range(16):
-            current = pref.dimensions[i]
-            target = skill.dimension_vector[i]
+            current_val = current_prefs.dimensions[i]
+            skill_val = skill_dims[i]
             
-            # Move toward target if positive feedback, away if negative
-            new_value = current + direction * (target - current)
+            # Gradient: (feedback - 0.5) * (skill_val - current_val)
+            # If feedback > 0.5 (positive), move toward skill_val
+            # If feedback < 0.5 (negative), move away from skill_val
+            gradient = (feedback_score - 0.5) * (skill_val - current_val)
+            updated_val = current_val + self.learning_rate * gradient
             
-            # Clamp to [0.0, 1.0]
-            new_value = max(0.0, min(1.0, new_value))
-            new_dimensions.append(new_value)
+            # Clip to [0, 1]
+            updated_val = max(0.0, min(1.0, updated_val))
+            updated_dims.append(updated_val)
         
-        # Update preference vector
-        updated_pref = PreferenceVector(
-            user_id=user_id,
-            context_bucket=context_bucket,
-            dimensions=new_dimensions,
-            last_updated_at=datetime.utcnow()
-        )
+        # Update in database
+        current_prefs.dimensions = updated_dims
+        current_prefs.last_updated_at = datetime.now(timezone.utc)
         
-        await self._save_preference_vector(updated_pref)
+        async with self.uow_factory() as uow:
+            await uow.ams_context_preference_vectors.update(current_prefs)
+            await uow.commit()
         
-        logger.info("Preference vector updated", extra={
-            "user_id": user_id,
-            "context_bucket": context_bucket,
-            "reward": reward,
-            "change": np.linalg.norm(np.array(new_dimensions) - np.array(pref.dimensions))
-        })
-        
-        return updated_pref
+        logger.info(f"Updated preferences for user {user_id}, context {context_bucket}")
+        return current_prefs
     
-    def calculate_preference_alignment(
+    async def get_skill_match_score(
         self,
-        user_preferences: PreferenceVector,
+        user_id: str,
+        context_bucket: int,
         skill: Skill
     ) -> float:
         """
-        Calculate alignment between user preferences and skill dimensions.
-        
-        Uses Euclidean distance normalized to [0, 1] score.
+        Calculate how well a skill matches user's preferences.
         
         Args:
-            user_preferences: User's preference vector
+            user_id: User ID
+            context_bucket: Context bucket
             skill: Skill to evaluate
             
         Returns:
-            Alignment score (0.0 to 1.0, higher = better match)
+            Match score (0.0 to 1.0)
         """
-        # Calculate Euclidean distance
-        distance = np.linalg.norm(
-            np.array(user_preferences.dimensions) - np.array(skill.dimension_vector)
-        )
+        prefs = await self.get_preference_vector(user_id, context_bucket)
         
-        # Normalize to [0, 1] score (max distance = sqrt(16) for 16 dimensions)
-        max_distance = np.sqrt(16.0)
-        score = 1.0 - (distance / max_distance)
+        # Calculate cosine similarity between preference vector and skill vector
+        pref_array = np.array(prefs.dimensions)
+        skill_array = np.array(skill.dimension_vector)
         
-        return max(0.0, min(1.0, score))
+        # Cosine similarity
+        dot_product = np.dot(pref_array, skill_array)
+        pref_norm = np.linalg.norm(pref_array)
+        skill_norm = np.linalg.norm(skill_array)
+        
+        if pref_norm == 0 or skill_norm == 0:
+            return 0.5  # Neutral if either vector is zero
+        
+        similarity = dot_product / (pref_norm * skill_norm)
+        
+        # Convert from [-1, 1] to [0, 1]
+        score = (similarity + 1) / 2
+        
+        return score
     
-    async def _save_preference_vector(self, pref: PreferenceVector) -> None:
-        """Save preference vector to database.
+    async def get_all_user_preferences(
+        self,
+        user_id: str
+    ) -> List[PreferenceVector]:
+        """
+        Get all preference vectors for a user across all context buckets.
         
-        Raises:
-            RuntimeError: If ams_context_preference_vectors table doesn't exist
+        Args:
+            user_id: User ID
+            
+        Returns:
+            List of preference vectors
         """
-        try:
-            self.db.execute(
-                """INSERT INTO ams_context_preference_vectors (
-                    user_id, context_bucket, dimensions, last_updated_at
-                ) VALUES (?, ?, ?, ?)
-                ON CONFLICT(user_id, context_bucket)
-                DO UPDATE SET
-                    dimensions = excluded.dimensions,
-                    last_updated_at = excluded.last_updated_at""",
-                (
-                    pref.user_id,
-                    pref.context_bucket,
-                    json.dumps(pref.dimensions),
-                    pref.last_updated_at.isoformat()
-                )
+        async with self.uow_factory() as uow:
+            return await uow.ams_context_preference_vectors.list(
+                filters={'user_id': user_id},
+                limit=100
             )
-            self.db.commit()
-        except Exception as e:
-            if "no such table" in str(e).lower():
-                logger.error(f"CRITICAL: ams_context_preference_vectors table does not exist: {e}")
-                raise RuntimeError(
-                    "ams_context_preference_vectors table does not exist. "
-                    "Run database migration to create missing AMS tables."
-                ) from e
+    
+    async def reset_preferences(
+        self,
+        user_id: str,
+        context_bucket: Optional[int] = None
+    ) -> None:
+        """
+        Reset preferences to neutral values.
+        
+        Args:
+            user_id: User ID
+            context_bucket: Optional specific context bucket (resets all if None)
+        """
+        async with self.uow_factory() as uow:
+            if context_bucket is not None:
+                # Reset specific context
+                vectors = await uow.ams_context_preference_vectors.list(
+                    filters={'user_id': user_id, 'context_bucket': context_bucket},
+                    limit=1
+                )
+                if vectors:
+                    vector = vectors[0]
+                    vector.dimensions = [0.5] * 16
+                    vector.last_updated_at = datetime.now(timezone.utc)
+                    await uow.ams_context_preference_vectors.update(vector)
             else:
-                logger.error(f"Database error saving preference vector: {e}")
-                raise
-
-    async def get_user_interests(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """Derive user interests from behavioral data for CuriosityEngine.
-
-        This implementation uses the existing behavioral tables instead of a
-        dedicated interests table:
-
-        - "user_skill_confidence" provides usage counts and last_used_at
-        - "skills" provides human-readable names we can treat as topics
-
-        It returns a list of dictionaries compatible with CuriosityEngine
-        expectations:
-
-        {
-            "topic": str,
-            "engagement_score": float,
-            "mention_count": int,
-            "recency_score": float,
-        }
-        """
-        try:
-            # Join user_skill_confidence with skills to get names/topics
-            rows = self.db.execute(
-                """
-                SELECT
-                    s.skill_name,
-                    usc.usage_count,
-                    usc.confidence_score,
-                    usc.last_used_at
-                FROM user_skill_confidence usc
-                JOIN skills s ON usc.skill_id = s.skill_id
-                WHERE usc.user_id = ?
-                ORDER BY usc.usage_count DESC
-                LIMIT ?
-                """,
-                (user_id, limit),
-            ).fetchall()
-
-            if not rows:
-                logger.info(
-                    "[PREF] get_user_interests: no behavioral data for user, returning empty list",
-                    extra={"user_id": user_id},
+                # Reset all contexts
+                all_vectors = await uow.ams_context_preference_vectors.list(
+                    filters={'user_id': user_id},
+                    limit=100
                 )
-                return []
-
-            now = datetime.now(timezone.utc)
-            interests: List[Dict[str, Any]] = []
-
-            for row in rows:
-                topic = row[0]
-                usage_count = int(row[1] or 0)
-                confidence = float(row[2] or 0.5)
-                last_used_raw = row[3]
-
-                recency_score = 0.5
-                if last_used_raw:
-                    try:
-                        # last_used_at is stored as ISO string without timezone
-                        last_used = datetime.fromisoformat(last_used_raw)
-                        if last_used.tzinfo is None:
-                            last_used = last_used.replace(tzinfo=timezone.utc)
-                        age_days = max(0.0, (now - last_used).total_seconds() / 86400.0)
-                        # Map 0 days -> 1.0, 30+ days -> ~0.0
-                        recency_score = max(0.0, min(1.0, 1.0 - age_days / 30.0))
-                    except Exception as e:
-                        logger.warning(
-                            "[PREF] Failed to parse last_used_at for user interest; using default recency",
-                            extra={"user_id": user_id, "error": str(e)},
-                        )
-
-                # Engagement is primarily confidence, lightly scaled by usage
-                engagement_score = confidence
-                if usage_count > 0:
-                    # Cap log factor to keep value in [0, 1]
-                    import math
-
-                    engagement_boost = min(0.3, math.log1p(usage_count) / 10.0)
-                    engagement_score = max(0.0, min(1.0, confidence + engagement_boost))
-
-                interests.append(
-                    {
-                        "topic": topic,
-                        "engagement_score": engagement_score,
-                        "mention_count": usage_count,
-                        "recency_score": recency_score,
-                    }
-                )
-
-            logger.info(
-                "[PREF] get_user_interests: derived interests from behavioral data",
-                extra={"user_id": user_id, "interest_count": len(interests)},
-            )
-            return interests
-
-        except Exception as e:
-            logger.error(
-                f"[PREF] get_user_interests failed for user {user_id}: {e}",
-            )
-            return []
+                for vector in all_vectors:
+                    vector.dimensions = [0.5] * 16
+                    vector.last_updated_at = datetime.now(timezone.utc)
+                    await uow.ams_context_preference_vectors.update(vector)
+            
+            await uow.commit()
+        
+        logger.info(f"Reset preferences for user {user_id}")

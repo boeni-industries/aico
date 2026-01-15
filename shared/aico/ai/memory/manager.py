@@ -16,7 +16,7 @@ Core Functionality:
 
 Memory Tier Integration:
 - Working Memory: Conversation history, session context, message storage (LMDB with 24hr TTL)
-- Semantic Memory: Knowledge base with hybrid search (ChromaDB segments + libSQL knowledge graph)
+- Semantic Memory: Knowledge base with hybrid search (ChromaDB segments + PostgreSQL knowledge graph)
 - Procedural Memory: User patterns, preferences, behavioral learning (planned)
 - Context Assembly: Cross-tier context coordination and relevance scoring
 
@@ -128,17 +128,17 @@ class MemoryManager(BaseAIProcessor):
     - Phase 4 🔄: Advanced relationship intelligence and memory album
     """
     
-    def __init__(self, config: ConfigurationManager, db_connection=None):
+    def __init__(self, config: ConfigurationManager, uow_factory=None):
         """
         Initialize memory manager with configuration.
         
         Args:
             config: Configuration manager
-            db_connection: Optional pre-authenticated database connection (for backend use)
+            uow_factory: Optional Unit of Work factory for PostgreSQL access (for backend use)
         """
         self.config = config
         self._initialized = False
-        self._db_connection = db_connection  # Store provided database connection
+        self._uow_factory = uow_factory  # Store UoW factory for PostgreSQL access
         
         # Memory stores (lazy initialization)
         self._working_store: Optional[WorkingMemoryStore] = None  # Conversation history + context
@@ -255,7 +255,7 @@ class MemoryManager(BaseAIProcessor):
                 behavioral_store=None,  # Planned for Phase 3
                 kg_storage=self._kg_storage if self._kg_initialized else None,
                 kg_modelservice=self._kg_modelservice if self._kg_initialized else None,
-                db_connection=self._db_connection
+                uow_factory=self._uow_factory
             )
             
             # Initialize AMS components (Phase 1.5)
@@ -291,27 +291,12 @@ class MemoryManager(BaseAIProcessor):
             from aico.core.paths import AICOPaths
             from aico.security import AICOKeyManager
             
-            # Create encrypted database connection for KG
-            # Reuse existing database connection if available
-            if hasattr(self, '_db_connection') and self._db_connection:
-                db_connection = self._db_connection
-                logger.info("🕸️ [KG] Reusing existing database connection")
-            else:
-                key_manager = AICOKeyManager(self.config)
-                try:
-                    master_key = key_manager.authenticate(interactive=False)
-                except Exception as auth_error:
-                    logger.warning(f"🕸️ [KG] Authentication failed: {auth_error}, trying to get cached key")
-                    # Try to get cached master key
-                    master_key = key_manager.get_cached_master_key()
-                    if not master_key:
-                        logger.error("🕸️ [KG] No cached master key available, KG initialization failed")
-                        return
-                
-                db_path = AICOPaths.get_database_path()
-                db_key = key_manager.derive_database_key(master_key, "postgres", "aico.db")
-                db_connection = Any  # PostgreSQL migration(db_path, encryption_key=db_key)
-                logger.info("🕸️ [KG] Created new database connection")
+            # Use UoW factory for PostgreSQL access
+            if not self._uow_factory:
+                logger.warning("🕸️ [KG] UoW factory not available, KG initialization skipped")
+                return
+            
+            logger.info("🕸️ [KG] Using UoW factory for PostgreSQL access")
             
             # Get ChromaDB client from semantic store
             chromadb_client = None
@@ -331,8 +316,8 @@ class MemoryManager(BaseAIProcessor):
             # Initialize modelservice client (but don't connect yet - message bus may not be ready)
             self._kg_modelservice = ModelserviceClient()
             
-            # Initialize storage (pass modelservice for embedding generation)
-            self._kg_storage = PropertyGraphStorage(db_connection, chromadb_client, self._kg_modelservice)
+            # Initialize storage (pass UoW factory for PostgreSQL and modelservice for embedding generation)
+            self._kg_storage = PropertyGraphStorage(self._uow_factory, chromadb_client, self._kg_modelservice)
             
             # Initialize extraction pipeline (modelservice will connect on first use)
             self._kg_extractor = MultiPassExtractor(self._kg_modelservice, self.config)
@@ -409,15 +394,15 @@ class MemoryManager(BaseAIProcessor):
             
             # Initialize behavioral learning components (Phase 3)
             behavioral_config = self._memory_config.get("behavioral", {})
-            if behavioral_config.get("enabled", False) and self._db_connection:
+            if behavioral_config.get("enabled", False) and self._uow_factory:
                 try:
                     from .behavioral import SkillStore, ThompsonSamplingSelector, PreferenceManager
                     
-                    print("🧠 [AMS] Initializing behavioral learning components...")
+                    print("🧠 [AMS] Behavioral learning enabled, initializing components...")
                     logger.info("🧠 [AMS] Initializing behavioral learning components...")
                     
                     # Skill store
-                    self._skill_store = SkillStore(self._db_connection)
+                    self._skill_store = SkillStore(self._uow_factory)
                     print("🧠 [AMS] ✅ Skill store initialized")
                     logger.info("🧠 [AMS] Skill store initialized")
                     
@@ -429,7 +414,7 @@ class MemoryManager(BaseAIProcessor):
                     # Thompson Sampling selector
                     bandit_config = behavioral_config.get("contextual_bandit", {})
                     self._thompson_sampling = ThompsonSamplingSelector(
-                        db_connection=self._db_connection,
+                        uow_factory=self._uow_factory,
                         prior_alpha=bandit_config.get("prior_alpha", 1.0),
                         prior_beta=bandit_config.get("prior_beta", 1.0)
                     )
@@ -438,7 +423,7 @@ class MemoryManager(BaseAIProcessor):
                     
                     # Preference manager
                     self._preference_manager = PreferenceManager(
-                        db_connection=self._db_connection,
+                        uow_factory=self._uow_factory,
                         learning_rate=behavioral_config.get("learning_rate", 0.1)
                     )
                     print("🧠 [AMS] ✅ Preference manager initialized")

@@ -10,8 +10,8 @@ from .models import (
     AgencyEvent,
     ReflectionNote,
 )
-from .store import AgencyEventStore, ReflectionStore
 # GoalStore and PlanStore REMOVED - use aico.services.agency_service.AgencyService instead
+# AgencyEventStore and ReflectionStore REMOVED - legacy LibSQL code eliminated
 from .planner import Planner
 from .engine import AgencyEngine
 from .values_ethics import (
@@ -54,8 +54,6 @@ __all__ = [
     "StepStatus",
     "AgencyEvent",
     "ReflectionNote",
-    "AgencyEventStore",
-    "ReflectionStore",
     "Planner",
     "AgencyEngine",
     "ValuesEthicsService",

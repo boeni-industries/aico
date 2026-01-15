@@ -120,7 +120,7 @@ async def _get_consolidation_status(uow: UnitOfWork, user_id: str) -> Consolidat
         current_status = "idle"
         if user_states and user_states[0].status == "running":
             current_status = "running"
-        elif last_session_row:
+        elif state_row:
             current_status = "idle"
         else:
             current_status = "scheduled"
@@ -286,9 +286,9 @@ async def _get_user_preferences(uow: UnitOfWork, user_id: str) -> UserPreference
             dimensions = json.loads(most_recent.dimensions) if isinstance(most_recent.dimensions, str) else most_recent.dimensions
             
             # Create dimension responses
+            dimension_values = dimensions  # Use parsed dimensions
             for i, name in enumerate(DIMENSION_NAMES):
-                if i < len(dimensions):
-                    value = dimensions[i]
+                if i < len(dimension_values):
                     value = dimension_values[i]
                     
                     # Generate human-readable label based on value
@@ -328,9 +328,10 @@ async def _get_user_preferences(uow: UnitOfWork, user_id: str) -> UserPreference
             if learned_dims > 0:
                 insights.append(f"{learned_dims} preference dimensions learned")
             
-            insights.append(f"Learning from context bucket {context_bucket}")
+            if most_recent.context_bucket:
+                insights.append(f"Learning from context bucket {most_recent.context_bucket}")
             
-            if len(pref_rows) > 1:
+            if len(pref_vectors) > 1:
                 insights.append(f"Tracking preferences across {len(pref_vectors)} contexts")
         else:
             # No preferences learned yet - check if we have feedback to learn from

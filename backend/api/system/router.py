@@ -11,7 +11,7 @@ from datetime import datetime
 import time
 
 from aico.core.logging import get_logger
-from backend.api.system.dependencies import get_current_user, get_db_connection
+from backend.api.system.dependencies import get_current_user
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
 

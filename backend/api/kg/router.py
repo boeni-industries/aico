@@ -18,8 +18,7 @@ from backend.api.kg.schemas import (
 )
 from backend.api.kg.dependencies import (
     get_current_user,
-    get_kg_storage,
-    get_db_connection
+    get_kg_storage
 )
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
@@ -38,7 +37,7 @@ async def execute_gql_query(
     request: GQLQueryRequest,
     user: Annotated[dict, Depends(get_current_user)],
     kg_storage: Annotated[object, Depends(get_kg_storage)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> GQLQueryResponse:
     """
     Execute a GQL/Cypher query against the user's knowledge graph.

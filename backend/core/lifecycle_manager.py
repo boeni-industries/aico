@@ -106,13 +106,13 @@ class BackendLifecycleManager:
         """Complete backend startup sequence"""
         self.logger.info("Starting AICO backend components...")
         
-        # 1. Initialize service container first (needed for database connection)
-        await self._initialize_container()
-        
-        # 2. Initialize PostgreSQL session factory for API endpoints
+        # 1. Initialize PostgreSQL session factory FIRST (needed by AI processors)
         from backend.core.postgres_dependencies import initialize_postgres_dependencies
         await initialize_postgres_dependencies()
-        self.logger.info("PostgreSQL session factory initialized for API endpoints")
+        self.logger.info("PostgreSQL session factory initialized")
+        
+        # 2. Initialize service container (AI processors need UoW factory)
+        await self._initialize_container()
         
         # 3. Initialize OpenTelemetry instrumentation (now has database access)
         await self._initialize_telemetry()
@@ -392,14 +392,15 @@ class BackendLifecycleManager:
         from backend.services.modelservice_client import get_modelservice_client
         from aico.ai.agency import AgencyEngine
 
-        # Shared encrypted database connection for AI processors
-        db_connection = self.container.get_service("database")
+        # Get UoW factory for AI processors
+        from backend.core.postgres_dependencies import get_uow_factory
+        uow_factory = get_uow_factory()
 
         # ------------------------------------------------------------------
-        # MemoryManager registration (existing behaviour)
+        # MemoryManager registration (using UoW pattern)
         # ------------------------------------------------------------------
-        memory_manager = MemoryManager(self.config, db_connection=db_connection)
-        self.logger.info("✅ Created MemoryManager with shared database connection")
+        memory_manager = MemoryManager(self.config, uow_factory=uow_factory)
+        self.logger.info("✅ Created MemoryManager with UoW factory")
         
         # Inject modelservice dependency for semantic memory
         try:
@@ -476,7 +477,7 @@ class BackendLifecycleManager:
             try:
                 from aico.ai.personality import PersonalityService
                 
-                personality_service = PersonalityService(db_connection=db_connection)
+                personality_service = PersonalityService()
                 self.logger.info("✅ [AI_PROCESSORS] Created PersonalityService (Phase 2)")
             except Exception as e:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create PersonalityService: {e}")
@@ -555,14 +556,13 @@ class BackendLifecycleManager:
             # Create AgencyEngine with Phase 2 services and Phase 4 message bus
             agency_engine = AgencyEngine(
                 self.config,
-                db_connection=db_connection,
                 agency_service=agency_service,
                 world_model=world_model,
                 personality_service=personality_service,
                 message_bus=message_bus,
                 memory_manager=memory_manager,
             )
-            self.logger.info("✅ Created AgencyEngine with shared database connection and message bus")
+            self.logger.info("✅ Created AgencyEngine with message bus and services")
 
             # Initialize AgencyEngine (placeholder hook for future behaviour)
             self.logger.info("🔧 [AI_PROCESSORS] Initializing AgencyEngine...")

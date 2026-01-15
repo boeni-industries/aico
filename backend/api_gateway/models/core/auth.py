@@ -27,8 +27,8 @@ from aico.security.key_manager import AICOKeyManager
 from aico.security.service_auth import ServiceAuthManager
 from aico.security.transport import TransportIdentityManager
 
-# Import session management
-from aico.security import SessionService, SessionInfo
+# Session management now handled at endpoint level with AsyncSessionService
+# from aico.security import SessionService, SessionInfo  # DEPRECATED - uses LibSQL syntax
 
 # Logger will be initialized in classes
 
@@ -86,7 +86,7 @@ class AuthenticationManager:
     with database-backed session management for JWT tokens.
     """
     
-    def __init__(self, config: ConfigurationManager, db_connection=None):
+    def __init__(self, config: ConfigurationManager):
         self.config = config
         self.logger = get_logger("backend.api_gateway.auth")
         
@@ -102,15 +102,8 @@ class AuthenticationManager:
         # Get JWT secret from AICOKeyManager (zero-effort security)
         self.jwt_secret = self._get_jwt_secret()
         
-        # Database-backed session management
-        if db_connection:
-            self.session_service = SessionService(db_connection)
-            # Track cleanup operations
-            self._last_cleanup = datetime.utcnow()
-            self._cleanup_interval_hours = 24  # Run full cleanup daily
-        else:
-            self.session_service = None
-            self.logger.warning("No database connection provided - session management disabled")
+        # Session management moved to endpoint level with AsyncSessionService + UoW
+        # No longer using LibSQL-based SessionService
         
         # Password context for API key hashing
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -127,9 +120,8 @@ class AuthenticationManager:
         self._initialize_service_accounts()
     
     def generate_jwt_token(self, user_uuid: str, username: str = None, roles: List[str] = None, 
-                          permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None,
-                          user_agent: str = None) -> str:
-        """Generate JWT access token for user with session backing (zero-effort security)"""
+                          permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None) -> str:
+        """Generate JWT access token for user (session creation handled at endpoint level)"""
         import time
         from datetime import datetime, timedelta
         
@@ -151,33 +143,8 @@ class AuthenticationManager:
         
         token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
         
-        # Create session record if session service is available
-        if self.session_service and device_uuid:
-            try:
-                self.session_service.create_session(
-                    user_uuid=user_uuid,
-                    device_uuid=device_uuid,
-                    jwt_token=token,
-                    expires_in_minutes=expires_minutes,
-                    user_agent=user_agent
-                )
-                self.logger.info("Session created successfully", extra={
-                    "user_uuid": user_uuid,
-                    "device_uuid": device_uuid
-                })
-                
-                # Trigger periodic cleanup check
-                self._periodic_cleanup()
-                
-            except Exception as e:
-                self.logger.error("Failed to create session record", extra={
-                    "error": str(e),
-                    "user_uuid": user_uuid,
-                    "expires_minutes": expires_minutes,
-                    "error_type": type(e).__name__
-                })
-                # Don't fail token generation if session creation fails
-                pass
+        # NOTE: Session creation moved to endpoint level using AsyncSessionService + UoW
+        # This ensures proper async PostgreSQL access with repository pattern
         
         self.logger.info("JWT access token generated", extra={
             "subsystem": "api_gateway",

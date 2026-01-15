@@ -1003,15 +1003,6 @@ CREATE INDEX IF NOT EXISTS idx_task_executions_started_at ON "scheduler_task_exe
 
 CREATE INDEX IF NOT EXISTS idx_task_executions_task_id ON "scheduler_task_executions" (task_id);
 
-CREATE TABLE IF NOT EXISTS "scheduler_task_locks" (
-                task_id TEXT PRIMARY KEY,
-                execution_id TEXT NOT NULL,
-                locked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                expires_at TIMESTAMPTZ NOT NULL
-            );
-
-CREATE INDEX IF NOT EXISTS idx_task_locks_expires_at ON "scheduler_task_locks" (expires_at);
-
 CREATE TABLE IF NOT EXISTS "scheduler_tasks" (
                 task_id TEXT PRIMARY KEY,
                 task_class TEXT NOT NULL,
@@ -1279,7 +1270,6 @@ ALTER TABLE kg_nodes ADD CONSTRAINT fk_kg_nodes_user_id_user_profiles FOREIGN KE
 ALTER TABLE proactive_analytics ADD CONSTRAINT fk_proactive_analytics_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE proactive_reminder_clusters ADD CONSTRAINT fk_proactive_reminder_clusters_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE scheduler_task_executions ADD CONSTRAINT fk_scheduler_task_executions_task_id_scheduler_tasks FOREIGN KEY (task_id) REFERENCES scheduler_tasks(task_id);
-ALTER TABLE scheduler_task_locks ADD CONSTRAINT fk_scheduler_task_locks_task_id_scheduler_tasks FOREIGN KEY (task_id) REFERENCES scheduler_tasks(task_id);
 ALTER TABLE system_event_replay_sessions ADD CONSTRAINT fk_system_event_replay_sessions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE user_feedback_requests ADD CONSTRAINT fk_user_feedback_requests_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE user_feedback_requests ADD CONSTRAINT fk_user_feedback_requests_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;

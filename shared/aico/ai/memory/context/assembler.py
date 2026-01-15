@@ -31,7 +31,7 @@ class ContextAssembler:
     Provides unified, prioritized context for AI processing.
     """
     
-    def __init__(self, working_store, episodic_store, semantic_store, behavioral_store, kg_storage=None, kg_modelservice=None, db_connection=None):
+    def __init__(self, working_store, episodic_store, semantic_store, behavioral_store, kg_storage=None, kg_modelservice=None, uow_factory=None):
         """
         Initialize context assembler.
         
@@ -42,7 +42,7 @@ class ContextAssembler:
             behavioral_store: Behavioral memory store
             kg_storage: Knowledge graph storage (optional)
             kg_modelservice: KG modelservice client (optional)
-            db_connection: Database connection for KG queries (optional)
+            uow_factory: Unit of Work factory for PostgreSQL access (optional)
         """
         self.retrievers = ContextRetrievers(
             working_store,
@@ -58,7 +58,7 @@ class ContextAssembler:
         # KG components
         self.kg_storage = kg_storage
         self.kg_modelservice = kg_modelservice
-        self.db_connection = db_connection
+        self.uow_factory = uow_factory
         
         # Configuration
         self._max_context_items = 50
@@ -139,7 +139,7 @@ class ContextAssembler:
                     logger.warning(f"Behavioral memory context retrieval failed: {e}")
             
             # 4.3 Get agency lessons (self-reflection insights)
-            if self.db_connection:
+            if self.uow_factory:
                 try:
                     lesson_items = await self._get_agency_lessons(user_id, current_message)
                     all_items.extend(lesson_items or [])
@@ -169,43 +169,21 @@ class ContextAssembler:
                     
                     # Get edges connecting these nodes
                     kg_edges = []
-                    if kg_nodes and self.db_connection:
-                        node_ids = [node.id for node in kg_nodes]
-                        
-                        # Query edges that connect any of these nodes
-                        placeholders = ','.join(['?' for _ in node_ids])
-                        edge_query = f"""
-                            SELECT 
-                                e.id, e.relation_type, e.confidence,
-                                n1.properties as source_props,
-                                n2.properties as target_props
-                            FROM kg_edges e
-                            JOIN kg_nodes n1 ON e.source_id = n1.id
-                            JOIN kg_nodes n2 ON e.target_id = n2.id
-                            WHERE e.user_id = ? 
-                            AND e.is_current = 1
-                            AND (e.source_id IN ({placeholders}) OR e.target_id IN ({placeholders}))
-                            LIMIT 10
-                        """
-                        
-                        params = [user_id] + node_ids + node_ids
-                        
-                        def _get_edges():
-                            with self.db_connection:
-                                return self.db_connection.execute(edge_query, params).fetchall()
-                        
-                        edge_results = await asyncio.to_thread(_get_edges)
-                        
-                        import json
-                        for row in edge_results:
-                            source_props = json.loads(row[3])
-                            target_props = json.loads(row[4])
-                            kg_edges.append({
-                                "relation": row[1],
-                                "source": source_props.get("name", "?"),
-                                "target": target_props.get("name", "?"),
-                                "confidence": row[2]
-                            })
+                    if kg_nodes and self.kg_storage:
+                        # Use KG storage to get edges instead of direct DB access
+                        try:
+                            for node in kg_nodes[:5]:  # Limit to avoid too many queries
+                                edges = await self.kg_storage.get_node_edges(node.id, limit=5)
+                                import json
+                                for edge in edges:
+                                    kg_edges.append({
+                                        "relation": edge.relation_type,
+                                        "source": edge.source_properties.get("name", "?") if edge.source_properties else "?",
+                                        "target": edge.target_properties.get("name", "?") if edge.target_properties else "?",
+                                        "confidence": edge.confidence
+                                    })
+                        except Exception as e:
+                            logger.warning(f"Failed to retrieve KG edges: {e}")
                     
                     kg_context = {
                         "entities": [
@@ -441,22 +419,16 @@ class ContextAssembler:
         items = []
         
         try:
-            # Query active lessons from database
-            def _query_lessons():
-                with self.db_connection:
-                    return self.db_connection.execute(
-                        """SELECT lesson_id, lesson_type, target_kind, target_id, 
-                                  summary_text, confidence, created_at
-                           FROM agency_lessons
-                           WHERE user_id = ? 
-                             AND status = 'active'
-                             AND confidence >= 0.7
-                           ORDER BY created_at DESC
-                           LIMIT 5""",
-                        (user_id,)
-                    ).fetchall()
+            # Query active lessons from database via UoW
+            async with self.uow_factory() as uow:
+                lessons = await uow.agency_lessons.list(
+                    filters={"user_id": user_id, "status": "active"},
+                    limit=5
+                )
             
-            rows = await asyncio.to_thread(_query_lessons)
+            rows = [(l.lesson_id, l.lesson_type, l.target_kind, l.target_id, 
+                    l.summary_text, l.confidence, l.created_at) for l in lessons 
+                    if l.confidence and l.confidence >= 0.7]
             
             # Convert to ContextItems
             for row in rows:

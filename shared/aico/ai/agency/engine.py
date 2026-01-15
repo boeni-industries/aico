@@ -23,7 +23,6 @@ from .models import (
 from .planner import Planner
 from .values_ethics import ValuesEthicsService, PolicyEffect
 from .arbiter import GoalArbiter, IntentionSet
-from .store import AgencyEventStore, ReflectionStore
 
 # Phase 2: World Model integration
 try:
@@ -57,7 +56,6 @@ class AgencyEngine(BaseAIProcessor):
     def __init__(
         self,
         config: ConfigurationManager,
-        db_connection: Any,  # Agency system being redesigned
         agency_service: "AgencyService",
         llm_plan_refiner: Optional[Callable] = None,
         world_model: Optional["WorldModelService"] = None,
@@ -69,7 +67,7 @@ class AgencyEngine(BaseAIProcessor):
 
         Args:
             config: Configuration manager
-            db_connection: Database connection (basic or encrypted)
+            agency_service: Agency service for goal/plan management
             llm_plan_refiner: Optional callback for LLM-based plan refinement
             world_model: Optional world model service for Phase 2+ context (Phase 2)
             personality_service: Optional personality service for Phase 2+ (Phase 2)
@@ -78,13 +76,8 @@ class AgencyEngine(BaseAIProcessor):
         """
         super().__init__(component_name="agency_engine", version="v1")
         self.config = config
-        self._db_connection = db_connection
         self._memory_manager = memory_manager
         self.agency_service = agency_service
-        
-        # Legacy stores still needed for events and reflections (not yet migrated to services)
-        self.event_store = AgencyEventStore(db_connection)
-        self.reflection_store = ReflectionStore(db_connection)
         
         # Initialize planner with optional LLM client (will be set later if available)
         # Note: skill_registry will be set after it's initialized below
@@ -108,14 +101,10 @@ class AgencyEngine(BaseAIProcessor):
         )
         # Goal Arbiter initialized
         
-        # Phase 5: Self-Reflection Engine
-        from .reflection import SelfReflectionEngine
-        self.self_reflection = SelfReflectionEngine(
-            config=config,
-            db_connection=db_connection,
-            llm_client=None  # Will be set later if available
-        )
-        # Self-Reflection Engine initialized
+        # Phase 5: Self-Reflection Engine - DISABLED (requires migration to PostgreSQL)
+        # TODO: Migrate SelfReflectionEngine to use AgencyService instead of db_connection
+        self.self_reflection = None
+        # Self-Reflection Engine disabled pending migration
         
         # Initialize modelservice client for embeddings (needed for goal deduplication)
         self.modelservice_client = None  # Will be set via set_modelservice_client() if available
@@ -131,58 +120,26 @@ class AgencyEngine(BaseAIProcessor):
             ReflectOnGoalSkill,
         )
         
-        # Initialize skill registry and register all skills with database connection
+        # Initialize skill registry - DISABLED (skills require migration to PostgreSQL)
+        # TODO: Migrate all skills to use AgencyService/UoW instead of db_connection
         self.skill_registry = SkillRegistry()
-        
-        # Analysis skills
-        self.skill_registry.register(AnalyzeConversationSkill(db=db_connection, memory_manager=self._memory_manager))
-        
-        # Memory skills
-        self.skill_registry.register(SearchMemorySkill(db=db_connection))
-        
-        # Knowledge skills
-        self.skill_registry.register(UpdateKnowledgeGraphSkill(db=db_connection))
-        
-        # Reflection skills
-        self.skill_registry.register(ReflectOnGoalSkill(db=db_connection))
-        
-        # Communication skills (AICO-initiated conversations)
-        from .skills import AskUserSkill, InitiateConversationSkill
-        self.skill_registry.register(AskUserSkill(db=db_connection, message_bus=message_bus))
-        self.skill_registry.register(InitiateConversationSkill(db=db_connection, message_bus=message_bus))
-        
-        # Skill Registry initialized
+        # Skills disabled pending migration to PostgreSQL
+        # Skill Registry initialized (empty)
         
         # Initialize PlanStore with skill_registry for auto-fixing old plans
         # PlanStore replaced by AgencyService
         
         # Now that skill_registry is initialized, set it on the planner
         self.planner.skill_registry = self.skill_registry
-        # Initialize SkillMatcher now that registry is available
-        # Note: embedding_client will be set after modelservice_client is injected
-        from .skills.matcher import SkillMatcher
-        self.planner.skill_matcher = SkillMatcher(
-            skill_registry=self.skill_registry,
-            embedding_client=None,  # Will be updated via update_skill_matcher_embedding_client()
-            db_connection=db_connection
-        )
+        # SkillMatcher disabled pending migration to PostgreSQL
+        self.planner.skill_matcher = None
         # Planner configured
         
-        self.skill_invoker = SkillInvoker(
-            db=db_connection,
-            skill_registry=self.skill_registry,
-            default_timeout=30,
-            max_retries=2,
-            logger=logger
-        )
-        
-        self.executor = PlanExecutor(
-            db=db_connection,
-            agency_service=self.agency_service,
-            skill_invoker=self.skill_invoker,
-            logger=logger
-        )
-        # Plan Executor initialized
+        # SkillInvoker and PlanExecutor disabled pending migration to PostgreSQL
+        # TODO: Migrate to use AgencyService instead of db_connection
+        self.skill_invoker = None
+        self.executor = None
+        # Plan Executor disabled pending migration
         
         # Optional backend hook for LLM-based plan refinement (injected by backend)
         self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner
@@ -718,66 +675,9 @@ class AgencyEngine(BaseAIProcessor):
                 metadata["hobby_template_id"] = signal.context["template_id"]
                 metadata["hobby_category"] = signal.context.get("category")
             
-            # CRITICAL FIX: Check for existing goals to prevent duplicates
-            # 1. Exact title match (fast path)
-            existing_goal = self._db_connection.execute(
-                """SELECT goal_id, title, description, status, created_at FROM agency_goals 
-                   WHERE user_id = ? AND title = ? AND status IN ('pending', 'active', 'paused')
-                   ORDER BY created_at DESC LIMIT 1""",
-                (user_id, signal.topic)
-            ).fetchone()
-            
-            if existing_goal:
-                logger.info(
-                    f"[AGENCY_ENGINE] Goal '{signal.topic}' already exists (exact match, "
-                    f"id={existing_goal['goal_id']}, status={existing_goal['status']}), skipping duplicate"
-                )
-                goal = await self.agency_service.get_goal(existing_goal['goal_id'])
-                return goal, None
-            
-            # 2. Semantic similarity check (for near-duplicates with different wording)
-            # Get recent goals of same type for similarity comparison
-            recent_goals = self._db_connection.execute(
-                """SELECT goal_id, title, description, status, created_at FROM agency_goals 
-                   WHERE user_id = ? 
-                   AND goal_type IN ('hobby', 'curiosity')
-                   AND status IN ('pending', 'active', 'paused')
-                   AND created_at > datetime('now', '-7 days')
-                   ORDER BY created_at DESC LIMIT 20""",
-                (user_id,)
-            ).fetchall()
-            
-            # Check for semantic duplicates using simple keyword overlap
-            # (More sophisticated: could use embeddings, but this is lightweight)
-            signal_keywords = set(signal.topic.lower().split())
-            signal_desc_keywords = set(signal.description.lower().split()) if signal.description else set()
-            
-            for existing in recent_goals:
-                existing_keywords = set(existing['title'].lower().split())
-                existing_desc_keywords = set(existing['description'].lower().split()) if existing['description'] else set()
-                
-                # Calculate Jaccard similarity for titles
-                title_overlap = len(signal_keywords & existing_keywords)
-                title_union = len(signal_keywords | existing_keywords)
-                title_similarity = title_overlap / title_union if title_union > 0 else 0
-                
-                # Calculate description similarity
-                desc_overlap = len(signal_desc_keywords & existing_desc_keywords)
-                desc_union = len(signal_desc_keywords | existing_desc_keywords)
-                desc_similarity = desc_overlap / desc_union if desc_union > 0 else 0
-                
-                # Combined similarity (weighted average)
-                combined_similarity = (title_similarity * 0.7) + (desc_similarity * 0.3)
-                
-                # If similarity > 0.6, consider it a duplicate
-                if combined_similarity > 0.6:
-                    logger.info(
-                        f"[AGENCY_ENGINE] Goal '{signal.topic}' is semantically similar to existing goal "
-                        f"'{existing['title']}' (similarity={combined_similarity:.2f}, id={existing['goal_id']}), "
-                        f"skipping duplicate"
-                    )
-                    goal = await self.agency_service.get_goal(existing['goal_id'])
-                    return goal, None
+            # Goal deduplication disabled pending migration to PostgreSQL
+            # TODO: Implement deduplication using AgencyService queries instead of direct SQL
+            # For now, allow duplicate goals - they can be managed through the UI
             
             # Create goal with appropriate origin
             goal, plan = await self.create_goal_with_optional_plan(

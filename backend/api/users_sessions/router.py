@@ -6,7 +6,7 @@ REST API endpoints for user and session management.
 
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from aico.core.logging import get_logger
 from backend.api.users_sessions.schemas import (
@@ -324,8 +324,12 @@ async def get_sessions(
             device_info = devices_by_uuid.get(sess.device_uuid) if sess.device_uuid else None
             
             # Check if session is truly active
-            expires_dt = sess.expires_at if isinstance(sess.expires_at, datetime) else datetime.fromisoformat(str(sess.expires_at).replace('Z', '+00:00'))
-            is_truly_active = sess.is_active and expires_dt > datetime.utcnow()
+            if isinstance(sess.expires_at, datetime):
+                expires_dt = sess.expires_at if sess.expires_at.tzinfo else sess.expires_at.replace(tzinfo=timezone.utc)
+            else:
+                expires_dt = datetime.fromisoformat(str(sess.expires_at).replace('Z', '+00:00'))
+            now_utc = datetime.now(timezone.utc)
+            is_truly_active = sess.is_active and expires_dt > now_utc
             
             if is_truly_active:
                 active_count += 1

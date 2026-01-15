@@ -24,16 +24,16 @@ class ThompsonSamplingSelector:
     Balances exploration vs. exploitation automatically.
     """
     
-    def __init__(self, db_connection, prior_alpha: float = 1.0, prior_beta: float = 1.0):
+    def __init__(self, uow_factory, prior_alpha: float = 1.0, prior_beta: float = 1.0):
         """
         Initialize Thompson Sampling selector.
         
         Args:
-            db_connection: Encrypted libSQL database connection
+            uow_factory: Unit of Work factory for PostgreSQL access
             prior_alpha: Beta distribution prior (successes)
             prior_beta: Beta distribution prior (failures)
         """
-        self.db = db_connection
+        self.uow_factory = uow_factory
         self.prior_alpha = prior_alpha
         self.prior_beta = prior_beta
     
@@ -78,159 +78,144 @@ class ThompsonSamplingSelector:
         print(f"🎲 [THOMPSON] Context bucket: {context_bucket}")
         
         # Get success/failure counts for each skill in this context bucket
-        skill_scores = {}
-        for skill in candidate_skills:
-            stats = await self._get_stats(user_id, skill.skill_id, context_bucket)
-            
-            # Sample from Beta distribution
-            alpha = self.prior_alpha + stats['successes']
-            beta = self.prior_beta + stats['failures']
-            sampled_score = np.random.beta(alpha, beta)
-            
-            skill_scores[skill.skill_id] = sampled_score
-            print(f"🎲 [THOMPSON] Skill {skill.skill_id}: alpha={alpha}, beta={beta}, score={sampled_score:.3f}")
+        skill_samples = {}
         
-        # Select skill with highest sampled score
-        selected_skill_id = max(skill_scores, key=skill_scores.get)
+        async with self.uow_factory() as uow:
+            for skill in candidate_skills:
+                # Get stats for this (context_bucket, skill_id) pair
+                stats_list = await uow.ams_context_skill_stats.list(
+                    filters={
+                        'user_id': user_id,
+                        'context_bucket': context_bucket,
+                        'skill_id': skill.skill_id
+                    },
+                    limit=1
+                )
+                
+                if stats_list:
+                    stats = stats_list[0]
+                    alpha = self.prior_alpha + stats.success_count
+                    beta = self.prior_beta + stats.failure_count
+                else:
+                    # No data yet - use priors
+                    alpha = self.prior_alpha
+                    beta = self.prior_beta
+                
+                # Sample from Beta(α, β) distribution
+                sample = np.random.beta(alpha, beta)
+                skill_samples[skill.skill_id] = sample
+                
+                print(f"🎲 [THOMPSON] Skill {skill.skill_id}: α={alpha:.1f}, β={beta:.1f}, sample={sample:.3f}")
         
-        print(f"🎲 [THOMPSON] ✅ Selected skill: {selected_skill_id} (score: {skill_scores[selected_skill_id]:.3f})")
-        
-        logger.info("Skill selected via Thompson Sampling", extra={
-            "user_id": user_id,
-            "skill_id": selected_skill_id,
-            "context_bucket": context_bucket,
-            "sampled_score": skill_scores[selected_skill_id],
-            "metric_type": "behavioral_memory_selection"
-        })
+        # Select skill with highest sample
+        selected_skill_id = max(skill_samples, key=skill_samples.get)
+        print(f"🎲 [THOMPSON] ✅ Selected skill: {selected_skill_id} (sample={skill_samples[selected_skill_id]:.3f})")
         
         return selected_skill_id
     
-    async def update_from_feedback(
+    async def update_feedback(
         self,
         user_id: str,
-        skill_id: str,
         context: Dict[str, any],
-        reward: int
+        skill_id: str,
+        success: bool
     ) -> None:
         """
-        Update skill statistics based on user feedback.
+        Update skill statistics based on execution feedback.
         
         Args:
             user_id: User ID
-            skill_id: ID of skill that was applied
-            context: Context in which skill was used (will be hashed to bucket)
-            reward: 1 (success), -1 (failure), 0 (neutral - no update)
+            context: Context in which skill was executed
+            skill_id: Skill that was executed
+            success: Whether execution was successful
         """
-        if reward == 0:
-            return  # Neutral feedback doesn't update statistics
-        
-        # Hash context into bucket
         context_bucket = self._hash_context(context)
         
-        # Get stats for this (context_bucket, skill) pair
-        stats = await self._get_skill_stats(user_id, skill_id, context_bucket)
-        
-        if reward > 0:
-            stats['successes'] += 1
-        else:
-            stats['failures'] += 1
-        
-        # Save stats for this specific context bucket
-        await self._save_skill_stats(user_id, skill_id, context_bucket, stats)
-        
-        logger.info("Thompson Sampling stats updated", extra={
-            "user_id": user_id,
-            "skill_id": skill_id,
-            "context_bucket": context_bucket,
-            "reward": reward,
-            "alpha": self.prior_alpha + stats['successes'],
-            "beta": self.prior_beta + stats['failures']
-        })
-    
-    async def _get_stats(
-        self,
-        user_id: str,
-        skill_id: str,
-        context_bucket: int
-    ) -> Dict[str, int]:
-        """
-        Get success/failure counts for (user, context_bucket, skill) triple.
-        
-        Returns:
-            Dict with 'successes' and 'failures' counts
-            
-        Raises:
-            RuntimeError: If ams_context_skill_stats table doesn't exist
-        """
-        try:
-            row = self.db.execute(
-                """SELECT alpha, beta FROM ams_context_skill_stats
-                   WHERE user_id = ? AND context_bucket = ? AND skill_id = ?""",
-                (user_id, context_bucket, skill_id)
-            ).fetchone()
-        except Exception as e:
-            if "no such table" in str(e).lower():
-                logger.error(f"CRITICAL: ams_context_skill_stats table does not exist: {e}")
-                raise RuntimeError(
-                    "ams_context_skill_stats table does not exist. "
-                    "Run database migration to create missing AMS tables."
-                ) from e
-            else:
-                logger.error(f"Database error querying skill stats: {e}")
-                raise
-        
-        if row:
-            # Convert Beta parameters back to success/failure counts
-            # alpha = prior_alpha + successes, beta = prior_beta + failures
-            successes = int(row[0] - self.prior_alpha)
-            failures = int(row[1] - self.prior_beta)
-            return {'successes': max(0, successes), 'failures': max(0, failures)}
-        else:
-            return {'successes': 0, 'failures': 0}
-    
-    async def _save_stats(
-        self,
-        user_id: str,
-        skill_id: str,
-        context_bucket: int,
-        stats: Dict[str, int]
-    ) -> None:
-        """Save success/failure counts for (user, context_bucket, skill) triple.
-        
-        Raises:
-            RuntimeError: If ams_context_skill_stats table doesn't exist
-        """
-        alpha = self.prior_alpha + stats['successes']
-        beta = self.prior_beta + stats['failures']
-        
-        # Upsert stats
-        try:
-            self.db.execute(
-                """INSERT INTO ams_context_skill_stats (
-                    user_id, context_bucket, skill_id, alpha, beta, last_updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, context_bucket, skill_id)
-                DO UPDATE SET
-                    alpha = excluded.alpha,
-                    beta = excluded.beta,
-                    last_updated_at = excluded.last_updated_at""",
-                (
-                    user_id,
-                    context_bucket,
-                    skill_id,
-                    alpha,
-                    beta,
-                    datetime.utcnow().isoformat()
-                )
+        async with self.uow_factory() as uow:
+            # Get existing stats
+            stats_list = await uow.ams_context_skill_stats.list(
+                filters={
+                    'user_id': user_id,
+                    'context_bucket': context_bucket,
+                    'skill_id': skill_id
+                },
+                limit=1
             )
-            self.db.commit()
-        except Exception as e:
-            if "no such table" in str(e).lower():
-                logger.error(f"CRITICAL: ams_context_skill_stats table does not exist: {e}")
-                raise RuntimeError(
-                    "ams_context_skill_stats table does not exist. "
-                    "Run database migration to create missing AMS tables."
-                ) from e
+            
+            if stats_list:
+                # Update existing stats
+                stats = stats_list[0]
+                if success:
+                    stats.success_count += 1
+                else:
+                    stats.failure_count += 1
+                stats.updated_at = datetime.utcnow()
+                await uow.ams_context_skill_stats.update(stats)
             else:
-                logger.error(f"Database error saving skill stats: {e}")
-                raise
+                # Create new stats
+                stats = ContextSkillStats(
+                    user_id=user_id,
+                    context_bucket=context_bucket,
+                    skill_id=skill_id,
+                    success_count=1 if success else 0,
+                    failure_count=0 if success else 1,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                await uow.ams_context_skill_stats.create(stats)
+            
+            await uow.commit()
+        
+        logger.info(f"Updated Thompson Sampling stats: user={user_id}, skill={skill_id}, success={success}")
+    
+    async def get_skill_performance(
+        self,
+        user_id: str,
+        skill_id: str
+    ) -> Dict[str, float]:
+        """
+        Get overall performance metrics for a skill.
+        
+        Args:
+            user_id: User ID
+            skill_id: Skill ID
+            
+        Returns:
+            Dict with success_rate, total_executions, confidence
+        """
+        async with self.uow_factory() as uow:
+            # Get all stats for this skill across all contexts
+            all_stats = await uow.ams_context_skill_stats.list(
+                filters={'user_id': user_id, 'skill_id': skill_id},
+                limit=1000
+            )
+        
+        if not all_stats:
+            return {
+                'success_rate': 0.5,  # Neutral prior
+                'total_executions': 0,
+                'confidence': 0.0
+            }
+        
+        total_success = sum(s.success_count for s in all_stats)
+        total_failure = sum(s.failure_count for s in all_stats)
+        total_executions = total_success + total_failure
+        
+        if total_executions == 0:
+            return {
+                'success_rate': 0.5,
+                'total_executions': 0,
+                'confidence': 0.0
+            }
+        
+        success_rate = total_success / total_executions
+        
+        # Confidence based on number of executions (Wilson score interval)
+        # More executions = higher confidence
+        confidence = min(1.0, total_executions / 100.0)
+        
+        return {
+            'success_rate': success_rate,
+            'total_executions': total_executions,
+            'confidence': confidence
+        }
