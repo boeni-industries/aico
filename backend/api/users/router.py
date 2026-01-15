@@ -310,8 +310,16 @@ async def authenticate_user(
         
         logger.info(f"Authentication successful for user: {user.uuid}")
         
-        # Get user roles (simplified - would need proper authorization repository)
-        user_roles = ["user"]
+        # Get user roles from auth_access_policies table
+        access_policies = await uow.auth_access_policies.get_user_policies(user.uuid, resource_type="role")
+        user_roles = [policy.permission for policy in access_policies] if access_policies else ["user"]
+        
+        # If no roles found, default to "user" role
+        if not user_roles:
+            user_roles = ["user"]
+        
+        logger.info(f"User roles loaded: {user_roles}", extra={"user_uuid": user.uuid, "roles": user_roles})
+        
         user_permissions = []
         
         # Extract User-Agent from request headers for device detection

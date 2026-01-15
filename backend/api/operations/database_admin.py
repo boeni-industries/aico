@@ -380,6 +380,7 @@ def validate_sql_query(query: str, allow_destructive: bool = False) -> tuple[boo
 async def execute_sql_query(
     query: str,
     limit: int,
+    uow,
     allow_destructive: bool = False
 ) -> QueryResult:
     """

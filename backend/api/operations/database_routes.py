@@ -7,7 +7,9 @@ Router endpoints for advanced database management.
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, Request, Body
 
-from backend.api.system.dependencies import get_current_user, get_db_connection
+from backend.api.system.dependencies import get_current_user
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 from backend.api.operations.schemas import (
     DatabaseDetailsResponse,
     QueryRequest, QueryResult,
@@ -33,7 +35,7 @@ async def get_database_details(
     database_type: str,
     request: Request,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> DatabaseDetailsResponse:
     """
     Get detailed information about database tables/collections.
@@ -67,7 +69,7 @@ async def get_database_details(
 async def execute_query(
     query_request: QueryRequest,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> QueryResult:
     """
     Execute a SQL query on PostgreSQL database.
@@ -77,7 +79,7 @@ async def execute_query(
     return await database_admin.execute_sql_query(
         query_request.query,
         query_request.limit or 100,
-        db_connection
+        uow
     )
 
 
@@ -255,11 +257,11 @@ async def delete_lmdb_keys(
 async def find_orphaned_entries(
     database_name: str,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> OrphanedEntriesResponse:
     """
     Find LMDB entries that reference non-existent users.
     
     This helps identify and clean up orphaned data from deleted users.
     """
-    return await database_admin.find_orphaned_lmdb_entries(database_name, db_connection)
+    return await database_admin.find_orphaned_lmdb_entries(database_name, uow)

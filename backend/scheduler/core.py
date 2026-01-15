@@ -302,7 +302,7 @@ class TaskExecutor:
         session_factory = await get_session_factory()
         async with UnitOfWork(session_factory) as uow:
             scheduler_service = SchedulerService(uow)
-            lock_acquired = await scheduler_service.acquire_lock(task_id, execution_id, ttl_seconds=3600)
+            lock_acquired = await scheduler_service.acquire_lock(task_id=task_id, worker_id=execution_id, ttl_seconds=3600)
         
         if not lock_acquired:
             self.logger.warning(f"Could not acquire lock for task {task_id}")
@@ -399,7 +399,7 @@ class TaskExecutor:
                 # Release lock via SchedulerService
                 async with UnitOfWork(session_factory) as uow:
                     scheduler_service = SchedulerService(uow)
-                    await scheduler_service.release_lock(task_id, execution_id)
+                    await scheduler_service.release_lock(task_id=task_id, worker_id=execution_id)
 
             # Remove from running tasks
             try:

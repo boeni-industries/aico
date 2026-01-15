@@ -236,12 +236,13 @@ async def delete_lmdb_keys(database_name: str, keys: List[str]) -> dict:
         )
 
 
-async def find_orphaned_lmdb_entries(database_name: str, db_connection) -> dict:
+async def find_orphaned_lmdb_entries(database_name: str, uow) -> dict:
     """
     Find LMDB entries that reference non-existent users.
     
     Args:
         database_name: LMDB database name
+        uow: Unit of Work for database access
         
     Returns:
         Dict with orphaned entry information
@@ -266,13 +267,8 @@ async def find_orphaned_lmdb_entries(database_name: str, db_connection) -> dict:
             )
         
         # Get all valid user UUIDs from database via UoW
-        from aico.data.postgres.connection import get_session_factory
-        from aico.data.uow import UnitOfWork
-        
-        session_factory = await get_session_factory()
-        async with UnitOfWork(session_factory) as uow:
-            all_users = await uow.user_profiles.list(limit=100000)
-            valid_user_ids = {u.uuid for u in all_users}
+        all_users = await uow.users.list(limit=100000)
+        valid_user_ids = {u.uuid for u in all_users}
         
         # Find entries with invalid user_ids
         orphaned_entries = []

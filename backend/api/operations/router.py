@@ -24,7 +24,7 @@ from backend.api.operations.schemas import (
     ActiveSessionsResponse, UserSession,
     TopologyResponse, ServiceNode, ServiceConnection
 )
-from backend.api.system.dependencies import get_current_user, get_db_connection
+from backend.api.system.dependencies import get_current_user
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
 from backend.api.metrics.start_time import start_time
@@ -62,8 +62,7 @@ def format_bytes(size_bytes: int) -> str:
 @router.get("/databases", response_model=DatabaseStatsResponse)
 async def get_database_stats(
     request: Request,
-    user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    user: Annotated[dict, Depends(get_current_user)]
 ) -> DatabaseStatsResponse:
     """
     Get database statistics for all databases (PostgreSQL, ChromaDB, LMDB).
@@ -914,7 +913,7 @@ async def get_database_details(
     database_type: str,
     request: Request,
     user: Annotated[dict, Depends(get_current_user)],
-    db_connection: Annotated[object, Depends(get_db_connection)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> DatabaseDetailsResponse:
     """
     Get detailed information about database tables/collections.

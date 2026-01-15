@@ -259,6 +259,208 @@ async def get(self, id):
 
 ---
 
+### 13. Router Accessing Deprecated Service Attributes Instead of UoW Pattern
+**Pattern:**
+```python
+# Router directly accesses service internal attributes
+@router.get("/tasks")
+async def list_tasks(
+    scheduler = Depends(get_task_scheduler),
+    _auth = Depends(require_admin_access)
+):
+    tasks = scheduler.task_store.list_tasks()  # Direct attribute access
+    return tasks
+
+# Service was refactored but router wasn't updated
+class TaskScheduler:
+    def __init__(self):
+        # self.task_store = TaskStore()  # REMOVED - now uses UoW
+        self.task_registry = TaskRegistry()
+```
+
+**Fix:**
+```python
+# Router uses UoW pattern with service layer
+@router.get("/tasks")
+async def list_tasks(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    _auth = Depends(require_admin_access)
+):
+    scheduler_service = SchedulerService(uow)
+    tasks = await scheduler_service.list_tasks()  # Proper service method
+    return tasks
+
+# Service uses UoW internally
+class SchedulerService:
+    def __init__(self, uow: UnitOfWork):
+        self.uow = uow
+    
+    async def list_tasks(self):
+        return await self.uow.scheduler_tasks.list()
+```
+
+**Root Cause:** Service layer was refactored to use UoW pattern (repository access via `uow.repository_name`), but API routers still try to access old internal attributes like `service.task_store` that no longer exist.
+
+**Symptoms:**
+- `AttributeError: 'ServiceClass' object has no attribute 'old_attribute'`
+- 503 Service Unavailable errors from API endpoints
+- Routers work in development but break after service refactoring
+
+**Key Changes Required:**
+1. Add `uow: Annotated[UnitOfWork, Depends(get_uow)]` to router function parameters
+2. Create service instance: `service = ServiceClass(uow)`
+3. Call async service methods instead of accessing attributes
+4. Update data access from dict-style `task['id']` to object-style `task.id`
+5. Add proper imports: `from aico.data.uow import UnitOfWork`, `from backend.core.postgres_dependencies import get_uow`
+
+**Search:** `\.(task_store|execution_store|lock_store)\.` in `backend/api/` routers
+
+---
+
+### 14. Hardcoded User Roles Instead of Database Lookup
+
+**Pattern:**
+```python
+# Authentication endpoint hardcodes roles
+@router.post("/authenticate")
+async def authenticate_user(
+    request: AuthenticateRequest,
+    uow: UnitOfWork = Depends(get_uow)
+):
+    user = await uow.users.get_by_id(request.user_uuid)
+    
+    # WRONG: Hardcoded roles - ignores database
+    user_roles = ["user"]
+    
+    jwt_token = auth_manager.generate_jwt_token(
+        user_uuid=user.uuid,
+        roles=user_roles  # Always ["user"], never admin
+    )
+```
+
+**Fix:**
+```python
+# Fetch actual roles from auth_access_policies table
+@router.post("/authenticate")
+async def authenticate_user(
+    request: AuthenticateRequest,
+    uow: UnitOfWork = Depends(get_uow)
+):
+    user = await uow.users.get_by_id(request.user_uuid)
+    
+    # CORRECT: Fetch roles from database
+    access_policies = await uow.auth_access_policies.get_user_policies(
+        user.uuid, 
+        resource_type="role"
+    )
+    user_roles = [policy.permission for policy in access_policies] if access_policies else ["user"]
+    
+    # Default to "user" role if none found
+    if not user_roles:
+        user_roles = ["user"]
+    
+    logger.info(f"User roles loaded: {user_roles}", extra={"user_uuid": user.uuid, "roles": user_roles})
+    
+    jwt_token = auth_manager.generate_jwt_token(
+        user_uuid=user.uuid,
+        roles=user_roles  # Now includes admin, moderator, etc.
+    )
+```
+
+**Root Cause:** Authentication endpoint was hardcoding `user_roles = ["user"]` instead of querying the `auth_access_policies` table where roles are stored. This caused all users to be authenticated with only the "user" role, even if they had "admin" role in the database.
+
+**Symptoms:**
+- User has admin role in `auth_access_policies` table but gets 403 Forbidden on admin endpoints
+- JWT token payload contains `"roles": ["user"]` instead of `"roles": ["admin"]`
+- Admin access checks fail with "Admin access required" error
+- Works for regular user endpoints but fails for admin-only endpoints
+
+**Key Changes Required:**
+1. Use `uow.auth_access_policies.get_user_policies(user_uuid, resource_type="role")` to fetch roles
+2. Extract `permission` field from policies: `[policy.permission for policy in access_policies]`
+3. Keep default fallback to `["user"]` if no roles found
+4. Log loaded roles for debugging: `logger.info(f"User roles loaded: {user_roles}")`
+
+**Search:** `user_roles = \["user"\]` in authentication endpoints
+
+---
+
+### 15. Legacy get_db_connection Dependency in API Endpoints
+
+**Pattern:**
+```python
+# API endpoint using legacy database connection dependency
+from backend.api.system.dependencies import get_current_user, get_db_connection
+
+@router.get("/databases")
+async def get_database_stats(
+    user: Annotated[dict, Depends(get_current_user)],
+    db_connection: Annotated[object, Depends(get_db_connection)]  # WRONG: Legacy dependency
+) -> DatabaseStatsResponse:
+    # Endpoint tries to use old database service
+    pass
+```
+
+**Fix:**
+```python
+# Use UoW pattern instead of legacy db_connection
+from backend.api.system.dependencies import get_current_user
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
+
+@router.get("/databases")
+async def get_database_stats(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)]  # CORRECT: UoW pattern
+) -> DatabaseStatsResponse:
+    # Use UoW to access repositories
+    users = await uow.users.list(limit=1000)
+    pass
+```
+
+**Root Cause:** After migrating to PostgreSQL with UoW pattern, some API endpoints still depend on the legacy `get_db_connection` dependency which tries to access the old database service. This service no longer exists, causing 503 errors.
+
+**Symptoms:**
+- HTTP 503 "Database not available" errors on certain endpoints
+- Error: `raise HTTPException(status_code=503, detail="Database not available")`
+- Endpoints fail during dependency injection before reaching handler code
+- Works for endpoints using UoW, fails for those using `get_db_connection`
+
+**Key Changes Required:**
+1. Remove `get_db_connection` import from `backend.api.system.dependencies`
+2. Add UoW imports: `from backend.core.postgres_dependencies import get_uow` and `from aico.data.uow import UnitOfWork`
+3. Replace `db_connection: Annotated[object, Depends(get_db_connection)]` with `uow: Annotated[UnitOfWork, Depends(get_uow)]`
+4. Update function signatures that accept `db_connection` parameter to accept `uow` instead
+5. Use UoW repositories: `await uow.users.list()`, `await uow.sessions.get_by_id()`, etc.
+
+**Files Commonly Affected:**
+- `/backend/api/operations/router.py` - Operations/database stats endpoints
+- `/backend/api/operations/database_routes.py` - Database admin routes
+- `/backend/api/operations/database_admin.py` - Admin function implementations
+- `/backend/api/operations/lmdb_browser.py` - LMDB browsing functions
+
+**Example Migration:**
+```python
+# Before: Function using db_connection
+async def find_orphaned_entries(database_name: str, db_connection) -> dict:
+    # Had to create own UoW inside
+    from aico.data.postgres.connection import get_session_factory
+    from aico.data.uow import UnitOfWork
+    
+    session_factory = await get_session_factory()
+    async with UnitOfWork(session_factory) as uow:
+        users = await uow.users.list(limit=100000)
+
+# After: Function using UoW parameter
+async def find_orphaned_entries(database_name: str, uow) -> dict:
+    # Use passed-in UoW directly
+    users = await uow.users.list(limit=100000)
+```
+
+**Search:** `Depends\(get_db_connection\)` in `backend/api/` endpoints
+
+---
+
 ## Scan Commands
 
 ```bash

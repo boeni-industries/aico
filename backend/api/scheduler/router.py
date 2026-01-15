@@ -7,6 +7,7 @@ REST API endpoints for task scheduler management following AICO patterns.
 from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from datetime import datetime, UTC
+import json
 
 from aico.core.logging import get_logger
 from aico.data.uow import UnitOfWork
@@ -83,10 +84,10 @@ async def list_tasks(
                 task_id=task.task_id,
                 task_class=task.task_class,
                 schedule=task.schedule,
-                config=task.config,
+                config=json.loads(task.config) if isinstance(task.config, str) else task.config,
                 enabled=task.enabled,
-                created_at=task.created_at,
-                updated_at=task.updated_at
+                created_at=task.created_at.isoformat() if hasattr(task.created_at, 'isoformat') else task.created_at,
+                updated_at=task.updated_at.isoformat() if hasattr(task.updated_at, 'isoformat') else task.updated_at
             )
             for task in tasks
         ]
@@ -118,10 +119,10 @@ async def get_task(
             task_id=task.task_id,
             task_class=task.task_class,
             schedule=task.schedule,
-            config=task.config,
+            config=json.loads(task.config) if isinstance(task.config, str) else task.config,
             enabled=task.enabled,
-            created_at=task.created_at,
-            updated_at=task.updated_at
+            created_at=task.created_at.isoformat() if hasattr(task.created_at, 'isoformat') else task.created_at,
+            updated_at=task.updated_at.isoformat() if hasattr(task.updated_at, 'isoformat') else task.updated_at
         )
     except TaskNotFoundError:
         raise
@@ -176,10 +177,10 @@ async def create_task(
             task_id=created_task.task_id,
             task_class=created_task.task_class,
             schedule=created_task.schedule,
-            config=created_task.config,
+            config=json.loads(created_task.config) if isinstance(created_task.config, str) else created_task.config,
             enabled=created_task.enabled,
-            created_at=created_task.created_at,
-            updated_at=created_task.updated_at
+            created_at=created_task.created_at.isoformat() if hasattr(created_task.created_at, 'isoformat') else created_task.created_at,
+            updated_at=created_task.updated_at.isoformat() if hasattr(created_task.updated_at, 'isoformat') else created_task.updated_at
         )
     except (TaskAlreadyExistsError, InvalidCronExpressionError, TaskClassNotFoundError, TaskValidationError):
         raise
@@ -232,10 +233,10 @@ async def update_task(
             task_id=updated_task.task_id,
             task_class=updated_task.task_class,
             schedule=updated_task.schedule,
-            config=updated_task.config,
+            config=json.loads(updated_task.config) if isinstance(updated_task.config, str) else updated_task.config,
             enabled=updated_task.enabled,
-            created_at=updated_task.created_at,
-            updated_at=updated_task.updated_at
+            created_at=updated_task.created_at.isoformat() if hasattr(updated_task.created_at, 'isoformat') else updated_task.created_at,
+            updated_at=updated_task.updated_at.isoformat() if hasattr(updated_task.updated_at, 'isoformat') else updated_task.updated_at
         )
         
     except (TaskNotFoundError, InvalidCronExpressionError, TaskValidationError):
