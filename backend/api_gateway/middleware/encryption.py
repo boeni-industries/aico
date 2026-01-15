@@ -102,13 +102,7 @@ class EncryptionMiddleware:
         path = request.url.path
         client_ip = request.client.host if request.client else "unknown"
         
-        # DEBUG: Log all memory-related requests
-        if "/memory/" in path:
-            print(f"\n{'='*80}")
-            print(f"🔍 [ENCRYPTION] Request: {request.method} {path}")
-            print(f"   Client: {client_ip}")
-            print(f"   Headers: {dict(request.headers)}")
-            print(f"{'='*80}")
+        # Memory requests handled normally
         
         # Let CORS preflight requests pass through to the underlying app so that
         # FastAPI's CORSMiddleware can handle them and return proper headers.
@@ -127,14 +121,10 @@ class EncryptionMiddleware:
 
         # Skip encryption for health checks only
         if self._should_skip_encryption(request):
-            if "/memory/" in path:
-                print(f"✅ [ENCRYPTION] Skipping encryption for: {path}")
             await self.app(scope, receive, send)
             return
         
         # Handle encrypted requests
-        if "/memory/" in path:
-            print(f"🔐 [ENCRYPTION] Handling encrypted request for: {path}")
         await self._handle_encrypted_request(scope, receive, send)
     
     async def _handle_encrypted_request(self, scope: Scope, receive: Receive, send: Send) -> None:

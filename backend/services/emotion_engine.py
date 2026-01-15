@@ -152,13 +152,10 @@ class EmotionEngine(BaseService):
         
         # Configuration
         emotion_config = self.container.config.get("core.emotion", {})
-        print(f"🔍 [EMOTION_ENGINE] emotion_config loaded: {emotion_config}")
         self.appraisal_sensitivity = emotion_config.get("appraisal_sensitivity", 0.7)
         self.regulation_strength = emotion_config.get("regulation_strength", 0.8)
         self.threat_arousal_boost = emotion_config.get("threat_arousal_boost", 0.25)
         self.max_history_size = emotion_config.get("max_history_size", 100)
-        print(f"🔍 [EMOTION_ENGINE] regulation_strength set to: {self.regulation_strength}")
-        print(f"🔍 [EMOTION_ENGINE] threat_arousal_boost set to: {self.threat_arousal_boost}")
         
         # Emotional inertia configuration (Kuppens et al., 2010; Scherer CPM)
         inertia_config = emotion_config.get("inertia", {})
@@ -190,35 +187,29 @@ class EmotionEngine(BaseService):
         """Initialize service resources"""
         # Load persisted state from database, or create neutral baseline
         await self._load_persisted_state()
-        print(f"🎭 [EMOTION_ENGINE] Initialized with state: {self.current_state.subjective_feeling.value}")
         self.logger.info(f"Emotion processor initialized with state: {self.current_state.subjective_feeling.value}")
     
     async def start(self) -> None:
         """Start the emotion processor service"""
         try:
-            print("🎭 [EMOTION_ENGINE] 🚀 STARTING EMOTION ENGINE...")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Starting emotion processor...")
+            self.logger.info("Starting emotion processor...")
             
             # Initialize message bus client
             self.bus_client = MessageBusClient("emotion_processor")
             await self.bus_client.connect()
-            print("🎭 [EMOTION_ENGINE] ✅ Message bus client connected")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Message bus client connected")
+            self.logger.info("Message bus client connected")
             
             # Subscribe to conversation events
             await self._setup_subscriptions()
-            print("🎭 [EMOTION_ENGINE] ✅ Subscriptions established")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Subscriptions established")
+            self.logger.info("Subscriptions established")
             
             # Publish initial neutral state
             await self._publish_emotional_state(self.current_state)
             
-            print("🎭 [EMOTION_ENGINE] 🎉 EMOTION ENGINE STARTED SUCCESSFULLY!")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Emotion processor started successfully")
+            self.logger.info("Emotion processor started successfully")
             
         except Exception as e:
-            print(f"🎭 [EMOTION_ENGINE] ❌ Failed to start: {e}")
-            self.logger.error(f"🎭 [EMOTION_PROCESSOR] Failed to start: {e}")
+            self.logger.error(f"Failed to start emotion processor: {e}")
             raise
     
     async def stop(self) -> None:
@@ -253,7 +244,6 @@ class EmotionEngine(BaseService):
             sentiment_response_pattern,
             self._handle_sentiment_response
         )
-        print(f"🎭 [EMOTION_ENGINE] 🎧 Subscribed to sentiment responses: {sentiment_response_pattern}")
         
         # Optional: Subscribe to user emotion detection results
         if self.enable_user_emotion_detection:
@@ -292,7 +282,6 @@ class EmotionEngine(BaseService):
                 "valence": self._map_sentiment_to_valence(sentiment_response.sentiment)
             }
             
-            print(f"🎭 [EMOTION_ENGINE] ✅ Sentiment: {sentiment_response.sentiment} (confidence={sentiment_response.confidence:.2f})")
             
             # Complete emotional processing with sentiment data
             await self._complete_emotional_processing(
@@ -314,8 +303,7 @@ class EmotionEngine(BaseService):
     async def _handle_conversation_turn(self, message) -> None:
         """Handle incoming conversation turn - start async emotional processing"""
         try:
-            print("🎭 [EMOTION_ENGINE] 📨 Received conversation turn event")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Received conversation turn event")
+            self.logger.debug("Received conversation turn event")
             
             # Unpack ConversationMessage from envelope
             from aico.proto.aico_conversation_pb2 import ConversationMessage

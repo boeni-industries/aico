@@ -31,13 +31,32 @@ class SchedulerTask(BaseModel):
 
 
 class SchedulerTaskExecution(BaseModel):
-    """Scheduler task execution domain model."""
+    """Scheduler task execution domain model matching PostgreSQL schema.
+
+    Backed by scheduler_task_executions table:
+      - id BIGSERIAL PRIMARY KEY
+      - task_id TEXT NOT NULL
+      - execution_id TEXT NOT NULL
+      - status TEXT NOT NULL
+      - started_at TIMESTAMPTZ NOT NULL
+      - completed_at TIMESTAMPTZ
+      - result TEXT
+      - error_message TEXT
+      - duration_seconds DOUBLE PRECISION
+    """
+
+    # Database primary key (autoincrement). Optional because it is assigned
+    # by the database on insert and populated by the repository layer.
+    id: Optional[int] = None
+
     execution_id: str
     task_id: str
     status: TaskStatus
-    started_at: datetime
+    # Allow partial update payloads by making started_at optional
+    started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    # Represent result as a JSON-serializable dictionary; repository is
+    # responsible for serializing it to TEXT/JSON in the database layer.
     result: Optional[dict] = None
-    duration_ms: Optional[int] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    duration_seconds: Optional[float] = None

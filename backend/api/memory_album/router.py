@@ -8,17 +8,17 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from aico.core.logging import get_logger
 from aico.ai.memory.memory_album import MemoryAlbumStore
-from aico.feedback.events import FeedbackEventStore
-from aico.feedback.types import FeedbackEventType, ActionCategory
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
+from aico.data.ams.models import BehavioralFeedback
 from backend.api.conversation.dependencies import get_current_user
 from .schemas import (
     RememberRequest, UpdateMemoryRequest,
     MemoryResponse, MemoryListResponse, RememberResponse
 )
 import json
-import time
+from uuid import uuid4
+from datetime import datetime, UTC
 
 router = APIRouter()
 logger = get_logger("backend.api.memory_album")
@@ -32,14 +32,13 @@ async def remember_message(
 ):
     """
     User clicks 'Remember This' on a message.
-    Performs dual storage: memory in user_memories + feedback event in feedback_events.
+    Performs dual storage: memory in AMS user memories + behavioral feedback signal.
     """
     try:
         user_uuid = current_user['user_uuid']
         
         # Initialize stores
         memory_store = MemoryAlbumStore()
-        feedback_store = FeedbackEventStore(uow)
         
         # 1. Store the fact (memory content)
         fact_id = await memory_store.store_user_curated_fact(
@@ -60,21 +59,31 @@ async def remember_message(
             key_moments=request.key_moments,
         )
         
-        # 2. Record the feedback event (user action)
-        await feedback_store.record_event(
-            user_uuid=user_uuid,
-            conversation_id=request.conversation_id,
-            event_type=FeedbackEventType.ACTION,
-            event_category=ActionCategory.REMEMBER.value,
-            payload={
-                "message_id": request.message_id,
+        # 2. Record AMS behavioral feedback (user action) into ams_behavioral_feedback
+        feedback = BehavioralFeedback(
+            feedback_id=f"fb_{uuid4().hex}",
+            user_id=user_uuid,
+            message_id=request.message_id or "memory_album",
+            skill_id="memory_album_remember",
+            reward=1,
+            reason="memory_album_remember",
+            timestamp=datetime.now(UTC).isoformat(),
+            processed=0,
+            outcome=None,
+            execution_time_ms=None,
+            context_json=json.dumps({
                 "fact_id": fact_id,
-                "content_preview": request.content[:50],
-                "fact_category": request.category,
-                "action_timestamp": int(time.time()),
-            },
-            message_id=request.message_id,
+                "conversation_id": request.conversation_id,
+                "content_type": request.content_type,
+                "category": request.category,
+                "memory_type": request.memory_type,
+            }),
+            user_satisfaction=None,
+            free_text=request.user_note,
         )
+
+        await uow.ams_behavioral_feedback.create(feedback)
+        await uow.commit()
         
         logger.info(f"Memory saved: {fact_id}", extra={
             "user_uuid": user_uuid,
@@ -167,6 +176,19 @@ async def get_memories(
                     key_moments = json.loads(fact['key_moments_json'])
                 except:
                     key_moments = []
+
+            # Normalize datetime fields to ISO8601 strings for Pydantic schema
+            created_at = fact['created_at']
+            if hasattr(created_at, 'isoformat'):
+                created_at = created_at.isoformat()
+
+            updated_at = fact['updated_at']
+            if hasattr(updated_at, 'isoformat'):
+                updated_at = updated_at.isoformat()
+
+            last_revisited = fact.get('last_revisited')
+            if last_revisited is not None and hasattr(last_revisited, 'isoformat'):
+                last_revisited = last_revisited.isoformat()
             
             memories.append(MemoryResponse(
                 fact_id=fact['fact_id'],
@@ -182,9 +204,9 @@ async def get_memories(
                 source_conversation_id=fact['source_conversation_id'],
                 source_message_id=fact.get('source_message_id'),
                 revisit_count=fact.get('revisit_count', 0),
-                last_revisited=fact.get('last_revisited'),
-                created_at=fact['created_at'],
-                updated_at=fact['updated_at'],
+                last_revisited=last_revisited,
+                created_at=created_at,
+                updated_at=updated_at,
                 user_uuid=fact.get('user_uuid', fact['user_id']),
                 user_full_name=fact.get('user_full_name', 'Unknown User'),
                 user_nickname=fact.get('user_nickname'),

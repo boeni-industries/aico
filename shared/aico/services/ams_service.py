@@ -243,7 +243,7 @@ class AMSService:
             created = await self.uow.ams_user_memories.create(memory)
             await self.uow.commit()
             
-            logger.info("[AMS_SERVICE] Created user memory", extra={"memory_id": created.memory_id})
+            logger.info("[AMS_SERVICE] Created user memory", extra={"fact_id": created.fact_id})
             return created
         except Exception as e:
             logger.error(f"[AMS_SERVICE] Failed to create user memory: {e}")

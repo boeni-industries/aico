@@ -6,6 +6,7 @@ Handles CRUD operations for scheduler task executions.
 
 from typing import Optional, List
 from datetime import datetime, UTC
+import json
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,13 +23,23 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
     
     async def create(self, entity: TaskExecution) -> TaskExecution:
         """Create a new task execution."""
+        # Serialize result to TEXT for the database column. The domain model
+        # may treat result as a dictionary; we persist JSON to Postgres.
+        db_result: Optional[str]
+        if entity.result is None:
+            db_result = None
+        elif isinstance(entity.result, str):
+            db_result = entity.result
+        else:
+            db_result = json.dumps(entity.result)
+
         stmt = scheduler_task_executions.insert().values(
             task_id=entity.task_id,
             execution_id=entity.execution_id,
             status=entity.status,
             started_at=entity.started_at,
             completed_at=entity.completed_at,
-            result=entity.result,
+            result=db_result,
             error_message=entity.error_message,
             duration_seconds=entity.duration_seconds,
         )
@@ -59,13 +70,22 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
     
     async def update(self, entity: TaskExecution) -> TaskExecution:
         """Update an existing task execution."""
+        # Same serialization rules as in create(): always store TEXT/JSON.
+        db_result: Optional[str]
+        if entity.result is None:
+            db_result = None
+        elif isinstance(entity.result, str):
+            db_result = entity.result
+        else:
+            db_result = json.dumps(entity.result)
+
         stmt = (
             update(scheduler_task_executions)
             .where(scheduler_task_executions.c.id == entity.id)
             .values(
                 status=entity.status,
                 completed_at=entity.completed_at,
-                result=entity.result,
+                result=db_result,
                 error_message=entity.error_message,
                 duration_seconds=entity.duration_seconds,
             )

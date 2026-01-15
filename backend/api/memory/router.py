@@ -150,14 +150,9 @@ async def get_semantic_stats(
         - index_size_mb: Total index size in megabytes
         - avg_retrieval_latency_ms: Average query latency
     """
-    print(f"\n{'='*80}")
-    print(f"🔍 SEMANTIC STATS ENDPOINT CALLED")
-    print(f"{'='*80}")
     try:
         user_id = user.get("user_id")
-        print(f"User ID: {user_id}")
         if not user_id:
-            print("❌ No user_id in token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User ID not found in token"
@@ -165,9 +160,7 @@ async def get_semantic_stats(
         
         # Get memory manager from AI registry
         from aico.ai import ai_registry
-        print("Getting memory manager from ai_registry...")
         memory_manager = ai_registry.get("memory")
-        print(f"Memory manager: {memory_manager}")
         
         if not memory_manager:
             raise HTTPException(
@@ -189,13 +182,10 @@ async def get_semantic_stats(
                 detail="Semantic memory not initialized"
             )
         
-        # Get stats from semantic store
-        print("Calling semantic_store.get_stats()...")
+        # Get stats from semantic store (synchronous method)
         stats = semantic_store.get_stats()
-        print(f"✅ Got stats: {stats}")
         
         # Convert collections to proper Pydantic models
-        print("Converting collections...")
         collections = [
             CollectionInfo(**col) for col in stats.get('collections', [])
         ]
@@ -213,12 +203,6 @@ async def get_semantic_stats(
     except Exception as e:
         error_msg = f"❌ SEMANTIC STATS ENDPOINT FAILURE: {e}"
         logger.error(error_msg)
-        print(f"\n{'='*80}")
-        print(f"❌ /api/v1/memory/semantic/stats ENDPOINT FAILED")
-        print(f"{'='*80}")
-        print(f"Error: {e}")
-        print(f"User ID: {user.get('user_id')}")
-        print(f"{'='*80}\n")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve semantic memory statistics: {str(e)}"
@@ -245,14 +229,9 @@ async def get_working_stats(
         - eviction_rate_per_min: Items evicted per minute
         - recent_activity: Recent read/write/evict operations
     """
-    print(f"\n{'='*80}")
-    print(f"🔍 WORKING STATS ENDPOINT CALLED")
-    print(f"{'='*80}")
     try:
         user_id = user.get("user_id")
-        print(f"User ID: {user_id}")
         if not user_id:
-            print("❌ No user_id in token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User ID not found in token"
@@ -260,9 +239,7 @@ async def get_working_stats(
         
         # Get memory manager from AI registry
         from aico.ai import ai_registry
-        print("Getting memory manager from ai_registry...")
         memory_manager = ai_registry.get("memory")
-        print(f"Memory manager: {memory_manager}")
         
         if not memory_manager:
             raise HTTPException(
@@ -285,12 +262,9 @@ async def get_working_stats(
             )
         
         # Get stats from working store
-        print("Calling working_store.get_stats()...")
         stats = await working_store.get_stats()
-        print(f"✅ Got stats: {stats}")
         
         # Convert recent_activity to proper Pydantic models
-        print("Converting recent_activity...")
         recent_activity = [
             ActivityEntry(**activity) for activity in stats.get('recent_activity', [])
         ]

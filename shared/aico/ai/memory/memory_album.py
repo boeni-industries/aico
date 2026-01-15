@@ -78,20 +78,40 @@ class MemoryAlbumStore:
             ams_service = AMSService(uow)
             
             memory_data = {
-                'memory_id': fact_id,
+                # Core identity fields expected by AMSUserMemory
+                'fact_id': fact_id,
                 'user_id': user_id,
-                'memory_type': memory_type,
-                'content': content,
+                'fact_type': fact_type,
                 'category': category,
                 'confidence': 1.0,  # User-curated = 100% confidence
+                'is_immutable': False,
+                # Validity window – for user-curated memories we treat them as valid from now
+                'valid_from': now,
+                'valid_until': None,
+                # Content and extraction metadata
+                'content': content,
+                'entities_json': None,
                 'extraction_method': 'user_curated',
                 'source_conversation_id': conversation_id,
                 'source_message_id': message_id,
-                'user_note': user_note,
-                'tags': tags or [],
-                'emotional_tone': emotional_tone,
+                # Timestamps
                 'created_at': now,
-                'updated_at': now
+                'updated_at': now,
+                # User-facing metadata
+                'user_note': user_note,
+                'tags_json': {'tags': tags} if tags else None,
+                'is_favorite': False,
+                'revisit_count': 0,
+                'last_revisited': None,
+                'emotional_tone': emotional_tone,
+                'memory_type': memory_type,
+                'content_type': content_type,
+                'conversation_title': conversation_title,
+                'conversation_summary': conversation_summary,
+                'turn_range': turn_range,
+                'key_moments_json': {'items': key_moments} if key_moments else None,
+                'temporal_metadata': None,
+                'language': None,
             }
             
             await ams_service.create_user_memory(memory_data)
@@ -163,13 +183,13 @@ class MemoryAlbumStore:
             # Convert to dict format
             return [
                 {
-                    'fact_id': m.memory_id,
+                    'fact_id': m.fact_id,
                     'user_id': m.user_id,
                     'content': m.content,
                     'category': m.category,
-                    'fact_type': m.memory_type,
+                    'fact_type': m.fact_type,
                     'user_note': m.user_note,
-                    'tags_json': m.tags,
+                    'tags_json': m.tags_json,
                     'is_favorite': m.is_favorite,
                     'emotional_tone': m.emotional_tone,
                     'memory_type': m.memory_type,

@@ -251,28 +251,18 @@ class ConversationEngine(BaseService):
     
     async def _handle_user_input(self, message) -> None:
         """Handle incoming user input message"""
-        print(f"💬 [CONVERSATION_ENGINE] 🔥🔥🔥 _handle_user_input CALLED!")
         try:
-            import time
-            timestamp = time.time()
-            print(f"💬 [CONVERSATION_ENGINE] 🔥 RECEIVED USER INPUT MESSAGE! [{timestamp:.6f}]")
-            print(f"💬 [CONVERSATION_ENGINE] Message type: {type(message)}")
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] 🔥 RECEIVED USER INPUT MESSAGE!")
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] Message type: {type(message)}")
-            
             # The message is an AicoMessage envelope, need to unpack the ConversationMessage
             from aico.proto.aico_conversation_pb2 import ConversationMessage
             
             # Unpack the ConversationMessage from the AicoMessage envelope
             conv_message = ConversationMessage()
             message.any_payload.Unpack(conv_message)
-            print(f"💬 [CONVERSATION_ENGINE] ✅ Unpacked ConversationMessage successfully")
             
             # Extract user information from the message
             # Use user_id field (actual user UUID), not source (which is just "conversation_api")
             user_id = conv_message.user_id if conv_message.user_id else conv_message.source
             conversation_id = conv_message.message.conversation_id
-            print(f"💬 [CONVERSATION_ENGINE] 📋 User ID: {user_id}, Conversation ID: {conversation_id}")
             
             self.logger.info(f"[DEBUG] ConversationEngine: Received user input.", extra={
                 "conversation_id": conversation_id,
@@ -283,19 +273,15 @@ class ConversationEngine(BaseService):
             # Get user context (simplified)
             user_context = await self._get_or_create_user_context(user_id)
             
-            
             # Generate response using semantic memory approach
-            print(f"💬 [CONVERSATION_ENGINE] 🎯 Generating response...")
             await self._generate_response(user_context, conv_message)
             
             # Phase 6: Async goal extraction (fire-and-forget, no blocking)
             if self.enable_agency and self.agency_plugin:
                 try:
-                    print(f"🎯 [GOAL_EXTRACTION] ✅ Agency enabled, creating async task...")
                     message_text = conv_message.message.text
-                    print(f"🎯 [GOAL_EXTRACTION] Message: '{message_text[:50]}...'")
                     import asyncio
-                    task = asyncio.create_task(
+                    asyncio.create_task(
                         self._extract_user_goal_async(
                             user_id=user_id,
                             message_id=conv_message.message_id,
@@ -303,13 +289,8 @@ class ConversationEngine(BaseService):
                             conversation_id=conversation_id
                         )
                     )
-                    print(f"🎯 [GOAL_EXTRACTION] ✅ Async task created: {task}")
                 except Exception as task_error:
-                    print(f"🎯 [GOAL_EXTRACTION] ❌ ERROR creating async task: {task_error}")
-                    import traceback
-                    print(f"🎯 [GOAL_EXTRACTION] Traceback: {traceback.format_exc()}")
-            else:
-                print(f"🎯 [GOAL_EXTRACTION] ❌ NOT creating task - enable_agency={self.enable_agency}, agency_plugin={self.agency_plugin}")
+                    self.logger.error(f"Goal extraction task creation failed: {task_error}")
             
         except Exception as e:
             self.logger.error(f"Error handling user input: {e}", extra={
@@ -322,26 +303,16 @@ class ConversationEngine(BaseService):
     
     async def _get_or_create_user_context(self, user_id: str) -> UserContext:
         """Get or create user context for authenticated user"""
-        print(f"🔍 [USER_CONTEXT] _get_or_create_user_context called for user_id: {user_id}")
         if user_id not in self.user_contexts:
-            print(f"🔍 [USER_CONTEXT] User not in cache, loading from database...")
             # Load user data from database
             user_profile = None
             try:
                 # Access user_service directly from service container (not via dependency injection)
                 if hasattr(self, 'container') and self.container:
                     user_service = self.container.get_service("user_service")
-                    print(f"🔍 [USER_CONTEXT] Got user_service from container: {user_service}")
                     if user_service:
-                        print(f"🔍 [USER_CONTEXT] Calling user_service.get_user({user_id})...")
                         user_profile = await user_service.get_user(user_id)
-                        print(f"🔍 [USER_CONTEXT] Got user_profile: {user_profile}")
-                else:
-                    print(f"🔍 [USER_CONTEXT] ⚠️  No service_container available")
             except Exception as e:
-                print(f"🔍 [USER_CONTEXT] ❌ Exception loading user profile: {e}")
-                import traceback
-                print(f"🔍 [USER_CONTEXT] Traceback: {traceback.format_exc()}")
                 self.logger.warning(f"Failed to load user profile from database: {e}")
             
             # Create context with database data or fallback to placeholder
@@ -393,10 +364,8 @@ class ConversationEngine(BaseService):
         try:
             # Use the message_id from the API Gateway as request_id for proper correlation
             request_id = user_message.message_id if user_message.message_id else str(uuid.uuid4())
-            print(f"💬 [CONVERSATION_ENGINE] 🎯 Request ID: {request_id} (from API Gateway: {user_message.message_id})")
             
             # Initialize response tracking (simplified)
-            print(f"💬 [CONVERSATION_ENGINE] 📝 Creating pending request: {request_id}")
             self.pending_responses[request_id] = {
                 "user_context": user_context,
                 "user_message": user_message,
@@ -404,34 +373,20 @@ class ConversationEngine(BaseService):
                 "components_ready": {},
                 "started_at": datetime.now(UTC)
             }
-            print(f"💬 [CONVERSATION_ENGINE] 📋 Total pending requests: {len(self.pending_responses)}")
             
             # Determine what components we need
             components_needed = []
-            print(f"💬 [CONVERSATION_ENGINE] 🔧 Checking enabled features...")
-            print(f"💬 [CONVERSATION_ENGINE] 🧠 Memory integration enabled: {self.enable_memory_integration}")
             
             # Get memory context if enabled
             memory_context = None
             if self.enable_memory_integration:
-                print(f"💬 [CONVERSATION_ENGINE] 🧠 Calling _get_memory_context()...")
                 try:
                     memory_context = await self._get_memory_context(request_id, user_context, user_message)
                     if memory_context is None:
-                        print(f"💬 [CONVERSATION_ENGINE] ❌ _get_memory_context() returned None!")
-                        self.logger.error(f"🚨 [CONTEXT_TRACE] _get_memory_context() returned None - context will NOT be passed to LLM!")
-                    else:
-                        print(f"💬 [CONVERSATION_ENGINE] ✅ Got memory context!")
-                        self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Got memory_context from _get_memory_context()")
+                        self.logger.error(f"Memory context retrieval returned None for request {request_id}")
                 except Exception as e:
-                    print(f"💬 [CONVERSATION_ENGINE] ❌ EXCEPTION in _get_memory_context(): {e}")
-                    self.logger.error(f"🚨 [CONTEXT_TRACE] EXCEPTION calling _get_memory_context(): {e}")
-                    import traceback
-                    self.logger.error(f"🚨 [CONTEXT_TRACE] Traceback:\n{traceback.format_exc()}")
+                    self.logger.error(f"Exception calling _get_memory_context(): {e}")
                     memory_context = None
-            else:
-                print(f"💬 [CONVERSATION_ENGINE] ⚠️  Memory integration DISABLED")
-                self.logger.warning(f"🚨 [CONTEXT_TRACE] Memory integration DISABLED - no context will be retrieved")
 
             # Phase 0: Minimal agency wiring (no behavioural changes yet)
             if self.enable_agency and self.agency_plugin:

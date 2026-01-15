@@ -323,12 +323,26 @@ class TaskExecutor:
                 
                 # Create task instance and context
                 task_instance = task_class()
-                
+
+                # Normalize instance config: it may be stored as a JSON string
+                # in scheduler_tasks.config, or already as a dict. Tasks expect
+                # a mapping for context.get_config(), not a raw string.
+                raw_config = task_config.get('config')
+                if isinstance(raw_config, str) and raw_config.strip():
+                    try:
+                        instance_config = json.loads(raw_config)
+                    except Exception:
+                        instance_config = {}
+                elif isinstance(raw_config, dict):
+                    instance_config = raw_config
+                else:
+                    instance_config = {}
+
                 context = TaskContext(
                     task_id=task_id,
                     config_manager=self.config_manager,
                     db_connection=self.db_connection,
-                    instance_config=task_config.get('config', {}),
+                    instance_config=instance_config,
                     execution_id=execution_id,
                     service_container=self.container,
                     retry_count=retry_count  # Phase 6.2: Pass retry count to context
@@ -494,34 +508,37 @@ class TaskExecutor:
     
     async def _record_completion(self, task_id: str, execution_id: str, result: TaskResult, 
                                status: TaskStatus, start_time: datetime):
-        """Record task completion in database via SchedulerService"""
+        """Record task completion in database via SchedulerService."""
         try:
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
             from aico.services.scheduler_service import SchedulerService
-            
+
             end_time = datetime.now(timezone.utc)
-            result.duration_seconds = (end_time - start_time).total_seconds()
-            
+            duration_seconds = (end_time - start_time).total_seconds()
+
+            # Build a small structured result payload; repository will serialize this
+            result_payload = {
+                "success": bool(getattr(result, "success", False)),
+                "skipped": bool(getattr(result, "skipped", False)),
+                "message": getattr(result, "message", None),
+            }
+
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 scheduler_service = SchedulerService(uow)
                 await scheduler_service.update_execution({
-                    'execution_id': execution_id,
-                    'task_id': task_id,
-                    'status': status.value if hasattr(status, 'value') else str(status),
-                    'completed_at': end_time,
-                    'result': result.message,
-                    'error': result.error,
-                    'duration_seconds': result.duration_seconds
+                    "execution_id": execution_id,
+                    "task_id": task_id,
+                    "status": status.value if hasattr(status, "value") else str(status),
+                    "completed_at": end_time,
+                    "result": result_payload,
+                    "error_message": getattr(result, "error", None),
+                    "duration_seconds": duration_seconds,
                 })
-            
+
         except Exception as e:
             self.logger.error(f"Failed to record completion for {task_id}: {e}")
-    
-    def get_running_tasks(self) -> List[str]:
-        """Get list of currently running task IDs"""
-        return list(self.running_tasks.keys())
     
     async def cancel_task(self, task_id: str) -> bool:
         """Cancel a running task (Phase 6.2)
