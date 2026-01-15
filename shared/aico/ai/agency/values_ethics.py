@@ -128,8 +128,7 @@ class ValuesEthicsService:
     against configured policies and user preferences.
     """
     
-    def __init__(self, db: Any, logger=None):  # Agency system being redesigned
-        self.db = db
+    def __init__(self, logger=None):
         self.logger = logger
         
         # Cache for loaded policies and profiles
@@ -140,25 +139,26 @@ class ValuesEthicsService:
     # Core Evaluation APIs
     # ========================================================================
     
-    def evaluate_goal(self, goal: Any, user_id: str) -> EvaluationResult:
+    async def evaluate_goal(self, goal: Any, user_id: str, uow: "UnitOfWork") -> EvaluationResult:
         """
         Evaluate a goal against values/ethics policies.
         
         Args:
             goal: Goal object to evaluate
             user_id: User ID for context
+            uow: Unit of Work for database access
             
         Returns:
             EvaluationResult with decision and reasons
         """
         # Get applicable policies
-        policies = self._get_policies_for_target(PolicyTargetType.GOAL, user_id)
+        policies = await self._get_policies_for_target(PolicyTargetType.GOAL, user_id, uow)
         
         # Get user profile
-        profile = self._get_or_create_profile(user_id)
+        profile = await self._get_or_create_profile(user_id, uow)
         
         # Evaluate against policies
-        result = self._evaluate_against_policies(
+        result = await self._evaluate_against_policies(
             target=goal,
             target_type=PolicyTargetType.GOAL,
             policies=policies,
@@ -173,21 +173,22 @@ class ValuesEthicsService:
         
         return result
     
-    def evaluate_plan(self, plan: Any, user_id: str) -> EvaluationResult:
+    async def evaluate_plan(self, plan: Any, user_id: str, uow: "UnitOfWork") -> EvaluationResult:
         """
         Evaluate a plan against values/ethics policies.
         
         Args:
             plan: Plan object to evaluate
             user_id: User ID for context
+            uow: Unit of Work for database access
             
         Returns:
             EvaluationResult with decision and reasons
         """
-        policies = self._get_policies_for_target(PolicyTargetType.PLAN, user_id)
-        profile = self._get_or_create_profile(user_id)
+        policies = await self._get_policies_for_target(PolicyTargetType.PLAN, user_id, uow)
+        profile = await self._get_or_create_profile(user_id, uow)
         
-        result = self._evaluate_against_policies(
+        result = await self._evaluate_against_policies(
             target=plan,
             target_type=PolicyTargetType.PLAN,
             policies=policies,
@@ -202,21 +203,22 @@ class ValuesEthicsService:
         
         return result
     
-    def evaluate_curiosity_signal(self, signal: Any, user_id: str) -> EvaluationResult:
+    async def evaluate_curiosity_signal(self, signal: Any, user_id: str, uow: "UnitOfWork") -> EvaluationResult:
         """
         Evaluate a curiosity signal against values/ethics policies.
         
         Args:
             signal: CuriositySignal object to evaluate
             user_id: User ID for context
+            uow: Unit of Work for database access
             
         Returns:
             EvaluationResult with decision and reasons
         """
-        policies = self._get_policies_for_target(PolicyTargetType.CURIOSITY_SIGNAL, user_id)
-        profile = self._get_or_create_profile(user_id)
+        policies = await self._get_policies_for_target(PolicyTargetType.CURIOSITY_SIGNAL, user_id, uow)
+        profile = await self._get_or_create_profile(user_id, uow)
         
-        result = self._evaluate_against_policies(
+        result = await self._evaluate_against_policies(
             target=signal,
             target_type=PolicyTargetType.CURIOSITY_SIGNAL,
             policies=policies,
@@ -231,10 +233,11 @@ class ValuesEthicsService:
         
         return result
     
-    def evaluate_world_model_change(
+    async def evaluate_world_model_change(
         self, 
         change: Dict[str, Any], 
-        user_id: str
+        user_id: str,
+        uow: "UnitOfWork"
     ) -> EvaluationResult:
         """
         Evaluate a world model change against values/ethics policies.
@@ -242,17 +245,19 @@ class ValuesEthicsService:
         Args:
             change: World model change description
             user_id: User ID for context
+            uow: Unit of Work for database access
             
         Returns:
             EvaluationResult with decision and reasons
         """
-        policies = self._get_policies_for_target(
+        policies = await self._get_policies_for_target(
             PolicyTargetType.WORLD_MODEL_UPDATE, 
-            user_id
+            user_id,
+            uow
         )
-        profile = self._get_or_create_profile(user_id)
+        profile = await self._get_or_create_profile(user_id, uow)
         
-        result = self._evaluate_against_policies(
+        result = await self._evaluate_against_policies(
             target=change,
             target_type=PolicyTargetType.WORLD_MODEL_UPDATE,
             policies=policies,
@@ -267,11 +272,12 @@ class ValuesEthicsService:
         
         return result
     
-    def record_consent(
+    async def record_consent(
         self,
         user_id: str,
         consent_scope: Dict[str, Any],
         decision: ConsentDecision,
+        uow: "UnitOfWork",
         context: Optional[Dict[str, Any]] = None,
         expires_in_days: Optional[int] = None
     ) -> Consent:
@@ -280,14 +286,17 @@ class ValuesEthicsService:
         
         Args:
             user_id: User ID
-            consent_scope: What was consented to
-            decision: granted or denied
-            context: Optional context (goal_id, plan_id, etc.)
+            consent_scope: What the consent applies to
+            decision: Granted or denied
+            uow: Unit of Work for database access
+            context: Optional context for the consent
             expires_in_days: Optional expiration in days
             
         Returns:
             Consent record
         """
+        from aico.data.consent.models import ConsentRecord
+        
         expires_at = None
         if expires_in_days:
             expires_at = datetime.now(UTC) + timedelta(days=expires_in_days)
@@ -300,28 +309,23 @@ class ValuesEthicsService:
             expires_at=expires_at
         )
         
-        # Store in database
-        self.db.execute(
-            """
-            INSERT INTO consent_records (
-                consent_id, user_id, consent_scope, decision, 
-                context_json, granted_at, expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                consent.consent_id,
-                consent.user_id,
-                json.dumps(consent.consent_scope),
-                consent.decision.value,
-                json.dumps(consent.context),
-                consent.granted_at.isoformat(),
-                consent.expires_at.isoformat() if consent.expires_at else None
-            )
+        # Create entity and store in database
+        entity = ConsentRecord(
+            consent_id=consent.consent_id,
+            user_id=consent.user_id,
+            consent_scope_json=json.dumps(consent.consent_scope),
+            decision=consent.decision.value,
+            context_json=json.dumps(consent.context),
+            expires_at=consent.expires_at,
+            created_at=consent.created_at
         )
+        
+        await uow.consent_records.create(entity)
+        await uow.commit()
         
         if self.logger:
             self.logger.info(
-                f"[VALUES_ETHICS] Consent recorded: {decision.value} for {consent_scope}"
+                f"[VALUES_ETHICS] Recorded consent: {decision.value} for {user_id}"
             )
         
         return consent
@@ -330,33 +334,29 @@ class ValuesEthicsService:
     # Policy Management
     # ========================================================================
     
-    def add_policy_rule(self, rule: PolicyRule) -> PolicyRule:
+    async def add_policy_rule(self, rule: PolicyRule, uow: "UnitOfWork") -> PolicyRule:
         """Add a new policy rule."""
-        self.db.execute(
-            """
-            INSERT INTO ethics_policy_rules (
-                rule_id, rule_name, target_type, conditions_json, effect,
-                user_message_template, priority, enabled, scope, scope_id,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                rule.rule_id,
-                rule.rule_name,
-                rule.target_type.value,
-                json.dumps(rule.conditions),
-                rule.effect.value,
-                rule.user_message_template,
-                rule.priority,
-                1 if rule.enabled else 0,
-                rule.scope.value,
-                rule.scope_id,
-                rule.created_at.isoformat(),
-                rule.updated_at.isoformat()
-            )
+        from aico.data.ethics.models import EthicsPolicyRule
+        
+        entity = EthicsPolicyRule(
+            rule_id=rule.rule_id,
+            rule_name=rule.rule_name,
+            target_type=rule.target_type.value,
+            conditions_json=rule.conditions,  # Pass dict directly, not JSON string
+            effect=rule.effect.value,
+            user_message_template=rule.user_message_template,
+            priority=rule.priority,
+            enabled=rule.enabled,
+            scope=rule.scope.value,
+            scope_id=rule.scope_id,
+            created_at=rule.created_at,
+            updated_at=rule.updated_at
         )
         
-        # Clear cache
+        await uow.ethics_policy_rules.create(entity)
+        await uow.commit()
+        
+        # Invalidate cache
         self._policy_cache.clear()
         
         if self.logger:
@@ -364,136 +364,131 @@ class ValuesEthicsService:
         
         return rule
     
-    def get_policy_rule(self, rule_id: str) -> Optional[PolicyRule]:
+    async def get_policy_rule(self, rule_id: str, uow: "UnitOfWork") -> Optional[PolicyRule]:
         """Get a policy rule by ID."""
-        row = self.db.fetch_one(
-            "SELECT * FROM ethics_policy_rules WHERE rule_id = ?",
-            (rule_id,)
-        )
+        from aico.data.ethics.models import EthicsPolicyRule
         
-        if not row:
+        entity = await uow.ethics_policy_rules.get_by_id(rule_id)
+        
+        if not entity:
             return None
         
         return PolicyRule(
-            rule_id=row["rule_id"],
-            rule_name=row["rule_name"],
-            target_type=PolicyTargetType(row["target_type"]),
-            conditions=json.loads(row["conditions_json"]),
-            effect=PolicyEffect(row["effect"]),
-            user_message_template=row["user_message_template"],
-            priority=row["priority"],
-            enabled=bool(row["enabled"]),
-            scope=PolicyScope(row["scope"]),
-            scope_id=row["scope_id"],
-            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
-            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
+            rule_id=entity.rule_id,
+            rule_name=entity.rule_name,
+            target_type=PolicyTargetType(entity.target_type),
+            conditions=entity.conditions_json,
+            effect=PolicyEffect(entity.effect),
+            user_message_template=entity.user_message_template,
+            priority=entity.priority,
+            enabled=entity.enabled,
+            scope=PolicyScope(entity.scope),
+            scope_id=entity.scope_id,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at
         )
     
     # ========================================================================
     # Profile Management
     # ========================================================================
     
-    def _get_or_create_profile(self, user_id: str) -> ValueProfile:
-        """Get or create a value profile for a user."""
+    async def _get_or_create_profile(self, user_id: str, uow: "UnitOfWork") -> ValueProfile:
+        """Get or create user value profile."""
+        from aico.data.ethics.models import EthicsValueProfile
+        
         # Check cache
         if user_id in self._profile_cache:
             return self._profile_cache[user_id]
         
         # Check database
-        row = self.db.fetch_one(
-            "SELECT * FROM ethics_value_profiles WHERE user_id = ?",
-            (user_id,)
-        )
+        profiles = await uow.ethics_value_profiles.list(filters={"user_id": user_id}, limit=1)
         
-        if row:
+        if profiles:
+            entity = profiles[0]
             profile = ValueProfile(
-                profile_id=row["profile_id"],
-                user_id=row["user_id"],
-                sensitive_life_areas=json.loads(row["sensitive_life_areas"] or "[]"),
-                allowed_curiosity_domains=json.loads(row["allowed_curiosity_domains"] or "[]"),
-                curiosity_intensity=row["curiosity_intensity"],
-                proactive_behavior_level=ProactiveBehaviorLevel(row["proactive_behavior_level"]),
-                storage_preferences=json.loads(row["storage_preferences"] or "{}"),
-                created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
-                updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
+                profile_id=entity.profile_id,
+                user_id=entity.user_id,
+                sensitive_life_areas=json.loads(entity.sensitive_life_areas) if entity.sensitive_life_areas else [],
+                allowed_curiosity_domains=json.loads(entity.allowed_curiosity_domains) if entity.allowed_curiosity_domains else [],
+                curiosity_intensity=entity.curiosity_intensity,
+                proactive_behavior_level=ProactiveBehaviorLevel(entity.proactive_behavior_level),
+                storage_preferences=json.loads(entity.storage_preferences) if entity.storage_preferences else {},
+                created_at=entity.created_at,
+                updated_at=entity.updated_at
             )
+            self._profile_cache[user_id] = profile
+            return profile
         else:
             # Create default profile
             profile = ValueProfile(user_id=user_id)
-            self.db.execute(
-                """
-                INSERT INTO ethics_value_profiles (
-                    profile_id, user_id, sensitive_life_areas, 
-                    allowed_curiosity_domains, curiosity_intensity,
-                    proactive_behavior_level, storage_preferences,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    profile.profile_id,
-                    profile.user_id,
-                    json.dumps(profile.sensitive_life_areas),
-                    json.dumps(profile.allowed_curiosity_domains),
-                    profile.curiosity_intensity,
-                    profile.proactive_behavior_level.value,
-                    json.dumps(profile.storage_preferences),
-                    profile.created_at.isoformat(),
-                    profile.updated_at.isoformat()
-                )
+            entity = EthicsValueProfile(
+                profile_id=profile.profile_id,
+                user_id=profile.user_id,
+                sensitive_life_areas=json.dumps(profile.sensitive_life_areas),
+                allowed_curiosity_domains=json.dumps(profile.allowed_curiosity_domains),
+                curiosity_intensity=profile.curiosity_intensity,
+                proactive_behavior_level=profile.proactive_behavior_level.value,
+                storage_preferences=json.dumps(profile.storage_preferences),
+                created_at=profile.created_at,
+                updated_at=profile.updated_at
             )
-        
-        # Cache it
-        self._profile_cache[user_id] = profile
-        return profile
+            await uow.ethics_value_profiles.create(entity)
+            await uow.commit()
+            self._profile_cache[user_id] = profile
+            return profile
     
     # ========================================================================
     # Internal Helpers
     # ========================================================================
     
-    def _get_policies_for_target(
+    async def _get_policies_for_target(
         self, 
         target_type: PolicyTargetType, 
-        user_id: str
+        user_id: Optional[str],
+        uow: "UnitOfWork"
     ) -> List[PolicyRule]:
-        """Get all applicable policies for a target type."""
-        cache_key = f"{target_type.value}:{user_id}"
+        """Get applicable policies for a target type."""
+        cache_key = f"{target_type.value}:{user_id or 'global'}"
         
+        # Check cache
         if cache_key in self._policy_cache:
             return self._policy_cache[cache_key]
         
         # Get global + user-specific policies
-        rows = self.db.fetch_all(
-            """
-            SELECT * FROM ethics_policy_rules 
-            WHERE target_type = ? 
-              AND enabled = 1
-              AND (scope = 'global' OR (scope = 'user' AND scope_id = ?))
-            ORDER BY priority ASC
-            """,
-            (target_type.value, user_id)
+        all_policies = await uow.ethics_policy_rules.list(
+            filters={"target_type": target_type.value, "enabled": True}
         )
         
+        # Filter to global or matching user
+        relevant_policies = [
+            p for p in all_policies
+            if p.scope == "global" or (p.scope == "user" and p.scope_id == user_id)
+        ]
+        
+        # Sort by priority ascending
+        relevant_policies.sort(key=lambda p: p.priority)
+        
         policies = []
-        for row in rows:
+        for entity in relevant_policies:
             policies.append(PolicyRule(
-                rule_id=row["rule_id"],
-                rule_name=row["rule_name"],
-                target_type=PolicyTargetType(row["target_type"]),
-                conditions=json.loads(row["conditions_json"]),
-                effect=PolicyEffect(row["effect"]),
-                user_message_template=row["user_message_template"],
-                priority=row["priority"],
-                enabled=bool(row["enabled"]),
-                scope=PolicyScope(row["scope"]),
-                scope_id=row["scope_id"],
-                created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
-                updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
+                rule_id=entity.rule_id,
+                rule_name=entity.rule_name,
+                target_type=PolicyTargetType(entity.target_type),
+                conditions=json.loads(entity.conditions_json),
+                effect=PolicyEffect(entity.effect),
+                user_message_template=entity.user_message_template,
+                priority=entity.priority,
+                enabled=entity.enabled,
+                scope=PolicyScope(entity.scope),
+                scope_id=entity.scope_id,
+                created_at=entity.created_at,
+                updated_at=entity.updated_at
             ))
         
         self._policy_cache[cache_key] = policies
         return policies
     
-    def _evaluate_against_policies(
+    async def _evaluate_against_policies(
         self,
         target: Any,
         target_type: PolicyTargetType,

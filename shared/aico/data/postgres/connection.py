@@ -52,13 +52,13 @@ async def get_postgres_pool() -> asyncpg.Pool:
     if not pg_config:
         raise RuntimeError("PostgreSQL configuration not found in core.yaml")
     
+    # Get password from environment or AICOKeyManager
+    import os
+    
     host = pg_config.get("host", "localhost")
     port = pg_config.get("port", 5432)
     database = os.environ.get("AICO_POSTGRES_DATABASE", pg_config.get("database", "aico"))
     user = pg_config.get("user", "postgres")
-    
-    # Get password from environment or AICOKeyManager
-    import os
     
     password = os.environ.get("AICO_PG_PASSWORD")
     

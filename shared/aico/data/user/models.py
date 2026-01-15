@@ -12,7 +12,7 @@ class UserProfile(BaseModel):
     nickname: Optional[str] = None
     user_type: str
     is_active: bool = True
-    primary_language: str = "en"
+    primary_language: Optional[str] = "en"
     created_at: datetime
     updated_at: datetime
 

@@ -109,19 +109,24 @@ class BackendLifecycleManager:
         # 1. Initialize service container first (needed for database connection)
         await self._initialize_container()
         
-        # 2. Initialize OpenTelemetry instrumentation (now has database access)
+        # 2. Initialize PostgreSQL session factory for API endpoints
+        from backend.core.postgres_dependencies import initialize_postgres_dependencies
+        await initialize_postgres_dependencies()
+        self.logger.info("PostgreSQL session factory initialized for API endpoints")
+        
+        # 3. Initialize OpenTelemetry instrumentation (now has database access)
         await self._initialize_telemetry()
         
-        # 2. Create FastAPI app
+        # 4. Create FastAPI app
         self.app = self._create_fastapi_app()
         
-        # 3. Configure middleware stack
+        # 5. Configure middleware stack
         self._configure_middleware()
         
-        # 4. Mount API routers
+        # 6. Mount API routers
         self._mount_routers()
         
-        # 5. Instrument FastAPI with OpenTelemetry
+        # 7. Instrument FastAPI with OpenTelemetry
         self._instrument_fastapi()
         
         # Start all services
@@ -507,10 +512,51 @@ class BackendLifecycleManager:
             from aico.core.bus import MessageBusClient
             message_bus = MessageBusClient("agency_engine", config_manager=self.config)
             
+            # Create AgencyService wrapper that manages UoW lifecycle per operation
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.agency_service import AgencyService
+            
+            session_factory = await get_session_factory()
+            
+            # Create a proxy that wraps AgencyService and manages UoW per method call
+            class AgencyServiceProxy:
+                """Proxy that creates fresh UoW for each AgencyService operation"""
+                def __init__(self, session_factory):
+                    self._session_factory = session_factory
+                
+                async def _execute_with_uow(self, method_name, *args, **kwargs):
+                    async with UnitOfWork(self._session_factory) as uow:
+                        service = AgencyService(uow)
+                        method = getattr(service, method_name)
+                        return await method(*args, **kwargs)
+                
+                # Delegate all AgencyService methods
+                async def create_goal(self, goal):
+                    return await self._execute_with_uow('create_goal', goal)
+                
+                async def get_goal(self, goal_id):
+                    return await self._execute_with_uow('get_goal', goal_id)
+                
+                async def update_goal(self, goal):
+                    return await self._execute_with_uow('update_goal', goal)
+                
+                async def list_goals(self, user_id=None, status=None):
+                    return await self._execute_with_uow('list_goals', user_id=user_id, status=status)
+                
+                async def get_active_goals(self, user_id):
+                    return await self._execute_with_uow('get_active_goals', user_id)
+                
+                async def create_plan(self, plan):
+                    return await self._execute_with_uow('create_plan', plan)
+            
+            agency_service = AgencyServiceProxy(session_factory)
+            
             # Create AgencyEngine with Phase 2 services and Phase 4 message bus
             agency_engine = AgencyEngine(
                 self.config,
                 db_connection=db_connection,
+                agency_service=agency_service,
                 world_model=world_model,
                 personality_service=personality_service,
                 message_bus=message_bus,
@@ -540,25 +586,29 @@ class BackendLifecycleManager:
                 
                 if install_policies:
                     from aico.ai.agency.default_policies import install_default_policies
+                    from aico.data.uow import UnitOfWork
+                    
                     self.logger.info("[AI_PROCESSORS] Installing default policy rules...")
-                    installed_count = install_default_policies(agency_engine.values_ethics)
-                    if installed_count > 0:
-                        self.logger.info(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules (Phase 4)")
-                        print(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules")
-                    else:
-                        self.logger.info("ℹ️ [AI_PROCESSORS] Default policies already installed (Phase 4)")
-                        print("ℹ️ [AI_PROCESSORS] Default policies already exist")
+                    
+                    # Create UoW for policy installation
+                    async with UnitOfWork(session_factory) as uow:
+                        installed_count = await install_default_policies(agency_engine.values_ethics, uow)
+                        if installed_count > 0:
+                            self.logger.info(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules (Phase 4)")
+                            print(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules")
+                        else:
+                            self.logger.info("ℹ️ [AI_PROCESSORS] Default policies already installed (Phase 4)")
+                            print("ℹ️ [AI_PROCESSORS] Default policies already exist")
                 else:
                     self.logger.warning("⚠️ [AI_PROCESSORS] Default policy installation disabled in configuration")
                     print("⚠️ [AI_PROCESSORS] Default policy installation disabled")
             except Exception as e:
-                error_msg = f"CRITICAL: Failed to initialize Phase 4 Values/Ethics policies: {e}"
+                error_msg = f"Failed to initialize Phase 4 Values/Ethics policies: {e}"
                 self.logger.error(f"❌ [AI_PROCESSORS] {error_msg}")
                 print(f"❌ [AI_PROCESSORS] {error_msg}")
                 import traceback
                 self.logger.error(f"❌ [AI_PROCESSORS] Traceback: {traceback.format_exc()}")
-                # Re-raise to fail loudly
-                raise RuntimeError(error_msg)
+                raise RuntimeError(f"CRITICAL: {error_msg}")
 
             # Inject modelservice client for goal embeddings (needed for deduplication)
             try:

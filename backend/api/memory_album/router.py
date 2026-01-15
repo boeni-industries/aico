@@ -37,8 +37,8 @@ async def remember_message(
     try:
         user_uuid = current_user['user_uuid']
         
-        # Initialize stores with UoW
-        memory_store = MemoryAlbumStore(uow)
+        # Initialize stores
+        memory_store = MemoryAlbumStore()
         feedback_store = FeedbackEventStore(uow)
         
         # 1. Store the fact (memory content)
@@ -115,7 +115,7 @@ async def get_memories(
     try:
         user_uuid = current_user['user_uuid']
         
-        memory_store = MemoryAlbumStore(uow)
+        memory_store = MemoryAlbumStore()
         
         # Query user-curated facts with user profile information
         facts = await memory_store.get_user_curated_facts(
@@ -232,7 +232,7 @@ async def update_memory(
     try:
         user_uuid = current_user['user_uuid']
         
-        memory_store = MemoryAlbumStore(uow)
+        memory_store = MemoryAlbumStore()
         
         # Update the fact metadata
         success = await memory_store.update_fact_metadata(

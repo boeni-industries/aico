@@ -129,47 +129,57 @@ class MemoryAlbumStore:
         Returns:
             List of user-curated facts as dictionaries
         """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        query = """
-            SELECT 
-                fact_id, user_id, content, category, fact_type,
-                user_note, tags_json, is_favorite, emotional_tone, memory_type,
-                source_conversation_id, source_message_id,
-                revisit_count, last_revisited,
-                content_type, conversation_title, conversation_summary,
-                turn_range, key_moments_json,
-                created_at, updated_at
-            FROM ams_user_memories
-            WHERE user_id = ?
-                AND extraction_method = 'user_curated'
-        """
-        
-        params = [user_id]
-        
-        if category:
-            query += " AND category = ?"
-            params.append(category)
-        
-        if start_date:
-            query += " AND created_at >= ?"
-            params.append(start_date.isoformat())
-        
-        if end_date:
-            query += " AND created_at <= ?"
-            params.append(end_date.isoformat())
-        
-        if favorites_only:
-            query += " AND is_favorite = 1"
-        
-        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-        
-        cursor = self.db.execute(query, tuple(params))
-        results = cursor.fetchall()
-        
-        # Convert rows to dictionaries using column names
-        columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in results]
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            # Build filters for repository
+            filters = {
+                'user_id': user_id,
+                'extraction_method': 'user_curated'
+            }
+            
+            if category:
+                filters['category'] = category
+            
+            if start_date:
+                filters['created_at_gte'] = start_date
+            
+            if end_date:
+                filters['created_at_lte'] = end_date
+            
+            if favorites_only:
+                filters['is_favorite'] = True
+            
+            # Get memories directly via repository
+            memories = await uow.ams_user_memories.list(
+                filters=filters,
+                limit=limit,
+                offset=offset
+            )
+            
+            # Convert to dict format
+            return [
+                {
+                    'fact_id': m.memory_id,
+                    'user_id': m.user_id,
+                    'content': m.content,
+                    'category': m.category,
+                    'fact_type': m.memory_type,
+                    'user_note': m.user_note,
+                    'tags_json': m.tags,
+                    'is_favorite': m.is_favorite,
+                    'emotional_tone': m.emotional_tone,
+                    'memory_type': m.memory_type,
+                    'source_conversation_id': m.source_conversation_id,
+                    'source_message_id': m.source_message_id,
+                    'created_at': m.created_at,
+                    'updated_at': m.updated_at
+                }
+                for m in memories
+            ]
     
     async def update_fact_metadata(
         self,
@@ -192,40 +202,32 @@ class MemoryAlbumStore:
         Returns:
             True if update succeeded, False otherwise
         """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        updates = []
-        params = []
-        
-        if user_note is not None:
-            updates.append("user_note = ?")
-            params.append(user_note)
-        
-        if tags is not None:
-            updates.append("tags_json = ?")
-            params.append(json.dumps(tags))
-        
-        if is_favorite is not None:
-            updates.append("is_favorite = ?")
-            params.append(1 if is_favorite else 0)
-        
-        if not updates:
+        if user_note is None and tags is None and is_favorite is None:
             return False
         
-        updates.append("updated_at = ?")
-        params.append(datetime.now(timezone.utc).isoformat())
-        
-        params.extend([fact_id, user_id])
-        
-        query = f"""
-            UPDATE ams_user_memories
-            SET {', '.join(updates)}
-            WHERE fact_id = ? AND user_id = ?
-        """
-        
-        cursor = self.db.execute(query, tuple(params))
-        rowcount = cursor.rowcount
-        cursor.close()
-        return rowcount > 0
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
+            
+            update_data = {}
+            if user_note is not None:
+                update_data['user_note'] = user_note
+            if tags is not None:
+                update_data['tags'] = tags
+            if is_favorite is not None:
+                update_data['is_favorite'] = is_favorite
+            
+            success = await ams_service.update_user_memory(
+                memory_id=fact_id,
+                user_id=user_id,
+                update_data=update_data
+            )
+            
+            return success
     
     async def record_revisit(self, fact_id: str, user_id: str) -> bool:
         """
@@ -238,18 +240,20 @@ class MemoryAlbumStore:
         Returns:
             True if update succeeded, False otherwise
         """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        cursor = self.db.execute(
-            """
-            UPDATE ams_user_memories
-            SET revisit_count = revisit_count + 1,
-                last_revisited = CURRENT_TIMESTAMP
-            WHERE fact_id = ? AND user_id = ?
-            """,
-            (fact_id, user_id)
-        )
-        cursor.close()
-        return True
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
+            
+            success = await ams_service.record_memory_revisit(
+                memory_id=fact_id,
+                user_id=user_id
+            )
+            
+            return success
     
     async def delete_fact(self, fact_id: str, user_id: str) -> bool:
         """
@@ -262,21 +266,23 @@ class MemoryAlbumStore:
         Returns:
             True if deletion succeeded, False otherwise
         """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        cursor = self.db.execute(
-            """
-            DELETE FROM ams_user_memories
-            WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
-            """,
-            (fact_id, user_id)
-        )
-        rowcount = cursor.rowcount
-        cursor.close()
-        if rowcount > 0:
-            logger.info(f"Deleted user-curated fact: {fact_id}", extra={
-                "user_id": user_id,
-                "fact_id": fact_id,
-            })
-            return True
-        
-        return False
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
+            
+            success = await ams_service.delete_user_memory(
+                memory_id=fact_id,
+                user_id=user_id
+            )
+            
+            if success:
+                logger.info(f"Deleted user-curated fact: {fact_id}", extra={
+                    "user_id": user_id,
+                    "fact_id": fact_id,
+                })
+            
+            return success

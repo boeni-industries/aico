@@ -23,6 +23,7 @@ from .models import (
 from .planner import Planner
 from .values_ethics import ValuesEthicsService, PolicyEffect
 from .arbiter import GoalArbiter, IntentionSet
+from .store import AgencyEventStore, ReflectionStore
 
 # Phase 2: World Model integration
 try:
@@ -95,12 +96,12 @@ class AgencyEngine(BaseAIProcessor):
         )
         
         # Phase 4: Values & Ethics service
-        self.values_ethics = ValuesEthicsService(db_connection, logger=logger)
+        self.values_ethics = ValuesEthicsService(logger=logger)
         # Values & Ethics initialized
         
         # Phase 4: Goal Arbiter with configuration
         self.arbiter = GoalArbiter(
-            db_connection, 
+            agency_service=self.agency_service,
             config=config,
             message_bus=message_bus, 
             logger=logger
@@ -177,8 +178,7 @@ class AgencyEngine(BaseAIProcessor):
         
         self.executor = PlanExecutor(
             db=db_connection,
-            plan_store=self.plan_store,
-            goal_store=self.goal_store,
+            agency_service=self.agency_service,
             skill_invoker=self.skill_invoker,
             logger=logger
         )
@@ -947,7 +947,12 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             IntentionSet with active and proposed intentions
         """
-        return await self.arbiter.get_intention_set(user_id)
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
+        
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            return await self.arbiter.get_intention_set(user_id, uow)
     
     async def update_intention_set_for_user(
         self,

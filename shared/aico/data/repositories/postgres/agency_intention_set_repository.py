@@ -59,9 +59,27 @@ class PostgresAgencyIntentionSetRepository:
         await self.session.commit()
         return result.rowcount > 0
     
-    async def list(self, limit: int = 100, offset: int = 0) -> List[AgencyIntentionSet]:
-        """List intentions."""
-        stmt = select(agency_intention_set).limit(limit).offset(offset)
+    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[AgencyIntentionSet]:
+        """List intentions with optional filters."""
+        from sqlalchemy import and_
+        
+        stmt = select(agency_intention_set)
+        
+        if filters:
+            conditions = []
+            if 'user_id' in filters:
+                conditions.append(agency_intention_set.c.user_id == filters['user_id'])
+            if 'status' in filters:
+                status_val = filters['status']
+                if isinstance(status_val, list):
+                    conditions.append(agency_intention_set.c.status.in_(status_val))
+                else:
+                    conditions.append(agency_intention_set.c.status == status_val)
+            
+            if conditions:
+                stmt = stmt.where(and_(*conditions))
+        
+        stmt = stmt.limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         return [AgencyIntentionSet(**dict(row._mapping)) for row in result.fetchall()]
     

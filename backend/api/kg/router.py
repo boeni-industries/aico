@@ -274,30 +274,57 @@ async def get_graph_stats(
         )
         storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.3
         
-        # Simplified metrics (analytics engine requires db_connection, skip for now)
-        health_metrics = {"completeness": 1.0 if current_node_count > 0 else 0.0}
-        structure_metrics = {"avg_degree": current_edge_count / max(current_node_count, 1)}
-        temporal_metrics = {"total_versions": node_count}
-        centrality_metrics = {}
-        clustering_metrics = {}
+        # Import metric schemas
+        from backend.api.kg.schemas import (
+            HealthMetrics, StructureMetrics, TemporalMetrics, 
+            CentralityMetrics, ClusteringMetrics, DuplicateNodePair
+        )
         
-        # Simplified duplicate detection (skip complex analytics for now)
-        duplicate_pairs = []
+        # Calculate health metrics
+        avg_degree = current_edge_count / max(current_node_count, 1)
+        isolated_nodes = sum(1 for node in current_nodes if not any(
+            e.from_id == node.id or e.to_id == node.id for e in current_edges
+        ))
         
-        # Convert to schema format
-        from backend.api.kg.schemas import DuplicateNodePair
-        duplicate_pair_objects = [
-            DuplicateNodePair(
-                id1=pair['id1'],
-                name1=pair['name1'],
-                label1=pair['label1'],
-                id2=pair['id2'],
-                name2=pair['name2'],
-                label2=pair['label2'],
-                similarity=pair['similarity']
-            )
-            for pair in duplicate_pairs
-        ]
+        health_metrics = HealthMetrics(
+            orphaned_edges=0,  # Would need edge validation
+            duplicate_nodes=0,  # Would need similarity analysis
+            stale_nodes_count=0,  # Would need timestamp analysis
+            stale_nodes_percent=0.0,
+            property_completeness=total_node_properties / max(current_node_count, 1),
+            nodes_added_24h=0,  # Would need timestamp filtering
+            edges_added_24h=0
+        )
+        
+        structure_metrics = StructureMetrics(
+            graph_density=current_edge_count / max((current_node_count * (current_node_count - 1)) / 2, 1) if current_node_count > 1 else 0.0,
+            average_degree=avg_degree,
+            max_degree=0,  # Would need degree calculation
+            min_degree=0,
+            isolated_nodes=isolated_nodes,
+            connected_components=1,  # Would need graph traversal
+            largest_component_size=current_node_count
+        )
+        
+        temporal_metrics = TemporalMetrics(
+            growth_rate_7d=0.0,  # Would need timestamp analysis
+            growth_rate_30d=0.0,
+            most_active_day=None,
+            activity_by_day={}
+        )
+        
+        centrality_metrics = CentralityMetrics(
+            top_by_degree=[],
+            top_by_pagerank=[],
+            top_by_betweenness=[]
+        )
+        
+        clustering_metrics = ClusteringMetrics(
+            global_clustering_coefficient=0.0,
+            average_clustering_coefficient=0.0,
+            communities_detected=0,
+            modularity_score=0.0
+        )
         
         response = GraphStatsResponse(
             total_nodes=node_count,
@@ -312,7 +339,7 @@ async def get_graph_stats(
             storage_size_mb=round(storage_size_mb, 2),
             user_id=user_id,
             health=health_metrics,
-            duplicate_pairs=duplicate_pair_objects if duplicate_pair_objects else None,
+            duplicate_pairs=None,
             structure=structure_metrics,
             temporal=temporal_metrics,
             centrality=centrality_metrics,

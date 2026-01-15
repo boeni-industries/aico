@@ -110,34 +110,34 @@ class GoalArbiter:
     
     def __init__(
         self,
-        db: Any,  # Agency system being redesigned
+        agency_service: "AgencyService",
         config=None,
         message_bus: Optional[MessageBusClient] = None,
         logger=None,
-        enable_adaptive: bool = True,
-        enable_context_aware: bool = True
+        enable_adaptive: bool = False,
+        enable_context_aware: bool = False
     ):
-        self.db = db
+        self.agency_service = agency_service
         self.message_bus = message_bus
         self.logger = logger
         self.config = config
         
         # Phase 6.5: Adaptive scoring and context-aware prioritization
+        # NOTE: Disabled until refactored to use UoW pattern
         self.enable_adaptive = enable_adaptive
         self.enable_context_aware = enable_context_aware
         
         if enable_adaptive:
-            adaptive_config = AdaptiveConfig()
-            self.adaptive_engine = AdaptiveScoringEngine(db, adaptive_config, logger)
             if logger:
-                logger.debug("[ARBITER] Phase 6.5: Adaptive scoring enabled")
+                logger.warning("[ARBITER] Adaptive scoring disabled - needs UoW refactor")
+            self.adaptive_engine = None
         else:
             self.adaptive_engine = None
         
         if enable_context_aware:
-            self.context_engine = ContextAwarePrioritization(db, logger)
             if logger:
-                logger.debug("[ARBITER] Phase 6.5: Context-aware prioritization enabled")
+                logger.warning("[ARBITER] Context-aware prioritization disabled - needs UoW refactor")
+            self.context_engine = None
         else:
             self.context_engine = None
         
@@ -207,15 +207,16 @@ class GoalArbiter:
     # Lesson-Based Adjustments
     # ========================================================================
     
-    def _load_adjustments(self, user_id: Optional[str] = None) -> Dict[str, float]:
+    async def _load_adjustments(self, user_id: Optional[str], uow: "UnitOfWork") -> Dict[str, float]:
         """
-        Load active lesson-based adjustments from database.
+        Load lesson-based adjustments from database.
         
         Args:
             user_id: Optional user ID for user-specific adjustments
+            uow: Unit of Work for database access
             
         Returns:
-            Dictionary of adjustment_key -> adjustment_value
+            Dict mapping adjustment keys to values
         """
         # Check cache
         if self._adjustments_cache_time:
@@ -223,29 +224,31 @@ class GoalArbiter:
             if age < self._adjustments_cache_ttl:
                 return self._adjustments_cache.copy()
         
-        # Load from database
+        # Load from database using repository
         adjustments = {}
         try:
-            # Query active adjustments (global + user-specific)
+            # Build filters for active adjustments (global + user-specific)
+            filters = {"active": True}
             if user_id:
-                rows = self.db.execute(
-                    """SELECT adjustment_key, adjustment_value, confidence
-                       FROM agency_arbiter_adjustments
-                       WHERE active = 1 AND (user_id IS NULL OR user_id = ?)
-                       ORDER BY confidence DESC""",
-                    (user_id,)
-                ).fetchall()
+                # Get both global and user-specific adjustments
+                all_adjustments = await uow.agency_arbiter_adjustments.list(filters={"active": True})
+                # Filter to global or matching user
+                relevant_adjustments = [
+                    adj for adj in all_adjustments 
+                    if adj.user_id is None or adj.user_id == user_id
+                ]
             else:
-                rows = self.db.execute(
-                    """SELECT adjustment_key, adjustment_value, confidence
-                       FROM agency_arbiter_adjustments
-                       WHERE active = 1 AND user_id IS NULL
-                       ORDER BY confidence DESC"""
-                ).fetchall()
+                # Only global adjustments
+                relevant_adjustments = await uow.agency_arbiter_adjustments.list(
+                    filters={"active": True, "user_id": None}
+                )
             
-            for row in rows:
-                key = row["adjustment_key"]
-                value = row["adjustment_value"]
+            # Sort by confidence descending and take highest confidence for each key
+            relevant_adjustments.sort(key=lambda x: x.confidence, reverse=True)
+            
+            for adj in relevant_adjustments:
+                key = adj.adjustment_key
+                value = adj.adjustment_value
                 # Use highest confidence adjustment if multiple exist
                 if key not in adjustments:
                     adjustments[key] = value
@@ -495,40 +498,40 @@ class GoalArbiter:
     # Intention Set Management
     # ========================================================================
     
-    async def get_intention_set(self, user_id: str) -> IntentionSet:
+    async def get_intention_set(self, user_id: str, uow: "UnitOfWork") -> IntentionSet:
         """
         Get the current intention set for a user.
         
         Args:
             user_id: User ID
+            uow: Unit of Work for database access
             
         Returns:
             IntentionSet with current intentions
         """
-        rows = self.db.fetch_all(
-            """
-            SELECT * FROM agency_intention_set 
-            WHERE user_id = ? AND status IN ('proposed', 'active', 'paused')
-            ORDER BY arbiter_score DESC
-            """,
-            (user_id,)
+        # Get intentions from repository
+        intention_entities = await uow.agency_intention_set.list(
+            filters={"user_id": user_id, "status": ["proposed", "active", "paused"]}
         )
         
         intentions = []
-        for row in rows:
+        for entity in intention_entities:
             intentions.append(Intention(
-                intention_id=row["intention_id"],
-                goal_id=row["goal_id"],
-                user_id=row["user_id"],
-                status=IntentionStatus(row["status"]),
-                arbiter_score=row["arbiter_score"],
-                priority_band=PriorityBand(row["priority_band"]),
-                reasons=json.loads(row["reasons_json"] or "[]"),
-                activated_at=datetime.fromisoformat(row["activated_at"]).replace(tzinfo=UTC) if row["activated_at"] else None,
-                deactivated_at=datetime.fromisoformat(row["deactivated_at"]).replace(tzinfo=UTC) if row["deactivated_at"] else None,
-                created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
-                updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
+                intention_id=entity.intention_id,
+                goal_id=entity.goal_id,
+                user_id=entity.user_id,
+                status=IntentionStatus(entity.status),
+                arbiter_score=entity.arbiter_score,
+                priority_band=PriorityBand(entity.priority_band),
+                reasons=json.loads(entity.reasons_json) if entity.reasons_json else [],
+                activated_at=entity.activated_at,
+                deactivated_at=entity.deactivated_at,
+                created_at=entity.created_at,
+                updated_at=entity.updated_at
             ))
+        
+        # Sort by score descending
+        intentions.sort(key=lambda i: i.arbiter_score, reverse=True)
         
         return IntentionSet(user_id=user_id, intentions=intentions)
     
@@ -749,92 +752,92 @@ class GoalArbiter:
         self,
         scored_goal: ScoredGoal,
         user_id: str,
-        activate: bool = True
+        activate: bool,
+        uow: "UnitOfWork"
     ) -> Intention:
         """Create a new intention in the database."""
-        intention = Intention(
+        from aico.data.agency.goal_models import AgencyIntentionSet
+        
+        # Create entity
+        entity = AgencyIntentionSet(
+            intention_id=str(uuid.uuid4()),
             goal_id=scored_goal.goal.goal_id,
             user_id=user_id,
-            status=IntentionStatus.ACTIVE if activate else IntentionStatus.PROPOSED,
+            status=IntentionStatus.ACTIVE.value if activate else IntentionStatus.PROPOSED.value,
             arbiter_score=scored_goal.arbiter_score,
-            priority_band=scored_goal.priority_band,
-            reasons=scored_goal.reasons,
-            activated_at=datetime.now(UTC) if activate else None
+            priority_band=scored_goal.priority_band.value,
+            reasons_json=json.dumps(scored_goal.reasons),
+            activated_at=datetime.now(UTC) if activate else None,
+            deactivated_at=None,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
-        self.db.execute(
-            """
-            INSERT INTO agency_intention_set (
-                intention_id, goal_id, user_id, status, arbiter_score,
-                priority_band, reasons_json, activated_at, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                intention.intention_id,
-                intention.goal_id,
-                intention.user_id,
-                intention.status.value,
-                intention.arbiter_score,
-                intention.priority_band.value,
-                json.dumps(intention.reasons),
-                intention.activated_at.isoformat() if intention.activated_at else None,
-                intention.created_at.isoformat(),
-                intention.updated_at.isoformat()
-            )
-        )
+        await uow.agency_intention_set.create(entity)
+        await uow.commit()
         
-        return intention
+        return Intention(
+            intention_id=entity.intention_id,
+            goal_id=entity.goal_id,
+            user_id=entity.user_id,
+            status=IntentionStatus(entity.status),
+            arbiter_score=entity.arbiter_score,
+            priority_band=PriorityBand(entity.priority_band),
+            reasons=json.loads(entity.reasons_json) if entity.reasons_json else [],
+            activated_at=entity.activated_at,
+            deactivated_at=entity.deactivated_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at
+        )
     
-    async def _update_intention(self, intention: Intention) -> None:
+    async def _update_intention(self, intention: Intention, uow: "UnitOfWork") -> None:
         """Update an existing intention in the database."""
-        self.db.execute(
-            """
-            UPDATE agency_intention_set 
-            SET status = ?, arbiter_score = ?, priority_band = ?,
-                reasons_json = ?, activated_at = ?, deactivated_at = ?,
-                updated_at = ?
-            WHERE intention_id = ?
-            """,
-            (
-                intention.status.value,
-                intention.arbiter_score,
-                intention.priority_band.value,
-                json.dumps(intention.reasons),
-                intention.activated_at.isoformat() if intention.activated_at else None,
-                intention.deactivated_at.isoformat() if intention.deactivated_at else None,
-                intention.updated_at.isoformat(),
-                intention.intention_id
-            )
-        )
-    
-    async def _get_intention(self, intention_id: str) -> Optional[Intention]:
-        """Get an intention by ID."""
-        row = self.db.fetch_one(
-            "SELECT * FROM agency_intention_set WHERE intention_id = ?",
-            (intention_id,)
+        from aico.data.agency.goal_models import AgencyIntentionSet
+        
+        # Create updated entity
+        entity = AgencyIntentionSet(
+            intention_id=intention.intention_id,
+            goal_id=intention.goal_id,
+            user_id=intention.user_id,
+            status=intention.status.value,
+            arbiter_score=intention.arbiter_score,
+            priority_band=intention.priority_band.value,
+            reasons_json=json.dumps(intention.reasons),
+            activated_at=intention.activated_at,
+            deactivated_at=intention.deactivated_at,
+            created_at=intention.created_at,
+            updated_at=datetime.now(UTC)
         )
         
-        if not row:
+        await uow.agency_intention_set.update(intention.intention_id, entity)
+        await uow.commit()
+    
+    async def _get_intention(self, intention_id: str, uow: "UnitOfWork") -> Optional[Intention]:
+        """Get an intention by ID."""
+        entity = await uow.agency_intention_set.get_by_id(intention_id)
+        
+        if not entity:
             return None
         
         return Intention(
-            intention_id=row["intention_id"],
-            goal_id=row["goal_id"],
-            user_id=row["user_id"],
-            status=IntentionStatus(row["status"]),
-            arbiter_score=row["arbiter_score"],
-            priority_band=PriorityBand(row["priority_band"]),
-            reasons=json.loads(row["reasons_json"] or "[]"),
-            activated_at=datetime.fromisoformat(row["activated_at"]).replace(tzinfo=UTC) if row["activated_at"] else None,
-            deactivated_at=datetime.fromisoformat(row["deactivated_at"]).replace(tzinfo=UTC) if row["deactivated_at"] else None,
-            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
-            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
+            intention_id=entity.intention_id,
+            goal_id=entity.goal_id,
+            user_id=entity.user_id,
+            status=IntentionStatus(entity.status),
+            arbiter_score=entity.arbiter_score,
+            priority_band=PriorityBand(entity.priority_band),
+            reasons=json.loads(entity.reasons_json) if entity.reasons_json else [],
+            activated_at=entity.activated_at,
+            deactivated_at=entity.deactivated_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at
         )
     
     async def _sync_plans_with_intentions(
         self,
         user_id: str,
-        new_intentions: List[Intention]
+        new_intentions: List[Intention],
+        uow: "UnitOfWork"
     ) -> None:
         """
         Sync plan status with intention status changes.
@@ -844,42 +847,36 @@ class GoalArbiter:
         
         for intention in new_intentions:
             try:
-                # Get plan for this goal
-                row = self.db.fetch_one(
-                    "SELECT plan_id, status FROM agency_plans WHERE goal_id = ?",
-                    (intention.goal_id,)
-                )
+                # Get plan for this goal using AgencyService
+                plans = await self.agency_service.list_plans(goal_id=intention.goal_id)
                 
-                if not row:
-                    continue
+                if not plans:
+                    continue  # No plan yet
                 
-                plan_id = row["plan_id"]
-                current_plan_status = row["status"]
+                # Get the most recent plan
+                plan = plans[0]
+                current_plan_status = plan.status
                 
                 # Activate plan if intention is active and plan is draft
-                if intention.status == IntentionStatus.ACTIVE and current_plan_status == "draft":
-                    self.db.execute(
-                        "UPDATE agency_plans SET status = ?, updated_at = ? WHERE plan_id = ?",
-                        (PlanStatus.ACTIVE.value, datetime.now(UTC).isoformat(), plan_id)
-                    )
-                    self.db.commit()
+                if intention.status == IntentionStatus.ACTIVE and current_plan_status == PlanStatus.DRAFT:
+                    plan.status = PlanStatus.ACTIVE
+                    plan.updated_at = datetime.now(UTC)
+                    await self.agency_service.update_plan(plan)
                     
                     if self.logger:
                         self.logger.info(
-                            f"[ARBITER] Activated plan {plan_id[:8]}... for intention {intention.intention_id[:8]}..."
+                            f"[ARBITER] Activated plan {plan.plan_id[:8]}... for intention {intention.intention_id[:8]}..."
                         )
                 
                 # Pause plan if intention is dropped/paused and plan is active
-                elif intention.status in [IntentionStatus.DROPPED, IntentionStatus.PAUSED] and current_plan_status == "active":
-                    self.db.execute(
-                        "UPDATE agency_plans SET status = ?, updated_at = ? WHERE plan_id = ?",
-                        (PlanStatus.PAUSED.value, datetime.now(UTC).isoformat(), plan_id)
-                    )
-                    self.db.commit()
+                elif intention.status in [IntentionStatus.DROPPED, IntentionStatus.PAUSED] and current_plan_status == PlanStatus.ACTIVE:
+                    plan.status = PlanStatus.PAUSED
+                    plan.updated_at = datetime.now(UTC)
+                    await self.agency_service.update_plan(plan)
                     
                     if self.logger:
                         self.logger.info(
-                            f"[ARBITER] Paused plan {plan_id[:8]}... for intention {intention.intention_id[:8]}..."
+                            f"[ARBITER] Paused plan {plan.plan_id[:8]}... for intention {intention.intention_id[:8]}..."
                         )
                         
             except Exception as e:
@@ -912,6 +909,7 @@ class GoalArbiter:
         goal_id: str,
         outcome: str,
         success: bool,
+        uow: "UnitOfWork",
         user_satisfaction: Optional[float] = None,
         completion_time_minutes: Optional[int] = None,
         metadata: Optional[Dict] = None
@@ -923,15 +921,13 @@ class GoalArbiter:
             goal_id: Goal ID
             outcome: Outcome type (completed, abandoned, failed, timeout)
             success: Whether the goal succeeded
+            uow: Unit of Work for database access
             user_satisfaction: Optional user satisfaction score (0.0-1.0)
             completion_time_minutes: Time taken to complete
             metadata: Additional outcome metadata
         """
-        if not self.enable_adaptive or not self.adaptive_engine:
-            return
-        
         try:
-            import uuid
+            from aico.data.agency.goal_models import AgencyGoalOutcome
             
             # Calculate reward based on outcome
             reward = 0.0
@@ -951,40 +947,30 @@ class GoalArbiter:
             if metadata and "selected_arm_id" in metadata:
                 arm_id = metadata["selected_arm_id"]
             
-            # Record outcome in database
-            outcome_id = str(uuid.uuid4())
-            self.db.execute(
-                """
-                INSERT INTO agency_goal_outcomes (
-                    outcome_id, goal_id, user_id, arm_id, outcome,
-                    success, reward, completion_time_minutes,
-                    user_satisfaction, metadata_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    outcome_id,
-                    goal_id,
-                    metadata.get("user_id") if metadata else None,
-                    arm_id,
-                    outcome,
-                    1 if success else 0,
-                    reward,
-                    completion_time_minutes,
-                    user_satisfaction,
-                    json.dumps(metadata or {}),
-                    datetime.now(UTC).isoformat()
-                )
+            # Create outcome entity
+            outcome_entity = AgencyGoalOutcome(
+                outcome_id=str(uuid.uuid4()),
+                goal_id=goal_id,
+                user_id=metadata.get("user_id") if metadata else None,
+                arm_id=arm_id,
+                outcome=outcome,
+                success=success,
+                reward=reward,
+                completion_time_minutes=completion_time_minutes,
+                user_satisfaction=user_satisfaction,
+                metadata_json=json.dumps(metadata or {}),
+                created_at=datetime.now(UTC)
             )
             
-            # Update adaptive engine
-            if arm_id:
-                self.adaptive_engine.update_arm(arm_id, reward, success, goal_id)
-                
-                if self.logger:
-                    self.logger.info(
-                        f"[ARBITER] Recorded outcome for goal {goal_id}: "
-                        f"{outcome} (reward: {reward:.2f}, arm: {arm_id})"
-                    )
+            # Store in database
+            await uow.agency_goal_outcomes.create(outcome_entity)
+            await uow.commit()
+            
+            if self.logger:
+                self.logger.info(
+                    f"[ARBITER] Recorded outcome for goal {goal_id}: "
+                    f"{outcome} (reward: {reward:.2f}, success: {success})"
+                )
             
         except Exception as e:
             if self.logger:

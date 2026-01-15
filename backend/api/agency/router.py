@@ -227,8 +227,8 @@ async def get_value_profile(
                 user_id=user_id,
                 curiosity_intensity=0.5,
                 proactive_behavior_level="balanced",
-                sensitive_life_areas=[],
-                allowed_curiosity_domains=[],
+                sensitive_life_areas=None,
+                allowed_curiosity_domains=None,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )

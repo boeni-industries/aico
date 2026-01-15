@@ -297,7 +297,7 @@ class MemoryManager(BaseAIProcessor):
                 db_connection = self._db_connection
                 logger.info("🕸️ [KG] Reusing existing database connection")
             else:
-                key_manager = AICOKeyManager()
+                key_manager = AICOKeyManager(self.config)
                 try:
                     master_key = key_manager.authenticate(interactive=False)
                 except Exception as auth_error:

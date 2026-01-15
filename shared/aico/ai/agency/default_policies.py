@@ -71,12 +71,13 @@ DEFAULT_POLICIES = [
 ]
 
 
-def install_default_policies(values_ethics_service) -> int:
+async def install_default_policies(values_ethics_service, uow) -> int:
     """
     Install default policies into the database.
     
     Args:
         values_ethics_service: ValuesEthicsService instance
+        uow: Unit of Work for database access
         
     Returns:
         Number of policies installed
@@ -85,9 +86,9 @@ def install_default_policies(values_ethics_service) -> int:
     
     for policy in DEFAULT_POLICIES:
         # Check if already exists
-        existing = values_ethics_service.get_policy_rule(policy.rule_id)
+        existing = await values_ethics_service.get_policy_rule(policy.rule_id, uow)
         if not existing:
-            values_ethics_service.add_policy_rule(policy)
+            await values_ethics_service.add_policy_rule(policy, uow)
             installed += 1
     
     return installed

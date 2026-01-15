@@ -139,8 +139,11 @@ async def get_users(
                 nickname=user_profile.nickname,
                 user_type=user_profile.user_type,
                 is_active=user_profile.is_active,
+                primary_language=user_profile.primary_language,
                 created_at=user_profile.created_at.isoformat() if hasattr(user_profile.created_at, 'isoformat') else user_profile.created_at,
-                active_sessions=session_count,
+                updated_at=user_profile.updated_at.isoformat() if hasattr(user_profile.updated_at, 'isoformat') else user_profile.updated_at,
+                active_session_count=session_count,
+                total_session_count=len(user_sessions),
                 last_activity=format_last_activity(last_activity.isoformat() if hasattr(last_activity, 'isoformat') else str(last_activity)) if last_activity else "Never"
             ))
         
@@ -415,11 +418,13 @@ async def get_session_statistics(
             })
         
         return SessionStatsResponse(
-            total_sessions=total_sessions,
-            active_sessions=active_sessions,
-            expired_sessions=expired_sessions,
-            sessions_by_type=sessions_by_type,
-            sessions_by_device_type=sessions_by_device_type,
+            statistics=SessionStatistics(
+                total_sessions=total_sessions,
+                active_sessions=active_sessions,
+                expired_sessions=expired_sessions,
+                sessions_by_type=sessions_by_type,
+                sessions_by_device_type=sessions_by_device_type
+            ),
             recent_activity=recent_activity
         )
         

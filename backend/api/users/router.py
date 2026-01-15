@@ -261,8 +261,11 @@ async def authenticate_user(
     validate_pin(request.pin)
     
     try:
-        import hashlib
         from datetime import datetime, UTC
+        from passlib.context import CryptContext
+        
+        # Initialize bcrypt context (must match CLI UserService)
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
         logger.info(f"Starting authentication for user: {request.user_uuid}")
         
@@ -289,9 +292,8 @@ async def authenticate_user(
                 error=f"Account locked until {credentials.locked_until.isoformat()}"
             )
         
-        # Verify PIN
-        pin_hash = hashlib.sha256(request.pin.encode()).hexdigest()
-        if pin_hash != credentials.pin_hash:
+        # Verify PIN using bcrypt (must match CLI UserService hashing)
+        if not pwd_context.verify(request.pin, credentials.pin_hash):
             # Increment failed attempts
             await uow.credentials.increment_failed_attempts(request.user_uuid)
             await uow.commit()
