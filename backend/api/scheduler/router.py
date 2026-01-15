@@ -4,11 +4,14 @@ Scheduler API Router
 REST API endpoints for task scheduler management following AICO patterns.
 """
 
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
+from aico.data.uow import UnitOfWork
+from aico.services.scheduler_service import SchedulerService
+from backend.core.postgres_dependencies import get_uow
 from .schemas import (
     TaskConfigRequest,
     TaskConfigResponse,
@@ -65,23 +68,25 @@ async def get_scheduler_status(
 @router.get("/tasks", response_model=TaskListResponse)
 @handle_scheduler_exceptions
 async def list_tasks(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     enabled_only: bool = False,
-    scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> TaskListResponse:
     """List all scheduled tasks"""
     try:
-        tasks = scheduler.task_store.list_tasks(enabled_only=enabled_only)
+        scheduler_service = SchedulerService(uow)
+        filters = {"enabled": True} if enabled_only else {}
+        tasks = await scheduler_service.list_tasks(filters=filters)
         
         task_responses = [
             TaskConfigResponse(
-                task_id=task['task_id'],
-                task_class=task['task_class'],
-                schedule=task['schedule'],
-                config=task['config'],
-                enabled=task['enabled'],
-                created_at=task['created_at'],
-                updated_at=task['updated_at']
+                task_id=task.task_id,
+                task_class=task.task_class,
+                schedule=task.schedule,
+                config=task.config,
+                enabled=task.enabled,
+                created_at=task.created_at,
+                updated_at=task.updated_at
             )
             for task in tasks
         ]
@@ -98,29 +103,30 @@ async def list_tasks(
 @router.get("/tasks/{task_id}", response_model=TaskConfigResponse)
 @handle_scheduler_exceptions
 async def get_task(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
-    scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> TaskConfigResponse:
     """Get a specific task configuration"""
     try:
-        task = await scheduler.task_store.get_task(task_id)
+        scheduler_service = SchedulerService(uow)
+        task = await scheduler_service.get_task(task_id)
         if not task:
             raise TaskNotFoundError(task_id)
         
         return TaskConfigResponse(
-            task_id=task['task_id'],
-            task_class=task['task_class'],
-            schedule=task['schedule'],
-            config=task['config'],
-            enabled=task['enabled'],
-            created_at=task['created_at'],
-            updated_at=task['updated_at']
+            task_id=task.task_id,
+            task_class=task.task_class,
+            schedule=task.schedule,
+            config=task.config,
+            enabled=task.enabled,
+            created_at=task.created_at,
+            updated_at=task.updated_at
         )
     except TaskNotFoundError:
         raise
     except Exception as e:
-        logger.error(f"Failed to get task {task_id}: {e}")
+        logger.error(f"Failed to get task: {e}", extra={"task_id": task_id})
         raise SchedulerNotAvailableError()
 
 
@@ -128,14 +134,16 @@ async def get_task(
 @handle_scheduler_exceptions
 async def create_task(
     task_request: TaskConfigRequest,
-    scheduler = Depends(get_task_scheduler),
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     cron_parser = Depends(get_cron_parser),
     _auth = Depends(require_admin_access)
 ) -> TaskConfigResponse:
     """Create a new scheduled task"""
     try:
+        scheduler_service = SchedulerService(uow)
+        
         # Validate task doesn't already exist
-        existing_task = scheduler.task_store.get_task(task_request.task_id)
+        existing_task = await scheduler_service.get_task(task_request.task_id)
         if existing_task:
             raise TaskAlreadyExistsError(task_request.task_id)
         
@@ -143,43 +151,40 @@ async def create_task(
         if not cron_parser.validate(task_request.schedule):
             raise InvalidCronExpressionError(task_request.schedule)
         
-        # Validate task class exists in registry
-        task_class = scheduler.task_registry.get_task_class(task_request.task_id)
-        if not task_class and not task_request.task_id.startswith('user.'):
-            raise TaskClassNotFoundError(task_request.task_class)
+        # Validate task class exists
+        validate_task_class_name(task_request.task_class)
         
-        # Validate configuration
+        # Validate config if provided
         if task_request.config:
             validate_task_config(task_request.config)
         
         # Create task
-        scheduler.task_store.upsert_task(
-            task_id=task_request.task_id,
-            task_class=task_request.task_class,
-            schedule=task_request.schedule,
-            config=task_request.config,
-            enabled=task_request.enabled
-        )
-        
-        # Get the created task to return
-        created_task = scheduler.task_store.get_task(task_request.task_id)
+        task_data = {
+            "task_id": task_request.task_id,
+            "task_class": task_request.task_class,
+            "schedule": task_request.schedule,
+            "config": task_request.config or {},
+            "enabled": task_request.enabled,
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC)
+        }
+        created_task = await scheduler_service.create_task(task_data)
         
         logger.info(f"Created task: {task_request.task_id}")
         
         return TaskConfigResponse(
-            task_id=created_task['task_id'],
-            task_class=created_task['task_class'],
-            schedule=created_task['schedule'],
-            config=created_task['config'],
-            enabled=created_task['enabled'],
-            created_at=created_task['created_at'],
-            updated_at=created_task['updated_at']
+            task_id=created_task.task_id,
+            task_class=created_task.task_class,
+            schedule=created_task.schedule,
+            config=created_task.config,
+            enabled=created_task.enabled,
+            created_at=created_task.created_at,
+            updated_at=created_task.updated_at
         )
-        
     except (TaskAlreadyExistsError, InvalidCronExpressionError, TaskClassNotFoundError, TaskValidationError):
         raise
     except Exception as e:
-        logger.error(f"Failed to create task {task_request.task_id}: {e}")
+        logger.error(f"Failed to create task: {e}", extra={"task_id": task_request.task_id})
         raise SchedulerNotAvailableError()
 
 
@@ -187,15 +192,17 @@ async def create_task(
 @handle_scheduler_exceptions
 async def update_task(
     task_update: TaskUpdateRequest,
-    task_id: str = Depends(validate_task_id),
-    scheduler = Depends(get_task_scheduler),
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     cron_parser = Depends(get_cron_parser),
+    task_id: str = Depends(validate_task_id),
     _auth = Depends(require_admin_access)
 ) -> TaskConfigResponse:
     """Update an existing task configuration"""
     try:
+        scheduler_service = SchedulerService(uow)
+        
         # Check task exists
-        existing_task = scheduler.task_store.get_task(task_id)
+        existing_task = await scheduler_service.get_task(task_id)
         if not existing_task:
             raise TaskNotFoundError(task_id)
         
@@ -208,31 +215,27 @@ async def update_task(
             validate_task_config(task_update.config)
         
         # Update task with new values
-        new_schedule = task_update.schedule or existing_task['schedule']
-        new_config = task_update.config if task_update.config is not None else existing_task['config']
-        new_enabled = task_update.enabled if task_update.enabled is not None else existing_task['enabled']
-        
-        scheduler.task_store.upsert_task(
-            task_id=task_id,
-            task_class=existing_task['task_class'],
-            schedule=new_schedule,
-            config=new_config,
-            enabled=new_enabled
-        )
-        
-        # Get updated task
-        updated_task = scheduler.task_store.get_task(task_id)
+        task_data = {
+            "task_id": task_id,
+            "task_class": existing_task.task_class,
+            "schedule": task_update.schedule or existing_task.schedule,
+            "config": task_update.config if task_update.config is not None else existing_task.config,
+            "enabled": task_update.enabled if task_update.enabled is not None else existing_task.enabled,
+            "created_at": existing_task.created_at,
+            "updated_at": datetime.now(UTC)
+        }
+        updated_task = await scheduler_service.update_task(task_data)
         
         logger.info(f"Updated task: {task_id}")
         
         return TaskConfigResponse(
-            task_id=updated_task['task_id'],
-            task_class=updated_task['task_class'],
-            schedule=updated_task['schedule'],
-            config=updated_task['config'],
-            enabled=updated_task['enabled'],
-            created_at=updated_task['created_at'],
-            updated_at=updated_task['updated_at']
+            task_id=updated_task.task_id,
+            task_class=updated_task.task_class,
+            schedule=updated_task.schedule,
+            config=updated_task.config,
+            enabled=updated_task.enabled,
+            created_at=updated_task.created_at,
+            updated_at=updated_task.updated_at
         )
         
     except (TaskNotFoundError, InvalidCronExpressionError, TaskValidationError):
@@ -245,13 +248,14 @@ async def update_task(
 @router.delete("/tasks/{task_id}", response_model=ApiResponse)
 @handle_scheduler_exceptions
 async def delete_task(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
-    scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> ApiResponse:
     """Delete a scheduled task"""
     try:
-        deleted = scheduler.task_store.delete_task(task_id)
+        scheduler_service = SchedulerService(uow)
+        deleted = await scheduler_service.delete_task(task_id)
         if not deleted:
             raise TaskNotFoundError(task_id)
         
@@ -272,21 +276,22 @@ async def delete_task(
 @router.post("/tasks/{task_id}/enable", response_model=ApiResponse)
 @handle_scheduler_exceptions
 async def enable_task(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
     scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> ApiResponse:
     """Enable a scheduled task"""
     try:
-        updated = scheduler.task_store.set_task_enabled(task_id, True)
+        scheduler_service = SchedulerService(uow)
+        updated = await scheduler_service.enable_task(task_id)
         if not updated:
             raise TaskNotFoundError(task_id)
         
         # Recalculate next run time for this task immediately
-        task = scheduler.task_store.get_task(task_id)
-        if task and task['schedule']:
-            from datetime import datetime, timezone
-            next_run = scheduler.cron_parser.next_run_time(task['schedule'], datetime.now(timezone.utc))
+        task = await scheduler_service.get_task(task_id)
+        if task and task.schedule:
+            next_run = scheduler.cron_parser.next_run_time(task.schedule, datetime.now(UTC))
             if next_run:
                 scheduler.next_run_times[task_id] = next_run
                 logger.info(f"Enabled task: {task_id}, next run: {next_run}")
@@ -306,13 +311,15 @@ async def enable_task(
 @router.post("/tasks/{task_id}/disable", response_model=ApiResponse)
 @handle_scheduler_exceptions
 async def disable_task(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
     scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> ApiResponse:
     """Disable a scheduled task"""
     try:
-        updated = scheduler.task_store.set_task_enabled(task_id, False)
+        scheduler_service = SchedulerService(uow)
+        updated = await scheduler_service.disable_task(task_id)
         if not updated:
             raise TaskNotFoundError(task_id)
         
@@ -361,35 +368,38 @@ async def trigger_task(
 @router.get("/tasks/{task_id}/status", response_model=TaskStatusResponse)
 @handle_scheduler_exceptions
 async def get_task_status(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
     scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> TaskStatusResponse:
     """Get current status of a task"""
     try:
+        scheduler_service = SchedulerService(uow)
+        
         # Get task configuration
-        task = scheduler.task_store.get_task(task_id)
+        task = await scheduler_service.get_task(task_id)
         if not task:
             raise TaskNotFoundError(task_id)
         
         # Get latest execution
-        history = scheduler.task_store.get_execution_history(task_id, limit=1)
+        history = await scheduler_service.get_task_executions(task_id, limit=1)
         last_execution = None
         if history:
             exec_data = history[0]
             last_execution = TaskExecutionResponse(
-                execution_id=exec_data['execution_id'],
-                status=exec_data['status'],
-                started_at=exec_data['started_at'],
-                completed_at=exec_data['completed_at'],
-                result=exec_data['result'],
-                error_message=exec_data['error_message'],
-                duration_seconds=exec_data['duration_seconds']
+                execution_id=exec_data.execution_id,
+                status=exec_data.status,
+                started_at=exec_data.started_at,
+                completed_at=exec_data.completed_at,
+                result=exec_data.result,
+                error_message=exec_data.error_message,
+                duration_seconds=exec_data.duration_seconds
             )
         
         # Get next run time
         next_run_time = None
-        if task['enabled'] and task_id in scheduler.next_run_times:
+        if task.enabled and task_id in scheduler.next_run_times:
             next_run_time = scheduler.next_run_times[task_id].isoformat()
         
         # Check if currently running
@@ -397,7 +407,7 @@ async def get_task_status(
         
         return TaskStatusResponse(
             task_id=task_id,
-            enabled=task['enabled'],
+            enabled=task.enabled,
             last_execution=last_execution,
             next_run_time=next_run_time,
             is_running=is_running
@@ -413,34 +423,36 @@ async def get_task_status(
 @router.get("/tasks/{task_id}/history", response_model=TaskExecutionHistoryResponse)
 @handle_scheduler_exceptions
 async def get_task_history(
-    task_id: str = Depends(validate_task_id),
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     limit: int = 50,
-    scheduler = Depends(get_task_scheduler),
+    task_id: str = Depends(validate_task_id),
     _auth = Depends(require_admin_access)
 ) -> TaskExecutionHistoryResponse:
     """Get execution history for a task"""
     try:
+        scheduler_service = SchedulerService(uow)
+        
         # Validate limit
         if limit < 1 or limit > 1000:
             raise TaskValidationError("Limit must be between 1 and 1000")
         
         # Check task exists
-        task = scheduler.task_store.get_task(task_id)
+        task = await scheduler_service.get_task(task_id)
         if not task:
             raise TaskNotFoundError(task_id)
         
         # Get execution history
-        history = scheduler.task_store.get_execution_history(task_id, limit=limit)
+        history = await scheduler_service.get_task_executions(task_id, limit=limit)
         
         executions = [
             TaskExecutionResponse(
-                execution_id=exec_data['execution_id'],
-                status=exec_data['status'],
-                started_at=exec_data['started_at'],
-                completed_at=exec_data['completed_at'],
-                result=exec_data['result'],
-                error_message=exec_data['error_message'],
-                duration_seconds=exec_data['duration_seconds']
+                execution_id=exec_data.execution_id,
+                status=exec_data.status,
+                started_at=exec_data.started_at,
+                completed_at=exec_data.completed_at,
+                result=exec_data.result,
+                error_message=exec_data.error_message,
+                duration_seconds=exec_data.duration_seconds
             )
             for exec_data in history
         ]
@@ -463,32 +475,33 @@ async def get_task_history(
 async def get_executions_in_range(
     start_time: str,
     end_time: str,
-    scheduler = Depends(get_task_scheduler),
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     _auth = Depends(require_admin_access)
 ) -> dict:
     """Get all task executions within a time range"""
     try:
-        from datetime import datetime
-        
         # Validate datetime strings
         try:
-            datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-            datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
         except ValueError as e:
             raise TaskValidationError(f"Invalid datetime format: {e}")
         
-        executions = scheduler.task_store.get_all_executions_in_range(start_time, end_time)
+        scheduler_service = SchedulerService(uow)
+        # Get all executions and filter by time range
+        all_executions = await scheduler_service.get_recent_executions(limit=10000)
+        executions = [e for e in all_executions if e.started_at and start_dt <= e.started_at <= end_dt]
         
         executions_response = [
             {
-                'task_id': exec_data['task_id'],
-                'execution_id': exec_data['execution_id'],
-                'status': exec_data['status'],
-                'started_at': exec_data['started_at'],
-                'completed_at': exec_data['completed_at'],
-                'result': exec_data['result'],
-                'error_message': exec_data['error_message'],
-                'duration_seconds': exec_data['duration_seconds']
+                'task_id': exec_data.task_id,
+                'execution_id': exec_data.execution_id,
+                'status': exec_data.status,
+                'started_at': exec_data.started_at.isoformat() if exec_data.started_at else None,
+                'completed_at': exec_data.completed_at.isoformat() if exec_data.completed_at else None,
+                'result': exec_data.result,
+                'error_message': exec_data.error_message,
+                'duration_seconds': exec_data.duration_seconds
             }
             for exec_data in executions
         ]
@@ -510,16 +523,18 @@ async def get_executions_in_range(
 @router.get("/expected-runs-today", response_model=dict)
 @handle_scheduler_exceptions
 async def get_expected_runs_today(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
     scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> dict:
     """Calculate expected number of job runs today based on cron schedules"""
     try:
-        from datetime import datetime, timedelta
+        from datetime import timedelta
         
-        tasks = scheduler.task_store.list_tasks(enabled_only=True)
+        scheduler_service = SchedulerService(uow)
+        tasks = await scheduler_service.list_tasks(filters={"enabled": True})
         
-        now = datetime.now()
+        now = datetime.now(UTC)
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
         
@@ -527,7 +542,7 @@ async def get_expected_runs_today(
         task_run_counts = {}
         
         for task in tasks:
-            schedule = task.get('schedule', '')
+            schedule = task.schedule
             if not schedule:
                 continue
                 
@@ -537,9 +552,9 @@ async def get_expected_runs_today(
                     schedule, day_start, day_end
                 )
                 total_expected_runs += expected_runs
-                task_run_counts[task['task_id']] = expected_runs
+                task_run_counts[task.task_id] = expected_runs
             except Exception as e:
-                logger.warning(f"Failed to calculate runs for task {task['task_id']}: {e}")
+                logger.warning(f"Failed to calculate runs for task {task.task_id}: {e}")
                 continue
         
         return {
