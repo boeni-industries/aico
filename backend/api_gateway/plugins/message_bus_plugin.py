@@ -46,9 +46,8 @@ class MessageBusPlugin(BasePlugin):
     
     async def initialize(self) -> None:
         """Initialize plugin with dependencies"""
-        # Get database connection from service container
-        self.db_connection = self.require_service('database')
-        #print(f"[MESSAGE BUS PLUGIN] initialize() - db_connection: {self.db_connection is not None}")
+        # No dependencies needed - message bus is pure infrastructure
+        pass
     
     async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Process incoming request - required by PluginInterface"""
@@ -73,13 +72,12 @@ class MessageBusPlugin(BasePlugin):
             
             # Start message bus host directly in current async context
             print(f"[MESSAGE BUS PLUGIN] Starting message bus host...")
-            await self.message_bus_host.start(db_connection=self.db_connection)
+            await self.message_bus_host.start(db_connection=None)
             print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
             
             self.logger.info("Message bus plugin started", extra={
                 "bind_address": self.bind_address,
-                "db_connection": "provided" if self.db_connection else "none",
-                "persistence": "enabled" if self.db_connection else "disabled"
+                "persistence": "disabled (PostgreSQL uses UoW pattern)"
             })
             
             # Notify backend's ZMQ log transport that broker is ready
@@ -154,7 +152,7 @@ class MessageBusPlugin(BasePlugin):
                 "status": "healthy" if is_running else "stopped",
                 "message": f"Message bus {'running' if is_running else 'stopped'}",
                 "bind_address": self.bind_address,
-                "persistence": "enabled" if self.db_connection else "disabled",
+                "persistence": "disabled (PostgreSQL uses UoW pattern)",
                 "registered_modules": stats.get("registered_modules", []),
                 "total_messages": stats.get("total_messages", 0)
             }

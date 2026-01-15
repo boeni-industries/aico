@@ -28,7 +28,7 @@ logger = get_logger("backend.api.memory_album")
 async def remember_message(
     request: RememberRequest,
     current_user = Depends(get_current_user),
-    db = Depends(get_database)
+    uow: UnitOfWork = Depends(get_uow)
 ):
     """
     User clicks 'Remember This' on a message.
@@ -37,9 +37,9 @@ async def remember_message(
     try:
         user_uuid = current_user['user_uuid']
         
-        # Initialize stores with encrypted DB connection
-        memory_store = MemoryAlbumStore(db)
-        feedback_store = FeedbackEventStore(db)
+        # Initialize stores with UoW
+        memory_store = MemoryAlbumStore(uow)
+        feedback_store = FeedbackEventStore(uow)
         
         # 1. Store the fact (memory content)
         fact_id = await memory_store.store_user_curated_fact(
@@ -106,7 +106,7 @@ async def get_memories(
     limit: int = 50,
     offset: int = 0,
     current_user = Depends(get_current_user),
-    db = Depends(get_database)
+    uow: UnitOfWork = Depends(get_uow)
 ):
     """
     Get user's memory album entries with optional filters.
@@ -115,7 +115,7 @@ async def get_memories(
     try:
         user_uuid = current_user['user_uuid']
         
-        memory_store = MemoryAlbumStore(db)
+        memory_store = MemoryAlbumStore(uow)
         
         # Query user-curated facts with user profile information
         facts = await memory_store.get_user_curated_facts(

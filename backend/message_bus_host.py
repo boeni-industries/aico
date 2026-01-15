@@ -7,7 +7,7 @@ Runs the central message bus broker and provides integration with backend module
 import asyncio
 import logging
 import uuid
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
@@ -31,8 +31,8 @@ class AICOMessageBusHost:
         self.broker = MessageBusBroker(bind_address)
         self.internal_client = None
         
-        # Database integration
-        self.db_connection: Optional[None  # PostgreSQL migration] = None
+        # Database integration (PostgreSQL migration - no longer needed)
+        self.db_connection: Optional[Any] = None
         
         # Module registry
         self.modules: Dict[str, MessageBusClient] = {}
@@ -43,7 +43,7 @@ class AICOMessageBusHost:
         self.pending_messages = []
         self.shutdown_timeout = 3.0  # Max time to wait for message draining
     
-    async def start(self, db_connection: Optional[None  # PostgreSQL migration] = None):
+    async def start(self, db_connection: Optional[Any] = None):
         """Start the message bus host"""
         try:
             print(f"[MESSAGE BUS HOST] Starting broker on {self.bind_address}...")

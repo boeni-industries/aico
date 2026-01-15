@@ -18,7 +18,8 @@ from backend.api.kg.schemas import (
 )
 from backend.api.kg.dependencies import (
     get_current_user,
-    get_kg_storage
+    get_kg_storage,
+    get_db_connection
 )
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork

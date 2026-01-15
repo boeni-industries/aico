@@ -9,19 +9,10 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.scheduler.core import TaskScheduler
-from backend.scheduler.storage import TaskStore
 from backend.scheduler.tasks.base import (
     BaseTask, TaskContext, TaskResult, TaskStatus,
     TaskPriority, TaskQueue, RetryConfig, RetryStrategy
 )
-
-
-# Patch TaskStore.verify_tables_exist for all tests in this module
-@pytest.fixture(autouse=True)
-def mock_verify_tables():
-    """Mock database table verification for all tests"""
-    with patch.object(TaskStore, 'verify_tables_exist', return_value=None):
-        yield
 
 
 class MockSuccessTask(BaseTask):

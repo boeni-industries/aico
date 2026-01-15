@@ -11,6 +11,7 @@ import jwt
 from aico.core.logging import get_logger
 from aico.data.uow import UnitOfWork
 from aico.data.user.models import UserProfile
+from aico.data.user import UserService
 from .schemas import (
     CreateUserRequest, UpdateUserRequest, AuthenticateRequest, SetPinRequest,
     UserResponse, AuthenticationResponse, UserStatsResponse, UserListResponse
@@ -30,7 +31,7 @@ def _user_to_response(user) -> UserResponse:
     )
 from .dependencies import validate_uuid, validate_user_type, validate_pin, security
 from backend.core.postgres_dependencies import get_uow
-from backend.core.lifecycle_manager import get_auth_manager
+from backend.core.lifecycle_manager import get_auth_manager, get_user_service
 from .exceptions import (
     UserNotFoundError, UserServiceError, InvalidCredentialsError,
     handle_user_service_exceptions

@@ -449,7 +449,7 @@ async def revoke_session(
     user: Annotated[dict, Depends(get_current_user)],
     uow: Annotated[UnitOfWork, Depends(get_uow)],
     request: RevokeSessionRequest = Body(default=RevokeSessionRequest()),
-) -> dict:
+):
     """
     Revoke a session by marking it as inactive.
     

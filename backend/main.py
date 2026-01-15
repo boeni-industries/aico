@@ -78,7 +78,7 @@ async def setup_backend_components():
     app = await lifecycle_manager.startup()
     logger.info("Backend lifecycle manager initialized")
     
-    return lifecycle_manager, app
+    return app, lifecycle_manager
 
 async def main():
     """Run the application using lifecycle manager"""
@@ -140,7 +140,8 @@ async def main():
     print("="*60)
     print(f"✓ Server: http://{host}:{port}")
     print(f"✓ Environment: {os.getenv('AICO_ENV', 'development')}")
-    print(f"✓ Services: {len(lifecycle_manager.container._definitions)} registered")
+    if hasattr(lifecycle_manager, 'container') and hasattr(lifecycle_manager.container, '_definitions'):
+        print(f"✓ Services: {len(lifecycle_manager.container._definitions)} registered")
     print("="*60)
     print("✅ STARTUP COMPLETE - Server ready to accept connections")
     print("="*60)

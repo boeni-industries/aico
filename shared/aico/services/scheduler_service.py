@@ -301,3 +301,21 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"[SCHEDULER_SERVICE] Failed to count executions: {e}")
             raise
+
+    async def cleanup_old_executions(self, cutoff_date: datetime) -> int:
+        """Clean up old execution records before cutoff_date."""
+        try:
+            # Get all executions and filter by date
+            all_executions = await self.uow.scheduler_task_executions.list(limit=100000)
+            deleted_count = 0
+            
+            for execution in all_executions:
+                if execution.started_at and execution.started_at < cutoff_date:
+                    await self.uow.scheduler_task_executions.delete(execution.execution_id)
+                    deleted_count += 1
+            
+            logger.info(f"[SCHEDULER_SERVICE] Cleaned up {deleted_count} old executions before {cutoff_date}")
+            return deleted_count
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to cleanup old executions: {e}")
+            raise

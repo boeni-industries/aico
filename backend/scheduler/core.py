@@ -254,11 +254,12 @@ class TaskRegistry:
                     # Check if task exists
                     existing_task = await scheduler_service.get_task(task_id)
                     
+                    import json
                     task_data = {
                         'task_id': task_id,
                         'task_class': task_class.__name__,
                         'schedule': schedule,
-                        'config': default_config,
+                        'config': json.dumps(default_config) if default_config else None,
                         'enabled': enabled,
                         'created_at': datetime.now(UTC),
                         'updated_at': datetime.now(UTC)
@@ -578,12 +579,12 @@ class TaskScheduler(BaseService):
     
     async def initialize(self) -> None:
         """Initialize scheduler components"""
-        database = self.require_service("database")
+        # Database not needed - PostgreSQL uses UoW pattern per request
         config_manager = self.container.config
         
         # Initialize core components
-        self.task_registry = TaskRegistry(config_manager, database)
-        self.task_executor = TaskExecutor(config_manager, database, self.container)
+        self.task_registry = TaskRegistry(config_manager, None)
+        self.task_executor = TaskExecutor(config_manager, None, self.container)
         
         # Phase 6.2: Initialize priority queue
         scheduler_config = config_manager.get("scheduler", {})

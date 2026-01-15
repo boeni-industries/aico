@@ -51,11 +51,17 @@ class LogCleanupTask(BaseTask):
                 cleaned_size = self._cleanup_log_files(context, retention_days, max_size_mb)
                 results["files_cleaned_mb"] = cleaned_size
             
-            # Clean up task execution history
-            task_store = context.db_connection
-            from ..storage import TaskStore
-            store = TaskStore(task_store)
-            exec_deleted = store.cleanup_old_executions(retention_days)
+            # Clean up task execution history via SchedulerService
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = uow.scheduler
+                cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+                exec_deleted = await scheduler_service.cleanup_old_executions(cutoff_date)
+                await uow.commit()
+            
             results["task_executions_deleted"] = exec_deleted
             
             message = f"Log cleanup completed: {results}"
