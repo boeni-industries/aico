@@ -135,11 +135,21 @@ class AgencyEngine(BaseAIProcessor):
         self.planner.skill_matcher = None
         # Planner configured
         
-        # SkillInvoker and PlanExecutor disabled pending migration to PostgreSQL
-        # TODO: Migrate to use AgencyService instead of db_connection
-        self.skill_invoker = None
-        self.executor = None
-        # Plan Executor disabled pending migration
+        # Initialize SkillInvoker and PlanExecutor with AgencyService
+        self.skill_invoker = SkillInvoker(
+            db=None,  # Legacy parameter, not used with AgencyService
+            skill_registry=self.skill_registry,
+            logger=logger
+        )
+        
+        # Initialize PlanExecutor with AgencyService (PostgreSQL migration complete)
+        self.executor = PlanExecutor(
+            db=None,  # Legacy parameter, not used with AgencyService
+            agency_service=self.agency_service,
+            skill_invoker=self.skill_invoker,
+            logger=logger
+        )
+        # Plan Executor initialized with AgencyService
         
         # Optional backend hook for LLM-based plan refinement (injected by backend)
         self._llm_plan_refiner: Optional[Callable[[Goal, Plan], Awaitable[Plan]]] = llm_plan_refiner

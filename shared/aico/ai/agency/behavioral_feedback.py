@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass
 from enum import Enum
+
+if TYPE_CHECKING:
+    from aico.services.agency_service import AgencyService
 
 
 
@@ -86,31 +89,33 @@ class BehavioralFeedbackService:
     
     def __init__(
         self,
-        db: Any,  # Agency system being redesigned
+        agency_service: "AgencyService",
         logger=None
     ):
-        self.db = db
+        self.agency_service = agency_service
         self.logger = logger
     
     # ========================================================================
     # Skill Execution Tracking
     # ========================================================================
     
-    def record_skill_execution(
+    async def record_skill_execution(
         self,
+        execution_id: str,
         skill_id: str,
         user_id: str,
-        outcome: SkillOutcome,
-        execution_time_ms: Optional[int] = None,
         message_id: Optional[str] = None,
         goal_id: Optional[str] = None,
+        execution_time_ms: Optional[int] = None,
+        outcome: SkillOutcome = SkillOutcome.SUCCESS,
         error_message: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None
-    ) -> str:
+    ) -> None:
         """
         Record a skill execution.
         
         Args:
+            execution_id: ID of the skill execution
             skill_id: ID of the skill executed
             user_id: User ID
             outcome: Execution outcome

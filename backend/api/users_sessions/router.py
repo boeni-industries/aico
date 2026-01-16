@@ -375,7 +375,7 @@ async def get_session_statistics(
     try:
         # Get all sessions
         all_sessions = await uow.sessions.list(limit=10000)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         # Calculate overall statistics
         total_sessions = len(all_sessions)

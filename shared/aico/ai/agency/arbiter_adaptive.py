@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass, field
 from enum import Enum
+
+if TYPE_CHECKING:
+    from aico.services.agency_service import AgencyService
 
 
 
@@ -80,58 +83,55 @@ class AdaptiveScoringEngine:
     
     def __init__(
         self,
-        db: Any,  # Agency system being redesigned
+        agency_service: "AgencyService",
         config: Optional[AdaptiveConfig] = None,
         logger=None
     ):
-        self.db = db
+        self.agency_service = agency_service
         self.config = config or AdaptiveConfig()
         self.logger = logger
         
         # Initialize arms (weight configurations)
         self.arms: Dict[str, WeightArm] = {}
-        self._load_arms()
+        # Arms will be loaded asynchronously via load_arms()
         
-        # If no arms exist, create default configurations
-        if not self.arms:
-            self._initialize_default_arms()
+        # Note: Initialization is now async - call await load_arms() after construction
     
     # ========================================================================
     # Arm Management
     # ========================================================================
     
-    def _load_arms(self) -> None:
-        """Load existing arms from database."""
+    async def load_arms(self) -> None:
+        """Load existing arms from database (async)."""
         try:
-            rows = self.db.fetch_all(
-                """
-                SELECT arm_id, weights_json, pulls, total_reward,
-                       success_count, failure_count, last_pulled
-                FROM arbiter_bandit_arms
-                WHERE active = 1
-                """
-            )
+            rows = await self.agency_service.get_bandit_arms()
             
             for row in rows:
                 self.arms[row["arm_id"]] = WeightArm(
                     arm_id=row["arm_id"],
-                    weights=json.loads(row["weights_json"]),
+                    weights=json.loads(row["weights_json"]) if isinstance(row["weights_json"], str) else row["weights_json"],
                     pulls=row["pulls"],
                     total_reward=row["total_reward"],
                     success_count=row["success_count"],
                     failure_count=row["failure_count"],
-                    last_pulled=datetime.fromisoformat(row["last_pulled"]).replace(tzinfo=UTC) if row["last_pulled"] else None
+                    last_pulled=datetime.fromisoformat(row["last_pulled"]).replace(tzinfo=UTC) if row.get("last_pulled") else None
                 )
             
             if self.logger and self.arms:
                 self.logger.debug(f"[ADAPTIVE] Loaded {len(self.arms)} bandit arms")
+            
+            # If no arms exist, create default configurations
+            if not self.arms:
+                await self._initialize_default_arms()
                 
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"[ADAPTIVE] Failed to load arms: {e}")
+            # Initialize defaults on error
+            await self._initialize_default_arms()
     
-    def _initialize_default_arms(self) -> None:
-        """Initialize default arm configurations."""
+    async def _initialize_default_arms(self) -> None:
+        """Initialize default arm configurations (async)."""
         # Default balanced configuration
         default_weights = {
             "priority": 0.30,
@@ -154,35 +154,28 @@ class AdaptiveScoringEngine:
         for arm_id, weights in arm_configs:
             arm = WeightArm(arm_id=arm_id, weights=weights)
             self.arms[arm_id] = arm
-            self._save_arm(arm)
+            await self._save_arm(arm)
         
         if self.logger:
             self.logger.debug(f"[ADAPTIVE] Initialized {len(arm_configs)} default arms")
     
-    def _save_arm(self, arm: WeightArm) -> None:
-        """Save or update an arm in the database."""
+    async def _save_arm(self, arm: WeightArm) -> None:
+        """Save or update an arm in the database (async)."""
         try:
-            now = datetime.now(UTC).isoformat()
-            self.db.execute(
-                """
-                INSERT OR REPLACE INTO arbiter_bandit_arms (
-                    arm_id, weights_json, pulls, total_reward,
-                    success_count, failure_count, last_pulled, active, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                """,
-                (
-                    arm.arm_id,
-                    json.dumps(arm.weights),
-                    arm.pulls,
-                    arm.total_reward,
-                    arm.success_count,
-                    arm.failure_count,
-                    arm.last_pulled.isoformat() if arm.last_pulled else None,
-                    now,
-                    now
-                )
-            )
-            self.db.commit()  # Ensure changes are committed
+            now = datetime.now(UTC)
+            arm_data = {
+                "arm_id": arm.arm_id,
+                "weights_json": json.dumps(arm.weights),
+                "pulls": arm.pulls,
+                "total_reward": arm.total_reward,
+                "success_count": arm.success_count,
+                "failure_count": arm.failure_count,
+                "last_pulled": arm.last_pulled.isoformat() if arm.last_pulled else None,
+                "active": True,
+                "created_at": now,
+                "updated_at": now
+            }
+            await self.agency_service.save_bandit_arm(arm_data)
         except Exception as e:
             if self.logger:
                 self.logger.error(f"[ADAPTIVE] Failed to save arm {arm.arm_id}: {e}")
@@ -304,7 +297,7 @@ class AdaptiveScoringEngine:
     # Reward & Learning
     # ========================================================================
     
-    def update_arm(
+    async def update_arm(
         self,
         arm_id: str,
         reward: float,
@@ -312,7 +305,7 @@ class AdaptiveScoringEngine:
         goal_id: Optional[str] = None
     ) -> None:
         """
-        Update an arm with outcome feedback.
+        Update an arm with outcome feedback (async).
         
         Args:
             arm_id: ID of the arm that was used
@@ -335,7 +328,7 @@ class AdaptiveScoringEngine:
         else:
             arm.failure_count += 1
         
-        self._save_arm(arm)
+        await self._save_arm(arm)
         
         if self.logger:
             self.logger.info(
@@ -345,9 +338,9 @@ class AdaptiveScoringEngine:
         
         # Check if we should optimize weights
         if arm.pulls >= self.config.min_pulls_per_arm:
-            self._maybe_optimize_weights()
+            await self._maybe_optimize_weights()
     
-    def _maybe_optimize_weights(self) -> None:
+    async def _maybe_optimize_weights(self) -> None:
         """
         Periodically optimize weights based on accumulated data.
         Creates new arm configurations based on successful patterns.
@@ -369,9 +362,9 @@ class AdaptiveScoringEngine:
         # Create variation of best arm (gradient-based exploration)
         # This is a simple approach; more sophisticated methods could be used
         if best_arm.average_reward > 0.6 and len(self.arms) < 10:
-            self._create_arm_variation(best_arm)
+            await self._create_arm_variation(best_arm)
     
-    def _create_arm_variation(self, base_arm: WeightArm) -> None:
+    async def _create_arm_variation(self, base_arm: WeightArm) -> None:
         """Create a new arm as variation of a successful arm."""
         import random
         
@@ -390,7 +383,7 @@ class AdaptiveScoringEngine:
         arm_id = f"optimized_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
         new_arm = WeightArm(arm_id=arm_id, weights=new_weights)
         self.arms[arm_id] = new_arm
-        self._save_arm(new_arm)
+        await self._save_arm(new_arm)
         
         if self.logger:
             self.logger.info(f"[ADAPTIVE] Created new arm variation: {arm_id}")
@@ -399,7 +392,7 @@ class AdaptiveScoringEngine:
     # A/B Testing Framework
     # ========================================================================
     
-    def start_ab_test(
+    async def start_ab_test(
         self,
         test_name: str,
         arm_a_id: str,
@@ -407,7 +400,7 @@ class AdaptiveScoringEngine:
         duration_days: int = 7
     ) -> str:
         """
-        Start an A/B test comparing two arms.
+        Start an A/B test comparing two arms (async).
         
         Args:
             test_name: Name of the test
@@ -421,26 +414,21 @@ class AdaptiveScoringEngine:
         import uuid
         
         test_id = str(uuid.uuid4())
-        end_date = datetime.now(UTC) + timedelta(days=duration_days)
+        now = datetime.now(UTC)
+        end_date = now + timedelta(days=duration_days)
         
         try:
-            self.db.execute(
-                """
-                INSERT INTO arbiter_ab_tests (
-                    test_id, test_name, arm_a_id, arm_b_id,
-                    start_date, end_date, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
-                """,
-                (
-                    test_id,
-                    test_name,
-                    arm_a_id,
-                    arm_b_id,
-                    datetime.now(UTC).isoformat(),
-                    end_date.isoformat(),
-                    datetime.now(UTC).isoformat()
-                )
-            )
+            test_data = {
+                "test_id": test_id,
+                "test_name": test_name,
+                "arm_a_id": arm_a_id,
+                "arm_b_id": arm_b_id,
+                "start_date": now,
+                "end_date": end_date,
+                "status": "active",
+                "created_at": now
+            }
+            await self.agency_service.create_ab_test(test_data)
             
             if self.logger:
                 self.logger.info(
@@ -455,13 +443,10 @@ class AdaptiveScoringEngine:
                 self.logger.error(f"[ADAPTIVE] Failed to start A/B test: {e}")
             raise
     
-    def get_ab_test_results(self, test_id: str) -> Dict:
-        """Get results of an A/B test."""
+    async def get_ab_test_results(self, test_id: str) -> Dict:
+        """Get results of an A/B test (async)."""
         try:
-            test = self.db.fetch_one(
-                "SELECT * FROM arbiter_ab_tests WHERE test_id = ?",
-                (test_id,)
-            )
+            test = await self.agency_service.get_ab_test(test_id)
             
             if not test:
                 return {"error": "Test not found"}

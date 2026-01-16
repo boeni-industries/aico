@@ -279,3 +279,250 @@ class AgencyService:
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get active intentions: {e}", extra={"user_id": user_id})
             raise
+
+    # ==================== Adaptive Arbiter Operations ====================
+
+    async def save_bandit_arm(self, arm_data: Dict[str, Any]) -> None:
+        """Save or update a bandit arm configuration."""
+        try:
+            from aico.data.agency.models import ArbiterBanditArm
+            arm = ArbiterBanditArm(**arm_data)
+            await self.uow.arbiter_bandit_arms.upsert(arm)
+            await self.uow.commit()
+            logger.debug(f"[AGENCY_SERVICE] Saved bandit arm: {arm_data.get('arm_id')}")
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to save bandit arm: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_bandit_arms(self) -> List[Dict[str, Any]]:
+        """Get all bandit arm configurations."""
+        try:
+            arms = await self.uow.arbiter_bandit_arms.list()
+            return [arm.to_dict() if hasattr(arm, 'to_dict') else arm for arm in arms]
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get bandit arms: {e}")
+            raise
+
+    async def create_ab_test(self, test_data: Dict[str, Any]) -> None:
+        """Create an A/B test for arbiter configurations."""
+        try:
+            from aico.data.agency.models import ArbiterABTest
+            test = ArbiterABTest(**test_data)
+            await self.uow.arbiter_ab_tests.create(test)
+            await self.uow.commit()
+            logger.info(f"[AGENCY_SERVICE] Created A/B test: {test_data.get('test_id')}")
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to create A/B test: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_ab_test(self, test_id: str) -> Optional[Dict[str, Any]]:
+        """Get A/B test results."""
+        try:
+            test = await self.uow.arbiter_ab_tests.get_by_id(test_id)
+            return test.to_dict() if test and hasattr(test, 'to_dict') else test
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get A/B test: {e}")
+            raise
+
+    # ==================== Behavioral Feedback Operations ====================
+
+    async def record_skill_execution(self, execution_data: Dict[str, Any]) -> str:
+        """Record a skill execution."""
+        try:
+            from aico.data.agency.models import AgencySkillExecution
+            execution = AgencySkillExecution(**execution_data)
+            created = await self.uow.agency_skill_executions.create(execution)
+            await self.uow.commit()
+            logger.info(f"[AGENCY_SERVICE] Recorded skill execution: {created.execution_id}")
+            return created.execution_id
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to record skill execution: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def link_goal_skill_execution(self, link_data: Dict[str, Any]) -> None:
+        """Link a skill execution to a goal."""
+        try:
+            from aico.data.agency.models import AgencyGoalSkillExecution
+            link = AgencyGoalSkillExecution(**link_data)
+            await self.uow.agency_goal_skill_executions.create(link)
+            await self.uow.commit()
+            logger.debug(f"[AGENCY_SERVICE] Linked execution to goal: {link_data.get('goal_id')}")
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to link skill execution: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_goal_executions(self, goal_id: str) -> List[Dict[str, Any]]:
+        """Get all skill executions for a goal."""
+        try:
+            # Use a join query through the repository
+            executions = await self.uow.agency_skill_executions.get_by_goal(goal_id)
+            return [e.to_dict() if hasattr(e, 'to_dict') else e for e in executions]
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get goal executions: {e}")
+            raise
+
+    async def record_behavioral_feedback(self, feedback_data: Dict[str, Any]) -> str:
+        """Record behavioral feedback."""
+        try:
+            from aico.data.agency.models import AMSBehavioralFeedback
+            feedback = AMSBehavioralFeedback(**feedback_data)
+            created = await self.uow.ams_behavioral_feedback.create(feedback)
+            await self.uow.commit()
+            logger.info(f"[AGENCY_SERVICE] Recorded behavioral feedback: {created.feedback_id}")
+            return created.feedback_id
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to record behavioral feedback: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_skill_execution_outcome(self, execution_id: str) -> Optional[str]:
+        """Get the outcome of a skill execution."""
+        try:
+            execution = await self.uow.agency_skill_executions.get_by_id(execution_id)
+            return execution.outcome if execution else None
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get execution outcome: {e}")
+            raise
+
+    async def update_feedback_outcome(self, feedback_id: str, outcome: str) -> None:
+        """Update the outcome of a feedback record."""
+        try:
+            feedback = await self.uow.ams_behavioral_feedback.get_by_id(feedback_id)
+            if feedback:
+                feedback.outcome = outcome
+                await self.uow.ams_behavioral_feedback.update(feedback)
+                await self.uow.commit()
+                logger.debug(f"[AGENCY_SERVICE] Updated feedback outcome: {feedback_id}")
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to update feedback outcome: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def create_feedback_request(self, request_data: Dict[str, Any]) -> str:
+        """Create a user feedback request."""
+        try:
+            from aico.data.agency.models import UserFeedbackRequest
+            request = UserFeedbackRequest(**request_data)
+            created = await self.uow.user_feedback_requests.create(request)
+            await self.uow.commit()
+            logger.info(f"[AGENCY_SERVICE] Created feedback request: {created.request_id}")
+            return created.request_id
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to create feedback request: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def respond_to_feedback_request(self, request_id: str, response: str, rating: Optional[float]) -> None:
+        """Record user response to feedback request."""
+        try:
+            request = await self.uow.user_feedback_requests.get_by_id(request_id)
+            if request:
+                request.response = response
+                request.rating = rating
+                request.responded_at = datetime.now(UTC)
+                await self.uow.user_feedback_requests.update(request)
+                await self.uow.commit()
+                logger.info(f"[AGENCY_SERVICE] Recorded feedback response: {request_id}")
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to respond to feedback request: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_pending_feedback_requests(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get pending feedback requests for a user."""
+        try:
+            requests = await self.uow.user_feedback_requests.list(
+                filters={"user_id": user_id, "responded_at": None}
+            )
+            return [r.to_dict() if hasattr(r, 'to_dict') else r for r in requests]
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get pending feedback requests: {e}")
+            raise
+
+    async def get_skill_performance_stats(self, skill_id: str, user_id: Optional[str] = None, days: int = 30) -> Dict[str, Any]:
+        """Get performance statistics for a skill."""
+        try:
+            from_date = (datetime.now(UTC) - timedelta(days=days))
+            stats = await self.uow.ams_behavioral_feedback.get_skill_stats(
+                skill_id=skill_id,
+                user_id=user_id,
+                from_date=from_date
+            )
+            return stats
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get skill performance stats: {e}")
+            raise
+
+    async def get_skill_trend_data(self, skill_id: str, days: int = 30) -> List[Dict[str, Any]]:
+        """Get trend data for skill performance over time."""
+        try:
+            from_date = (datetime.now(UTC) - timedelta(days=days))
+            trends = await self.uow.ams_behavioral_feedback.get_skill_trends(
+                skill_id=skill_id,
+                from_date=from_date
+            )
+            return trends
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get skill trend data: {e}")
+            raise
+
+    # ==================== Step Execution Operations ====================
+
+    async def create_step_execution(self, step_data: Dict[str, Any]) -> str:
+        """Create a step execution record."""
+        try:
+            from aico.data.agency.models import AgencyStepExecution
+            step = AgencyStepExecution(**step_data)
+            created = await self.uow.agency_step_executions.create(step)
+            await self.uow.commit()
+            logger.debug(f"[AGENCY_SERVICE] Created step execution: {created.step_execution_id}")
+            return created.step_execution_id
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to create step execution: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def update_step_execution(self, step_execution_id: str, updates: Dict[str, Any]) -> None:
+        """Update a step execution record."""
+        try:
+            step = await self.uow.agency_step_executions.get_by_id(step_execution_id)
+            if step:
+                for key, value in updates.items():
+                    setattr(step, key, value)
+                await self.uow.agency_step_executions.update(step)
+                await self.uow.commit()
+                logger.debug(f"[AGENCY_SERVICE] Updated step execution: {step_execution_id}")
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to update step execution: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_step_executions(self, execution_id: str) -> List[Dict[str, Any]]:
+        """Get all step executions for a plan execution."""
+        try:
+            steps = await self.uow.agency_step_executions.list(
+                filters={"execution_id": execution_id}
+            )
+            return [s.to_dict() if hasattr(s, 'to_dict') else s for s in steps]
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get step executions: {e}")
+            raise
+
+    async def update_plan_execution(self, execution_id: str, updates: Dict[str, Any]) -> None:
+        """Update a plan execution record."""
+        try:
+            execution = await self.uow.agency_plan_executions.get_by_id(execution_id)
+            if execution:
+                for key, value in updates.items():
+                    setattr(execution, key, value)
+                await self.uow.agency_plan_executions.update(execution)
+                await self.uow.commit()
+                logger.debug(f"[AGENCY_SERVICE] Updated plan execution: {execution_id}")
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to update plan execution: {e}")
+            await self.uow.rollback()
+            raise

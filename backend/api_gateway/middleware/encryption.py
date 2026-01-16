@@ -338,6 +338,21 @@ class EncryptionMiddleware:
                         encrypted_payload = request_data["payload"]
                         
                         try:
+                            # Validate session before attempting decryption
+                            if not channel.session_established:
+                                self.logger.error("Decryption attempted but session not established")
+                                raise DecryptionError("Session not established")
+                            
+                            if not channel.session_box:
+                                self.logger.error("Decryption attempted but session_box is None")
+                                raise DecryptionError("Session box not initialized")
+                            
+                            # Check session timeout
+                            import time
+                            if time.time() - channel.session_timestamp > channel.session_timeout:
+                                self.logger.error(f"Session expired (age: {time.time() - channel.session_timestamp}s, timeout: {channel.session_timeout}s)")
+                                raise DecryptionError("Session expired")
+                            
                             decrypted_data = channel.decrypt_json_payload(encrypted_payload)
                             
                             # Replace the request body with decrypted data
@@ -383,11 +398,24 @@ class EncryptionMiddleware:
                             await self.app(new_scope, new_receive, encrypt_send)
                             return
                             
+                        except DecryptionError as e:
+                            self.logger.error(f"Decryption failed: {e}")
+                            # Clear the invalid session
+                            if client_id in self.channels:
+                                del self.channels[client_id]
+                                self.logger.info(f"Cleared invalid session for client {client_id}")
+                            # Return 401 to trigger handshake retry
+                            response = JSONResponse(
+                                status_code=401,
+                                content={
+                                    "error": "Session invalid",
+                                    "message": "Please perform handshake again at /api/v1/handshake"
+                                }
+                            )
+                            await response(scope, receive, send)
+                            return
                         except Exception as e:
-                            self.logger.error(f"Decryption failed with error: {e}")
-                            # Let's also check if the channel has the right session info
-                            self.logger.error(f"Channel session_established: {getattr(channel, 'session_established', 'N/A')}")
-                            self.logger.error(f"Channel session_box exists: {hasattr(channel, 'session_box') and channel.session_box is not None}")
+                            self.logger.error(f"Unexpected decryption error: {e}", exc_info=True)
                             raise
                 except json.JSONDecodeError:
                     # Not JSON, pass through

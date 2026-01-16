@@ -5,7 +5,7 @@ Periodically checks if AICO should initiate conversations with users based on
 learned patterns and contextual features using state-of-the-art learning algorithms.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List
 import uuid
 
@@ -116,7 +116,7 @@ class ProactiveConversationTask(BaseTask):
             
             # LAYER 1: Batch pre-filter users with recent pending initiations via UoW
             async with UnitOfWork(session_factory) as uow:
-                yesterday = datetime.now(UTC) - timedelta(days=1)
+                yesterday = datetime.now(timezone.utc) - timedelta(days=1)
                 
                 pending_initiations = await uow.conversation_initiations.list(
                     filters={'status': 'pending'},
@@ -234,7 +234,7 @@ class ProactiveConversationTask(BaseTask):
                         
                         # LAYER 2: Check database for duplicate strategy AND question content via UoW
                         async with UnitOfWork(session_factory) as uow:
-                            week_ago = datetime.now(UTC) - timedelta(days=7)
+                            week_ago = datetime.now(timezone.utc) - timedelta(days=7)
                             user_initiations = await uow.conversation_initiations.list(
                                 filters={
                                     'user_id': user_id,
@@ -275,7 +275,7 @@ class ProactiveConversationTask(BaseTask):
                                 question=message,
                                 civility_score=civility,
                                 status='pending',
-                                created_at=datetime.now(UTC)
+                                created_at=datetime.now(timezone.utc)
                             )
                             
                             await uow.conversation_initiations.create(initiation)
