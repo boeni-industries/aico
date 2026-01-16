@@ -7,6 +7,7 @@ Pydantic models for task scheduler REST API endpoints.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, validator
+from enum import Enum
 
 
 class TaskConfigRequest(BaseModel):
@@ -143,3 +144,34 @@ class ValidationErrorResponse(BaseModel):
     success: bool = False
     message: str
     errors: List[Dict[str, Any]]
+
+
+# WebSocket Event Schemas
+
+class SchedulerEventType(str, Enum):
+    """Scheduler event types for WebSocket notifications"""
+    TASK_STUCK = "task_stuck"
+    TASK_LONG_RUNNING = "task_long_running"
+    TASK_FAILED = "task_failed"
+    TASK_COMPLETED = "task_completed"
+    SCHEDULER_ERROR = "scheduler_error"
+
+
+class SchedulerEventSeverity(str, Enum):
+    """Event severity levels"""
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+class SchedulerEventMessage(BaseModel):
+    """WebSocket message for scheduler events"""
+    type: SchedulerEventType = Field(..., description="Event type")
+    task_id: str = Field(..., description="Task identifier")
+    severity: SchedulerEventSeverity = Field(..., description="Event severity")
+    timestamp: str = Field(..., description="Event timestamp (ISO format)")
+    details: Dict[str, Any] = Field(default_factory=dict, description="Event details")
+    
+    class Config:
+        use_enum_values = True

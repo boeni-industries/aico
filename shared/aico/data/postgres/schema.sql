@@ -996,12 +996,15 @@ CREATE TABLE IF NOT EXISTS "scheduler_task_executions" (
                 completed_at TIMESTAMPTZ,
                 result TEXT,  -- JSONB TaskResult
                 error_message TEXT,
-                duration_seconds DOUBLE PRECISION
+                duration_seconds DOUBLE PRECISION,
+                acknowledged BOOLEAN DEFAULT FALSE
             );
 
 CREATE INDEX IF NOT EXISTS idx_task_executions_started_at ON "scheduler_task_executions" (started_at);
 
 CREATE INDEX IF NOT EXISTS idx_task_executions_task_id ON "scheduler_task_executions" (task_id);
+
+CREATE INDEX IF NOT EXISTS idx_task_executions_acknowledged ON "scheduler_task_executions" (status, acknowledged) WHERE status = 'failed' AND acknowledged = FALSE;
 
 CREATE TABLE IF NOT EXISTS "scheduler_tasks" (
                 task_id TEXT PRIMARY KEY,

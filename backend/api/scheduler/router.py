@@ -5,7 +5,7 @@ REST API endpoints for task scheduler management following AICO patterns.
 """
 
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, WebSocket
 from datetime import datetime, UTC
 import json
 
@@ -569,3 +569,128 @@ async def get_expected_runs_today(
     except Exception as e:
         logger.error(f"Failed to calculate expected runs: {e}")
         raise SchedulerNotAvailableError()
+
+
+@router.post("/executions/{execution_id}/acknowledge", response_model=ApiResponse)
+@handle_scheduler_exceptions
+async def acknowledge_execution(
+    execution_id: str,
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    _auth = Depends(require_admin_access)
+) -> ApiResponse:
+    """Mark a single failed execution as acknowledged (hide from UI)."""
+    try:
+        scheduler_service = SchedulerService(uow)
+        success = await scheduler_service.acknowledge_execution(execution_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Execution {execution_id} not found"
+            )
+        
+        logger.info(f"Acknowledged execution: {execution_id}")
+        
+        return ApiResponse(
+            success=True,
+            message=f"Execution {execution_id} acknowledged successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to acknowledge execution {execution_id}: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.post("/executions/acknowledge-all", response_model=ApiResponse)
+@handle_scheduler_exceptions
+async def acknowledge_all_failed(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    task_id: Optional[str] = None,
+    _auth = Depends(require_admin_access)
+) -> ApiResponse:
+    """Mark all failed executions as acknowledged.
+    
+    Query Parameters:
+        task_id: Optional task ID to limit acknowledgement to specific task
+    """
+    try:
+        scheduler_service = SchedulerService(uow)
+        count = await scheduler_service.acknowledge_all_failed(task_id=task_id)
+        
+        if task_id:
+            message = f"Acknowledged {count} failed executions for task {task_id}"
+        else:
+            message = f"Acknowledged {count} failed executions across all tasks"
+        
+        logger.info(message)
+        
+        return ApiResponse(
+            success=True,
+            message=message
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to acknowledge all failed executions: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.get("/executions/unacknowledged-failures", response_model=dict)
+@handle_scheduler_exceptions
+async def get_unacknowledged_failures(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    task_id: Optional[str] = None,
+    limit: int = 100,
+    _auth = Depends(require_admin_access)
+) -> dict:
+    """Get unacknowledged failed executions.
+    
+    Query Parameters:
+        task_id: Optional task ID to filter by
+        limit: Maximum number of results (default: 100)
+    """
+    try:
+        scheduler_service = SchedulerService(uow)
+        executions = await scheduler_service.get_unacknowledged_failures(task_id=task_id, limit=limit)
+        
+        executions_response = [
+            {
+                'execution_id': exec_data.execution_id,
+                'task_id': exec_data.task_id,
+                'status': exec_data.status,
+                'started_at': exec_data.started_at.isoformat() if exec_data.started_at else None,
+                'completed_at': exec_data.completed_at.isoformat() if exec_data.completed_at else None,
+                'error_message': exec_data.error_message,
+                'duration_seconds': exec_data.duration_seconds
+            }
+            for exec_data in executions
+        ]
+        
+        return {
+            'executions': executions_response,
+            'total_count': len(executions_response),
+            'task_id': task_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get unacknowledged failures: {e}")
+        raise SchedulerNotAvailableError()
+
+
+# WebSocket endpoint for real-time scheduler events
+@router.websocket("/ws/events")
+async def scheduler_events_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time scheduler event notifications.
+    
+    Provides live updates for:
+    - Stuck tasks (exceeded timeout + buffer)
+    - Long-running tasks (approaching timeout)
+    - Task failures
+    - Critical scheduler errors
+    
+    Follows the same pattern as conversation WebSocket endpoint.
+    """
+    from .events import scheduler_events_websocket as handle_ws
+    await handle_ws(websocket)

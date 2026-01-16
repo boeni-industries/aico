@@ -1079,6 +1079,7 @@ scheduler_task_executions = Table(
     Column('result', String),
     Column('error_message', String),
     Column('duration_seconds', Float),
+    Column('acknowledged', Boolean, default=False),
     Index('idx_task_executions_task_id', 'task_id'),
     Index('idx_task_executions_started_at', 'started_at'),
 )

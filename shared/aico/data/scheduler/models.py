@@ -26,6 +26,7 @@ class TaskExecution(BaseModel):
     result: Optional[str] = None
     error_message: Optional[str] = None
     duration_seconds: Optional[float] = None
+    acknowledged: bool = False
 
 
 class SchedulerTaskLock(BaseModel):

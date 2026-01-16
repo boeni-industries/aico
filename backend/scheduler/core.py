@@ -281,6 +281,11 @@ class TaskExecutor:
         self.logger = get_logger("backend.scheduler.task_executor")
         # SchedulerService will be used via UoW instead of TaskStore
         self.running_tasks: Dict[str, asyncio.Task] = {}
+        # Track execution start times and timeouts for stuck task detection
+        self.task_start_times: Dict[str, datetime] = {}
+        self.task_timeouts: Dict[str, int] = {}  # Configured timeout per task
+        self.stuck_buffer_seconds = 300  # 5 minute buffer beyond timeout
+        self.last_stuck_check: Optional[datetime] = None
     
     async def execute_task(self, task_class: Type[BaseTask], task_config: Dict[str, Any], retry_count: int = 0) -> TaskResult:
         """Execute a single task with full lifecycle management"""
@@ -296,6 +301,12 @@ class TaskExecutor:
         
         # Add to running tasks (local process coordination)
         self.running_tasks[task_id] = asyncio.current_task()
+        self.task_start_times[task_id] = start_time
+        
+        # Store configured timeout for this task (for stuck detection)
+        scheduler_config = self.get_config("scheduler", {})
+        task_timeout = scheduler_config.get("task_timeout", 3600)  # 1 hour default
+        self.task_timeouts[task_id] = task_timeout
         
         # Get session factory for database operations
         from aico.data.postgres.connection import get_session_factory
@@ -396,19 +407,34 @@ class TaskExecutor:
                 return result
                 
             finally:
-                # Cleanup
+                # Cleanup task instance
                 if task_instance:
                     try:
                         await task_instance.cleanup()
                     except Exception as e:
                         self.logger.warning(f"Task cleanup failed for {task_id}: {e}")
-
-            # Remove from running tasks
-            try:
-                if task_id in self.running_tasks:
-                    del self.running_tasks[task_id]
-            except KeyError:
-                self.logger.warning(f"Task {task_id} was not in running_tasks dict during cleanup.")
+                
+                # CRITICAL: Remove from running tasks to prevent permanent blocking
+                # This MUST be in finally block to ensure it always runs
+                try:
+                    if task_id in self.running_tasks:
+                        del self.running_tasks[task_id]
+                        self.logger.debug(f"✓ Removed {task_id} from running_tasks")
+                    else:
+                        # LOG LOUDLY: Task wasn't in running_tasks - this shouldn't happen
+                        self.logger.warning(
+                            f"⚠️  Task {task_id} was not in running_tasks during cleanup. "
+                            f"This may indicate a state management issue."
+                        )
+                    
+                    # Clean up start time and timeout tracking
+                    if task_id in self.task_start_times:
+                        del self.task_start_times[task_id]
+                    if task_id in self.task_timeouts:
+                        del self.task_timeouts[task_id]
+                        
+                except KeyError:
+                    self.logger.warning(f"Task {task_id} was not in running_tasks dict during cleanup.")
     
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value from config manager"""
@@ -505,6 +531,94 @@ class TaskExecutor:
         except Exception as e:
             self.logger.warning(f"Resource check failed: {e}")
             return True  # Allow execution on check failure
+    
+    def check_for_stuck_tasks(self) -> list:
+        """
+        Check for tasks that have been running longer than their timeout + buffer.
+        
+        Uses task-specific timeout (default 1 hour) + 5 minute buffer to detect
+        truly stuck tasks without false positives for legitimately long-running tasks.
+        
+        This method is called by the scheduler to detect stuck tasks.
+        Returns list of stuck task details for logging/alerting.
+        
+        Returns:
+            List of dicts with stuck task information
+        """
+        now = datetime.now(timezone.utc)
+        stuck_tasks = []
+        
+        # Only check periodically to avoid spam (every 60 seconds)
+        if self.last_stuck_check:
+            time_since_last_check = (now - self.last_stuck_check).total_seconds()
+            if time_since_last_check < 60:
+                return stuck_tasks
+        
+        self.last_stuck_check = now
+        
+        for task_id, start_time in self.task_start_times.items():
+            duration_seconds = (now - start_time).total_seconds()
+            
+            # Get task-specific timeout (or use default)
+            task_timeout = self.task_timeouts.get(task_id, 3600)  # 1 hour default
+            stuck_threshold = task_timeout + self.stuck_buffer_seconds
+            
+            # Only report if running longer than timeout + buffer
+            if duration_seconds > stuck_threshold:
+                duration_minutes = duration_seconds / 60
+                timeout_minutes = task_timeout / 60
+                threshold_minutes = stuck_threshold / 60
+                
+                stuck_tasks.append({
+                    'task_id': task_id,
+                    'start_time': start_time.isoformat(),
+                    'duration_seconds': duration_seconds,
+                    'duration_minutes': duration_minutes,
+                    'timeout_seconds': task_timeout,
+                    'threshold_seconds': stuck_threshold
+                })
+                
+                # Log loudly
+                self.logger.error(
+                    f"⚠️  STUCK TASK DETECTED: {task_id} has been running for "
+                    f"{duration_minutes:.1f} minutes (timeout: {timeout_minutes:.1f} min, "
+                    f"threshold: {threshold_minutes:.1f} min)"
+                )
+                print(f"\n{'='*80}")
+                print(f"⚠️  STUCK TASK DETECTED")
+                print(f"{'='*80}")
+                print(f"Task ID: {task_id}")
+                print(f"Started: {start_time.isoformat()}")
+                print(f"Duration: {duration_minutes:.1f} minutes")
+                print(f"Configured Timeout: {timeout_minutes:.1f} minutes")
+                print(f"Stuck Threshold: {threshold_minutes:.1f} minutes (timeout + 5 min buffer)")
+                print(f"Status: Task exceeded timeout + buffer - likely hung")
+                print(f"{'='*80}\n")
+                
+                # Broadcast event to WebSocket clients
+                try:
+                    import asyncio
+                    from backend.api.scheduler.events import broadcast_scheduler_event
+                    
+                    event = {
+                        'type': 'task_stuck',
+                        'task_id': task_id,
+                        'severity': 'error',
+                        'timestamp': now.isoformat(),
+                        'details': {
+                            'duration_minutes': duration_minutes,
+                            'timeout_minutes': timeout_minutes,
+                            'threshold_minutes': threshold_minutes,
+                            'start_time': start_time.isoformat()
+                        }
+                    }
+                    
+                    # Schedule broadcast in event loop
+                    asyncio.create_task(broadcast_scheduler_event(event))
+                except Exception as e:
+                    self.logger.warning(f"Failed to broadcast stuck task event: {e}")
+        
+        return stuck_tasks
     
     async def _record_completion(self, task_id: str, execution_id: str, result: TaskResult, 
                                status: TaskStatus, start_time: datetime):
@@ -809,6 +923,14 @@ class TaskScheduler(BaseService):
         """
         now = datetime.now(timezone.utc)
         
+        # 0. Monitor for stuck tasks (TaskExecutor owns this, throttles internally)
+        try:
+            stuck_tasks = self.task_executor.check_for_stuck_tasks()
+            if stuck_tasks:
+                self.logger.warning(f"Detected {len(stuck_tasks)} stuck task(s)")
+        except Exception as e:
+            self.logger.error(f"Failed to check for stuck tasks: {e}")
+        
         # 1. Enqueue scheduled tasks that are due
         for task_id, next_run in list(self.next_run_times.items()):
             if next_run <= now:
@@ -886,8 +1008,15 @@ class TaskScheduler(BaseService):
 
             # Prevent enqueue storms: if already running or already queued, don't enqueue again
             if task_id in self.task_executor.running_tasks:
+                # LOG LOUDLY: This could indicate a stuck task
+                self.logger.warning(
+                    f"⚠️  Task {task_id} is already in running_tasks - skipping enqueue. "
+                    f"If this persists, the task may be stuck."
+                )
+                print(f"⚠️  Task {task_id} blocked: already running")
                 return
             if hasattr(self, "priority_queue") and self.priority_queue and self.priority_queue.has_task(task_id):
+                self.logger.debug(f"Task {task_id} already queued - skipping duplicate enqueue")
                 return
             
             # Get task instance to access priority and queue
@@ -912,7 +1041,15 @@ class TaskScheduler(BaseService):
                     f"(priority={task_instance.priority.name})"
                 )
             else:
-                self.logger.warning(f"Failed to enqueue {task_id} - queue full")
+                # LOG LOUDLY: Queue full is a serious issue
+                error_msg = f"❌ CRITICAL: Failed to enqueue {task_id} - queue full!"
+                self.logger.error(error_msg)
+                print(f"\n{'='*80}")
+                print(error_msg)
+                print(f"Queue: {task_instance.queue.value}")
+                print(f"Priority: {task_instance.priority.name}")
+                print(f"This task will NOT run until queue space is available!")
+                print(f"{'='*80}\n")
                 
         except Exception as e:
             self.logger.error(f"Error enqueuing task {task_id}: {e}")

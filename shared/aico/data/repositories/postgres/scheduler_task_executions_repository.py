@@ -42,6 +42,7 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
             result=db_result,
             error_message=entity.error_message,
             duration_seconds=entity.duration_seconds,
+            acknowledged=entity.acknowledged,
         )
         result = await self.session.execute(stmt)
         entity.id = result.inserted_primary_key[0]
@@ -66,6 +67,7 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
             result=row.result,
             error_message=row.error_message,
             duration_seconds=row.duration_seconds,
+            acknowledged=row.acknowledged,
         )
     
     async def update(self, entity: TaskExecution) -> TaskExecution:
@@ -106,6 +108,7 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
                 result=db_result,
                 error_message=entity.error_message,
                 duration_seconds=entity.duration_seconds,
+                acknowledged=entity.acknowledged,
             )
         )
         result = await self.session.execute(stmt)
@@ -139,6 +142,8 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
                 conditions.append(scheduler_task_executions.c.task_id == filters['task_id'])
             if 'status' in filters:
                 conditions.append(scheduler_task_executions.c.status == filters['status'])
+            if 'acknowledged' in filters:
+                conditions.append(scheduler_task_executions.c.acknowledged == filters['acknowledged'])
             
             if conditions:
                 stmt = stmt.where(and_(*conditions))
@@ -157,6 +162,7 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
                 result=row.result,
                 error_message=row.error_message,
                 duration_seconds=row.duration_seconds,
+                acknowledged=row.acknowledged,
             )
             for row in result.fetchall()
         ]
@@ -195,6 +201,7 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
                 result=row.result,
                 error_message=row.error_message,
                 duration_seconds=row.duration_seconds,
+                acknowledged=row.acknowledged,
             )
             for row in result.fetchall()
         ]

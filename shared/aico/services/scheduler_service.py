@@ -249,3 +249,89 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"[SCHEDULER_SERVICE] Failed to cleanup old executions: {e}")
             raise
+
+    # ==================== Acknowledgement Operations ====================
+
+    async def acknowledge_execution(self, execution_id: str) -> bool:
+        """Mark a single execution as acknowledged."""
+        try:
+            # Get the execution
+            executions = await self.uow.scheduler_task_executions.list(limit=1000)
+            execution = None
+            for exec in executions:
+                if exec.execution_id == execution_id:
+                    execution = exec
+                    break
+            
+            if not execution:
+                logger.warning(f"[SCHEDULER_SERVICE] Execution not found: {execution_id}")
+                return False
+            
+            # Update acknowledged flag
+            execution.acknowledged = True
+            await self.uow.scheduler_task_executions.update(execution)
+            await self.uow.commit()
+            
+            logger.info("[SCHEDULER_SERVICE] Acknowledged execution", extra={"execution_id": execution_id})
+            return True
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to acknowledge execution: {e}", extra={"execution_id": execution_id})
+            await self.uow.rollback()
+            raise
+
+    async def acknowledge_all_failed(self, task_id: Optional[str] = None) -> int:
+        """Mark all failed executions as acknowledged.
+        
+        Args:
+            task_id: Optional task ID to limit acknowledgement to specific task
+            
+        Returns:
+            Number of executions acknowledged
+        """
+        try:
+            # Build filters for failed, unacknowledged executions
+            filters = {"status": "failed", "acknowledged": False}
+            if task_id:
+                filters["task_id"] = task_id
+            
+            # Get all matching executions
+            executions = await self.uow.scheduler_task_executions.list(filters=filters, limit=10000)
+            
+            # Acknowledge each one
+            acknowledged_count = 0
+            for execution in executions:
+                execution.acknowledged = True
+                await self.uow.scheduler_task_executions.update(execution)
+                acknowledged_count += 1
+            
+            await self.uow.commit()
+            
+            logger.info(
+                f"[SCHEDULER_SERVICE] Acknowledged {acknowledged_count} failed executions",
+                extra={"task_id": task_id, "count": acknowledged_count}
+            )
+            return acknowledged_count
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to acknowledge all failed executions: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_unacknowledged_failures(self, task_id: Optional[str] = None, limit: int = 100) -> List[Any]:
+        """Get unacknowledged failed executions.
+        
+        Args:
+            task_id: Optional task ID to filter by
+            limit: Maximum number of results
+            
+        Returns:
+            List of unacknowledged failed executions
+        """
+        try:
+            filters = {"status": "failed", "acknowledged": False}
+            if task_id:
+                filters["task_id"] = task_id
+            
+            return await self.uow.scheduler_task_executions.list(filters=filters, limit=limit)
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to get unacknowledged failures: {e}")
+            raise

@@ -43,6 +43,7 @@ class SchedulerTaskExecution(BaseModel):
       - result TEXT
       - error_message TEXT
       - duration_seconds DOUBLE PRECISION
+      - acknowledged BOOLEAN DEFAULT FALSE
     """
 
     # Database primary key (autoincrement). Optional because it is assigned
@@ -60,3 +61,4 @@ class SchedulerTaskExecution(BaseModel):
     # responsible for serializing it to TEXT/JSON in the database layer.
     result: Optional[dict] = None
     duration_seconds: Optional[float] = None
+    acknowledged: bool = False
