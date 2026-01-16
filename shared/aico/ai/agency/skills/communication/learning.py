@@ -390,11 +390,21 @@ class CivilityScorer:
         return 0.7  # Default moderate score
 
 
-def extract_contextual_features(
-    db: Any,  # Skills being redesigned
+async def extract_contextual_features(
+    session_factory: Any,
     user_id: str
 ) -> ContextualFeatures:
-    """Extract contextual features for bandit decision-making."""
+    """Extract contextual features for bandit decision-making.
+    
+    Args:
+        session_factory: Database session factory for UnitOfWork
+        user_id: User UUID
+        
+    Returns:
+        ContextualFeatures with extracted metrics
+    """
+    from aico.data.uow import UnitOfWork
+    from datetime import timedelta
     
     now = datetime.now(UTC)
     
@@ -402,15 +412,20 @@ def extract_contextual_features(
     hour_of_day = now.hour
     day_of_week = now.weekday()
     
-    # Get recent interaction data
-    recent_initiations = db.execute(
-        """SELECT initiated_at, resolved_at, resolution_status, user_response_time
-           FROM conversation_initiations
-           WHERE user_id = ?
-           AND initiated_at > datetime('now', '-7 days')
-           ORDER BY initiated_at DESC""",
-        (user_id,)
-    ).fetchall()
+    # Get recent interaction data via UnitOfWork
+    week_ago = now - timedelta(days=7)
+    
+    async with UnitOfWork(session_factory) as uow:
+        all_initiations = await uow.conversation_initiations.list(
+            filters={'user_id': user_id},
+            limit=1000
+        )
+        
+        # Filter to last 7 days
+        recent_initiations = [
+            init for init in all_initiations
+            if init.created_at and init.created_at >= week_ago
+        ]
     
     if not recent_initiations:
         # Default features for new users
@@ -428,29 +443,37 @@ def extract_contextual_features(
             user_activity_level='medium'
         )
     
-    # Calculate metrics
-    answered = [i for i in recent_initiations if i['resolution_status'] == 'answered']
-    dismissed = [i for i in recent_initiations if i['resolution_status'] == 'dismissed']
-    pending = [i for i in recent_initiations if i['resolution_status'] == 'pending']
+    # Calculate metrics - use object attributes instead of dict access
+    answered = [i for i in recent_initiations if getattr(i, 'resolution_status', None) == 'answered']
+    dismissed = [i for i in recent_initiations if getattr(i, 'resolution_status', None) == 'dismissed']
+    pending = [i for i in recent_initiations if getattr(i, 'resolution_status', None) == 'pending']
     
     recent_response_rate = len(answered) / len(recent_initiations) if recent_initiations else 0.5
     
-    response_times = [i['user_response_time'] for i in answered if i['user_response_time']]
+    response_times = [
+        getattr(i, 'user_response_time', None) 
+        for i in answered 
+        if getattr(i, 'user_response_time', None) is not None
+    ]
     avg_response_time = np.mean(response_times) if response_times else 1800.0
     
     conversation_frequency = len(recent_initiations) / 7.0  # Per day over last week
     
     # Time since last interaction
     if recent_initiations:
-        last_time = datetime.fromisoformat(recent_initiations[0]['initiated_at']).replace(tzinfo=UTC)
+        last_init = recent_initiations[0]
+        last_time = last_init.created_at if hasattr(last_init, 'created_at') else now
+        if not last_time.tzinfo:
+            last_time = last_time.replace(tzinfo=UTC)
         time_since_last = (now - last_time).total_seconds() / 3600.0  # hours
     else:
         time_since_last = 24.0
     
     # Recent dismissals (last 3 days)
+    three_days_ago = now - timedelta(days=3)
     recent_dismissals_count = len([
         i for i in dismissed
-        if (now - datetime.fromisoformat(i['initiated_at']).replace(tzinfo=UTC)).days < 3
+        if getattr(i, 'created_at', None) and i.created_at >= three_days_ago
     ])
     
     # Engagement score (based on response rate and speed)

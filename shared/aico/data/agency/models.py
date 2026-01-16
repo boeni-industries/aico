@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 from aico.data.agency.followup_models import AgencyFollowup
+from aico.data.conversation.models import ConversationInitiation
 
 
 class Goal(BaseModel):

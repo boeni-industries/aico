@@ -175,10 +175,10 @@ class EncryptionMiddleware:
             
             if not channel or not channel.is_session_valid():
                 if self.require_encryption:
-                    # Log the rejected request since it won't reach RequestLoggingMiddleware
+                    # Log the rejected request at debug level
                     client_ip = request.client.host if request.client else "unknown"
-                    self.logger.info(
-                        f"ENCRYPTION REJECTED: {request.method} {request.url.path} from {client_ip} - No valid session",
+                    self.logger.debug(
+                        f"Encryption rejected: {request.method} {request.url.path} from {client_ip} - No valid session",
                         extra={
                             "event_type": "encryption_rejected",
                             "method": request.method,

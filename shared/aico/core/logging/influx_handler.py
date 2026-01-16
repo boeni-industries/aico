@@ -219,26 +219,16 @@ class InfluxDBLogHandler(logging.Handler):
     
     def _flush_loop(self):
         """Background loop that periodically flushes buffer to InfluxDB."""
-        print(f"[InfluxDBLogHandler] Flush thread started (interval: {self.flush_interval}s, running={self.running})", flush=True)
         try:
             while self.running:
                 try:
                     time.sleep(self.flush_interval)
-                    buffer_size = len(self.buffer)
-                    if buffer_size > 0:
-                        print(f"[InfluxDBLogHandler] Flushing {buffer_size} buffered logs...", flush=True)
                     self._flush_buffer()
                 except Exception as e:
                     # Log to stderr but don't crash
                     print(f"[InfluxDBLogHandler] Flush error: {e}", flush=True)
-                    import traceback
-                    traceback.print_exc()
         except Exception as e:
             print(f"[InfluxDBLogHandler] FATAL: Flush thread crashed: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
-        finally:
-            print(f"[InfluxDBLogHandler] Flush thread stopped (running={self.running})", flush=True)
     
     def _flush_buffer(self):
         """Flush buffered logs to InfluxDB."""
@@ -292,17 +282,15 @@ class InfluxDBLogHandler(logging.Handler):
                 with self.stats_lock:
                     self.stats["records_written"] += len(batch)
                     self.stats["last_flush"] = datetime.utcnow().isoformat()
-                print(f"[InfluxDBLogHandler] ✅ Successfully wrote {len(batch)} logs to InfluxDB", flush=True)
             else:
                 # Error
                 with self.stats_lock:
                     self.stats["write_errors"] += 1
-                print(f"[InfluxDBLogHandler] ❌ Write failed: {response.status_code} {response.text}", flush=True)
+                print(f"[InfluxDBLogHandler] Write failed: {response.status_code}", flush=True)
         
         except Exception as e:
             with self.stats_lock:
                 self.stats["write_errors"] += 1
-            print(f"[InfluxDBLogHandler] Write exception: {e}", flush=True)
     
     def flush(self):
         """Flush all buffered logs immediately."""
@@ -310,9 +298,6 @@ class InfluxDBLogHandler(logging.Handler):
     
     def close(self):
         """Close handler and flush remaining logs."""
-        print(f"[InfluxDBLogHandler] close() called! Stack trace:", flush=True)
-        import traceback
-        traceback.print_stack()
         self.running = False
         
         # Flush remaining logs

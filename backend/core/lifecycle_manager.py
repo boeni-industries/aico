@@ -53,54 +53,8 @@ class BackendLifecycleManager:
     
     def _display_startup_status(self):
         """Display beautiful cross-platform startup status for all components"""
-        print("\n[i] System Status:")
-        print("-" * 40)
-        
-        # Service container status
-        services = self.container._definitions
-        from .service_container import ServiceState
-        
-        running_count = sum(1 for svc in services.values() if svc.state == ServiceState.RUNNING)
-        total_count = len(services)
-        
-        print(f"[✓] Service Container: {running_count}/{total_count} services running")
-        
-        # Display individual service status
-        for name, service_def in sorted(services.items()):
-            status_icon = "✓" if service_def.state == ServiceState.RUNNING else "✗"
-            print(f"  [{status_icon}] {name}: {service_def.state.value}")
-        
-        # Database status
-        if self.db_connection:
-            print(f"[✓] Database: Connected (encrypted)")
-        else:
-            print(f"[✗] Database: Not connected")
-        
-        # FastAPI status
-        if self.app:
-            print(f"[✓] REST API: Ready on http://127.0.0.1:8771")
-        else:
-            print(f"[✗] REST API: Not initialized")
-        
-        # Protocol adapter status
-        protocols_config = self.config.get("core.api_gateway.protocols", {})
-        
-        # WebSocket status
-        websocket_config = protocols_config.get("websocket", {})
-        if websocket_config.get("enabled", True):
-            port = websocket_config.get('port', 8772)
-            path = websocket_config.get('path', '/ws')
-            print(f"[✓] WebSocket: Running on ws://127.0.0.1:{port}{path}")
-        else:
-            print(f"[!] WebSocket: Disabled")
-        
-        
-        # Security status
-        print(f"[✓] Transport Security: Active (AES-256-GCM)")
-        print(f"[✓] Plugin Security: Sandboxed & Mediated")
-        
-        print("-" * 40)
-        print("[*] Ready to serve requests!\n")
+        # Minimal startup display - detailed status available via logs
+        pass
     
     async def startup(self) -> FastAPI:
         """Complete backend startup sequence"""
@@ -154,9 +108,6 @@ class BackendLifecycleManager:
         """Complete backend shutdown sequence with cross-platform status display"""
         self.logger.info("Shutting down AICO backend components...")
         
-        print("[i] Shutdown Status:")
-        print("-" * 40)
-        
         # Stop protocol adapters first
         await self._stop_protocol_adapters()
         
@@ -165,16 +116,7 @@ class BackendLifecycleManager:
         
         # Stop service container
         if self.container:
-            services = list(self.container._definitions.keys())
-            print(f"[~] Stopping {len(services)} services...")
-            
             await self.container.stop_all()
-            
-            for service_name in sorted(services):
-                print(f"  [-] {service_name} stopped")
-        
-        print("-" * 40)
-        print("[+] All services stopped gracefully")
         
         self.logger.info("Backend shutdown complete")
     
@@ -188,16 +130,12 @@ class BackendLifecycleManager:
             mode = self.config.get("core.instrumentation.mode", "dev")
 
             if not enabled:
-                # Kill switch is OFF – log clearly to console and logs
-                print("[⏹] OpenTelemetry instrumentation DISABLED via config (core.instrumentation.enabled = false)")
                 self.logger.info(
                     "OpenTelemetry instrumentation disabled via config (core.instrumentation.enabled = false); "
                     "skipping telemetry setup"
                 )
                 return
 
-            print("[+] Initializing OpenTelemetry instrumentation...")
-            print(f"[>] Telemetry mode: {mode}")
             self.logger.info(f"Initializing OpenTelemetry instrumentation (enabled, mode={mode})")
 
             # Get encrypted database connection from container (will be available after container init)
@@ -218,13 +156,9 @@ class BackendLifecycleManager:
             
             initialize_telemetry(config_dict, db_connection=db_connection)
             
-            print(f"[✓] OpenTelemetry initialized (mode: {mode})")
-            print(f"[✓] Local metrics storage: {'Enabled (encrypted)' if db_connection else 'Deferred'}")
-            
             self.logger.info("OpenTelemetry instrumentation initialized")
             
         except Exception as e:
-            print(f"[✗] OpenTelemetry initialization failed: {e}")
             self.logger.warning(f"Failed to initialize telemetry: {e}")
     
     def _instrument_fastapi(self) -> None:
@@ -236,11 +170,9 @@ class BackendLifecycleManager:
         try:
             from backend.core.telemetry import instrument_fastapi
             instrument_fastapi(self.app)
-            print("[✓] FastAPI instrumented - automatic request tracing enabled")
             self.logger.info("FastAPI instrumented with OpenTelemetry")
             
         except Exception as e:
-            print(f"[✗] FastAPI instrumentation failed: {e}")
             self.logger.warning(f"Failed to instrument FastAPI: {e}")
     
     async def _shutdown_telemetry(self) -> None:
@@ -248,7 +180,6 @@ class BackendLifecycleManager:
         try:
             from backend.core.telemetry import shutdown_telemetry
             shutdown_telemetry()
-            print("  [-] OpenTelemetry shutdown")
             
         except Exception as e:
             self.logger.warning(f"Error during telemetry shutdown: {e}")
@@ -499,14 +430,11 @@ class BackendLifecycleManager:
                     personality_service=personality_service,
                     ams_service=ams_service,
                 )
-                print("✅ [AI_PROCESSORS] Created CuriosityEngine (Phase 6.3 with AMS integration)")
-                self.logger.info("✅ [AI_PROCESSORS] Created CuriosityEngine (Phase 6.3 with AMS integration)")
+                self.logger.info("Created CuriosityEngine (Phase 6.3 with AMS integration)")
             except Exception as e:
-                print(f"❌ [AI_PROCESSORS] Failed to create CuriosityEngine: {e}")
                 import traceback
-                print(f"❌ [AI_PROCESSORS] Traceback: {traceback.format_exc()}")
-                self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to create CuriosityEngine: {e}")
-                self.logger.warning("⚠️ [AI_PROCESSORS] Curiosity-driven goals will not be generated")
+                self.logger.warning(f"Failed to create CuriosityEngine: {e}")
+                self.logger.warning("Curiosity-driven goals will not be generated")
             
             # Create message bus client for Phase 4 intention set publishing
             # Note: Connection will be established later when message bus broker is ready
@@ -594,20 +522,16 @@ class BackendLifecycleManager:
                     async with UnitOfWork(session_factory) as uow:
                         installed_count = await install_default_policies(agency_engine.values_ethics, uow)
                         if installed_count > 0:
-                            self.logger.info(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules (Phase 4)")
-                            print(f"✅ [AI_PROCESSORS] Installed {installed_count} default policy rules")
+                            self.logger.info(f"Installed {installed_count} default policy rules (Phase 4)")
                         else:
-                            self.logger.info("ℹ️ [AI_PROCESSORS] Default policies already installed (Phase 4)")
-                            print("ℹ️ [AI_PROCESSORS] Default policies already exist")
+                            self.logger.info("Default policies already installed (Phase 4)")
                 else:
-                    self.logger.warning("⚠️ [AI_PROCESSORS] Default policy installation disabled in configuration")
-                    print("⚠️ [AI_PROCESSORS] Default policy installation disabled")
+                    self.logger.warning("Default policy installation disabled in configuration")
             except Exception as e:
                 error_msg = f"Failed to initialize Phase 4 Values/Ethics policies: {e}"
-                self.logger.error(f"❌ [AI_PROCESSORS] {error_msg}")
-                print(f"❌ [AI_PROCESSORS] {error_msg}")
+                self.logger.error(f"{error_msg}")
                 import traceback
-                self.logger.error(f"❌ [AI_PROCESSORS] Traceback: {traceback.format_exc()}")
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
                 raise RuntimeError(f"CRITICAL: {error_msg}")
 
             # Inject modelservice client for goal embeddings (needed for deduplication)
@@ -649,24 +573,19 @@ class BackendLifecycleManager:
             self.logger.info("Registered 'agency' processor with Phase 2 context services.")
             
         except Exception as e:
-            print(f"❌❌❌ [PHASE 4 ERROR] AgencyEngine initialization FAILED: {e}")
             import traceback
-            print(f"❌❌❌ [PHASE 4 ERROR] Full traceback:\n{traceback.format_exc()}")
-            self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize AgencyEngine during startup: {e}")
-            self.logger.error(f"❌ [AI_PROCESSORS] Full traceback: {traceback.format_exc()}")
+            self.logger.error(f"Failed to initialize AgencyEngine during startup: {e}")
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
         
         # Register CuriosityEngine (Phase 3) - outside try/except to ensure it runs
         try:
             if curiosity_engine:
                 ai_registry.register("curiosity", curiosity_engine)
-                print("✅ [AI_PROCESSORS] Registered 'curiosity' processor (Phase 3).")
-                self.logger.info("✅ Registered 'curiosity' processor (Phase 3).")
+                self.logger.info("Registered 'curiosity' processor (Phase 3).")
             else:
-                print("⚠️ [AI_PROCESSORS] CuriosityEngine was not created, skipping registration")
-                self.logger.warning("⚠️ CuriosityEngine was not created, skipping registration")
+                self.logger.warning("CuriosityEngine was not created, skipping registration")
         except Exception as e:
-            print(f"❌ [AI_PROCESSORS] Failed to register CuriosityEngine: {e}")
-            self.logger.error(f"❌ Failed to register CuriosityEngine: {e}")
+            self.logger.error(f"Failed to register CuriosityEngine: {e}")
 
         # EmotionEngine is already registered in _register_core_services() (lines 266-275)
         # and will be started automatically by the service container
@@ -825,10 +744,8 @@ class BackendLifecycleManager:
             # Initialize and start WebSocket adapter if enabled
             websocket_config = protocols_config.get("websocket", {})
             if websocket_config.get("enabled", True):
-                print(f"[+] Starting WebSocket server on port {websocket_config.get('port', 8772)}...")
                 await self.protocol_manager.initialize_adapter("websocket", websocket_config, dependencies)
                 await self.protocol_manager.start_adapter("websocket")
-                print(f"[✓] WebSocket server running on ws://127.0.0.1:{websocket_config.get('port', 8772)}{websocket_config.get('path', '/ws')}")
             
             self.logger.info("Protocol adapters started successfully")
             
@@ -839,9 +756,7 @@ class BackendLifecycleManager:
     async def _stop_protocol_adapters(self) -> None:
         """Stop protocol adapters"""
         try:
-            print(f"[~] Stopping protocol adapters...")
             await self.protocol_manager.stop_all()
-            print(f"[✓] Protocol adapters stopped")
         except Exception as e:
             self.logger.error(f"Error stopping protocol adapters: {e}")
     
@@ -977,65 +892,22 @@ class BackendLifecycleManager:
         self.logger.debug("API routers mounted")
         
         # Apply encryption middleware as final ASGI wrapper (after all routers mounted)
-        print("[~] Initializing encryption middleware...")
         self.logger.info("Starting encryption middleware initialization")
         key_manager = AICOKeyManager(self.config)
         # Store reference to FastAPI app before wrapping for route display
         self.fastapi_app = self.app
         self.app = EncryptionMiddleware(self.app, key_manager)
-        print("[+] Encryption middleware started successfully")
         self.logger.info("Encryption middleware started successfully")
     
     def _display_service_status(self) -> None:
         """Display core service startup status"""
-        print("\n[i] Core Service Status:")
-        print("-" * 40)
-        
-        core_services = ["database", "zmq_context", "user_service", "task_scheduler", "conversation_engine"]
-        
-        from .service_container import ServiceState
-        for service_name in core_services:
-            try:
-                service_instance = self.container.get_service(service_name)
-                service_state = self.container._states.get(service_name)
-
-                if service_instance and service_state == ServiceState.RUNNING:
-                    status_line = f"[✓] {service_name}: Running"
-                    if service_name == "conversation_engine":
-                        if hasattr(service_instance, 'get_active_features'):
-                            features = service_instance.get_active_features()
-                            if features:
-                                status_line += f" (Integrations: {', '.join(features)})"
-                    print(status_line)
-                else:
-                    state_val = service_state.value if service_state else 'Not Found'
-                    print(f"[✗] {service_name}: {state_val}")
-            except Exception as e:
-                print(f"[✗] {service_name}: Error - {e}")
-        
-        print("-" * 40)
+        # Service status available via logs
+        pass
     
     def _display_plugin_status(self) -> None:
         """Display plugin startup status"""
-        print("\n[i] Plugin Status:")
-        print("-" * 40)
-        
-        plugin_config = self.config.get("core.api_gateway.plugins", {})
-        
-        for plugin_name, config in plugin_config.items():
-            if config.get("enabled", False):
-                try:
-                    plugin_service = self.container.get_service(f"{plugin_name}_plugin")
-                    if plugin_service:
-                        print(f"[✓] {plugin_name}_plugin: Running")
-                    else:
-                        print(f"[✗] {plugin_name}_plugin: Failed to start")
-                except:
-                    print(f"[✗] {plugin_name}_plugin: Not registered")
-            else:
-                print(f"[!] {plugin_name}_plugin: Disabled")
-        
-        print("-" * 40)
+        # Plugin status available via logs
+        pass
     
     
     def _mount_domain_routers(self) -> None:
@@ -1118,56 +990,22 @@ class BackendLifecycleManager:
     
     def _display_routes(self) -> None:
         """Display available API route groups"""
-        print("\n[i] Available API Routes:")
-        print("-" * 40)
-        
-        if hasattr(self, 'fastapi_app') and self.fastapi_app:
-            route_groups = set()
-            for route in self.fastapi_app.routes:
-                if hasattr(route, 'path') and route.path.startswith('/api/v1/'):
-                    # Extract route group (e.g., /api/v1/users, /api/v1/admin)
-                    path_parts = route.path.split('/')
-                    if len(path_parts) >= 4:
-                        route_group = '/'.join(path_parts[:4])  # /api/v1/users
-                        route_groups.add(route_group)
-                    elif route.path == '/api/v1/health':
-                        route_groups.add('/api/v1/health')
-            
-            for route_group in sorted(route_groups):
-                print(f"[→] {route_group}/*")
-            
-            # Show non-API routes
-            other_routes = []
-            for route in self.fastapi_app.routes:
-                if hasattr(route, 'path') and not route.path.startswith('/api/v1/'):
-                    if route.path not in ['/', '/docs', '/redoc', '/openapi.json']:
-                        other_routes.append(route.path)
-            
-            if other_routes:
-                for route in sorted(other_routes):
-                    print(f"[→] {route}")
-        else:
-            print("[✗] FastAPI app not initialized")
-        
-        print("-" * 40)
+        # Route information available via logs
+        pass
     
     async def _start_message_broker(self) -> None:
         """Start ZMQ message broker"""
         try:
-            print("[+] Starting ZMQ message broker...")
             message_bus_plugin = self.container.get_service('message_bus_plugin')
             if message_bus_plugin:
                 # Message bus plugin starts broker in its start() method
-                print("[✓] ZMQ message broker running on tcp://*:5555")
-                
                 # Notify ZMQ log transport that broker is ready to flush buffered messages
                 self._notify_log_transport_broker_ready()
             else:
-                print("[✗] ZMQ message broker not available - message_bus_plugin not found")
+                self.logger.warning("ZMQ message broker not available - message_bus_plugin not found")
                 
         except Exception as e:
             self.logger.error(f"Failed to start message broker: {e}")
-            print(f"[✗] ZMQ message broker failed: {e}")
     
     def _notify_log_transport_broker_ready(self) -> None:
         """Notify ZMQ log transport that broker is ready, but delay buffer flush until LogConsumer is subscribed"""

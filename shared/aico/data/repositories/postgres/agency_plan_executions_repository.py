@@ -48,9 +48,31 @@ class PostgresAgencyPlanExecutionsRepository:
         await self.session.commit()
         return result.rowcount > 0
     
-    async def list(self, limit: int = 100, offset: int = 0) -> List[AgencyPlanExecution]:
-        """List plan executions."""
-        stmt = select(agency_plan_executions).limit(limit).offset(offset)
+    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[AgencyPlanExecution]:
+        """List plan executions with optional filters.
+        
+        Args:
+            filters: Optional dict of filters. Supports:
+                - status: exact match
+                - status__in: list of statuses to match
+                - user_id: exact match
+            limit: Maximum number of results
+            offset: Number of results to skip
+        """
+        stmt = select(agency_plan_executions)
+        
+        # Apply filters if provided
+        if filters:
+            if 'status' in filters:
+                stmt = stmt.where(agency_plan_executions.c.status == filters['status'])
+            if 'status__in' in filters:
+                stmt = stmt.where(agency_plan_executions.c.status.in_(filters['status__in']))
+            if 'user_id' in filters:
+                stmt = stmt.where(agency_plan_executions.c.user_id == filters['user_id'])
+            if 'plan_id' in filters:
+                stmt = stmt.where(agency_plan_executions.c.plan_id == filters['plan_id'])
+        
+        stmt = stmt.limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         return [AgencyPlanExecution(**dict(row._mapping)) for row in result.fetchall()]
     

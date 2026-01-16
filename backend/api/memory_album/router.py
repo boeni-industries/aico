@@ -216,7 +216,7 @@ async def get_memories(
                 key_moments=key_moments,
             ))
         
-        logger.info(f"Retrieved {len(memories)} memories", extra={
+        logger.debug(f"Retrieved {len(memories)} memories", extra={
             "user_uuid": user_uuid,
             "category": category,
             "favorites_only": favorites_only,

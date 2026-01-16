@@ -744,21 +744,37 @@ class TaskScheduler(BaseService):
         self.logger.info("Task scheduler stopped")
     
     async def _scheduler_loop(self):
-        """Main scheduler loop"""
+        """Main scheduler loop - resilient to individual task failures"""
         scheduler_config = self.get_config("scheduler", {})
         interval = scheduler_config.get("scheduler_interval", 1.0)
         
         self.logger.info(f"Scheduler loop started (interval: {interval}s)")
         
-        try:
-            while self.running:
+        while self.running:
+            try:
                 await self._check_and_execute_tasks()
+            except asyncio.CancelledError:
+                self.logger.info("Scheduler loop cancelled")
+                break
+            except Exception as e:
+                # Log error loudly but DON'T crash the scheduler
+                error_msg = f"❌ SCHEDULER LOOP ERROR: {e}"
+                self.logger.error(error_msg, exc_info=True)
+                print(f"\n{'='*80}")
+                print(f"❌ SCHEDULER ERROR: Task check/execute failed")
+                print(f"{'='*80}")
+                print(f"Error: {e}")
+                print(f"{'='*80}")
+                import traceback
+                traceback.print_exc()
+                print(f"{'='*80}\n")
+                # Continue running - don't let one error stop the scheduler
+            
+            try:
                 await asyncio.sleep(interval)
-        except asyncio.CancelledError:
-            self.logger.info("Scheduler loop cancelled")
-        except Exception as e:
-            self.logger.error(f"Scheduler loop error: {e}")
-            raise
+            except asyncio.CancelledError:
+                self.logger.info("Scheduler loop cancelled during sleep")
+                break
     
     async def _check_for_triggers(self) -> List[str]:
         """Check for manually triggered tasks via trigger files."""
@@ -786,25 +802,41 @@ class TaskScheduler(BaseService):
         return triggered_tasks
 
     async def _check_and_execute_tasks(self):
-        """Check for tasks that need to run and execute them (Phase 6.2: Priority Queue)"""
-        try:
-            now = datetime.now(timezone.utc)
-            
-            # 1. Enqueue scheduled tasks that are due
-            for task_id, next_run in list(self.next_run_times.items()):
-                if next_run <= now:
+        """Check for tasks that need to run and execute them (Phase 6.2: Priority Queue)
+        
+        This method is called every scheduler tick. Errors in individual tasks should
+        not prevent other tasks from running.
+        """
+        now = datetime.now(timezone.utc)
+        
+        # 1. Enqueue scheduled tasks that are due
+        for task_id, next_run in list(self.next_run_times.items()):
+            if next_run <= now:
+                try:
                     await self._enqueue_task(task_id, is_scheduled=True)
+                except Exception as e:
+                    # Log but don't crash - other tasks should still run
+                    self.logger.error(f"❌ Failed to enqueue scheduled task {task_id}: {e}", exc_info=True)
+                    print(f"❌ Failed to enqueue task {task_id}: {e}")
 
-            # 2. Enqueue manually triggered tasks
+        # 2. Enqueue manually triggered tasks
+        try:
             triggered_tasks = await self._check_for_triggers()
             for task_id in triggered_tasks:
-                await self._enqueue_task(task_id, is_scheduled=False)
-            
-            # 3. Execute tasks from priority queue
-            await self._execute_from_priority_queue()
-                    
+                try:
+                    await self._enqueue_task(task_id, is_scheduled=False)
+                except Exception as e:
+                    self.logger.error(f"❌ Failed to enqueue triggered task {task_id}: {e}", exc_info=True)
+                    print(f"❌ Failed to enqueue triggered task {task_id}: {e}")
         except Exception as e:
-            self.logger.error(f"Error in task check and execute: {e}")
+            self.logger.error(f"❌ Failed to check for triggers: {e}", exc_info=True)
+        
+        # 3. Execute tasks from priority queue
+        try:
+            await self._execute_from_priority_queue()
+        except Exception as e:
+            self.logger.error(f"❌ Failed to execute from priority queue: {e}", exc_info=True)
+            print(f"❌ Failed to execute from priority queue: {e}")
     
     async def _enqueue_task(self, task_id: str, is_scheduled: bool = True):
         """Enqueue task to priority queue

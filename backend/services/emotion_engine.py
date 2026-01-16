@@ -296,8 +296,6 @@ class EmotionEngine(BaseService):
             
         except Exception as e:
             import traceback
-            print(f"🚨 [EMOTION_ENGINE] ERROR in sentiment response handler: {e}")
-            print(f"🚨 [EMOTION_ENGINE] Traceback: {traceback.format_exc()}")
             self.logger.error(f"Error handling sentiment response: {e}\n{traceback.format_exc()}")
     
     async def _handle_conversation_turn(self, message) -> None:
@@ -353,8 +351,7 @@ class EmotionEngine(BaseService):
         # Stage 1: Relevance Assessment ("Does this matter to me?")
         base_relevance = await self._assess_relevance(message_text, user_emotion, sentiment_data)
         relevance = self.conversational_context.adjust_relevance(base_relevance, message_text)
-        print(f"🎭 [EMOTION_ENGINE] Stage 1 - Relevance: {base_relevance:.2f} → {relevance:.2f} (context-adjusted)")
-        self.logger.debug(f"🎭 Appraisal Stage 1 - Relevance: {relevance:.2f}")
+        self.logger.debug(f"Appraisal Stage 1 - Relevance: {relevance:.2f}")
         
         # Update context with current turn (after relevance calculation)
         self.conversational_context.update(message_text, valence, arousal, relevance)
@@ -362,25 +359,16 @@ class EmotionEngine(BaseService):
         # Stage 2: Implication Check ("What does this mean for my goals?")
         base_goal_impact = await self._analyze_goal_impact(message_text, relevance, sentiment_data)
         goal_impact = self.conversational_context.adjust_goal_impact(base_goal_impact, valence)
-        if base_goal_impact != goal_impact:
-            print(f"🎭 [EMOTION_ENGINE] Stage 2 - Goal Impact: {base_goal_impact} → {goal_impact} (episode-adjusted)")
-        else:
-            print(f"🎭 [EMOTION_ENGINE] Stage 2 - Goal Impact: {goal_impact}")
-        self.logger.debug(f"🎭 Appraisal Stage 2 - Goal Impact: {goal_impact}")
+        self.logger.debug(f"Appraisal Stage 2 - Goal Impact: {goal_impact}")
         
         # Stage 3: Coping Check ("Can I handle this?")
         coping_capability = await self._determine_coping_capability(message_text, goal_impact, sentiment_data)
-        print(f"🎭 [EMOTION_ENGINE] Stage 3 - Coping: {coping_capability}")
-        self.logger.debug(f"🎭 Appraisal Stage 3 - Coping: {coping_capability}")
+        self.logger.debug(f"Appraisal Stage 3 - Coping: {coping_capability}")
         
         # Stage 4: Normative Check ("Is this socially appropriate?")
         base_social = await self._apply_social_regulation(goal_impact, coping_capability, sentiment_data)
         social_appropriateness = self.conversational_context.adjust_social_appropriateness(base_social)
-        if base_social != social_appropriateness:
-            print(f"🎭 [EMOTION_ENGINE] Stage 4 - Social Appropriateness: {base_social} → {social_appropriateness} (context-adjusted)")
-        else:
-            print(f"🎭 [EMOTION_ENGINE] Stage 4 - Social Appropriateness: {social_appropriateness}")
-        self.logger.debug(f"🎭 Appraisal Stage 4 - Social Regulation: {social_appropriateness}")
+        self.logger.debug(f"Appraisal Stage 4 - Social Regulation: {social_appropriateness}")
         
         # Create appraisal result
         appraisal = AppraisalResult(
@@ -395,8 +383,7 @@ class EmotionEngine(BaseService):
         # Generate CPM emotional state from appraisal
         emotional_state = self._generate_cpm_emotional_state(appraisal, sentiment_data)
         
-        print(f"🎭 [EMOTION_ENGINE] Generated state: {emotional_state.subjective_feeling.value} (v={emotional_state.mood_valence:.2f}, a={emotional_state.mood_arousal:.2f}, i={emotional_state.intensity:.2f})")
-        self.logger.debug(f"🎭 Generated CPM state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
+        self.logger.debug(f"Generated CPM state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
         
         return emotional_state
     
@@ -440,10 +427,8 @@ class EmotionEngine(BaseService):
             # Return immediately - response will be handled by callback
                 
         except Exception as e:
-            print(f"🎭 [EMOTION_ENGINE] ❌ Sentiment request ERROR: {e}")
             import traceback
-            print(f"🎭 [EMOTION_ENGINE] Traceback: {traceback.format_exc()}")
-            self.logger.error(f"Sentiment request error: {e}")
+            self.logger.error(f"Sentiment request error: {e}\n{traceback.format_exc()}")
             # Clean up
             if request_id in self.pending_sentiment_requests:
                 del self.pending_sentiment_requests[request_id]
@@ -457,22 +442,17 @@ class EmotionEngine(BaseService):
     ) -> None:
         """Complete emotional processing with sentiment data (called from callback)"""
         try:
-            print(f"🔍 [EMOTION_ENGINE] _complete_emotional_processing CALLED for conversation {conversation_id}")
-            
             # Update previous state BEFORE generating new state (for inertia calculation)
             previous_feeling = self.current_state.subjective_feeling if self.current_state else None
             self.previous_state = self.current_state
-            print(f"🔍 [EMOTION_ENGINE] Previous state saved: {previous_feeling}")
             
             # Run appraisal with sentiment data (uses self.previous_state for inertia)
-            print(f"🔍 [EMOTION_ENGINE] About to call _process_emotional_response_with_sentiment...")
             emotional_state = await self._process_emotional_response_with_sentiment(
                 user_id=user_id,
                 message_text=message_text,
                 conversation_id=conversation_id,
                 sentiment_data=sentiment_data
             )
-            print(f"🔍 [EMOTION_ENGINE] _process_emotional_response_with_sentiment returned: {emotional_state.subjective_feeling.value}")
             
             # Update current state after generation
             self.current_state = emotional_state
@@ -485,10 +465,7 @@ class EmotionEngine(BaseService):
             
             # Log state transition if significant change
             if previous_feeling and previous_feeling != emotional_state.subjective_feeling:
-                print(f"🎭 [EMOTION_ENGINE] 🔄 State transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
-                self.logger.info(f"🎭 Emotional state transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
-            
-            print(f"🎭 [EMOTION_ENGINE] 💭 Generated state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
+                self.logger.info(f"Emotional state transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
             
             # Publish emotional state
             await self._publish_emotional_state(emotional_state)
@@ -500,8 +477,6 @@ class EmotionEngine(BaseService):
             
         except Exception as e:
             import traceback
-            print(f"🚨 [EMOTION_ENGINE] EXCEPTION in _complete_emotional_processing: {e}")
-            print(f"🚨 [EMOTION_ENGINE] Traceback: {traceback.format_exc()}")
             self.logger.error(f"Error completing emotional processing: {e}\n{traceback.format_exc()}")
     
     def _map_sentiment_to_valence(self, label: str) -> float:
@@ -805,14 +780,11 @@ class EmotionEngine(BaseService):
         # Store target for logging
         valence = target_valence
         arousal = target_arousal
-        print(f"🎯 [AROUSAL_DEBUG] Stage 1 - Base arousal set: {arousal:.2f} (context: {appraisal.social_appropriateness})")
         
         # Apply emotion regulation FIRST (part of CPM Stage 3: Coping Potential)
         # Regulation is part of the appraisal process itself, not post-processing
         # (Scherer CPM: coping potential modulates arousal before state persistence)
-        arousal_before_regulation = arousal
         arousal = arousal * (1.0 - self.regulation_strength * 0.3)
-        print(f"🎯 [AROUSAL_DEBUG] Stage 2 - After regulation: {arousal:.2f} (was {arousal_before_regulation:.2f}, regulation_strength={self.regulation_strength:.2f})")
         
         # Extract sentiment values once for all regulation logic
         sentiment_valence = sentiment_data.get("valence", 0.0)
@@ -829,12 +801,9 @@ class EmotionEngine(BaseService):
             
             if (relevance > 0.65 and sentiment_valence < -0.3 and confidence > 0.4):
                 # Amplify arousal for contextually relevant threats (language-agnostic)
-                print(f" [AROUSAL_BOOST] Triggered! relevance={relevance:.2f}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}, arousal before={arousal:.2f}")
                 arousal *= (1.0 + self.threat_arousal_boost)  # Configurable boost (default 25%)
                 threat_detected = True  # Mark for reduced inertia
-                print(f" [AROUSAL_BOOST] Arousal after boost: {arousal:.2f} (+{self.threat_arousal_boost*100:.0f}%)")
-            else:
-                print(f"⚠️ [AROUSAL_BOOST] NOT triggered: relevance={relevance:.2f} (need >0.65), sentiment_valence={sentiment_valence:.2f} (need <-0.3), confidence={confidence:.2f} (need >0.4)")
+                self.logger.debug(f"Threat arousal boost applied: +{self.threat_arousal_boost*100:.0f}%")
         
         # Savoring: Amplify positive emotions through mindful appreciation
         # (Bryant & Veroff, 2007: Positive emotion regulation)
@@ -844,14 +813,9 @@ class EmotionEngine(BaseService):
         if (appraisal.goal_impact in ["engaging_opportunity", "supportive_opportunity", "resolution_opportunity"] and 
             sentiment_valence > 0.4 and 
             confidence > 0.35):
-            arousal_before_savoring = arousal
-            print(f"✨ [SAVORING] Triggered! goal_impact={appraisal.goal_impact}, confidence={confidence:.2f}, valence before={valence:.2f}, arousal before={arousal:.2f}")
             valence *= 1.15  # Amplify valence (15% boost - increased from 10%)
             arousal *= 1.20  # Amplify arousal (20% boost - increased from 15%)
-            print(f"✨ [SAVORING] After amplification: valence={valence:.2f}, arousal={arousal:.2f}")
-            print(f"🎯 [AROUSAL_DEBUG] Stage 3 - After savoring: {arousal:.2f} (was {arousal_before_savoring:.2f}, +20% boost)")
-        else:
-            print(f"⚠️ [SAVORING] NOT triggered: goal_impact={appraisal.goal_impact}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}")
+            self.logger.debug(f"Savoring amplification applied: valence +15%, arousal +20%")
         
         # Apply emotional inertia AFTER regulation (Kuppens et al., 2010; Scherer CPM recursive appraisal)
         # Inertia blends the REGULATED appraisal with previous state to prevent double-dampening
@@ -864,33 +828,21 @@ class EmotionEngine(BaseService):
             # Existential threats should dominate emotional state, not be dampened by inertia
             if threat_detected:
                 effective_inertia *= 0.3  # Reduce inertia to 30% for threat responses
-                print(f"🔥 [THREAT_OVERRIDE] Reducing inertia for acute threat response: {effective_inertia:.2f}")
+                self.logger.debug(f"Threat override: reducing inertia to {effective_inertia:.2f}")
             
             effective_reactivity = 1.0 - effective_inertia
             
-            print(f"🧠 [INERTIA] Previous: {self.previous_state.subjective_feeling.value} (v={self.previous_state.mood_valence:.2f}, a={self.previous_state.mood_arousal:.2f})")
-            print(f"🧠 [INERTIA] Target (regulated): (v={valence:.2f}, a={arousal:.2f})")
-            print(f"🧠 [INERTIA] Weights: inertia={effective_inertia:.2f}, reactivity={effective_reactivity:.2f}, turns={self.turns_since_state_change}")
-            
-            # Store regulated values for comparison
-            regulated_valence, regulated_arousal = valence, arousal
-            
             # Blend previous and current states (leaky integrator model)
-            arousal_before_inertia = arousal
             valence = (valence * effective_reactivity) + (self.previous_state.mood_valence * effective_inertia)
             arousal = (arousal * effective_reactivity) + (self.previous_state.mood_arousal * effective_inertia)
-            
-            print(f"🧠 [INERTIA] Blended: (v={valence:.2f}, a={arousal:.2f})")
-            print(f"🎯 [AROUSAL_DEBUG] Stage 4 - After inertia: {arousal:.2f} (was {arousal_before_inertia:.2f}, previous={self.previous_state.mood_arousal:.2f})")
             
             # Apply minimum valence floor to prevent excessive decay in positive contexts
             # Scientific basis: Fredrickson (2001) - Positive emotions should persist
             # If previous state was non-negative (v>0.1), maintain minimum positive valence
             # to avoid drift to zero during neutral inputs or recovery scenarios
             if self.previous_state.mood_valence > 0.1 and valence < 0.15:
-                original_valence = valence
                 valence = 0.15  # Minimum floor for positive emotional contexts
-                print(f"🛡️ [VALENCE_FLOOR] Applied minimum valence floor: {valence:.2f} (was {original_valence:.2f}, prev={self.previous_state.mood_valence:.2f})")
+                self.logger.debug(f"Applied valence floor: {valence:.2f}")
             
             # Supportive context bias: DISABLED per Kuppens et al. (2010)
             # Excessive inertia prevents appropriate emotional responses
@@ -900,7 +852,7 @@ class EmotionEngine(BaseService):
         # Using Russell's (1980) Circumplex Model of Affect
         # This ensures subjective feeling matches experienced emotional state
         feeling = self._map_valence_arousal_to_label(valence, arousal, appraisal)
-        print(f"🎭 [EMOTION_ENGINE] Final state: {feeling.value} (v={valence:.2f}, a={arousal:.2f})")
+        self.logger.debug(f"Final emotional state: {feeling.value} (v={valence:.2f}, a={arousal:.2f})")
         
         # Determine style parameters for LLM conditioning
         if feeling in [EmotionLabel.WARM_CONCERN, EmotionLabel.PROTECTIVE]:

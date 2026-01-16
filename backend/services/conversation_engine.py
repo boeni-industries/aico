@@ -154,14 +154,12 @@ class ConversationEngine(BaseService):
     async def start(self) -> None:
         """Start the conversation engine service"""
         try:
-            print("💬 [CONVERSATION_ENGINE] 🚀 STARTING CONVERSATION ENGINE...")
-            self.logger.info("💬 [CONVERSATION_ENGINE] 🚀 STARTING CONVERSATION ENGINE...")
+            self.logger.info("Starting conversation engine...")
             
             # Initialize message bus client
             self.bus_client = MessageBusClient("conversation_engine")
             await self.bus_client.connect()
-            print("💬 [CONVERSATION_ENGINE] ✅ Message bus client connected")
-            self.logger.info("💬 [CONVERSATION_ENGINE] ✅ Message bus client connected")
+            self.logger.info("Message bus client connected")
             
             # AI processors will be registered here when implemented
             # No initialization needed for empty registry
@@ -179,14 +177,12 @@ class ConversationEngine(BaseService):
             
             # Subscribe to conversation topics
             await self._setup_subscriptions()
-            print("💬 [CONVERSATION_ENGINE] ✅ Subscriptions established")
-            self.logger.info("💬 [CONVERSATION_ENGINE] ✅ Subscriptions established")
+            self.logger.info("Subscriptions established")
             
-            print("💬 [CONVERSATION_ENGINE] 🎉 CONVERSATION ENGINE STARTED SUCCESSFULLY!")
-            self.logger.info("💬 [CONVERSATION_ENGINE] 🎉 CONVERSATION ENGINE STARTED SUCCESSFULLY!")
+            self.logger.info("Conversation engine started successfully")
             
         except Exception as e:
-            self.logger.error(f"💬 [CONVERSATION_ENGINE] ❌ FAILED TO START: {e}")
+            self.logger.error(f"Failed to start conversation engine: {e}")
             raise
     
     async def stop(self) -> None:
@@ -428,7 +424,6 @@ class ConversationEngine(BaseService):
             await self._generate_llm_response(request_id, user_context, user_message, memory_context)
             
             self.pending_responses[request_id]["components_needed"] = components_needed
-            print(f"💬 [CONVERSATION_ENGINE] 📝 Components needed: {components_needed}")
             
             # Note: LLM response already generated above, no need for fallback logic
             
@@ -494,13 +489,10 @@ class ConversationEngine(BaseService):
                 self.logger.warning(f"🧠 [CONTEXT_TRACE] ⚠️  Context is None or empty")
             
             # Store user message for future context
-            print(f"💬 [CONVERSATION_ENGINE] 💾 Storing user message (len: {len(message_text)})...")
             try:
                 await memory_manager.store_message(user_id, conversation_id, message_text, "user", language=user_context.conversation_language)
-                print(f"💬 [CONVERSATION_ENGINE] ✅ User message stored successfully!")
-                self.logger.debug(f"🧠 [CONTEXT_TRACE] User message stored for future context")
+                self.logger.debug(f"User message stored for future context")
             except Exception as e:
-                print(f"💬 [CONVERSATION_ENGINE] ❌ Failed to store user message: {e}")
                 self.logger.warning(f"Failed to store user message: {e}")
             
             return context
@@ -568,34 +560,20 @@ class ConversationEngine(BaseService):
     async def _check_response_completion(self, request_id: str) -> None:
         """Check if all components are ready and generate final response"""
         try:
-            import time
-            timestamp = time.time()
-            print(f"💬 [CONVERSATION_ENGINE] 🔍 Checking response completion for {request_id} [{timestamp:.6f}]")
-            
             if request_id not in self.pending_responses:
-                print(f"💬 [CONVERSATION_ENGINE] ❌ Request {request_id} not found in pending_responses")
                 return
             
             pending_data = self.pending_responses[request_id]
             needed = set(pending_data["components_needed"])
             ready = set(pending_data["components_ready"].keys())
             
-            import time
-            timestamp = time.time()
-            print(f"💬 [CONVERSATION_ENGINE] 📊 Components needed: {needed}, ready: {ready} [{timestamp:.6f}]")
-            
             if needed.issubset(ready):
-                import time
-                timestamp = time.time()
-                print(f"💬 [CONVERSATION_ENGINE] ✅ All components ready! Generating LLM response... [{timestamp:.6f}]")
                 # All components ready, generate LLM response
                 user_context = pending_data["user_context"]
                 user_message = pending_data["user_message"]
                 context = pending_data["components_ready"]
                 
                 await self._generate_llm_response(request_id, user_context, user_message, context)
-            else:
-                print(f"💬 [CONVERSATION_ENGINE] ⏳ Still waiting for components: {needed - ready}")
                 
         except Exception as e:
             self.logger.error(f"Error checking response completion: {e}")
@@ -619,18 +597,13 @@ class ConversationEngine(BaseService):
                 self.logger.info(f"🎯 [SKILL] Selected skill: {selected_skill_id}")
             
             # Build system prompt with memory context and skill template
-            print(f"🔍 [MEMORY_DEBUG] memory_context type: {type(memory_context)}")
-            print(f"🔍 [MEMORY_DEBUG] memory_context keys: {list(memory_context.keys()) if memory_context else 'None'}")
             if memory_context is None:
                 self.logger.warning(f"No memory context provided for request {request_id}")
             else:
                 memory_data = memory_context.get("memory_context", {})
-                print(f"🔍 [MEMORY_DEBUG] memory_data keys: {list(memory_data.keys())}")
                 user_facts = memory_data.get("user_facts", [])
                 recent_context = memory_data.get("recent_context", [])
-                print(f"🔍 [MEMORY_DEBUG] recent_context length: {len(recent_context)}")
-                print(f"🔍 [MEMORY_DEBUG] recent_context sample: {recent_context[:2] if recent_context else 'empty'}")
-                self.logger.info(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
+                self.logger.debug(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
             
             system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id, user_message)
             if system_prompt:
@@ -676,7 +649,6 @@ class ConversationEngine(BaseService):
             current_content = user_message.message.text.strip()
             if current_content:
                 messages.append(ModelConversationMessage(role="user", content=current_content))
-                self.logger.debug(f"🔍 [PROMPT_DEBUG] Added current user message: {current_content[:50]}...")
             
             # Create and publish LLM request
             # CRITICAL: Do NOT override Modelfile parameters (temperature, max_tokens, etc.)
@@ -784,10 +756,8 @@ class ConversationEngine(BaseService):
     async def _finalize_streaming_response(self, request_id: str, final_content: str, thinking_content: str = "") -> None:
         """Finalize streaming response and deliver to user (semantic memory approach)"""
         try:
-            print(f"💬 [CONVERSATION_ENGINE] 🏁 Finalizing streaming response for {request_id}")
-            
             if request_id not in self.pending_responses:
-                print(f"💬 [CONVERSATION_ENGINE] ⚠️ Request {request_id} not found in pending responses")
+                self.logger.warning(f"Request {request_id} not found in pending responses")
                 return
             
             request_data = self.pending_responses[request_id]
@@ -865,7 +835,6 @@ class ConversationEngine(BaseService):
             # This prevents race condition where LLM response arrives after cleanup
             
         except Exception as e:
-            print(f"💬 [CONVERSATION_ENGINE] ❌ Error finalizing streaming response: {e}")
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
     
     def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None, user_message: Optional[ConversationMessage] = None) -> str:
@@ -1030,11 +999,9 @@ class ConversationEngine(BaseService):
             self.logger.debug(f"Building system prompt: {len(user_facts)} facts, {len(recent_context)} messages")
             
             # Add knowledge graph context (relationships only)
-            print(f"🔍 [PROMPT_DEBUG] kg_data type: {type(kg_data)}, content: {kg_data}")
             if kg_data:
                 entities = kg_data.get("entities", [])
                 relationships = kg_data.get("relationships", [])
-                print(f"🔍 [PROMPT_DEBUG] Found {len(entities)} entities, {len(relationships)} relationships")
                 
                 # Add relationships as facts (entities are filtered at extraction time)
                 if relationships:
@@ -1068,25 +1035,16 @@ class ConversationEngine(BaseService):
         prompt = "\n\n".join(prompt_parts) if prompt_parts else ""
         
         if prompt:
-            self.logger.debug(f"🔍 [PROMPT_DEBUG] Final system prompt:\n{prompt}")
-            print(f"🔍 [PROMPT_DEBUG] ===== FINAL SYSTEM PROMPT =====")
-            print(prompt)
-            print(f"🔍 [PROMPT_DEBUG] ===== END SYSTEM PROMPT =====")
+            self.logger.debug(f"Final system prompt: {len(prompt)} chars")
         else:
-            self.logger.debug(f"🔍 [PROMPT_DEBUG] No system prompt - using Modelfile's SYSTEM instruction only")
-            print(f"🔍 [PROMPT_DEBUG] ⚠️ NO SYSTEM PROMPT - using Modelfile only")
+            self.logger.debug(f"No system prompt - using Modelfile's SYSTEM instruction only")
         
         return prompt
     
     async def _handle_llm_response(self, response) -> None:
         """Handle LLM completion response and deliver final response"""
         try:
-            import time
-            timestamp = time.time()
-            print(f"💬 [CONVERSATION_ENGINE] 🎉 RECEIVED LLM RESPONSE! [{timestamp:.6f}]")
-            print(f"💬 [CONVERSATION_ENGINE] Response type: {type(response)}")
-            self.logger.info(f"🔍 [ENGINE_FLOW] LLM response received, processing...")
-            print(f"💬 [CONVERSATION_ENGINE] 🔍 Unpacking CompletionsResponse...")
+            self.logger.info(f"LLM response received, processing...")
             
             # Unpack the LLM response from AicoMessage envelope
             from aico.proto.aico_modelservice_pb2 import CompletionsResponse
@@ -1098,18 +1056,13 @@ class ConversationEngine(BaseService):
             completions_response = CompletionsResponse()
             response.any_payload.Unpack(completions_response)
             
-            print(f"💬 [CONVERSATION_ENGINE] ✅ CompletionsResponse unpacked successfully")
-            
             # Extract correlation ID from response for proper matching
             correlation_id = None
             try:
                 # Get correlation ID from envelope metadata
                 correlation_id = response.metadata.attributes.get("correlation_id")
-                print(f"💬 [CONVERSATION_ENGINE] 🆔 Extracted correlation_id: {correlation_id}")
-                self.logger.info(f"🔍 [ENGINE_FLOW] LLM response correlation_id: {correlation_id}")
                 self.logger.debug(f"Received LLM response with correlation_id: {correlation_id}")
             except Exception as e:
-                print(f"💬 [CONVERSATION_ENGINE] ❌ Failed to extract correlation_id: {e}")
                 self.logger.error(f"Failed to extract correlation_id from LLM response: {e}")
                 return
             
@@ -1160,10 +1113,7 @@ class ConversationEngine(BaseService):
                 
                 # Clean up (but only if not being used by direct API)
                 if request_id in self.pending_responses and not self.pending_responses[request_id].get("direct_api_call"):
-                    print(f"💬 [CONVERSATION_ENGINE] 🧹 Cleaning up completed request {request_id}")
                     await self._cleanup_request(request_id)
-                else:
-                    print(f"💬 [CONVERSATION_ENGINE] 🔒 Keeping request {request_id} (direct_api_call or already cleaned)")
             else:
                 # This should NEVER happen with request-specific topics
                 # If it does, it indicates a bug in subscription/cleanup logic
@@ -1224,81 +1174,63 @@ class ConversationEngine(BaseService):
             # Check if behavioral learning is enabled
             memory_manager = ai_registry.get("memory")
             
-            self.logger.info(f"🎯 [SKILL] Starting skill selection for user {user_context.user_id}")
-            print(f"🎯 [SKILL] Starting skill selection for user {user_context.user_id}")
+            self.logger.debug(f"Starting skill selection for user {user_context.user_id}")
             
             if not memory_manager:
-                self.logger.warning("🎯 [SKILL] No memory manager found in registry")
-                print("🎯 [SKILL] ❌ No memory manager found in registry")
+                self.logger.warning("No memory manager found in registry")
                 return None
             
             if not hasattr(memory_manager, '_behavioral_enabled'):
-                self.logger.warning("🎯 [SKILL] Memory manager missing _behavioral_enabled attribute")
-                print("🎯 [SKILL] ❌ Memory manager missing _behavioral_enabled attribute")
+                self.logger.warning("Memory manager missing _behavioral_enabled attribute")
                 return None
                 
             if not memory_manager._behavioral_enabled:
-                self.logger.warning("🎯 [SKILL] Behavioral learning disabled (_behavioral_enabled=False)")
-                print("🎯 [SKILL] ❌ Behavioral learning disabled (_behavioral_enabled=False)")
+                self.logger.debug("Behavioral learning disabled")
                 return None
-            
-            print(f"🎯 [SKILL] ✅ Behavioral learning enabled")
             
             # Get Thompson Sampling selector
             if not hasattr(memory_manager, '_thompson_sampling'):
-                self.logger.warning("🎯 [SKILL] Memory manager missing _thompson_sampling attribute")
-                print("🎯 [SKILL] ❌ Memory manager missing _thompson_sampling attribute")
+                self.logger.warning("Memory manager missing _thompson_sampling attribute")
                 return None
                 
             if not memory_manager._thompson_sampling:
-                self.logger.warning("🎯 [SKILL] Thompson sampling selector is None")
-                print("🎯 [SKILL] ❌ Thompson sampling selector is None")
+                self.logger.warning("Thompson sampling selector is None")
                 return None
-            
-            print(f"🎯 [SKILL] ✅ Thompson sampling selector available")
             
             thompson_sampling = memory_manager._thompson_sampling
             skill_store = memory_manager._skill_store
             
             # Get available skills
-            print(f"🎯 [SKILL] Fetching available skills...")
             candidate_skills = await skill_store.list_skills(skill_type=None)
             
             if not candidate_skills:
-                self.logger.warning("🎯 [SKILL] No skills available for selection")
-                print("🎯 [SKILL] ❌ No skills available for selection")
+                self.logger.debug("No skills available for selection")
                 return None
             
-            print(f"🎯 [SKILL] ✅ Found {len(candidate_skills)} candidate skills")
-            self.logger.info(f"🎯 [SKILL] Found {len(candidate_skills)} candidate skills")
+            self.logger.debug(f"Found {len(candidate_skills)} candidate skills")
             
             # Build context for selection (simplified - could be enhanced with intent detection)
             context = {
-                "intent": "general",  # Could use NLP to detect intent
-                "sentiment": "neutral",  # Could use emotion analysis
+                "message_text": user_message.message.text if user_message else "",
                 "time_of_day": "any"
             }
             
-            print(f"🎯 [SKILL] Calling Thompson Sampling selector...")
             # Select skill using Thompson Sampling
             selected_skill_id = await thompson_sampling.select_skill(
                 user_id=user_context.user_id,
-                context=context,
-                candidate_skills=candidate_skills
+                candidate_skills=[s.skill_id for s in candidate_skills],
+                context=context
             )
             
             if selected_skill_id:
-                print(f"🎯 [SKILL] ✅ Selected skill: {selected_skill_id}")
-                self.logger.info(f"🎯 [SKILL] Selected skill: {selected_skill_id}")
+                self.logger.info(f"Selected skill: {selected_skill_id}")
             else:
-                print(f"🎯 [SKILL] ⚠️  Thompson Sampling returned None")
-                self.logger.warning(f"🎯 [SKILL] Thompson Sampling returned None")
+                self.logger.debug("Thompson Sampling returned None")
             
             return selected_skill_id
             
         except Exception as e:
-            self.logger.error(f"🎯 [SKILL] Failed to select skill: {e}")
-            print(f"🎯 [SKILL] ❌ Exception during skill selection: {e}")
+            self.logger.error(f"Failed to select skill: {e}")
             import traceback
             print(f"🎯 [SKILL] Traceback: {traceback.format_exc()}")
             return None

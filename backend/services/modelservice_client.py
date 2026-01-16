@@ -77,12 +77,10 @@ class ModelServiceClient:
             self.config.timeout = original_timeout
             return result.get('success', False)
         except TimeoutError:
-            self.logger.error("⚠️ MODELSERVICE HEALTH CHECK FAILED - Service appears to be offline")
-            print("⚠️ MODELSERVICE HEALTH CHECK FAILED - Service appears to be offline")
+            self.logger.error("Modelservice health check failed - service appears to be offline")
             return False
         except Exception as e:
-            self.logger.error(f"⚠️ MODELSERVICE HEALTH CHECK FAILED: {e}")
-            print(f"⚠️ MODELSERVICE HEALTH CHECK FAILED: {e}")
+            self.logger.error(f"Modelservice health check failed: {e}")
             return False
     
     async def _ensure_connection(self):
@@ -251,19 +249,12 @@ class ModelServiceClient:
                         from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
                         embeddings_response = EmbeddingsResponse()
                         if message.any_payload.Unpack(embeddings_response):
-                            print(f"🔍 [EMBEDDING_RESPONSE] Successfully unpacked EmbeddingsResponse")
-                            print(f"🔍 [EMBEDDING_RESPONSE] success={embeddings_response.success}")
-                            print(f"🔍 [EMBEDDING_RESPONSE] error={embeddings_response.error if embeddings_response.HasField('error') else None}")
-                            print(f"🔍 [EMBEDDING_RESPONSE] embedding length={len(embeddings_response.embedding) if embeddings_response.embedding else 0}")
                             req_data.update({
                                 'success': embeddings_response.success,
                                 'error': embeddings_response.error if embeddings_response.HasField('error') else None
                             })
                             if embeddings_response.success and embeddings_response.embedding:
                                 req_data['data'] = {'embedding': list(embeddings_response.embedding)}
-                                print(f"🔍 [EMBEDDING_RESPONSE] ✅ Extracted embedding with {len(embeddings_response.embedding)} dimensions")
-                            else:
-                                print(f"🔍 [EMBEDDING_RESPONSE] ❌ No embedding data or success=False")
                             req_event.set()
                         else:
                             self.logger.error("Failed to unpack EmbeddingsResponse")
@@ -450,18 +441,9 @@ class ModelServiceClient:
             self.subscribed_topics.add(response_topic)
             subscription_time = time.time() - subscription_start
             
-            # Only log slow subscriptions
-            if is_embedding_request and subscription_time > 0.01:
-                print(f"⏱️ [MODELSERVICE_TIMING] SLOW subscription: {subscription_time:.4f}s")
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
-            elif is_chat_request:
-                self.logger.debug(f"💬 [CHAT_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
-        else:
-            # Already subscribed - reuse existing subscription
-            if is_embedding_request:
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Reusing existing subscription to {response_topic}")
-            elif is_chat_request:
-                self.logger.debug(f"💬 [CHAT_DEBUG] Reusing existing subscription to {response_topic}")
+            # Log slow subscriptions
+            if is_embedding_request and subscription_time > 0.1:
+                self.logger.warning(f"Slow subscription: {subscription_time:.2f}s")
         
         try:
             # Send request with correlation ID and reply_to for targeted responses
@@ -475,14 +457,9 @@ class ModelServiceClient:
             )
             publish_time = time.time() - publish_start
             
-            # Only log slow publishing
-            if is_embedding_request and publish_time > 0.01:
-                print(f"⏱️ [MODELSERVICE_TIMING] SLOW publish: {publish_time:.4f}s")
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Waiting for response with timeout={self.config.timeout}s")
-            elif is_chat_request:
-                self.logger.debug(f"💬 [CHAT_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
-                self.logger.debug(f"💬 [CHAT_DEBUG] Waiting for response with timeout={self.config.timeout}s")
+            # Log slow publishing
+            if is_embedding_request and publish_time > 0.1:
+                self.logger.warning(f"Slow publish: {publish_time:.2f}s")
             
             # Wait for response with timeout
             wait_start = time.time()
@@ -490,14 +467,11 @@ class ModelServiceClient:
             await asyncio.wait_for(response_received.wait(), timeout=self.config.timeout)
             wait_time = time.time() - wait_start
             total_time = time.time() - start_time
-            # Only log slow responses
-            if is_embedding_request and wait_time > 0.2:
-                print(f"⏱️ [MODELSERVICE_TIMING] SLOW response: {wait_time:.4f}s wait")
+            # Log slow responses
+            if is_embedding_request and wait_time > 1.0:
+                self.logger.warning(f"Slow response: {wait_time:.2f}s")
             
-            if is_embedding_request:
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={wait_time:.4f}s")
-            elif is_chat_request:
+            if is_chat_request:
                 self.logger.debug(f"💬 [CHAT_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
                 self.logger.debug(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={wait_time:.4f}s")
             
