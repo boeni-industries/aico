@@ -299,6 +299,9 @@ class TaskExecutor:
             self.logger.warning(f"Task {task_id} is already running, skipping")
             return TaskResult(success=False, message="Task already running", skipped=True)
         
+        # CRITICAL: Define start_time BEFORE using it
+        start_time = datetime.now(timezone.utc)
+        
         # Add to running tasks (local process coordination)
         self.running_tasks[task_id] = asyncio.current_task()
         self.task_start_times[task_id] = start_time
@@ -315,7 +318,6 @@ class TaskExecutor:
         
         session_factory = await get_session_factory()
 
-        start_time = datetime.now(timezone.utc)
         task_instance = None
 
         # Track job execution metrics

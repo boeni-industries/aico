@@ -32,7 +32,7 @@ class BehavioralFeedback(BaseModel):
     skill_id: Optional[str] = None
     reward: Optional[int] = None
     reason: Optional[str] = None
-    timestamp: str
+    timestamp: datetime
     processed: int = 0
     outcome: Optional[str] = None
     execution_time_ms: Optional[int] = None

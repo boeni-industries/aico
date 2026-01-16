@@ -868,7 +868,7 @@ ams_behavioral_feedback = Table(
     Column('skill_id', String),
     Column('reward', Integer),
     Column('reason', String),
-    Column('timestamp', String, nullable=False),
+    Column('timestamp', TIMESTAMP(timezone=True), nullable=False),
     Column('processed', Integer, default=0),
     Column('outcome', String),
     Column('execution_time_ms', Integer),

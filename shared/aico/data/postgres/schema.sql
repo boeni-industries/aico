@@ -485,7 +485,7 @@ CREATE TABLE IF NOT EXISTS "ams_behavioral_feedback" (
             skill_id TEXT,
             reward INTEGER,
             reason TEXT,
-            timestamp TEXT NOT NULL,
+            timestamp TIMESTAMPTZ NOT NULL,
             processed INTEGER DEFAULT 0,
             outcome TEXT,
             execution_time_ms INTEGER,

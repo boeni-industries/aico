@@ -13,7 +13,7 @@ Follows AICO architectural patterns:
 
 from typing import Annotated, Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import json
 
 from aico.core.logging import get_logger
@@ -89,7 +89,7 @@ async def _get_consolidation_status(uow: UnitOfWork, user_id: str) -> Consolidat
             if last_session and last_session.completed_at:
                 try:
                     completed = datetime.fromisoformat(last_session.completed_at.replace('Z', '+00:00'))
-                    delta = datetime.utcnow() - completed
+                    delta = datetime.now(UTC) - completed
                     
                     if delta.total_seconds() < 3600:
                         minutes = int(delta.total_seconds() / 60)
@@ -107,7 +107,7 @@ async def _get_consolidation_status(uow: UnitOfWork, user_id: str) -> Consolidat
         # Get current cycle day (based on actual date progression)
         # Use day of year modulo 7 to ensure consistent daily progression
         from datetime import datetime
-        current_date = datetime.utcnow()
+        current_date = datetime.now(UTC)
         day_of_year = current_date.timetuple().tm_yday
         current_cycle_day = (day_of_year % 7) + 1
         
@@ -206,7 +206,7 @@ async def _get_behavioral_learning_stats(uow: UnitOfWork, user_id: str) -> Behav
             )     # Determine learning rate based on recent feedback
         learning_rate = "Stable"
         if total_feedback > 0:
-            seven_days_ago = datetime.utcnow() - timedelta(days=7)
+            seven_days_ago = datetime.now(UTC) - timedelta(days=7)
             recent_feedback = sum(1 for f in all_feedback if f.timestamp and f.timestamp > seven_days_ago)
             
             if recent_feedback > 10:
@@ -402,7 +402,7 @@ async def _get_feedback_stats(uow: UnitOfWork, user_id: str) -> FeedbackStatsRes
                         timestamp = datetime.fromisoformat(feedback.timestamp.replace('Z', '+00:00'))
                     else:
                         timestamp = feedback.timestamp
-                    delta = datetime.utcnow() - timestamp
+                    delta = datetime.now(UTC) - timestamp
                     
                     if delta.total_seconds() < 3600:
                         time_str = f"{int(delta.total_seconds() / 60)} minutes ago"
