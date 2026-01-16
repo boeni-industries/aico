@@ -199,6 +199,163 @@ Studio inherits the global frontend design language, tuned for data‑dense admi
   - No large purple backgrounds; accents only on controls, highlights, status rings, and selection.
   - All critical actions (e.g. deletion, key rotation) use the error palette plus explicit labels.
 
+### 4.1.1 Domain-Specific Color System
+
+**Each main navigation domain has a dedicated color palette** used consistently across:
+- Sidebar icons and active states
+- Domain cards on Overview page
+- Page headers and hero sections
+- Gradient backgrounds
+- Status indicators and badges
+
+**Color Palette by Domain:**
+
+| Domain | Primary Color | Light Theme | Dark Theme | Gradient Accent | Icon | Use Cases |
+|--------|--------------|-------------|------------|-----------------|------|-----------|
+| **Overview** | Neutral Gray | `#6B7280` | `#9CA3AF` | `rgba(107, 114, 128, 0.1)` | 🏠 | Dashboard, system-wide views, root hub |
+| **Operations** | Blue | `#2563EB` | `#3B82F6` | `rgba(59, 130, 246, 0.1)` | ⚡ | System health, users, sessions, scheduler, runtime |
+| **Emotion** | Pink/Magenta | `#DB2777` | `#EC4899` | `rgba(236, 72, 153, 0.1)` | 😊 | Emotion tracking, valence, arousal, circumplex |
+| **Memory & AMS** | Purple | `#7C3AED` | `#8B5CF6` | `rgba(139, 92, 246, 0.1)` | 📖 | Memory tiers, KG, semantic search, AMS, albums |
+| **Agency** | Amber/Orange | `#D97706` | `#F59E0B` | `rgba(245, 158, 11, 0.1)` | ✨ | Goals, learning, curiosity, values, autonomy |
+| **System** | Cyan/Teal | `#0891B2` | `#06B6D4` | `rgba(6, 182, 212, 0.1)` | ⚙️ | Configuration, updates, plugins, health, settings |
+
+**Secondary Colors (Status & Indicators):**
+- **Success/Healthy**: `#059669` (light) / `#10B981` (dark)
+- **Warning/Degraded**: `#D97706` (light) / `#F59E0B` (dark)
+- **Error/Critical**: `#DC2626` (light) / `#EF4444` (dark)
+- **Info/Neutral**: `#6B7280` (light) / `#9CA3AF` (dark)
+
+**Gradient Formula per Domain:**
+```css
+/* Light Theme */
+background: radial-gradient(circle at top right, {domain-color}03 0%, transparent 70%),
+            linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%),
+            #FFFFFF;
+
+/* Dark Theme */
+background: radial-gradient(circle at top right, {domain-color}15 0%, transparent 70%),
+            linear-gradient(135deg, {domain-color}10 0%, {accent-color}05 100%),
+            rgba(255, 255, 255, 0.02);
+```
+
+**Implementation Examples:**
+
+**Operations Domain (Blue):**
+```tsx
+// Card background
+background: (theme) => theme.palette.mode === 'light'
+  ? 'radial-gradient(circle at top right, rgba(37, 99, 235, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
+  : 'radial-gradient(circle at top right, rgba(59, 130, 246, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%), rgba(255, 255, 255, 0.02)'
+
+// Icon color
+color: (theme) => theme.palette.mode === 'light' ? '#2563EB' : '#3B82F6'
+```
+
+**Memory & AMS Domain (Purple):**
+```tsx
+// Card background
+background: (theme) => theme.palette.mode === 'light'
+  ? 'radial-gradient(circle at top right, rgba(124, 58, 237, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
+  : 'radial-gradient(circle at top right, rgba(139, 92, 246, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%), rgba(255, 255, 255, 0.02)'
+
+// Icon color
+color: (theme) => theme.palette.mode === 'light' ? '#7C3AED' : '#8B5CF6'
+```
+
+**Emotion Domain (Pink):**
+```tsx
+// Card background - dynamic based on emotion state
+background: (theme) => theme.palette.mode === 'light'
+  ? 'radial-gradient(circle at top right, rgba(219, 39, 119, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
+  : 'radial-gradient(circle at top right, rgba(236, 72, 153, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%), rgba(255, 255, 255, 0.02)'
+
+// Icon color
+color: (theme) => theme.palette.mode === 'light' ? '#DB2777' : '#EC4899'
+```
+
+**Agency Domain (Amber/Orange):**
+```tsx
+// Card background
+background: (theme) => theme.palette.mode === 'light'
+  ? 'radial-gradient(circle at top right, rgba(217, 119, 6, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
+  : 'radial-gradient(circle at top right, rgba(245, 158, 11, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%), rgba(255, 255, 255, 0.02)'
+
+// Icon color
+color: (theme) => theme.palette.mode === 'light' ? '#D97706' : '#F59E0B'
+```
+
+**System Domain (Cyan):**
+```tsx
+// Card background
+background: (theme) => theme.palette.mode === 'light'
+  ? 'radial-gradient(circle at top right, rgba(8, 145, 178, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
+  : 'radial-gradient(circle at top right, rgba(6, 182, 212, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%), rgba(255, 255, 255, 0.02)'
+
+// Icon color
+color: (theme) => theme.palette.mode === 'light' ? '#0891B2' : '#06B6D4'
+```
+
+**Consistency Rules:**
+1. **Sidebar Navigation**: Active domain uses its primary color for icon and text
+2. **Overview Cards**: Each domain card uses its dedicated color for icon, accents, and gradients
+3. **Page Headers**: Domain pages use their color for the page icon and accent elements
+4. **Hero Sections**: Large dashboard panels use domain color in gradient backgrounds
+5. **Status Badges**: Always use semantic colors (success/warning/error), not domain colors
+
+**Accessibility Compliance:**
+- All domain colors meet WCAG AA contrast requirements (4.5:1 minimum)
+- Light theme versions are darker/more saturated for better readability
+- Color is never the only indicator - always paired with icons, labels, or patterns
+
+### 4.1.2 Light Theme Readability Requirements
+
+**CRITICAL: Light theme has historically suffered from poor contrast and readability.** All light theme implementations must follow these principles:
+
+**Contrast Requirements (WCAG AA+ Minimum)**
+- **Body text**: Minimum 4.5:1 contrast ratio against background
+- **Large text (≥18pt)**: Minimum 3:1 contrast ratio
+- **Interactive elements**: Minimum 3:1 contrast for borders, icons, controls
+- **Data visualization**: All colored text must meet 4.5:1 against its background
+
+**Text Color Adjustments for Light Theme**
+- **Primary text**: `#1F2937` (dark gray, not pure black)
+- **Secondary text**: `#6B7280` (medium gray)
+- **Accent text on light backgrounds**: Use **darker, saturated versions** of accent colors:
+  - Purple: `#7C3AED` (instead of `#8B5CF6`) 
+  - Blue: `#2563EB` (instead of `#3B82F6`)
+  - Green: `#059669` (instead of `#10B981`)
+  - Amber: `#D97706` (instead of `#F59E0B`)
+  - Red: `#DC2626` (instead of `#EF4444`)
+
+**Gradient Backgrounds in Light Theme**
+- **Problem**: Light gradients (purple/blue at 5-10% opacity) create insufficient contrast for colored text
+- **Solution**: 
+  - **Reduce gradient opacity to 3-5%** (half of dark theme)
+  - **Use neutral gray gradients** instead of colored ones for data-heavy sections:
+    ```css
+    background: radial-gradient(circle at top right, rgba(0,0,0,0.03) 0%, transparent 70%),
+                linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%)
+    ```
+  - **Increase text weight**: Use 600-700 font weight for colored metrics on gradient backgrounds
+  - **Add subtle text shadows** for critical metrics: `text-shadow: 0 1px 2px rgba(255,255,255,0.8)`
+
+**Card Backgrounds in Light Theme**
+- **Primary cards**: Pure white `#FFFFFF` with subtle shadow, not gradient backgrounds
+- **Elevated cards**: Very light gray `#FAFBFC` for hierarchy
+- **Glass effect**: Reduce backdrop blur to 10-15px (vs 20-30px in dark theme)
+- **Borders**: Use `rgba(0,0,0,0.1)` for visible separation (not `rgba(255,255,255,0.1)`)
+
+**Status Indicators in Light Theme**
+- **Badges/chips**: Use solid background colors with white text, not transparent backgrounds
+- **Icons**: Use filled icons with solid colors, not outlined icons with low-contrast strokes
+- **Progress circles**: Increase stroke width from 12px to 16px for better visibility
+
+**Testing Requirements**
+- **Test all light theme UIs** in bright daylight conditions (simulated or real)
+- **Verify contrast ratios** using browser DevTools or contrast checker tools
+- **Review on multiple displays**: Glossy screens, matte screens, low-brightness settings
+- **User testing**: Older adults and users with visual impairments must be able to read all content
+
 ### 4.2 Shape & Composition
 
 - **Radius scale**
@@ -227,6 +384,40 @@ Studio inherits the global frontend design language, tuned for data‑dense admi
   - Feels like a floating drawer sliding over the background.
   - Same 36px radius, blur, and border treatment as other primary containers.
 
+### 4.3.1 Advanced Gradient Techniques (Knowledge Graph Pattern)
+
+**Inspired by the Memory & AMS → Knowledge Graph implementation**, Studio uses sophisticated gradient layering for hero sections and high-impact panels:
+
+**Radial + Linear Gradient Layering**
+```css
+background: radial-gradient(circle at top right, {accentColor}20 0%, transparent 70%), 
+            linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%)
+```
+
+**Key Principles:**
+- **Radial gradients** create focal points (typically top-right or center) with 20% opacity accent colors
+- **Linear gradients** (135° diagonal) provide directional flow from purple (`#8B5CF6`) to blue (`#3B82F6`)
+- **Opacity range**: 5–20% to maintain readability while adding visual interest
+- **Layering**: Radial on top, linear underneath, both over glassmorphic backdrop blur
+
+**Glow Effects for Data Visualization**
+- Radial progress circles: `filter: drop-shadow(0 0 8px {color}80)` (50% opacity)
+- Status indicators: Small colored dots with `boxShadow: 0 0 8px {color}80`
+- Animated transitions: `transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1)`
+
+**Color Palette for Gradients:**
+- **Purple accent**: `rgba(139, 92, 246, 0.1)` → `#8B5CF6` at 10% opacity
+- **Blue accent**: `rgba(59, 130, 246, 0.05)` → `#3B82F6` at 5% opacity
+- **Success green**: `rgba(16, 185, 129, 0.1)` → `#10B981` at 10% opacity
+- **Warning amber**: `rgba(245, 158, 11, 0.1)` → `#F59E0B` at 10% opacity
+- **Error red**: `rgba(239, 68, 68, 0.1)` → `#EF4444` at 10% opacity
+
+**When to Use:**
+- **Hero sections**: Health dashboards, analytics panels, system status displays
+- **High-importance cards**: Critical alerts, primary metrics, featured content
+- **Data visualization backgrounds**: Charts, graphs, progress indicators
+- **Avoid**: Regular content cards, tables, forms (use simpler glass effects)
+
 ### 4.4 Typography & Density
 
 - Same base typography as main UI (Inter, 1.0rem body, etc.), with:
@@ -237,6 +428,49 @@ Studio inherits the global frontend design language, tuned for data‑dense admi
 - **Density rules**
   - Max ~10–12 visible rows per table without scrolling on typical desktop height (avoid microscopic text).
   - Prefer progressive disclosure (expandable sections, drawers) over cramming.
+
+### 4.5 Dashboard Design Best Practices (2026)
+
+Studio dashboards follow modern UX research principles for data-dense, decision-oriented interfaces:
+
+**Progressive Disclosure & Cognitive Load**
+- Show the **pulse in 5–30 seconds**: One dominant primary KPI, 3–5 secondary metrics, critical alerts only.
+- Everything else lives behind drill-downs, expandable sections, or detail drawers.
+- The era of "show everything" is over—prioritize ruthlessly.
+
+**Problem-First, Not Status-First**
+- Surface **anomalies and issues** prominently; healthy services collapse into summary counts.
+- Show **deltas and trends** (not just current state): "Database +12% in last hour" vs "Database 78%".
+- Context-aware actions: "Archive Old Conversations (will free ~3.2GB)" vs generic "Free Space".
+
+**Data Storytelling Over Raw Numbers**
+- Pair every metric with a **declarative sentence**: "Backend responding 3x slower than baseline (45ms → 135ms)".
+- Convert vitals into short, concrete narratives that explain impact.
+- AI should interpret, not mystify—always include "Why?" tooltips.
+
+**Zero-Interface Philosophy**
+- Dashboards should **anticipate needs without active querying**.
+- Proactive alerts, context-aware visualizations, automated anomaly detection.
+- Surface the right metric at the right moment without hunting.
+
+**Semantic Color + Micro-Interactions**
+- Traffic-light logic: green (good), orange (watch), red (act now).
+- **Color-independent cues**: Icons, labels, patterns—never color alone (accessibility).
+- Subtle animations that spot anomalies faster than static charts.
+- Motion guides attention when complexity is high.
+
+**Card-Based Modular Layout**
+- Organize metrics into **discrete, self-contained cards**.
+- Each card: quick snapshot + "now vs usual" + tap/click for detail.
+- Users can pin/reorder/hide cards based on priorities (future: AI-powered personalization).
+- Grid systems that scale from mobile to desktop.
+
+**Audience Segmentation**
+- Different roles see different views:
+  - **Operators**: Real-time, granular, actionable controls.
+  - **Administrators**: System health, configuration, maintenance.
+  - **Developers**: Data-heavy, filters, drill-downs, technical details.
+- Avoid one-size-fits-all dashboards.
 
 ---
 
@@ -316,17 +550,79 @@ This preserves context while allowing cross‑cutting navigation.
 
 ## 7. Accessibility & Responsiveness
 
-- All colors and text meet WCAG AA+ contrast.
-- Full keyboard navigation across sidebar, cards, tables, and modals.
-- ARIA roles for navigation, main content, and live regions (for toasts/status).
-- Responsive breakpoints:
-  - Desktop: sidebar + main + optional context panel.
-  - Tablet: collapsible sidebar, stacked content.
-  - Mobile: single column, bottom‑sheet style modals instead of wide dialogs.
+### 7.1 Accessibility Requirements (WCAG 3.0 Ready)
+
+**Contrast & Visual Clarity**
+- All colors and text meet **WCAG AA+ contrast** minimum (4.5:1 for body text, 3:1 for large text).
+- Status indicators use **color-independent cues**: icons, labels, patterns—never color alone.
+- Test with real users: older adults, people with disabilities, low-literacy groups.
+
+**Keyboard Navigation**
+- **Full keyboard operability** without mouse across sidebar, cards, tables, and modals.
+- **Visible focus rings** on all interactive elements (not subtle—clearly visible).
+- Tab order follows logical reading flow.
+- Escape key closes modals/drawers, Enter activates primary actions.
+
+**Screen Reader Support**
+- ARIA roles for navigation, main content, and live regions (for toasts/status updates).
+- Meaningful alt text for all icons and status indicators.
+- Form labels properly associated with inputs.
+- Dynamic content changes announced to screen readers.
+
+**Touch & Interaction**
+- **48px minimum tap targets** for mobile (avoid tiny buttons).
+- Sufficient spacing between interactive elements (8px minimum).
+- Gesture-based interactions have keyboard/mouse alternatives.
+
+### 7.2 Mobile-First Architecture
+
+**90% of users expect responsive design**—Studio must work seamlessly across devices:
+
+**Responsive Breakpoints**
+- **Desktop (≥1200px)**: Sidebar + main + optional context panel.
+- **Tablet (768px–1199px)**: Collapsible sidebar, stacked content, single-column cards.
+- **Mobile (<768px)**: Single column, bottom-sheet style modals, hamburger navigation.
+
+**Mobile Optimizations**
+- Avoid complex visualizations on small screens—use simplified charts or data tables.
+- **Seamless hand-off**: Start task on phone, finish on desktop (state preservation).
+- Progressive web app (PWA) capabilities for offline access and app-like experience.
+- Touch-optimized controls: swipe timelines, pinch to zoom, long-press for context menus.
 
 ---
 
-## 8. Implementation Notes (React / React‑Admin)
+## 8. AI-Powered Personalization & Future Roadmap
+
+### 8.1 Death of One-Size-Fits-All Dashboards
+
+By 2026, dashboards **fundamentally restructure based on how each person actually makes decisions**—learning interaction patterns and anticipating the next question.
+
+**Phase 1: User Preferences (Current)**
+- Manual card reordering, pinning, hiding.
+- Saved filter sets and view configurations.
+- Role-based default layouts (operator vs administrator vs developer).
+
+**Phase 2: Behavioral Learning (Roadmap)**
+- Track which metrics users check first, how often, and in what sequence.
+- Automatically surface frequently-accessed data higher in the hierarchy.
+- Predict next likely action based on current context (e.g., after viewing high disk usage, suggest archive tools).
+
+**Phase 3: Proactive Intelligence (Future)**
+- **Anticipatory interfaces**: Dashboard restructures before user realizes they need different data.
+- **Next-best-action recommendations**: "Based on current system state, you might want to..."
+- **Contextual explanations**: AI interprets anomalies and suggests root causes.
+- **Natural language queries**: "Show me why the backend is slow" → generates custom dashboard view.
+
+### 8.2 Explainability & Trust
+
+All AI-driven personalization must be:
+- **Transparent**: "Why?" tooltips explain why a metric is surfaced or an action is recommended.
+- **Controllable**: Users can always revert to manual layouts or disable AI suggestions.
+- **Privacy-aware**: Learning happens locally or with explicit consent; no hidden data collection.
+
+---
+
+## 9. Implementation Notes (React / React‑Admin)
 
 - **Shell vs. Modules**
   - Studio shell handles layout, navigation, theming, and discovery.
