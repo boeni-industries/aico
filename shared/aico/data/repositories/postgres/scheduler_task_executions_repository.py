@@ -69,7 +69,25 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
         )
     
     async def update(self, entity: TaskExecution) -> TaskExecution:
-        """Update an existing task execution."""
+        """Update an existing task execution.
+        
+        Raises:
+            ValueError: If entity has no database ID
+            RuntimeError: If update matches zero rows (indicates data integrity issue)
+        
+        Note: Exceptions are raised to make failures visible, but caller should
+        handle them gracefully to avoid crashing the system.
+        """
+        # Validate entity has required ID
+        if not hasattr(entity, 'id') or entity.id is None:
+            error_msg = (
+                f"❌ Cannot update TaskExecution without database ID. "
+                f"execution_id={getattr(entity, 'execution_id', 'unknown')}, "
+                f"task_id={getattr(entity, 'task_id', 'unknown')}"
+            )
+            print(f"\n{error_msg}\n")
+            raise ValueError(error_msg)
+        
         # Same serialization rules as in create(): always store TEXT/JSON.
         db_result: Optional[str]
         if entity.result is None:
@@ -90,7 +108,19 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
                 duration_seconds=entity.duration_seconds,
             )
         )
-        await self.session.execute(stmt)
+        result = await self.session.execute(stmt)
+        
+        # CRITICAL: Verify update actually modified a row
+        if result.rowcount == 0:
+            error_msg = (
+                f"❌ CRITICAL: Update matched zero rows for TaskExecution with id={entity.id}. "
+                f"This indicates the record doesn't exist or the WHERE clause failed. "
+                f"execution_id={getattr(entity, 'execution_id', 'unknown')}, "
+                f"task_id={getattr(entity, 'task_id', 'unknown')}"
+            )
+            print(f"\n{error_msg}\n")
+            raise RuntimeError(error_msg)
+        
         return entity
     
     async def delete(self, entity_id: str) -> bool:

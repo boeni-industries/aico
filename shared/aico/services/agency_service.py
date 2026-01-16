@@ -8,9 +8,12 @@ Provides high-level agency operations using the 17 agency repositories.
 from __future__ import annotations
 
 import json
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+# Python 3.9 compatibility
+UTC = timezone.utc
 
 from aico.core.logging import get_logger
 from aico.data.uow import UnitOfWork
@@ -524,5 +527,80 @@ class AgencyService:
                 logger.debug(f"[AGENCY_SERVICE] Updated plan execution: {execution_id}")
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to update plan execution: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def create_plan_execution(self, execution_data: Dict[str, Any]) -> str:
+        """Create a plan execution record."""
+        try:
+            from aico.data.agency.models import AgencyPlanExecution
+            execution = AgencyPlanExecution(**execution_data)
+            created = await self.uow.agency_plan_executions.create(execution)
+            await self.uow.commit()
+            logger.info(f"[AGENCY_SERVICE] Created plan execution: {created.execution_id}")
+            return created.execution_id
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to create plan execution: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_plan_execution(self, execution_id: str) -> Optional[Dict[str, Any]]:
+        """Get a plan execution by ID."""
+        try:
+            execution = await self.uow.agency_plan_executions.get_by_id(execution_id)
+            return execution.to_dict() if execution and hasattr(execution, 'to_dict') else execution
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get plan execution: {e}")
+            raise
+
+    async def get_next_pending_step(self, execution_id: str) -> Optional[Dict[str, Any]]:
+        """Get the next pending step for an execution."""
+        try:
+            steps = await self.uow.agency_step_executions.list(
+                filters={"execution_id": execution_id, "status": "pending"},
+                order_by="step_order",
+                limit=1
+            )
+            if steps:
+                step = steps[0]
+                return step.to_dict() if hasattr(step, 'to_dict') else step
+            return None
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get next pending step: {e}")
+            raise
+
+    async def count_pending_steps(self, execution_id: str) -> int:
+        """Count pending steps for an execution."""
+        try:
+            steps = await self.uow.agency_step_executions.list(
+                filters={"execution_id": execution_id, "status": "pending"}
+            )
+            return len(steps)
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to count pending steps: {e}")
+            return 0
+
+    async def count_step_executions(self, execution_id: str) -> int:
+        """Count total step executions for an execution."""
+        try:
+            steps = await self.uow.agency_step_executions.list(
+                filters={"execution_id": execution_id}
+            )
+            return len(steps)
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to count step executions: {e}")
+            return 0
+
+    async def create_execution_snapshot(self, snapshot_data: Dict[str, Any]) -> str:
+        """Create an execution snapshot."""
+        try:
+            from aico.data.agency.models import AgencyExecutionSnapshot
+            snapshot = AgencyExecutionSnapshot(**snapshot_data)
+            created = await self.uow.agency_execution_snapshots.create(snapshot)
+            await self.uow.commit()
+            logger.debug(f"[AGENCY_SERVICE] Created execution snapshot: {created.snapshot_id}")
+            return created.snapshot_id
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to create execution snapshot: {e}")
             await self.uow.rollback()
             raise

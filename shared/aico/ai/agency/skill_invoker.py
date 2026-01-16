@@ -32,13 +32,11 @@ class SkillInvoker:
     
     def __init__(
         self,
-        db: Any,  # Agency system being redesigned
         skill_registry: SkillRegistry,
         default_timeout: int = 30,
         max_retries: int = 2,
         logger=None,
     ):
-        self.db = db
         self.skill_registry = skill_registry
         self.default_timeout = default_timeout
         self.max_retries = max_retries

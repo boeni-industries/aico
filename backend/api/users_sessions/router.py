@@ -204,7 +204,9 @@ async def get_user_detail(
         if cred_list:
             cred = cred_list[0]
             credentials = UserCredentials(
+                has_pin=bool(cred.pin_hash) if hasattr(cred, 'pin_hash') else False,
                 failed_attempts=cred.failed_attempts,
+                is_locked=bool(cred.locked_until and cred.locked_until > datetime.now(timezone.utc)) if hasattr(cred, 'locked_until') else False,
                 locked_until=cred.locked_until.isoformat() if hasattr(cred.locked_until, 'isoformat') else cred.locked_until if cred.locked_until else None,
                 last_login=cred.last_login.isoformat() if hasattr(cred.last_login, 'isoformat') else cred.last_login if cred.last_login else None
             )
@@ -245,19 +247,39 @@ async def get_user_detail(
                 ))
         
         # Calculate statistics
-        statistics = {
-            "total_sessions": len(all_sessions),
-            "active_sessions": sum(1 for s in all_sessions if s.is_active),
-            "revoked_sessions": sum(1 for s in all_sessions if not s.is_active),
-            "total_devices": len(devices)
-        }
+        now = datetime.now(timezone.utc)
+        expired_count = sum(1 for s in all_sessions if not s.is_active or (s.expires_at and s.expires_at <= now))
+        
+        # Group sessions by type
+        sessions_by_type = {}
+        for sess in all_sessions:
+            session_type = sess.session_type or 'unknown'
+            sessions_by_type[session_type] = sessions_by_type.get(session_type, 0) + 1
+        
+        # Group sessions by device type
+        sessions_by_device_type = {}
+        for sess in all_sessions:
+            if sess.device_uuid:
+                device = next((d for d in devices if d.uuid == sess.device_uuid), None)
+                device_type = device.device_type if device else 'unknown'
+            else:
+                device_type = 'unknown'
+            sessions_by_device_type[device_type] = sessions_by_device_type.get(device_type, 0) + 1
+        
+        statistics = SessionStatistics(
+            total_sessions=len(all_sessions),
+            active_sessions=sum(1 for s in all_sessions if s.is_active),
+            expired_sessions=expired_count,
+            sessions_by_type=sessions_by_type,
+            sessions_by_device_type=sessions_by_device_type
+        )
         
         return UserDetailResponse(
             user=profile_response,
             credentials=credentials,
-            sessions=active_sessions,
+            active_sessions=active_sessions,
             devices=devices,
-            statistics=SessionStatistics(**statistics)
+            statistics=statistics.dict()
         )
         
     except HTTPException:
@@ -577,6 +599,7 @@ async def revoke_all_user_sessions(
         )
 
 
+@router.post("/users/{user_uuid}/cleanup-sessions", status_code=200)
 @router.delete("/users/{user_uuid}/sessions/expired", status_code=200)
 async def cleanup_expired_sessions(
     user_uuid: str,
@@ -585,6 +608,7 @@ async def cleanup_expired_sessions(
 ) -> dict:
     """
     Delete all expired sessions for a specific user.
+    Accessible via POST /cleanup-sessions or DELETE /sessions/expired
     """
     try:
         # Check if user exists
@@ -598,7 +622,7 @@ async def cleanup_expired_sessions(
         
         # Get count of expired sessions
         all_sessions = await uow.sessions.list(filters={"user_uuid": user_uuid}, limit=10000)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expired_sessions = [
             s for s in all_sessions 
             if not s.is_active or (s.expires_at and s.expires_at <= now)

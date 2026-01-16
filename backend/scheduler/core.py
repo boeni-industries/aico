@@ -508,11 +508,24 @@ class TaskExecutor:
     
     async def _record_completion(self, task_id: str, execution_id: str, result: TaskResult, 
                                status: TaskStatus, start_time: datetime):
-        """Record task completion in database via SchedulerService."""
+        """Record task completion in database via SchedulerService.
+        
+        CRITICAL: This method MUST succeed or raise an exception.
+        Silent failures here cause jobs to stay stuck in 'running' status forever.
+        """
         try:
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
             from aico.services.scheduler_service import SchedulerService
+            from aico.ai.scheduler.models import SchedulerTaskExecution
+
+            # Validate inputs
+            if not task_id:
+                raise ValueError("task_id cannot be empty")
+            if not execution_id:
+                raise ValueError("execution_id cannot be empty")
+            if not status:
+                raise ValueError("status cannot be None")
 
             end_time = datetime.now(timezone.utc)
             duration_seconds = (end_time - start_time).total_seconds()
@@ -525,20 +538,104 @@ class TaskExecutor:
             }
 
             session_factory = await get_session_factory()
+            if not session_factory:
+                raise RuntimeError("Failed to get session_factory - database connection unavailable")
+            
             async with UnitOfWork(session_factory) as uow:
                 scheduler_service = SchedulerService(uow)
-                await scheduler_service.update_execution({
-                    "execution_id": execution_id,
-                    "task_id": task_id,
-                    "status": status.value if hasattr(status, "value") else str(status),
-                    "completed_at": end_time,
-                    "result": result_payload,
-                    "error_message": getattr(result, "error", None),
-                    "duration_seconds": duration_seconds,
-                })
+                
+                # Get existing execution to retrieve database ID
+                self.logger.debug(f"Looking up execution {execution_id} for task {task_id}")
+                executions = await uow.scheduler_task_executions.list(
+                    filters={"task_id": task_id},
+                    limit=100
+                )
+                
+                self.logger.debug(f"Found {len(executions)} executions for task {task_id}")
+                
+                # Find the execution by execution_id (UUID)
+                existing_execution = None
+                for exec in executions:
+                    if exec.execution_id == execution_id:
+                        existing_execution = exec
+                        break
+                
+                if not existing_execution:
+                    error_msg = (
+                        f"CRITICAL: Could not find execution {execution_id} for task {task_id} to update. "
+                        f"This will cause the job to stay stuck in 'running' status. "
+                        f"Found {len(executions)} total executions for this task."
+                    )
+                    self.logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+                
+                # Validate we have the database ID
+                if not hasattr(existing_execution, 'id') or existing_execution.id is None:
+                    error_msg = (
+                        f"CRITICAL: Execution {execution_id} has no database ID. "
+                        f"Cannot update without primary key. This is a data integrity issue."
+                    )
+                    self.logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+                
+                self.logger.debug(
+                    f"Updating execution {execution_id} (db_id={existing_execution.id}) "
+                    f"with status={status.value if hasattr(status, 'value') else str(status)}"
+                )
+                
+                # Update the execution with completion data
+                existing_execution.status = status.value if hasattr(status, "value") else str(status)
+                existing_execution.completed_at = end_time
+                existing_execution.result = result_payload
+                existing_execution.error_message = getattr(result, "error", None)
+                existing_execution.duration_seconds = duration_seconds
+                
+                # Perform the update
+                updated = await uow.scheduler_task_executions.update(existing_execution)
+                
+                # Verify the update returned something
+                if not updated:
+                    error_msg = (
+                        f"CRITICAL: Update operation for execution {execution_id} returned None. "
+                        f"This may indicate the update failed silently."
+                    )
+                    self.logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+                
+                # Commit the transaction
+                await uow.commit()
+                
+                self.logger.info(
+                    f"Successfully recorded completion for task {task_id}, "
+                    f"execution {execution_id}, status={existing_execution.status}, "
+                    f"duration={duration_seconds:.2f}s"
+                )
 
         except Exception as e:
-            self.logger.error(f"Failed to record completion for {task_id}: {e}")
+            # Log with full context but DON'T crash the system
+            error_msg = (
+                f"❌ CRITICAL FAILURE in _record_completion: "
+                f"task_id={task_id}, execution_id={execution_id}, status={status}. "
+                f"Error: {e}"
+            )
+            # Log to logger with full stack trace
+            self.logger.error(error_msg, exc_info=True)
+            
+            # ALSO print to console for immediate visibility
+            print(f"\n{'='*80}")
+            print(f"❌ SCHEDULER ERROR: Failed to record job completion")
+            print(f"{'='*80}")
+            print(f"Task ID: {task_id}")
+            print(f"Execution ID: {execution_id}")
+            print(f"Status: {status}")
+            print(f"Error: {e}")
+            print(f"{'='*80}")
+            import traceback
+            traceback.print_exc()
+            print(f"{'='*80}\n")
+            
+            # DO NOT re-raise - allow scheduler to continue running
+            # The job will remain in 'running' state which is visible in the UI
     
     async def cancel_task(self, task_id: str) -> bool:
         """Cancel a running task (Phase 6.2)

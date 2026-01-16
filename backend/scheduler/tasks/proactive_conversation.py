@@ -89,11 +89,12 @@ class ProactiveConversationTask(BaseTask):
                 extract_contextual_features
             )
             
-            # Initialize learning components (bandit will use UoW internally)
+            # Initialize learning components
             from aico.data.postgres.connection import get_session_factory
             session_factory = await get_session_factory()
             
-            bandit = ContextualBanditLearner(session_factory)
+            # Bandit learner doesn't need database access - it's in-memory
+            bandit = ContextualBanditLearner(db=None)
             adaptivity_scorer = AdaptivityScorer()
             civility_scorer = CivilityScorer()
             

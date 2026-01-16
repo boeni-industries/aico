@@ -145,12 +145,10 @@ class PlanExecutor:
     
     def __init__(
         self,
-        db: Any,  # Agency system being redesigned
         agency_service: AgencyService,
         skill_invoker: Optional[Any] = None,
         logger=None,
     ):
-        self.db = db
         self.agency_service = agency_service
         self.skill_invoker = skill_invoker
         self.logger = logger or globals()["logger"]
@@ -230,26 +228,13 @@ class PlanExecutor:
                 f"skill_id={step.skill_id}, step_exec_id={step_exec.step_execution_id[:8]}..."
             )
         
-        # Ensure all step executions are committed
-        self.db.commit()
-        
-        # Force WAL checkpoint to ensure changes are visible
-        try:
-            self.db.execute("PRAGMA wal_checkpoint(FULL)")
-        except Exception as e:
-            self.logger.warning(f"[EXECUTOR] WAL checkpoint failed: {e}")
-        
         # Verify step executions were created
-        count_row = self.db.fetch_one(
-            "SELECT COUNT(*) as count FROM agency_step_executions WHERE execution_id = ?",
-            (execution.execution_id,)
-        )
-        created_count = count_row["count"] if count_row else 0
+        total_steps = await self.agency_service.count_step_executions(execution.execution_id)
         
         self.logger.info(
             f"[EXECUTOR] Started execution {execution.execution_id[:8]}... "
             f"for plan {plan_id[:8]}... ({len(plan.steps)} steps) "
-            f"- Verified {created_count} step_executions in DB"
+            f"- Verified {total_steps} step_executions in DB"
         )
         
         return execution
@@ -658,184 +643,142 @@ class PlanExecutor:
     ) -> Optional[StepExecution]:
         """Get next pending step in order."""
         # Debug: Check total step executions for this execution
-        count_row = self.db.fetch_one(
-            "SELECT COUNT(*) as count FROM agency_step_executions WHERE execution_id = ?",
-            (execution_id,)
-        )
-        total_steps = count_row["count"] if count_row else 0
+        total_steps = await self.agency_service.count_step_executions(execution_id)
         
-        self.logger.info(
-            f"[EXECUTOR DEBUG] Looking for pending steps in execution {execution_id[:8]}... "
+        self.logger.debug(
+            f"[EXECUTOR] Looking for next pending step in execution {execution_id}. "
             f"Total step_executions in DB: {total_steps}"
         )
         
-        row = self.db.fetch_one(
-            """SELECT * FROM agency_step_executions
-               WHERE execution_id = ? AND status = 'pending'
-               ORDER BY step_order ASC
-               LIMIT 1""",
-            (execution_id,)
-        )
+        step_dict = await self.agency_service.get_next_pending_step(execution_id)
         
-        if not row:
-            self.logger.info(
-                f"[EXECUTOR DEBUG] No pending steps found for execution {execution_id[:8]}... "
-                f"(total steps in DB: {total_steps})"
-            )
+        if not step_dict:
             return None
         
-        self.logger.info(
-            f"[EXECUTOR DEBUG] Found pending step: order={row['step_order']}, "
-            f"skill_id={row.get('skill_id', 'None')}"
-        )
-        
-        return self._row_to_step_execution(row)
+        return self._dict_to_step_execution(step_dict)
     
     async def _has_pending_steps(self, execution_id: str) -> bool:
         """Check if execution has pending steps."""
-        row = self.db.fetch_one(
-            """SELECT COUNT(*) as count FROM agency_step_executions
-               WHERE execution_id = ? AND status = 'pending'""",
-            (execution_id,)
-        )
-        
-        return row["count"] > 0 if row else False
+        count = await self.agency_service.count_pending_steps(execution_id)
+        return count > 0
     
     async def _save_execution(self, execution: PlanExecution) -> None:
         """Save execution to database."""
-        now = datetime.now(UTC).isoformat()
+        execution_data = {
+            "execution_id": execution.execution_id,
+            "plan_id": execution.plan_id,
+            "goal_id": execution.goal_id,
+            "user_id": execution.user_id,
+            "status": execution.status.value,
+            "started_at": execution.started_at,
+            "completed_at": execution.completed_at,
+            "paused_at": execution.paused_at,
+            "cancelled_at": execution.cancelled_at,
+            "current_step_id": execution.current_step_id,
+            "steps_completed": execution.steps_completed,
+            "steps_total": execution.steps_total,
+            "progress_percentage": execution.progress_percentage,
+            "execution_context": execution.execution_context,
+            "error_message": execution.error_message,
+            "cancellation_reason": execution.cancellation_reason,
+            "retry_count": execution.retry_count,
+            "created_at": execution.created_at,
+            "updated_at": datetime.now(UTC)
+        }
         
-        self.db.execute(
-            """INSERT OR REPLACE INTO agency_plan_executions (
-                execution_id, plan_id, goal_id, user_id, status,
-                started_at, completed_at, paused_at, cancelled_at,
-                current_step_id, steps_completed, steps_total,
-                progress_percentage, execution_context, error_message,
-                cancellation_reason, retry_count, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                execution.execution_id,
-                execution.plan_id,
-                execution.goal_id,
-                execution.user_id,
-                execution.status.value,
-                execution.started_at.isoformat() if execution.started_at else None,
-                execution.completed_at.isoformat() if execution.completed_at else None,
-                execution.paused_at.isoformat() if execution.paused_at else None,
-                execution.cancelled_at.isoformat() if execution.cancelled_at else None,
-                execution.current_step_id,
-                execution.steps_completed,
-                execution.steps_total,
-                execution.progress_percentage,
-                json.dumps(execution.execution_context),
-                execution.error_message,
-                execution.cancellation_reason,
-                execution.retry_count,
-                execution.created_at.isoformat(),
-                now,
-            )
-        )
-        self.db.commit()
+        # Check if exists, update or create
+        existing = await self.agency_service.get_plan_execution(execution.execution_id)
+        if existing:
+            await self.agency_service.update_plan_execution(execution.execution_id, execution_data)
+        else:
+            await self.agency_service.create_plan_execution(execution_data)
     
     async def _save_step_execution(self, step_exec: StepExecution) -> None:
         """Save step execution to database."""
-        now = datetime.now(UTC).isoformat()
+        step_data = {
+            "step_execution_id": step_exec.step_execution_id,
+            "execution_id": step_exec.execution_id,
+            "step_id": step_exec.step_id,
+            "step_order": step_exec.step_order,
+            "status": step_exec.status.value,
+            "started_at": step_exec.started_at,
+            "completed_at": step_exec.completed_at,
+            "duration_ms": step_exec.duration_ms,
+            "skill_id": step_exec.skill_id,
+            "skill_invocation_id": step_exec.skill_invocation_id,
+            "input_data": step_exec.input_data,
+            "output_data": step_exec.output_data,
+            "error_message": step_exec.error_message,
+            "retry_count": step_exec.retry_count,
+            "blocked_reason": step_exec.blocked_reason,
+            "created_at": step_exec.created_at,
+            "updated_at": datetime.now(UTC)
+        }
         
-        self.db.execute(
-            """INSERT OR REPLACE INTO agency_step_executions (
-                step_execution_id, execution_id, step_id, step_order, status,
-                started_at, completed_at, duration_ms, skill_id,
-                skill_invocation_id, input_data, output_data, error_message,
-                retry_count, blocked_reason, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                step_exec.step_execution_id,
-                step_exec.execution_id,
-                step_exec.step_id,
-                step_exec.step_order,
-                step_exec.status.value,
-                step_exec.started_at.isoformat() if step_exec.started_at else None,
-                step_exec.completed_at.isoformat() if step_exec.completed_at else None,
-                step_exec.duration_ms,
-                step_exec.skill_id,
-                step_exec.skill_invocation_id,
-                json.dumps(step_exec.input_data),
-                json.dumps(step_exec.output_data),
-                step_exec.error_message,
-                step_exec.retry_count,
-                step_exec.blocked_reason,
-                step_exec.created_at.isoformat(),
-                now,
-            )
-        )
-        self.db.commit()
+        await self.agency_service.update_step_execution(step_exec.step_execution_id, step_data)
     
     async def _get_execution(self, execution_id: str) -> Optional[PlanExecution]:
         """Get execution from database."""
-        row = self.db.fetch_one(
-            "SELECT * FROM agency_plan_executions WHERE execution_id = ?",
-            (execution_id,)
-        )
+        exec_dict = await self.agency_service.get_plan_execution(execution_id)
         
-        if not row:
+        if not exec_dict:
             return None
         
-        return PlanExecution(
-            execution_id=row["execution_id"],
-            plan_id=row["plan_id"],
-            goal_id=row["goal_id"],
-            user_id=row["user_id"],
-            status=ExecutionStatus(row["status"]),
-            started_at=datetime.fromisoformat(row["started_at"]).replace(tzinfo=UTC) if row["started_at"] else None,
-            completed_at=datetime.fromisoformat(row["completed_at"]).replace(tzinfo=UTC) if row["completed_at"] else None,
-            paused_at=datetime.fromisoformat(row["paused_at"]).replace(tzinfo=UTC) if row["paused_at"] else None,
-            cancelled_at=datetime.fromisoformat(row["cancelled_at"]).replace(tzinfo=UTC) if row["cancelled_at"] else None,
-            current_step_id=row["current_step_id"],
-            steps_completed=row["steps_completed"],
-            steps_total=row["steps_total"],
-            progress_percentage=row["progress_percentage"],
-            execution_context=json.loads(row["execution_context"]) if row["execution_context"] else {},
-            error_message=row["error_message"],
-            cancellation_reason=row["cancellation_reason"],
-            retry_count=row["retry_count"],
-            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
-            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC),
-        )
+        return self._dict_to_execution(exec_dict)
     
     async def _get_step_executions(
         self,
         execution_id: str,
     ) -> List[StepExecution]:
         """Get all step executions for an execution."""
-        rows = self.db.fetch_all(
-            """SELECT * FROM agency_step_executions
-               WHERE execution_id = ?
-               ORDER BY step_order ASC""",
-            (execution_id,)
-        )
+        step_dicts = await self.agency_service.get_step_executions(execution_id)
         
-        return [self._row_to_step_execution(row) for row in rows]
+        return [self._dict_to_step_execution(step_dict) for step_dict in step_dicts]
     
-    def _row_to_step_execution(self, row: Dict[str, Any]) -> StepExecution:
-        """Convert database row to StepExecution."""
+    def _dict_to_execution(self, data: Dict[str, Any]) -> PlanExecution:
+        """Convert dict to PlanExecution."""
+        return PlanExecution(
+            execution_id=data["execution_id"],
+            plan_id=data["plan_id"],
+            goal_id=data["goal_id"],
+            user_id=data["user_id"],
+            status=ExecutionStatus(data["status"]),
+            started_at=data["started_at"] if isinstance(data.get("started_at"), datetime) else (datetime.fromisoformat(data["started_at"]).replace(tzinfo=UTC) if data.get("started_at") else None),
+            completed_at=data["completed_at"] if isinstance(data.get("completed_at"), datetime) else (datetime.fromisoformat(data["completed_at"]).replace(tzinfo=UTC) if data.get("completed_at") else None),
+            paused_at=data["paused_at"] if isinstance(data.get("paused_at"), datetime) else (datetime.fromisoformat(data["paused_at"]).replace(tzinfo=UTC) if data.get("paused_at") else None),
+            cancelled_at=data["cancelled_at"] if isinstance(data.get("cancelled_at"), datetime) else (datetime.fromisoformat(data["cancelled_at"]).replace(tzinfo=UTC) if data.get("cancelled_at") else None),
+            current_step_id=data.get("current_step_id"),
+            steps_completed=data.get("steps_completed", 0),
+            steps_total=data.get("steps_total", 0),
+            progress_percentage=data.get("progress_percentage", 0.0),
+            execution_context=data.get("execution_context", {}) if isinstance(data.get("execution_context"), dict) else json.loads(data.get("execution_context", "{}")),
+            error_message=data.get("error_message"),
+            cancellation_reason=data.get("cancellation_reason"),
+            retry_count=data.get("retry_count", 0),
+            created_at=data["created_at"] if isinstance(data["created_at"], datetime) else datetime.fromisoformat(data["created_at"]).replace(tzinfo=UTC),
+            updated_at=data["updated_at"] if isinstance(data["updated_at"], datetime) else datetime.fromisoformat(data["updated_at"]).replace(tzinfo=UTC),
+        )
+
+    def _dict_to_step_execution(self, row: Dict[str, Any]) -> StepExecution:
+        """Convert dict to StepExecution."""
         return StepExecution(
             step_execution_id=row["step_execution_id"],
             execution_id=row["execution_id"],
             step_id=row["step_id"],
             step_order=row["step_order"],
             status=StepExecutionStatus(row["status"]),
-            started_at=datetime.fromisoformat(row["started_at"]).replace(tzinfo=UTC) if row["started_at"] else None,
-            completed_at=datetime.fromisoformat(row["completed_at"]).replace(tzinfo=UTC) if row["completed_at"] else None,
-            duration_ms=row["duration_ms"],
-            skill_id=row["skill_id"],
-            skill_invocation_id=row["skill_invocation_id"],
-            input_data=json.loads(row["input_data"]) if row["input_data"] else {},
-            output_data=json.loads(row["output_data"]) if row["output_data"] else {},
-            error_message=row["error_message"],
-            retry_count=row["retry_count"],
-            blocked_reason=row["blocked_reason"],
-            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
-            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC),
+            started_at=row["started_at"] if isinstance(row.get("started_at"), datetime) else (datetime.fromisoformat(row["started_at"]).replace(tzinfo=UTC) if row.get("started_at") else None),
+            completed_at=row["completed_at"] if isinstance(row.get("completed_at"), datetime) else (datetime.fromisoformat(row["completed_at"]).replace(tzinfo=UTC) if row.get("completed_at") else None),
+            duration_ms=row.get("duration_ms"),
+            skill_id=row.get("skill_id"),
+            skill_invocation_id=row.get("skill_invocation_id"),
+            input_data=row.get("input_data", {}) if isinstance(row.get("input_data"), dict) else json.loads(row.get("input_data", "{}")),
+            output_data=row.get("output_data", {}) if isinstance(row.get("output_data"), dict) else json.loads(row.get("output_data", "{}")),
+            error_message=row.get("error_message"),
+            retry_count=row.get("retry_count", 0),
+            blocked_reason=row.get("blocked_reason"),
+            created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
+            updated_at=row["updated_at"] if isinstance(row["updated_at"], datetime) else datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC),
         )
     
     async def _save_state_snapshot(
@@ -844,28 +787,20 @@ class PlanExecutor:
         snapshot_type: str,
     ) -> None:
         """Save execution state snapshot."""
-        snapshot_id = str(uuid.uuid4())
-        
-        state_data = {
-            "execution": {
-                "status": execution.status.value,
-                "steps_completed": execution.steps_completed,
-                "current_step_id": execution.current_step_id,
-                "progress_percentage": execution.progress_percentage,
+        snapshot_data = {
+            "snapshot_id": str(uuid.uuid4()),
+            "execution_id": execution.execution_id,
+            "snapshot_type": snapshot_type,
+            "state_data": {
+                "execution": {
+                    "status": execution.status.value,
+                    "steps_completed": execution.steps_completed,
+                    "current_step_id": execution.current_step_id,
+                    "progress_percentage": execution.progress_percentage,
+                },
+                "context": execution.execution_context,
             },
-            "context": execution.execution_context,
+            "created_at": datetime.now(UTC)
         }
         
-        self.db.execute(
-            """INSERT INTO agency_execution_snapshots (
-                snapshot_id, execution_id, snapshot_type, state_data, created_at
-            ) VALUES (?, ?, ?, ?, ?)""",
-            (
-                snapshot_id,
-                execution.execution_id,
-                snapshot_type,
-                json.dumps(state_data),
-                datetime.now(UTC).isoformat(),
-            )
-        )
-        self.db.commit()
+        await self.agency_service.create_execution_snapshot(snapshot_data)

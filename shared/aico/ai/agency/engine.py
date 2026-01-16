@@ -137,14 +137,12 @@ class AgencyEngine(BaseAIProcessor):
         
         # Initialize SkillInvoker and PlanExecutor with AgencyService
         self.skill_invoker = SkillInvoker(
-            db=None,  # Legacy parameter, not used with AgencyService
             skill_registry=self.skill_registry,
             logger=logger
         )
         
         # Initialize PlanExecutor with AgencyService (PostgreSQL migration complete)
         self.executor = PlanExecutor(
-            db=None,  # Legacy parameter, not used with AgencyService
             agency_service=self.agency_service,
             skill_invoker=self.skill_invoker,
             logger=logger

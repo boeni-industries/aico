@@ -461,6 +461,301 @@ async def find_orphaned_entries(database_name: str, uow) -> dict:
 
 ---
 
+### 16. Incomplete Pydantic Model Construction Missing Required Fields
+
+**Pattern:**
+```python
+# Pydantic schema defines required fields
+class UserCredentials(BaseModel):
+    has_pin: bool = Field(..., description="Required field")
+    failed_attempts: int = Field(..., description="Required field")
+    is_locked: bool = Field(..., description="Required field")
+
+# But router only provides some fields
+credentials = UserCredentials(
+    failed_attempts=cred.failed_attempts,
+    # Missing has_pin and is_locked!
+)
+```
+
+**Fix:**
+```python
+# Provide all required fields
+credentials = UserCredentials(
+    has_pin=bool(cred.pin_hash) if hasattr(cred, 'pin_hash') else False,
+    failed_attempts=cred.failed_attempts,
+    is_locked=bool(cred.locked_until and cred.locked_until > datetime.now(timezone.utc)),
+    locked_until=cred.locked_until.isoformat() if cred.locked_until else None,
+    last_login=cred.last_login.isoformat() if cred.last_login else None
+)
+```
+
+**Root Cause:** Database schema was extended with new columns, Pydantic models were updated to include new required fields, but router code wasn't updated to provide values for those fields during model construction.
+
+**Symptoms:**
+- HTTP 500 errors with Pydantic validation messages
+- Error: "Field required [type=missing, input_value={...}, input_type=dict]"
+- Works in development but breaks after schema changes
+- Multiple validation errors for different missing fields
+
+**Key Changes Required:**
+1. Check all required fields in Pydantic model (fields with `Field(...)` or no default)
+2. Provide values for all required fields during construction
+3. Use `hasattr()` checks for optional database fields
+4. Provide sensible defaults for computed fields (e.g., `is_locked` based on `locked_until`)
+5. Handle timezone-aware datetime comparisons properly
+
+**Search:** Pydantic validation errors in logs, `Field\(\.\.\.,` in schema files without corresponding constructor parameters
+
+---
+
+### 17. Missing Computed/Derived Fields in Response Models
+
+**Pattern:**
+```python
+# Response model expects computed statistics
+class SessionStatistics(BaseModel):
+    total_sessions: int
+    active_sessions: int
+    expired_sessions: int  # Required but not computed
+    sessions_by_type: dict  # Required but not computed
+    sessions_by_device_type: dict  # Required but not computed
+
+# Router only provides basic counts
+statistics = {
+    "total_sessions": len(all_sessions),
+    "active_sessions": sum(1 for s in all_sessions if s.is_active),
+    # Missing expired_sessions, sessions_by_type, sessions_by_device_type
+}
+return SessionStatistics(**statistics)  # Validation error!
+```
+
+**Fix:**
+```python
+# Compute all required statistics
+now = datetime.now(timezone.utc)
+expired_count = sum(1 for s in all_sessions if not s.is_active or (s.expires_at and s.expires_at <= now))
+
+# Group by type
+sessions_by_type = {}
+for sess in all_sessions:
+    session_type = sess.session_type or 'unknown'
+    sessions_by_type[session_type] = sessions_by_type.get(session_type, 0) + 1
+
+# Group by device type
+sessions_by_device_type = {}
+for sess in all_sessions:
+    device_type = get_device_type(sess.device_uuid) or 'unknown'
+    sessions_by_device_type[device_type] = sessions_by_device_type.get(device_type, 0) + 1
+
+statistics = SessionStatistics(
+    total_sessions=len(all_sessions),
+    active_sessions=sum(1 for s in all_sessions if s.is_active),
+    expired_sessions=expired_count,
+    sessions_by_type=sessions_by_type,
+    sessions_by_device_type=sessions_by_device_type
+)
+```
+
+**Root Cause:** Response models were enhanced with additional computed/aggregated fields for richer API responses, but endpoint logic wasn't updated to compute those values.
+
+**Symptoms:**
+- HTTP 500 errors with multiple Pydantic validation errors
+- Error messages listing several missing required fields
+- Frontend receives incomplete data structures
+- Statistics or aggregations missing from API responses
+
+**Key Changes Required:**
+1. Identify all required fields in response models
+2. Compute aggregations (counts, groupings, averages) from raw data
+3. Handle edge cases (empty lists, null values, missing relationships)
+4. Use proper timezone-aware datetime for time-based computations
+5. Provide empty dicts/lists for collection fields rather than omitting them
+
+**Search:** Response model classes with multiple required dict/list fields, endpoints returning those models
+
+---
+
+### 18. Async Methods in Legacy Components Not Awaited
+
+**Pattern:**
+```python
+# Component migrated to async/UoW pattern
+class AdaptiveScoringEngine:
+    async def load_arms(self):  # Now async
+        rows = await self.agency_service.get_bandit_arms()
+        # ...
+    
+    async def _save_arm(self, arm):  # Now async
+        await self.agency_service.save_bandit_arm(arm_data)
+
+# But initialization doesn't await
+class GoalArbiter:
+    def __init__(self, ...):
+        self.adaptive = AdaptiveScoringEngine(agency_service)
+        # Missing: await self.adaptive.load_arms()
+        
+    def some_method(self):
+        arm = self.adaptive.select_arm()  # Works (sync)
+        self.adaptive.update_arm(arm_id, reward, success)  # ERROR: Not awaited!
+```
+
+**Fix:**
+```python
+# Make initialization async-aware
+class GoalArbiter:
+    def __init__(self, ...):
+        self.adaptive = AdaptiveScoringEngine(agency_service)
+        # Note: Must call await self.adaptive.load_arms() after construction
+    
+    async def initialize(self):
+        """Async initialization - call after construction"""
+        await self.adaptive.load_arms()
+    
+    async def some_method(self):  # Now async
+        arm = self.adaptive.select_arm()  # Still sync
+        await self.adaptive.update_arm(arm_id, reward, success)  # Properly awaited
+```
+
+**Root Cause:** Components were migrated from sync database access to async UoW pattern, but:
+1. Callers weren't updated to await async methods
+2. Initialization logic that loads data wasn't made async
+3. Methods that call async sub-methods weren't converted to async
+
+**Symptoms:**
+- RuntimeWarning: "coroutine was never awaited"
+- Methods return coroutine objects instead of actual values
+- Database operations silently don't execute
+- Data not persisted despite no errors
+
+**Key Changes Required:**
+1. Convert all methods calling async sub-methods to async
+2. Add explicit async initialization methods for components needing data loading
+3. Document initialization requirements (e.g., "call await load_arms() after construction")
+4. Ensure all async method calls use `await`
+5. Update calling code to be async and await properly
+
+**Search:** `async def` methods in components, check all callers use `await`, look for `RuntimeWarning.*coroutine.*never awaited` in logs
+
+---
+
+### 19. Service Methods Missing AgencyService Parameter After Migration
+
+**Pattern:**
+```python
+# Component migrated from db to agency_service
+class BehavioralFeedbackService:
+    def __init__(self, agency_service, logger=None):
+        self.agency_service = agency_service  # ✓ Constructor updated
+    
+    # But methods still don't use it
+    def record_skill_execution(self, execution_id, skill_id, ...):  # Not async!
+        # Old code tried: self.db.execute(...)
+        # New code should: await self.agency_service.record_skill_execution(...)
+        pass
+```
+
+**Fix:**
+```python
+class BehavioralFeedbackService:
+    def __init__(self, agency_service, logger=None):
+        self.agency_service = agency_service
+    
+    async def record_skill_execution(self, execution_id, skill_id, ...):
+        execution_data = {
+            "execution_id": execution_id,
+            "skill_id": skill_id,
+            # ... all fields
+        }
+        await self.agency_service.record_skill_execution(execution_data)
+```
+
+**Root Cause:** Constructor was updated to accept `agency_service` instead of `db`, but method bodies weren't refactored to:
+1. Convert to async
+2. Use agency_service methods instead of direct DB calls
+3. Prepare data in the format expected by service methods
+
+**Symptoms:**
+- Methods exist but do nothing (empty or incomplete)
+- Constructor has `agency_service` but methods don't use it
+- Mix of old `self.db` calls and new `self.agency_service` parameter
+- Type errors when passing wrong parameter types
+
+**Key Changes Required:**
+1. Convert all methods to async
+2. Replace `self.db.execute()` with `await self.agency_service.method()`
+3. Prepare data dictionaries matching service method signatures
+4. Remove all `self.db` references
+5. Update all callers to await the async methods
+
+**Search:** Classes with `self.agency_service` in `__init__` but methods not using it, `def .*\(self,` without `async` in migrated files
+
+---
+
+### 20. Legacy db=None Parameters Still Present After Migration
+
+**Pattern:**
+```python
+# Component partially migrated
+class SkillInvoker:
+    def __init__(
+        self,
+        db: Any,  # Still here but set to None
+        skill_registry: SkillRegistry,
+        logger=None
+    ):
+        self.db = db  # Never used anymore
+        self.skill_registry = skill_registry
+
+# Called with db=None
+self.skill_invoker = SkillInvoker(
+    db=None,  # Legacy parameter
+    skill_registry=self.skill_registry,
+    logger=logger
+)
+```
+
+**Fix:**
+```python
+# Remove legacy parameter completely
+class SkillInvoker:
+    def __init__(
+        self,
+        skill_registry: SkillRegistry,
+        logger=None
+    ):
+        self.skill_registry = skill_registry
+
+# Call without db parameter
+self.skill_invoker = SkillInvoker(
+    skill_registry=self.skill_registry,
+    logger=logger
+)
+```
+
+**Root Cause:** During migration, `db` parameters were set to `None` to fix immediate errors, but weren't fully removed. This creates:
+1. Confusing API (why pass None?)
+2. Risk of someone passing actual db connection
+3. Code clutter
+4. Incomplete migration
+
+**Symptoms:**
+- Constructor has `db: Any` parameter
+- Parameter is always set to `None`
+- Parameter is never used in the class
+- Comments like "# Legacy parameter, not used"
+
+**Key Changes Required:**
+1. Remove `db` parameter from constructor signature
+2. Remove `self.db = db` assignment
+3. Update all callers to not pass `db=None`
+4. Remove any comments about legacy parameters
+5. Verify no code paths try to use `self.db`
+
+**Search:** `db.*:.*Any.*=.*None` in constructors, `db=None` in method calls, `# Legacy.*db` comments
+
+---
+
 ## Scan Commands
 
 ```bash
@@ -478,6 +773,36 @@ rg "async with UnitOfWork" shared/aico/ai/
 
 # Find skills with db parameter
 rg "def __init__.*db.*:" shared/aico/ai/agency/skills/
+
+# NEW: Find incomplete Pydantic model construction
+rg "Field\(\.\.\." backend/api/ -A 2 | grep "description"
+
+# NEW: Find Pydantic validation errors in recent logs
+rg "Field required.*type=missing" --type log
+
+# NEW: Find legacy db=None parameters
+rg "db.*:.*Any.*=.*None" shared/aico/
+
+# NEW: Find db=None in method calls
+rg "db=None" shared/aico/ai/
+
+# NEW: Find methods not awaiting async calls
+rg "self\.\w+\.\w+\(" shared/aico/ai/ | grep -v "await"
+
+# NEW: Find classes with agency_service but sync methods
+rg "self\.agency_service = agency_service" -A 20 | grep "def " | grep -v "async def"
+
+# NEW: Find timezone-naive datetime comparisons
+rg "datetime\.utcnow\(\)" backend/
+
+# NEW: Find missing computed fields in statistics
+rg "class.*Statistics.*BaseModel" backend/api/ -A 10
+
+# NEW: Find legacy get_db_connection usage
+rg "Depends\(get_db_connection\)" backend/api/
+
+# NEW: Find coroutine never awaited warnings
+rg "RuntimeWarning.*coroutine.*never awaited"
 ```
 
 ---
