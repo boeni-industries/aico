@@ -265,8 +265,9 @@ class ProactiveConversationTask(BaseTask):
                         
                         # Insert via UoW
                         async with UnitOfWork(session_factory) as uow:
-                            from aico.data.agency.models import ConversationInitiation
+                            from aico.data.conversation.models import ConversationInitiation
                             
+                            now = datetime.now(timezone.utc)
                             initiation = ConversationInitiation(
                                 initiation_id=initiation_id,
                                 user_id=user_id,
@@ -274,9 +275,9 @@ class ProactiveConversationTask(BaseTask):
                                 trigger_source=strategy_id,
                                 trigger_reason=f"proactive_check_strategy_{strategy_id}",
                                 question=message,
-                                civility_score=civility,
-                                status='pending',
-                                created_at=datetime.now(timezone.utc)
+                                initiated_at=now,
+                                resolution_status='pending',
+                                created_at=now
                             )
                             
                             await uow.conversation_initiations.create(initiation)

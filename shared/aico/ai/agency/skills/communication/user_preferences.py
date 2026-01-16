@@ -33,7 +33,7 @@ class UserPreferencesManager:
         self._cache_timestamps: Dict[str, datetime] = {}
         self._cache_ttl_seconds = 300  # 5 minutes
     
-    def get_preferences(self, user_id: str) -> Dict[str, Any]:
+    async def get_preferences(self, user_id: str) -> Dict[str, Any]:
         """Get user preferences with caching.
         
         Args:
@@ -55,11 +55,10 @@ class UserPreferencesManager:
             # For now, we'll use a simple JSON column in users table
             # In production, might want a separate user_preferences table
             
-            cursor = self.db.execute(
-                "SELECT uuid FROM user_profiles WHERE uuid = ?",
-                (user_id,)
-            )
-            user = cursor.fetchone()
+            from aico.data.uow import UnitOfWork
+            
+            async with UnitOfWork(self.db) as uow:
+                user = await uow.user_profiles.get(user_id)
             
             if not user:
                 logger.warning(f"User not found: {user_id[:8]}, using defaults")
@@ -82,7 +81,7 @@ class UserPreferencesManager:
             logger.error(f"Error loading preferences for user {user_id[:8]}: {e}")
             return self.DEFAULT_PREFERENCES.copy()
     
-    def is_quiet_hour(self, user_id: str, hour: int) -> bool:
+    async def is_quiet_hour(self, user_id: str, hour: int) -> bool:
         """Check if given hour is a quiet hour for user.
         
         Args:
@@ -92,11 +91,11 @@ class UserPreferencesManager:
         Returns:
             True if it's a quiet hour
         """
-        prefs = self.get_preferences(user_id)
+        prefs = await self.get_preferences(user_id)
         quiet_hours = prefs.get('quiet_hours', [])
         return hour in quiet_hours
     
-    def is_enabled(self, user_id: str) -> bool:
+    async def is_enabled(self, user_id: str) -> bool:
         """Check if proactive conversations are enabled for user.
         
         Args:
@@ -105,10 +104,10 @@ class UserPreferencesManager:
         Returns:
             True if enabled
         """
-        prefs = self.get_preferences(user_id)
+        prefs = await self.get_preferences(user_id)
         return prefs.get('enabled', True)
     
-    def get_max_initiations_per_day(self, user_id: str) -> int:
+    async def get_max_initiations_per_day(self, user_id: str) -> int:
         """Get maximum initiations per day for user.
         
         Args:
@@ -117,10 +116,10 @@ class UserPreferencesManager:
         Returns:
             Maximum initiations per day
         """
-        prefs = self.get_preferences(user_id)
+        prefs = await self.get_preferences(user_id)
         return prefs.get('max_initiations_per_day', 5)
     
-    def get_max_pending(self, user_id: str) -> int:
+    async def get_max_pending(self, user_id: str) -> int:
         """Get maximum pending initiations for user.
         
         Args:
@@ -129,10 +128,10 @@ class UserPreferencesManager:
         Returns:
             Maximum pending initiations
         """
-        prefs = self.get_preferences(user_id)
+        prefs = await self.get_preferences(user_id)
         return prefs.get('max_pending', 2)
     
-    def get_min_hours_between(self, user_id: str) -> float:
+    async def get_min_hours_between(self, user_id: str) -> float:
         """Get minimum hours between initiations for user.
         
         Args:
@@ -141,7 +140,7 @@ class UserPreferencesManager:
         Returns:
             Minimum hours between initiations
         """
-        prefs = self.get_preferences(user_id)
+        prefs = await self.get_preferences(user_id)
         return prefs.get('min_hours_between', 6.0)
     
     def clear_cache(self, user_id: Optional[str] = None):
@@ -160,15 +159,15 @@ class UserPreferencesManager:
             logger.debug("Cleared all preference cache")
 
 
-def load_user_preferences(db: Any, user_id: str) -> Dict[str, Any]:  # Skills being redesigned
+async def load_user_preferences(db: Any, user_id: str) -> Dict[str, Any]:  # Skills being redesigned
     """Convenience function to load user preferences.
     
     Args:
-        db: Database connection
+        db: Database session factory
         user_id: User UUID
         
     Returns:
         Dictionary of user preferences
     """
     manager = UserPreferencesManager(db)
-    return manager.get_preferences(user_id)
+    return await manager.get_preferences(user_id)
