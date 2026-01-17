@@ -8,6 +8,7 @@ from typing import Optional, List
 from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
 
 from aico.data.ethics.models import EthicsPolicyRule
 from aico.data.tables import ethics_policy_rules
@@ -50,7 +51,7 @@ class PostgresEthicsPolicyRulesRepository(Repository[EthicsPolicyRule]):
             rule_id=row.rule_id,
             rule_name=row.rule_name,
             target_type=row.target_type,
-            conditions_json=row.conditions_json,
+            conditions_json=json.loads(row.conditions_json) if isinstance(row.conditions_json, str) else row.conditions_json,
             effect=row.effect,
             user_message_template=row.user_message_template,
             priority=row.priority,
@@ -109,7 +110,7 @@ class PostgresEthicsPolicyRulesRepository(Repository[EthicsPolicyRule]):
                 rule_id=row.rule_id,
                 rule_name=row.rule_name,
                 target_type=row.target_type,
-                conditions_json=row.conditions_json,
+                conditions_json=json.loads(row.conditions_json) if isinstance(row.conditions_json, str) else row.conditions_json,
                 effect=row.effect,
                 user_message_template=row.user_message_template,
                 priority=row.priority,
@@ -153,7 +154,7 @@ class PostgresEthicsPolicyRulesRepository(Repository[EthicsPolicyRule]):
                 rule_id=row.rule_id,
                 rule_name=row.rule_name,
                 target_type=row.target_type,
-                conditions_json=row.conditions_json,
+                conditions_json=json.loads(row.conditions_json) if isinstance(row.conditions_json, str) else row.conditions_json,
                 effect=row.effect,
                 user_message_template=row.user_message_template,
                 priority=row.priority,

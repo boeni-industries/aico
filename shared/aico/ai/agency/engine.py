@@ -46,6 +46,58 @@ except ImportError:
 logger = get_logger("shared.ai.agency.engine")
 
 
+class AgencyEventStore:
+    """PostgreSQL-based event logging using UoW pattern."""
+    
+    def __init__(self, session_factory):
+        """Initialize event store with session factory.
+        
+        Args:
+            session_factory: Async SQLAlchemy session factory for database access
+        """
+        self.session_factory = session_factory
+    
+    async def log_event(self, event: AgencyEvent) -> None:
+        """Log an agency event to PostgreSQL.
+        
+        Args:
+            event: AgencyEvent to log
+        """
+        try:
+            from aico.data.uow import UnitOfWork
+            from aico.data.agency.models import AgencyEventLog
+            from uuid import uuid4
+            import json
+            
+            # Create event log entry
+            event_log = AgencyEventLog(
+                event_id=str(uuid4()),
+                user_id=event.user_id,
+                event_type=event.event_type,
+                event_category="agency",
+                source_component=event.source,
+                entity_type="goal" if event.goal_id else "plan" if event.plan_id else None,
+                entity_id=event.goal_id or event.plan_id,
+                event_data=json.dumps(event.payload),
+                workflow_trace_id=None,
+                parent_event_id=None,
+                severity="info",
+                created_at=(event.created_at or datetime.now(UTC)).isoformat(),
+            )
+            
+            # Persist to database
+            async with UnitOfWork(self.session_factory) as uow:
+                await uow.agency_events_log.create(event_log)
+                await uow.commit()
+                
+            logger.debug(
+                f"[AGENCY_EVENT] Logged {event.event_type}",
+                extra={"event_type": event.event_type, "user_id": event.user_id}
+            )
+        except Exception as e:
+            logger.error(f"[AGENCY_EVENT] Failed to log event: {e}", exc_info=True)
+
+
 class AgencyEngine(BaseAIProcessor):
     """Central orchestrator for autonomous agency.
 
@@ -62,6 +114,7 @@ class AgencyEngine(BaseAIProcessor):
         personality_service: Optional["PersonalityService"] = None,
         message_bus: Optional[Any] = None,
         memory_manager: Optional[Any] = None,
+        session_factory: Optional[Any] = None,
     ):
         """Initialize the agency engine.
 
@@ -73,11 +126,13 @@ class AgencyEngine(BaseAIProcessor):
             personality_service: Optional personality service for Phase 2+ (Phase 2)
             message_bus: Optional message bus for intention set publishing (Phase 4)
             memory_manager: Optional memory manager for skills that need memory access
+            session_factory: Optional session factory for database access
         """
         super().__init__(component_name="agency_engine", version="v1")
         self.config = config
         self._memory_manager = memory_manager
         self.agency_service = agency_service
+        self._session_factory = session_factory
         
         # Initialize planner with optional LLM client (will be set later if available)
         # Note: skill_registry will be set after it's initialized below
@@ -165,6 +220,13 @@ class AgencyEngine(BaseAIProcessor):
             pass  # Personality enabled
         else:
             pass  # No Personality
+        
+        # Event store - PostgreSQL-based event logging
+        if session_factory:
+            self.event_store = AgencyEventStore(session_factory)
+        else:
+            logger.warning("[AGENCY_ENGINE] No session_factory provided - event logging disabled")
+            self.event_store = None
 
     async def initialize(self) -> None:  # type: ignore[override]
         """Placeholder for future initialization hooks."""
@@ -231,22 +293,28 @@ class AgencyEngine(BaseAIProcessor):
         )
         
         # Phase 4: Values & Ethics evaluation before storing
-        ethics_result = self.values_ethics.evaluate_goal(goal, user_id)
+        if not self._session_factory:
+            raise RuntimeError("AgencyEngine requires session_factory to be set during initialization")
+        
+        from aico.data.uow import UnitOfWork
+        async with UnitOfWork(self._session_factory) as uow:
+            ethics_result = await self.values_ethics.evaluate_goal(goal, user_id, uow)
         
         if ethics_result.decision == PolicyEffect.BLOCK:
             logger.warning(f"[AGENCY_ENGINE] Goal blocked by ethics policy: {title}")
-            await self.event_store.log_event(
-                AgencyEvent(
-                    user_id=user_id,
-                    event_type="goal_blocked",
-                    source="values_ethics",
-                    payload={
-                        "title": title,
-                        "reason_codes": ethics_result.reason_codes,
-                        "message": ethics_result.user_message
-                    }
+            if self.event_store:
+                await self.event_store.log_event(
+                    AgencyEvent(
+                        user_id=user_id,
+                        event_type="goal_blocked",
+                        source="values_ethics",
+                        payload={
+                            "title": title,
+                            "reason_codes": ethics_result.reason_codes,
+                            "message": ethics_result.user_message
+                        }
+                    )
                 )
-            )
             raise ValueError(f"Goal blocked by ethics policy: {ethics_result.user_message}")
         
         # Store ethics evaluation in metadata
@@ -262,16 +330,17 @@ class AgencyEngine(BaseAIProcessor):
 
         goal = await self.agency_service.create_goal(goal)
 
-        await self.event_store.log_event(
-            AgencyEvent(
-                user_id=user_id,
-                goal_id=goal.goal_id,
-                plan_id=None,
-                event_type="goal_created",
-                source="agency_engine",
-                payload={"title": title, "goal_type": goal_type},
+        if self.event_store:
+            await self.event_store.log_event(
+                AgencyEvent(
+                    user_id=user_id,
+                    goal_id=goal.goal_id,
+                    plan_id=None,
+                    event_type="goal_created",
+                    source="agency_engine",
+                    payload={"title": title, "goal_type": goal_type},
+                )
             )
-        )
 
         plan: Optional[Plan] = None
         if auto_plan:
@@ -577,26 +646,34 @@ class AgencyEngine(BaseAIProcessor):
             pass  # Creating goal from curiosity signal
             
             # Phase 4: Values & Ethics gate - evaluate curiosity signal
-            ethics_result = self.values_ethics.evaluate_curiosity_signal(signal, user_id)
+            # Create UoW for ethics evaluation (agency_service is a proxy without direct UoW access)
+            from aico.data.uow import UnitOfWork
+            
+            if not self._session_factory:
+                raise RuntimeError("AgencyEngine requires session_factory to be set during initialization")
+            
+            async with UnitOfWork(self._session_factory) as uow:
+                ethics_result = await self.values_ethics.evaluate_curiosity_signal(signal, user_id, uow)
             
             if ethics_result.decision == PolicyEffect.BLOCK:
                 logger.warning(
                     f"[AGENCY_ENGINE] Curiosity signal blocked by ethics policy: {signal.topic}"
                 )
                 # Log the blocked signal as an event
-                await self.event_store.log_event(
-                    AgencyEvent(
-                        user_id=user_id,
-                        event_type="curiosity_signal_blocked",
-                        source="values_ethics",
-                        payload={
-                            "signal_id": signal.signal_id,
-                            "topic": signal.topic,
-                            "reason_codes": ethics_result.reason_codes,
-                            "message": ethics_result.user_message
-                        }
+                if self.event_store:
+                    await self.event_store.log_event(
+                        AgencyEvent(
+                            user_id=user_id,
+                            event_type="curiosity_signal_blocked",
+                            source="values_ethics",
+                            payload={
+                                "signal_id": signal.signal_id,
+                                "topic": signal.topic,
+                                "reason_codes": ethics_result.reason_codes,
+                                "message": ethics_result.user_message
+                            }
+                        )
                     )
-                )
                 raise ValueError(f"Curiosity signal blocked by ethics policy: {ethics_result.user_message}")
             
             if ethics_result.decision == PolicyEffect.NEEDS_CONSENT:
@@ -604,19 +681,20 @@ class AgencyEngine(BaseAIProcessor):
                     f"[AGENCY_ENGINE] Curiosity signal requires consent: {signal.topic}"
                 )
                 # Log consent requirement - actual consent flow handled by UX
-                await self.event_store.log_event(
-                    AgencyEvent(
-                        user_id=user_id,
-                        event_type="curiosity_signal_needs_consent",
-                        source="values_ethics",
-                        payload={
-                            "signal_id": signal.signal_id,
-                            "topic": signal.topic,
-                            "consent_scope": ethics_result.consent_scope,
-                            "message": ethics_result.user_message
-                        }
+                if self.event_store:
+                    await self.event_store.log_event(
+                        AgencyEvent(
+                            user_id=user_id,
+                            event_type="curiosity_signal_needs_consent",
+                            source="values_ethics",
+                            payload={
+                                "signal_id": signal.signal_id,
+                                "topic": signal.topic,
+                                "consent_scope": ethics_result.consent_scope,
+                                "message": ethics_result.user_message
+                            }
+                        )
                     )
-                )
                 # For now, don't create the goal - wait for explicit consent
                 raise ValueError(f"Curiosity signal requires consent: {ethics_result.user_message}")
             
@@ -625,19 +703,20 @@ class AgencyEngine(BaseAIProcessor):
                     f"[AGENCY_ENGINE] Curiosity signal allowed with warning: {signal.topic}"
                 )
                 # Log the warning
-                await self.event_store.log_event(
-                    AgencyEvent(
-                        user_id=user_id,
-                        event_type="curiosity_signal_warning",
-                        source="values_ethics",
-                        payload={
-                            "signal_id": signal.signal_id,
-                            "topic": signal.topic,
-                            "reason_codes": ethics_result.reason_codes,
-                            "message": ethics_result.user_message
-                        }
+                if self.event_store:
+                    await self.event_store.log_event(
+                        AgencyEvent(
+                            user_id=user_id,
+                            event_type="curiosity_signal_warning",
+                            source="values_ethics",
+                            payload={
+                                "signal_id": signal.signal_id,
+                                "topic": signal.topic,
+                                "reason_codes": ethics_result.reason_codes,
+                                "message": ethics_result.user_message
+                            }
+                        )
                     )
-                )
             
             # Determine origin based on signal type
             if signal.signal_type.value == "hobby_play":
@@ -733,19 +812,20 @@ class AgencyEngine(BaseAIProcessor):
         # Persist the plan (base or refined)
         plan = await self.agency_service.create_plan(plan)
 
-        await self.event_store.log_event(
-            AgencyEvent(
-                user_id=goal.user_id,
-                goal_id=goal.goal_id,
-                plan_id=plan.plan_id,
-                event_type="plan_generated",
-                source="agency_engine",
-                payload={
-                    "step_count": len(plan.steps),
-                    "llm_refined": plan.metadata.get("llm_refined", False),
-                },
+        if self.event_store:
+            await self.event_store.log_event(
+                AgencyEvent(
+                    user_id=goal.user_id,
+                    goal_id=goal.goal_id,
+                    plan_id=plan.plan_id,
+                    event_type="plan_generated",
+                    source="agency_engine",
+                    payload={
+                        "step_count": len(plan.steps),
+                        "llm_refined": plan.metadata.get("llm_refined", False),
+                    },
+                )
             )
-        )
 
         return plan
 
@@ -786,20 +866,21 @@ class AgencyEngine(BaseAIProcessor):
         goal.status = new_status
         await self.agency_service.update_goal(goal)
 
-        await self.event_store.log_event(
-            AgencyEvent(
-                user_id=goal.user_id,
-                goal_id=goal.goal_id,
-                plan_id=None,
-                event_type=event_type,
-                source=source,
-                payload={
-                    "from": goal.status.value,
-                    "to": new_status.value,
-                    **(payload or {}),
-                },
+        if self.event_store:
+            await self.event_store.log_event(
+                AgencyEvent(
+                    user_id=goal.user_id,
+                    goal_id=goal.goal_id,
+                    plan_id=None,
+                    event_type=event_type,
+                    source=source,
+                    payload={
+                        "from": goal.status.value,
+                        "to": new_status.value,
+                        **(payload or {}),
+                    },
+                )
             )
-        )
 
         # Return updated goal snapshot (caller can ignore if not needed)
         updated = await self.agency_service.get_goal(goal_id)
@@ -1176,20 +1257,21 @@ class AgencyEngine(BaseAIProcessor):
             )
             
             # Log event
-            await self.event_store.log_event(
-                AgencyEvent(
-                    user_id=user_id,
-                    goal_id=goal.goal_id,
-                    plan_id=plan.plan_id if plan else None,
-                    event_type="goal_created_from_percept",
-                    source="perceptual_event_processor",
-                    payload={
-                        "percept_type": event.percept_type.value,
-                        "percept_id": event.percept_id,
-                        "confidence": event.confidence_score,
-                    }
+            if self.event_store:
+                await self.event_store.log_event(
+                    AgencyEvent(
+                        user_id=user_id,
+                        goal_id=goal.goal_id,
+                        plan_id=plan.plan_id if plan else None,
+                        event_type="goal_created_from_percept",
+                        source="perceptual_event_processor",
+                        payload={
+                            "percept_type": event.percept_type.value,
+                            "percept_id": event.percept_id,
+                            "confidence": event.confidence_score,
+                        }
+                    )
                 )
-            )
             
             return goal
             

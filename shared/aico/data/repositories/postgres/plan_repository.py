@@ -25,6 +25,12 @@ class PostgresPlanRepository(Repository[Plan]):
         """Create a new plan."""
         # Handle steps field from domain model
         steps_val = getattr(entity, 'steps', None) or getattr(entity, 'steps_json', None)
+        
+        # Convert Pydantic models to dicts before JSON serialization
+        if steps_val and not isinstance(steps_val, str):
+            if isinstance(steps_val, list):
+                steps_val = [s.model_dump() if hasattr(s, 'model_dump') else s for s in steps_val]
+        
         steps_json_val = steps_val if isinstance(steps_val, str) else (json.dumps(steps_val) if steps_val else None)
         
         # Handle metadata field
@@ -70,6 +76,12 @@ class PostgresPlanRepository(Repository[Plan]):
         """Update an existing plan."""
         # Handle steps field from domain model
         steps_val = getattr(entity, 'steps', None) or getattr(entity, 'steps_json', None)
+        
+        # Convert Pydantic models to dicts before JSON serialization
+        if steps_val and not isinstance(steps_val, str):
+            if isinstance(steps_val, list):
+                steps_val = [s.model_dump() if hasattr(s, 'model_dump') else s for s in steps_val]
+        
         steps_json_val = steps_val if isinstance(steps_val, str) else (json.dumps(steps_val) if steps_val else None)
         
         # Handle metadata field

@@ -316,17 +316,19 @@ class ProactiveConversationTask(BaseTask):
                             
                             bus_client = MessageBusClient(client_id=f"proactive_scheduler_{initiation_id[:8]}")
                             
-                            # Create initiation message
+                            # Create initiation message matching ConversationInitiation model
                             initiation_message = {
                                 'initiation_id': initiation_id,
                                 'user_id': user_id,
                                 'conversation_id': conversation_id,
-                                'topic': topic,
-                                'message': message,
+                                'trigger_source': strategy_id,
+                                'trigger_reason': f"proactive_check_strategy_{strategy_id}",
+                                'question': message,
                                 'context': f"Adaptivity: {adaptivity:.2f}, Civility: {civility:.2f}, Strategy: {strategy_id}",
                                 'urgency': 'medium',
                                 'expected_answer_type': 'text',
                                 'initiated_at': datetime.now(timezone.utc).isoformat(),
+                                'resolution_status': 'pending',
                                 'strategy_id': strategy_id,
                                 'scores': {
                                     'adaptivity': adaptivity,

@@ -474,7 +474,7 @@ class ValuesEthicsService:
                 rule_id=entity.rule_id,
                 rule_name=entity.rule_name,
                 target_type=PolicyTargetType(entity.target_type),
-                conditions=json.loads(entity.conditions_json),
+                conditions=entity.conditions_json,
                 effect=PolicyEffect(entity.effect),
                 user_message_template=entity.user_message_template,
                 priority=entity.priority,

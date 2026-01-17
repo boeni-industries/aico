@@ -57,7 +57,9 @@ class UserPreferencesManager:
             
             from aico.data.uow import UnitOfWork
             
-            async with UnitOfWork(self.db) as uow:
+            # self.db is a session_factory, create session and UoW
+            async with self.db() as session:
+                uow = UnitOfWork(session)
                 user = await uow.user_profiles.get(user_id)
             
             if not user:

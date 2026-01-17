@@ -489,6 +489,7 @@ class BackendLifecycleManager:
                 personality_service=personality_service,
                 message_bus=message_bus,
                 memory_manager=memory_manager,
+                session_factory=session_factory,
             )
             self.logger.info("✅ Created AgencyEngine with message bus and services")
 

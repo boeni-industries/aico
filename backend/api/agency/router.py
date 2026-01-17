@@ -539,15 +539,15 @@ async def list_goals(
             GoalResponse(
                 goal_id=g.goal_id,
                 user_id=g.user_id,
-                origin=GoalOrigin(g.origin.value),
+                origin=GoalOrigin(g.origin),
                 goal_type=g.goal_type,
                 title=g.title,
                 description=g.description or "",
-                status=GoalStatus(g.status.value),
-                priority=GoalPriority(g.priority.value),
-                metadata=g.metadata,
-                created_at=g.created_at,
-                updated_at=g.updated_at
+                status=GoalStatus(g.status),
+                priority=GoalPriority(g.priority),
+                metadata=g.metadata or {},
+                created_at=g.created_at.isoformat() if g.created_at else None,
+                updated_at=g.updated_at.isoformat() if g.updated_at else None,
             )
             for g in paginated_goals
         ]

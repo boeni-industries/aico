@@ -162,7 +162,7 @@ class PostgresGoalRepository(Repository[Goal]):
                 description=row.description,
                 status=row.status,
                 priority=row.priority,
-                metadata_json=row.metadata_json,
+                metadata=json.loads(row.metadata_json) if row.metadata_json else {},
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
