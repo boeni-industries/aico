@@ -30,7 +30,6 @@ class GQLQueryExecutor:
     def __init__(
         self,
         kg_storage,
-        db_connection,
         max_results: int = 1000,
         timeout_seconds: int = 30
     ):
@@ -39,12 +38,10 @@ class GQLQueryExecutor:
         
         Args:
             kg_storage: KnowledgeGraphStorage instance
-            db_connection: Database connection for queries
             max_results: Maximum number of results to return
             timeout_seconds: Maximum query execution time
         """
         self.kg_storage = kg_storage
-        self.db_connection = db_connection
         self.validator = QueryValidator(max_results, timeout_seconds)
         self.formatter = ResultFormatter()
     
@@ -88,8 +85,8 @@ class GQLQueryExecutor:
             query = self.validator.add_limit(query)
             
             # Step 3: Build graph adapter (user-isolated)
-            adapter = KGGraphAdapter(self.kg_storage, self.db_connection, user_id)
-            graph = adapter.get_graph()
+            adapter = KGGraphAdapter(self.kg_storage, user_id)
+            graph = await adapter.get_graph()
             
             logger.info(f"Executing GQL query for user {user_id}: {query[:100]}...")
             logger.debug(f"Graph has {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")

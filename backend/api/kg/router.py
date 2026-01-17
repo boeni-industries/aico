@@ -91,7 +91,6 @@ async def execute_gql_query(
         max_results = request.limit or 1000
         executor = GQLQueryExecutor(
             kg_storage,
-            db_connection,
             max_results=max_results,
             timeout_seconds=30
         )

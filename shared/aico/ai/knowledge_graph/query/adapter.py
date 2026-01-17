@@ -58,7 +58,19 @@ class KGGraphAdapter:
                 for node in nodes:
                     node_id = node.id
                     label = node.label
-                    properties = json.loads(node.properties) if isinstance(node.properties, str) else node.properties or {}
+                    
+                    # Parse properties, ensuring it's always a dict
+                    if node.properties is None:
+                        properties = {}
+                    elif isinstance(node.properties, str):
+                        try:
+                            properties = json.loads(node.properties)
+                        except (json.JSONDecodeError, ValueError):
+                            properties = {}
+                    elif isinstance(node.properties, dict):
+                        properties = node.properties
+                    else:
+                        properties = {}
                     
                     # Add node with properties from JSON
                     graph.add_node(node_id, **properties)
@@ -94,18 +106,50 @@ class KGGraphAdapter:
                     source_id = edge.source_id
                     target_id = edge.target_id
                     relation_type = edge.relation_type
-                    properties = json.loads(edge.properties) if isinstance(edge.properties, str) else edge.properties or {}
+                    
+                    # Parse properties, ensuring it's always a dict
+                    logger.debug(f"Edge {edge_id}: RAW properties type={type(edge.properties)}, value={repr(edge.properties)}")
+                    
+                    if edge.properties is None:
+                        properties = {}
+                        logger.debug(f"Edge {edge_id}: properties is None, using empty dict")
+                    elif isinstance(edge.properties, str):
+                        try:
+                            parsed = json.loads(edge.properties)
+                            logger.debug(f"Edge {edge_id}: JSON parsed to type={type(parsed)}, value={repr(parsed)}")
+                            # Ensure parsed result is a dict
+                            if isinstance(parsed, dict):
+                                properties = parsed
+                            else:
+                                logger.warning(f"Edge {edge_id}: JSON parsed to {type(parsed)} instead of dict, using empty dict")
+                                properties = {}
+                        except (json.JSONDecodeError, ValueError) as e:
+                            properties = {}
+                            logger.debug(f"Edge {edge_id}: JSON parse failed ({e}), using empty dict")
+                    elif isinstance(edge.properties, dict):
+                        properties = edge.properties
+                        logger.debug(f"Edge {edge_id}: properties is already dict")
+                    else:
+                        properties = {}
+                        logger.debug(f"Edge {edge_id}: properties is unknown type {type(edge.properties)}, using empty dict")
+                    
+                    # Final safety check
+                    if not isinstance(properties, dict):
+                        logger.error(f"Edge {edge_id}: properties is {type(properties)} after parsing! Setting to empty dict")
+                        properties = {}
+                    
+                    logger.debug(f"Edge {edge_id}: Final properties type={type(properties)}, is_dict={isinstance(properties, dict)}")
                 
-                # Add edge with properties from JSON
-                graph.add_edge(source_id, target_id, **properties)
+                    # Add edge with properties from JSON
+                    graph.add_edge(source_id, target_id, **properties)
                 
                 # Add database columns as edge attributes
                 graph.edges[source_id, target_id]['id'] = edge_id
                 graph.edges[source_id, target_id]['relation_type'] = relation_type
-                graph.edges[source_id, target_id]['confidence'] = row[5]
-                graph.edges[source_id, target_id]['created_at'] = row[6]
-                graph.edges[source_id, target_id]['updated_at'] = row[7]
-                graph.edges[source_id, target_id]['is_current'] = row[8]
+                graph.edges[source_id, target_id]['confidence'] = edge.confidence
+                graph.edges[source_id, target_id]['created_at'] = edge.created_at
+                graph.edges[source_id, target_id]['updated_at'] = edge.updated_at
+                graph.edges[source_id, target_id]['is_current'] = edge.is_current
                 
                 # Set __labels__ attribute (GrandCypher uses this for MATCH ()-[r:TYPE]->())
                 # MUST be a set - GrandCypher uses set.intersection() for label matching
@@ -124,7 +168,7 @@ class KGGraphAdapter:
             logger.error(f"Failed to build graph for user {self.user_id}: {e}", exc_info=True)
             raise
     
-    def get_graph(self) -> nx.DiGraph:
+    async def get_graph(self) -> nx.DiGraph:
         """
         Get NetworkX DiGraph for GrandCypher queries.
         
@@ -134,7 +178,7 @@ class KGGraphAdapter:
         try:
             if self._graph is None:
                 logger.debug(f"Building new graph for user {self.user_id}")
-                self._graph = self._build_graph()
+                self._graph = await self._build_graph()
             else:
                 logger.debug(f"Using cached graph for user {self.user_id}")
             return self._graph
