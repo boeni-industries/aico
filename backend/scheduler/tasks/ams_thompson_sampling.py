@@ -150,7 +150,6 @@ class ThompsonSamplingUpdateTask(BaseTask):
                 # Upsert into ams_context_skill_stats via UoW
                 async with UnitOfWork(session_factory) as uow:
                     from aico.data.ams.models import AMSContextSkillStats
-                    from datetime import datetime, UTC
                     
                     # Check if exists
                     existing = await uow.ams_context_skill_stats.get(
@@ -167,7 +166,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
                         skill_id=skill_id,
                         alpha=new_alpha,
                         beta=new_beta,
-                        last_updated_at=datetime.now(UTC)
+                        last_updated_at=datetime.now(timezone.utc)
                     )
                     
                     if existing:
