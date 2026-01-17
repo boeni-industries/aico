@@ -177,123 +177,36 @@ Studio uses a small set of highly polished page types.
 
 ---
 
-## 4. Visual Design for Studio
+## 4. Visual Design Principles
 
-Studio inherits the global frontend design language, tuned for data‑dense admin views.
+Studio inherits the global frontend design language, tuned for data‑dense admin views. Detailed visual specifications are maintained in separate theme documentation.
 
-### 4.1 Color
+### 4.1 Color Philosophy
 
-- **Base & Surfaces**
-  - Background: `#F5F6FA` (light) / `#181A21` (dark)
-  - Primary surfaces: `#FFFFFF` (light) / `#21242E` (dark)
-  - Elevated surfaces: `#ECEDF1` (light) / `#2F3241` (dark)
+- **Domain-specific color system**: Each navigation domain has a dedicated color palette for consistency and visual hierarchy.
+- **Status colors**: Success, warning, and error states use semantic colors consistently across all domains.
+- **Accessibility-first**: All color combinations must meet WCAG AA+ contrast requirements (4.5:1 minimum).
+- **Light theme readability**: Light theme requires special attention to contrast and text weight to ensure readability.
+- **Color-independent cues**: Never rely on color alone—always pair with icons, labels, or patterns.
 
-- **Accents**
-  - Primary accent: Soft Lavender `#B8A1EA` (Studio actions, selection, focus states).
-  - Status colors used consistently:
-    - Success: mint / soft green
-    - Warning: muted amber
-    - Error/destructive: coral `#ED7867`
+### 4.1.1 Domain Color Assignment
 
-- **Rules**
-  - No large purple backgrounds; accents only on controls, highlights, status rings, and selection.
-  - All critical actions (e.g. deletion, key rotation) use the error palette plus explicit labels.
-
-### 4.1.1 Domain-Specific Color System
-
-**Each main navigation domain has a dedicated color palette** used consistently across:
+**Each main navigation domain has a dedicated color** for:
 - Sidebar icons and active states
 - Domain cards on Overview page
 - Page headers and hero sections
 - Gradient backgrounds
-- Status indicators and badges
 
-**Color Palette by Domain:**
+**Domain Color Mapping:**
 
-| Domain | Primary Color | Light Theme | Dark Theme | Gradient Accent | Icon | Use Cases |
-|--------|--------------|-------------|------------|-----------------|------|-----------|
-| **Overview** | Neutral Gray | `#6B7280` | `#9CA3AF` | `rgba(107, 114, 128, 0.1)` | 🏠 | Dashboard, system-wide views, root hub |
-| **Operations** | Blue | `#2563EB` | `#3B82F6` | `rgba(59, 130, 246, 0.1)` | ⚡ | System health, users, sessions, scheduler, runtime |
-| **Emotion** | Pink/Magenta | `#DB2777` | `#EC4899` | `rgba(236, 72, 153, 0.1)` | 😊 | Emotion tracking, valence, arousal, circumplex |
-| **Memory & AMS** | Purple | `#7C3AED` | `#8B5CF6` | `rgba(139, 92, 246, 0.1)` | 📖 | Memory tiers, KG, semantic search, AMS, albums |
-| **Agency** | Amber/Orange | `#D97706` | `#F59E0B` | `rgba(245, 158, 11, 0.1)` | ✨ | Goals, learning, curiosity, values, autonomy |
-| **System** | Cyan/Teal | `#0891B2` | `#06B6D4` | `rgba(6, 182, 212, 0.1)` | ⚙️ | Configuration, updates, plugins, health, settings |
-
-**Secondary Colors (Status & Indicators):**
-- **Success/Healthy**: `#059669` (light) / `#10B981` (dark)
-- **Warning/Degraded**: `#D97706` (light) / `#F59E0B` (dark)
-- **Error/Critical**: `#DC2626` (light) / `#EF4444` (dark)
-- **Info/Neutral**: `#6B7280` (light) / `#9CA3AF` (dark)
-
-**Gradient Formula per Domain:**
-```css
-/* Light Theme */
-background: radial-gradient(circle at top right, {domain-color}03 0%, transparent 70%),
-            linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%),
-            #FFFFFF;
-
-/* Dark Theme */
-background: radial-gradient(circle at top right, {domain-color}15 0%, transparent 70%),
-            linear-gradient(135deg, {domain-color}10 0%, {accent-color}05 100%),
-            rgba(255, 255, 255, 0.02);
-```
-
-**Implementation Examples:**
-
-**Operations Domain (Blue):**
-```tsx
-// Card background
-background: (theme) => theme.palette.mode === 'light'
-  ? 'radial-gradient(circle at top right, rgba(37, 99, 235, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
-  : 'radial-gradient(circle at top right, rgba(59, 130, 246, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%), rgba(255, 255, 255, 0.02)'
-
-// Icon color
-color: (theme) => theme.palette.mode === 'light' ? '#2563EB' : '#3B82F6'
-```
-
-**Memory & AMS Domain (Purple):**
-```tsx
-// Card background
-background: (theme) => theme.palette.mode === 'light'
-  ? 'radial-gradient(circle at top right, rgba(124, 58, 237, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
-  : 'radial-gradient(circle at top right, rgba(139, 92, 246, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%), rgba(255, 255, 255, 0.02)'
-
-// Icon color
-color: (theme) => theme.palette.mode === 'light' ? '#7C3AED' : '#8B5CF6'
-```
-
-**Emotion Domain (Pink):**
-```tsx
-// Card background - dynamic based on emotion state
-background: (theme) => theme.palette.mode === 'light'
-  ? 'radial-gradient(circle at top right, rgba(219, 39, 119, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
-  : 'radial-gradient(circle at top right, rgba(236, 72, 153, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%), rgba(255, 255, 255, 0.02)'
-
-// Icon color
-color: (theme) => theme.palette.mode === 'light' ? '#DB2777' : '#EC4899'
-```
-
-**Agency Domain (Amber/Orange):**
-```tsx
-// Card background
-background: (theme) => theme.palette.mode === 'light'
-  ? 'radial-gradient(circle at top right, rgba(217, 119, 6, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
-  : 'radial-gradient(circle at top right, rgba(245, 158, 11, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%), rgba(255, 255, 255, 0.02)'
-
-// Icon color
-color: (theme) => theme.palette.mode === 'light' ? '#D97706' : '#F59E0B'
-```
-
-**System Domain (Cyan):**
-```tsx
-// Card background
-background: (theme) => theme.palette.mode === 'light'
-  ? 'radial-gradient(circle at top right, rgba(8, 145, 178, 0.03) 0%, transparent 70%), linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%), #FFFFFF'
-  : 'radial-gradient(circle at top right, rgba(6, 182, 212, 0.15) 0%, transparent 70%), linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%), rgba(255, 255, 255, 0.02)'
-
-// Icon color
-color: (theme) => theme.palette.mode === 'light' ? '#0891B2' : '#06B6D4'
-```
+| Domain | Color Family | Icon | Use Cases |
+|--------|--------------|------|-----------|
+| **Overview** | Neutral Gray | 🏠 | Dashboard, system-wide views, root hub |
+| **Operations** | Blue | ⚡ | System health, users, sessions, scheduler, runtime |
+| **Emotion** | Pink/Magenta | 😊 | Emotion tracking, valence, arousal, circumplex |
+| **Memory & AMS** | Purple | 📖 | Memory tiers, KG, semantic search, AMS, albums |
+| **Agency** | Coral/Orange | ✨ | Goals, learning, curiosity, values, autonomy |
+| **System** | Cyan/Teal | ⚙️ | Configuration, updates, plugins, health, settings |
 
 **Consistency Rules:**
 1. **Sidebar Navigation**: Active domain uses its primary color for icon and text
@@ -302,134 +215,24 @@ color: (theme) => theme.palette.mode === 'light' ? '#0891B2' : '#06B6D4'
 4. **Hero Sections**: Large dashboard panels use domain color in gradient backgrounds
 5. **Status Badges**: Always use semantic colors (success/warning/error), not domain colors
 
-**Accessibility Compliance:**
-- All domain colors meet WCAG AA contrast requirements (4.5:1 minimum)
-- Light theme versions are darker/more saturated for better readability
-- Color is never the only indicator - always paired with icons, labels, or patterns
+*See theme documentation for exact color values, gradients, and implementation details.*
 
-### 4.1.2 Light Theme Readability Requirements
+### 4.2 Shape & Composition Philosophy
 
-**CRITICAL: Light theme has historically suffered from poor contrast and readability.** All light theme implementations must follow these principles:
+- **Radius scale**: Consistent corner radius system from small (chips) to extra-large (modals)
+- **Floating composition**: Cards float with breathing room, never full-bleed
+- **Glassmorphism**: Backdrop blur and luminous borders for depth
+- **Gradient layering**: Radial + linear gradients for hero sections
 
-**Contrast Requirements (WCAG AA+ Minimum)**
-- **Body text**: Minimum 4.5:1 contrast ratio against background
-- **Large text (≥18pt)**: Minimum 3:1 contrast ratio
-- **Interactive elements**: Minimum 3:1 contrast for borders, icons, controls
-- **Data visualization**: All colored text must meet 4.5:1 against its background
+*See theme documentation for exact values and implementation patterns.*
 
-**Text Color Adjustments for Light Theme**
-- **Primary text**: `#1F2937` (dark gray, not pure black)
-- **Secondary text**: `#6B7280` (medium gray)
-- **Accent text on light backgrounds**: Use **darker, saturated versions** of accent colors:
-  - Purple: `#7C3AED` (instead of `#8B5CF6`) 
-  - Blue: `#2563EB` (instead of `#3B82F6`)
-  - Green: `#059669` (instead of `#10B981`)
-  - Amber: `#D97706` (instead of `#F59E0B`)
-  - Red: `#DC2626` (instead of `#EF4444`)
+### 4.3 Typography & Density
 
-**Gradient Backgrounds in Light Theme**
-- **Problem**: Light gradients (purple/blue at 5-10% opacity) create insufficient contrast for colored text
-- **Solution**: 
-  - **Reduce gradient opacity to 3-5%** (half of dark theme)
-  - **Use neutral gray gradients** instead of colored ones for data-heavy sections:
-    ```css
-    background: radial-gradient(circle at top right, rgba(0,0,0,0.03) 0%, transparent 70%),
-                linear-gradient(135deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.01) 100%)
-    ```
-  - **Increase text weight**: Use 600-700 font weight for colored metrics on gradient backgrounds
-  - **Add subtle text shadows** for critical metrics: `text-shadow: 0 1px 2px rgba(255,255,255,0.8)`
+- **Base typography**: Inter font family, consistent scale across all views
+- **Density rules**: Max 10–12 visible rows per table, prefer progressive disclosure over cramming
+- **Hierarchy**: Clear distinction between headlines, subtitles, body, and captions
 
-**Card Backgrounds in Light Theme**
-- **Primary cards**: Pure white `#FFFFFF` with subtle shadow, not gradient backgrounds
-- **Elevated cards**: Very light gray `#FAFBFC` for hierarchy
-- **Glass effect**: Reduce backdrop blur to 10-15px (vs 20-30px in dark theme)
-- **Borders**: Use `rgba(0,0,0,0.1)` for visible separation (not `rgba(255,255,255,0.1)`)
-
-**Status Indicators in Light Theme**
-- **Badges/chips**: Use solid background colors with white text, not transparent backgrounds
-- **Icons**: Use filled icons with solid colors, not outlined icons with low-contrast strokes
-- **Progress circles**: Increase stroke width from 12px to 16px for better visibility
-
-**Testing Requirements**
-- **Test all light theme UIs** in bright daylight conditions (simulated or real)
-- **Verify contrast ratios** using browser DevTools or contrast checker tools
-- **Review on multiple displays**: Glossy screens, matte screens, low-brightness settings
-- **User testing**: Older adults and users with visual impairments must be able to read all content
-
-### 4.2 Shape & Composition
-
-- **Radius scale**
-  - XLarge (36px): Studio shell containers (main cards, modals, drawers).
-  - Large (28px): metric cards, overview cards.
-  - Medium (20px): buttons, small panels.
-  - Small (12px): tags, chips, pills.
-
-- **Floating composition**
-  - 24–40px padding from viewport edges.
-  - 16–24px spacing between cards and sections.
-  - No full‑bleed panels; even data tables live inside a floating card.
-
-### 4.3 Glassmorphism & Depth
-
-- **Studio Home & Dashboards**
-  - Use heavy backdrop blur (20–30px) on primary cards.
-  - Luminous white borders (1.5px, 10–30% opacity).
-  - Single strong shadow layer for main content, lighter shadows for secondary items.
-
-- **Tables & Forms**
-  - Slightly subtler glass effect to preserve text legibility.
-  - Higher contrast between rows; use alternating backgrounds or divider lines at 8–12% opacity.
-
-- **Context Panel**
-  - Feels like a floating drawer sliding over the background.
-  - Same 36px radius, blur, and border treatment as other primary containers.
-
-### 4.3.1 Advanced Gradient Techniques (Knowledge Graph Pattern)
-
-**Inspired by the Memory & AMS → Knowledge Graph implementation**, Studio uses sophisticated gradient layering for hero sections and high-impact panels:
-
-**Radial + Linear Gradient Layering**
-```css
-background: radial-gradient(circle at top right, {accentColor}20 0%, transparent 70%), 
-            linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%)
-```
-
-**Key Principles:**
-- **Radial gradients** create focal points (typically top-right or center) with 20% opacity accent colors
-- **Linear gradients** (135° diagonal) provide directional flow from purple (`#8B5CF6`) to blue (`#3B82F6`)
-- **Opacity range**: 5–20% to maintain readability while adding visual interest
-- **Layering**: Radial on top, linear underneath, both over glassmorphic backdrop blur
-
-**Glow Effects for Data Visualization**
-- Radial progress circles: `filter: drop-shadow(0 0 8px {color}80)` (50% opacity)
-- Status indicators: Small colored dots with `boxShadow: 0 0 8px {color}80`
-- Animated transitions: `transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1)`
-
-**Color Palette for Gradients:**
-- **Purple accent**: `rgba(139, 92, 246, 0.1)` → `#8B5CF6` at 10% opacity
-- **Blue accent**: `rgba(59, 130, 246, 0.05)` → `#3B82F6` at 5% opacity
-- **Success green**: `rgba(16, 185, 129, 0.1)` → `#10B981` at 10% opacity
-- **Warning amber**: `rgba(245, 158, 11, 0.1)` → `#F59E0B` at 10% opacity
-- **Error red**: `rgba(239, 68, 68, 0.1)` → `#EF4444` at 10% opacity
-
-**When to Use:**
-- **Hero sections**: Health dashboards, analytics panels, system status displays
-- **High-importance cards**: Critical alerts, primary metrics, featured content
-- **Data visualization backgrounds**: Charts, graphs, progress indicators
-- **Avoid**: Regular content cards, tables, forms (use simpler glass effects)
-
-### 4.4 Typography & Density
-
-- Same base typography as main UI (Inter, 1.0rem body, etc.), with:
-  - **Headline 2** for domain titles.
-  - **Subtitle** for metric labels.
-  - **Body** for table cells and descriptions.
-
-- **Density rules**
-  - Max ~10–12 visible rows per table without scrolling on typical desktop height (avoid microscopic text).
-  - Prefer progressive disclosure (expandable sections, drawers) over cramming.
-
-### 4.5 Dashboard Design Best Practices (2026)
+### 4.4 Dashboard Design Best Practices (2026)
 
 Studio dashboards follow modern UX research principles for data-dense, decision-oriented interfaces:
 
