@@ -203,4 +203,35 @@ For the first usable version of AICO, we likely need at least:
   - `generate_reflection` (LLM over recent logs/events).  
   - `propose_small_adjustments` (LLM suggestions turned into candidate goals).
 
-All of these should be defined as `Skill`s with clear schemas and mapped to a small, well-audited set of Tool implementations, so that adding more later follows the same pattern.
+- **Maintenance & self-healing skills/tools**  
+  These are **shared between agency and the System Health UI**; the same skills that power
+  user-facing “Fix” buttons in the Health tab are also available as agency skills for
+  autonomous self-healing:
+  - `run_connectivity_diagnostics` – orchestrates low-risk tests for gateway, DB, modelservice,
+    and message bus connectivity, emitting PerceptualEvents and metrics.  
+  - `reduce_db_disk_pressure` – runs a bounded, idempotent playbook such as archiving old
+    conversations, cleaning transient data, and re-running disk checks.  
+  - `stabilise_modelservice` – performs a safe sequence of checks and restarts for
+    modelservice/LLM pipeline, within Values & Ethics and Scheduler policies.  
+  - `rebalance_agency_load` – throttles or reschedules lower-priority agency work when
+    resource scans show sustained overload.  
+  - `re-evaluate_ai_behaviour_health` – triggers a focused agency/AMS/World Model check for
+    goals, plan execution health, reflection cadence, and context/memory integrity.
+
+From this component’s perspective, **maintenance/self-healing skills are not special** – they
+follow the same ontology-backed, policy-aware, schedulable pattern as other skills. What
+differs is how they are *used*:
+
+- System Health checks in the frontend call backend endpoints that, under the hood, invoke
+  these skills/tools as part of troubleshooting playbooks (e.g. “Archive old conversations”,
+  “Run connection test & restart”).
+- The agency layer treats degraded health or maintenance needs as **goals** (often
+  `origin = system_maintenance`) and attaches plans whose executable steps use the very same
+  maintenance skills.
+
+This ensures a **single implementation path** for troubleshooting actions: whether a human
+clicks a button in the Health tab or the agent acts autonomously, both go through the same
+Skill & Tool Layer, Values & Ethics checks, and Scheduler, keeping behaviour auditable and DRY.
+
+All of these should be defined as `Skill`s with clear schemas and mapped to a small, well-audited
+set of Tool implementations, so that adding more later follows the same pattern.
