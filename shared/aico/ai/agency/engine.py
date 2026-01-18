@@ -152,7 +152,8 @@ class AgencyEngine(BaseAIProcessor):
             agency_service=self.agency_service,
             config=config,
             message_bus=message_bus, 
-            logger=logger
+            logger=logger,
+            session_factory=session_factory,
         )
         # Goal Arbiter initialized
         
@@ -173,13 +174,21 @@ class AgencyEngine(BaseAIProcessor):
             SearchMemorySkill,
             UpdateKnowledgeGraphSkill,
             ReflectOnGoalSkill,
+            MaintenanceConnectivityFullScanSkill,
         )
         
         # Initialize skill registry - DISABLED (skills require migration to PostgreSQL)
         # TODO: Migrate all skills to use AgencyService/UoW instead of db_connection
         self.skill_registry = SkillRegistry()
-        # Skills disabled pending migration to PostgreSQL
-        # Skill Registry initialized (empty)
+        # Register core skills
+        # Note: Many existing skills still depend on legacy db access and
+        # remain effectively disabled; the new maintenance skills are
+        # designed to work with the PostgreSQL UoW layer.
+        if session_factory is not None:
+            # Maintenance / self-healing skills
+            self.skill_registry.register(
+                MaintenanceConnectivityFullScanSkill(session_factory=session_factory)
+            )
         
         # Initialize PlanStore with skill_registry for auto-fixing old plans
         # PlanStore replaced by AgencyService
@@ -936,12 +945,8 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             IntentionSet with active and proposed intentions
         """
-        from aico.data.uow import UnitOfWork
-        from aico.data.postgres.connection import get_session_factory
-        
-        session_factory = await get_session_factory()
-        async with UnitOfWork(session_factory) as uow:
-            return await self.arbiter.get_intention_set(user_id, uow)
+        # Delegate to GoalArbiter, which manages its own UnitOfWork
+        return await self.arbiter.get_intention_set(user_id)
     
     async def update_intention_set_for_user(
         self,
