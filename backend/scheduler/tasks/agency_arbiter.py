@@ -226,7 +226,8 @@ class AgencyArbiterTask(BaseTask):
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 agency_service = AgencyService(uow)
-                goal_models = await agency_service.get_user_goals(user_id, status='pending')
+                from aico.ai.agency.models import GoalStatus
+                goal_models = await agency_service.list_goals(user_id, status=GoalStatus.PENDING)
                 
                 # Convert to dicts
                 goals = [
