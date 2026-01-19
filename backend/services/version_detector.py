@@ -196,10 +196,30 @@ class DatabaseVersionDetector:
         logger.debug("Attempting PostgreSQL version detection via docker exec...")
         
         try:
+            pg_password = os.environ.get("AICO_PG_PASSWORD")
+            if not pg_password:
+                logger.error(
+                    "AICO_PG_PASSWORD is not set; cannot perform authenticated PostgreSQL "
+                    "version detection inside aico-postgres container"
+                )
+                raise RuntimeError("AICO_PG_PASSWORD not set")
+
             # Try docker exec first
             result = await asyncio.to_thread(
                 subprocess.run,
-                ["docker", "exec", "aico-postgres", "psql", "-U", "postgres", "-t", "-c", "SELECT version()"],
+                [
+                    "docker",
+                    "exec",
+                    "-e",
+                    f"PGPASSWORD={pg_password}",
+                    "aico-postgres",
+                    "psql",
+                    "-U",
+                    "postgres",
+                    "-t",
+                    "-c",
+                    "SELECT version()",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=5

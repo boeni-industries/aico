@@ -381,3 +381,70 @@ class DatabaseVacuumTask(BaseTask):
             error_msg = f"Database vacuum failed: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             return TaskResult(success=False, error=error_msg)
+
+
+class AgencyConnectivityScanTask(BaseTask):
+    """Run Agency maintenance connectivity full scan via SkillInvoker.
+
+    This task is designed to be created and triggered manually (e.g. via
+    `aico scheduler trigger maintenance.agency_connectivity_scan`) and is
+    therefore disabled by default.
+    """
+
+    task_id = "maintenance.agency_connectivity_scan"
+    default_config = {
+        "enabled": False,  # Explicitly disabled; for manual triggering only
+        "schedule": "*/10 * * * *",  # Placeholder; effective only if enabled
+        "targets": ["postgres"],
+    }
+
+    async def execute(self, context: TaskContext) -> TaskResult:
+        """Execute connectivity scan via AgencyEngine skill.
+
+        Delegates to the `maint.connectivity.full_scan` skill using the
+        AgencyEngine's SkillInvoker, ensuring we reuse the same maintenance
+        logic as the HTTP endpoint and future self-healing flows.
+        """
+
+        from aico.ai import ai_registry
+
+        try:
+            agency_engine = ai_registry.get("agency")
+        except Exception as exc:  # pragma: no cover - defensive
+            error_msg = f"AgencyEngine not available for connectivity scan: {exc}"
+            self.logger.error(error_msg)
+            return TaskResult(success=False, error=error_msg)
+
+        targets = context.get_config("targets", ["postgres"])
+        input_data: Dict[str, Any] = {"targets": targets}
+
+        try:
+            result = await agency_engine.skill_invoker.invoke_skill(
+                skill_id="maint.connectivity.full_scan",
+                user_id="system_maintenance",
+                input_data=input_data,
+                context={
+                    "trigger": "scheduler_connectivity_scan",
+                    "task_id": self.task_id,
+                },
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            error_msg = f"Connectivity scan skill invocation failed: {exc}"
+            self.logger.error(error_msg, exc_info=True)
+            return TaskResult(success=False, error=error_msg)
+
+        if not result.success:
+            error_msg = result.error or "Connectivity scan reported failure"
+            self.logger.warning(f"Agency connectivity scan failed: {error_msg}")
+            return TaskResult(
+                success=False,
+                error=error_msg,
+                data={"output": result.output},
+            )
+
+        # Successful scan; return the skill's structured output in TaskResult
+        return TaskResult(
+            success=True,
+            message="Agency connectivity scan completed successfully",
+            data=result.output,
+        )

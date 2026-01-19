@@ -115,12 +115,15 @@ class GoalArbiter:
         message_bus: Optional[MessageBusClient] = None,
         logger=None,
         enable_adaptive: bool = False,
-        enable_context_aware: bool = False
+        enable_context_aware: bool = False,
+        session_factory: Optional[Any] = None,
     ):
         self.agency_service = agency_service
         self.message_bus = message_bus
         self.logger = logger
         self.config = config
+        # Session factory for UoW-based database access
+        self._session_factory = session_factory
         
         # Phase 6.5: Adaptive scoring and context-aware prioritization
         # NOTE: Disabled until refactored to use UoW pattern
@@ -207,7 +210,7 @@ class GoalArbiter:
     # Lesson-Based Adjustments
     # ========================================================================
     
-    async def _load_adjustments(self, user_id: Optional[str], uow: "UnitOfWork") -> Dict[str, float]:
+    async def _load_adjustments(self, user_id: Optional[str]) -> Dict[str, float]:
         """
         Load lesson-based adjustments from database.
         
@@ -226,22 +229,26 @@ class GoalArbiter:
         
         # Load from database using repository
         adjustments = {}
+        if not self._session_factory:
+            # Without a session factory we cannot hit the DB; return empty adjustments
+            return adjustments
+        from aico.data.uow import UnitOfWork
         try:
-            # Build filters for active adjustments (global + user-specific)
-            filters = {"active": True}
-            if user_id:
-                # Get both global and user-specific adjustments
-                all_adjustments = await uow.agency_arbiter_adjustments.list(filters={"active": True})
-                # Filter to global or matching user
-                relevant_adjustments = [
-                    adj for adj in all_adjustments 
-                    if adj.user_id is None or adj.user_id == user_id
-                ]
-            else:
-                # Only global adjustments
-                relevant_adjustments = await uow.agency_arbiter_adjustments.list(
-                    filters={"active": True, "user_id": None}
-                )
+            async with UnitOfWork(self._session_factory) as uow:
+                # Build filters for active adjustments (global + user-specific)
+                if user_id:
+                    # Get both global and user-specific adjustments
+                    all_adjustments = await uow.agency_arbiter_adjustments.list(filters={"active": True})
+                    # Filter to global or matching user
+                    relevant_adjustments = [
+                        adj for adj in all_adjustments 
+                        if adj.user_id is None or adj.user_id == user_id
+                    ]
+                else:
+                    # Only global adjustments
+                    relevant_adjustments = await uow.agency_arbiter_adjustments.list(
+                        filters={"active": True, "user_id": None}
+                    )
             
             # Sort by confidence descending and take highest confidence for each key
             relevant_adjustments.sort(key=lambda x: x.confidence, reverse=True)
@@ -268,6 +275,11 @@ class GoalArbiter:
         
         return adjustments
     
+    def _get_adjustments_cached(self) -> Dict[str, float]:
+        if self._adjustments_cache_time:
+            return self._adjustments_cache.copy()
+        return {}
+    
     def _get_adjusted_weight(self, weight_key: str, base_value: float, user_id: Optional[str] = None) -> float:
         """
         Get weight value with lesson-based adjustments applied.
@@ -280,7 +292,7 @@ class GoalArbiter:
         Returns:
             Adjusted weight value
         """
-        adjustments = self._load_adjustments(user_id)
+        adjustments = self._get_adjustments_cached()
         
         # Check for direct weight adjustment
         if weight_key in adjustments:
@@ -327,9 +339,9 @@ class GoalArbiter:
         else:
             weights = self.weights
         
-        # Load lesson-based adjustments for this user
+        # Load lesson-based adjustments for this user from cache
         user_id = goal.user_id
-        adjustments = self._load_adjustments(user_id)
+        adjustments = self._get_adjustments_cached()
         
         # Check for goal_type-specific adjustment from lessons
         goal_type_key = f"goal_type_{goal.goal_type}"
@@ -498,21 +510,23 @@ class GoalArbiter:
     # Intention Set Management
     # ========================================================================
     
-    async def get_intention_set(self, user_id: str, uow: "UnitOfWork") -> IntentionSet:
+    async def get_intention_set(self, user_id: str) -> IntentionSet:
         """
         Get the current intention set for a user.
         
-        Args:
-            user_id: User ID
-            uow: Unit of Work for database access
-            
-        Returns:
-            IntentionSet with current intentions
+        This method creates its own UnitOfWork from the shared session_factory,
+        so callers do not need to manage transaction scope explicitly.
         """
-        # Get intentions from repository
-        intention_entities = await uow.agency_intention_set.list(
-            filters={"user_id": user_id, "status": ["proposed", "active", "paused"]}
-        )
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory for intention set queries")
+
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(self._session_factory) as uow:
+            # Get intentions from repository
+            intention_entities = await uow.agency_intention_set.list(
+                filters={"user_id": user_id, "status": ["proposed", "active", "paused"]}
+            )
         
         intentions = []
         for entity in intention_entities:
@@ -558,6 +572,8 @@ class GoalArbiter:
         Returns:
             Updated IntentionSet
         """
+        # Preload lesson-based adjustments for this user
+        await self._load_adjustments(user_id)
         # Get current intention set
         intention_set = await self.get_intention_set(user_id)
         
@@ -753,29 +769,33 @@ class GoalArbiter:
         scored_goal: ScoredGoal,
         user_id: str,
         activate: bool,
-        uow: "UnitOfWork"
     ) -> Intention:
-        """Create a new intention in the database."""
+        """Create a new intention in the database using a fresh UoW."""
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory for intention creation")
+
         from aico.data.agency.goal_models import AgencyIntentionSet
-        
-        # Create entity
-        entity = AgencyIntentionSet(
-            intention_id=str(uuid.uuid4()),
-            goal_id=scored_goal.goal.goal_id,
-            user_id=user_id,
-            status=IntentionStatus.ACTIVE.value if activate else IntentionStatus.PROPOSED.value,
-            arbiter_score=scored_goal.arbiter_score,
-            priority_band=scored_goal.priority_band.value,
-            reasons_json=json.dumps(scored_goal.reasons),
-            activated_at=datetime.now(UTC) if activate else None,
-            deactivated_at=None,
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC)
-        )
-        
-        await uow.agency_intention_set.create(entity)
-        await uow.commit()
-        
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(self._session_factory) as uow:
+            # Create entity
+            entity = AgencyIntentionSet(
+                intention_id=str(uuid.uuid4()),
+                goal_id=scored_goal.goal.goal_id,
+                user_id=user_id,
+                status=IntentionStatus.ACTIVE.value if activate else IntentionStatus.PROPOSED.value,
+                arbiter_score=scored_goal.arbiter_score,
+                priority_band=scored_goal.priority_band.value,
+                reasons_json=json.dumps(scored_goal.reasons),
+                activated_at=datetime.now(UTC) if activate else None,
+                deactivated_at=None,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC)
+            )
+
+            await uow.agency_intention_set.create(entity)
+            await uow.commit()
+
         return Intention(
             intention_id=entity.intention_id,
             goal_id=entity.goal_id,
@@ -790,35 +810,46 @@ class GoalArbiter:
             updated_at=entity.updated_at
         )
     
-    async def _update_intention(self, intention: Intention, uow: "UnitOfWork") -> None:
-        """Update an existing intention in the database."""
+    async def _update_intention(self, intention: Intention) -> None:
+        """Update an existing intention in the database using a fresh UoW."""
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory for intention updates")
+
         from aico.data.agency.goal_models import AgencyIntentionSet
-        
-        # Create updated entity
-        entity = AgencyIntentionSet(
-            intention_id=intention.intention_id,
-            goal_id=intention.goal_id,
-            user_id=intention.user_id,
-            status=intention.status.value,
-            arbiter_score=intention.arbiter_score,
-            priority_band=intention.priority_band.value,
-            reasons_json=json.dumps(intention.reasons),
-            activated_at=intention.activated_at,
-            deactivated_at=intention.deactivated_at,
-            created_at=intention.created_at,
-            updated_at=datetime.now(UTC)
-        )
-        
-        await uow.agency_intention_set.update(intention.intention_id, entity)
-        await uow.commit()
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(self._session_factory) as uow:
+            # Create updated entity
+            entity = AgencyIntentionSet(
+                intention_id=intention.intention_id,
+                goal_id=intention.goal_id,
+                user_id=intention.user_id,
+                status=intention.status.value,
+                arbiter_score=intention.arbiter_score,
+                priority_band=intention.priority_band.value,
+                reasons_json=json.dumps(intention.reasons),
+                activated_at=intention.activated_at,
+                deactivated_at=intention.deactivated_at,
+                created_at=intention.created_at,
+                updated_at=datetime.now(UTC)
+            )
+
+            await uow.agency_intention_set.update(intention.intention_id, entity)
+            await uow.commit()
     
-    async def _get_intention(self, intention_id: str, uow: "UnitOfWork") -> Optional[Intention]:
-        """Get an intention by ID."""
-        entity = await uow.agency_intention_set.get_by_id(intention_id)
-        
+    async def _get_intention(self, intention_id: str) -> Optional[Intention]:
+        """Get an intention by ID using a fresh UoW."""
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory for intention queries")
+
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(self._session_factory) as uow:
+            entity = await uow.agency_intention_set.get_by_id(intention_id)
+
         if not entity:
             return None
-        
+
         return Intention(
             intention_id=entity.intention_id,
             goal_id=entity.goal_id,
@@ -837,11 +868,11 @@ class GoalArbiter:
         self,
         user_id: str,
         new_intentions: List[Intention],
-        uow: "UnitOfWork"
     ) -> None:
-        """
-        Sync plan status with intention status changes.
-        Activate plans for newly active intentions, pause plans for deactivated ones.
+        """Sync plan status with intention status changes.
+
+        Note: Plan updates go through AgencyService, which already wraps its
+        own UnitOfWork, so we do not open an additional UoW here.
         """
         from .models import PlanStatus
         
@@ -909,25 +940,17 @@ class GoalArbiter:
         goal_id: str,
         outcome: str,
         success: bool,
-        uow: "UnitOfWork",
         user_satisfaction: Optional[float] = None,
         completion_time_minutes: Optional[int] = None,
         metadata: Optional[Dict] = None
     ) -> None:
-        """
-        Record goal outcome for adaptive learning.
-        
-        Args:
-            goal_id: Goal ID
-            outcome: Outcome type (completed, abandoned, failed, timeout)
-            success: Whether the goal succeeded
-            uow: Unit of Work for database access
-            user_satisfaction: Optional user satisfaction score (0.0-1.0)
-            completion_time_minutes: Time taken to complete
-            metadata: Additional outcome metadata
-        """
+        """Record goal outcome for adaptive learning using an internal UoW."""
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory to record goal outcomes")
+
         try:
             from aico.data.agency.goal_models import AgencyGoalOutcome
+            from aico.data.uow import UnitOfWork
             
             # Calculate reward based on outcome
             reward = 0.0
@@ -963,8 +986,9 @@ class GoalArbiter:
             )
             
             # Store in database
-            await uow.agency_goal_outcomes.create(outcome_entity)
-            await uow.commit()
+            async with UnitOfWork(self._session_factory) as uow:
+                await uow.agency_goal_outcomes.create(outcome_entity)
+                await uow.commit()
             
             if self.logger:
                 self.logger.info(

@@ -6,10 +6,15 @@ REST API endpoints for system health monitoring, readiness checks, and diagnosti
 
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
+from typing import Any, Dict, Optional, List
+
 import psutil
 import time
+from pydantic import BaseModel
+
 from aico.core.logging import get_logger
 from aico.core.version import get_backend_version, get_modelservice_version
+from aico.ai import ai_registry
 from .schemas import (
     HealthResponse, DetailedHealthResponse, ReadinessResponse, 
     LivenessResponse, SystemMetrics, ComponentHealth, 
@@ -169,5 +174,89 @@ async def detailed_health():
         system_metrics=system_metrics,
         components=components
     )
+
+
+class InvokeSkillRequest(BaseModel):
+    """Request body for generic skill invocation from health/system tools."""
+
+    skill_id: str
+    input: Dict[str, Any] | None = None
+    context: Dict[str, Any] | None = None
+
+
+class ConnectivityScanRequest(BaseModel):
+    """Connectivity scan request.
+
+    Targets are optional and default to ["postgres"].
+    """
+
+    targets: List[str] | None = None
+
+
+@router.post("/skills/invoke")
+async def invoke_skill(request: InvokeSkillRequest):
+    """Generic endpoint to invoke a registered Agency skill.
+
+    Intended for AICO Studio and internal tooling. This provides a thin,
+    policy-enforceable wrapper over SkillInvoker.
+    """
+
+    try:
+        agency_engine = ai_registry.get("agency")
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error(f"Failed to resolve AgencyEngine from ai_registry: {exc}")
+        raise HTTPException(status_code=503, detail="AgencyEngine not available")
+
+    try:
+        result = await agency_engine.skill_invoker.invoke_skill(
+            skill_id=request.skill_id,
+            user_id="system_maintenance",
+            input_data=request.input or {},
+            context=request.context or {"trigger": "health_invoke_skill"},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error(f"Skill invocation failed: {exc}")
+        raise HTTPException(status_code=500, detail="Skill invocation failed")
+
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error or "Skill reported failure")
+
+    # Return only the skill output; metadata is for internal logging/analysis.
+    return result.output
+
+
+@router.post("/connectivity-scan")
+async def connectivity_scan(request: ConnectivityScanRequest):
+    """Run the maint.connectivity.full_scan maintenance skill.
+
+    This endpoint is designed for the System Health UI and other callers
+    that want a stable, named API to trigger the connectivity scan.
+    """
+
+    try:
+        agency_engine = ai_registry.get("agency")
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error(f"Failed to resolve AgencyEngine from ai_registry: {exc}")
+        raise HTTPException(status_code=503, detail="AgencyEngine not available")
+
+    input_data: Dict[str, Any] = {}
+    if request.targets is not None:
+        input_data["targets"] = request.targets
+
+    try:
+        result = await agency_engine.skill_invoker.invoke_skill(
+            skill_id="maint.connectivity.full_scan",
+            user_id="system_maintenance",
+            input_data=input_data,
+            context={"trigger": "health_connectivity_scan"},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error(f"Connectivity scan skill invocation failed: {exc}")
+        raise HTTPException(status_code=500, detail="Connectivity scan failed")
+
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error or "Connectivity scan reported failure")
+
+    return result.output
 
 

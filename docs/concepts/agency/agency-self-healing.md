@@ -19,8 +19,11 @@ Goals:
 - Keep remediation logic **DRY**: implement maintenance actions once as
   ontology-backed skills/tools; both frontend and Agency call into them.
 
-This document is the main reference for implementing self-healing behaviour in
-backend services and Agency components.
+This document is the main **conceptual reference** for self-healing behaviour in
+backend services and Agency components. The **implementation master spec** for
+the concrete skills, tools, and contracts used here is:
+
+- `WIP-self-healing-skills-tools.md` (project root)
 
 Related docs:
 
@@ -63,10 +66,11 @@ maintenance skills:
 ### 3.1 Health signals
 
 Self-healing is triggered by **health signals** from infrastructure and
-agency-level components. Examples:
+agency-level components. Examples (spanning AICO's multi-store architecture of PostgreSQL, ChromaDB,
+InfluxDB, and LMDB/working-memory stores):
 
-- `/api/health` and `/api/health/detailed` responses (CPU, memory, disk, DB,
-  Modelservice, Ollama, message bus).
+- `/api/health` and `/api/health/detailed` responses (CPU, memory, disk,
+  databases, Modelservice, Ollama, message bus).
 - Modelservice health handler signals (ZMQ health checks).
 - Operations telemetry (latency, error rates).
 - Agency metrics (see `agency-metrics.md`):
@@ -98,7 +102,9 @@ Health-related goals are modelled as **maintenance goals** in the goal graph
 
 Examples:
 
-- `g_reduce_db_disk_pressure` – "Reduce DB disk usage below 70%".
+-- `g_reduce_db_disk_pressure` – "Reduce DB disk usage below 70%", combining
+  PostgreSQL archival, ChromaDB/InfluxDB retention, and LMDB compaction skills
+  as defined in `WIP-self-healing-skills-tools.md`.
 - `g_restore_modelservice_connectivity` – "Restore healthy modelservice
   responses".
 - `g_recover_stalled_plans` – "Identify and repair stalled plan executions".

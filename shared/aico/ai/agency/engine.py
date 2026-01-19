@@ -1128,8 +1128,7 @@ class AgencyEngine(BaseAIProcessor):
         goal_types = list(set(g.goal_type for g in all_goals if g.goal_type))
         
         performance_context = {}
-        for row in rows:
-            goal_type = row["goal_type"]
+        for goal_type in goal_types:
             perf_data = await self.self_reflection.get_goal_type_performance(user_id, goal_type)
             if perf_data:
                 performance_context[goal_type] = perf_data

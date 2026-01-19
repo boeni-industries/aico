@@ -14,6 +14,12 @@ The Skill & Tool Layer defines the **concrete, executable capabilities** AICO ca
 
 It is the bridge between **goals/plans** and **actual actions** (conversation, memory operations, external APIs, automations).
 
+This document focuses on the **conceptual model and flows**. The
+**implementation master spec** for concrete skills, tools, and their
+schemas/contracts lives in:
+
+- `WIP-self-healing-skills-tools.md` (project root)
+
 
 ## 2. Conceptual Model
 
@@ -83,6 +89,11 @@ Skill selection is **registry-driven**, not ad-hoc tool picking by the LLM:
   - filters by safety level and deployment/user preferences,  
   - optionally uses an LLM **only to rank or choose among** the matched skills, never to invent arbitrary tools.
 - If a skill wraps multiple tools, the registry/skill config decides which concrete tool implementation to use based on context (e.g., LifeArea, relationship role, deployment config).
+
+The **concrete naming conventions**, schema IDs, and per-domain skill/tool
+sets (including maintenance/self-healing capabilities across PostgreSQL,
+ChromaDB, InfluxDB, and LMDB) are specified in the
+`WIP-self-healing-skills-tools.md` implementation guide.
 
 The Planner and Skill & Tool Layer therefore always pick skills/tools from a **finite, ontology-typed set** with known contracts, rather than letting the LLM free-form call arbitrary APIs.
 
