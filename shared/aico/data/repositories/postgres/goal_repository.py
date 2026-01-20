@@ -140,6 +140,74 @@ class PostgresGoalRepository(Repository[Goal]):
         
         result = await self.session.execute(stmt)
         return result.scalar() or 0
+
+    async def find_by_curiosity_signal_id(self, signal_id: str) -> Optional[Goal]:
+        """Find a goal created from a specific curiosity signal, if any.
+
+        Uses metadata_json->>'curiosity_signal_id' for lookup.
+        """
+        stmt = (
+            select(agency_goals)
+            .where(agency_goals.c.metadata_json["curiosity_signal_id"].astext == signal_id)
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        row = result.fetchone()
+
+        if not row:
+            return None
+
+        return Goal(
+            goal_id=row.goal_id,
+            user_id=row.user_id,
+            origin=GoalOrigin(row.origin),
+            goal_type=row.goal_type,
+            title=row.title,
+            description=row.description,
+            status=GoalStatus(row.status),
+            priority=GoalPriority(row.priority),
+            metadata=json.loads(row.metadata_json) if row.metadata_json else {},
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    async def find_open_goal_by_title(self, user_id: str, origin: str, title: str) -> Optional[Goal]:
+        """Find an open goal for a user by origin and title.
+
+        Open means status in (pending, active, in_progress).
+        """
+        stmt = (
+            select(agency_goals)
+            .where(
+                and_(
+                    agency_goals.c.user_id == user_id,
+                    agency_goals.c.origin == origin,
+                    agency_goals.c.title == title,
+                    agency_goals.c.status.in_(["pending", "active", "in_progress"]),
+                )
+            )
+            .order_by(agency_goals.c.created_at.asc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        row = result.fetchone()
+
+        if not row:
+            return None
+
+        return Goal(
+            goal_id=row.goal_id,
+            user_id=row.user_id,
+            origin=GoalOrigin(row.origin),
+            goal_type=row.goal_type,
+            title=row.title,
+            description=row.description,
+            status=GoalStatus(row.status),
+            priority=GoalPriority(row.priority),
+            metadata=json.loads(row.metadata_json) if row.metadata_json else {},
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
     
     async def get_active_goals_for_user(self, user_id: str) -> List[Goal]:
         """Get all active goals for a user."""

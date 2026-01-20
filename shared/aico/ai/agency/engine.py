@@ -822,10 +822,37 @@ class AgencyEngine(BaseAIProcessor):
                 metadata["hobby_template_id"] = signal.context["template_id"]
                 metadata["hobby_category"] = signal.context.get("category")
             
-            # Goal deduplication disabled pending migration to PostgreSQL
-            # TODO: Implement deduplication using AgencyService queries instead of direct SQL
-            # For now, allow duplicate goals - they can be managed through the UI
-            
+            # First, check for an existing goal created from this signal (if signal_id present)
+            if getattr(signal, "signal_id", None):
+                try:
+                    existing = await self.agency_service.get_goal_by_curiosity_signal(signal.signal_id)
+                except Exception:
+                    existing = None
+                if existing is not None:
+                    logger.info(
+                        f"[AGENCY_ENGINE] Reusing existing goal {existing.goal_id} "
+                        f"for curiosity signal {signal.signal_id}"
+                    )
+                    return existing, None
+
+            # For hobby-origin signals, also deduplicate by (user_id, origin, title) for open goals
+            if origin == GoalOrigin.HOBBY:
+                try:
+                    existing_hobby = await self.agency_service.find_open_goal_by_title(
+                        user_id=user_id,
+                        origin=origin,
+                        title=signal.topic,
+                    )
+                except Exception:
+                    existing_hobby = None
+
+                if existing_hobby is not None:
+                    logger.info(
+                        f"[AGENCY_ENGINE] Reusing existing hobby goal {existing_hobby.goal_id} "
+                        f"for topic '{signal.topic}'"
+                    )
+                    return existing_hobby, None
+
             # Create goal with appropriate origin
             goal, plan = await self.create_goal_with_optional_plan(
                 user_id=user_id,

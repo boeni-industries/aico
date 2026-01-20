@@ -179,6 +179,12 @@ CREATE INDEX IF NOT EXISTS idx_agency_goals_origin ON agency_goals(origin);
 
 CREATE INDEX IF NOT EXISTS idx_agency_goals_user_status ON agency_goals(user_id, status);
 
+-- Ensure only one open hobby/maintenance goal per (user_id, origin, title)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agency_goals_user_origin_title_open
+    ON agency_goals (user_id, origin, title)
+    WHERE status IN ('pending','active','in_progress')
+      AND origin IN ('hobby','maintenance');
+
 CREATE TABLE IF NOT EXISTS "agency_intention_set" (
                 intention_id TEXT PRIMARY KEY,
                 goal_id TEXT NOT NULL,
@@ -198,6 +204,11 @@ CREATE INDEX IF NOT EXISTS idx_intention_set_goal ON "agency_intention_set"(goal
 CREATE INDEX IF NOT EXISTS idx_intention_set_priority ON "agency_intention_set"(priority_band, status);
 
 CREATE INDEX IF NOT EXISTS idx_intention_set_user_status ON "agency_intention_set"(user_id, status);
+
+-- Ensure at most one proposed/active intention per (user_id, goal_id)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agency_intention_user_goal_active
+    ON agency_intention_set (user_id, goal_id)
+    WHERE status IN ('proposed','active');
 
 CREATE TABLE IF NOT EXISTS agency_lessons (
                 lesson_id TEXT PRIMARY KEY,

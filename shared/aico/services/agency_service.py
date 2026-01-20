@@ -68,6 +68,31 @@ class AgencyService:
             logger.error(f"[AGENCY_SERVICE] Failed to retrieve goal: {e}", extra={"goal_id": goal_id})
             raise
 
+    async def get_goal_by_curiosity_signal(self, signal_id: str) -> Optional[Goal]:
+        """Retrieve a goal that was created from a specific curiosity signal, if any."""
+        try:
+            return await self.uow.goals.find_by_curiosity_signal_id(signal_id)
+        except Exception as e:
+            logger.error(
+                f"[AGENCY_SERVICE] Failed to retrieve goal by curiosity signal: {e}",
+                extra={"signal_id": signal_id},
+            )
+            raise
+
+    async def find_open_goal_by_title(self, user_id: str, origin: GoalOrigin, title: str) -> Optional[Goal]:
+        """Find an open goal for a user by origin and title.
+
+        Open means status in (pending, active, in_progress).
+        """
+        try:
+            return await self.uow.goals.find_open_goal_by_title(user_id, origin.value, title)
+        except Exception as e:
+            logger.error(
+                f"[AGENCY_SERVICE] Failed to find open goal by title: {e}",
+                extra={"user_id": user_id, "origin": origin.value, "title": title},
+            )
+            raise
+
     async def list_goals(self, user_id: str, status: Optional[GoalStatus] = None) -> List[Goal]:
         """Retrieve a list of goals for a user."""
         try:
