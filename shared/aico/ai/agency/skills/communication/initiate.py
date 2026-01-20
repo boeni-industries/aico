@@ -32,12 +32,14 @@ class InitiateConversationSkill(Skill):
     """
     
     def __init__(
-        self, 
+        self,
         db: Optional[Any] = None,  # Skills being redesigned
-        message_bus: Optional[Any] = None
+        message_bus: Optional[Any] = None,
+        session_factory: Optional[Any] = None,
     ):
         self.db = db
         self.message_bus = message_bus
+        self._session_factory = session_factory
     
     @property
     def skill_id(self) -> str:
@@ -104,119 +106,174 @@ class InitiateConversationSkill(Skill):
         )
         
         try:
-            if not self.db:
-                raise RuntimeError("Database connection not available")
-            
             if not topic or not message:
                 raise ValueError("Topic and message are required")
-            
+
             trigger_reason = reason or "proactive_dialogue"
-            
-            # Check for duplicate message in last 24 hours
-            duplicate = self.db.execute(
-                """SELECT COUNT(*) as count
-                   FROM conversation_initiations
-                   WHERE user_id = ?
-                   AND question = ?
-                   AND trigger_reason = ?
-                   AND datetime(initiated_at) > datetime('now', '-24 hours')""",
-                (user_id, message, trigger_reason)
-            ).fetchone()
-            
-            if duplicate and duplicate['count'] > 0:
-                logger.debug(
-                    f"💭 [INITIATE_CONVERSATION] Duplicate conversation detected for user {user_id[:8]}, "
-                    f"skipping creation"
-                )
-                return SkillResult(
-                    success=True,
-                    output={
-                        "status": "skipped",
-                        "reason": "duplicate_conversation",
-                        "message": "Conversation already initiated recently"
-                    },
-                    metadata={"skill_id": self.skill_id}
-                )
-            
-            # Create conversation initiation record
+
             initiation_id = str(uuid.uuid4())
             conversation_id = f"{user_id}_{int(datetime.now(UTC).timestamp())}"
-            now = datetime.now(UTC).isoformat()
-            
-            # Store initiation in database
-            self.db.execute(
-                """INSERT INTO conversation_initiations 
-                   (initiation_id, user_id, conversation_id, trigger_source, 
-                    trigger_reason, question, context, urgency, expected_answer_type,
-                    initiated_at, resolution_status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    initiation_id,
-                    user_id,
-                    conversation_id,
-                    "skill",
-                    trigger_reason,
-                    message,
-                    json.dumps({"topic": topic, "emotional_context": emotional_context}),
-                    "low",  # Conversations are typically low urgency
-                    "dialogue",
-                    now,
-                    "pending",
+            now_dt = datetime.now(UTC)
+            now_iso = now_dt.isoformat()
+
+            # Prefer PostgreSQL UnitOfWork/session_factory path when available
+            if self._session_factory is not None:
+                from aico.data.uow import UnitOfWork
+                from aico.data.conversation.models import ConversationInitiation
+
+                async with UnitOfWork(self._session_factory) as uow:
+                    recent_initiations = await uow.conversation_initiations.list(
+                        filters={"user_id": user_id},
+                        limit=1000,
+                    )
+
+                    duplicate_found = False
+                    for init in recent_initiations:
+                        if (
+                            init.question == message
+                            and init.trigger_reason == trigger_reason
+                            and init.initiated_at
+                            and (now_dt - init.initiated_at).total_seconds() < 86400
+                        ):
+                            duplicate_found = True
+                            break
+
+                    if duplicate_found:
+                        logger.debug(
+                            f"💭 [INITIATE_CONVERSATION] Duplicate conversation detected for user {user_id[:8]}, "
+                            f"skipping creation"
+                        )
+                        return SkillResult(
+                            success=True,
+                            output={
+                                "status": "skipped",
+                                "reason": "duplicate_conversation",
+                                "message": "Conversation already initiated recently",
+                            },
+                            metadata={"skill_id": self.skill_id},
+                        )
+
+                    initiation = ConversationInitiation(
+                        initiation_id=initiation_id,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        trigger_source="skill",
+                        trigger_reason=trigger_reason,
+                        question=message,
+                        context=json.dumps({"topic": topic, "emotional_context": emotional_context}),
+                        urgency="low",
+                        expected_answer_type="dialogue",
+                        initiated_at=now_dt,
+                        resolution_status="pending",
+                        resolved_at=None,
+                        user_response_time=None,
+                        engagement_score=None,
+                    )
+
+                    await uow.conversation_initiations.create(initiation)
+                    await uow.commit()
+
+            else:
+                if not self.db:
+                    raise RuntimeError("Database connection not available")
+
+                duplicate = self.db.execute(
+                    """SELECT COUNT(*) as count
+                       FROM conversation_initiations
+                       WHERE user_id = ?
+                       AND question = ?
+                       AND trigger_reason = ?
+                       AND datetime(initiated_at) > datetime('now', '-24 hours')""",
+                    (user_id, message, trigger_reason),
+                ).fetchone()
+
+                if duplicate and duplicate["count"] > 0:
+                    logger.debug(
+                        f"💭 [INITIATE_CONVERSATION] Duplicate conversation detected for user {user_id[:8]}, "
+                        f"skipping creation"
+                    )
+                    return SkillResult(
+                        success=True,
+                        output={
+                            "status": "skipped",
+                            "reason": "duplicate_conversation",
+                            "message": "Conversation already initiated recently",
+                        },
+                        metadata={"skill_id": self.skill_id},
+                    )
+
+                self.db.execute(
+                    """INSERT INTO conversation_initiations 
+                       (initiation_id, user_id, conversation_id, trigger_source, 
+                        trigger_reason, question, context, urgency, expected_answer_type,
+                        initiated_at, resolution_status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        initiation_id,
+                        user_id,
+                        conversation_id,
+                        "skill",
+                        trigger_reason,
+                        message,
+                        json.dumps({"topic": topic, "emotional_context": emotional_context}),
+                        "low",  # Conversations are typically low urgency
+                        "dialogue",
+                        now_iso,
+                        "pending",
+                    ),
                 )
-            )
-            self.db.commit()
+                self.db.commit()
             
             # Publish to conversation initiation topic
             message_published = False
-            
-            if self.message_bus and self.message_bus.running:
-                try:
-                    # Use provided message bus client (already connected in backend)
-                    # Create protobuf message for message bus
-                    from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
-                    from google.protobuf.timestamp_pb2 import Timestamp
-                    
-                    proto_timestamp = Timestamp()
-                    proto_timestamp.FromDatetime(datetime.now(UTC))
-                    
-                    conv_message = ConversationMessage(
-                        timestamp=proto_timestamp,
-                        source="agency_skill",
-                        message_id=initiation_id,
-                        user_id=user_id
-                    )
-                    
-                    conv_message.message.text = message
-                    conv_message.message.type = Message.MessageType.AICO_INITIATED
-                    conv_message.message.conversation_id = conversation_id
-                    conv_message.message.turn_number = 1
-                    
-                    # Add metadata as JSON in message metadata
-                    conv_message.message.metadata = json.dumps({
-                        'topic': topic,
-                        'reason': reason,
-                        'emotional_context': emotional_context,
-                        'urgency': 'low',
-                        'expected_answer_type': 'dialogue',
-                        'initiated_at': now,
-                    })
-                    
-                    # Publish using async message bus
+
+            try:
+                from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
+                from google.protobuf.timestamp_pb2 import Timestamp
+
+                proto_timestamp = Timestamp()
+                proto_timestamp.FromDatetime(datetime.now(UTC))
+
+                conv_message = ConversationMessage(
+                    timestamp=proto_timestamp,
+                    source="agency_skill",
+                    message_id=initiation_id,
+                    user_id=user_id,
+                )
+
+                conv_message.message.text = message
+                conv_message.message.type = Message.MessageType.AICO_INITIATED
+                conv_message.message.conversation_id = conversation_id
+                conv_message.message.turn_number = 1
+
+                # Add metadata as JSON in message metadata
+                conv_message.message.metadata = json.dumps({
+                    'topic': topic,
+                    'reason': reason,
+                    'emotional_context': emotional_context,
+                    'urgency': 'low',
+                    'expected_answer_type': 'dialogue',
+                    'initiated_at': now_iso,
+                })
+
+                if self.message_bus and getattr(self.message_bus, "running", False):
                     await self.message_bus.publish(
                         topic='conversation/aico/initiate/v1',
-                        payload=conv_message
+                        payload=conv_message,
                     )
-                    
-                    message_published = True
-                    logger.info(f"💭 [INITIATE_CONVERSATION] Published to message bus: {initiation_id[:8]}...")
-                    
-                except Exception as e:
-                    logger.warning(f"💭 [INITIATE_CONVERSATION] Failed to publish to message bus: {e}")
-            else:
-                logger.info(
-                    f"💭 [INITIATE_CONVERSATION] Message bus not available or not connected - "
-                    f"initiation stored in database only (will be polled by frontend)"
-                )
+                else:
+                    from aico.core.bus import MessageBusClient
+
+                    bus_client = MessageBusClient(client_id=f"initiate_conversation_skill_{initiation_id[:8]}")
+                    await bus_client.connect()
+                    await bus_client.publish('conversation/aico/initiate/v1', conv_message)
+                    await bus_client.disconnect()
+
+                message_published = True
+                logger.info(f"💭 [INITIATE_CONVERSATION] Published to message bus: {initiation_id[:8]}...")
+
+            except Exception as e:
+                logger.warning(f"💭 [INITIATE_CONVERSATION] Failed to publish to message bus: {e}")
             
             result = {
                 "initiation_id": initiation_id,

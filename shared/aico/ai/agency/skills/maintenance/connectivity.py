@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
-from aico.data.uow import UnitOfWork
+from ...tools import get_tool_registry
 
 from ..registry import (
     Skill,
@@ -19,6 +19,7 @@ from ..registry import (
     SkillParameterType,
     SkillResult,
 )
+from ...tools.registry import ToolRegistry
 
 
 logger = get_logger("shared.ai.agency.skills.maintenance.connectivity")
@@ -55,6 +56,34 @@ class MaintenanceConnectivityFullScanSkill(Skill):
         return "maintenance"
 
     @property
+    def capability_tags(self) -> List[str]:
+        return ["check_health", "check_connectivity", "maintenance_scan"]
+
+    @property
+    def side_effect_tags(self) -> List[str]:
+        # Read-only connectivity probes across multiple backends
+        return [
+            "reads_database",
+            "reads_metrics",
+            "reads_service_state",
+        ]
+
+    @property
+    def safety_level(self) -> str:
+        return "low"
+
+    @property
+    def implementation_tools(self) -> List[str]:
+        return [
+            "tool.db.postgres.ping",
+            "tool.db.influx.ping",
+            "tool.db.chroma.ping",
+            "tool.db.lmdb.ping",
+            "tool.modelservice.ping",
+            "tool.ollama.ping",
+        ]
+
+    @property
     def parameters(self) -> List[SkillParameter]:
         return [
             SkillParameter(
@@ -83,22 +112,58 @@ class MaintenanceConnectivityFullScanSkill(Skill):
         added later without breaking callers.
         """
 
-        requested_targets = input_data.get("targets") or ["postgres"]
+        # Full scan always runs all connectivity tools for core components,
+        # regardless of requested targets. The "targets" parameter is kept
+        # for forward compatibility but is currently ignored for behaviour.
         checks: Dict[str, Dict[str, Any]] = {}
 
-        # PostgreSQL connectivity
-        if "postgres" in requested_targets:
-            checks["postgres"] = await self._check_postgres_connectivity()
+        registry = get_tool_registry()
 
-        # Placeholder entries for future components, marked as unsupported
-        for component in ["chroma", "influx", "modelservice", "message_bus"]:
-            if component in requested_targets and component not in checks:
-                checks[component] = {
-                    "status": "unsupported",
-                    "error_message": "Check not implemented yet",
-                    "latency_ms": None,
-                    "details": {},
+        async def _run_tool(tool_id: str, *args: Any) -> Dict[str, Any]:
+            tool_def = registry.get(tool_id)
+            if not tool_def:
+                logger.error(
+                    "[MAINT_CONNECTIVITY] Tool '%s' not found in registry",
+                    tool_id,
+                )
+                return {
+                    "ok": False,
+                    "data": {
+                        "status": "error",
+                        "latency_ms": None,
+                        "error_message": f"Tool '{tool_id}' not registered",
+                        "details": {},
+                    },
+                    "error": {
+                        "code": "tool_not_registered",
+                        "message": f"Tool '{tool_id}' not registered",
+                    },
                 }
+            return await tool_def.handler(*args)
+
+        # PostgreSQL
+        pg_result = await _run_tool("tool.db.postgres.ping", self._session_factory)
+        checks["postgres"] = pg_result["data"]
+
+        # InfluxDB
+        influx_result = await _run_tool("tool.db.influx.ping")
+        checks["influx"] = influx_result["data"]
+
+        # ChromaDB (semantic store)
+        chroma_result = await _run_tool("tool.db.chroma.ping")
+        checks["chroma"] = chroma_result["data"]
+
+        # LMDB (working memory)
+        lmdb_result = await _run_tool("tool.db.lmdb.ping")
+        checks["lmdb"] = lmdb_result["data"]
+
+        # Modelservice (ZMQ)
+        modelservice_result = await _run_tool("tool.modelservice.ping")
+        checks["modelservice"] = modelservice_result["data"]
+
+        # Ollama (LLM HTTP backend)
+        ollama_result = await _run_tool("tool.ollama.ping")
+        checks["ollama"] = ollama_result["data"]
 
         # Derive summary status
         summary_status = "healthy"
@@ -127,7 +192,11 @@ class MaintenanceConnectivityFullScanSkill(Skill):
         )
 
         return SkillResult(
-            success=summary_status == "healthy",
+            # The scan itself is a diagnostic read-only operation; even if the
+            # system is unhealthy, the skill execution is considered
+            # successful. Callers should inspect summary_status/checks to see
+            # whether components are healthy.
+            success=True,
             output=output,
             metadata={
                 "skill_id": self.skill_id,
@@ -135,35 +204,138 @@ class MaintenanceConnectivityFullScanSkill(Skill):
             },
         )
 
-    async def _check_postgres_connectivity(self) -> Dict[str, Any]:
-        """Check PostgreSQL connectivity via a lightweight repository call.
 
-        Uses UnitOfWork with a minimal read operation to validate that the
-        database is reachable and responsive. Mirrors existing health check
-        patterns that query a small amount of data through repositories.
-        """
+class MaintenanceConnectivityVerifyComponentSkill(Skill):
+    """Check connectivity for a single named component using ping tools."""
 
-        start = datetime.now(UTC)
-        try:
-            async with UnitOfWork(self._session_factory) as uow:
-                # Simple query to test database connectivity via repositories.
-                # User profiles are small and safe to list with a tiny limit.
-                if hasattr(uow, "user_profiles"):
-                    await uow.user_profiles.list(limit=1)
+    def __init__(self, session_factory: Any):
+        self._session_factory = session_factory
 
-            latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
-            return {
-                "status": "ok",
-                "latency_ms": latency_ms,
-                "error_message": None,
-                "details": {},
-            }
-        except Exception as exc:  # pragma: no cover - defensive safety net
-            logger.error("[MAINT_CONNECTIVITY] PostgreSQL check failed: %s", exc)
-            latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
-            return {
-                "status": "error",
-                "latency_ms": latency_ms,
-                "error_message": str(exc),
-                "details": {},
-            }
+    @property
+    def skill_id(self) -> str:
+        return "maint.connectivity.verify_component"
+
+    @property
+    def name(self) -> str:
+        return "Connectivity Verify Component"
+
+    @property
+    def description(self) -> str:
+        return "Check connectivity for a single backend component (e.g. postgres, influx, chroma)."
+
+    @property
+    def category(self) -> str:
+        return "maintenance"
+
+    @property
+    def parameters(self) -> List[SkillParameter]:
+        return [
+            SkillParameter(
+                name="component",
+                type=SkillParameterType.STRING,
+                description=(
+                    "Name of the component to verify (postgres, influx, chroma, "
+                    "lmdb, modelservice, ollama)."
+                ),
+                required=True,
+            ),
+        ]
+
+    async def execute(
+        self,
+        user_id: str,
+        input_data: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> SkillResult:
+        component = (input_data.get("component") or "").lower()
+
+        # Map component names to tool_ids
+        component_tools: Dict[str, str] = {
+            "postgres": "tool.db.postgres.ping",
+            "influx": "tool.db.influx.ping",
+            "chroma": "tool.db.chroma.ping",
+            "lmdb": "tool.db.lmdb.ping",
+            "modelservice": "tool.modelservice.ping",
+            "ollama": "tool.ollama.ping",
+        }
+
+        tool_id = component_tools.get(component)
+        if not tool_id:
+            error_msg = f"Unsupported component: {component!r}"
+            logger.error("[MAINT_CONNECTIVITY] %s", error_msg)
+            return SkillResult(
+                success=False,
+                output={
+                    "component": component,
+                    "check": {
+                        "status": "error",
+                        "latency_ms": None,
+                        "error_message": error_msg,
+                        "details": {},
+                    },
+                    "observables": {"metrics": [], "events": [], "logs": []},
+                    "executed_at": datetime.now(UTC).isoformat(),
+                },
+                metadata={
+                    "skill_id": self.skill_id,
+                    "component": component,
+                    "summary_status": "unhealthy",
+                },
+            )
+
+        registry = get_tool_registry()
+        tool_def = registry.get(tool_id)
+        if not tool_def:
+            error_msg = f"Tool '{tool_id}' not registered for component '{component}'"
+            logger.error("[MAINT_CONNECTIVITY] %s", error_msg)
+            return SkillResult(
+                success=False,
+                output={
+                    "component": component,
+                    "check": {
+                        "status": "error",
+                        "latency_ms": None,
+                        "error_message": error_msg,
+                        "details": {},
+                    },
+                    "observables": {"metrics": [], "events": [], "logs": []},
+                    "executed_at": datetime.now(UTC).isoformat(),
+                },
+                metadata={
+                    "skill_id": self.skill_id,
+                    "component": component,
+                    "summary_status": "unhealthy",
+                },
+            )
+
+        # Postgres handler requires session_factory; others do not
+        if component == "postgres":
+            result = await tool_def.handler(self._session_factory)
+        else:
+            result = await tool_def.handler()
+
+        check = result["data"]
+        summary_status = "healthy" if check.get("status") == "ok" else "unhealthy"
+
+        output = {
+            "component": component,
+            "check": check,
+            "observables": {"metrics": [], "events": [], "logs": []},
+            "executed_at": datetime.now(UTC).isoformat(),
+        }
+
+        logger.info(
+            "[MAINT_CONNECTIVITY] Verify component '%s' completed: %s",
+            component,
+            summary_status,
+        )
+
+        return SkillResult(
+            success=summary_status == "healthy",
+            output=output,
+            metadata={
+                "skill_id": self.skill_id,
+                "component": component,
+                "summary_status": summary_status,
+            },
+        )

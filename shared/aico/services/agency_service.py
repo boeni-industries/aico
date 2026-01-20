@@ -24,6 +24,7 @@ from aico.ai.agency.models import (
     GoalStatus,
     Plan,
     PlanStatus,
+    PlanStep,
 )
 
 logger = get_logger("shared.services.agency")
@@ -157,7 +158,11 @@ class AgencyService:
     async def get_plan(self, plan_id: str) -> Optional[Plan]:
         """Retrieve a plan by ID."""
         try:
-            return await self.uow.plans.get_by_id(plan_id)
+            db_plan = await self.uow.plans.get_by_id(plan_id)
+            if not db_plan:
+                return None
+
+            return self._to_domain_plan(db_plan)
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to retrieve plan: {e}", extra={"plan_id": plan_id})
             raise
@@ -169,7 +174,8 @@ class AgencyService:
             if status:
                 filters["status"] = status.value
             
-            return await self.uow.plans.list(filters=filters)
+            db_plans = await self.uow.plans.list(filters=filters)
+            return [self._to_domain_plan(p) for p in db_plans]
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to list plans: {e}", extra={"goal_id": goal_id})
             raise
@@ -206,6 +212,55 @@ class AgencyService:
         plans = await self.list_plans(goal_id, status=PlanStatus.ACTIVE)
         return plans[0] if plans else None
 
+    # ==================== Internal Helpers ====================
+
+    def _to_domain_plan(self, db_plan: Any) -> Plan:
+        """Convert repository plan (with steps_json) to domain Plan with steps list.
+
+        The repository model stores steps in steps_json (JSONB). This helper
+        reconstructs PlanStep instances so that higher-level components like
+        PlanExecutor can rely on plan.steps.
+        """
+        # Decode steps
+        raw_steps = getattr(db_plan, "steps_json", None) or []
+
+        # JSONB may already be a list of dicts or a JSON string
+        if isinstance(raw_steps, str):
+            try:
+                raw_steps = json.loads(raw_steps)
+            except Exception:
+                raw_steps = []
+
+        steps: List[PlanStep] = []
+        for item in raw_steps:
+            if isinstance(item, PlanStep):
+                steps.append(item)
+            elif isinstance(item, dict):
+                # Best-effort reconstruction; missing fields fall back to PlanStep defaults
+                steps.append(PlanStep.model_validate(item))
+
+        # Decode metadata
+        metadata = getattr(db_plan, "metadata", None) or {}
+
+        # Status is stored as string in DB; map to PlanStatus enum if needed
+        status_val = getattr(db_plan, "status", None)
+        try:
+            status_enum = PlanStatus(status_val) if isinstance(status_val, str) else status_val
+        except Exception:
+            status_enum = PlanStatus.DRAFT
+
+        return Plan(
+            plan_id=db_plan.plan_id,
+            goal_id=db_plan.goal_id,
+            title=getattr(db_plan, "title", None),
+            description=getattr(db_plan, "description", None),
+            status=status_enum,
+            steps=steps,
+            metadata=metadata,
+            created_at=getattr(db_plan, "created_at", None),
+            updated_at=getattr(db_plan, "updated_at", None),
+        )
+
     # ==================== Reflection Operations ====================
 
     async def create_reflection_note(self, note_data: dict) -> dict:
@@ -236,7 +291,7 @@ class AgencyService:
     async def create_plan_execution(self, execution_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a plan execution record."""
         try:
-            from aico.data.agency.models import AgencyPlanExecution
+            from aico.data.agency.execution_models import AgencyPlanExecution
             
             execution = AgencyPlanExecution(**execution_data)
             created = await self.uow.agency_plan_executions.create(execution)
@@ -478,7 +533,7 @@ class AgencyService:
     async def create_step_execution(self, step_data: Dict[str, Any]) -> str:
         """Create a step execution record."""
         try:
-            from aico.data.agency.models import AgencyStepExecution
+            from aico.data.agency.execution_models import AgencyStepExecution
             step = AgencyStepExecution(**step_data)
             created = await self.uow.agency_step_executions.create(step)
             await self.uow.commit()
@@ -522,7 +577,8 @@ class AgencyService:
             if execution:
                 for key, value in updates.items():
                     setattr(execution, key, value)
-                await self.uow.agency_plan_executions.update(execution)
+                # Repository API expects (execution_id, entity)
+                await self.uow.agency_plan_executions.update(execution_id, execution)
                 await self.uow.commit()
                 logger.debug(f"[AGENCY_SERVICE] Updated plan execution: {execution_id}")
         except Exception as e:
@@ -533,7 +589,7 @@ class AgencyService:
     async def create_plan_execution(self, execution_data: Dict[str, Any]) -> str:
         """Create a plan execution record."""
         try:
-            from aico.data.agency.models import AgencyPlanExecution
+            from aico.data.agency.execution_models import AgencyPlanExecution
             execution = AgencyPlanExecution(**execution_data)
             created = await self.uow.agency_plan_executions.create(execution)
             await self.uow.commit()
@@ -545,10 +601,13 @@ class AgencyService:
             raise
 
     async def get_plan_execution(self, execution_id: str) -> Optional[Dict[str, Any]]:
-        """Get a plan execution by ID."""
+        """Get a plan execution."""
         try:
             execution = await self.uow.agency_plan_executions.get_by_id(execution_id)
-            return execution.to_dict() if execution and hasattr(execution, 'to_dict') else execution
+            if not execution:
+                return None
+            # Convert Pydantic model to dict
+            return execution.model_dump() if hasattr(execution, 'model_dump') else dict(execution)
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get plan execution: {e}")
             raise
@@ -594,7 +653,7 @@ class AgencyService:
     async def create_execution_snapshot(self, snapshot_data: Dict[str, Any]) -> str:
         """Create an execution snapshot."""
         try:
-            from aico.data.agency.models import AgencyExecutionSnapshot
+            from aico.data.agency.execution_models import AgencyExecutionSnapshot
             snapshot = AgencyExecutionSnapshot(**snapshot_data)
             created = await self.uow.agency_execution_snapshots.create(snapshot)
             await self.uow.commit()

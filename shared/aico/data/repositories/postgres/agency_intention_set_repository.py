@@ -2,8 +2,11 @@
 
 from typing import List, Optional
 from datetime import datetime
+import json
+
 from sqlalchemy import select, insert, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from aico.data.tables import agency_intention_set
 from aico.data.agency.goal_models import AgencyIntentionSet
 
@@ -33,7 +36,19 @@ class PostgresAgencyIntentionSetRepository:
         stmt = select(agency_intention_set).where(agency_intention_set.c.intention_id == intention_id)
         result = await self.session.execute(stmt)
         row = result.fetchone()
-        return AgencyIntentionSet(**dict(row._mapping)) if row else None
+        if not row:
+            return None
+
+        data = dict(row._mapping)
+        reasons = data.get("reasons_json")
+        if isinstance(reasons, str):
+            try:
+                data["reasons_json"] = json.loads(reasons)
+            except Exception:
+                # Fallback: wrap raw string in a single-element list
+                data["reasons_json"] = [reasons]
+
+        return AgencyIntentionSet(**data)
     
     async def update(self, intention_id: str, entity: AgencyIntentionSet) -> Optional[AgencyIntentionSet]:
         """Update intention."""
@@ -81,7 +96,20 @@ class PostgresAgencyIntentionSetRepository:
         
         stmt = stmt.limit(limit).offset(offset)
         result = await self.session.execute(stmt)
-        return [AgencyIntentionSet(**dict(row._mapping)) for row in result.fetchall()]
+
+        entities: List[AgencyIntentionSet] = []
+        for row in result.fetchall():
+            data = dict(row._mapping)
+            reasons = data.get("reasons_json")
+            if isinstance(reasons, str):
+                try:
+                    data["reasons_json"] = json.loads(reasons)
+                except Exception:
+                    data["reasons_json"] = [reasons]
+
+            entities.append(AgencyIntentionSet(**data))
+
+        return entities
     
     async def count(self) -> int:
         """Count total intentions."""

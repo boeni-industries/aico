@@ -116,6 +116,45 @@ class Skill(ABC):
         """Category of the skill (e.g., 'memory', 'analysis', 'communication')."""
         return "general"
     
+    # ------------------------------------------------------------------
+    # Optional metadata for registry-driven discovery and planning
+    # ------------------------------------------------------------------
+
+    @property
+    def capability_tags(self) -> List[str]:
+        """High-level capabilities this skill provides (e.g. 'check_health').
+
+        Defaults to empty for legacy skills that have not been annotated yet.
+        """
+
+        return []
+
+    @property
+    def side_effect_tags(self) -> List[str]:
+        """Side-effect classification (e.g. 'reads_database', 'writes_memory').
+
+        Defaults to empty for legacy skills.
+        """
+
+        return []
+
+    @property
+    def safety_level(self) -> str:
+        """Safety level hint (e.g. 'low', 'medium', 'high', 'privileged')."""
+
+        return "low"
+
+    @property
+    def implementation_tools(self) -> List[str]:
+        """List of tool_ids this skill typically composes/invokes.
+
+        This allows the planner, UI, and observability to understand
+        which concrete tools back a given semantic skill. Defaults to an
+        empty list for skills that are not yet wired to the ToolRegistry.
+        """
+
+        return []
+    
     @property
     def timeout_seconds(self) -> int:
         """Default timeout for skill execution."""
@@ -230,6 +269,10 @@ class SkillRegistry:
             "description": skill.description,
             "category": skill.category,
             "timeout_seconds": skill.timeout_seconds,
+            "capability_tags": getattr(skill, "capability_tags", []),
+            "side_effect_tags": getattr(skill, "side_effect_tags", []),
+            "safety_level": getattr(skill, "safety_level", "low"),
+            "implementation_tools": getattr(skill, "implementation_tools", []),
             "parameters": [
                 {
                     "name": p.name,

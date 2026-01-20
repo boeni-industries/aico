@@ -454,6 +454,15 @@ class MemoryManager(BaseAIProcessor):
             # Don't fail overall initialization if AMS fails
             self._ams_enabled = False
             self._behavioral_enabled = False
+
+    @property
+    def kg_storage(self):
+        """Expose knowledge graph storage abstraction for read/write operations.
+
+        Returns the PropertyGraphStorage instance if KG initialization succeeded,
+        otherwise None.
+        """
+        return self._kg_storage if self._kg_initialized else None
     
     async def schedule_consolidation(self, user_id: str) -> bool:
         """

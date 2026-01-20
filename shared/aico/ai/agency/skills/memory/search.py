@@ -17,6 +17,7 @@ from ..registry import (
     SkillResult,
 )
 from aico.core.logging import get_logger
+from aico.ai.memory.manager import MemoryManager, MemoryQuery
 
 
 logger = get_logger("shared.ai.agency.skills.memory.search")
@@ -29,8 +30,8 @@ class SearchMemorySkill(Skill):
     Used for: Knowledge retrieval, context building
     """
     
-    def __init__(self, db: Optional[Any] = None):  # Skills being redesigned
-        self.db = db
+    def __init__(self, memory_manager: Optional[MemoryManager] = None):
+        self.memory_manager = memory_manager
     
     @property
     def skill_id(self) -> str:
@@ -90,78 +91,44 @@ class SearchMemorySkill(Skill):
         )
         
         try:
-            if not self.db:
-                raise RuntimeError("Database connection not available")
-            
-            memories = []
-            
-            # Search semantic memory (facts stored in user_memories table)
-            if "semantic" in memory_types:
-                try:
-                    # Search user_memories table for relevant facts
-                    query_lower = query.lower()
-                    semantic_results = self.db.execute(
-                        """SELECT fact_id, fact_type, content, category, confidence, 
-                                  source_conversation_id, created_at
-                           FROM ams_user_memories
-                           WHERE user_id = ?
-                           ORDER BY created_at DESC
-                           LIMIT ?""",
-                        (user_id, limit * 2)
-                    ).fetchall()
-                    
-                    # Filter by query relevance
-                    for result in semantic_results:
-                        content = result["content"] or ""
-                        if query_lower in content.lower():
-                            memories.append({
-                                "type": "semantic",
-                                "content": content,
-                                "fact_type": result["fact_type"],
-                                "category": result["category"],
-                                "confidence": result["confidence"],
-                                "timestamp": result["created_at"],
-                                "relevance": 0.85,
-                            })
-                            if len(memories) >= limit:
-                                break
-                except Exception as e:
-                    logger.debug(f"🧠 [SEARCH_MEMORY] User memories search failed: {e}")
-            
-            # Search episodic memory (AICO-initiated conversations)
-            if "episodic" in memory_types and len(memories) < limit:
-                try:
-                    # Search AICO conversation initiations for relevant content
-                    query_lower = query.lower()
-                    conversations = self.db.execute(
-                        """SELECT initiation_id, conversation_id, question, context, 
-                                  initiated_at, resolution_status
-                           FROM conversation_initiations
-                           WHERE user_id = ?
-                           ORDER BY initiated_at DESC
-                           LIMIT ?""",
-                        (user_id, limit * 2)
-                    ).fetchall()
-                    
-                    # Simple keyword matching for relevance
-                    for conv in conversations:
-                        question = conv["question"] or ""
-                        context = conv["context"] or ""
-                        combined = f"{question} {context}"
-                        if query_lower in combined.lower():
-                            memories.append({
-                                "type": "episodic",
-                                "content": question[:200],
-                                "conversation_id": conv["conversation_id"],
-                                "timestamp": conv["initiated_at"],
-                                "relevance": 0.75,
-                            })
-                            if len(memories) >= limit:
-                                break
-                except Exception as e:
-                    logger.debug(f"🧠 [SEARCH_MEMORY] Episodic memory search failed: {e}")
-            
-            # Sort by relevance and limit
+            if not self.memory_manager:
+                raise RuntimeError("Memory manager not available")
+
+            # Build memory query for semantic search via MemoryManager
+            query_obj = MemoryQuery(
+                query_text=query,
+                query_type="semantic",
+                max_results=limit,
+                user_id=user_id,
+            )
+
+            # Use MemoryManager to perform unified search
+            memory_result = await self.memory_manager.query_memory(query_obj)
+
+            # Normalize result shape to previous expectations
+            memories: List[Dict[str, Any]] = []
+            for mem, score in zip(memory_result.memories, memory_result.relevance_scores):
+                base = {
+                    "type": mem.get("type", "semantic"),
+                    "content": mem.get("content", ""),
+                    "timestamp": mem.get("timestamp"),
+                    "relevance": score,
+                }
+                # Preserve useful fields if present
+                if "fact_type" in mem:
+                    base["fact_type"] = mem["fact_type"]
+                if "category" in mem:
+                    base["category"] = mem["category"]
+                if "confidence" in mem:
+                    base["confidence"] = mem["confidence"]
+                if "conversation_id" in mem:
+                    base["conversation_id"] = mem["conversation_id"]
+
+                # Filter by requested memory_types if provided
+                if base["type"] in memory_types:
+                    memories.append(base)
+
+            # Sort by relevance descending and trim to limit
             memories.sort(key=lambda x: x["relevance"], reverse=True)
             memories = memories[:limit]
             

@@ -13,6 +13,8 @@ from datetime import datetime, UTC
 from typing import Dict, Any, Optional
 
 from aico.core.logging import get_logger
+from aico.data.uow import UnitOfWork
+from aico.data.agency.skill_models import AgencySkillExecution
 from .skills.registry import SkillRegistry
 
 
@@ -36,14 +38,17 @@ class SkillInvoker:
         default_timeout: int = 30,
         max_retries: int = 2,
         logger=None,
+        session_factory: Any | None = None,
     ):
         self.skill_registry = skill_registry
         self.default_timeout = default_timeout
         self.max_retries = max_retries
         self.logger = logger or globals()["logger"]
+        # Optional PostgreSQL session factory for recording executions via UoW.
+        self._session_factory = session_factory
         
         self.logger.debug(
-            f"🔧 [SKILL_INVOKER] Initialized with {len(skill_registry)} skills, "
+            f"[SKILL_INVOKER] Initialized with {len(skill_registry)} skills, "
             f"timeout={default_timeout}s, max_retries={max_retries}"
         )
     
@@ -77,7 +82,7 @@ class SkillInvoker:
         skill = self.skill_registry.get(skill_id)
         if not skill:
             error_msg = f"Skill '{skill_id}' not found in registry"
-            self.logger.error(f"🔧 [SKILL_INVOKER] {error_msg}")
+            self.logger.error(f"[SKILL_INVOKER] {error_msg}")
             return {
                 "invocation_id": invocation_id,
                 "output": {},
@@ -90,7 +95,7 @@ class SkillInvoker:
         is_valid, validation_error = skill.validate_inputs(input_data)
         if not is_valid:
             self.logger.error(
-                f"🔧 [SKILL_INVOKER] Input validation failed for skill '{skill_id}': {validation_error}"
+                f"[SKILL_INVOKER] Input validation failed for skill '{skill_id}': {validation_error}"
             )
             return {
                 "invocation_id": invocation_id,
@@ -104,12 +109,12 @@ class SkillInvoker:
         timeout = skill.timeout_seconds
         
         self.logger.info(
-            f"🔧 [SKILL_INVOKER] Starting invocation {invocation_id[:8]}... "
+            f"[SKILL_INVOKER] Starting invocation {invocation_id[:8]}... "
             f"skill='{skill_id}' ({skill.name}) user={user_id[:8]}... "
             f"timeout={timeout}s"
         )
         self.logger.debug(
-            f"🔧 [SKILL_INVOKER] Input data: {json.dumps(input_data, indent=2)}"
+            f"[SKILL_INVOKER] Input data: {json.dumps(input_data, indent=2)}"
         )
         
         # Record invocation start
@@ -149,11 +154,11 @@ class SkillInvoker:
                 )
                 
                 self.logger.info(
-                    f"✅ [SKILL_INVOKER] Skill '{skill_id}' completed successfully in {duration_ms}ms "
+                    f"[SKILL_INVOKER] Skill '{skill_id}' completed successfully in {duration_ms}ms "
                     f"(invocation: {invocation_id[:8]}...)"
                 )
                 self.logger.debug(
-                    f"✅ [SKILL_INVOKER] Output: {json.dumps(result.to_dict() if hasattr(result, 'to_dict') else result, indent=2)}"
+                    f"[SKILL_INVOKER] Output: {json.dumps(result.to_dict() if hasattr(result, 'to_dict') else result, indent=2)}"
                 )
                 
                 return {
@@ -166,7 +171,7 @@ class SkillInvoker:
             except asyncio.TimeoutError:
                 last_error = f"Skill execution timed out after {timeout}s"
                 self.logger.warning(
-                    f"⏱️ [SKILL_INVOKER] Skill '{skill_id}' timed out "
+                    f"[SKILL_INVOKER] Skill '{skill_id}' timed out "
                     f"(attempt {retry_count + 1}/{self.max_retries + 1}) "
                     f"invocation={invocation_id[:8]}..."
                 )
@@ -174,11 +179,11 @@ class SkillInvoker:
             except Exception as e:
                 last_error = str(e)
                 self.logger.error(
-                    f"❌ [SKILL_INVOKER] Skill '{skill_id}' failed: {e} "
+                    f"[SKILL_INVOKER] Skill '{skill_id}' failed: {e} "
                     f"(attempt {retry_count + 1}/{self.max_retries + 1}) "
                     f"invocation={invocation_id[:8]}..."
                 )
-                logger.exception(f"❌ [SKILL_INVOKER] Exception details:")
+                logger.exception(f"[SKILL_INVOKER] Exception details:")
             
             retry_count += 1
             
@@ -197,7 +202,7 @@ class SkillInvoker:
         )
         
         self.logger.error(
-            f"❌ [SKILL_INVOKER] Skill '{skill_id}' failed after {retry_count} attempts: {last_error} "
+            f"[SKILL_INVOKER] Skill '{skill_id}' failed after {retry_count} attempts: {last_error} "
             f"(invocation: {invocation_id[:8]}...)"
         )
         
@@ -226,7 +231,7 @@ class SkillInvoker:
             raise ValueError(f"Skill '{skill_id}' not found in registry")
         
         self.logger.debug(
-            f"🔧 [SKILL_INVOKER] Executing skill '{skill_id}' ({skill.name}) "
+            f"[SKILL_INVOKER] Executing skill '{skill_id}' ({skill.name}) "
             f"for user {user_id[:8]}..."
         )
         
@@ -249,33 +254,49 @@ class SkillInvoker:
         user_id: str,
         input_data: Dict[str, Any],
         context: Dict[str, Any],
-    ) -> None:
-        """Record skill invocation start in database."""
+        ) -> None:
+        """Record skill invocation start in PostgreSQL via UnitOfWork.
+
+        If no session_factory is configured, this becomes a no-op. This keeps
+        SkillInvoker usable in contexts where persistence is not yet wired,
+        while ensuring that when a session_factory is provided all writes go
+        through the UoW / repository layer.
+        """
+
+        if not self._session_factory:
+            return
+
         now = datetime.now(UTC).isoformat()
-        
         self.logger.debug(
-            f"💾 [SKILL_INVOKER] Recording invocation start: {invocation_id[:8]}... "
+            f"[SKILL_INVOKER] Recording invocation start: {invocation_id[:8]}... "
             f"skill='{skill_id}' user={user_id[:8]}..."
         )
-        
+
         # Extract goal_id from context if available
         goal_id = context.get("goal_id") if context else None
-        
-        self.db.execute(
-            """INSERT INTO agency_skill_executions (
-                execution_id, skill_id, user_id, goal_id, outcome,
-                context_json, created_at
-            ) VALUES (?, ?, ?, ?, 'running', ?, ?)""",
-            (
-                invocation_id,
-                skill_id,
-                user_id,
-                goal_id,
-                json.dumps(context),
-                now,
-            )
+
+        # Build execution entity with 'running' outcome and raw context
+        entity = AgencySkillExecution(
+            execution_id=invocation_id,
+            skill_id=skill_id,
+            user_id=user_id,
+            message_id=context.get("message_id") if context else None,
+            goal_id=goal_id,
+            execution_time_ms=None,
+            outcome="running",
+            error_message=None,
+            context_json=context or {},
+            created_at=now,
         )
-        self.db.commit()
+
+        try:
+            async with UnitOfWork(self._session_factory) as uow:
+                await uow.agency_skill_executions.create(entity)
+                await uow.commit()
+        except Exception as exc:  # pragma: no cover - defensive
+            self.logger.warning(
+                f"[SKILL_INVOKER] Failed to record invocation start for {invocation_id[:8]}...: {exc}"
+            )
     
     async def _record_invocation_complete(
         self,
@@ -285,24 +306,41 @@ class SkillInvoker:
         error_message: Optional[str] = None,
         duration_ms: Optional[int] = None,
     ) -> None:
-        """Record skill invocation completion."""
+        """Record skill invocation completion via UnitOfWork.
+
+        If no session_factory is configured, this is a no-op.
+        """
+
+        if not self._session_factory:
+            return
+
         now = datetime.now(UTC).isoformat()
-        
         status = "completed" if success else "failed"
         self.logger.debug(
-            f"💾 [SKILL_INVOKER] Recording invocation complete: {invocation_id[:8]}... "
+            f"[SKILL_INVOKER] Recording invocation complete: {invocation_id[:8]}... "
             f"status={status} duration={duration_ms}ms"
         )
-        
-        self.db.execute(
-            """UPDATE agency_skill_executions
-               SET outcome = ?, error_message = ?, execution_time_ms = ?
-               WHERE execution_id = ?""",
-            (
-                "completed" if success else "failed",
-                error_message,
-                duration_ms,
-                invocation_id,
+
+        try:
+            async with UnitOfWork(self._session_factory) as uow:
+                existing = await uow.agency_skill_executions.get_by_id(invocation_id)
+                if not existing:
+                    # If we couldn't record the start, don't fail hard here.
+                    self.logger.warning(
+                        f"[SKILL_INVOKER] No existing execution found for {invocation_id[:8]}... when recording completion"
+                    )
+                    return
+
+                # Update fields on the existing entity
+                updated = existing.copy(update={
+                    "execution_time_ms": duration_ms,
+                    "outcome": "completed" if success else "failed",
+                    "error_message": error_message,
+                })
+
+                await uow.agency_skill_executions.update(invocation_id, updated)
+                await uow.commit()
+        except Exception as exc:  # pragma: no cover - defensive
+            self.logger.warning(
+                f"[SKILL_INVOKER] Failed to record invocation completion for {invocation_id[:8]}...: {exc}"
             )
-        )
-        self.db.commit()

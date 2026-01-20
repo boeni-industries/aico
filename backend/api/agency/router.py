@@ -6,10 +6,14 @@ Based on agency-metrics.md user-facing metrics.
 """
 
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import Annotated, Optional, List
-from datetime import datetime
+import importlib
 import json
+import pkgutil
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Annotated, Optional, List, Dict, Any
+from pydantic import BaseModel
 
 from backend.api.conversation.dependencies import get_current_user
 from backend.api.agency.models import (
@@ -38,6 +42,9 @@ from backend.api.agency.models import (
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.ai.agency import AgencyEngine
+from aico.ai.agency.skills.registry import SkillRegistry
+from aico.ai.agency.tools.registry import get_tool_registry, ToolDefinition
+import aico.ai.agency.tools as tools_package
 from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorLevel
 from aico.ai import ai_registry
 from aico.data.uow import UnitOfWork
@@ -150,6 +157,256 @@ async def get_intention_set(
     except Exception as e:
         logger.error(f"Failed to get intention set: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Skills & Tools Introspection / Invocation
+# ============================================================================
+
+
+class SkillInvokeRequest(BaseModel):
+    skill_id: str
+    input: Dict[str, Any] | None = None
+    context: Dict[str, Any] | None = None
+
+
+class SkillInfoResponse(BaseModel):
+    skill_id: str
+    name: str
+    description: str
+    category: str
+    timeout_seconds: int
+    capability_tags: List[str]
+    side_effect_tags: List[str]
+    safety_level: str
+    implementation_tools: List[str]
+    parameters: List[Dict[str, Any]]
+
+
+class ToolInfoResponse(BaseModel):
+    tool_id: str
+    name: str
+    description: str
+    domain: str
+    backend: str
+    runtime_context: str
+    capability_tags: List[str]
+    side_effect_tags: List[str]
+    safety_level: str
+    resource_profile: str
+    default_timeout_seconds: int
+    parameters: List[Dict[str, Any]]
+
+
+class ConnectivityScanRequest(BaseModel):
+    targets: List[str] | None = None
+
+
+def _get_skill_registry_from_engine(engine: AgencyEngine) -> SkillRegistry:
+    registry = None
+    skill_invoker = getattr(engine, "skill_invoker", None)
+    if skill_invoker is not None:
+        registry = getattr(skill_invoker, "skill_registry", None)
+    if registry is None:
+        registry = getattr(engine, "skill_registry", None)
+    if registry is None or not isinstance(registry, SkillRegistry):
+        logger.error("AgencyEngine does not expose a valid SkillRegistry instance")
+        raise HTTPException(status_code=500, detail="SkillRegistry not available on AgencyEngine")
+    return registry
+
+
+def _tool_to_info(tool: ToolDefinition) -> ToolInfoResponse:
+    return ToolInfoResponse(
+        tool_id=tool.tool_id,
+        name=tool.name,
+        description=tool.description,
+        domain=tool.domain,
+        backend=tool.backend,
+        runtime_context=tool.runtime_context,
+        capability_tags=tool.capability_tags,
+        side_effect_tags=tool.side_effect_tags,
+        safety_level=tool.safety_level,
+        resource_profile=tool.resource_profile,
+        default_timeout_seconds=tool.default_timeout_seconds,
+        parameters=[
+            {
+                "name": p.name,
+                "type": p.type.value,
+                "description": p.description,
+                "required": p.required,
+                "default": p.default,
+            }
+            for p in tool.parameters
+        ],
+    )
+
+
+def _load_all_tool_modules() -> None:
+    """Import all submodules under aico.ai.agency.tools.
+
+    Ensures that modules which register tools at import time are loaded in
+    the backend process before ToolRegistry is queried.
+    """
+
+    for finder, name, ispkg in pkgutil.iter_modules(
+        tools_package.__path__, tools_package.__name__ + "."
+    ):
+        try:
+            importlib.import_module(name)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(f"[AGENCY_API] Failed to import tool module '{name}': {exc}")
+
+
+@router.post("/skills/list", response_model=List[SkillInfoResponse])
+async def list_skills(
+    user: Annotated[dict, Depends(get_current_user)],
+    engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
+) -> List[SkillInfoResponse]:
+    """List all registered Agency skills.
+
+    Authenticated via standard agency security.
+    """
+
+    registry = _get_skill_registry_from_engine(engine)
+    skills = registry.list_all()
+    return [SkillInfoResponse(**(registry.get_skill_info(s.skill_id) or {})) for s in skills]
+
+
+@router.post("/skills/info", response_model=SkillInfoResponse)
+async def get_skill_info(
+    request: SkillInvokeRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+    engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
+) -> SkillInfoResponse:
+    """Get detailed metadata for a single skill."""
+
+    registry = _get_skill_registry_from_engine(engine)
+    info: Optional[Dict[str, Any]] = registry.get_skill_info(request.skill_id)
+    if not info:
+        raise HTTPException(status_code=404, detail=f"Skill not found: {request.skill_id}")
+    return SkillInfoResponse(**info)
+
+
+@router.post("/skills/invoke")
+async def invoke_skill(
+    request: SkillInvokeRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+    engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
+):
+    """Invoke a registered Agency skill via SkillInvoker."""
+
+    try:
+        result = await engine.skill_invoker.invoke_skill(
+            skill_id=request.skill_id,
+            user_id=user["user_uuid"],
+            input_data=request.input or {},
+            context=(request.context or {}) | {
+                "trigger": "agency_skill_invoke",
+                "initiator_type": "user",
+                "source": "agency_api",
+                "user_id": user["user_uuid"],
+            },
+        )
+    except Exception as exc:
+        logger.error(f"Skill invocation failed: {exc}")
+        raise HTTPException(status_code=500, detail="Skill invocation failed")
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error") or "Skill reported failure")
+
+    return result.get("output")
+
+
+@router.post("/connectivity/scan")
+async def connectivity_scan(
+    request: ConnectivityScanRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+    engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
+):
+    """Run the maint.connectivity.full_scan maintenance skill."""
+
+    input_data: Dict[str, Any] = {}
+    if request.targets is not None:
+        input_data["targets"] = request.targets
+
+    try:
+        result = await engine.skill_invoker.invoke_skill(
+            skill_id="maint.connectivity.full_scan",
+            user_id=user["user_uuid"],
+            input_data=input_data,
+            context={
+                "trigger": "agency_connectivity_scan",
+                "initiator_type": "user",
+                "source": "agency_api",
+                "user_id": user["user_uuid"],
+            },
+        )
+    except Exception as exc:
+        logger.error(f"Connectivity scan skill invocation failed: {exc}")
+        raise HTTPException(status_code=500, detail="Connectivity scan failed")
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error") or "Connectivity scan reported failure")
+
+    return result.get("output")
+
+
+@router.post("/tools/list", response_model=List[ToolInfoResponse])
+async def list_tools(
+    user: Annotated[dict, Depends(get_current_user)],
+) -> List[ToolInfoResponse]:
+    """List all registered Agency tools from the ToolRegistry."""
+    _load_all_tool_modules()
+    registry = get_tool_registry()
+    tools = registry.list_all()
+    return [_tool_to_info(t) for t in tools]
+
+
+class ToolInvokeRequest(BaseModel):
+    tool_id: str
+    input: Dict[str, Any] | None = None
+
+
+@router.post("/tools/info", response_model=ToolInfoResponse)
+async def get_tool_info(
+    request: ToolInvokeRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> ToolInfoResponse:
+    """Get detailed metadata for a single tool."""
+    _load_all_tool_modules()
+    registry = get_tool_registry()
+    tool = registry.get(request.tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail=f"Tool not found: {request.tool_id}")
+    return _tool_to_info(tool)
+
+
+@router.post("/tools/invoke")
+async def invoke_tool(
+    request: ToolInvokeRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    """Invoke a registered Agency tool directly via ToolRegistry."""
+    _load_all_tool_modules()
+    registry = get_tool_registry()
+    tool = registry.get(request.tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail=f"Tool not found: {request.tool_id}")
+
+    kwargs = request.input or {}
+
+    try:
+        # NOTE: For now we only support tools whose handlers accept kwargs
+        # matching the input dict; connectivity tools are parameterless.
+        result = await tool.handler(**kwargs)
+    except TypeError as exc:
+        logger.error(f"Tool invocation failed (argument mismatch) for {request.tool_id}: {exc}")
+        raise HTTPException(status_code=400, detail="Tool invocation argument mismatch")
+    except Exception as exc:
+        logger.error(f"Tool invocation failed for {request.tool_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Tool invocation failed")
+
+    return result
 
 
 # ============================================================================

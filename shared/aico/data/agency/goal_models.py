@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from pydantic import BaseModel, Field
 
@@ -45,7 +45,7 @@ class AgencyIntentionSet(BaseModel):
     status: str = "proposed"
     arbiter_score: float
     priority_band: str
-    reasons_json: Optional[list] = None
+    reasons_json: Optional[List[str]] = None
     activated_at: Optional[datetime] = None
     deactivated_at: Optional[datetime] = None
     created_at: Optional[datetime] = None

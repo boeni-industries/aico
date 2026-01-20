@@ -60,7 +60,7 @@ class UserPreferencesManager:
             # self.db is a session_factory, create session and UoW
             async with self.db() as session:
                 uow = UnitOfWork(session)
-                user = await uow.user_profiles.get(user_id)
+                user = await uow.user_profiles.get_by_id(user_id)
             
             if not user:
                 logger.warning(f"User not found: {user_id[:8]}, using defaults")

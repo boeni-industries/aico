@@ -18,6 +18,7 @@ from ..registry import (
     SkillResult,
 )
 from aico.core.logging import get_logger
+from aico.ai.knowledge_graph.models import Node, PropertyGraph
 
 
 logger = get_logger("shared.ai.agency.skills.knowledge.graph")
@@ -30,8 +31,8 @@ class UpdateKnowledgeGraphSkill(Skill):
     Used for: Knowledge Graph Curation goals
     """
     
-    def __init__(self, db: Optional[Any] = None):  # Skills being redesigned
-        self.db = db
+    def __init__(self, kg_storage: Optional[Any] = None):
+        self.kg_storage = kg_storage
     
     @property
     def skill_id(self) -> str:
@@ -91,14 +92,15 @@ class UpdateKnowledgeGraphSkill(Skill):
         )
         
         try:
-            if not self.db:
-                raise RuntimeError("Database connection not available")
-            
+            if not self.kg_storage:
+                raise RuntimeError("Knowledge graph storage not available")
+
             now = datetime.now(UTC).isoformat()
             entities_added = 0
             relationships_added = 0
-            
-            # Store entities in kg_nodes table
+
+            # Build Node objects for entities
+            nodes: List[Node] = []
             for entity in entities:
                 if isinstance(entity, dict):
                     entity_type = entity.get("type", "unknown")
@@ -108,49 +110,29 @@ class UpdateKnowledgeGraphSkill(Skill):
                     entity_type = "unknown"
                     entity_value = str(entity)
                     entity_metadata = {}
-                
-                try:
-                    node_id = str(uuid.uuid4())
-                    properties = {"value": entity_value, **entity_metadata, "source": source}
-                    
-                    self.db.execute(
-                        """INSERT OR REPLACE INTO kg_nodes 
-                           (id, user_id, label, properties, created_at, updated_at)
-                           VALUES (?, ?, ?, ?, ?, ?)""",
-                        (
-                            node_id,
-                            user_id,
-                            entity_type,
-                            json.dumps(properties),
-                            now,
-                            now,
-                        )
-                    )
-                    entities_added += 1
-                except Exception as e:
-                    logger.warning(f"📊 [UPDATE_KNOWLEDGE_GRAPH] Failed to add entity: {e}")
-            
-            # Store relationships in kg_edges table
-            for rel in relationships:
-                if isinstance(rel, dict):
-                    from_entity = rel.get("from", "")
-                    to_entity = rel.get("to", "")
-                    rel_type = rel.get("type", "related_to")
-                    rel_metadata = rel.get("metadata", {})
-                    
-                    try:
-                        edge_id = str(uuid.uuid4())
-                        
-                        # Find or create source and target nodes
-                        # For now, skip if nodes don't exist (would need node IDs)
-                        # This is a simplified implementation
-                        logger.debug(f"📊 [UPDATE_KNOWLEDGE_GRAPH] Relationship storage requires node IDs: {from_entity} -> {to_entity}")
-                        # TODO: Implement proper node lookup/creation for relationships
-                        
-                    except Exception as e:
-                        logger.warning(f"📊 [UPDATE_KNOWLEDGE_GRAPH] Failed to add relationship: {e}")
-            
-            self.db.commit()
+
+                node_id = str(uuid.uuid4())
+                properties = {"value": entity_value, **entity_metadata, "source": source}
+
+                node = Node(
+                    id=node_id,
+                    user_id=user_id,
+                    label=entity_type,
+                    properties=properties,
+                    is_current=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+                nodes.append(node)
+                entities_added += 1
+
+            # For now, relationships are not fully materialized; they will be
+            # handled by higher-level extraction/fusion components.
+
+            graph = PropertyGraph(nodes=nodes, edges=[])
+
+            # Save entire graph via PropertyGraphStorage (dual-write to Postgres + ChromaDB)
+            await self.kg_storage.save_graph(graph)
             
             result = {
                 "entities_added": entities_added,

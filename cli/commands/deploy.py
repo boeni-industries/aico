@@ -16,6 +16,7 @@ import sys
 import subprocess
 import secrets
 import os
+import asyncio
 from pathlib import Path
 from typing import Tuple
 
@@ -139,6 +140,55 @@ def _get_compose_file() -> Path:
     """Return path to the local docker-compose file for DB services."""
     root = Path(__file__).parent.parent.parent
     return root / "docker" / "docker-compose.local.yml"
+
+
+async def _ensure_system_user_async() -> None:
+    """Ensure the system user exists in Postgres after schema deployment.
+
+    This creates an internal, non-interactive user profile with a stable
+    UUID of 'system_user' if it does not already exist. The user is marked
+    as active to keep it out of the soft-deleted cleanup path; login
+    capability is governed elsewhere via authentication/authorization.
+    """
+
+    try:
+        from aico.data.postgres.connection import get_postgres_pool
+
+        pool = await get_postgres_pool()
+        async with pool.acquire() as conn:
+            existing = await conn.fetchrow(
+                "SELECT uuid FROM user_profiles WHERE uuid = $1",
+                "system_user",
+            )
+            if existing:
+                return
+
+            await conn.execute(
+                """
+                INSERT INTO user_profiles (
+                    uuid,
+                    full_name,
+                    nickname,
+                    user_type,
+                    is_active,
+                    primary_language,
+                    created_at,
+                    updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                "system_user",
+                "AICO System User",
+                "system",
+                "system",
+                True,
+                "en",
+            )
+    except Exception as exc:  # pragma: no cover - defensive; deployment should continue
+        console.print(
+            format_warning(
+                f"Warning: Failed to ensure system_user exists in Postgres: {exc}"
+            )
+        )
 
 
 def _run_compose(args: list[str], env: dict = None) -> int:
@@ -651,6 +701,19 @@ def deploy_pg(
 
                 console.print("🔧 [cyan]Applying schema (idempotent)...[/cyan]")
                 pg_cli.init()
+
+                # After schema is applied, ensure the internal system user exists.
+                console.print("👤 [cyan]Ensuring internal system user exists...[/cyan]")
+                try:
+                    asyncio.run(_ensure_system_user_async())
+                except RuntimeError:
+                    # Fallback in case an event loop is already running
+                    console.print(
+                        format_warning(
+                            "Warning: Could not run system user creation in standalone event loop; "
+                            "assuming it will be created at runtime if missing."
+                        )
+                    )
 
                 break
         except (OSError, socket.timeout):

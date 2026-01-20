@@ -20,7 +20,7 @@ from .memory import SearchMemorySkill
 from .knowledge import UpdateKnowledgeGraphSkill
 from .reflection import ReflectOnGoalSkill
 from .communication import AskUserSkill, InitiateConversationSkill
-from .maintenance import MaintenanceConnectivityFullScanSkill
+from .maintenance import MaintenanceConnectivityFullScanSkill, MaintenanceConnectivityVerifyComponentSkill
 
 __all__ = [
     # Core registry
@@ -45,4 +45,5 @@ __all__ = [
     "InitiateConversationSkill",
     # Maintenance skills
     "MaintenanceConnectivityFullScanSkill",
+    "MaintenanceConnectivityVerifyComponentSkill",
 ]

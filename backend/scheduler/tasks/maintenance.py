@@ -421,11 +421,13 @@ class AgencyConnectivityScanTask(BaseTask):
         try:
             result = await agency_engine.skill_invoker.invoke_skill(
                 skill_id="maint.connectivity.full_scan",
-                user_id="system_maintenance",
+                user_id="system_user",
                 input_data=input_data,
                 context={
                     "trigger": "scheduler_connectivity_scan",
                     "task_id": self.task_id,
+                    "initiator_type": "system",
+                    "source": "scheduler",
                 },
             )
         except Exception as exc:  # pragma: no cover - defensive
@@ -433,18 +435,19 @@ class AgencyConnectivityScanTask(BaseTask):
             self.logger.error(error_msg, exc_info=True)
             return TaskResult(success=False, error=error_msg)
 
-        if not result.success:
-            error_msg = result.error or "Connectivity scan reported failure"
+        # SkillInvoker.invoke_skill returns a dict with success/output/error fields.
+        if not result.get("success"):
+            error_msg = result.get("error") or "Connectivity scan reported failure"
             self.logger.warning(f"Agency connectivity scan failed: {error_msg}")
             return TaskResult(
                 success=False,
                 error=error_msg,
-                data={"output": result.output},
+                data={"output": result.get("output")},
             )
 
         # Successful scan; return the skill's structured output in TaskResult
         return TaskResult(
             success=True,
             message="Agency connectivity scan completed successfully",
-            data=result.output,
+            data=result.get("output"),
         )

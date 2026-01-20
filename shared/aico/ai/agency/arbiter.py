@@ -537,7 +537,7 @@ class GoalArbiter:
                 status=IntentionStatus(entity.status),
                 arbiter_score=entity.arbiter_score,
                 priority_band=PriorityBand(entity.priority_band),
-                reasons=json.loads(entity.reasons_json) if entity.reasons_json else [],
+                reasons=entity.reasons_json or [],
                 activated_at=entity.activated_at,
                 deactivated_at=entity.deactivated_at,
                 created_at=entity.created_at,
@@ -659,14 +659,14 @@ class GoalArbiter:
             # No existing intention → create new
             if scored_goal.priority_band == PriorityBand.URGENT:
                 # Urgent goals always get added
-                intention = await self._create_intention(scored_goal, user_id)
+                intention = await self._create_intention(scored_goal, user_id, activate=True)
                 new_intentions.append(intention)
                 if self.logger:
                     self.logger.info(f"[ARBITER] Created urgent intention: '{scored_goal.goal.title}'")
             elif scored_goal.priority_band == PriorityBand.NORMAL:
                 if active_count < intention_set.max_active:
                     # Add if capacity available
-                    intention = await self._create_intention(scored_goal, user_id)
+                    intention = await self._create_intention(scored_goal, user_id, activate=True)
                     new_intentions.append(intention)
                     active_count += 1
                     if self.logger:
@@ -679,7 +679,7 @@ class GoalArbiter:
                         if scored_goal.arbiter_score > lowest.arbiter_score:
                             # Replace: deactivate lowest, activate new
                             await self.deactivate_intention(lowest.intention_id, reason="replaced_by_higher_score")
-                            intention = await self._create_intention(scored_goal, user_id)
+                            intention = await self._create_intention(scored_goal, user_id, activate=True)
                             new_intentions.append(intention)
                             if self.logger:
                                 self.logger.info(
@@ -786,7 +786,7 @@ class GoalArbiter:
                 status=IntentionStatus.ACTIVE.value if activate else IntentionStatus.PROPOSED.value,
                 arbiter_score=scored_goal.arbiter_score,
                 priority_band=scored_goal.priority_band.value,
-                reasons_json=json.dumps(scored_goal.reasons),
+                reasons_json=scored_goal.reasons,
                 activated_at=datetime.now(UTC) if activate else None,
                 deactivated_at=None,
                 created_at=datetime.now(UTC),
@@ -803,7 +803,7 @@ class GoalArbiter:
             status=IntentionStatus(entity.status),
             arbiter_score=entity.arbiter_score,
             priority_band=PriorityBand(entity.priority_band),
-            reasons=json.loads(entity.reasons_json) if entity.reasons_json else [],
+            reasons=entity.reasons_json or [],
             activated_at=entity.activated_at,
             deactivated_at=entity.deactivated_at,
             created_at=entity.created_at,
@@ -827,7 +827,7 @@ class GoalArbiter:
                 status=intention.status.value,
                 arbiter_score=intention.arbiter_score,
                 priority_band=intention.priority_band.value,
-                reasons_json=json.dumps(intention.reasons),
+                reasons_json=intention.reasons,
                 activated_at=intention.activated_at,
                 deactivated_at=intention.deactivated_at,
                 created_at=intention.created_at,
@@ -857,7 +857,7 @@ class GoalArbiter:
             status=IntentionStatus(entity.status),
             arbiter_score=entity.arbiter_score,
             priority_band=PriorityBand(entity.priority_band),
-            reasons=json.loads(entity.reasons_json) if entity.reasons_json else [],
+            reasons=entity.reasons_json or [],
             activated_at=entity.activated_at,
             deactivated_at=entity.deactivated_at,
             created_at=entity.created_at,

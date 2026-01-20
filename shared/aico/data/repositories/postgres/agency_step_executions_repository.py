@@ -48,9 +48,21 @@ class PostgresAgencyStepExecutionsRepository:
         await self.session.commit()
         return result.rowcount > 0
     
-    async def list(self, limit: int = 100, offset: int = 0) -> List[AgencyStepExecution]:
-        """List step executions."""
-        stmt = select(agency_step_executions).limit(limit).offset(offset)
+    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0, order_by: Optional[str] = None) -> List[AgencyStepExecution]:
+        """List step executions with optional filters."""
+        stmt = select(agency_step_executions)
+        
+        # Apply filters
+        if filters:
+            for key, value in filters.items():
+                if hasattr(agency_step_executions.c, key):
+                    stmt = stmt.where(getattr(agency_step_executions.c, key) == value)
+        
+        # Apply ordering
+        if order_by and hasattr(agency_step_executions.c, order_by):
+            stmt = stmt.order_by(getattr(agency_step_executions.c, order_by))
+        
+        stmt = stmt.limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         return [AgencyStepExecution(**dict(row._mapping)) for row in result.fetchall()]
     

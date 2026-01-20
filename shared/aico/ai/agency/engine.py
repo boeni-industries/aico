@@ -175,6 +175,9 @@ class AgencyEngine(BaseAIProcessor):
             UpdateKnowledgeGraphSkill,
             ReflectOnGoalSkill,
             MaintenanceConnectivityFullScanSkill,
+            MaintenanceConnectivityVerifyComponentSkill,
+            AskUserSkill,
+            InitiateConversationSkill,
         )
         
         # Initialize skill registry - DISABLED (skills require migration to PostgreSQL)
@@ -189,6 +192,50 @@ class AgencyEngine(BaseAIProcessor):
             self.skill_registry.register(
                 MaintenanceConnectivityFullScanSkill(session_factory=session_factory)
             )
+            self.skill_registry.register(
+                MaintenanceConnectivityVerifyComponentSkill(session_factory=session_factory)
+            )
+
+            # Communication skills (PostgreSQL/UoW + message bus aware)
+            self.skill_registry.register(
+                AskUserSkill(
+                    db=None,
+                    message_bus=message_bus,
+                    session_factory=session_factory,
+                )
+            )
+            self.skill_registry.register(
+                InitiateConversationSkill(
+                    db=None,
+                    message_bus=message_bus,
+                    session_factory=session_factory,
+                )
+            )
+
+            # Analysis / memory / knowledge / reflection skills (PostgreSQL + MemoryManager)
+            if self._memory_manager is not None:
+                self.skill_registry.register(
+                    SearchMemorySkill(memory_manager=self._memory_manager)
+                )
+                self.skill_registry.register(
+                    AnalyzeConversationSkill(
+                        db=None,
+                        memory_manager=self._memory_manager,
+                    )
+                )
+
+                # Knowledge graph updates via MemoryManager's KG storage abstraction
+                kg_storage = getattr(self._memory_manager, "kg_storage", None)
+                if kg_storage is not None:
+                    self.skill_registry.register(
+                        UpdateKnowledgeGraphSkill(kg_storage=kg_storage)
+                    )
+
+            # Reflection over goals/plans/executions via AgencyService
+            if self.agency_service is not None:
+                self.skill_registry.register(
+                    ReflectOnGoalSkill(agency_service=self.agency_service)
+                )
         
         # Initialize PlanStore with skill_registry for auto-fixing old plans
         # PlanStore replaced by AgencyService
@@ -200,9 +247,13 @@ class AgencyEngine(BaseAIProcessor):
         # Planner configured
         
         # Initialize SkillInvoker and PlanExecutor with AgencyService
+        # SkillInvoker now uses the PostgreSQL UnitOfWork and
+        # agency_skill_executions repository when a session_factory is
+        # provided, avoiding any direct SQL access.
         self.skill_invoker = SkillInvoker(
             skill_registry=self.skill_registry,
-            logger=logger
+            logger=logger,
+            session_factory=session_factory,
         )
         
         # Initialize PlanExecutor with AgencyService (PostgreSQL migration complete)

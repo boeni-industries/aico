@@ -478,6 +478,50 @@ class BackendLifecycleManager:
                 
                 async def create_plan(self, plan):
                     return await self._execute_with_uow('create_plan', plan)
+
+                # Plan management
+                async def get_plan(self, plan_id: str):
+                    return await self._execute_with_uow('get_plan', plan_id)
+
+                async def list_plans(self, goal_id: str, status=None):
+                    return await self._execute_with_uow('list_plans', goal_id=goal_id, status=status)
+
+                async def update_plan(self, plan):
+                    return await self._execute_with_uow('update_plan', plan)
+
+                async def delete_plan(self, plan_id: str):
+                    return await self._execute_with_uow('delete_plan', plan_id)
+
+                async def get_active_plan(self, goal_id: str):
+                    return await self._execute_with_uow('get_active_plan', goal_id)
+
+                # Plan execution & steps (used by PlanExecutor)
+                async def create_plan_execution(self, execution_data: Dict[str, Any]):
+                    return await self._execute_with_uow('create_plan_execution', execution_data)
+
+                async def get_plan_execution(self, execution_id: str):
+                    return await self._execute_with_uow('get_plan_execution', execution_id)
+
+                async def get_plan_executions(self, plan_id: str):
+                    return await self._execute_with_uow('get_plan_executions', plan_id)
+
+                async def get_next_pending_step(self, execution_id: str):
+                    return await self._execute_with_uow('get_next_pending_step', execution_id)
+
+                async def count_pending_steps(self, execution_id: str) -> int:
+                    return await self._execute_with_uow('count_pending_steps', execution_id)
+
+                async def count_step_executions(self, execution_id: str) -> int:
+                    return await self._execute_with_uow('count_step_executions', execution_id)
+
+                async def get_step_executions(self, execution_id: str):
+                    return await self._execute_with_uow('get_step_executions', execution_id)
+
+                async def update_step_execution(self, step_execution_id: str, updates: Dict[str, Any]):
+                    return await self._execute_with_uow('update_step_execution', step_execution_id, updates)
+
+                async def update_plan_execution(self, execution_id: str, updates: Dict[str, Any]):
+                    return await self._execute_with_uow('update_plan_execution', execution_id, updates)
             
             agency_service = AgencyServiceProxy(session_factory)
             

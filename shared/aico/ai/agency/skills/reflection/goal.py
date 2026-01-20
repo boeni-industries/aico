@@ -17,6 +17,7 @@ from ..registry import (
     SkillResult,
 )
 from aico.core.logging import get_logger
+from aico.services.agency_service import AgencyService
 
 
 logger = get_logger("shared.ai.agency.skills.reflection.goal")
@@ -29,8 +30,8 @@ class ReflectOnGoalSkill(Skill):
     Used for: Deep Dive Learning, Skill Building goals
     """
     
-    def __init__(self, db: Optional[Any] = None):  # Skills being redesigned
-        self.db = db
+    def __init__(self, agency_service: Optional[AgencyService] = None):
+        self.agency_service = agency_service
     
     @property
     def skill_id(self) -> str:
@@ -82,45 +83,26 @@ class ReflectOnGoalSkill(Skill):
         )
         
         try:
-            if not self.db:
-                raise RuntimeError("Database connection not available")
-            
-            # Get goal details
-            goal = self.db.execute(
-                """SELECT goal_id, title, description, status, priority, origin, created_at
-                   FROM agency_goals
-                   WHERE goal_id = ? AND user_id = ?""",
-                (goal_id, user_id)
-            ).fetchone()
-            
-            if not goal:
+            if not self.agency_service:
+                raise RuntimeError("AgencyService not available")
+
+            # Get goal details via AgencyService
+            goal = await self.agency_service.get_goal(goal_id)
+
+            if not goal or goal.user_id != user_id:
                 raise ValueError(f"Goal {goal_id} not found")
-            
-            logger.info(f"🤔 [REFLECT_ON_GOAL] Analyzing goal: {goal['title']}")
-            
+
+            logger.info(f"🤔 [REFLECT_ON_GOAL] Analyzing goal: {goal.title}")
+
             # Get plans for this goal
-            plans = self.db.execute(
-                """SELECT plan_id, status, created_at
-                   FROM agency_plans
-                   WHERE goal_id = ?
-                   ORDER BY created_at DESC""",
-                (goal_id,)
-            ).fetchall()
-            
+            plans = await self.agency_service.list_plans(goal_id)
+
             # Get executions if history is requested
-            executions = []
+            executions: List[Any] = []
             if include_history and plans:
                 for plan in plans:
-                    execs = self.db.execute(
-                        """SELECT execution_id, status, steps_completed, steps_total, 
-                                  started_at, completed_at, error_message
-                           FROM agency_plan_executions
-                           WHERE plan_id = ?
-                           ORDER BY created_at DESC
-                           LIMIT 5""",
-                        (plan["plan_id"],)
-                    ).fetchall()
-                    executions.extend(execs)
+                    plan_execs = await self.agency_service.get_plan_executions(plan.plan_id)
+                    executions.extend(plan_execs[:5])
             
             # Analyze progress
             blockers = []
@@ -128,12 +110,12 @@ class ReflectOnGoalSkill(Skill):
             recommendations = []
             
             # Check goal status
-            if goal["status"] == "pending":
+            if goal.status.value == "pending":
                 insights.append("Goal is pending - no active work yet")
                 recommendations.append("Consider activating this goal if it's a priority")
-            elif goal["status"] == "active":
+            elif goal.status.value == "active":
                 insights.append("Goal is actively being worked on")
-            elif goal["status"] == "paused":
+            elif goal.status.value == "paused":
                 blockers.append("Goal is currently paused")
                 recommendations.append("Review why goal was paused and consider resuming")
             
@@ -142,8 +124,8 @@ class ReflectOnGoalSkill(Skill):
                 blockers.append("No plans created for this goal yet")
                 recommendations.append("Create a plan to start making progress")
             else:
-                draft_plans = [p for p in plans if p["status"] == "draft"]
-                active_plans = [p for p in plans if p["status"] == "active"]
+                draft_plans = [p for p in plans if p.status.value == "draft"]
+                active_plans = [p for p in plans if p.status.value == "active"]
                 
                 if draft_plans:
                     insights.append(f"{len(draft_plans)} draft plan(s) available")
@@ -153,9 +135,9 @@ class ReflectOnGoalSkill(Skill):
             # Analyze executions
             failed = []
             if executions:
-                completed = [e for e in executions if e["status"] == "completed"]
-                failed = [e for e in executions if e["status"] == "failed"]
-                running = [e for e in executions if e["status"] == "running"]
+                completed = [e for e in executions if getattr(e, "status", None) == "completed"]
+                failed = [e for e in executions if getattr(e, "status", None) == "failed"]
+                running = [e for e in executions if getattr(e, "status", None) == "running"]
                 
                 if completed:
                     insights.append(f"{len(completed)} execution(s) completed successfully")
@@ -163,14 +145,15 @@ class ReflectOnGoalSkill(Skill):
                     blockers.append(f"{len(failed)} execution(s) failed")
                     # Extract error messages
                     for exec in failed[:3]:  # Show up to 3 errors
-                        if exec["error_message"]:
-                            blockers.append(f"Error: {exec['error_message'][:100]}")
+                        error_msg = getattr(exec, "error_message", None)
+                        if error_msg:
+                            blockers.append(f"Error: {error_msg[:100]}")
                 if running:
                     insights.append(f"{len(running)} execution(s) currently running")
                 
                 # Calculate progress
-                total_steps = sum(e["steps_total"] or 0 for e in executions)
-                completed_steps = sum(e["steps_completed"] or 0 for e in executions)
+                total_steps = sum(getattr(e, "steps_total", 0) or 0 for e in executions)
+                completed_steps = sum(getattr(e, "steps_completed", 0) or 0 for e in executions)
                 if total_steps > 0:
                     progress_pct = (completed_steps / total_steps) * 100
                     insights.append(f"Overall progress: {progress_pct:.1f}% ({completed_steps}/{total_steps} steps)")
@@ -185,16 +168,16 @@ class ReflectOnGoalSkill(Skill):
                 recommendations.append("Review failed executions and adjust plan if needed")
             
             # Check goal age
-            created_at = datetime.fromisoformat(goal["created_at"]).replace(tzinfo=UTC)
+            created_at = goal.created_at or datetime.now(UTC)
             age_days = (datetime.now(UTC) - created_at).days
-            if age_days > 30 and goal["status"] == "pending":
+            if age_days > 30 and goal.status.value == "pending":
                 insights.append(f"Goal has been pending for {age_days} days")
                 recommendations.append("Consider prioritizing or retiring this goal")
             
             reflection = {
                 "goal_id": goal_id,
-                "goal_title": goal["title"],
-                "goal_status": goal["status"],
+                "goal_title": goal.title,
+                "goal_status": goal.status.value,
                 "progress_assessment": "Making progress" if executions else "Not started",
                 "blockers": blockers,
                 "insights": insights,

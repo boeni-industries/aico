@@ -664,26 +664,34 @@ class PlanExecutor:
     
     async def _save_execution(self, execution: PlanExecution) -> None:
         """Save execution to database."""
+        import json
+        
+        # Serialize execution_context to JSON string
+        execution_context_str = json.dumps(execution.execution_context) if execution.execution_context else "{}"
+        
+        # Convert datetime objects to ISO format strings
+        now = datetime.now(UTC)
+        
         execution_data = {
             "execution_id": execution.execution_id,
             "plan_id": execution.plan_id,
             "goal_id": execution.goal_id,
             "user_id": execution.user_id,
             "status": execution.status.value,
-            "started_at": execution.started_at,
-            "completed_at": execution.completed_at,
-            "paused_at": execution.paused_at,
-            "cancelled_at": execution.cancelled_at,
+            "started_at": execution.started_at.isoformat() if execution.started_at else None,
+            "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+            "paused_at": execution.paused_at.isoformat() if execution.paused_at else None,
+            "cancelled_at": execution.cancelled_at.isoformat() if execution.cancelled_at else None,
             "current_step_id": execution.current_step_id,
             "steps_completed": execution.steps_completed,
             "steps_total": execution.steps_total,
             "progress_percentage": execution.progress_percentage,
-            "execution_context": execution.execution_context,
+            "execution_context": execution_context_str,
             "error_message": execution.error_message,
             "cancellation_reason": execution.cancellation_reason,
             "retry_count": execution.retry_count,
-            "created_at": execution.created_at,
-            "updated_at": datetime.now(UTC)
+            "created_at": execution.created_at.isoformat() if execution.created_at else now.isoformat(),
+            "updated_at": now.isoformat()
         }
         
         # Check if exists, update or create
@@ -695,14 +703,16 @@ class PlanExecutor:
     
     async def _save_step_execution(self, step_exec: StepExecution) -> None:
         """Save step execution to database."""
+        now = datetime.now(UTC)
+        
         step_data = {
             "step_execution_id": step_exec.step_execution_id,
             "execution_id": step_exec.execution_id,
             "step_id": step_exec.step_id,
             "step_order": step_exec.step_order,
             "status": step_exec.status.value,
-            "started_at": step_exec.started_at,
-            "completed_at": step_exec.completed_at,
+            "started_at": step_exec.started_at.isoformat() if step_exec.started_at else None,
+            "completed_at": step_exec.completed_at.isoformat() if step_exec.completed_at else None,
             "duration_ms": step_exec.duration_ms,
             "skill_id": step_exec.skill_id,
             "skill_invocation_id": step_exec.skill_invocation_id,
@@ -711,8 +721,8 @@ class PlanExecutor:
             "error_message": step_exec.error_message,
             "retry_count": step_exec.retry_count,
             "blocked_reason": step_exec.blocked_reason,
-            "created_at": step_exec.created_at,
-            "updated_at": datetime.now(UTC)
+            "created_at": step_exec.created_at.isoformat() if step_exec.created_at else now.isoformat(),
+            "updated_at": now.isoformat()
         }
         
         await self.agency_service.update_step_execution(step_exec.step_execution_id, step_data)
