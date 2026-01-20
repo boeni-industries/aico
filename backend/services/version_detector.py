@@ -192,56 +192,44 @@ class DatabaseVersionDetector:
             return fallback
     
     async def _detect_postgresql_version(self) -> str:
-        """Detect PostgreSQL version from container"""
-        logger.debug("Attempting PostgreSQL version detection via docker exec...")
-        
-        try:
-            pg_password = os.environ.get("AICO_PG_PASSWORD")
-            if not pg_password:
-                logger.error(
-                    "AICO_PG_PASSWORD is not set; cannot perform authenticated PostgreSQL "
-                    "version detection inside aico-postgres container"
-                )
-                raise RuntimeError("AICO_PG_PASSWORD not set")
+        """Detect PostgreSQL version using the shared connection pool.
 
-            # Try docker exec first
-            result = await asyncio.to_thread(
-                subprocess.run,
-                [
-                    "docker",
-                    "exec",
-                    "-e",
-                    f"PGPASSWORD={pg_password}",
-                    "aico-postgres",
-                    "psql",
-                    "-U",
-                    "postgres",
-                    "-t",
-                    "-c",
-                    "SELECT version()",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
-            if result.returncode == 0:
-                # Parse version from output like "PostgreSQL 18.1 on ..."
-                output = result.stdout.strip()
-                if "PostgreSQL" in output:
-                    version_part = output.split("PostgreSQL")[1].strip().split()[0]
-                    logger.info(f"PostgreSQL version detected successfully: {version_part}")
-                    return version_part
-                else:
-                    logger.error(f"PostgreSQL version query returned unexpected format: {output}")
-            else:
-                logger.error(f"PostgreSQL version query failed with exit code {result.returncode}: {result.stderr}")
-                
-        except subprocess.TimeoutExpired:
-            logger.error("PostgreSQL version detection timed out after 5 seconds")
+        This reuses the central Postgres configuration and credential resolution
+        (env var + AICOKeyManager) implemented in aico.data.postgres.connection,
+        instead of requiring AICO_PG_PASSWORD directly or shelling out to docker.
+        """
+        logger.debug("Attempting PostgreSQL version detection via asyncpg pool...")
+
+        try:
+            # Import lazily to avoid circular imports at module import time
+            from aico.data.postgres.connection import get_postgres_pool
+
+            pool = await get_postgres_pool()
+
+            async with pool.acquire() as conn:
+                # asyncpg returns a Record; SELECT version() has a single column
+                row = await conn.fetchrow("SELECT version()")
+
+            if not row:
+                raise RuntimeError("SELECT version() returned no rows")
+
+            output = row[0]
+            if not isinstance(output, str):
+                output = str(output)
+
+            # Parse version from output like "PostgreSQL 18.1 on ..."
+            output = output.strip()
+            if "PostgreSQL" in output:
+                version_part = output.split("PostgreSQL")[1].strip().split()[0]
+                logger.info(f"PostgreSQL version detected successfully: {version_part}")
+                return version_part
+
+            logger.error(f"PostgreSQL version query returned unexpected format: {output}")
+
         except Exception as e:
+            # Log full stack trace but fall back gracefully
             logger.error(f"PostgreSQL version detection failed: {e}", exc_info=True)
-        
+
         # If we get here, detection failed
         fallback = self.DEFAULT_VERSIONS["PostgreSQL"]
         logger.error(f"PostgreSQL version detection FAILED - using fallback: {fallback}")
