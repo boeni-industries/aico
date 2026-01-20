@@ -329,12 +329,19 @@ class AgencyService:
             await self.uow.rollback()
             raise
 
-    async def get_plan_executions(self, plan_id: str) -> List[Any]:
-        """Get executions for a plan."""
+    async def get_plan_executions(self, plan_id: str, limit: int = 10) -> List[Any]:
+        """Get recent executions for a plan.
+
+        By default this returns at most the last 10 executions to avoid
+        loading unbounded history into API responses.
+        """
         try:
-            return await self.uow.agency_plan_executions.list(filters={"plan_id": plan_id})
+            return await self.uow.agency_plan_executions.list(filters={"plan_id": plan_id}, limit=limit)
         except Exception as e:
-            logger.error(f"[AGENCY_SERVICE] Failed to get plan executions: {e}", extra={"plan_id": plan_id})
+            logger.error(
+                f"[AGENCY_SERVICE] Failed to get plan executions: {e}",
+                extra={"plan_id": plan_id, "limit": limit},
+            )
             raise
 
     # ==================== Intention Set Operations ====================

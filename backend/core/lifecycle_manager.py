@@ -322,6 +322,7 @@ class BackendLifecycleManager:
         from aico.ai.memory.manager import MemoryManager
         from backend.services.modelservice_client import get_modelservice_client
         from aico.ai.agency import AgencyEngine
+        from aico.ai.agency import bootstrap as agency_bootstrap
 
         # Get UoW factory for AI processors
         from backend.core.postgres_dependencies import get_uow_factory
@@ -372,6 +373,17 @@ class BackendLifecycleManager:
         # AgencyEngine registration (Phase 1 goals & planning, Phase 2 context)
         # ------------------------------------------------------------------
         try:
+            # Initialize agency tool registry (connectivity + maintenance tools).
+            # This ensures import-time registration side effects have run before
+            # any skills try to resolve their implementation tools.
+            try:
+                await agency_bootstrap.initialize()
+                self.logger.info("[AI_PROCESSORS] Agency bootstrap completed (tools registered)")
+            except Exception as exc:  # pragma: no cover - defensive safeguard
+                self.logger.warning(
+                    f"[AI_PROCESSORS] Agency bootstrap failed; some tools may be unavailable: {exc}"
+                )
+
             # Phase 2: Initialize WorldModelService using initialized MemoryManager
             world_model = None
             try:
@@ -502,8 +514,15 @@ class BackendLifecycleManager:
                 async def get_plan_execution(self, execution_id: str):
                     return await self._execute_with_uow('get_plan_execution', execution_id)
 
-                async def get_plan_executions(self, plan_id: str):
-                    return await self._execute_with_uow('get_plan_executions', plan_id)
+                async def get_plan_executions(self, plan_id: str, limit: int = 10):
+                    """Proxy to AgencyService.get_plan_executions with optional limit.
+
+                    The underlying service method supports a limit parameter to avoid
+                    loading unbounded execution history. Expose the same signature
+                    here so API callers can explicitly bound the number of returned
+                    executions.
+                    """
+                    return await self._execute_with_uow('get_plan_executions', plan_id, limit=limit)
 
                 async def get_next_pending_step(self, execution_id: str):
                     return await self._execute_with_uow('get_next_pending_step', execution_id)

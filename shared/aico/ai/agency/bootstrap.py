@@ -36,3 +36,14 @@ async def initialize() -> None:
             "[AGENCY_BOOTSTRAP] Failed to initialize connectivity tools: %s",
             exc,
         )
+
+    try:
+        # Import agency maintenance tools (execution cleanup) so they register
+        # in the ToolRegistry at process startup.
+        import aico.ai.agency.tools.agency_cleanup  # noqa: F401
+        logger.debug("[AGENCY_BOOTSTRAP] Agency cleanup tools initialized")
+    except Exception as exc:  # pragma: no cover - defensive safeguard
+        logger.warning(
+            "[AGENCY_BOOTSTRAP] Failed to initialize agency cleanup tools: %s",
+            exc,
+        )

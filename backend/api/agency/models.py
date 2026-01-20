@@ -273,3 +273,123 @@ class UpdateGoalRequest(BaseModel):
     priority: Optional[GoalPriority] = None
     status: Optional[GoalStatus] = None
     metadata: Optional[Dict[str, Any]] = None
+
+
+# ============================================================================
+# Plan & Execution Models (Studio-facing read models)
+# ============================================================================
+
+
+class PlanStatusAPI(str, Enum):
+    """Plan status exposed via API (mirrors domain PlanStatus)."""
+
+    DRAFT = "draft"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    PAUSED = "paused"
+    ABANDONED = "abandoned"
+
+
+class ExecutionStatusAPI(str, Enum):
+    """Execution status for plan executions."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class StepExecutionStatusAPI(str, Enum):
+    """Execution status for individual plan steps."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    BLOCKED = "blocked"
+
+
+class PlanStepResponse(BaseModel):
+    """Single plan step as exposed to Studio.
+
+    Parsed from agency_plans.steps_json and enriched in the domain PlanStep
+    model. This ensures no double-encoded JSON is leaked to the frontend.
+    """
+
+    step_id: str
+    order: int
+    description: str
+    status: str
+    tool_id: Optional[str] = None
+    skill_id: Optional[str] = None
+    scheduled_for: Optional[datetime] = None
+    depends_on: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StepExecutionSummary(BaseModel):
+    """Execution status for a single step within a plan execution."""
+
+    step_execution_id: str
+    step_id: str
+    step_order: int
+    status: StepExecutionStatusAPI
+    duration_ms: Optional[int] = None
+    error_message: Optional[str] = None
+    skill_id: Optional[str] = None
+    skill_invocation_id: Optional[str] = None
+
+
+class PlanExecutionSummary(BaseModel):
+    """High-level execution status for a plan.
+
+    Aggregates step execution data as needed by Studio for progress bars
+    and status badges.
+    """
+
+    execution_id: str
+    plan_id: str
+    goal_id: str
+    status: ExecutionStatusAPI
+    steps_completed: int
+    steps_total: int
+    progress_percentage: float
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    last_updated_at: Optional[datetime] = None
+    steps: List[StepExecutionSummary] = Field(default_factory=list)
+
+
+class PlanResponse(BaseModel):
+    """Plan plus parsed steps and current execution summary for a goal."""
+
+    plan_id: str
+    goal_id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: PlanStatusAPI
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+    steps: List[PlanStepResponse] = Field(default_factory=list)
+    # Latest/most relevant execution for this plan (used for progress bar etc.)
+    execution: Optional[PlanExecutionSummary] = None
+    # All known executions for this plan (historical runs + current run)
+    executions: List[PlanExecutionSummary] = Field(default_factory=list)
+
+
+class GoalDetailResponse(BaseModel):
+    """Rich goal detail view for Studio.
+
+    Combines the core GoalResponse with all associated plans and their
+    latest execution state. This is intentionally separate from
+    GoalResponse to keep the basic goal API stable and focused.
+    """
+
+    goal: GoalResponse
+    plans: List[PlanResponse] = Field(default_factory=list)
+

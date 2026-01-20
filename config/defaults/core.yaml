@@ -477,6 +477,16 @@ services:
         max_proactive_messages_per_day: 5  # Maximum proactive messages sent per day
         min_hours_between_proactive: 2  # Minimum hours between proactive messages
 
+# Agency-wide retention policy for execution history
+agency:
+  execution_retention:
+    # Delete executions older than this many days (if null, age-based pruning is disabled)
+    max_age_days: 10
+    # Keep at most this many most recent executions per plan (including all statuses)
+    max_executions_per_plan: 10
+    # Always keep at least this many newest executions per plan, regardless of age
+    min_keep_per_plan: 3
+
 # Memory System Configuration
 memory:
   # Working Memory (LMDB) - Session context and conversation history

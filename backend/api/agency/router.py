@@ -38,6 +38,15 @@ from backend.api.agency.models import (
     GoalStatus,
     GoalPriority,
     PolicyEffect,
+    # Studio-facing plan/execution models
+    GoalDetailResponse,
+    PlanResponse,
+    PlanStepResponse,
+    PlanExecutionSummary,
+    StepExecutionSummary,
+    PlanStatusAPI,
+    ExecutionStatusAPI,
+    StepExecutionStatusAPI,
 )
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
@@ -159,6 +168,205 @@ async def get_intention_set(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _build_goal_response(goal) -> GoalResponse:
+    """Map domain Goal to API GoalResponse.
+
+    This helper keeps goal-to-API mapping consistent across endpoints.
+    """
+
+    return GoalResponse(
+        goal_id=goal.goal_id,
+        user_id=goal.user_id,
+        origin=GoalOrigin(goal.origin),
+        goal_type=goal.goal_type,
+        title=goal.title,
+        description=goal.description or "",
+        status=GoalStatus(goal.status),
+        priority=GoalPriority(goal.priority),
+        metadata=goal.metadata or {},
+        created_at=goal.created_at,
+        updated_at=goal.updated_at,
+    )
+
+
+def _map_plan_status(status_value: str) -> PlanStatusAPI:
+    """Map stored plan status string to PlanStatusAPI with safe fallback."""
+
+    try:
+        return PlanStatusAPI(status_value)
+    except Exception:
+        # Fallback to DRAFT for unknown legacy statuses
+        return PlanStatusAPI.DRAFT
+
+
+def _map_execution_status(status_value: str) -> ExecutionStatusAPI:
+    """Map stored execution status string to ExecutionStatusAPI with fallback."""
+
+    try:
+        return ExecutionStatusAPI(status_value)
+    except Exception:
+        return ExecutionStatusAPI.PENDING
+
+
+def _map_step_execution_status(status_value: str) -> StepExecutionStatusAPI:
+    """Map stored step execution status string to StepExecutionStatusAPI."""
+
+    try:
+        return StepExecutionStatusAPI(status_value)
+    except Exception:
+        return StepExecutionStatusAPI.PENDING
+
+
+@router.get("/goals/{goal_id}/plans", response_model=GoalDetailResponse)
+async def get_goal_plans(
+    goal_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
+):
+    """Get a goal with all plans and their latest execution state.
+
+    This is the Studio-facing read model:
+    Goal → Plan(s) → PlanExecution → StepExecution.
+    """
+
+    try:
+        user_id = user["user_uuid"]
+
+        # Load goal from AgencyEngine and enforce ownership
+        goal = await engine.get_goal(goal_id)
+        if not goal:
+            raise HTTPException(status_code=404, detail=f"Goal {goal_id} not found")
+
+        if goal.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this goal")
+
+        goal_response = _build_goal_response(goal)
+
+        # Get all plans for this goal via AgencyService (PostgreSQL-backed)
+        agency_service = engine.agency_service
+        plans = await agency_service.list_plans(goal_id=goal.goal_id)
+
+        plan_responses: List[PlanResponse] = []
+
+        for plan in plans:
+            # Map plan steps (static plan definition)
+            step_responses: List[PlanStepResponse] = []
+            for step in plan.steps:
+                step_responses.append(
+                    PlanStepResponse(
+                        step_id=step.step_id,
+                        order=step.order,
+                        description=step.description,
+                        status=getattr(step.status, "value", str(step.status)),
+                        tool_id=step.tool_id,
+                        skill_id=step.skill_id,
+                        scheduled_for=step.scheduled_for,
+                        depends_on=step.depends_on or [],
+                        metadata=step.metadata or {},
+                    )
+                )
+
+            latest_execution: Optional[PlanExecutionSummary] = None
+            all_executions: List[PlanExecutionSummary] = []
+
+            try:
+                # Only fetch a bounded number of recent executions per plan
+                executions = await agency_service.get_plan_executions(plan.plan_id, limit=10)
+                if executions:
+                    # Use PlanExecutor helper to get detailed status + steps for each execution
+                    executor = engine.executor
+                    if executor:
+                        # Parse timestamps safely (they may already be datetime or ISO strings)
+                        def _parse_dt(val: Any) -> Optional[datetime]:
+                            if val is None:
+                                return None
+                            if isinstance(val, datetime):
+                                return val
+                            try:
+                                return datetime.fromisoformat(val)
+                            except Exception:
+                                return None
+
+                        for exec_row in executions:
+                            try:
+                                status_dict = await executor.get_execution_status(exec_row.execution_id)
+                                if not status_dict:
+                                    continue
+
+                                step_execs: List[StepExecutionSummary] = []
+                                for s in status_dict.get("steps", []):
+                                    step_execs.append(
+                                        StepExecutionSummary(
+                                            step_execution_id=s["step_execution_id"],
+                                            step_id=str(s.get("step_id", "")),
+                                            step_order=s.get("step_order", 0),
+                                            status=_map_step_execution_status(s.get("status", "pending")),
+                                            duration_ms=s.get("duration_ms"),
+                                            error_message=s.get("error_message"),
+                                            skill_id=s.get("skill_id"),
+                                            skill_invocation_id=s.get("skill_invocation_id"),
+                                        )
+                                    )
+
+                                exec_summary = PlanExecutionSummary(
+                                    execution_id=status_dict["execution_id"],
+                                    plan_id=status_dict["plan_id"],
+                                    goal_id=status_dict["goal_id"],
+                                    status=_map_execution_status(status_dict.get("status", "pending")),
+                                    steps_completed=status_dict.get("steps_completed", 0),
+                                    steps_total=status_dict.get("steps_total", 0),
+                                    progress_percentage=status_dict.get("progress_percentage", 0.0),
+                                    started_at=_parse_dt(status_dict.get("started_at")),
+                                    completed_at=_parse_dt(status_dict.get("completed_at")),
+                                    last_error=status_dict.get("error_message"),
+                                    last_updated_at=_parse_dt(status_dict.get("completed_at"))
+                                    or _parse_dt(status_dict.get("started_at")),
+                                    steps=step_execs,
+                                )
+
+                                all_executions.append(exec_summary)
+                            except Exception as single_exec_err:
+                                logger.error(
+                                    f"[AGENCY_API] Failed to map execution {getattr(exec_row, 'execution_id', '?')} for plan {plan.plan_id}: {single_exec_err}",
+                                    exc_info=True,
+                                )
+
+                        # Determine latest execution (by last_updated_at) for convenience
+                        if all_executions:
+                            latest_execution = max(
+                                all_executions,
+                                key=lambda e: e.last_updated_at or e.started_at or datetime.min,
+                            )
+            except Exception as exec_err:
+                # Log but do not fail the entire response if execution data is missing/broken
+                logger.error(
+                    f"[AGENCY_API] Failed to attach executions for plan {plan.plan_id}: {exec_err}",
+                    exc_info=True,
+                )
+
+            plan_responses.append(
+                PlanResponse(
+                    plan_id=plan.plan_id,
+                    goal_id=plan.goal_id,
+                    title=plan.title,
+                    description=plan.description,
+                    status=_map_plan_status(getattr(plan.status, "value", str(plan.status))),
+                    metadata=plan.metadata or {},
+                    created_at=plan.created_at,
+                    updated_at=plan.updated_at,
+                    steps=step_responses,
+                    execution=latest_execution,
+                    executions=all_executions,
+                )
+            )
+
+        return GoalDetailResponse(goal=goal_response, plans=plan_responses)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get goal plans: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 # ============================================================================
 # Skills & Tools Introspection / Invocation
 # ============================================================================

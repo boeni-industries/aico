@@ -176,6 +176,7 @@ class AgencyEngine(BaseAIProcessor):
             ReflectOnGoalSkill,
             MaintenanceConnectivityFullScanSkill,
             MaintenanceConnectivityVerifyComponentSkill,
+            MaintenanceAgencyCleanupExecutionsSkill,
             AskUserSkill,
             InitiateConversationSkill,
         )
@@ -194,6 +195,9 @@ class AgencyEngine(BaseAIProcessor):
             )
             self.skill_registry.register(
                 MaintenanceConnectivityVerifyComponentSkill(session_factory=session_factory)
+            )
+            self.skill_registry.register(
+                MaintenanceAgencyCleanupExecutionsSkill(session_factory=session_factory)
             )
 
             # Communication skills (PostgreSQL/UoW + message bus aware)
