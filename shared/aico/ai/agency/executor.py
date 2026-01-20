@@ -387,6 +387,31 @@ class PlanExecutor:
         )
         
         return execution
+
+    async def cancel_executions_for_plan(
+        self,
+        plan_id: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Cancel all executions associated with a plan.
+
+        This is used by the AgencyEngine when a goal is completed or
+        retired to ensure no further steps are executed for abandoned
+        goals/plans.
+        """
+
+        executions = await self.agency_service.get_plan_executions(plan_id)
+        for exec_entity in executions:
+            execution_id = getattr(exec_entity, "execution_id", None)
+            if not execution_id:
+                continue
+            try:
+                await self.cancel_execution(execution_id, reason=reason)
+            except Exception as e:
+                self.logger.error(
+                    f"[EXECUTOR] Failed to cancel execution {execution_id} for plan {plan_id}: {e}",
+                    exc_info=True,
+                )
     
     async def get_execution_status(
         self,

@@ -205,6 +205,46 @@ class GoalArbiter:
             GoalOrigin.MAINTENANCE: 0.5,
             GoalOrigin.SYSTEM: 0.4,
         }
+
+    # ========================================================================
+    # Goal lifecycle synchronization
+    # ========================================================================
+
+    async def _set_goal_status(self, goal_id: str, new_status: GoalStatus) -> None:
+        """Synchronize goal lifecycle state with intention decisions.
+
+        This uses AgencyService as the single source of truth for goal
+        persistence so that GoalStatus always reflects the latest arbiter
+        decision about commitment level.
+        """
+
+        try:
+            goal = await self.agency_service.get_goal(goal_id)
+            if not goal:
+                if self.logger:
+                    self.logger.warning(
+                        "[ARBITER] Attempted to update status for unknown goal",
+                        extra={"goal_id": goal_id, "new_status": new_status.value},
+                    )
+                return
+
+            if goal.status == new_status:
+                return
+
+            goal.status = new_status
+            await self.agency_service.update_goal(goal)
+
+            if self.logger:
+                self.logger.info(
+                    "[ARBITER] Updated goal lifecycle state",
+                    extra={"goal_id": goal_id, "new_status": new_status.value},
+                )
+        except Exception as exc:
+            if self.logger:
+                self.logger.error(
+                    f"[ARBITER] Failed to update goal status for {goal_id}: {exc}",
+                    exc_info=True,
+                )
     
     # ========================================================================
     # Lesson-Based Adjustments
@@ -599,6 +639,8 @@ class GoalArbiter:
                         existing.priority_band = scored_goal.priority_band
                         existing.updated_at = datetime.now(UTC)
                         await self._update_intention(existing)
+                    # Ensure goal lifecycle is consistent with active intention
+                    await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
                     continue
                 
                 # Intention exists but NOT active (dropped/proposed) → reactivation candidate
@@ -610,6 +652,7 @@ class GoalArbiter:
                     existing.activated_at = datetime.now(UTC)
                     existing.updated_at = datetime.now(UTC)
                     await self._update_intention(existing)
+                    await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
                     new_intentions.append(existing)
                     if self.logger:
                         self.logger.info(f"[ARBITER] Reactivated urgent intention: '{scored_goal.goal.title}'")
@@ -622,6 +665,7 @@ class GoalArbiter:
                         existing.activated_at = datetime.now(UTC)
                         existing.updated_at = datetime.now(UTC)
                         await self._update_intention(existing)
+                        await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
                         new_intentions.append(existing)
                         active_count += 1
                         if self.logger:
@@ -640,6 +684,7 @@ class GoalArbiter:
                                 existing.activated_at = datetime.now(UTC)
                                 existing.updated_at = datetime.now(UTC)
                                 await self._update_intention(existing)
+                                await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
                                 new_intentions.append(existing)
                                 if self.logger:
                                     self.logger.info(
@@ -653,6 +698,8 @@ class GoalArbiter:
                     existing.priority_band = scored_goal.priority_band
                     existing.updated_at = datetime.now(UTC)
                     await self._update_intention(existing)
+                    # Background intentions should not keep the goal marked as active
+                    await self._set_goal_status(existing.goal_id, GoalStatus.PAUSED)
                     new_intentions.append(existing)
                 continue
             
@@ -737,6 +784,8 @@ class GoalArbiter:
         intention.updated_at = datetime.now(UTC)
         
         await self._update_intention(intention)
+        # Intention activation always implies active goal commitment
+        await self._set_goal_status(intention.goal_id, GoalStatus.ACTIVE)
         
         if self.logger:
             self.logger.info(f"[ARBITER] Activated intention {intention_id}")
@@ -749,11 +798,19 @@ class GoalArbiter:
         if not intention:
             raise ValueError(f"Intention {intention_id} not found")
         
-        intention.status = IntentionStatus.DROPPED if reason == "dropped" else IntentionStatus.PAUSED
+        # Map deactivation reason to intention + goal lifecycle states
+        if reason == "dropped":
+            intention.status = IntentionStatus.DROPPED
+            new_goal_status = GoalStatus.RETIRED
+        else:
+            intention.status = IntentionStatus.PAUSED
+            new_goal_status = GoalStatus.PAUSED
+
         intention.deactivated_at = datetime.now(UTC)
         intention.updated_at = datetime.now(UTC)
         
         await self._update_intention(intention)
+        await self._set_goal_status(intention.goal_id, new_goal_status)
         
         if self.logger:
             self.logger.info(f"[ARBITER] Deactivated intention {intention_id}: {reason}")
@@ -795,6 +852,15 @@ class GoalArbiter:
 
             await uow.agency_intention_set.create(entity)
             await uow.commit()
+
+        # Keep goal lifecycle in sync with intention creation
+        if activate:
+            await self._set_goal_status(scored_goal.goal.goal_id, GoalStatus.ACTIVE)
+        else:
+            # Background / proposed intentions do not change goal status yet
+            # (goal remains pending until promoted to active intention)
+            if scored_goal.goal.status not in (GoalStatus.ACTIVE, GoalStatus.PAUSED, GoalStatus.COMPLETED, GoalStatus.RETIRED):
+                await self._set_goal_status(scored_goal.goal.goal_id, GoalStatus.PENDING)
 
         return Intention(
             intention_id=entity.intention_id,

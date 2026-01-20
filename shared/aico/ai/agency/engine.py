@@ -22,7 +22,7 @@ from .models import (
 # AgencyService imported where needed to avoid circular dependency
 from .planner import Planner
 from .values_ethics import ValuesEthicsService, PolicyEffect
-from .arbiter import GoalArbiter, IntentionSet
+from .arbiter import GoalArbiter, IntentionSet, IntentionStatus
 
 # Phase 2: World Model integration
 try:
@@ -950,8 +950,16 @@ class AgencyEngine(BaseAIProcessor):
             logger.warning("[AGENCY_ENGINE] Attempted to change status of unknown goal", extra={"goal_id": goal_id})
             return None
 
+        previous_status = goal.status
         goal.status = new_status
         await self.agency_service.update_goal(goal)
+
+        # Cascade lifecycle to intentions, plans, and executions
+        await self._cascade_goal_lifecycle(
+            goal=goal,
+            previous_status=previous_status,
+            new_status=new_status,
+        )
 
         if self.event_store:
             await self.event_store.log_event(
@@ -962,7 +970,7 @@ class AgencyEngine(BaseAIProcessor):
                     event_type=event_type,
                     source=source,
                     payload={
-                        "from": goal.status.value,
+                        "from": previous_status.value,
                         "to": new_status.value,
                         **(payload or {}),
                     },
@@ -1008,6 +1016,116 @@ class AgencyEngine(BaseAIProcessor):
             new_status=GoalStatus.RETIRED,
             event_type="goal_retired",
         )
+
+    async def _cascade_goal_lifecycle(
+        self,
+        *,
+        goal: Goal,
+        previous_status: GoalStatus,
+        new_status: GoalStatus,
+    ) -> None:
+        """Propagate goal lifecycle changes to intentions, plans, and executions.
+
+        This ensures that when a goal is completed or retired, all associated
+        intentions and plans move to terminal/paused states and no further
+        steps or skills execute for abandoned goals.
+        """
+
+        # Only cascade for terminal or non-active states; ACTIVE/PENDING handled by arbiter
+        if new_status not in (GoalStatus.COMPLETED, GoalStatus.RETIRED, GoalStatus.PAUSED):
+            return
+
+        # 1) Update intentions for this goal
+        try:
+            from aico.data.uow import UnitOfWork
+
+            if not self._session_factory:
+                logger.debug("[AGENCY_ENGINE] No session_factory; skipping intention cascade")
+            else:
+                async with UnitOfWork(self._session_factory) as uow:
+                    intention_entities = await uow.agency_intention_set.list(
+                        filters={"goal_id": goal.goal_id}
+                    )
+
+                for entity in intention_entities:
+                    status = entity.status
+
+                    # Map goal lifecycle to intention lifecycle
+                    if new_status == GoalStatus.COMPLETED:
+                        new_intention_status = IntentionStatus.COMPLETED
+                    elif new_status == GoalStatus.RETIRED:
+                        new_intention_status = IntentionStatus.DROPPED
+                    else:  # PAUSED
+                        # Keep DROPPED/COMPLETED as-is; pause active/proposed
+                        if status in (IntentionStatus.DROPPED.value, IntentionStatus.COMPLETED.value):
+                            continue
+                        new_intention_status = IntentionStatus.PAUSED
+
+                    if status == new_intention_status.value:
+                        continue
+
+                    # Reuse arbiter helper to persist the change
+                    try:
+                        intention = await self.arbiter._get_intention(entity.intention_id)
+                        if not intention:
+                            continue
+
+                        intention.status = new_intention_status
+                        intention.updated_at = datetime.now(UTC)
+                        if new_intention_status in (IntentionStatus.DROPPED, IntentionStatus.COMPLETED, IntentionStatus.PAUSED):
+                            intention.deactivated_at = datetime.now(UTC)
+
+                        await self.arbiter._update_intention(intention)
+                    except Exception as exc:
+                        logger.error(
+                            f"[AGENCY_ENGINE] Failed to cascade intention {entity.intention_id} for goal {goal.goal_id}: {exc}",
+                            exc_info=True,
+                        )
+        except Exception as exc:
+            logger.error(
+                f"[AGENCY_ENGINE] Failed to load intentions for lifecycle cascade on goal {goal.goal_id}: {exc}",
+                exc_info=True,
+            )
+
+        # 2) Update plans for this goal
+        try:
+            plans = await self.agency_service.list_plans(goal_id=goal.goal_id)
+            for plan in plans:
+                # Map goal lifecycle to plan status
+                if new_status == GoalStatus.COMPLETED:
+                    if plan.status == PlanStatus.COMPLETED:
+                        continue
+                    plan.status = PlanStatus.COMPLETED
+                elif new_status == GoalStatus.RETIRED:
+                    # No dedicated ABANDONED status yet; use COMPLETED as terminal
+                    if plan.status == PlanStatus.COMPLETED:
+                        continue
+                    plan.status = PlanStatus.COMPLETED
+                elif new_status == GoalStatus.PAUSED:
+                    # Pause active plans only
+                    if plan.status != PlanStatus.ACTIVE:
+                        continue
+                    plan.status = PlanStatus.PAUSED
+
+                await self.agency_service.update_plan(plan)
+
+                # 3) Cancel ongoing executions for this plan when goal is terminal/retired
+                if new_status in (GoalStatus.COMPLETED, GoalStatus.RETIRED):
+                    try:
+                        await self.executor.cancel_executions_for_plan(
+                            plan_id=plan.plan_id,
+                            reason=f"goal_{new_status.value}",
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            f"[AGENCY_ENGINE] Failed to cancel executions for plan {plan.plan_id}: {exc}",
+                            exc_info=True,
+                        )
+        except Exception as exc:
+            logger.error(
+                f"[AGENCY_ENGINE] Failed to cascade plans/executions for goal {goal.goal_id}: {exc}",
+                exc_info=True,
+            )
     
     # ------------------------------------------------------------------
     # Phase 4: Intention Set Management
