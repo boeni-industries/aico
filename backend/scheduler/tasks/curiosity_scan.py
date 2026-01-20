@@ -85,9 +85,10 @@ class CuriosityScanTask(BaseTask):
             
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
+                # Only scan non-technical active users
                 active_users = await uow.user_profiles.list(
-                    filters={'is_active': True},
-                    limit=100000
+                    filters={"is_active": True, "is_technical": False},
+                    limit=100000,
                 )
             user_ids = [u.uuid for u in active_users]
             

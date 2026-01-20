@@ -195,12 +195,26 @@ class AgencyArbiterTask(BaseTask):
             async with UnitOfWork(session_factory) as uow:
                 agency_service = AgencyService(uow)
                 # Use service-layer helper to retrieve pending goals across users
-                pending_goals = await agency_service.get_goals_by_status(GoalStatus.PENDING, limit=limit * 10)
-                
-                # Get unique user IDs from pending goals
-                user_ids = list({g.user_id for g in pending_goals})[:limit]
+                pending_goals = await agency_service.get_goals_by_status(
+                    GoalStatus.PENDING, limit=limit * 10
+                )
+
+                # Start from users who have pending goals
+                candidate_user_ids = {g.user_id for g in pending_goals}
+
+                if not candidate_user_ids:
+                    return []
+
+                # Filter out technical users via user_profiles
+                non_technical_users = await uow.user_profiles.list(
+                    filters={"is_active": True, "is_technical": False},
+                    limit=100000,
+                )
+                allowed_ids = {u.uuid for u in non_technical_users}
+
+                user_ids = [uid for uid in candidate_user_ids if uid in allowed_ids][:limit]
             
-            logger.debug(f"🎯 [ARBITER_TASK] Found {len(user_ids)} users with pending goals")
+            logger.debug(f"🎯 [ARBITER_TASK] Found {len(user_ids)} non-technical users with pending goals")
             return user_ids
             
         except Exception as e:

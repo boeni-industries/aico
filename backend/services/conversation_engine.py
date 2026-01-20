@@ -385,7 +385,19 @@ class ConversationEngine(BaseService):
                     memory_context = None
 
             # Phase 0: Minimal agency wiring (no behavioural changes yet)
-            if self.enable_agency and self.agency_plugin:
+            # Skip agency for technical users
+            is_technical_user = False
+            try:
+                if hasattr(self, "container") and self.container:
+                    user_service = self.container.get_service("user_service")
+                    if user_service:
+                        profile = await user_service.get_user(user_context.user_id)
+                        if profile and getattr(profile, "is_technical", False):
+                            is_technical_user = True
+            except Exception:
+                is_technical_user = False
+
+            if self.enable_agency and self.agency_plugin and not is_technical_user:
                 try:
                     self.logger.info(f"[AGENCY] Phase 0: invoking agency plugin for request {request_id}")
                     agency_context: Dict[str, Any] = {
@@ -1171,6 +1183,21 @@ class ConversationEngine(BaseService):
             skill_id if selected, None otherwise
         """
         try:
+            # Do not extract or create goals for technical users
+            try:
+                if hasattr(self, "container") and self.container:
+                    user_service = self.container.get_service("user_service")
+                    if user_service:
+                        profile = await user_service.get_user(user_id)
+                        if profile and getattr(profile, "is_technical", False):
+                            self.logger.info(
+                                "[GOAL_EXTRACTION] Skipping goal extraction for technical user",
+                                extra={"user_id": user_id},
+                            )
+                            return
+            except Exception:
+                # On failure, fall back to treating user as non-technical
+                pass
             # Check if behavioral learning is enabled
             memory_manager = ai_registry.get("memory")
             
@@ -1386,8 +1413,7 @@ class ConversationEngine(BaseService):
         message_text: str,
         conversation_id: str
     ) -> None:
-        """
-        Extract user goals from conversation message (async, non-blocking).
+        """Extract user goals from conversation message (async, non-blocking).
         
         This runs in the background after the conversation response is sent,
         using XLM-RoBERTa for fast intent classification and LLM for goal extraction.
