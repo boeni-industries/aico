@@ -54,12 +54,12 @@ class UserPreferencesManager:
             # Check if user has custom preferences stored
             # For now, we'll use a simple JSON column in users table
             # In production, might want a separate user_preferences table
-            
+
             from aico.data.uow import UnitOfWork
-            
-            # self.db is a session_factory, create session and UoW
-            async with self.db() as session:
-                uow = UnitOfWork(session)
+
+            # self.db is an async session factory; let UnitOfWork manage the
+            # session lifecycle so repositories always see a valid session.
+            async with UnitOfWork(self.db) as uow:
                 user = await uow.user_profiles.get_by_id(user_id)
             
             if not user:
