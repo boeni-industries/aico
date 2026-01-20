@@ -163,10 +163,29 @@ class KGConsolidationTask(BaseTask):
             
             # Get users with unconsolidated messages
             print("🕸️ [KG_TASK] Getting users with unconsolidated messages...")
-            users_with_pending = await self._get_users_with_pending_messages(
-                memory_manager, 
-                batch_size
+            users_with_pending = await memory_manager._get_users_with_unconsolidated_messages(
+                max_age_hours=max_age_hours,
+                batch_size=batch_size,
             )
+
+            # Filter to non-technical active users via Postgres user_profiles
+            if users_with_pending:
+                from aico.data.postgres.connection import get_session_factory
+                from aico.data.uow import UnitOfWork
+
+                session_factory = await get_session_factory()
+                async with UnitOfWork(session_factory) as uow:
+                    non_technical_users = await uow.user_profiles.list(
+                        filters={"is_active": True, "is_technical": False},
+                        limit=100000,
+                    )
+                    allowed_ids = {u.uuid for u in non_technical_users}
+
+                users_with_pending = {
+                    user_id: msgs
+                    for user_id, msgs in users_with_pending.items()
+                    if user_id in allowed_ids
+                }
             
             if not users_with_pending:
                 print("🕸️ [KG_TASK] ✅ No unconsolidated messages found")

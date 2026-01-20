@@ -138,39 +138,47 @@ class MemoryConsolidationTask(BaseTask):
                 print("🧠 [AMS_TASK] ✅ System is idle, proceeding with consolidation")
                 logger.info("🧠 [AMS_TASK] ✅ System is idle, proceeding with consolidation")
             else:
-                print("🧠 [AMS_TASK] ⚠️  Idle detector not available, proceeding anyway")
-                logger.warning("🧠 [AMS_TASK] Idle detector not available, proceeding anyway")
+                print(" [AMS_TASK]  Idle detector not available, proceeding anyway")
+                logger.warning(" [AMS_TASK] Idle detector not available, proceeding anyway")
             
             # Step 2: Get users for today's shard
-            print(f"🧠 [AMS_TASK] Step 2: Getting users for today's shard (1/{user_shard_days})...")
-            logger.info(f"🧠 [AMS_TASK] Step 2: Getting users for today's shard (1/{user_shard_days})...")
+            print(f" [AMS_TASK] Step 2: Getting users for today's shard (1/{user_shard_days})...")
+            logger.info(f" [AMS_TASK] Step 2: Getting users for today's shard (1/{user_shard_days})...")
+            # Step 2: Determine which users to process today
+            print(" [AMS_TASK] Step 2: Determining user shard for today...")
+            today = datetime.now(timezone.utc).date()
+            today_shard = today.toordinal() % user_shard_days
+            print(f" [AMS_TASK] Today is shard {today_shard}/{user_shard_days}")
             
-            # Get today's shard index (0-6 for 7-day sharding)
-            today_shard = datetime.now(timezone.utc).day % user_shard_days
-            
-            # Database access will be via UoW in consolidate_user_memories
-            
-            # Query users for today's shard via UoW
+            # Get all non-technical active users via UoW
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
             
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 all_users = await uow.user_profiles.list(
-                    filters={'is_active': True},
-                    limit=100000
+                    filters={"is_active": True, "is_technical": False},
+                    limit=100000,
                 )
-                # Filter by shard in memory
-                user_ids = [
-                    u.uuid for u in all_users
-                    if (int(u.uuid[:8], 16) % user_shard_days) == today_shard
-                ]
-            print(f"🧠 [AMS_TASK] Found {len(user_ids)} users for shard {today_shard}/{user_shard_days}")
-            logger.info(f"🧠 [AMS_TASK] Found {len(user_ids)} users for shard {today_shard}/{user_shard_days}")
+            
+            if not all_users:
+                print(" [AMS_TASK] No non-technical active users found for consolidation")
+                logger.info(" [AMS_TASK] No non-technical active users found for consolidation")
+                return TaskResult(
+                    success=True,
+                    message="No users to consolidate",
+                    data={"users_processed": 0}
+                )
+            
+            # Filter by shard in memory
+            user_ids = [
+                u.uuid for u in all_users
+                if (int(u.uuid[:8], 16) % user_shard_days) == today_shard
+            ]
             
             if not user_ids:
-                print("🧠 [AMS_TASK] No users to consolidate")
-                logger.info("🧠 [AMS_TASK] No users to consolidate")
+                print(" [AMS_TASK] No users to consolidate")
+                logger.info(" [AMS_TASK] No users to consolidate")
                 return TaskResult(
                     success=True,
                     message="No users in today's shard",

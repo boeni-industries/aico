@@ -98,12 +98,12 @@ class ProactiveConversationTask(BaseTask):
             adaptivity_scorer = AdaptivityScorer()
             civility_scorer = CivilityScorer()
             
-            # Get all active users via UoW
+            # Get all non-technical active users via UoW
             from aico.data.uow import UnitOfWork
             async with UnitOfWork(session_factory) as uow:
                 active_users = await uow.user_profiles.list(
-                    filters={'is_active': True},
-                    limit=100000
+                    filters={"is_active": True, "is_technical": False},
+                    limit=100000,
                 )
                 all_user_ids = [u.uuid for u in active_users]
             

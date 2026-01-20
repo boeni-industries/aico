@@ -195,13 +195,25 @@ class AgencyReflectionTask(BaseTask):
             async with UnitOfWork(session_factory) as uow:
                 # Get recent goals
                 recent_goals = await uow.goals.list(
-                    filters={'created_at__gte': cutoff_date.isoformat()},
-                    limit=1000
+                    filters={"created_at__gte": cutoff_date.isoformat()},
+                    limit=1000,
                 )
-                # Get unique user IDs
-                user_ids = list(set(g.user_id for g in recent_goals))[:100]
+                # Get unique user IDs from recent goals
+                candidate_user_ids = {g.user_id for g in recent_goals}
+
+                if not candidate_user_ids:
+                    return []
+
+                # Filter to non-technical active users only
+                non_technical_users = await uow.user_profiles.list(
+                    filters={"is_active": True, "is_technical": False},
+                    limit=100000,
+                )
+                allowed_ids = {u.uuid for u in non_technical_users}
+
+                user_ids = [uid for uid in candidate_user_ids if uid in allowed_ids][:100]
             
-            logger.debug(f"[REFLECTION] Found {len(user_ids)} active users")
+            logger.debug(f"[REFLECTION] Found {len(user_ids)} non-technical active users")
             return user_ids
             
         except Exception as e:

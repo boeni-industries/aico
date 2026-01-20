@@ -61,11 +61,22 @@ class AgencyFollowUpTask(BaseTask):
             
             async with UnitOfWork(session_factory) as uow:
                 agency_service = AgencyService(uow)
+
+                # Limit to goals belonging to non-technical active users
+                from aico.data.uow import UnitOfWork as _UOW  # type: ignore[unused-import]
+                non_technical_users = await uow.user_profiles.list(
+                    filters={"is_active": True, "is_technical": False},
+                    limit=100000,
+                )
+                allowed_user_ids = {u.uuid for u in non_technical_users}
                 
                 # Get active and pending goals
                 active_goals = await agency_service.get_goals_by_status('active', limit=max_followups * 2)
                 pending_goals = await agency_service.get_goals_by_status('pending', limit=max_followups * 2)
-                all_goals = (active_goals + pending_goals)[:max_followups]
+                all_goals = [
+                    g for g in (active_goals + pending_goals)
+                    if g.user_id in allowed_user_ids
+                ][:max_followups]
                 
                 for goal in all_goals:
                     # Check if this goal has had recent activity in agency_events
