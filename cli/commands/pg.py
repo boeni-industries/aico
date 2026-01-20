@@ -145,7 +145,13 @@ app = typer.Typer(
 
 
 @app.command(help="Show Postgres backend status with comprehensive health checks")
-def status():
+def status(
+    shadow: bool = typer.Option(
+        False,
+        "--shadow",
+        help="Use the shadow Postgres instance (core.database.postgres_shadow / aico-postgres-shadow).",
+    ),
+):
     """Show configuration and perform comprehensive health checks.
     
     Checks:
@@ -159,12 +165,13 @@ def status():
 
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    pg_cfg = config.get("core.database.postgres", {}) or {}
+    cfg_key = "core.database.postgres_shadow" if shadow else "core.database.postgres"
+    pg_cfg = config.get(cfg_key, {}) or {}
 
     console.rule("[bold cyan]Postgres Backend Status[/bold cyan]")
 
     if not pg_cfg:
-        console.print(format_error("No core.database.postgres configuration found in core.yaml"))
+        console.print(format_error(f"No {cfg_key} configuration found in core.yaml"))
         raise typer.Exit(code=1)
 
     # Extract config
@@ -249,10 +256,11 @@ def status():
     # 4. Database authentication (only if TCP works and we have password)
     if tcp_ok and has_password:
         try:
+            container_name = "aico-postgres-shadow" if shadow else "aico-postgres"
             cmd = [
                 "docker", "exec", "-i",
                 "-e", f"PGPASSWORD={password}",
-                "aico-postgres",
+                container_name,
                 "psql", "-U", user, "-d", db_name, "-c", "SELECT 1;"
             ]
             result = subprocess.run(
@@ -277,10 +285,11 @@ def status():
     # 5. Schema existence check (only if DB connection works)
     if db_ok:
         try:
+            container_name = "aico-postgres-shadow" if shadow else "aico-postgres"
             cmd = [
                 "docker", "exec", "-i",
                 "-e", f"PGPASSWORD={password}",
-                "aico-postgres",
+                container_name,
                 "psql", "-U", user, "-d", db_name, "-t", "-c",
                 f"SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = '{core_schema}');"
             ]
@@ -314,7 +323,13 @@ def status():
 
 
 @app.command(help="Run detailed environment checks for Postgres/Timescale")
-def doctor():
+def doctor(
+    shadow: bool = typer.Option(
+        False,
+        "--shadow",
+        help="Use the shadow Postgres instance (core.database.postgres_shadow / aico-postgres-shadow).",
+    ),
+):
     """Run a series of checks to validate the Postgres environment.
 
     This command assumes Postgres is installed by the OS (or via Docker) and
@@ -334,7 +349,7 @@ def doctor():
     if not pg_cfg:
         console.print(
             format_error(
-                "No core.database.postgres configuration found in core.yaml. "
+                f"No {cfg_key} configuration found in core.yaml. "
                 "Please configure host/port/db_name/user before running 'aico pg doctor'."
             )
         )
@@ -390,10 +405,11 @@ def doctor():
         
         if password:
             try:
+                container_name = "aico-postgres-shadow" if shadow else "aico-postgres"
                 cmd = [
                     "docker", "exec", "-i",
                     "-e", f"PGPASSWORD={password}",
-                    "aico-postgres",
+                    container_name,
                     "psql", "-U", user, "-d", db_name, "-c", "SELECT version();"
                 ]
                 result = subprocess.run(
@@ -439,7 +455,13 @@ def doctor():
 
 
 @app.command(help="Initialize or update the Postgres schema (idempotent)")
-def init():
+def init(
+    shadow: bool = typer.Option(
+        False,
+        "--shadow",
+        help="Use the shadow Postgres instance (core.database.postgres_shadow / aico-postgres-shadow).",
+    ),
+):
     """Initialize or update the Postgres schema.
 
     This command applies the authoritative schema.sql to the running Postgres
@@ -456,7 +478,7 @@ def init():
     if not pg_cfg:
         console.print(
             format_error(
-                "No core.database.postgres configuration found in core.yaml. "
+                f"No {cfg_key} configuration found in core.yaml. "
                 "Please configure host/port/db_name/user before running 'aico pg init'."
             )
         )
@@ -496,8 +518,10 @@ def init():
         )
         raise typer.Exit(code=1)
 
-    # Locate schema.sql
-    schema_path = Path(__file__).parent.parent.parent / "shared" / "aico" / "data" / "postgres" / "schema.sql"
+    # Locate authoritative schema (single source of truth)
+    base_dir = Path(__file__).parent.parent.parent / "shared" / "aico" / "data" / "postgres"
+    schema_path = base_dir / "schema.sql"
+
     if not schema_path.exists():
         console.print(
             format_error(
@@ -507,48 +531,66 @@ def init():
         )
         raise typer.Exit(code=1)
 
-    console.print(f"📄 [cyan]Applying schema from:[/cyan] {schema_path}")
+    console.print(f"")
+    console.print(f"\U0001f4c4 [cyan]Applying schema files from:[/cyan] {base_dir}")
 
     # Apply schema via docker exec + psql
-    # We pipe the schema.sql into the container's psql
-    # Set PGPASSWORD environment variable for authentication
+    # We pipe the SQL into the container's psql and set PGPASSWORD for auth
     try:
-        with open(schema_path, "r") as f:
-            schema_sql = f.read()
+        total_create = 0
+        total_alter = 0
 
-        cmd = [
-            "docker", "exec", "-i",
-            "-e", f"PGPASSWORD={password}",  # Pass password via environment
-            "aico-postgres",
-            "psql", "-h", "localhost", "-U", user, "-d", db_name, "-v", "ON_ERROR_STOP=1"
-        ]
+        container_name = "aico-postgres-shadow" if shadow else "aico-postgres"
 
-        result = subprocess.run(
-            cmd,
-            input=schema_sql,
-            text=True,
-            capture_output=True,
-            check=False
-        )
+        def _apply_sql_file(path: Path, label: str) -> None:
+            nonlocal total_create, total_alter
+            if not path.exists():
+                return
 
-        if result.returncode != 0:
-            console.print(
-                format_error(
-                    f"Failed to apply schema (exit code {result.returncode}).\n"
-                    f"STDERR: {result.stderr}"
-                )
+            console.print(f"  [dim][34m[0m[dim]→ Applying {label}: {path.name}[/dim]")
+
+            with open(path, "r") as f:
+                sql_text = f.read()
+
+            cmd = [
+                "docker", "exec", "-i",
+                "-e", f"PGPASSWORD={password}",  # Pass password via environment
+                container_name,
+                "psql", "-h", "localhost", "-U", user, "-d", db_name, "-v", "ON_ERROR_STOP=1"
+            ]
+
+            result = subprocess.run(
+                cmd,
+                input=sql_text,
+                text=True,
+                capture_output=True,
+                check=False,
             )
-            raise typer.Exit(code=1)
 
-        # Count successful operations for progress feedback
-        stdout_lines = result.stdout.strip().split('\n')
-        create_count = sum(1 for line in stdout_lines if line.startswith('CREATE'))
-        alter_count = sum(1 for line in stdout_lines if line.startswith('ALTER'))
-        
-        console.print(format_success(
-            f"✅ Postgres schema applied successfully.\n"
-            f"   Created {create_count} objects, applied {alter_count} constraints."
-        ))
+            if result.returncode != 0:
+                console.print(
+                    format_error(
+                        f"Failed to apply {label} (exit code {result.returncode}).\n"
+                        f"STDERR: {result.stderr}"
+                    )
+                )
+                raise typer.Exit(code=1)
+
+            stdout_lines = result.stdout.strip().split("\n") if result.stdout else []
+            create_count = sum(1 for line in stdout_lines if line.startswith("CREATE"))
+            alter_count = sum(1 for line in stdout_lines if line.startswith("ALTER"))
+            total_create += create_count
+            total_alter += alter_count
+
+        # Apply authoritative schema.sql (always applied)
+        _apply_sql_file(schema_path, "authoritative schema")
+
+        console.print(
+            format_success(
+                "✅ Postgres schema applied successfully.\n" \
+                f"   Created {total_create} objects, applied {total_alter} constraints."
+            )
+        )
 
     except FileNotFoundError:
         console.print(
@@ -565,35 +607,49 @@ def init():
 
 
 @app.command(help="Start the Postgres container using docker-compose.local.yml")
-def start():
+def start(
+    shadow: bool = typer.Option(
+        False,
+        "--shadow",
+        help="Start the shadow Postgres container (postgres-shadow) instead of primary.",
+    ),
+):
     """Start the local Postgres container (docker compose)."""
 
-    console.print("🚀 [cyan]Starting Postgres container (docker compose)...[/cyan]")
-    code = _run_compose(["up", "-d", "postgres"])
+    service = "postgres-shadow" if shadow else "postgres"
+    console.print(f"🚀 [cyan]Starting Postgres container ({service}) (docker compose)...[/cyan]")
+    code = _run_compose(["up", "-d", service])
     if code != 0:
         raise typer.Exit(code)
     console.print(format_success("Postgres container started (if Docker is available)."))
 
 
 @app.command(help="Stop the Postgres container using docker-compose.local.yml")
-def stop():
+def stop(
+    shadow: bool = typer.Option(
+        False,
+        "--shadow",
+        help="Stop the shadow Postgres container (postgres-shadow) instead of primary.",
+    ),
+):
     """Stop the local Postgres container (docker compose)."""
 
-    console.print("🛑 [cyan]Stopping Postgres container (docker compose)...[/cyan]")
-    code = _run_compose(["stop", "postgres"])
+    service = "postgres-shadow" if shadow else "postgres"
+    console.print(f"🛑 [cyan]Stopping Postgres container ({service}) (docker compose)...[/cyan]")
+    code = _run_compose(["stop", service])
     if code != 0:
         raise typer.Exit(code)
     console.print(format_success("Postgres container stopped (if it was running)."))
 
 
-def _get_pg_connection():
+def _get_pg_connection(shadow: bool = False):
     """Get PostgreSQL connection with credentials from keyring."""
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     pg_cfg = config.get("core.database.postgres", {}) or {}
     
     if not pg_cfg:
-        console.print(format_error("No core.database.postgres configuration found"))
+        console.print(format_error(f"No {cfg_key} configuration found"))
         raise typer.Exit(1)
     
     host = pg_cfg.get("host", "127.0.0.1")
@@ -618,14 +674,14 @@ def _get_pg_connection():
     }
 
 
-def _exec_psql(sql: str, format_output: str = "table") -> tuple[int, str, str]:
+def _exec_psql(sql: str, format_output: str = "table", shadow: bool = False) -> tuple[int, str, str]:
     """Execute SQL via docker exec psql. Returns (returncode, stdout, stderr)."""
-    conn_info = _get_pg_connection()
+    conn_info = _get_pg_connection(shadow=shadow)
     
     cmd = [
         "docker", "exec", "-i",
         "-e", f"PGPASSWORD={conn_info['password']}",
-        "aico-postgres",
+        "aico-postgres-shadow" if shadow else "aico-postgres",
         "psql", "-U", conn_info['user'], "-d", conn_info['db_name']
     ]
     
@@ -644,7 +700,13 @@ def _exec_psql(sql: str, format_output: str = "table") -> tuple[int, str, str]:
 
 
 @app.command(help="Test database connection and basic CRUD operations")
-def test():
+def test(
+    shadow: bool = typer.Option(
+        False,
+        "--shadow",
+        help="Use the shadow Postgres instance (core.database.postgres_shadow / aico-postgres-shadow).",
+    ),
+):
     """Test PostgreSQL connection with comprehensive CRUD operations."""
     console.rule("[bold cyan]PostgreSQL Connection Test[/bold cyan]")
     
@@ -654,7 +716,7 @@ def test():
     try:
         # Test 1: Basic connectivity
         console.print("🔍 Testing basic connectivity...")
-        code, stdout, stderr = _exec_psql("SELECT 1;")
+        code, stdout, stderr = _exec_psql("SELECT 1;", shadow=shadow)
         if code != 0:
             console.print(format_error(f"Connectivity failed: {stderr}"))
             raise typer.Exit(1)
@@ -664,7 +726,7 @@ def test():
         console.print("🔍 Testing schema access...")
         code, stdout, stderr = _exec_psql(
             "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'aico_core';"
-        )
+        , shadow=shadow)
         if code == 0:
             console.print(format_success(f"✅ Schema access successful"))
         
@@ -676,7 +738,7 @@ def test():
                 message TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-        """)
+        """, shadow=shadow)
         if code != 0:
             console.print(format_error(f"CREATE failed: {stderr}"))
             raise typer.Exit(1)
@@ -689,7 +751,7 @@ def test():
             INSERT INTO aico_core.{test_table} (message) 
             VALUES ('{test_message}') 
             RETURNING id;
-        """)
+        """, shadow=shadow)
         if code != 0:
             console.print(format_error(f"INSERT failed: {stderr}"))
             raise typer.Exit(1)

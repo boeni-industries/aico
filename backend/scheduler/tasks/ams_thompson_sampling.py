@@ -71,7 +71,9 @@ class ThompsonSamplingUpdateTask(BaseTask):
             # Get configuration from behavioral config
             min_trajectories = behavioral_config.get("contextual_bandit", {}).get("min_trajectories", 1)
             lookback_days = context.get_config("lookback_days", 7)
-            lookback_date = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
+            # Use a datetime object for lookback_date so we can compare against
+            # the timestamp field (which is stored as a TIMESTAMP in PostgreSQL).
+            lookback_date = datetime.now(timezone.utc) - timedelta(days=lookback_days)
             
             # Get feedback events from last N days via UoW
             from aico.data.postgres.connection import get_session_factory
@@ -83,12 +85,22 @@ class ThompsonSamplingUpdateTask(BaseTask):
                     filters={'reward__ne': 0},
                     limit=100000
                 )
-                # Filter in memory for timestamp and valid skill_id
-                feedback_events = [
-                    (f.user_id, f.skill_id, f.reward, f.timestamp)
-                    for f in all_feedback
-                    if f.timestamp >= lookback_date and f.skill_id and f.skill_id.strip()
-                ]
+                # Filter in memory for timestamp and valid skill_id.
+                # Be tolerant to legacy rows where timestamp may have been
+                # stored as an ISO8601 string instead of a datetime.
+                feedback_events = []
+                for f in all_feedback:
+                    ts = f.timestamp
+                    if isinstance(ts, str):
+                        try:
+                            # fromisoformat handles the strings written by our tests
+                            ts = datetime.fromisoformat(ts)
+                        except Exception:
+                            continue
+                    if not ts or not f.skill_id or not f.skill_id.strip():
+                        continue
+                    if ts >= lookback_date:
+                        feedback_events.append((f.user_id, f.skill_id, f.reward, ts))
             
             if not feedback_events:
                 print("  [AMS_TS] No feedback events to process")

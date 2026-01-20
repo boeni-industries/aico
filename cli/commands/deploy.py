@@ -635,7 +635,12 @@ def deploy_pg(
         False,
         "--nuke",
         help="Destroy Postgres container + volume before provisioning (DANGEROUS).",
-    )
+    ),
+    shadow: bool = typer.Option(
+        False,
+        "--shadow",
+        help="Provision the shadow Postgres instance (postgres-shadow / core.database.postgres_shadow).",
+    ),
 ):
     """Deploy or refresh the Postgres backend on the current environment.
 
@@ -658,6 +663,8 @@ def deploy_pg(
 
     if nuke:
         console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
+        # For now, --nuke always targets the primary Postgres volume/container
+        # Shadow environments can be nuked manually if needed.
         _nuke_postgres()
 
     # Get or create Postgres password (prompts for master password if needed)
@@ -667,7 +674,8 @@ def deploy_pg(
     from aico.core.config import ConfigurationManager
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    pg_cfg = config.get("core.database.postgres", {}) or {}
+    cfg_key = "core.database.postgres_shadow" if shadow else "core.database.postgres"
+    pg_cfg = config.get(cfg_key, {}) or {}
     host = pg_cfg.get("host", "127.0.0.1")
     port = int(pg_cfg.get("port", 5432))
     
@@ -676,8 +684,9 @@ def deploy_pg(
         "AICO_PG_PASSWORD": pg_password
     }
 
-    console.print("🚀 [cyan]Starting Postgres container with auto-generated credentials...[/cyan]")
-    code = _run_compose(["up", "-d", "postgres"], env=container_env)
+    service_name = "postgres-shadow" if shadow else "postgres"
+    console.print(f"🚀 [cyan]Starting Postgres container ({service_name}) with auto-generated credentials...[/cyan]")
+    code = _run_compose(["up", "-d", service_name], env=container_env)
     if code != 0:
         console.print(format_error("Failed to start Postgres container"))
         raise typer.Exit(code)
@@ -700,7 +709,7 @@ def deploy_pg(
                 time.sleep(2)
 
                 console.print("🔧 [cyan]Applying schema (idempotent)...[/cyan]")
-                pg_cli.init()
+                pg_cli.init(shadow=shadow)
 
                 # After schema is applied, ensure the internal system user exists.
                 console.print("👤 [cyan]Ensuring internal system user exists...[/cyan]")
@@ -722,10 +731,10 @@ def deploy_pg(
     else:
         console.print(format_warning(f"Postgres did not become ready within {max_wait} seconds, continuing anyway..."))
         console.print("🔧 [cyan]Applying schema (idempotent)...[/cyan]")
-        pg_cli.init()
+        pg_cli.init(shadow=shadow)
 
     console.print("🩺 [cyan]Verifying deployment health...[/cyan]")
-    pg_cli.doctor()
+    pg_cli.doctor(shadow=shadow)
 
     console.print("")
     console.print(format_success("✅ Postgres deployment completed successfully!"))

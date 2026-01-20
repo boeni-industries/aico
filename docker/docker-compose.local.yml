@@ -45,6 +45,38 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
+  postgres-shadow:
+    image: postgres:18.1
+    container_name: aico-postgres-shadow
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aico
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD:-}
+    ports:
+      # Shadow instance exposed on a different port to avoid clashes
+      - "55432:5432"
+    volumes:
+      - aico-pgdata-shadow:/var/lib/postgresql
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+      - "-c"
+      - "hba_file=/etc/postgresql/pg_hba.conf"
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "postgres-shadow"
+      com.aico.service.type: "database"
+      com.aico.service.role: "shadow-datastore"
+      org.opencontainers.image.title: "AICO Postgres Shadow Database"
+      org.opencontainers.image.description: "Shadow relational database for AICO schema testing"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev-shadow"
+
   influxdb:
     image: influxdb:2
     container_name: aico-influxdb
@@ -83,6 +115,14 @@ volumes:
     labels:
       com.aico.project: "aico"
       com.aico.component: "postgres"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-pgdata-shadow:
+    name: aico-pgdata-shadow
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "postgres-shadow"
       com.aico.volume.type: "data"
       com.aico.managed-by: "aico-cli"
   

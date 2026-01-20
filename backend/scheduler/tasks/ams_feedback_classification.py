@@ -88,8 +88,10 @@ class FeedbackClassificationTask(BaseTask):
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 # Get unprocessed feedback with free text
+                # NOTE: processed is stored as INTEGER (0/1) in aico_core.ams_behavioral_feedback,
+                # so we must filter with 0 instead of boolean False to avoid type issues.
                 all_feedback = await uow.ams_behavioral_feedback.list(
-                    filters={'processed': False},
+                    filters={'processed': 0},
                     limit=batch_size * 2
                 )
                 # Filter in memory for non-empty free_text and empty reason

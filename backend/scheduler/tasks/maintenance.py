@@ -54,10 +54,11 @@ class LogCleanupTask(BaseTask):
             # Clean up task execution history via SchedulerService
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
             
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
-                scheduler_service = uow.scheduler
+                scheduler_service = SchedulerService(uow)
                 cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
                 exec_deleted = await scheduler_service.cleanup_old_executions(cutoff_date)
                 await uow.commit()

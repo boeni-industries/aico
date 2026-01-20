@@ -26,6 +26,16 @@ database:
     # not kept in this config file.
     sslmode: "prefer"
 
+  postgres_shadow:
+    # Shadow Postgres instance for schema testing and experimentation
+    db_name: "aico"
+    core_schema: "aico_core"
+
+    host: "127.0.0.1"
+    port: 55432
+    user: "postgres"
+    sslmode: "prefer"
+
   # Time-series / telemetry backend (InfluxDB)
   influx:
     # Base URL for the InfluxDB HTTP API (v2 or later)

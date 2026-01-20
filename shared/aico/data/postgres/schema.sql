@@ -1,7 +1,8 @@
--- AICO Postgres Core Schema
+-- AICO Postgres Core Schema (authoritative)
 --
--- Auto-generated from shared/aico/data/schemas/schema.py
--- DO NOT EDIT MANUALLY - regenerate using generate_postgres_schema.py
+-- This file defines the canonical Postgres schema for AICO.
+-- It is applied by the CLI (aico pg init / aico deploy pg) and may be edited
+-- directly as part of normal development and migrations.
 --
 -- Database: aico
 -- Schema:   aico_core
@@ -1129,8 +1130,10 @@ CREATE TABLE IF NOT EXISTS "user_profiles" (
                 user_type TEXT DEFAULT 'person',
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-            , primary_language TEXT);
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                primary_language TEXT,
+                is_technical BOOLEAN NOT NULL DEFAULT FALSE
+            );
 
 CREATE INDEX IF NOT EXISTS idx_users_active ON "user_profiles"(is_active);
 
