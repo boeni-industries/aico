@@ -64,23 +64,16 @@ class PropertyGraphStorage:
             node: Node to save
         """
         try:
-            print(f"🕸️ [STORAGE] Saving node {node.id} (label={node.label})...")
-            
             # Save to PostgreSQL via UoW
             async with self.uow_factory() as uow:
                 await uow.kg_nodes.create(node)
                 await uow.commit()
-            print(f"🕸️ [STORAGE] PostgreSQL save complete")
-            
             # Generate embedding and save to ChromaDB
-            print(f"🕸️ [STORAGE] Generating embedding for node...")
             doc = node.to_chromadb_document()
             
             # Generate embedding via modelservice
             embedding_result = await self.modelservice.generate_embeddings([doc["document"]])
             embeddings = embedding_result.get("embeddings", [])
-            
-            print(f"🕸️ [STORAGE] Saving to ChromaDB with embedding...")
             
             def _sync_save_to_chroma():
                 """Synchronous ChromaDB write - runs in thread pool"""
@@ -92,10 +85,8 @@ class PropertyGraphStorage:
                 )
             
             await asyncio.to_thread(_sync_save_to_chroma)
-            print(f"🕸️ [STORAGE] ChromaDB upsert complete")
             
             logger.debug(f"Saved node {node.id} (label={node.label})")
-            print(f"🕸️ [STORAGE] ✅ Node {node.id} saved successfully")
             
         except Exception as e:
             logger.error(f"Failed to save node {node.id}: {e}")
@@ -149,7 +140,6 @@ class PropertyGraphStorage:
         
         # Mark superseded nodes as historical (if any from resolution)
         if superseded_node_ids:
-            print(f"\n  [STORAGE] Marking {len(superseded_node_ids)} superseded nodes as historical...")
             async with self.uow_factory() as uow:
                 for node_id in superseded_node_ids:
                     # Mark node as historical
@@ -170,10 +160,8 @@ class PropertyGraphStorage:
                         await uow.kg_edges.update(edge)
                 
                 await uow.commit()
-            print(f"  [STORAGE] Marked {len(superseded_node_ids)} nodes as historical")
         
         # Clean up ChromaDB embeddings
-        print(f"  [STORAGE] Cleaning up ChromaDB embeddings...")
         async with self.uow_factory() as uow:
             current_nodes = await uow.kg_nodes.list(filters={'is_current': True}, limit=100000)
             current_node_ids = set(node.id for node in current_nodes)
@@ -197,7 +185,6 @@ class PropertyGraphStorage:
                 try:
                     self._node_collection.delete(ids=list(orphaned_node_ids))
                     logger.info(f"Deleted {len(orphaned_node_ids)} orphaned node embeddings from ChromaDB")
-                    print(f"  [STORAGE] 🧹 Deleted {len(orphaned_node_ids)} orphaned node embeddings")
                 except Exception as e:
                     logger.warning(f"Failed to delete orphaned node embeddings: {e}")
             
@@ -216,19 +203,12 @@ class PropertyGraphStorage:
                 try:
                     self._edge_collection.delete(ids=list(orphaned_edge_ids))
                     logger.info(f"Deleted {len(orphaned_edge_ids)} orphaned edge embeddings from ChromaDB")
-                    print(f"  [STORAGE] 🧹 Deleted {len(orphaned_edge_ids)} orphaned edge embeddings")
                 except Exception as e:
                     logger.warning(f"Failed to delete orphaned edge embeddings: {e}")
-            
-            if not orphaned_node_ids and not orphaned_edge_ids:
-                print(f"  [STORAGE] ✅ ChromaDB already in sync")
-            else:
-                print(f"  [STORAGE] ✅ ChromaDB cleanup complete: {len(orphaned_node_ids)} nodes, {len(orphaned_edge_ids)} edges removed")
         
         await asyncio.to_thread(_sync_cleanup_chromadb)
         
         # Save nodes and edges to PostgreSQL
-        print(f"\n  💾 [STORAGE] Saving to PostgreSQL: {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
         postgres_start = time.time()
         
         node_id_mapping = {}  # attempted_id -> actual_id for deduplication

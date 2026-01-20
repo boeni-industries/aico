@@ -271,13 +271,11 @@ class MemoryManager(BaseAIProcessor):
         except Exception as e:
             error_msg = f"Failed to initialize memory manager: {e}"
             logger.error(error_msg)
-            print(f"🚨 [MEMORY_INIT_ERROR] {error_msg}")
             
             # Get full stack trace
             import traceback
             stack_trace = traceback.format_exc()
             logger.error(f"🚨 [MEMORY_INIT_ERROR] Full stack trace:\n{stack_trace}")
-            print(f"🚨 [MEMORY_INIT_ERROR] Full stack trace:\n{stack_trace}")
             raise
     
     async def _initialize_knowledge_graph(self) -> None:
@@ -355,13 +353,11 @@ class MemoryManager(BaseAIProcessor):
         - PreferenceManager: User preference vectors (Phase 3)
         """
         try:
-            print("🧠 [AMS] Initializing Adaptive Memory System components...")
             logger.info("🧠 [AMS] Initializing Adaptive Memory System components...")
             
             # Check if AMS is enabled in configuration
             ams_config = self._memory_config.get("consolidation", {})
             if not ams_config.get("enabled", False):
-                print("🧠 [AMS] ⚠️  Consolidation disabled in configuration, skipping AMS initialization")
                 logger.info("🧠 [AMS] Consolidation disabled in configuration, skipping AMS initialization")
                 return
             
@@ -371,7 +367,6 @@ class MemoryManager(BaseAIProcessor):
                 cpu_threshold_percent=idle_config.get("cpu_threshold", 20.0),
                 check_interval_seconds=idle_config.get("check_interval_seconds", 60)
             )
-            print("🧠 [AMS] ✅ Idle detector initialized")
             logger.info("🧠 [AMS] Idle detector initialized")
             
             # Initialize consolidation scheduler
@@ -381,18 +376,15 @@ class MemoryManager(BaseAIProcessor):
                 max_duration_minutes=ams_config.get("max_duration_minutes", 60),
                 user_sharding_cycle_days=ams_config.get("user_sharding_cycle_days", 7)
             )
-            print("🧠 [AMS] ✅ Consolidation scheduler initialized")
             logger.info("🧠 [AMS] Consolidation scheduler initialized")
             
             # Initialize evolution tracker
             temporal_config = self._memory_config.get("temporal", {})
             if temporal_config.get("enabled", True):
                 self._evolution_tracker = EvolutionTracker()
-                print("🧠 [AMS] ✅ Evolution tracker initialized")
                 logger.info("🧠 [AMS] Evolution tracker initialized")
             
             self._ams_enabled = True
-            print("🧠 [AMS] ✅✅✅ Adaptive Memory System components initialized successfully!")
             logger.info("🧠 [AMS] ✅ Adaptive Memory System components initialized successfully")
             
             # Initialize behavioral learning components (Phase 3)
@@ -401,17 +393,14 @@ class MemoryManager(BaseAIProcessor):
                 try:
                     from .behavioral import SkillStore, ThompsonSamplingSelector, PreferenceManager
                     
-                    print("🧠 [AMS] Behavioral learning enabled, initializing components...")
                     logger.info("🧠 [AMS] Initializing behavioral learning components...")
                     
                     # Skill store
                     self._skill_store = SkillStore(self._uow_factory)
-                    print("🧠 [AMS] ✅ Skill store initialized")
                     logger.info("🧠 [AMS] Skill store initialized")
                     
                     # Initialize base skills if not present
                     await self._skill_store.initialize_base_skills()
-                    print("🧠 [AMS] ✅ Base skills initialized")
                     logger.info("🧠 [AMS] Base skills initialized")
                     
                     # Thompson Sampling selector
@@ -421,7 +410,6 @@ class MemoryManager(BaseAIProcessor):
                         prior_alpha=bandit_config.get("prior_alpha", 1.0),
                         prior_beta=bandit_config.get("prior_beta", 1.0)
                     )
-                    print("🧠 [AMS] ✅ Thompson Sampling selector initialized")
                     logger.info("🧠 [AMS] Thompson Sampling selector initialized")
                     
                     # Preference manager
@@ -429,27 +417,21 @@ class MemoryManager(BaseAIProcessor):
                         uow_factory=self._uow_factory,
                         learning_rate=behavioral_config.get("learning_rate", 0.1)
                     )
-                    print("🧠 [AMS] ✅ Preference manager initialized")
                     logger.info("🧠 [AMS] Preference manager initialized")
                     
                     self._behavioral_enabled = True
-                    print("🧠 [AMS] ✅ Behavioral learning initialized successfully")
                     logger.info("🧠 [AMS] ✅ Behavioral learning initialized successfully")
                     
                 except Exception as e:
-                    print(f"🧠 [AMS] ⚠️  Failed to initialize behavioral learning: {e}")
                     logger.error(f"🧠 [AMS] Failed to initialize behavioral learning: {e}")
                     self._behavioral_enabled = False
             else:
-                print("🧠 [AMS] Behavioral learning disabled in configuration")
                 logger.info("🧠 [AMS] Behavioral learning disabled in configuration")
             
         except Exception as e:
-            print(f"🧠 [AMS] ❌❌❌ Failed to initialize AMS components: {e}")
             logger.error(f"🧠 [AMS] ❌ Failed to initialize AMS components: {e}")
             import traceback
             error_trace = traceback.format_exc()
-            print(f"🧠 [AMS] Traceback:\n{error_trace}")
             logger.error(f"🧠 [AMS] Traceback: {error_trace}")
             # Don't fail overall initialization if AMS fails
             self._ams_enabled = False
@@ -487,8 +469,7 @@ class MemoryManager(BaseAIProcessor):
             return False
     
     async def process(self, context: ProcessingContext) -> ProcessingResult:
-        """
-        Process memory operations based on context.
+        """Process memory operations based on context.
         
         Handles memory storage, retrieval, and context assembly
         for AI processing pipeline integration.
@@ -499,54 +480,60 @@ class MemoryManager(BaseAIProcessor):
         """
         import time
         timestamp = time.time()
-        print(f"🚨 [MEMORY_MANAGER_DEBUG] MemoryManager.process() CALLED! [{timestamp:.6f}]")
-        import time
+        logger.debug(f"[MEMORY_MANAGER_DEBUG] process() called at {timestamp:.6f}")
         timestamp = time.time()
-        print(f"🚨 [MEMORY_MANAGER_DEBUG] Context: conversation_id={context.conversation_id}, message_type={context.message_type} [{timestamp:.6f}]")
+        logger.debug(
+            f"[MEMORY_MANAGER_DEBUG] Context: conversation_id={context.conversation_id}, "
+            f"message_type={context.message_type} [{timestamp:.6f}]"
+        )
         
         # DIAGNOSTIC: Track where the delay occurs
-        import time
         before_init_check = time.time()
-        print(f"🔍 [ASYNC_DEBUG] Before initialization check [{before_init_check:.6f}]")
+        logger.debug(f"[ASYNC_DEBUG] Before initialization check [{before_init_check:.6f}]")
         logger.info(f"🧠 [MEMORY_FLOW] Processing memory operation for conversation {context.conversation_id}")
         logger.info(f"🧠 [MEMORY_FLOW] Message type: {context.message_type}, Turn: {context.turn_number}")
         
         if not self._initialized:
-            import time
             before_init = time.time()
-            print(f"🔍 [ASYNC_DEBUG] Before initialize() [{before_init:.6f}]")
+            logger.debug(f"[ASYNC_DEBUG] Before initialize() [{before_init:.6f}]")
             logger.info("🧠 [MEMORY_FLOW] Lazy initializing memory system on first use")
             await self.initialize()
             after_init = time.time()
-            print(f"🔍 [ASYNC_DEBUG] After initialize() [{after_init:.6f}] - took {(after_init-before_init)*1000:.2f}ms")
+            logger.debug(
+                f"[ASYNC_DEBUG] After initialize() [{after_init:.6f}] - "
+                f"took {(after_init-before_init)*1000:.2f}ms"
+            )
             
-        import time
         before_context_assembly = time.time()
-        print(f"🔍 [ASYNC_DEBUG] Before context assembly [{before_context_assembly:.6f}]")
+        logger.debug(f"[ASYNC_DEBUG] Before context assembly [{before_context_assembly:.6f}]")
         start_time = datetime.utcnow()
         
         try:
             # Store current interaction (Phase 1+)
             if self._working_store:
-                import time
                 before_store = time.time()
-                print(f"🔍 [ASYNC_DEBUG] Before working memory store [{before_store:.6f}]")
+                logger.debug(f"[ASYNC_DEBUG] Before working memory store [{before_store:.6f}]")
                 logger.info("🧠 [MEMORY_FLOW] → Storing interaction in working memory")
                 await self._store_interaction(context)
                 after_store = time.time()
-                print(f"🔍 [ASYNC_DEBUG] After working memory store [{after_store:.6f}] - took {(after_store-before_store)*1000:.2f}ms")
+                logger.debug(
+                    f"[ASYNC_DEBUG] After working memory store [{after_store:.6f}] - "
+                    f"took {(after_store-before_store)*1000:.2f}ms"
+                )
                 logger.info("🧠 [MEMORY_FLOW] ✅ Working memory storage complete")
             else:
                 logger.warning("🧠 [MEMORY_FLOW] ⚠️  Working memory not available")
             
             # Assemble relevant context for processing
-            import time
             before_assemble = time.time()
-            print(f"🔍 [ASYNC_DEBUG] Before _assemble_context() [{before_assemble:.6f}]")
+            logger.debug(f"[ASYNC_DEBUG] Before _assemble_context() [{before_assemble:.6f}]")
             logger.info("🧠 [MEMORY_FLOW] → Assembling context from memory tiers")
             memory_context = await self._assemble_context(context)
             after_assemble = time.time()
-            print(f"🔍 [ASYNC_DEBUG] After _assemble_context() [{after_assemble:.6f}] - took {(after_assemble-before_assemble)*1000:.2f}ms")
+            logger.debug(
+                f"[ASYNC_DEBUG] After _assemble_context() [{after_assemble:.6f}] - "
+                f"took {(after_assemble-before_assemble)*1000:.2f}ms"
+            )
             
             # Log context assembly results
             context_items = memory_context.get("items", [])
@@ -710,12 +697,16 @@ class MemoryManager(BaseAIProcessor):
             # KG extraction moved to consolidation scheduler (AMS architecture)
             # Per-message extraction disabled to prevent embedding queue saturation
             # Messages will be processed in batches during idle periods via ams.kg_consolidation task
-            print(f"🕸️ [KG_CHECK] Checking if KG extraction should run: kg_initialized={self._kg_initialized}, role={role}")
+            logger.debug(
+                f"[KG_CHECK] Checking if KG extraction should run: "
+                f"kg_initialized={self._kg_initialized}, role={role}"
+            )
             if self._kg_initialized and role == "user":
-                print(f"🕸️ [KG] 📝 Message queued for consolidation (will be processed during next idle period)")
-                logger.info(f"🕸️ [KG] Message queued for consolidation scheduler")
+                logger.info("🕸️ [KG] Message queued for consolidation scheduler")
             else:
-                print(f"🕸️ [KG] ⚠️  Skipping: kg_initialized={self._kg_initialized}, role={role}")
+                logger.debug(
+                    f"[KG] Skipping KG extraction queue: kg_initialized={self._kg_initialized}, role={role}"
+                )
             
             logger.info(f"✅ Stored {role} message in memory")
             return True
@@ -966,15 +957,11 @@ class MemoryManager(BaseAIProcessor):
         """
         import time
         start_time = time.time()
-        print(f"\n{'='*80}")
-        print(f"🕸️ [KG] 🚀 Background extraction task STARTED for user {user_id}")
-        print(f"🕸️ [KG] Text length: {len(text)} chars")
+        logger.info(f"[KG]  Background extraction task STARTED for user {user_id}, text_len={len(text)}")
         if shared_resolver:
-            print(f"🕸️ [KG] Using shared resolver (incremental HNSW)")
-        print(f"{'='*80}")
+            logger.info("[KG] Using shared resolver (incremental HNSW)")
         try:
             # 1. Load existing entities for context (prevents duplicates at extraction time)
-            print(f"\n🕸️ [KG] Step 1: Loading existing entities for context...")
             context_start = time.time()
             existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
             context_time = time.time() - context_start
@@ -982,32 +969,25 @@ class MemoryManager(BaseAIProcessor):
             # Build context for extractor (entity names and IDs for LLM to reference)
             entity_context = []
             for node in existing_nodes:
-                # Ensure properties is a dict (defensive deserialization)
-                props = node.properties
-                if isinstance(props, str):
-                    try:
-                        props = json.loads(props)
-                    except (json.JSONDecodeError, TypeError):
-                        props = {}
-                
+                props = node.properties or {}
                 entity_context.append({
                     "id": node.id,
                     "label": node.label,
                     "name": props.get("name", "")
                 })
-            print(f"🕸️ [KG] ✅ Loaded {len(entity_context)} existing entities in {context_time:.2f}s")
+            logger.info(f"[KG] Loaded {len(entity_context)} existing entities in {context_time:.2f}s")
             
             # 2. Extract entities and relationships (with existing entity context)
-            print(f"\n🕸️ [KG] Step 2: Multi-pass extraction with context...")
             extraction_start = time.time()
-            logger.info(f"🕸️ [KG] Starting background extraction for user {user_id}")
+            logger.info(f"[KG] Starting background extraction for user {user_id}")
             
             new_graph = await self._kg_extractor.extract(text, user_id, context={"entities": entity_context})
             extraction_time = time.time() - extraction_start
             
-            print(f"\n🕸️ [KG] ✅ Extraction complete in {extraction_time:.2f}s")
-            print(f"🕸️ [KG]    Nodes: {len(new_graph.nodes)}")
-            print(f"🕸️ [KG]    Edges: {len(new_graph.edges)}")
+            logger.info(
+                f"🕸️ [KG] Extraction complete in {extraction_time:.2f}s: "
+                f"nodes={len(new_graph.nodes)}, edges={len(new_graph.edges)}"
+            )
             logger.info(f"🕸️ [KG] Extracted {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges in {extraction_time:.2f}s")
             
             if len(new_graph.nodes) == 0 and len(new_graph.edges) == 0:
@@ -1016,32 +996,23 @@ class MemoryManager(BaseAIProcessor):
             
             # 3. Skip per-message resolution (context-aware extraction prevents most duplicates)
             # Resolution now only runs in batch post-processing for final cleanup
-            print(f"\n🕸️ [KG] Step 3: Skipping per-message resolution (context-aware extraction used)")
             superseded_ids = set()
             
-            print(f"\n🕸️ [KG] Step 4: Saving to storage...")
             storage_start = time.time()
             await self._kg_storage.save_graph(new_graph, superseded_node_ids=superseded_ids)
             storage_time = time.time() - storage_start
             
             total_time = time.time() - start_time
-            print(f"\n🕸️ [KG] ✅ Storage complete in {storage_time:.2f}s")
-            print(f"\n{'='*80}")
-            print(f"🕸️ [KG] ✅ PIPELINE COMPLETE in {total_time:.2f}s")
-            print(f"🕸️ [KG]    Context:    {context_time:.2f}s ({context_time/total_time*100:.1f}%)")
-            print(f"🕸️ [KG]    Extraction: {extraction_time:.2f}s ({extraction_time/total_time*100:.1f}%)")
-            print(f"🕸️ [KG]    Storage:    {storage_time:.2f}s ({storage_time/total_time*100:.1f}%)")
-            print(f"🕸️ [KG]    Final: {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
-            print(f"{'='*80}\n")
-            logger.info(f"🕸️ [KG] ✅ Knowledge graph saved successfully in {total_time:.2f}s")
+            logger.info(
+                f"🕸️ [KG] ✅ PIPELINE COMPLETE in {total_time:.2f}s "
+                f"(context={context_time:.2f}s, extraction={extraction_time:.2f}s, "
+                f"storage={storage_time:.2f}s, nodes={len(new_graph.nodes)}, "
+                f"edges={len(new_graph.edges)})"
+            )
             
         except Exception as e:
             total_time = time.time() - start_time
-            print(f"\n{'='*80}")
-            print(f"🕸️ [KG] ❌ PIPELINE FAILED after {total_time:.2f}s: {e}")
-            print(f"{'='*80}")
-            logger.error(f"🕸️ [KG] ❌ Background extraction failed: {e}")
+            logger.error(f"🕸️ [KG] ❌ PIPELINE FAILED after {total_time:.2f}s: {e}")
             import traceback
             error_trace = traceback.format_exc()
-            print(f"🕸️ [KG] Traceback:\n{error_trace}")
-            logger.error(f"🕸️ [KG] Traceback: {error_trace}")
+            logger.error(f"🕸️ [KG] Traceback:\n{error_trace}")

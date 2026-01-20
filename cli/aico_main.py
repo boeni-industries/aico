@@ -42,6 +42,8 @@ else:
     # But we need to ensure it's accessible before our module imports
     pass  # Development mode - shared package installed via editable install
 
+import logging
+
 import typer
 from rich.console import Console
 
@@ -118,12 +120,26 @@ except ImportError as e:
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
+    """AICO CLI - Modular system management and versioning.
+
+    For CLI usage we suppress non-error log output on the console by
+    constraining any stream handlers to ERROR level. This keeps commands
+    like `aico tools ls` and `aico skills ls` clean while still allowing
+    error logs to surface.
     """
-    AICO CLI - Modular system management and versioning
-    
-    A comprehensive command-line interface for managing AICO's configuration,
-    databases, security, and versioning across all system components.
-    """
+
+    # Restrict console logging to errors only for CLI invocations
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.setLevel(logging.ERROR)
+
+    # Ensure noisy libraries also respect ERROR-only console policy
+    logging.getLogger("shared.security").setLevel(logging.ERROR)
+    logging.getLogger("shared.security.service_auth").setLevel(logging.ERROR)
+    logging.getLogger("shared.security.transport_identity").setLevel(logging.ERROR)
+    logging.getLogger("shared.security.transport").setLevel(logging.ERROR)
+    logging.getLogger("httpx").setLevel(logging.ERROR)
     # Handle both no command and --help flag with same custom formatting
     if ctx.invoked_subcommand is None or help:
         # Import here to avoid circular imports
