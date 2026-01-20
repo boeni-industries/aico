@@ -263,8 +263,12 @@ def run_skill(
         console.print(json.dumps(result, indent=2))
         return
 
-    # health.skills.invoke currently returns the skill output directly
-    output = result or {}
+    # /api/v1/agency/skills/invoke returns a wrapper object:
+    # {"success": bool, "output": Any, "error": Any, "metadata": {...}}
+    result = result or {}
+    success = bool(result.get("success", True))
+    output = result.get("output")
+    error = result.get("error")
 
     table = Table(
         title=f"✨ [bold cyan]Skill Result: {skill_id}[/bold cyan]",
