@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, Awaitable, Union, TYPE_
 if TYPE_CHECKING:
     from aico.services.agency_service import AgencyService
 from datetime import datetime, UTC
+from sqlalchemy.exc import IntegrityError
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
@@ -877,18 +878,81 @@ class AgencyEngine(BaseAIProcessor):
                     )
                     return existing_hobby, None
 
-            # Create goal with appropriate origin
-            goal, plan = await self.create_goal_with_optional_plan(
-                user_id=user_id,
-                title=signal.topic,
-                description=signal.description,
-                origin=origin,
-                goal_type="curiosity" if origin == GoalOrigin.CURIOSITY else "hobby",
-                priority=priority,
-                metadata=metadata,
-                auto_plan=auto_plan,
-            )
+            # Create goal with appropriate origin, handling duplicate open
+            # hobby goals by reusing the existing goal rather than failing.
+            try:
+                goal, plan = await self.create_goal_with_optional_plan(
+                    user_id=user_id,
+                    title=signal.topic,
+                    description=signal.description,
+                    origin=origin,
+                    goal_type="curiosity" if origin == GoalOrigin.CURIOSITY else "hobby",
+                    priority=priority,
+                    metadata=metadata,
+                    auto_plan=auto_plan,
+                )
+            except IntegrityError as ie:
+                # Likely hit uq_agency_goals_user_origin_title_open: an open
+                # goal with this (user, origin, title) already exists. Reuse
+                # that goal instead of failing so we can still log the
+                # signal->goal linkage event for Studio.
+                logger.warning(
+                    f"[AGENCY_ENGINE] IntegrityError creating curiosity goal for topic '{signal.topic}', attempting reuse: {ie}"
+                )
+                
+                # Direct database lookup using the same fields as the unique constraint
+                from aico.data.uow import UnitOfWork
+                async with UnitOfWork(self._session_factory) as uow:
+                    try:
+                        # Query for open goal with matching (user_id, origin, title)
+                        filters = {
+                            "user_id": user_id,
+                            "origin": origin.value,
+                            "title": signal.topic,
+                            "status": "active",  # or any open status
+                        }
+                        goals = await uow.goals.list(filters=filters, limit=1)
+                        existing = goals[0] if goals else None
+                    except Exception as e:
+                        logger.error(
+                            f"[AGENCY_ENGINE] Failed to lookup existing goal for reuse: {e}",
+                            exc_info=True,
+                        )
+                        existing = None
+
+                if existing is None:
+                    # If we still can't resolve the goal, re-raise so the
+                    # caller can handle it.
+                    logger.error(
+                        f"[AGENCY_ENGINE] Could not find existing goal for topic '{signal.topic}' despite IntegrityError"
+                    )
+                    raise
+
+                goal, plan = existing, None
+                logger.info(
+                    f"[AGENCY_ENGINE] Reusing existing hobby goal {goal.goal_id} for topic '{signal.topic}'"
+                )
             
+            # Log explicit linkage between curiosity signal and goal (new or reused)
+            if self.event_store:
+                await self.event_store.log_event(
+                    AgencyEvent(
+                        user_id=user_id,
+                        goal_id=goal.goal_id,
+                        plan_id=getattr(plan, "plan_id", None) if plan else None,
+                        event_type="goal_generated_from_curiosity",
+                        source="agency_engine",
+                        payload={
+                            "signal_id": signal.signal_id,
+                            "goal_id": goal.goal_id,
+                            "topic": signal.topic,
+                            "curiosity_score": signal.total_score,
+                            "novelty_score": signal.novelty_score,
+                            "user_relevance_score": signal.user_relevance_score,
+                        },
+                    )
+                )
+
             # Update signal status
             signal.status = "converted"
             

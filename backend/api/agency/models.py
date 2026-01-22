@@ -244,6 +244,15 @@ class Event(BaseModel):
     created_at: datetime
     processed: bool = False
     related_goal_id: Optional[str] = None
+    strength: int = Field(
+        1,
+        description=(
+            "Number of underlying raw events contributing to this perception. "
+            "For raw /agency/events responses this is 1; aggregated views like "
+            "recent_events may increase this to reflect repeated signals."
+        ),
+        ge=1,
+    )
 
 
 class EventsListResponse(BaseModel):

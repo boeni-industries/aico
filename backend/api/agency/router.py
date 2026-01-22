@@ -108,6 +108,11 @@ async def get_intention_set(
     Returns the primary focus intention and list of active intentions with scores.
     """
     try:
+        # Exclude technical/users used for internal instrumentation from
+        # Studio-facing agency event streams.
+        if user.get("is_technical"):
+            raise HTTPException(status_code=403, detail="Technical users are excluded from agency events")
+
         user_id = user["user_uuid"]
         
         # Get intention set from engine
@@ -198,6 +203,10 @@ async def list_events(
     """
 
     try:
+        # Exclude technical/system users from Studio-facing agency event streams
+        if user.get("is_technical"):
+            raise HTTPException(status_code=403, detail="Technical users are excluded from agency events")
+
         user_id = user["user_uuid"]
 
         filters: Dict[str, Any] = {"user_id": user_id}
@@ -356,10 +365,16 @@ def _event_log_to_api(row) -> Event:
     except (TypeError, ValueError):
         intensity = 0.5
 
+    # Try to resolve a related goal from structured fields first
     related_goal_id = None
     if getattr(row, "entity_type", None) == "goal":
         related_goal_id = getattr(row, "entity_id", None)
 
+    # Fallback: many events encode goal linkage in the JSON payload
+    if not related_goal_id:
+        related_goal_id = payload.get("goal_id")
+
+    # Mark as processed if we can associate the event to a concrete goal
     processed = bool(related_goal_id)
 
     return Event(
@@ -1344,12 +1359,16 @@ async def get_agency_state(
     engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
     uow: Annotated[UnitOfWork, Depends(get_uow)],
 ):
-    """
-    Get complete agency state - intentions, curiosity, profile, and pending consents.
-    
+    """Get complete agency state - intentions, curiosity, profile, and pending consents.
+
     This is a convenience endpoint that combines multiple agency metrics.
     """
     try:
+        # Agency state is a user-facing construct; do not compute it for
+        # technical/system users.
+        if user.get("is_technical"):
+            raise HTTPException(status_code=403, detail="Technical users are excluded from agency state")
+
         user_id = user["user_uuid"]
         
         # Get all components in parallel
@@ -1363,30 +1382,78 @@ async def get_agency_state(
             profile_task,
         )
 
-        # Fetch a small window of recent events and project them once
-        recent_rows = await uow.agency_events_log.list(
-            filters={"user_id": user_id},
-            limit=50,
+        # Build recent_events goal-centrically: we care about events for the
+        # goals that currently have active intentions, not an arbitrary
+        # time-slice over all events.
+        # Note: intention_set.active_intentions contains GoalSummary objects
+        active_goal_ids = {
+            goal_summary.goal_id
+            for goal_summary in intention_set.active_intentions
+        }
+        
+        logger.info(
+            f"[AGENCY_API] Building recent_events for user {user_id}: "
+            f"{len(active_goal_ids)} active goals"
         )
-        projected_events = [_event_log_to_api(row) for row in recent_rows]
 
-        # Keep only unprocessed events, deduplicated by event_id
-        seen_ids: set[str] = set()
-        recent_events: list[Event] = []
-        for ev in projected_events:
-            if ev.processed:
+        projected_events: list[Event] = []
+        for goal_id in active_goal_ids:
+            try:
+                rows = await uow.agency_events_log.get_by_entity(
+                    entity_type="goal",
+                    entity_id=goal_id,
+                    limit=20,
+                )
+                logger.info(
+                    f"[AGENCY_API] Found {len(rows)} events for goal {goal_id}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"[AGENCY_API] Failed to fetch events for goal {goal_id}: {e}",
+                    exc_info=True,
+                )
                 continue
+
+            for row in rows:
+                projected_events.append(_event_log_to_api(row))
+
+        # Deduplicate by event_id so each raw event is only represented once
+        seen_ids: set[str] = set()
+        goal_events: list[Event] = []
+        for ev in projected_events:
             if ev.event_id in seen_ids:
                 continue
             seen_ids.add(ev.event_id)
-            recent_events.append(ev)
+            goal_events.append(ev)
 
-        # Optionally focus state view on perceptual drivers only
-        recent_events = [
-            ev
-            for ev in recent_events
-            if ev.event_type in (EventType.CURIOSITY_SIGNAL, EventType.USER_TRIGGER)
-        ][:10]
+        # Group events by related_goal_id; any goal-linked event (including
+        # goal_created, plan_generated, user_requested_goal, etc.)
+        # contributes to that goal's aggregate.
+        groups: Dict[str, list[Event]] = {}
+        for ev in goal_events:
+            if not ev.related_goal_id:
+                continue
+            groups.setdefault(ev.related_goal_id, []).append(ev)
+
+        aggregated_events: list[Event] = []
+        for goal_id, group in groups.items():
+            # Pick the most recent event as the master for display, and use
+            # strength to indicate how many underlying events contributed.
+            master = max(group, key=lambda e: e.created_at)
+            master.strength = len(group)
+            aggregated_events.append(master)
+
+        # Sort by recency and cap to last 10 summaries
+        aggregated_events.sort(key=lambda e: e.created_at, reverse=True)
+        recent_events = aggregated_events[:10]
+        
+        logger.info(
+            f"[AGENCY_API] Event aggregation complete: "
+            f"{len(projected_events)} raw events → "
+            f"{len(goal_events)} deduplicated → "
+            f"{len(aggregated_events)} aggregated → "
+            f"{len(recent_events)} in recent_events"
+        )
         
         # Get pending consent actions (goals/signals that need consent)
         # This would require querying for blocked actions - placeholder for now
