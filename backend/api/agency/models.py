@@ -213,18 +213,64 @@ class ConsentListResponse(BaseModel):
 
 
 # ============================================================================
+# Event Models
+# ============================================================================
+
+class EventType(str, Enum):
+    """High-level event types for agency perception system."""
+
+    CURIOSITY_SIGNAL = "curiosity_signal"
+    USER_TRIGGER = "user_trigger"
+    SYSTEM_OBSERVATION = "system_observation"
+    EXTERNAL_STIMULUS = "external_stimulus"
+
+
+class Event(BaseModel):
+    """API-level event model backing the Execution Chain Dashboard.
+
+    This is a projection over the internal agency_events_log table and existing
+    AgencyEvent logging, providing a stable, frontend-friendly view of
+    perceptual triggers and signals that can lead to goal creation.
+    """
+
+    event_id: str
+    user_id: str
+    event_type: EventType
+    source: str
+    title: str
+    description: str
+    intensity: float = Field(ge=0.0, le=1.0)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    processed: bool = False
+    related_goal_id: Optional[str] = None
+
+
+class EventsListResponse(BaseModel):
+    """Paginated list of events for /agency/events endpoint."""
+
+    events: List[Event]
+    total: int
+
+
+# ============================================================================
 # Agency State Models
 # ============================================================================
 
 class AgencyStateResponse(BaseModel):
     """Overall agency state for a user"""
+
     user_id: str
     intention_set: IntentionSetResponse
     curiosity_status: CuriosityStatusResponse
     value_profile: ValueProfileResponse
     consent_required_actions: List[Dict[str, Any]] = Field(
         default_factory=list,
-        description="Actions waiting on explicit user approval"
+        description="Actions waiting on explicit user approval",
+    )
+    recent_events: List[Event] = Field(
+        default_factory=list,
+        description="Last 10 unprocessed events driving autonomous behaviour",
     )
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 

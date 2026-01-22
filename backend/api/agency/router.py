@@ -26,6 +26,9 @@ from backend.api.agency.models import (
     ConsentRequest,
     ConsentResponse,
     ConsentListResponse,
+    Event,
+    EventType,
+    EventsListResponse,
     AgencyStateResponse,
     CreateGoalRequest,
     GoalResponse,
@@ -168,6 +171,58 @@ async def get_intention_set(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# Events Endpoints
+# ============================================================================
+
+
+@router.get("/events", response_model=EventsListResponse)
+async def list_events(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of events to return"),
+    processed: Optional[bool] = Query(
+        None,
+        description="Optional filter by processed flag (derived from related_goal_id)",
+    ),
+    event_type: Optional[EventType] = Query(
+        None,
+        description="Optional filter by high-level event type",
+    ),
+) -> EventsListResponse:
+    """List perception events driving autonomous behaviour.
+
+    This endpoint exposes a unified event stream for the Execution Chain
+    dashboard, projecting the internal agency_events_log table into the
+    simplified Event model.
+    """
+
+    try:
+        user_id = user["user_uuid"]
+
+        filters: Dict[str, Any] = {"user_id": user_id}
+        if event_type is not None:
+            filters["event_type"] = event_type.value
+
+        rows = await uow.agency_events_log.list(filters=filters, limit=limit)
+
+        events = [_event_log_to_api(row) for row in rows]
+
+        if processed is not None:
+            events = [e for e in events if e.processed == processed]
+
+        count_filters: Dict[str, Any] = {"user_id": user_id}
+        if event_type is not None:
+            count_filters["event_type"] = event_type.value
+        total = await uow.agency_events_log.count(filters=count_filters)
+
+        return EventsListResponse(events=events, total=total)
+
+    except Exception as e:
+        logger.error(f"Failed to list agency events: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _build_goal_response(goal) -> GoalResponse:
     """Map domain Goal to API GoalResponse.
 
@@ -215,6 +270,111 @@ def _map_step_execution_status(status_value: str) -> StepExecutionStatusAPI:
         return StepExecutionStatusAPI(status_value)
     except Exception:
         return StepExecutionStatusAPI.PENDING
+
+
+_KNOWN_EVENT_TYPE_MAP: Dict[str, EventType] = {
+    # Curiosity / intrinsic motivation pipeline
+    "curiosity_signal_detected": EventType.CURIOSITY_SIGNAL,
+    "opportunities_scanned": EventType.CURIOSITY_SIGNAL,
+    "goal_generated_from_curiosity": EventType.CURIOSITY_SIGNAL,
+    "hobby_created": EventType.CURIOSITY_SIGNAL,
+    "curiosity_signal_blocked": EventType.CURIOSITY_SIGNAL,
+    "curiosity_signal_needs_consent": EventType.CURIOSITY_SIGNAL,
+    "curiosity_signal_warning": EventType.CURIOSITY_SIGNAL,
+
+    # Goal / plan lifecycle and ethics
+    "goal_created": EventType.SYSTEM_OBSERVATION,
+    "goal_updated": EventType.SYSTEM_OBSERVATION,
+    "goal_blocked": EventType.SYSTEM_OBSERVATION,
+    "plan_generation_started": EventType.SYSTEM_OBSERVATION,
+    "plan_execution_started": EventType.SYSTEM_OBSERVATION,
+    "feedback_collection_started": EventType.SYSTEM_OBSERVATION,
+    "plan_executed": EventType.SYSTEM_OBSERVATION,
+
+    # Workflows and world model updates
+    "workflow_started": EventType.SYSTEM_OBSERVATION,
+    "outcomes_analyzed": EventType.SYSTEM_OBSERVATION,
+    "lessons_generated": EventType.SYSTEM_OBSERVATION,
+    "adjustments_applied": EventType.SYSTEM_OBSERVATION,
+    "changes_validated": EventType.SYSTEM_OBSERVATION,
+    "hypothesis_generated": EventType.SYSTEM_OBSERVATION,
+    "evidence_collected": EventType.SYSTEM_OBSERVATION,
+    "hypothesis_validated": EventType.SYSTEM_OBSERVATION,
+    "world_model_updated": EventType.SYSTEM_OBSERVATION,
+}
+
+
+def _map_event_type(raw_type: str) -> EventType:
+    """Map low-level event_type strings to high-level EventType.
+
+    Prefer explicit mappings for known event types and only fall back to
+    minimal heuristics to keep the Execution Chain buckets stable.
+    """
+
+    normalized = (raw_type or "").strip().lower()
+    if not normalized:
+        return EventType.EXTERNAL_STIMULUS
+
+    # 1) Exact mapping for known event types
+    if normalized in _KNOWN_EVENT_TYPE_MAP:
+        return _KNOWN_EVENT_TYPE_MAP[normalized]
+
+    # 2) Narrow heuristics for "obvious" cases
+    if normalized.startswith("user_") or normalized.startswith("manual_"):
+        return EventType.USER_TRIGGER
+
+    if "curiosity" in normalized:
+        return EventType.CURIOSITY_SIGNAL
+
+    if any(k in normalized for k in ("reflection", "maintenance", "workflow", "world_model")):
+        return EventType.SYSTEM_OBSERVATION
+
+    # 3) Fallback bucket for everything else (external/scheduled stimuli)
+    return EventType.EXTERNAL_STIMULUS
+
+
+def _event_log_to_api(row) -> Event:
+    """Project AgencyEventLog row to public Event API model.
+
+    The internal schema stores a flexible JSON payload; here we derive
+    stable title/description/intensity fields with sensible fallbacks.
+    """
+
+    try:
+        payload = json.loads(row.event_data) if row.event_data else {}
+    except Exception:
+        payload = {}
+
+    title = payload.get("title") or payload.get("topic") or row.event_type
+    description = payload.get("message") or payload.get("description") or ""
+
+    raw_intensity = payload.get("intensity")
+    if raw_intensity is None:
+        raw_intensity = payload.get("curiosity_score") or payload.get("novelty_score")
+    try:
+        intensity = float(raw_intensity) if raw_intensity is not None else 0.5
+    except (TypeError, ValueError):
+        intensity = 0.5
+
+    related_goal_id = None
+    if getattr(row, "entity_type", None) == "goal":
+        related_goal_id = getattr(row, "entity_id", None)
+
+    processed = bool(related_goal_id)
+
+    return Event(
+        event_id=row.event_id,
+        user_id=row.user_id,
+        event_type=_map_event_type(row.event_type),
+        source=row.source_component,
+        title=title,
+        description=description,
+        intensity=max(0.0, min(1.0, intensity)),
+        metadata=payload,
+        created_at=row.created_at,
+        processed=processed,
+        related_goal_id=related_goal_id,
+    )
 
 
 @router.get("/goals/{goal_id}/plans", response_model=GoalDetailResponse)
@@ -1182,7 +1342,7 @@ async def replan_goal(
 async def get_agency_state(
     user: Annotated[dict, Depends(get_current_user)],
     engine: Annotated[AgencyEngine, Depends(get_agency_engine)],
-    uow: Annotated[UnitOfWork, Depends(get_uow)]
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
 ):
     """
     Get complete agency state - intentions, curiosity, profile, and pending consents.
@@ -1200,8 +1360,33 @@ async def get_agency_state(
         intention_set, curiosity_status, value_profile = await asyncio.gather(
             intention_set_task,
             curiosity_task,
-            profile_task
+            profile_task,
         )
+
+        # Fetch a small window of recent events and project them once
+        recent_rows = await uow.agency_events_log.list(
+            filters={"user_id": user_id},
+            limit=50,
+        )
+        projected_events = [_event_log_to_api(row) for row in recent_rows]
+
+        # Keep only unprocessed events, deduplicated by event_id
+        seen_ids: set[str] = set()
+        recent_events: list[Event] = []
+        for ev in projected_events:
+            if ev.processed:
+                continue
+            if ev.event_id in seen_ids:
+                continue
+            seen_ids.add(ev.event_id)
+            recent_events.append(ev)
+
+        # Optionally focus state view on perceptual drivers only
+        recent_events = [
+            ev
+            for ev in recent_events
+            if ev.event_type in (EventType.CURIOSITY_SIGNAL, EventType.USER_TRIGGER)
+        ][:10]
         
         # Get pending consent actions (goals/signals that need consent)
         # This would require querying for blocked actions - placeholder for now
@@ -1213,7 +1398,8 @@ async def get_agency_state(
             curiosity_status=curiosity_status,
             value_profile=value_profile,
             consent_required_actions=consent_required_actions,
-            timestamp=datetime.utcnow()
+            recent_events=recent_events,
+            timestamp=datetime.utcnow(),
         )
         
     except Exception as e:

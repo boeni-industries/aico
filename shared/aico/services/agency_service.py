@@ -26,6 +26,7 @@ from aico.ai.agency.models import (
     PlanStatus,
     PlanStep,
 )
+from sqlalchemy.exc import IntegrityError
 
 logger = get_logger("shared.services.agency")
 
@@ -56,6 +57,68 @@ class AgencyService:
             logger.info("[AGENCY_SERVICE] Created goal", extra={"goal_id": goal.goal_id, "user_id": goal.user_id})
             return created
         except Exception as e:
+            # Narrow handling: duplicate open hobby/maintenance goals are expected in some
+            # curiosity-driven flows. When the Postgres unique constraint
+            # "uq_agency_goals_user_origin_title_open" fires, we treat it as
+            # "goal already exists" and return the existing open goal instead of
+            # propagating an error.
+
+            if isinstance(e, IntegrityError):
+                orig = getattr(e, "orig", None)
+                constraint_name = getattr(orig, "constraint_name", None)
+
+                if constraint_name == "uq_agency_goals_user_origin_title_open":
+                    # Roll back the failed insert before running a lookup.
+                    await self.uow.rollback()
+
+                    origin_value = getattr(goal.origin, "value", goal.origin)
+
+                    try:
+                        existing = await self.uow.goals.find_open_goal_by_title(
+                            goal.user_id,
+                            origin_value,
+                            goal.title,
+                        )
+                    except Exception as lookup_err:
+                        logger.error(
+                            "[AGENCY_SERVICE] Failed to resolve existing goal after unique constraint violation: "
+                            f"{lookup_err}",
+                            extra={
+                                "goal_id": goal.goal_id,
+                                "user_id": goal.user_id,
+                                "origin": origin_value,
+                                "title": goal.title,
+                            },
+                        )
+                        # Fall back to the original error if lookup also fails.
+                        raise e
+
+                    if existing is not None:
+                        logger.info(
+                            "[AGENCY_SERVICE] Reusing existing open goal after uniqueness constraint "
+                            "uq_agency_goals_user_origin_title_open",
+                            extra={
+                                "existing_goal_id": existing.goal_id,
+                                "user_id": existing.user_id,
+                                "origin": origin_value,
+                                "title": existing.title,
+                            },
+                        )
+                        return existing
+
+                    # If we got the constraint but can't find the existing row, log and
+                    # re-raise so we don't hide a deeper inconsistency.
+                    logger.error(
+                        "[AGENCY_SERVICE] Unique constraint triggered but no existing open goal found; "
+                        "re-raising IntegrityError",
+                        extra={
+                            "goal_id": goal.goal_id,
+                            "user_id": goal.user_id,
+                            "origin": origin_value,
+                            "title": goal.title,
+                        },
+                    )
+
             logger.error(f"[AGENCY_SERVICE] Failed to create goal: {e}", extra={"goal_id": goal.goal_id})
             await self.uow.rollback()
             raise

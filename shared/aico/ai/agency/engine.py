@@ -394,7 +394,9 @@ class AgencyEngine(BaseAIProcessor):
 
         goal = await self.agency_service.create_goal(goal)
 
+        # Log creation events
         if self.event_store:
+            # Core lifecycle event (system observation)
             await self.event_store.log_event(
                 AgencyEvent(
                     user_id=user_id,
@@ -405,6 +407,24 @@ class AgencyEngine(BaseAIProcessor):
                     payload={"title": title, "goal_type": goal_type},
                 )
             )
+
+            # User trigger: explicit user-created goals
+            if origin == GoalOrigin.USER:
+                await self.event_store.log_event(
+                    AgencyEvent(
+                        user_id=user_id,
+                        goal_id=goal.goal_id,
+                        plan_id=None,
+                        event_type="user_requested_goal",
+                        source="agency_engine",
+                        payload={
+                            "title": title,
+                            "goal_type": goal_type,
+                            "priority": priority.value,
+                            "metadata": metadata or {},
+                        },
+                    )
+                )
 
         plan: Optional[Plan] = None
         if auto_plan:
