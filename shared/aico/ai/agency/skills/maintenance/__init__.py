@@ -9,9 +9,19 @@ from .connectivity import (
     MaintenanceConnectivityVerifyComponentSkill,
 )
 from .agency_cleanup import MaintenanceAgencyCleanupExecutionsSkill
+from .system_resources import MaintenanceSystemScanResourcesSkill
+from .modelservice import MaintenanceModelserviceScanHealthSkill
+from .agency_behaviour import MaintenanceAgencyReEvaluateBehaviourHealthSkill
+from .message_bus import MaintenanceMessageBusCheckHealthSkill
+from .scheduler import MaintenanceSchedulerCheckHealthSkill
 
 __all__ = [
     "MaintenanceConnectivityFullScanSkill",
     "MaintenanceConnectivityVerifyComponentSkill",
     "MaintenanceAgencyCleanupExecutionsSkill",
+    "MaintenanceSystemScanResourcesSkill",
+    "MaintenanceModelserviceScanHealthSkill",
+    "MaintenanceAgencyReEvaluateBehaviourHealthSkill",
+    "MaintenanceMessageBusCheckHealthSkill",
+    "MaintenanceSchedulerCheckHealthSkill",
 ]

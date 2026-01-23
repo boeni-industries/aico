@@ -107,6 +107,8 @@ class UnitOfWork:
         self._user_skill_confidence_repository = None
         self._auth_access_policies_repository = None
         self._user_skill_confidence_repository = None
+        self._system_health_checks_repository = None
+        self._system_issues_repository = None
     
     async def __aenter__(self):
         """Enter context - create session."""
@@ -777,6 +779,22 @@ class UnitOfWork:
             from .repositories.postgres.agency_step_executions_repository import PostgresAgencyStepExecutionsRepository
             self._agency_step_executions = PostgresAgencyStepExecutionsRepository(self._session)
         return self._agency_step_executions
+    
+    @property
+    def system_health_checks(self):
+        """Get SystemHealthCheckRepository instance."""
+        if self._system_health_checks_repository is None:
+            from .repositories.system_health_checks import SystemHealthCheckRepository
+            self._system_health_checks_repository = SystemHealthCheckRepository(self._session)
+        return self._system_health_checks_repository
+    
+    @property
+    def system_issues(self):
+        """Get SystemIssueRepository instance."""
+        if self._system_issues_repository is None:
+            from .repositories.system_issues import SystemIssueRepository
+            self._system_issues_repository = SystemIssueRepository(self._session)
+        return self._system_issues_repository
 
 
 @asynccontextmanager

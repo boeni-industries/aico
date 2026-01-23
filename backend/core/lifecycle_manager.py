@@ -74,6 +74,9 @@ class BackendLifecycleManager:
         # 4. Create FastAPI app
         self.app = self._create_fastapi_app()
         
+        # Store start time in app state for health monitoring
+        self.app.state.backend_start_time = self.start_time
+        
         # 5. Configure middleware stack
         self._configure_middleware()
         
@@ -985,6 +988,7 @@ class BackendLifecycleManager:
         from backend.api.conversation.router import router as conversation_router
         from backend.api.memory.router import router as memory_router
         from backend.api.system.router import router as system_router
+        from backend.api.system.health.router import router as system_health_router
         from backend.api.memory_album import router as memory_album_router
         from backend.api.kg.router import router as kg_router
         from backend.api.behavioral.router import router as behavioral_router
@@ -1020,6 +1024,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system"]})
+        
+        self.app.include_router(system_health_router, prefix="/api/v1/system", tags=["system-health"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system-health"]})
         
         self.app.include_router(memory_album_router, prefix="/api/v1/memory-album", tags=["memory-album"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/memory-album", "tags": ["memory-album"]})

@@ -1332,3 +1332,53 @@ CREATE INDEX IF NOT EXISTS idx_user_memories_temporal
     jsonb_extract_double_immutable(temporal_metadata, 'confidence')
   )
   WHERE temporal_metadata IS NOT NULL;
+
+-- ============================================================================
+-- System Health Monitoring Tables
+-- ============================================================================
+
+-- Health check execution history
+CREATE TABLE IF NOT EXISTS system_health_checks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    check_id VARCHAR(100) NOT NULL,
+    parent_check_id VARCHAR(100),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('ok', 'issues', 'error')),
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    duration_ms INTEGER,
+    issue_count INTEGER DEFAULT 0,
+    details JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_health_checks_check_id ON system_health_checks(check_id);
+CREATE INDEX IF NOT EXISTS idx_health_checks_started_at ON system_health_checks(started_at DESC);
+
+-- Active system issues
+CREATE TABLE IF NOT EXISTS system_issues (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    issue_id VARCHAR(100) UNIQUE NOT NULL,
+    severity VARCHAR(20) NOT NULL CHECK (severity IN ('warning', 'error', 'critical')),
+    service VARCHAR(100) NOT NULL,
+    title TEXT NOT NULL,
+    detected_at TIMESTAMPTZ NOT NULL,
+    resolved_at TIMESTAMPTZ,
+    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'resolving', 'resolved')),
+    metrics JSONB,
+    impact JSONB,
+    remediation JSONB,
+    related_checks TEXT[],
+    perceptual_event_id UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_issues_status ON system_issues(status);
+CREATE INDEX IF NOT EXISTS idx_issues_severity ON system_issues(severity);
+CREATE INDEX IF NOT EXISTS idx_issues_detected_at ON system_issues(detected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_issues_service ON system_issues(service);
+
+-- Add foreign key constraint to perceptual_events if the table exists
+-- Note: This will be added after perceptual_events table is created
+-- ALTER TABLE system_issues ADD CONSTRAINT fk_issues_perceptual_event 
+--   FOREIGN KEY (perceptual_event_id) REFERENCES perceptual_events(id) ON DELETE SET NULL;
