@@ -183,21 +183,20 @@ async def tool_db_postgres_vacuum_analyze(
             # Collect notices/messages from VACUUM execution
             notices = []
             
-            def notice_receiver(notice):
-                notices.append(notice.message if hasattr(notice, 'message') else str(notice))
+            def notice_receiver(connection, message):
+                """Callback for asyncpg log messages - receives (connection, message) tuple"""
+                notices.append(str(message))
             
-            # Add notice receiver if supported
-            if hasattr(asyncpg_conn, 'add_log_listener'):
-                asyncpg_conn.add_log_listener(notice_receiver)
+            # Add log listener to capture PostgreSQL NOTICE messages
+            asyncpg_conn.add_log_listener(notice_receiver)
             
             try:
                 # Execute VACUUM directly on asyncpg connection
                 # asyncpg connections are not in a transaction by default
                 await asyncpg_conn.execute(vacuum_cmd)
             finally:
-                # Remove notice receiver
-                if hasattr(asyncpg_conn, 'remove_log_listener'):
-                    asyncpg_conn.remove_log_listener(notice_receiver)
+                # Remove log listener
+                asyncpg_conn.remove_log_listener(notice_receiver)
             
             latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
             
