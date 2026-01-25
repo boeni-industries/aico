@@ -892,25 +892,6 @@ class BackendLifecycleManager:
             
             response = await call_next(request)
             
-            # Check if this is a protected endpoint that needs encryption
-            if response.status_code == 404 and request.url.path.startswith("/api/v1/"):
-                protected_paths = ["/api/v1/users/", "/api/v1/admin/", "/api/v1/logs/", "/api/v1/echo"]
-                public_paths = ["/api/v1/health", "/api/v1/handshake"]
-                
-                is_protected = any(request.url.path.startswith(path) for path in protected_paths)
-                is_public = any(request.url.path.startswith(path) for path in public_paths)
-                
-                if is_protected and not is_public:
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(
-                        status_code=401,
-                        content={
-                            "detail": "This endpoint requires encrypted communication. Please establish an encrypted session first.",
-                            "hint": "Use /api/v1/handshake to establish encryption",
-                            "endpoint": request.url.path
-                        }
-                    )
-            
             if request.url.path.startswith("/api/v1/") and response.status_code >= 400:
                 self.logger.warning(f"Response: {request.method} {request.url.path} -> {response.status_code}")
             

@@ -1,23 +1,61 @@
 ---
 description: Implementation master spec for agency self-healing skills & tools
+status: In Progress - Phase 1 (Manual Triggers)
+last_updated: 2026-01-24
 ---
 
 # WIP – Self-Healing Skills & Tools (Implementation Master Spec)
 
-> **Status**: WIP implementation guide. This document is the **single source of truth** for
-> concrete self-healing skills, tools, and their contracts. Conceptual and flow
-> explanations live in:
+> **Status**: **Phase 1 Implementation In Progress** (Manual Frontend Triggers)
+> 
+> **Implementation Priority**: 
+> 1. **Phase 1**: Manual frontend triggers (user-initiated remediation)
+> 2. **Phase 2**: Agency autonomous self-healing
+>
+> This document is the **single source of truth** for concrete self-healing skills,
+> tools, and their contracts. Conceptual and flow explanations live in:
 >
 > - `docs/concepts/agency/agency-self-healing.md`
 > - `docs/concepts/agency/agency-component-skills-tools.md`
 
+## Implementation Status Summary
+
+**Overall Progress: ~35% Complete**
+
+| Component | Status | Completion |
+|-----------|--------|------------|
+| Infrastructure (Registry, Invoker) | ✅ Complete | 100% |
+| Diagnostic Skills | ✅ Complete | 87% (7/8) |
+| Diagnostic Tools | ✅ Complete | 100% |
+| **Remediation Tools** | 🚧 In Progress | 0% → Target: 100% |
+| **Remediation Skills** | 🚧 In Progress | 0% → Target: 100% |
+| **Manual Trigger Endpoints** | 🚧 In Progress | 0% → Target: 100% |
+| **Frontend UI Components** | 🚧 In Progress | 0% → Target: 100% |
+| Agency Self-Healing Loop | ⏳ Planned | 0% |
+| Schema Registry | ⏳ Planned | 0% |
+| Observables/Metrics | ⏳ Planned | 20% |
+
 ## 1. Scope & Goals
 
-This spec defines the **concrete skills and tools** required for AICO’s
+This spec defines the **concrete skills and tools** required for AICO's
 self-healing and system-maintenance capabilities, aligned with the Agency and
 System Health architecture.
 
-It focuses on:
+### 1.1 Primary Goals
+
+**Goal A: Manual Frontend Triggers (Phase 1 - IN PROGRESS)**
+- Enable users to manually trigger remediation actions from AICO Studio Health UI
+- Provide immediate actionable fixes for detected issues
+- Build confidence in remediation skills before enabling automation
+- Deliver immediate value to users
+
+**Goal B: Agency Autonomous Self-Healing (Phase 2 - PLANNED)**
+- Enable AICO to detect and fix issues autonomously
+- Reduce manual intervention requirements
+- Improve system reliability and uptime
+- Learn from remediation patterns
+
+### 1.2 Core Principles
 
 - **Atomic, composable tools** that can be safely combined into higher-level
   skills (compound skills), avoiding duplicated logic.
@@ -517,62 +555,231 @@ loop** (detailed flows are in `agency-self-healing.md`).
    - AMS / World Model (facts about system health and past repairs).
 
 
-## 7. Implementation Checklist
+## 7. Implementation Roadmap
 
-This section is the **actionable plan** for implementing self-healing skills
-and tools.
+This section defines the **phased implementation plan** with manual triggers
+implemented first, followed by autonomous self-healing.
 
-1. **Skill & Tool Registry**
-   - [ ] Implement persistent registry for `SkillDefinition` and
-         `ToolDefinition` (PostgreSQL + UoW).
-   - [ ] Implement lookup APIs: `RegisterSkill`, `RegisterTool`,
-         `FindSkillsForStep`.
-   - [ ] Implement `InvokeSkill(skill_id, input, context)` with Values & Ethics
-         and Scheduler hooks.
+### PHASE 1: Manual Frontend Triggers (CURRENT PHASE)
 
-2. **Schema Registry**
-   - [ ] Create schema files under `config/schemas/agency/maint/*.json`.
-   - [ ] Define input/output schemas for all core skills in §5.
-   - [ ] Wire schema validation into the Skill Layer.
+**Goal**: Enable users to manually trigger remediation actions from Health UI
 
-3. **Atomic Tools**
-   - [ ] Implement connectivity tools for HTTP, PostgreSQL, ChromaDB, InfluxDB,
-         modelservice, message bus.
-   - [ ] Implement system resource tools (CPU, memory, disk).
-   - [ ] Implement PostgreSQL maintenance tools (size, archive, delete,
-         vacuum/analyze).
-   - [ ] Implement ChromaDB, InfluxDB, LMDB maintenance tools as per §5.
-   - [ ] Implement modelservice & agency tools.
+#### 1.1 Foundation (COMPLETE ✅)
+   - [x] Implement `SkillRegistry` and `ToolRegistry`
+   - [x] Implement `SkillInvoker` with timeout and error handling
+   - [x] Define `Skill` and `ToolDefinition` contracts
+   - [x] Implement diagnostic skills (7/8 complete)
+   - [x] Implement diagnostic tools (20+ tools)
 
-4. **Skills (Self-Healing Set)**
-   - [ ] Register core maintenance skills listed in §5 with:
-         - skill IDs,
-         - schema IDs,
-         - tags, safety and resource profiles,
-         - mappings to tools.
-   - [ ] Implement compound skills for common playbooks (e.g.
-         `maint.db.reduce_disk_pressure`).
+#### 1.2 Remediation Tools (IN PROGRESS 🚧)
+   - [ ] **PostgreSQL Tools**:
+     - [ ] `tool.db.postgres.get_table_sizes` - Query table/index sizes
+     - [ ] `tool.db.postgres.vacuum_analyze` - Run VACUUM ANALYZE
+     - [ ] `tool.db.postgres.archive_rows` - Archive old data to separate table
+     - [ ] `tool.db.postgres.delete_rows` - Delete rows with safety checks
+   
+   - [ ] **ChromaDB Tools**:
+     - [ ] `tool.db.chroma.get_collection_stats` - Collection size/count
+     - [ ] `tool.db.chroma.delete_vectors` - Delete vectors by filter
+     - [ ] `tool.db.chroma.compact_store` - Trigger compaction
+   
+   - [ ] **InfluxDB Tools**:
+     - [ ] `tool.db.influx.list_retention_policies` - List retention policies
+     - [ ] `tool.db.influx.apply_retention_policy` - Apply/update retention
+     - [ ] `tool.db.influx.drop_measurement` - Drop old measurements
+   
+   - [ ] **LMDB Tools**:
+     - [ ] `tool.db.lmdb.check_map_size` - Check map size vs usage
+     - [ ] `tool.db.lmdb.compact` - Compact database
+     - [ ] `tool.db.lmdb.delete_keys_by_prefix` - Bulk delete by prefix
+   
+   - [ ] **Modelservice Tools**:
+     - [ ] `tool.modelservice.restart_workers` - Restart worker processes
+     - [ ] `tool.modelservice.clear_cache` - Clear internal caches
+   
+   - [ ] **Agency Tools**:
+     - [ ] `tool.agency.retire_stalled_plans` - Mark plans as retired
+     - [ ] `tool.agency.update_scheduler_config` - Adjust scheduler settings
 
-5. **Agency & Scheduler Integration**
-   - [ ] Ensure PerceptualEvents are emitted from HealthCheckTask and
-         metrics/health components for degraded conditions.
-   - [ ] Map relevant events into maintenance goals in AgencyEngine.
-   - [ ] Add plan templates that reference the new skills.
-   - [ ] Adjust Goal Arbiter and Scheduler to handle maintenance goals with
-         caps and lifecycle-aware execution.
+#### 1.3 Remediation Skills (IN PROGRESS 🚧)
+   - [ ] **Database Remediation**:
+     - [ ] `maint.db.postgres.vacuum_and_analyze` - PostgreSQL maintenance
+     - [ ] `maint.db.postgres.archive_old_data` - Archive old conversations/events
+     - [ ] `maint.db.reduce_disk_pressure` - Comprehensive disk cleanup
+     - [ ] `maint.db.chroma.compact` - ChromaDB compaction
+     - [ ] `maint.db.lmdb.compact_store` - LMDB compaction
+     - [ ] `maint.db.lmdb.cleanup_obsolete_entries` - LMDB cleanup
+   
+   - [ ] **Service Remediation**:
+     - [ ] `maint.modelservice.stabilise` - Restart/recover modelservice
+     - [ ] `maint.agency.recover_stalled_plans` - Fix stalled plans
+     - [ ] `maint.agency.rebalance_load` - Adjust scheduler load
+   
+   - [ ] **System Remediation**:
+     - [ ] `maint.system.clear_temp_files` - Clean temporary files
+     - [ ] `maint.system.restart_component` - Restart specific component
 
-6. **System Health UI Integration**
-   - [ ] Expose HTTP endpoints that call maintenance skills for:
-         - connectivity scans,
-         - DB pressure reduction,
-         - modelservice stabilisation,
-         - agency behaviour re-evaluation.
-   - [ ] Ensure Health tab playbooks call these endpoints and display when
-         Agency has already attempted remediation.
+#### 1.4 HTTP Endpoints for Manual Triggering (IN PROGRESS 🚧)
+   - [ ] Create `/api/v1/system/health/remediate` router
+   - [ ] Implement endpoints:
+     - [ ] `POST /remediate/{skill_id}` - Trigger specific remediation skill
+     - [ ] `GET /remediate/available` - List available remediation skills
+     - [ ] `GET /remediate/history` - View remediation execution history
+     - [ ] `POST /remediate/{skill_id}/dry-run` - Preview remediation effects
+   - [ ] Add authentication and authorization checks
+   - [ ] Implement execution tracking and logging
+   - [ ] Add rate limiting for safety
 
-7. **Observability & Safety**
-   - [ ] Emit metrics and PerceptualEvents from skills according to contracts.
-   - [ ] Integrate skill metadata with Values & Ethics rules (autonomous vs
-         user-triggered, rate limiting, time windows).
-   - [ ] Ensure all self-healing actions are explainable via goal/plan history
-         APIs and visible in logs.
+#### 1.5 Frontend UI Components (IN PROGRESS 🚧)
+   - [ ] **Health Tab Enhancements**:
+     - [ ] Add "Remediate" button to each degraded/critical component
+     - [ ] Show available remediation actions per component
+     - [ ] Display remediation execution status (running/success/failed)
+     - [ ] Show remediation history timeline
+   
+   - [ ] **Remediation Modal**:
+     - [ ] Skill description and safety information
+     - [ ] Parameter inputs (if skill requires configuration)
+     - [ ] Dry-run preview option
+     - [ ] Confirmation dialog with impact warning
+     - [ ] Real-time execution progress
+     - [ ] Success/failure feedback with logs
+   
+   - [ ] **Remediation History View**:
+     - [ ] List of past remediation executions
+     - [ ] Filter by skill, status, date
+     - [ ] Detailed execution logs
+     - [ ] Before/after metrics comparison
+
+#### 1.6 Safety & Validation (IN PROGRESS 🚧)
+   - [ ] Implement dry-run mode for all remediation skills
+   - [ ] Add confirmation requirements for high-impact actions
+   - [ ] Implement rollback mechanisms where possible
+   - [ ] Add execution time limits and resource caps
+   - [ ] Log all remediation actions to audit trail
+   - [ ] Emit metrics for remediation success/failure rates
+
+---
+
+### PHASE 2: Agency Autonomous Self-Healing (PLANNED)
+
+**Goal**: Enable AICO to detect and fix issues autonomously
+
+#### 2.1 PerceptualEvent Emission (PLANNED ⏳)
+   - [ ] Emit PerceptualEvents from health check skills
+   - [ ] Define event schemas for different issue types
+   - [ ] Wire events into Agency perception pipeline
+   - [ ] Add event deduplication and aggregation
+
+#### 2.2 Maintenance Goal Generation (PLANNED ⏳)
+   - [ ] Create goal templates for common issues:
+     - [ ] `goal.maintenance.database_pressure`
+     - [ ] `goal.maintenance.service_degraded`
+     - [ ] `goal.maintenance.resource_exhaustion`
+   - [ ] Implement goal creation from PerceptualEvents
+   - [ ] Add priority scoring for maintenance goals
+   - [ ] Define goal success criteria
+
+#### 2.3 Plan Templates (PLANNED ⏳)
+   - [ ] Create plan templates for remediation workflows:
+     - [ ] Database cleanup workflow (check → backup → clean → verify)
+     - [ ] Service restart workflow (check → drain → restart → verify)
+     - [ ] Resource pressure workflow (measure → identify → remediate → verify)
+   - [ ] Implement plan template instantiation
+   - [ ] Add plan step dependencies and rollback logic
+
+#### 2.4 Arbiter Integration (PLANNED ⏳)
+   - [ ] Add maintenance goal scoring to Arbiter
+   - [ ] Implement priority balancing (user goals vs maintenance)
+   - [ ] Add safety checks for autonomous execution
+   - [ ] Define execution time windows (e.g., low-traffic periods)
+   - [ ] Implement rate limiting for autonomous actions
+
+#### 2.5 Scheduler Integration (PLANNED ⏳)
+   - [ ] Add maintenance goal execution to scheduler
+   - [ ] Implement resource caps for maintenance work
+   - [ ] Add execution history tracking
+   - [ ] Implement success/failure learning
+
+#### 2.6 Observability & Learning (PLANNED ⏳)
+   - [ ] Emit metrics for all remediation executions
+   - [ ] Track success rates per skill
+   - [ ] Implement pattern detection (recurring issues)
+   - [ ] Add World Model integration (learn from fixes)
+   - [ ] Create dashboards for autonomous healing activity
+
+---
+
+### PHASE 3: Advanced Features (FUTURE)
+
+#### 3.1 Schema Registry (FUTURE 🔮)
+   - [ ] Create JSON schema files for all skills
+   - [ ] Implement schema validation in Skill Layer
+   - [ ] Add schema versioning support
+   - [ ] Generate documentation from schemas
+
+#### 3.2 Predictive Maintenance (FUTURE 🔮)
+   - [ ] Analyze metrics trends to predict issues
+   - [ ] Trigger preventive maintenance before failures
+   - [ ] Learn optimal maintenance schedules
+
+#### 3.3 Multi-Instance Coordination (FUTURE 🔮)
+   - [ ] Coordinate remediation across multiple AICO instances
+   - [ ] Implement distributed locking for shared resources
+   - [ ] Add cluster-wide health monitoring
+
+---
+
+## 8. Current Implementation Status (Detailed)
+
+### ✅ COMPLETE
+
+**Infrastructure:**
+- SkillRegistry with category indexing and lookup
+- ToolRegistry with domain/capability filtering  
+- SkillInvoker with timeout and error handling
+- Skill/Tool contract model (SkillResult, ToolDefinition)
+
+**Diagnostic Skills (7/8):**
+- `maint.connectivity.full_scan` ✅
+- `maint.system.scan_resources` ✅
+- `maint.modelservice.scan_health` ✅
+- `maint.agency.re_evaluate_behaviour_health` ✅
+- `maint.messagebus.check_health` ✅
+- `maint.scheduler.check_health` ✅
+- `maint.agency.cleanup_executions` ✅
+
+**Diagnostic Tools (20+):**
+- Connectivity: postgres, influx, chroma, lmdb, modelservice, ollama ✅
+- Database health: postgres, chroma, influx, lmdb ✅
+- System resources: cpu, memory, disk ✅
+- Agency: metrics snapshot, stalled plan detection ✅
+- Scheduler: status check, stuck task detection ✅
+- Message bus: status check ✅
+
+**Integration:**
+- HealthService aggregates skill results ✅
+- Health Router HTTP endpoints ✅
+- Scheduler health check tasks ✅
+- Frontend Health UI displays data ✅
+
+### 🚧 IN PROGRESS (Phase 1)
+
+**Remediation Tools:** 0% → Target: 100%
+**Remediation Skills:** 0% → Target: 100%
+**Manual Trigger Endpoints:** 0% → Target: 100%
+**Frontend UI Components:** 0% → Target: 100%
+
+### ⏳ PLANNED (Phase 2)
+
+**Agency Self-Healing Loop:** 0%
+**PerceptualEvent Emission:** 0%
+**Maintenance Goal Generation:** 0%
+**Plan Templates:** 0%
+**Arbiter Integration:** 0%
+
+### 🔮 FUTURE (Phase 3)
+
+**Schema Registry:** 0%
+**Predictive Maintenance:** 0%
+**Multi-Instance Coordination:** 0%

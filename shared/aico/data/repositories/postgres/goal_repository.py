@@ -32,7 +32,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=entity.description,
             status=entity.status.value if isinstance(entity.status, GoalStatus) else entity.status,
             priority=entity.priority.value if isinstance(entity.priority, GoalPriority) else entity.priority,
-            metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
+            metadata_json=entity.metadata if entity.metadata else None,
             created_at=entity.created_at or datetime.now(UTC),
             updated_at=entity.updated_at or datetime.now(UTC),
         )
@@ -57,7 +57,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=json.loads(row.metadata_json) if row.metadata_json else {},
+            metadata=row.metadata_json if row.metadata_json else {},
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -72,7 +72,7 @@ class PostgresGoalRepository(Repository[Goal]):
                 description=entity.description,
                 status=entity.status.value if isinstance(entity.status, GoalStatus) else entity.status,
                 priority=entity.priority.value if isinstance(entity.priority, GoalPriority) else entity.priority,
-                metadata_json=json.dumps(entity.metadata) if entity.metadata else None,
+                metadata_json=entity.metadata if entity.metadata else None,
                 updated_at=datetime.now(UTC),
             )
         )
@@ -117,7 +117,7 @@ class PostgresGoalRepository(Repository[Goal]):
                 description=row.description,
                 status=GoalStatus(row.status),
                 priority=GoalPriority(row.priority),
-                metadata=json.loads(row.metadata_json) if row.metadata_json else {},
+                metadata=row.metadata_json if row.metadata_json else {},
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
@@ -166,7 +166,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=json.loads(row.metadata_json) if row.metadata_json else {},
+            metadata=row.metadata_json if row.metadata_json else {},
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -204,7 +204,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=json.loads(row.metadata_json) if row.metadata_json else {},
+            metadata=row.metadata_json if row.metadata_json else {},
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -230,7 +230,7 @@ class PostgresGoalRepository(Repository[Goal]):
                 description=row.description,
                 status=GoalStatus(row.status),
                 priority=GoalPriority(row.priority),
-                metadata=json.loads(row.metadata_json) if row.metadata_json else {},
+                metadata=row.metadata_json if row.metadata_json else {},
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )

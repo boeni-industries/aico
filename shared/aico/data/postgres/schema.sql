@@ -1382,3 +1382,22 @@ CREATE INDEX IF NOT EXISTS idx_issues_service ON system_issues(service);
 -- Note: This will be added after perceptual_events table is created
 -- ALTER TABLE system_issues ADD CONSTRAINT fk_issues_perceptual_event 
 --   FOREIGN KEY (perceptual_event_id) REFERENCES perceptual_events(id) ON DELETE SET NULL;
+
+-- Remediation execution history
+CREATE TABLE IF NOT EXISTS remediation_executions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    skill_id VARCHAR(200) NOT NULL,
+    parameters JSONB,
+    success BOOLEAN NOT NULL,
+    dry_run BOOLEAN NOT NULL DEFAULT TRUE,
+    output JSONB,
+    error TEXT,
+    executed_by VARCHAR(100),
+    executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    execution_time_ms INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_remediation_executions_skill_id ON aico_core.remediation_executions(skill_id);
+CREATE INDEX IF NOT EXISTS idx_remediation_executions_executed_at ON aico_core.remediation_executions(executed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_remediation_executions_success ON aico_core.remediation_executions(success);
+CREATE INDEX IF NOT EXISTS idx_remediation_executions_dry_run ON aico_core.remediation_executions(dry_run);

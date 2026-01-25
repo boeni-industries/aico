@@ -17,6 +17,9 @@ from . import agency_metrics
 from . import message_bus_health
 from . import scheduler_health
 from . import database_health
+from . import database_remediation
+from . import service_remediation
+from . import register_remediation_tools
 
 __all__ = [
     "ToolRegistry",

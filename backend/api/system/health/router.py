@@ -21,11 +21,15 @@ from .schemas import (
     ServiceHealthResponse,
 )
 from .service import HealthService
+from . import remediate
 
 
 logger = get_logger("backend.api.system.health.router")
 
 router = APIRouter()
+
+# Include remediation sub-router
+router.include_router(remediate.router)
 
 # Global singleton health service instance
 _health_service_instance: Optional[HealthService] = None
