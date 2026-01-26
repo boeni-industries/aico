@@ -112,12 +112,17 @@ async def get_remediation_service(
             RemediationChromaCompactSkill,
             RemediationLmdbCompactSkill,
             RemediationLmdbCleanupSkill,
+            RemediationInfluxGetMeasurementsSkill,
+            RemediationInfluxApplyRetentionSkill,
+            RemediationInfluxDropMeasurementSkill,
             RemediationModelserviceStabiliseSkill,
             RemediationAgencyRecoverPlansSkill,
             RemediationAgencyRebalanceLoadSkill,
         )
+        from aico.core.config import ConfigurationManager
         
         registry = SkillRegistry()
+        config = ConfigurationManager()
         
         # Register database remediation skills
         registry.register(RemediationPostgresVacuumSkill(session_factory))
@@ -126,6 +131,11 @@ async def get_remediation_service(
         registry.register(RemediationChromaCompactSkill())
         registry.register(RemediationLmdbCompactSkill())
         registry.register(RemediationLmdbCleanupSkill())
+        
+        # Register InfluxDB remediation skills
+        registry.register(RemediationInfluxGetMeasurementsSkill(config))
+        registry.register(RemediationInfluxApplyRetentionSkill(config))
+        registry.register(RemediationInfluxDropMeasurementSkill(config))
         
         # Register service remediation skills
         registry.register(RemediationModelserviceStabiliseSkill())
@@ -218,6 +228,16 @@ async def trigger_remediation(
     input_data = request.parameters.copy()
     if "dry_run" not in input_data:
         input_data["dry_run"] = request.dry_run
+    
+    print(f"\n{'='*80}")
+    print(f"[REMEDIATION ENDPOINT] Skill Execution Request")
+    print(f"{'='*80}")
+    print(f"Skill ID: {skill_id}")
+    print(f"Request body - parameters: {request.parameters}")
+    print(f"Request body - dry_run: {request.dry_run} (type: {type(request.dry_run).__name__})")
+    print(f"Merged input_data: {input_data}")
+    print(f"input_data['dry_run']: {input_data.get('dry_run')} (type: {type(input_data.get('dry_run')).__name__})")
+    print(f"{'='*80}\n")
     
     # Validate parameters
     is_valid, error = skill.validate_inputs(input_data)

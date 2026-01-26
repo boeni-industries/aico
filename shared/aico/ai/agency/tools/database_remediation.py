@@ -1219,6 +1219,425 @@ async def tool_db_lmdb_delete_keys_by_prefix(
 
 
 # ============================================================================
+# InfluxDB Remediation Tools
+# ============================================================================
+
+async def tool_db_influx_get_measurements(
+    config: Any,
+    measurement_filter: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get list of measurements in InfluxDB bucket with size estimates.
+    
+    Args:
+        config: Configuration object
+        measurement_filter: Optional regex filter for measurement names
+    
+    Returns:
+        Dict with ok, data (measurements list), and error fields
+    """
+    from influxdb_client import InfluxDBClient
+    from aico.security import AICOKeyManager
+    
+    start = datetime.now(UTC)
+    
+    try:
+        # Get InfluxDB connection details - FAIL LOUD if missing
+        url = config.get("core.database.influx.url")
+        if not url:
+            raise ValueError("Missing required config: core.database.influx.url")
+        
+        org = config.get("core.database.influx.org")
+        if not org:
+            raise ValueError("Missing required config: core.database.influx.org")
+        
+        bucket = config.get("core.database.influx.bucket")
+        if not bucket:
+            raise ValueError("Missing required config: core.database.influx.bucket")
+        
+        key_manager = AICOKeyManager(config)
+        token = key_manager.get_database_password("influx", username="admin_token")
+        
+        # Connect to InfluxDB
+        with InfluxDBClient(url=url, token=token, org=org) as client:
+            query_api = client.query_api()
+            
+            # Query to get measurements with cardinality estimates
+            filter_clause = f'|> filter(fn: (r) => r._measurement =~ /{measurement_filter}/)' if measurement_filter else ''
+            
+            query = f'''
+                import "influxdata/influxdb/schema"
+                schema.measurements(bucket: "{bucket}")
+                {filter_clause}
+            '''
+            
+            tables = query_api.query(query)
+            
+            measurements = []
+            for table in tables:
+                for record in table.records:
+                    measurement_name = record.get_value()
+                    
+                    # Get approximate point count for this measurement
+                    count_query = f'''
+                        from(bucket: "{bucket}")
+                        |> range(start: -30d)
+                        |> filter(fn: (r) => r._measurement == "{measurement_name}")
+                        |> count()
+                    '''
+                    
+                    try:
+                        count_tables = query_api.query(count_query)
+                        total_points = sum(
+                            record.get_value()
+                            for table in count_tables
+                            for record in table.records
+                        )
+                    except Exception:
+                        total_points = 0
+                    
+                    measurements.append({
+                        "name": measurement_name,
+                        "estimated_points": total_points,
+                    })
+        
+        latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
+        
+        return {
+            "ok": True,
+            "data": {
+                "status": "ok",
+                "latency_ms": latency_ms,
+                "error_message": None,
+                "details": {
+                    "bucket": bucket,
+                    "measurements": measurements,
+                    "total_measurements": len(measurements),
+                }
+            },
+            "error": None,
+        }
+    
+    except Exception as exc:
+        logger.error("[TOOL_DB_REMEDIATION] InfluxDB get measurements failed: %s", exc)
+        latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
+        return {
+            "ok": False,
+            "data": {
+                "status": "error",
+                "latency_ms": latency_ms,
+                "error_message": str(exc),
+                "details": {},
+            },
+            "error": {"code": "influx_query_failed", "message": str(exc)},
+        }
+
+
+async def tool_db_influx_apply_retention(
+    config: Any,
+    measurement: Optional[str] = None,
+    retention_days: Optional[int] = None,
+    dry_run: bool = True,
+) -> Dict[str, Any]:
+    """Apply retention policy to delete old data from InfluxDB.
+    
+    Deletes data older than the specified retention period. Uses configuration
+    defaults if retention_days not specified.
+    
+    Args:
+        config: Configuration object
+        measurement: Specific measurement to clean (None = use config policies)
+        retention_days: Days to retain (overrides config)
+        dry_run: If True, only report what would be deleted
+    
+    Returns:
+        Dict with ok, data (deletion summary), and error fields
+    """
+    from influxdb_client import InfluxDBClient
+    from influxdb_client.client.write_api import SYNCHRONOUS
+    from aico.security import AICOKeyManager
+    
+    print(f"\n{'='*80}")
+    print(f"[INFLUX TOOL] tool_db_influx_apply_retention called")
+    print(f"{'='*80}")
+    print(f"measurement: {measurement}")
+    print(f"retention_days: {retention_days}")
+    print(f"dry_run: {dry_run} (type: {type(dry_run).__name__})")
+    print(f"{'='*80}\n")
+    
+    start = datetime.now(UTC)
+    
+    try:
+        # Get InfluxDB connection details - FAIL LOUD if missing
+        url = config.get("core.database.influx.url")
+        if not url:
+            raise ValueError("Missing required config: core.database.influx.url")
+        
+        org = config.get("core.database.influx.org")
+        if not org:
+            raise ValueError("Missing required config: core.database.influx.org")
+        
+        bucket = config.get("core.database.influx.bucket")
+        if not bucket:
+            raise ValueError("Missing required config: core.database.influx.bucket")
+        
+        key_manager = AICOKeyManager(config)
+        token = key_manager.get_database_password("influx", username="admin_token")
+        
+        # Determine retention policy - FAIL LOUD if config missing
+        if retention_days is None:
+            if measurement:
+                # Check for measurement-specific retention
+                retention_days = config.get(
+                    f"core.database.influx.retention.measurements.{measurement}.retention_days"
+                )
+                if retention_days is None:
+                    # Fall back to default
+                    retention_days = config.get("core.database.influx.retention.default_days")
+                    if retention_days is None:
+                        raise ValueError(
+                            f"Missing retention config for measurement '{measurement}' and no default found. "
+                            f"Expected: core.database.influx.retention.measurements.{measurement}.retention_days "
+                            f"or core.database.influx.retention.default_days"
+                        )
+            else:
+                # Use default retention - MUST be configured
+                retention_days = config.get("core.database.influx.retention.default_days")
+                if retention_days is None:
+                    raise ValueError(
+                        "Missing required config: core.database.influx.retention.default_days. "
+                        "Cannot apply retention without configured policy."
+                    )
+        
+        # Calculate cutoff time
+        cutoff_time = datetime.now(UTC) - timedelta(days=retention_days)
+        
+        # Connect to InfluxDB
+        with InfluxDBClient(url=url, token=token, org=org) as client:
+            delete_api = client.delete_api()
+            query_api = client.query_api()
+            
+            # Determine which measurements to process
+            if measurement:
+                measurements_to_process = [measurement]
+            else:
+                # Get all measurements with configured retention policies - FAIL LOUD if missing
+                measurements_config = config.get("core.database.influx.retention.measurements")
+                if not measurements_config:
+                    raise ValueError(
+                        "Missing required config: core.database.influx.retention.measurements. "
+                        "Cannot apply retention policies without configured measurements."
+                    )
+                measurements_to_process = list(measurements_config.keys())
+                if not measurements_to_process:
+                    raise ValueError(
+                        "No measurements configured in core.database.influx.retention.measurements. "
+                        "Add at least one measurement with retention_days setting."
+                    )
+            
+            deleted_summary = []
+            
+            for meas in measurements_to_process:
+                # Get measurement-specific retention if not overridden
+                if retention_days is None or not measurement:
+                    meas_retention = config.get(
+                        f"core.database.influx.retention.measurements.{meas}.retention_days"
+                    )
+                    if meas_retention is None:
+                        # Fall back to default
+                        meas_retention = config.get("core.database.influx.retention.default_days")
+                        if meas_retention is None:
+                            logger.warning(
+                                f"[TOOL_DB_REMEDIATION] No retention configured for '{meas}', skipping"
+                            )
+                            continue
+                    meas_cutoff = datetime.now(UTC) - timedelta(days=meas_retention)
+                else:
+                    meas_retention = retention_days
+                    meas_cutoff = cutoff_time
+                
+                # Count points to be deleted (dry-run preview)
+                count_query = f'''
+                    from(bucket: "{bucket}")
+                    |> range(start: -365d, stop: {meas_cutoff.isoformat()})
+                    |> filter(fn: (r) => r._measurement == "{meas}")
+                    |> count()
+                '''
+                
+                try:
+                    count_tables = query_api.query(count_query)
+                    points_to_delete = sum(
+                        record.get_value()
+                        for table in count_tables
+                        for record in table.records
+                    )
+                except Exception:
+                    points_to_delete = 0
+                
+                if not dry_run and points_to_delete > 0:
+                    # Execute deletion
+                    predicate = f'_measurement="{meas}"'
+                    delete_api.delete(
+                        start="1970-01-01T00:00:00Z",
+                        stop=meas_cutoff.isoformat(),
+                        predicate=predicate,
+                        bucket=bucket,
+                        org=org
+                    )
+                
+                deleted_summary.append({
+                    "measurement": meas,
+                    "retention_days": meas_retention,
+                    "cutoff_time": meas_cutoff.isoformat(),
+                    "points_deleted": points_to_delete if not dry_run else 0,
+                    "points_to_delete": points_to_delete if dry_run else 0,
+                })
+        
+        latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
+        
+        total_deleted = sum(item["points_deleted"] for item in deleted_summary)
+        total_to_delete = sum(item["points_to_delete"] for item in deleted_summary)
+        
+        return {
+            "ok": True,
+            "data": {
+                "status": "ok",
+                "latency_ms": latency_ms,
+                "error_message": None,
+                "details": {
+                    "dry_run": dry_run,
+                    "bucket": bucket,
+                    "measurements_processed": len(deleted_summary),
+                    "total_points_deleted": total_deleted,
+                    "total_points_to_delete": total_to_delete,
+                    "summary": deleted_summary,
+                }
+            },
+            "error": None,
+        }
+    
+    except Exception as exc:
+        logger.error("[TOOL_DB_REMEDIATION] InfluxDB retention apply failed: %s", exc)
+        latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
+        return {
+            "ok": False,
+            "data": {
+                "status": "error",
+                "latency_ms": latency_ms,
+                "error_message": str(exc),
+                "details": {},
+            },
+            "error": {"code": "influx_delete_failed", "message": str(exc)},
+        }
+
+
+async def tool_db_influx_drop_measurement(
+    config: Any,
+    measurement: str,
+    dry_run: bool = True,
+) -> Dict[str, Any]:
+    """Drop an entire measurement from InfluxDB.
+    
+    WARNING: This deletes ALL data for the specified measurement.
+    
+    Args:
+        config: Configuration object
+        measurement: Measurement name to drop
+        dry_run: If True, only report what would be deleted
+    
+    Returns:
+        Dict with ok, data (deletion summary), and error fields
+    """
+    from influxdb_client import InfluxDBClient
+    from aico.security import AICOKeyManager
+    
+    start = datetime.now(UTC)
+    
+    try:
+        # Get InfluxDB connection details - FAIL LOUD if missing
+        url = config.get("core.database.influx.url")
+        if not url:
+            raise ValueError("Missing required config: core.database.influx.url")
+        
+        org = config.get("core.database.influx.org")
+        if not org:
+            raise ValueError("Missing required config: core.database.influx.org")
+        
+        bucket = config.get("core.database.influx.bucket")
+        if not bucket:
+            raise ValueError("Missing required config: core.database.influx.bucket")
+        
+        key_manager = AICOKeyManager(config)
+        token = key_manager.get_database_password("influx", username="admin_token")
+        
+        # Connect to InfluxDB
+        with InfluxDBClient(url=url, token=token, org=org) as client:
+            delete_api = client.delete_api()
+            query_api = client.query_api()
+            
+            # Count total points in measurement
+            count_query = f'''
+                from(bucket: "{bucket}")
+                |> range(start: -365d)
+                |> filter(fn: (r) => r._measurement == "{measurement}")
+                |> count()
+            '''
+            
+            try:
+                count_tables = query_api.query(count_query)
+                total_points = sum(
+                    record.get_value()
+                    for table in count_tables
+                    for record in table.records
+                )
+            except Exception:
+                total_points = 0
+            
+            if not dry_run and total_points > 0:
+                # Drop the entire measurement
+                predicate = f'_measurement="{measurement}"'
+                delete_api.delete(
+                    start="1970-01-01T00:00:00Z",
+                    stop=datetime.now(UTC).isoformat(),
+                    predicate=predicate,
+                    bucket=bucket,
+                    org=org
+                )
+        
+        latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
+        
+        return {
+            "ok": True,
+            "data": {
+                "status": "ok",
+                "latency_ms": latency_ms,
+                "error_message": None,
+                "details": {
+                    "dry_run": dry_run,
+                    "bucket": bucket,
+                    "measurement": measurement,
+                    "points_deleted": total_points if not dry_run else 0,
+                    "points_to_delete": total_points if dry_run else 0,
+                }
+            },
+            "error": None,
+        }
+    
+    except Exception as exc:
+        logger.error("[TOOL_DB_REMEDIATION] InfluxDB drop measurement failed: %s", exc)
+        latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
+        return {
+            "ok": False,
+            "data": {
+                "status": "error",
+                "latency_ms": latency_ms,
+                "error_message": str(exc),
+                "details": {},
+            },
+            "error": {"code": "influx_drop_failed", "message": str(exc)},
+        }
+
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 

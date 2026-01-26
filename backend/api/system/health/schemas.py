@@ -90,6 +90,7 @@ class ServiceHealth(BaseModel):
     last_checked: Optional[datetime] = Field(None, description="Last check timestamp")
     dependencies: Optional[List[str]] = Field(None, description="Service dependencies")
     depends_on: Optional[List[str]] = Field(None, description="Services this depends on")
+    details: Optional[Dict[str, Any]] = Field(None, description="Service-specific detailed data (measurements, collections, tables, jobs, etc.)")
 
 
 class ServiceHealthResponse(BaseModel):

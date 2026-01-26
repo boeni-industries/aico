@@ -41,6 +41,26 @@ async def tool_db_postgres_health() -> Dict[str, Any]:
             )
             row = result.fetchone()
             connections = row[0] if row else 0
+            
+            # Query table details from aico_core schema (all tables, sorted by size)
+            result = await session.execute(
+                text("""
+                    SELECT 
+                        schemaname || '.' || relname as name,
+                        pg_total_relation_size(schemaname||'.'||relname) / 1024.0 / 1024.0 as size_mb,
+                        n_live_tup as rows
+                    FROM pg_stat_user_tables
+                    WHERE schemaname = 'aico_core'
+                    ORDER BY pg_total_relation_size(schemaname||'.'||relname) DESC
+                """)
+            )
+            table_details = []
+            for row in result:
+                table_details.append({
+                    "name": row[0],
+                    "size_mb": round(row[1], 2),
+                    "rows": row[2]
+                })
         
         latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
         
@@ -52,7 +72,8 @@ async def tool_db_postgres_health() -> Dict[str, Any]:
                 "error_message": None,
                 "details": {
                     "database_size_mb": db_size_mb,
-                    "active_connections": connections
+                    "active_connections": connections,
+                    "tables": table_details
                 },
             },
             "error": None,
@@ -90,12 +111,17 @@ async def tool_db_chroma_health() -> Dict[str, Any]:
         collections = client.list_collections()
         collection_count = len(collections)
         
-        # Get total document count across all collections
+        # Get total document count across all collections and build collection details
         total_documents = 0
+        collection_details = []
         for collection in collections:
             try:
                 count = collection.count()
                 total_documents += count
+                collection_details.append({
+                    "name": collection.name,
+                    "documents": count
+                })
             except Exception:
                 pass
         
@@ -109,7 +135,8 @@ async def tool_db_chroma_health() -> Dict[str, Any]:
                 "error_message": None,
                 "details": {
                     "collections": collection_count,
-                    "total_documents": total_documents
+                    "total_documents": total_documents,
+                    "collection_list": collection_details
                 },
             },
             "error": None,

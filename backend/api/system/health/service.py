@@ -291,6 +291,7 @@ class HealthService:
         pg_health = await pg_health_tool.handler() if pg_health_tool else {"data": {"details": {}}}
         pg_details = pg_health.get("data", {}).get("details", {})
         db_size = pg_details.get("database_size_mb", 0)
+        pg_tables = pg_details.get("tables", [])
         
         services.append(ServiceHealth(
             name="PostgreSQL",
@@ -304,6 +305,7 @@ class HealthService:
             trend=None,
             last_checked=now,
             depends_on=[],
+            details={"tables": pg_tables} if pg_tables else None,
         ))
         
         # ChromaDB
@@ -315,6 +317,7 @@ class HealthService:
         chroma_health = await chroma_health_tool.handler() if chroma_health_tool else {"data": {"details": {}}}
         chroma_details = chroma_health.get("data", {}).get("details", {})
         chroma_collections = chroma_details.get("collections", 0)
+        chroma_collection_list = chroma_details.get("collection_list", [])
         
         services.append(ServiceHealth(
             name="ChromaDB",
@@ -327,17 +330,56 @@ class HealthService:
             ),
             trend=None,
             last_checked=now,
+            details={"collections": chroma_collection_list} if chroma_collection_list else None,
         ))
         
         # InfluxDB Time Series Database
         influx_check = checks.get("influx", {})
         influx_status = influx_check.get("status")
         
-        # Get health metrics
+        # Get health metrics and detailed measurements
         influx_health_tool = tool_registry.get("tool.db.influx.health")
         influx_health = await influx_health_tool.handler() if influx_health_tool else {"data": {"details": {}}}
         influx_details = influx_health.get("data", {}).get("details", {})
         measurement_count = influx_details.get("measurements", 0)
+        
+        # Get detailed measurement list via get_measurements skill
+        influx_measurements = []
+        try:
+            measurements_result = await self._run_skill("maint.db.influx.get_measurements", {})
+            print(f"\n{'='*80}")
+            print(f"[SERVICE_HEALTH DEBUG] InfluxDB skill result:")
+            print(f"{measurements_result}")
+            print(f"{'='*80}\n")
+            
+            measurements_output = measurements_result.get("output", {})
+            print(f"[SERVICE_HEALTH DEBUG] InfluxDB output: {measurements_output}\n")
+            
+            # Skill returns tool output in output.result
+            # Tool output structure: {status, latency_ms, error_message, details: {measurements: [...]}}
+            result_data = measurements_output.get("result", {})
+            print(f"[SERVICE_HEALTH DEBUG] InfluxDB result_data: {result_data}\n")
+            
+            # Measurements are directly at result_data.details.measurements
+            tool_details = result_data.get("details", {})
+            print(f"[SERVICE_HEALTH DEBUG] InfluxDB tool_details: {tool_details}\n")
+            
+            measurements_data = tool_details.get("measurements", [])
+            print(f"[SERVICE_HEALTH DEBUG] InfluxDB measurements_data count: {len(measurements_data)}")
+            print(f"[SERVICE_HEALTH DEBUG] InfluxDB measurements_data: {measurements_data}\n")
+            
+            # Sort by points descending, take top 10
+            sorted_measurements = sorted(measurements_data, key=lambda x: x.get("estimated_points", 0), reverse=True)[:10]
+            influx_measurements = [
+                {"name": m["name"], "points": m["estimated_points"]}
+                for m in sorted_measurements
+            ]
+            print(f"[SERVICE_HEALTH DEBUG] InfluxDB final measurements: {influx_measurements}\n")
+        except Exception as exc:
+            print(f"\n[SERVICE_HEALTH DEBUG] EXCEPTION: {exc}")
+            import traceback
+            traceback.print_exc()
+            print()
         
         services.append(ServiceHealth(
             name="InfluxDB",
@@ -350,6 +392,7 @@ class HealthService:
             ),
             trend=None,
             last_checked=now,
+            details={"measurements": influx_measurements} if influx_measurements else None,
         ))
         
         # LMDB
@@ -411,6 +454,7 @@ class HealthService:
         
         enabled_tasks = scheduler_details.get("enabled_tasks", 0)
         total_tasks = scheduler_details.get("total_tasks", 0)
+        scheduler_jobs = scheduler_details.get("jobs", [])
         
         # Display format: show enabled/total
         if total_tasks > 0:
@@ -429,6 +473,7 @@ class HealthService:
             ),
             trend=None,
             last_checked=now,
+            details={"jobs": scheduler_jobs} if scheduler_jobs else None,
         ))
         
         # Modelservice

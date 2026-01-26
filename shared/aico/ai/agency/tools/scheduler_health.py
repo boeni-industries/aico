@@ -54,6 +54,14 @@ async def tool_scheduler_check_status(lookback_minutes: int = 60) -> Dict[str, A
             total_tasks = len(tasks)
             enabled_tasks = sum(1 for t in tasks if t.enabled)
             
+            # Build job details list
+            job_details = []
+            for task in tasks:
+                job_details.append({
+                    "name": task.task_id,
+                    "active": task.enabled
+                })
+            
             # Determine health status
             if total_recent == 0:
                 status = "warning"
@@ -81,6 +89,7 @@ async def tool_scheduler_check_status(lookback_minutes: int = 60) -> Dict[str, A
                         "completed": completed,
                         "failed": failed,
                         "lookback_minutes": lookback_minutes,
+                        "jobs": job_details
                     }
                 },
                 "error": None
