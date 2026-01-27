@@ -92,6 +92,7 @@ def tail_logs(
     exact_level: Optional[str] = typer.Option(None, "--exact-level", help="Filter by exact level only (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
     logger: Optional[str] = typer.Option(None, "--logger", help="Filter by logger name"),
     lines: int = typer.Option(50, "--lines", "-n", help="Number of lines to show"),
+    last: str = typer.Option("48h", "--last", help="Time range to search (e.g., 1h, 30m, 2d)"),
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output (not implemented yet)")
 ):
     """Show the most recent N log entries (like tail -n)."""
@@ -144,10 +145,10 @@ def tail_logs(
     # In Flux, limit() applies per-table, so we group() first to get a single table.
     query = f'''
     from(bucket: "{bucket}")
-      |> range(start: -48h)
+      |> range(start: -{last})
       |> filter(fn: (r) => {filter_str})
-      |> sort(columns: ["_time"], desc: true)
       |> group()
+      |> sort(columns: ["_time"], desc: true)
       |> limit(n: {lines})
     '''
     
