@@ -365,8 +365,8 @@ async def list_logs(
     level: Optional[str] = None,
     subsystem: Optional[str] = None,
     module: Optional[str] = None,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
     search: Optional[str] = None,
     utc: Optional[bool] = False
 ):
@@ -375,6 +375,7 @@ async def list_logs(
     from influxdb_client import InfluxDBClient
     from aico.core.config import ConfigurationManager
     from aico.security.key_manager import AICOKeyManager
+    from datetime import timezone
     import json
     
     # Get InfluxDB credentials
@@ -411,21 +412,47 @@ async def list_logs(
         filters.append(f'r._value =~ /{search}/')
     
     filter_str = " and ".join(filters)
-    
-    # Use relative time ranges (like CLI) to avoid timezone issues
-    # Frontend no longer sends 'since' parameter
-    time_range = "-24h"  # Always use last 24 hours (matches default time range selector)
+
+    def _to_flux_time_literal(dt: datetime) -> str:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    range_start = "-24h"
+    range_stop = "now()"
+
+    if since:
+        range_start = _to_flux_time_literal(since)
+    if until:
+        range_stop = _to_flux_time_literal(until)
     
     # Query InfluxDB - fetch more than needed and slice in Python for performance
     query = f'''
     from(bucket: "{bucket}")
-      |> range(start: {time_range}, stop: now())
+      |> range(start: {range_start}, stop: {range_stop})
       |> filter(fn: (r) => {filter_str})
       |> sort(columns: ["_time"], desc: true)
       |> limit(n: {limit + offset})
     '''
+
+    count_query = f'''
+    from(bucket: "{bucket}")
+      |> range(start: {range_start}, stop: {range_stop})
+      |> filter(fn: (r) => {filter_str})
+      |> group()
+      |> count(column: "_value")
+    '''
     
     try:
+        total_tables = client.query_api().query(count_query, org=org)
+        total = 0
+        for table in total_tables:
+            for record in table.records:
+                try:
+                    total = int(record.get_value())
+                except Exception:
+                    total = 0
+
         tables = client.query_api().query(query, org=org)
         
         # Collect all records from all tables
@@ -464,8 +491,6 @@ async def list_logs(
                 extra_data=None
             ))
         
-        total = len(all_records)
-        
     finally:
         try:
             client.close()
@@ -478,6 +503,102 @@ async def list_logs(
         has_more=(offset + len(log_entries)) < total,
         timezone=None if utc else "local"
     )
+
+
+@router.get("/logs/count")
+@handle_admin_service_exceptions
+async def count_logs(
+    request: Request,
+    user: dict = Depends(verify_admin_token),
+    level: Optional[str] = None,
+    subsystem: Optional[str] = None,
+    module: Optional[str] = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    search: Optional[str] = None,
+):
+    """Return exact log-entry count for a time window.
+
+    Uses logs._field == "count" and sum(), which corresponds to 1 per logical log entry.
+    """
+
+    from influxdb_client import InfluxDBClient
+    from aico.core.config import ConfigurationManager
+    from aico.security.key_manager import AICOKeyManager
+    from datetime import datetime, timezone
+
+    config = ConfigurationManager()
+    key_manager = AICOKeyManager(config)
+
+    influx_config = config.get("core.database.influx", {})
+    url = influx_config.get("url", "http://127.0.0.1:8086")
+    org = influx_config.get("org", "aico")
+    bucket = influx_config.get("bucket", "aico_telemetry")
+    token = key_manager.get_database_password("influx", username="admin_token")
+
+    client = InfluxDBClient(url=url, token=token, org=org)
+
+    # Build Flux query filters
+    filters = [
+        'r._measurement == "logs"',
+        'r._field == "count"',
+    ]
+
+    if level:
+        level_parts = [l.strip().upper() for l in level.split(",")]
+        level_filter = " or ".join([f'r.level == "{lvl}"' for lvl in level_parts])
+        filters.append(f"({level_filter})")
+
+    if subsystem:
+        filters.append(f'r.service == "{subsystem}"')
+
+    if module:
+        filters.append(f'r.module =~ /{module}/')
+
+    # Note: search is applied to message field in /logs. For count(), we support the same
+    # parameter by switching to a message filter in the query.
+    search_filter = ""
+    if search:
+        search_filter = f'|> filter(fn: (r) => r._field == "message") |> filter(fn: (r) => r._value =~ /{search}/)'
+
+    filter_str = " and ".join(filters)
+
+    def _to_flux_time_literal(dt: datetime) -> str:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    range_start = "-24h"
+    range_stop = "now()"
+    if since:
+        range_start = _to_flux_time_literal(since)
+    if until:
+        range_stop = _to_flux_time_literal(until)
+
+    query = f'''
+    from(bucket: "{bucket}")
+      |> range(start: {range_start}, stop: {range_stop})
+      |> filter(fn: (r) => {filter_str})
+      {search_filter}
+      |> group()
+      |> sum(column: "_value")
+    '''
+
+    try:
+        tables = client.query_api().query(query, org=org)
+        total = 0
+        for table in tables:
+            for record in table.records:
+                try:
+                    total += int(record.get_value())
+                except Exception:
+                    pass
+        return {"total": total}
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
 
 
 # Cache for stats to avoid repeated slow queries
