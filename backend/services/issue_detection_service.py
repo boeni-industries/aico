@@ -43,7 +43,7 @@ class IssueDetectionService:
             "stalled_plan_hours": config.get("core.system.health.thresholds.stalled_plan_hours", 1),
         }
         
-        logger.info(
+        logger.debug(
             "[ISSUE_DETECTION] Initialized with thresholds: %s",
             self._thresholds
         )
@@ -53,7 +53,7 @@ class IssueDetectionService:
         
         Returns summary of detected and resolved issues.
         """
-        logger.info("[ISSUE_DETECTION] Starting detection cycle")
+        logger.debug("[ISSUE_DETECTION] Starting detection cycle")
         
         detected_issues = []
         resolved_issues = []
@@ -81,7 +81,7 @@ class IssueDetectionService:
                 
                 await uow.commit()
             
-            logger.info(
+            logger.debug(
                 "[ISSUE_DETECTION] Cycle complete: %d detected, %d resolved",
                 len(detected_issues),
                 len(resolved_issues)

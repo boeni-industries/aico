@@ -134,7 +134,7 @@ class ConversationEngine(BaseService):
         if not self.model_name:
             raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
         
-        self.logger.info(f"Conversation engine using model: {self.model_name}")
+        self.logger.debug(f"Conversation engine using model: {self.model_name}")
 
     def get_active_features(self) -> List[str]:
         """Return a list of enabled AI integration features."""
@@ -159,7 +159,7 @@ class ConversationEngine(BaseService):
             # Initialize message bus client
             self.bus_client = MessageBusClient("conversation_engine")
             await self.bus_client.connect()
-            self.logger.info("Message bus client connected")
+            self.logger.debug("Message bus client connected")
             
             # AI processors will be registered here when implemented
             # No initialization needed for empty registry
@@ -169,7 +169,7 @@ class ConversationEngine(BaseService):
                 try:
                     self.agency_plugin = self.container.get_service("agency_plugin")
                     if self.agency_plugin:
-                        self.logger.info("[AGENCY] Agency plugin resolved and ready for Phase 0 wiring")
+                        self.logger.debug("[AGENCY] Agency plugin resolved and ready for Phase 0 wiring")
                     else:
                         self.logger.warning("[AGENCY] enable_agency=True but agency_plugin service not found")
                 except Exception as e:
@@ -177,7 +177,7 @@ class ConversationEngine(BaseService):
             
             # Subscribe to conversation topics
             await self._setup_subscriptions()
-            self.logger.info("Subscriptions established")
+            self.logger.debug("Subscriptions established")
             
             self.logger.info("Conversation engine started successfully")
             
@@ -239,7 +239,7 @@ class ConversationEngine(BaseService):
             self._handle_proactive_initiation
         )
         
-        self.logger.info("Message bus subscriptions established")
+        self.logger.debug("Message bus subscriptions established")
     
     # ============================================================================
     # CORE MESSAGE HANDLERS
@@ -260,7 +260,7 @@ class ConversationEngine(BaseService):
             user_id = conv_message.user_id if conv_message.user_id else conv_message.source
             conversation_id = conv_message.message.conversation_id
             
-            self.logger.info(f"[DEBUG] ConversationEngine: Received user input.", extra={
+            self.logger.debug(f"[DEBUG] ConversationEngine: Received user input.", extra={
                 "conversation_id": conversation_id,
                 "user_id": user_id,
                 "message_type": conv_message.message.type
@@ -323,7 +323,7 @@ class ConversationEngine(BaseService):
                     conversation_language=user_profile.primary_language or "en",
                     last_seen=datetime.now(UTC)
                 )
-                self.logger.info(f"Loaded user context from database", extra={
+                self.logger.debug(f"Loaded user context from database", extra={
                     "user_id": user_id,
                     "full_name": user_profile.full_name,
                     "nickname": user_profile.nickname
@@ -399,7 +399,7 @@ class ConversationEngine(BaseService):
 
             if self.enable_agency and self.agency_plugin and not is_technical_user:
                 try:
-                    self.logger.info(f"[AGENCY] Phase 0: invoking agency plugin for request {request_id}")
+                    self.logger.debug(f"[AGENCY] Phase 0: invoking agency plugin for request {request_id}")
                     agency_context: Dict[str, Any] = {
                         "memory_context": memory_context,
                         "user_context": {
@@ -416,7 +416,7 @@ class ConversationEngine(BaseService):
                         timestamp=datetime.now(UTC),
                     )
                     agency_response = await self.agency_plugin.process(agency_request)
-                    self.logger.info(
+                    self.logger.debug(
                         f"[AGENCY] Phase 0: agency plugin completed for {request_id} (success={agency_response.success}, "
                         f"confidence={agency_response.confidence}, keys={list(agency_response.data.keys())})"
                     )
@@ -440,7 +440,7 @@ class ConversationEngine(BaseService):
             # Note: LLM response already generated above, no need for fallback logic
             
             # Set timeout - normal responses should be 1-6 seconds
-            self.logger.info(f"🔍 [ENGINE_FLOW] Request {request_id} created, starting timeout handler")
+            self.logger.debug(f"🔍 [ENGINE_FLOW] Request {request_id} created, starting timeout handler")
             asyncio.create_task(self._response_timeout_handler(request_id))
             
         except Exception as e:
@@ -458,20 +458,20 @@ class ConversationEngine(BaseService):
     async def _get_memory_context(self, request_id: str, user_context: UserContext, message: ConversationMessage) -> Optional[Dict[str, Any]]:
         """Get memory context (working + semantic) - returns None if unavailable"""
         try:
-            self.logger.info(f"🧠 [CONTEXT_TRACE] Starting context retrieval for request {request_id}")
+            self.logger.debug(f"🧠 [CONTEXT_TRACE] Starting context retrieval for request {request_id}")
             
             memory_manager = ai_registry.get("memory")
             if not memory_manager:
                 self.logger.warning(f"🧠 [CONTEXT_TRACE] ❌ Memory manager NOT registered in ai_registry")
                 return None
             
-            self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Memory manager found")
+            self.logger.debug(f"🧠 [CONTEXT_TRACE] ✅ Memory manager found")
             
             user_id = user_context.user_id
             conversation_id = message.message.conversation_id
             message_text = message.message.text
             
-            self.logger.info(f"🧠 [CONTEXT_TRACE] Calling memory_manager.assemble_context(user_id={user_id}, conversation_id={conversation_id})")
+            self.logger.debug(f"🧠 [CONTEXT_TRACE] Calling memory_manager.assemble_context(user_id={user_id}, conversation_id={conversation_id})")
             
             # Get context from memory manager
             context = await memory_manager.assemble_context(
@@ -487,16 +487,16 @@ class ConversationEngine(BaseService):
                 recent_context = memory_data.get("recent_context", [])
                 metadata = context.get("metadata", {})
                 
-                self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Context retrieved:")
-                self.logger.info(f"🧠 [CONTEXT_TRACE]   - user_facts: {len(user_facts)} items")
-                self.logger.info(f"🧠 [CONTEXT_TRACE]   - recent_context: {len(recent_context)} messages")
-                self.logger.info(f"🧠 [CONTEXT_TRACE]   - total_items: {metadata.get('total_items', 0)}")
-                self.logger.info(f"🧠 [CONTEXT_TRACE]   - assembly_time: {metadata.get('assembly_time_ms', 0):.2f}ms")
+                self.logger.debug(f"🧠 [CONTEXT_TRACE] ✅ Context retrieved:")
+                self.logger.debug(f"🧠 [CONTEXT_TRACE]   - user_facts: {len(user_facts)} items")
+                self.logger.debug(f"🧠 [CONTEXT_TRACE]   - recent_context: {len(recent_context)} messages")
+                self.logger.debug(f"🧠 [CONTEXT_TRACE]   - total_items: {metadata.get('total_items', 0)}")
+                self.logger.debug(f"🧠 [CONTEXT_TRACE]   - assembly_time: {metadata.get('assembly_time_ms', 0):.2f}ms")
                 
                 if user_facts:
-                    self.logger.info(f"🧠 [CONTEXT_TRACE] Sample user_facts: {user_facts[0].get('content', 'N/A')[:100]}...")
+                    self.logger.debug(f"🧠 [CONTEXT_TRACE] Sample user_facts: {user_facts[0].get('content', 'N/A')[:100]}...")
                 if recent_context:
-                    self.logger.info(f"🧠 [CONTEXT_TRACE] Sample recent_context: {recent_context[0].get('content', 'N/A')[:100]}...")
+                    self.logger.debug(f"🧠 [CONTEXT_TRACE] Sample recent_context: {recent_context[0].get('content', 'N/A')[:100]}...")
             else:
                 self.logger.warning(f"🧠 [CONTEXT_TRACE] ⚠️  Context is None or empty")
             
@@ -528,13 +528,13 @@ class ConversationEngine(BaseService):
             conversation_id = message.message.conversation_id
             message_text = message.message.text
             
-            self.logger.info(f"🔍 [MEMORY_BACKGROUND] Starting background message storage for {request_id}")
+            self.logger.debug(f"🔍 [MEMORY_BACKGROUND] Starting background message storage for {request_id}")
             
             # Store user message for future context (let it take as long as needed - it's background)
             try:
                 await memory_manager.store_message(user_id, conversation_id, message_text, "user", language=user_context.conversation_language)
                 total_duration = time.time() - start_time
-                self.logger.info(f"🔍 [MEMORY_BACKGROUND] ✅ User message stored in {total_duration:.3f}s for {request_id}")
+                self.logger.debug(f"🔍 [MEMORY_BACKGROUND] ✅ User message stored in {total_duration:.3f}s for {request_id}")
             except Exception as e:
                 total_duration = time.time() - start_time
                 self.logger.error(f"🔍 [MEMORY_BACKGROUND] ❌ Storage failed after {total_duration:.3f}s for {request_id}: {e}")
@@ -606,7 +606,7 @@ class ConversationEngine(BaseService):
             selected_skill_id = await self._select_skill(user_context, user_message, memory_context)
             if selected_skill_id:
                 self.pending_responses[request_id]["selected_skill_id"] = selected_skill_id
-                self.logger.info(f"🎯 [SKILL] Selected skill: {selected_skill_id}")
+                self.logger.debug(f"🎯 [SKILL] Selected skill: {selected_skill_id}")
             
             # Build system prompt with memory context and skill template
             if memory_context is None:
@@ -639,21 +639,21 @@ class ConversationEngine(BaseService):
                 # Take last 5 messages and reverse them
                 history_messages = list(reversed(recent_context[-5:]))
                 
-                self.logger.info(f"🧠 [CONTEXT_TRACE] Processing {len(history_messages)} history messages for LLM")
+                self.logger.debug(f"🧠 [CONTEXT_TRACE] Processing {len(history_messages)} history messages for LLM")
                 for msg in history_messages:
                     role = msg.get('role', 'user')
                     content = msg.get('content', '').strip()
                     if content:
                         messages.append(ModelConversationMessage(role=role, content=content))
                         history_message_count += 1
-                        self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Added {role} message to LLM: {content[:80]}...")
+                        self.logger.debug(f"🧠 [CONTEXT_TRACE] ✅ Added {role} message to LLM: {content[:80]}...")
                 
                 # CRITICAL VALIDATION: Warn if no conversation history was added
                 if history_message_count == 0 and len(recent_context) > 0:
                     self.logger.error(f"🚨 [CONTEXT_ERROR] recent_context has {len(recent_context)} items but ZERO messages added to LLM!")
                     self.logger.error(f"🚨 [CONTEXT_ERROR] Sample item keys: {list(recent_context[0].keys()) if recent_context else 'N/A'}")
                 else:
-                    self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Added {history_message_count} history messages to LLM context")
+                    self.logger.debug(f"🧠 [CONTEXT_TRACE] ✅ Added {history_message_count} history messages to LLM context")
             else:
                 self.logger.warning(f"🧠 [CONTEXT_TRACE] ⚠️  No memory_context provided - LLM has no conversation history")
             
@@ -750,7 +750,7 @@ class ConversationEngine(BaseService):
                     
                     # If this is the final chunk, handle completion
                     if is_done:
-                        self.logger.info(f"Streaming complete: {len(accumulated_content)} chars, thinking: {len(accumulated_thinking)} chars")
+                        self.logger.debug(f"Streaming complete: {len(accumulated_content)} chars, thinking: {len(accumulated_thinking)} chars")
                         await self._finalize_streaming_response(request_id, accumulated_content, accumulated_thinking)
                         return True  # Signal to stop subscription
                     return False
@@ -896,13 +896,13 @@ class ConversationEngine(BaseService):
                             skill = asyncio.run(memory_manager._skill_store.get_skill(skill_id))
                             if skill:
                                 prompt_parts.append(f"Interaction style:\n{skill.procedure_template}")
-                                self.logger.info(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
+                                self.logger.debug(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
                     except RuntimeError:
                         # No event loop, create one
                         skill = asyncio.run(memory_manager._skill_store.get_skill(skill_id))
                         if skill:
                             prompt_parts.append(f"Interaction style:\n{skill.procedure_template}")
-                            self.logger.info(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
+                            self.logger.debug(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
             except Exception as e:
                 self.logger.warning(f"🎯 [SKILL] Failed to inject skill template: {e}")
         
@@ -1056,7 +1056,7 @@ class ConversationEngine(BaseService):
     async def _handle_llm_response(self, response) -> None:
         """Handle LLM completion response and deliver final response"""
         try:
-            self.logger.info(f"LLM response received, processing...")
+            self.logger.debug(f"LLM response received, processing...")
             
             # Unpack the LLM response from AicoMessage envelope
             from aico.proto.aico_modelservice_pb2 import CompletionsResponse
@@ -1121,7 +1121,7 @@ class ConversationEngine(BaseService):
                     except Exception as e:
                         self.logger.error(f"Failed to store AI response in memory: {e}")
                 
-                self.logger.info(f"🔍 [ENGINE_FLOW] ✅ Response processing complete for correlation_id: {correlation_id}")
+                self.logger.debug(f"🔍 [ENGINE_FLOW] ✅ Response processing complete for correlation_id: {correlation_id}")
                 
                 # Clean up (but only if not being used by direct API)
                 if request_id in self.pending_responses and not self.pending_responses[request_id].get("direct_api_call"):
@@ -1138,7 +1138,7 @@ class ConversationEngine(BaseService):
     async def _response_timeout_handler(self, request_id: str) -> None:
         """Handle response timeout for a specific request"""
         try:
-            self.logger.info(f"🔍 [ENGINE_TIMEOUT] Starting timeout handler for request: {request_id}")
+            self.logger.debug(f"🔍 [ENGINE_TIMEOUT] Starting timeout handler for request: {request_id}")
             await asyncio.sleep(self.response_timeout)
             
             # Check if request is still pending after timeout
@@ -1146,7 +1146,7 @@ class ConversationEngine(BaseService):
                 self.logger.error(f"🔍 [ENGINE_TIMEOUT] ❌ REQUEST TIMED OUT after {self.response_timeout}s: {request_id}")
                 await self._cleanup_request(request_id)
             else:
-                self.logger.info(f"🔍 [ENGINE_TIMEOUT] ✅ Request completed before timeout: {request_id}")
+                self.logger.debug(f"🔍 [ENGINE_TIMEOUT] ✅ Request completed before timeout: {request_id}")
                 
         except Exception as e:
             self.logger.error(f"Error in timeout handler for {request_id}: {e}")
@@ -1190,7 +1190,7 @@ class ConversationEngine(BaseService):
                     if user_service:
                         profile = await user_service.get_user(user_id)
                         if profile and getattr(profile, "is_technical", False):
-                            self.logger.info(
+                            self.logger.debug(
                                 "[GOAL_EXTRACTION] Skipping goal extraction for technical user",
                                 extra={"user_id": user_id},
                             )
@@ -1250,7 +1250,7 @@ class ConversationEngine(BaseService):
             )
             
             if selected_skill_id:
-                self.logger.info(f"Selected skill: {selected_skill_id}")
+                self.logger.debug(f"Selected skill: {selected_skill_id}")
             else:
                 self.logger.debug("Thompson Sampling returned None")
             
@@ -1319,7 +1319,7 @@ class ConversationEngine(BaseService):
                             agency_context_json = json.dumps(agency_context)
                             
                             # Log agency decisions as structured log entry
-                            self.logger.info(
+                            self.logger.debug(
                                 f"🎯 [AGENCY] Turn {turn_number} - Agency context",
                                 extra={
                                     "conversation_id": conversation_id,
@@ -1347,7 +1347,7 @@ class ConversationEngine(BaseService):
                     await uow.ams_trajectories.create(trajectory)
                     await uow.commit()
                     
-                    self.logger.info(f"📝 [TRAJECTORY] Logged turn {turn_number} for conversation {conversation_id}")
+                    self.logger.debug(f"📝 [TRAJECTORY] Logged turn {turn_number} for conversation {conversation_id}")
             except Exception as db_error:
                 self.logger.error(f"📝 [TRAJECTORY] Database error logging trajectory: {db_error}")
                 raise
@@ -1384,7 +1384,7 @@ class ConversationEngine(BaseService):
             memory_manager = ai_registry.get("memory")
             if memory_manager and hasattr(memory_manager, 'shutdown'):
                 await memory_manager.shutdown(timeout=20.0)  # Leave time for other services
-                self.logger.info("Memory manager shutdown completed")
+                self.logger.debug("Memory manager shutdown completed")
             
             # Shutdown message bus client
             if self.bus_client:

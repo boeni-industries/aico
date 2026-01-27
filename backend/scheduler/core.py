@@ -810,7 +810,7 @@ class TaskScheduler(BaseService):
         max_queue_size = scheduler_config.get("max_queue_size", 1000)
         self.priority_queue = PriorityTaskQueue(max_queue_size=max_queue_size)
         
-        self.logger.info("Task scheduler initialized with priority queue")
+        self.logger.debug("Task scheduler initialized with priority queue")
     
     async def start(self) -> None:
         """Start the scheduler"""
@@ -865,13 +865,13 @@ class TaskScheduler(BaseService):
         scheduler_config = self.get_config("scheduler", {})
         interval = scheduler_config.get("scheduler_interval", 1.0)
         
-        self.logger.info(f"Scheduler loop started (interval: {interval}s)")
+        self.logger.debug(f"Scheduler loop started (interval: {interval}s)")
         
         while self.running:
             try:
                 await self._check_and_execute_tasks()
             except asyncio.CancelledError:
-                self.logger.info("Scheduler loop cancelled")
+                self.logger.debug("Scheduler loop cancelled")
                 break
             except Exception as e:
                 # Log error loudly but DON'T crash the scheduler
@@ -890,7 +890,7 @@ class TaskScheduler(BaseService):
             try:
                 await asyncio.sleep(interval)
             except asyncio.CancelledError:
-                self.logger.info("Scheduler loop cancelled during sleep")
+                self.logger.debug("Scheduler loop cancelled during sleep")
                 break
     
     async def _check_for_triggers(self) -> List[str]:
@@ -906,7 +906,7 @@ class TaskScheduler(BaseService):
 
             for trigger_file in trigger_dir.glob("*.trigger"):
                 task_id = trigger_file.stem
-                self.logger.info(f"Manual trigger file detected for task: {task_id}")
+                self.logger.debug(f"Manual trigger file detected for task: {task_id}")
                 triggered_tasks.append(task_id)
                 try:
                     trigger_file.unlink()  # Delete after processing

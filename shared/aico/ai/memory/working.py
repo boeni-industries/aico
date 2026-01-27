@@ -72,7 +72,7 @@ class WorkingMemoryStore:
         if self._initialized:
             return
 
-        logger.info(f"[DEBUG] WorkingMemoryStore: Initializing at {self._db_path}")
+        logger.debug(f"[DEBUG] WorkingMemoryStore: Initializing at {self._db_path}")
         try:
             initialize_lmdb_env(self.config)
             self.env = lmdb.open(str(self._db_path), max_dbs=len(self._named_dbs) + 1)
@@ -82,7 +82,7 @@ class WorkingMemoryStore:
                 self.dbs[db_name] = self.env.open_db(db_name.encode('utf-8'), create=True)
 
             self._initialized = True
-            logger.info(f"[DEBUG] WorkingMemoryStore: Initialization complete")
+            logger.debug(f"[DEBUG] WorkingMemoryStore: Initialization complete")
 
         except Exception as e:
             logger.error(f"Failed to initialize working memory store: {e}")
@@ -159,7 +159,7 @@ class WorkingMemoryStore:
                 if db is None:
                     raise ConnectionError("session_memory database not open.")
 
-                logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for conversation {conversation_id}.")
+                logger.debug(f"[DEBUG] WorkingMemoryStore: Retrieving history for conversation {conversation_id}.")
                 with self.env.begin(db=db) as txn:
                     cursor = txn.cursor()
                     # Seek to the start of the desired conversation
@@ -209,7 +209,7 @@ class WorkingMemoryStore:
             if db is None:
                 raise ConnectionError("session_memory database not open.")
 
-            logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for user {user_id}.")
+            logger.debug(f"[DEBUG] WorkingMemoryStore: Retrieving history for user {user_id}.")
             with self.env.begin(db=db) as txn:
                 cursor = txn.cursor()
                 # Iterate through all keys to find messages for this user

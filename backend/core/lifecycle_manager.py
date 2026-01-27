@@ -49,7 +49,7 @@ class BackendLifecycleManager:
             self.logger
         )
         
-        self.logger.info("Backend lifecycle manager initialized")
+        self.logger.debug("Backend lifecycle manager initialized")
     
     def _display_startup_status(self):
         """Display beautiful cross-platform startup status for all components"""
@@ -58,12 +58,12 @@ class BackendLifecycleManager:
     
     async def startup(self) -> FastAPI:
         """Complete backend startup sequence"""
-        self.logger.info("Starting AICO backend components...")
+        self.logger.debug("Starting AICO backend components...")
         
         # 1. Initialize PostgreSQL session factory FIRST (needed by AI processors)
         from backend.core.postgres_dependencies import initialize_postgres_dependencies
         await initialize_postgres_dependencies()
-        self.logger.info("PostgreSQL session factory initialized")
+        self.logger.debug("PostgreSQL session factory initialized")
         
         # 2. Initialize service container (AI processors need UoW factory)
         await self._initialize_container()
@@ -133,13 +133,13 @@ class BackendLifecycleManager:
             mode = self.config.get("core.instrumentation.mode", "dev")
 
             if not enabled:
-                self.logger.info(
+                self.logger.debug(
                     "OpenTelemetry instrumentation disabled via config (core.instrumentation.enabled = false); "
                     "skipping telemetry setup"
                 )
                 return
 
-            self.logger.info(f"Initializing OpenTelemetry instrumentation (enabled, mode={mode})")
+            self.logger.debug(f"Initializing OpenTelemetry instrumentation (enabled, mode={mode})")
 
             # Get encrypted database connection from container (will be available after container init)
             db_connection = None
@@ -940,12 +940,12 @@ class BackendLifecycleManager:
         self.logger.debug("API routers mounted")
         
         # Apply encryption middleware as final ASGI wrapper (after all routers mounted)
-        self.logger.info("Starting encryption middleware initialization")
+        self.logger.debug("Starting encryption middleware initialization")
         key_manager = AICOKeyManager(self.config)
         # Store reference to FastAPI app before wrapping for route display
         self.fastapi_app = self.app
         self.app = EncryptionMiddleware(self.app, key_manager)
-        self.logger.info("Encryption middleware started successfully")
+        self.logger.debug("Encryption middleware started successfully")
     
     def _display_service_status(self) -> None:
         """Display core service startup status"""
@@ -983,61 +983,61 @@ class BackendLifecycleManager:
         
         # Mount routers with prefixes
         self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/health", "tags": ["health"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/health", "tags": ["health"]})
         
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/echo", "tags": ["echo"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/echo", "tags": ["echo"]})
         
         self.app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/users", "tags": ["users"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/users", "tags": ["users"]})
         
         self.app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/admin", "tags": ["admin"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/admin", "tags": ["admin"]})
         
         self.app.include_router(logs_router, prefix="/api/v1/logs", tags=["logs"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/logs", "tags": ["logs"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/logs", "tags": ["logs"]})
         
         self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/conversation", "tags": ["conversation"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/conversation", "tags": ["conversation"]})
         
         self.app.include_router(memory_router, prefix="/api/v1", tags=["memory"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1", "tags": ["memory"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1", "tags": ["memory"]})
         
         self.app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system"]})
         
         self.app.include_router(system_health_router, prefix="/api/v1/system", tags=["system-health"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system-health"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system-health"]})
         
         self.app.include_router(memory_album_router, prefix="/api/v1/memory-album", tags=["memory-album"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/memory-album", "tags": ["memory-album"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/memory-album", "tags": ["memory-album"]})
         
         self.app.include_router(kg_router, prefix="/api/v1/kg", tags=["knowledge-graph"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/kg", "tags": ["knowledge-graph"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/kg", "tags": ["knowledge-graph"]})
         
         self.app.include_router(behavioral_router, prefix="/api/v1/behavioral", tags=["behavioral"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/behavioral", "tags": ["behavioral"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/behavioral", "tags": ["behavioral"]})
         
         self.app.include_router(emotion_router, prefix="/api/v1/emotion", tags=["emotion"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/emotion", "tags": ["emotion"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/emotion", "tags": ["emotion"]})
         
         self.app.include_router(tts_router, prefix="/api/v1/tts", tags=["tts"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/tts", "tags": ["tts"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/tts", "tags": ["tts"]})
         
         self.app.include_router(agency_router, prefix="/api/v1/agency", tags=["agency"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/agency", "tags": ["agency"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/agency", "tags": ["agency"]})
         
         self.app.include_router(ams_router, prefix="/api/v1", tags=["ams"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1", "tags": ["ams"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1", "tags": ["ams"]})
         
         self.app.include_router(operations_router, prefix="/api/v1/operations", tags=["operations"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/operations", "tags": ["operations"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/operations", "tags": ["operations"]})
         
         self.app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/scheduler", "tags": ["scheduler"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/scheduler", "tags": ["scheduler"]})
         
         self.app.include_router(users_sessions_router, prefix="/api/v1/users-sessions", tags=["users-sessions"])
-        self.logger.info("Router mounted", extra={"prefix": "/api/v1/users-sessions", "tags": ["users-sessions"]})
+        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/users-sessions", "tags": ["users-sessions"]})
         
     
     def _display_routes(self) -> None:

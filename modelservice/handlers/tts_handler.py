@@ -134,7 +134,7 @@ class TtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("XTTS configuration is empty")
             
-            self._logger.info(f"✅ Found TTS config: {tts_config}")
+            self._logger.debug(f"✅ Found TTS config: {tts_config}")
             
             # Load voices
             self._voices = tts_config.get("voices", {})
@@ -156,7 +156,7 @@ class TtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("No voices configured in modelservice.tts.xtts.voices")
             
-            self._logger.info(f"✅ Configured voices: {self._voices}")
+            self._logger.debug(f"✅ Configured voices: {self._voices}")
             
             # Load custom voice if specified
             custom_voice = tts_config.get("custom_voice_path")
@@ -247,8 +247,9 @@ class TtsHandler:
             auto_detect = bool(auto_detect)
             
             # Debug logging
-            print(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'", flush=True)
-            self._logger.info(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}'")
+            self._logger.debug(
+                f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'"
+            )
             
             if auto_detect or not language or language.strip() == "":
                 # Use 'en' as fallback if detection fails
@@ -258,8 +259,7 @@ class TtsHandler:
                 print(f"🔍 Detected language: {result.language} (confidence: {result.confidence:.2f})", flush=True)
                 language = result.language
             else:
-                print(f"🔍 [DEBUG] Skipping detection - using provided language: {language}", flush=True)
-                self._logger.info(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
+                self._logger.debug(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
             
             # Clean markdown and special formatting from text (using shared utility)
             clean_start = time.time()

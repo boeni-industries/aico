@@ -119,21 +119,21 @@ async def get_intention_set(
         intention_set = await engine.get_intention_set(user_id)
         
         # DEBUG: Log intention set data
-        logger.info(f"[DEBUG] get_intention_set for user {user_id}")
-        logger.info(f"[DEBUG] intention_set.intentions count: {len(intention_set.intentions)}")
-        logger.info(f"[DEBUG] intention_set raw: {intention_set}")
+        logger.debug(f"[DEBUG] get_intention_set for user {user_id}")
+        logger.debug(f"[DEBUG] intention_set.intentions count: {len(intention_set.intentions)}")
+        logger.debug(f"[DEBUG] intention_set raw: {intention_set}")
         
         # Limit results
         intentions = intention_set.intentions[:limit]
-        logger.info(f"[DEBUG] intentions after limit: {len(intentions)}")
+        logger.debug(f"[DEBUG] intentions after limit: {len(intentions)}")
         
         # Fetch actual Goal objects for each intention
         active_intentions = []
         for intention in intentions:
-            logger.info(f"[DEBUG] Processing intention: goal_id={intention.goal_id}, score={intention.arbiter_score}")
+            logger.debug(f"[DEBUG] Processing intention: goal_id={intention.goal_id}, score={intention.arbiter_score}")
             goal = await engine.get_goal(intention.goal_id)
             if goal:
-                logger.info(f"[DEBUG] Found goal: {goal.title} (status={goal.status.value})")
+                logger.debug(f"[DEBUG] Found goal: {goal.title} (status={goal.status.value})")
                 active_intentions.append(
                     GoalSummary(
                         goal_id=goal.goal_id,
@@ -149,9 +149,9 @@ async def get_intention_set(
                     )
                 )
             else:
-                logger.warning(f"[DEBUG] Goal not found for intention: {intention.goal_id}")
+                logger.debug(f"[DEBUG] Goal not found for intention: {intention.goal_id}")
         
-        logger.info(f"[DEBUG] active_intentions final count: {len(active_intentions)}")
+        logger.debug(f"[DEBUG] active_intentions final count: {len(active_intentions)}")
         
         # Get hobby goals
         hobby_goals = [g for g in active_intentions if g.origin == GoalOrigin.HOBBY]
@@ -160,7 +160,7 @@ async def get_intention_set(
         all_goals = await engine.list_goals_for_user(user_id)
         open_goals = [g for g in all_goals if g.status in [GoalStatus.PENDING, GoalStatus.ACTIVE]]
         
-        logger.info(f"[DEBUG] all_goals count: {len(all_goals)}, open_goals count: {len(open_goals)}")
+        logger.debug(f"[DEBUG] all_goals count: {len(all_goals)}, open_goals count: {len(open_goals)}")
         
         return IntentionSetResponse(
             user_id=user_id,

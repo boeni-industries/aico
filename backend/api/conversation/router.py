@@ -55,34 +55,30 @@ async def send_message_with_auto_thread(
     current_user = Depends(get_current_user),
     bus_client = Depends(get_message_bus_client)
 ):
-    logger.info(f"🔥 [API_ENDPOINT] /conversation/messages called with stream='{stream}'")
-    print(f"🚨 [CONSOLE] API ENDPOINT CALLED! stream='{stream}'")
+    logger.debug(f"🔥 [API_ENDPOINT] /conversation/messages called with stream='{stream}'")
     """Send message with lazy thread resolution via context assembly. Supports streaming with ?stream=true"""
     try:
-        logger.info(f"🔍 [API_DEBUG] Received request with stream parameter: '{stream}' (type: {type(stream)})")
-        print(f"🚨 [CONSOLE] Stream parameter: '{stream}' -> {stream.lower() in ('true', '1', 'yes', 'on')}")
+        logger.debug(f"🔍 [API_DEBUG] Received request with stream parameter: '{stream}' (type: {type(stream)})")
         user_id = current_user['user_uuid']
         
         # INDUSTRY STANDARD: conversation_id pattern (user_id + session)
         # This follows LangGraph, Azure AI Foundry, and OpenAI Assistant API patterns
         # Use conversation_id from request if provided and valid, otherwise create new session
         request_conversation_id = getattr(request, 'conversation_id', None)
-        logger.info(f"🔍 [CONVERSATION_ID] Request conversation_id: '{request_conversation_id}'")
+        logger.debug(f"🔍 [CONVERSATION_ID] Request conversation_id: '{request_conversation_id}'")
         
         if (hasattr(request, 'conversation_id') and 
             request.conversation_id and 
             request.conversation_id != 'default' and
             '_' in request.conversation_id):
             conversation_id = request.conversation_id
-            logger.info(f"🔍 [CONVERSATION_ID] ✅ Reusing existing conversation_id: '{conversation_id}'")
+            logger.debug(f"🔍 [CONVERSATION_ID] ✅ Reusing existing conversation_id: '{conversation_id}'")
         else:
             # Create new conversation session (only for first message)
             import time
             session_timestamp = int(time.time())
             conversation_id = f"{user_id}_{session_timestamp}"
-            logger.info(f"🔍 [CONVERSATION_ID] ✅ Generated new conversation_id: '{conversation_id}'")
-        
-        print(f"🚨 [CONSOLE] FINAL CONVERSATION_ID: {conversation_id}")
+            logger.debug(f"🔍 [CONVERSATION_ID] ✅ Generated new conversation_id: '{conversation_id}'")
         
         message_id = str(uuid.uuid4())
         timestamp = datetime.utcnow()
@@ -136,7 +132,7 @@ async def send_message_with_auto_thread(
                     import re
                     raw_response = conversation_message.message.text
                     ai_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
-                    logger.info(f"[API_GATEWAY] ✅ AI response extracted for message_id {message_id}: '{ai_response[:100]}...'")
+                    logger.debug(f"[API_GATEWAY] ✅ AI response extracted for message_id {message_id}: '{ai_response[:100]}...'")
                     response_received.set()
                 else:
                     logger.debug(f"[API_GATEWAY] Message ID mismatch (got: {conversation_message.message_id}, expected: {message_id}), ignoring response")
@@ -149,17 +145,16 @@ async def send_message_with_auto_thread(
         # Handle streaming vs non-streaming response
         # Convert string parameter to boolean
         stream_enabled = stream.lower() in ('true', '1', 'yes', 'on')
-        logger.info(f"🔍 [API_STREAMING] Stream parameter: '{stream}' -> {stream_enabled} for request {message_id}")
+        logger.debug(f"🔍 [API_STREAMING] Stream parameter: '{stream}' -> {stream_enabled} for request {message_id}")
         if stream_enabled:
-            logger.info(f"🔍 [API_STREAMING] ✅ Taking streaming path for request {message_id}")
-            print(f"🚨 [CONSOLE] About to create StreamingResponse for {message_id}")
+            logger.debug(f"🔍 [API_STREAMING] ✅ Taking streaming path for request {message_id}")
             
             # Return streaming response using event-driven approach
             async def stream_generator():
-                logger.info(f"🔍 [API_STREAMING] 🚀 Stream generator started for {message_id}")
+                logger.debug(f"🔍 [API_STREAMING] 🚀 Stream generator started for {message_id}")
                 try:
                     # Send initial metadata (unencrypted for now - fix encryption later)
-                    logger.info(f"🔍 [API_STREAMING] 📤 Yielding metadata for {message_id}")
+                    logger.debug(f"🔍 [API_STREAMING] 📤 Yielding metadata for {message_id}")
                     yield json.dumps({
                         "type": "metadata",
                         "message_id": message_id,
@@ -211,9 +206,9 @@ async def send_message_with_auto_thread(
                     
                     # Process chunks from queue as they arrive - truly event-driven
                     timeout_start = asyncio.get_event_loop().time()
-                    logger.info(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
-                    logger.info(f"🔍 [API_STREAMING] streaming_complete.is_set() = {streaming_complete.is_set()}")
-                    logger.info(f"🔍 [API_STREAMING] chunk_queue.qsize() = {chunk_queue.qsize()}")
+                    logger.debug(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
+                    logger.debug(f"🔍 [API_STREAMING] streaming_complete.is_set() = {streaming_complete.is_set()}")
+                    logger.debug(f"🔍 [API_STREAMING] chunk_queue.qsize() = {chunk_queue.qsize()}")
                     
                     chunk_count = 0
                     timeout_count = 0
@@ -240,36 +235,35 @@ async def send_message_with_auto_thread(
                                 if chunk["done"]:
                                     chunk_data["conversation_id"] = conversation_id
                                     chunk_data["message_id"] = message_id  # Add message_id for feedback linking
-                                    logger.info(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
+                                    logger.debug(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
                                 yield json.dumps(chunk_data) + "\n"
                                 
                         except asyncio.TimeoutError:
                             # No chunk received, continue waiting
                             timeout_count += 1
                             if timeout_count % 50 == 0:  # Log every 5 seconds
-                                logger.info(f"🔍 [API_STREAMING] ⏱️ Still waiting for chunks... (timeout #{timeout_count}, elapsed: {asyncio.get_event_loop().time() - timeout_start:.1f}s)")
+                                logger.debug(f"🔍 [API_STREAMING] ⏱️ Still waiting for chunks... (timeout #{timeout_count}, elapsed: {asyncio.get_event_loop().time() - timeout_start:.1f}s)")
                     
                     # Log why loop exited
-                    logger.info(f"🔍 [API_STREAMING] Loop exited: streaming_complete={streaming_complete.is_set()}, chunks_received={chunk_count}, timeouts={timeout_count}")
+                    logger.debug(f"🔍 [API_STREAMING] Loop exited: streaming_complete={streaming_complete.is_set()}, chunks_received={chunk_count}, timeouts={timeout_count}")
                     
                     # Unsubscribe
                     try:
                         await bus_client.unsubscribe(AICOTopics.CONVERSATION_STREAM)
-                        logger.info(f"🔍 [API_STREAMING] 🔌 Unsubscribed from streaming for {message_id}")
+                        logger.debug(f"🔍 [API_STREAMING] 🔌 Unsubscribed from streaming for {message_id}")
                     except Exception as e:
                         logger.error(f"Error unsubscribing from streaming: {e}")
                     
-                    logger.info(f"🔍 [API_STREAMING] 🏁 Stream generator completed for {message_id}")
+                    logger.debug(f"🔍 [API_STREAMING] 🏁 Stream generator completed for {message_id}")
                         
                 except Exception as e:
                     logger.error(f"Stream generator error: {e}")
-                    logger.info(f"🔍 [API_STREAMING] ❌ Stream generator failed for {message_id}: {e}")
+                    logger.debug(f"🔍 [API_STREAMING] ❌ Stream generator failed for {message_id}: {e}")
                     yield json.dumps({
                         "type": "error",
                         "error": str(e)
                     }) + "\n"
             
-            print(f"🚨 [CONSOLE] Creating StreamingResponse object for {message_id}")
             try:
                 response = StreamingResponse(
                     stream_generator(),
@@ -282,8 +276,7 @@ async def send_message_with_auto_thread(
                     }
                 )
                 return response
-            except Exception as e:
-                print(f"🚨 [CONSOLE] ERROR creating StreamingResponse: {e}")
+            except Exception:
                 raise
         else:
             # Non-streaming: Subscribe and wait for complete response
@@ -291,9 +284,9 @@ async def send_message_with_auto_thread(
             
             # Wait for response with timeout (allow for unoptimized LLM processing)
             try:
-                logger.info(f"🔍 [CONVERSATION_TIMEOUT] Waiting for response with 15s timeout for request: {message_id}")
+                logger.debug(f"🔍 [CONVERSATION_TIMEOUT] Waiting for response with 15s timeout for request: {message_id}")
                 await asyncio.wait_for(response_received.wait(), timeout=15.0)
-                logger.info(f"🔍 [CONVERSATION_TIMEOUT] ✅ Response received within timeout for request: {message_id}")
+                logger.debug(f"🔍 [CONVERSATION_TIMEOUT] ✅ Response received within timeout for request: {message_id}")
             except asyncio.TimeoutError:
                 logger.error(f"🔍 [CONVERSATION_TIMEOUT] ❌ 15-SECOND TIMEOUT for request: {message_id}")
                 ai_response = "Request timed out - please try again"
@@ -395,7 +388,7 @@ async def get_my_messages(
                 "message_type": msg.get("message_type", "text")
             })
         
-        logger.info(f"Retrieved {len(formatted_messages)} messages for user {user_id} (page {page})")
+        logger.debug(f"Retrieved {len(formatted_messages)} messages for user {user_id} (page {page})")
         
         return MessageHistoryResponse(
             success=True,
@@ -432,7 +425,7 @@ async def get_my_conversation_status(
     try:
         user_id = current_user['user_uuid']
         
-        logger.info(f"Getting conversation status for user: {user_id}")
+        logger.debug(f"Getting conversation status for user: {user_id}")
         
         # TODO: Get user's conversation status from semantic memory system
         # This would query working memory and semantic memory for user activity
@@ -471,7 +464,7 @@ async def my_conversation_websocket(websocket: WebSocket):
     connection_id = f"user_{uuid.uuid4()}"  # User-scoped connection
     active_connections[connection_id] = websocket
     
-    logger.info(f"WebSocket connection established", extra={
+    logger.debug(f"WebSocket connection established", extra={
         "connection_id": connection_id
     })
     
@@ -500,7 +493,7 @@ async def my_conversation_websocket(websocket: WebSocket):
                     
                     await websocket.send_json(ai_response.dict())
                     
-                    logger.info(f"Sent AI response via WebSocket", extra={
+                    logger.debug(f"Sent AI response via WebSocket", extra={
                         "connection_id": connection_id
                     })
             except Exception as e:
@@ -558,7 +551,7 @@ async def my_conversation_websocket(websocket: WebSocket):
         except:
             pass
         
-        logger.info(f"WebSocket connection closed", extra={
+        logger.debug(f"WebSocket connection closed", extra={
             "connection_id": connection_id
         })
 

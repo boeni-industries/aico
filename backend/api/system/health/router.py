@@ -94,7 +94,7 @@ async def get_system_health(
     Aggregates results from all health check skills and returns summary.
     Cached for 30 seconds to avoid overload.
     """
-    logger.info("[HEALTH_API] Getting system health for user %s", current_user.get("user_uuid"))
+    logger.debug("[HEALTH_API] Getting system health for user %s", current_user.get("user_uuid"))
     
     try:
         return await health_service.get_system_health()
@@ -112,7 +112,7 @@ async def get_service_health(
     
     Returns current status and historical data for all services.
     """
-    logger.info("[HEALTH_API] Getting service health for user %s", current_user.get("user_uuid"))
+    logger.debug("[HEALTH_API] Getting service health for user %s", current_user.get("user_uuid"))
     
     try:
         return await health_service.get_service_health()
@@ -130,7 +130,7 @@ async def get_system_issues(
     
     Returns issues detected by health checks with remediation actions.
     """
-    logger.info("[HEALTH_API] Getting system issues for user %s", current_user.get("user_uuid"))
+    logger.debug("[HEALTH_API] Getting system issues for user %s", current_user.get("user_uuid"))
     
     try:
         return await health_service.get_active_issues()
@@ -148,7 +148,7 @@ async def run_connectivity_check(
     
     Tests connectivity to all core components (databases, modelservice, etc.).
     """
-    logger.info("[HEALTH_API] Running connectivity check for user %s", current_user.get("user_uuid"))
+    logger.debug("[HEALTH_API] Running connectivity check for user %s", current_user.get("user_uuid"))
     
     try:
         return await health_service.run_connectivity_check()
@@ -166,7 +166,7 @@ async def run_resources_check(
     
     Monitors CPU, memory, and disk usage against thresholds.
     """
-    logger.info("[HEALTH_API] Running resources check for user %s", current_user.get("user_uuid"))
+    logger.debug("[HEALTH_API] Running resources check for user %s", current_user.get("user_uuid"))
     
     try:
         return await health_service.run_resources_check()
@@ -184,7 +184,7 @@ async def run_models_check(
     
     Tests modelservice connectivity and inference pipeline.
     """
-    logger.info("[HEALTH_API] Running models check for user %s", current_user.get("user_uuid"))
+    logger.debug("[HEALTH_API] Running models check for user %s", current_user.get("user_uuid"))
     
     try:
         return await health_service.run_models_check()
@@ -202,7 +202,7 @@ async def run_ai_behaviour_check(
     
     Monitors agency goals, plans, and reflection activity.
     """
-    logger.info("[HEALTH_API] Running AI behaviour check for user %s", current_user.get("user_uuid"))
+    logger.debug("[HEALTH_API] Running AI behaviour check for user %s", current_user.get("user_uuid"))
     
     try:
         return await health_service.run_ai_behaviour_check()
@@ -223,7 +223,7 @@ async def test_connection(
     
     Tests connectivity and returns latency, status, and fix suggestions.
     """
-    logger.info(
+    logger.debug(
         "[HEALTH_API] Testing connection to %s for user %s",
         request.component,
         current_user.get("user_uuid")

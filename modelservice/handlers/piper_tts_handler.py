@@ -89,7 +89,7 @@ class PiperTtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("Piper TTS configuration is empty")
             
-            self._logger.info(f"✅ Found Piper config: {tts_config}")
+            self._logger.debug(f"✅ Found Piper config: {tts_config}")
             
             # Load voice configuration
             self._voices = tts_config.get("voices", None)
@@ -120,7 +120,7 @@ class PiperTtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("Piper voices configuration is empty")
             
-            self._logger.info(f"✅ Configured voices: {self._voices}")
+            self._logger.debug(f"✅ Configured voices: {self._voices}")
             
             # Get quality setting
             self._quality = tts_config.get("quality", "medium")
@@ -179,8 +179,9 @@ class PiperTtsHandler:
             auto_detect = bool(auto_detect)
             
             # Debug logging
-            print(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'", flush=True)
-            self._logger.info(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}'")
+            self._logger.debug(
+                f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'"
+            )
             
             if auto_detect or not language or language.strip() == "":
                 # Use 'en' as fallback if detection fails
@@ -190,8 +191,7 @@ class PiperTtsHandler:
                 print(f"🔍 Detected language: {result.language} (confidence: {result.confidence:.2f})", flush=True)
                 language = result.language
             else:
-                print(f"🔍 [DEBUG] Skipping detection - using provided language: {language}", flush=True)
-                self._logger.info(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
+                self._logger.debug(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
             
             # Clean markdown and special formatting from text (using shared utility)
             clean_start = time.time()
