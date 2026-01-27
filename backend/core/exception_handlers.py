@@ -5,6 +5,7 @@ Global exception handlers for FastAPI application.
 Ensures all exceptions are properly logged at appropriate levels with full context.
 """
 
+import time
 import traceback
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
@@ -14,6 +15,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from aico.core.logging import get_logger
 
 logger = get_logger("backend.core.exception_handlers")
+
+_validation_error_log_cache = {}
+_VALIDATION_ERROR_LOG_TTL_SECONDS = 10
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -61,15 +65,21 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     
     Log validation errors at WARNING level with details about what failed.
     """
-    logger.warning(
-        f"Validation error on {request.method} {request.url.path}",
-        extra={
-            'method': request.method,
-            'path': request.url.path,
-            'errors': exc.errors(),
-            'body': exc.body,
-        }
-    )
+    errors = exc.errors()
+    cache_key = (request.method, request.url.path, repr(errors))
+    now = time.time()
+    last_logged = _validation_error_log_cache.get(cache_key)
+    if last_logged is None or (now - last_logged) >= _VALIDATION_ERROR_LOG_TTL_SECONDS:
+        _validation_error_log_cache[cache_key] = now
+        logger.warning(
+            f"Validation error on {request.method} {request.url.path}",
+            extra={
+                'method': request.method,
+                'path': request.url.path,
+                'errors': errors,
+                'body': exc.body,
+            }
+        )
     
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

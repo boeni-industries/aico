@@ -365,8 +365,8 @@ async def list_logs(
     level: Optional[str] = None,
     subsystem: Optional[str] = None,
     module: Optional[str] = None,
-    since: Optional[datetime] = None,
-    until: Optional[datetime] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
     search: Optional[str] = None,
     utc: Optional[bool] = False
 ):

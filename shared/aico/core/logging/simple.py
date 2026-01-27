@@ -91,6 +91,10 @@ def initialize_logging(
     # Get root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(resolved_log_level)
+
+    # Suppress noisy third-party INFO logs (e.g. periodic health checks)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     
     # Clear any existing handlers
     root_logger.handlers.clear()
