@@ -6,8 +6,37 @@ Works alongside existing handlers without disrupting current architecture.
 """
 
 import logging
+import os
 from typing import Optional
 from .influx_handler import InfluxDBLogHandler
+
+
+def _resolve_log_level(service_name: str, log_level: Optional[int]) -> int:
+    resolved_log_level = log_level
+    if resolved_log_level is None:
+        env_level = os.getenv(f"AICO_LOG_LEVEL_{service_name.upper()}") or os.getenv("AICO_LOG_LEVEL")
+        if env_level:
+            resolved_log_level = logging._nameToLevel.get(env_level.upper())
+        else:
+            try:
+                from aico.core.config import ConfigurationManager
+
+                config = ConfigurationManager()
+                config.initialize(lightweight=True)
+
+                configured_level = (
+                    config.get(f"logging.levels.subsystems.{service_name}")
+                    or config.get("logging.levels.default")
+                    or "INFO"
+                )
+                resolved_log_level = logging._nameToLevel.get(str(configured_level).upper(), logging.INFO)
+            except Exception:
+                resolved_log_level = logging.INFO
+
+    if resolved_log_level is None:
+        resolved_log_level = logging.INFO
+
+    return resolved_log_level
 
 
 def add_influx_handler_to_logger(
@@ -17,7 +46,7 @@ def add_influx_handler_to_logger(
     bucket: str,
     token: str,
     service_name: str,
-    level: int = logging.DEBUG,
+    level: Optional[int] = None,
     **handler_kwargs
 ) -> InfluxDBLogHandler:
     """
@@ -36,6 +65,7 @@ def add_influx_handler_to_logger(
     Returns:
         The created InfluxDBLogHandler instance
     """
+    resolved_level = _resolve_log_level(service_name=service_name, log_level=level)
     handler = InfluxDBLogHandler(
         influx_url=influx_url,
         org=org,
@@ -44,7 +74,7 @@ def add_influx_handler_to_logger(
         service_name=service_name,
         **handler_kwargs
     )
-    handler.setLevel(level)
+    handler.setLevel(resolved_level)
     logger.addHandler(handler)
     return handler
 
@@ -55,7 +85,8 @@ def setup_influx_logging(
     org: Optional[str] = None,
     bucket: Optional[str] = None,
     token: Optional[str] = None,
-    enabled: bool = True
+    enabled: bool = True,
+    level: Optional[int] = None
 ) -> Optional[InfluxDBLogHandler]:
     """
     Set up InfluxDB logging for a service.
@@ -107,7 +138,7 @@ def setup_influx_logging(
             bucket=bucket,
             token=token,
             service_name=service_name,
-            level=logging.DEBUG
+            level=level
         )
         
         print(f"[InfluxDB Logging] Enabled for service '{service_name}'", flush=True)

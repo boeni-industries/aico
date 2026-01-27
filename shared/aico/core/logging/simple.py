@@ -16,6 +16,7 @@ Usage:
 """
 
 import logging
+import os
 import sys
 from typing import Optional
 
@@ -31,7 +32,7 @@ def initialize_logging(
     service_name: str,
     enable_influx: bool = True,
     enable_console: bool = True,
-    log_level: int = logging.INFO,
+    log_level: Optional[int] = None,
     influx_url: Optional[str] = None,
     influx_org: Optional[str] = None,
     influx_bucket: Optional[str] = None,
@@ -59,10 +60,37 @@ def initialize_logging(
         return
     
     _service_name = service_name
+
+    resolved_log_level = log_level
+    if resolved_log_level is None:
+        env_level = os.getenv(f"AICO_LOG_LEVEL_{service_name.upper()}") or os.getenv("AICO_LOG_LEVEL")
+        if env_level:
+            resolved_log_level = logging._nameToLevel.get(env_level.upper())
+        else:
+            try:
+                import importlib
+
+                config_module = importlib.import_module('aico.core.config')
+                ConfigurationManager = config_module.ConfigurationManager
+
+                config = ConfigurationManager()
+                config.initialize(lightweight=True)
+
+                configured_level = (
+                    config.get(f"logging.levels.subsystems.{service_name}")
+                    or config.get("logging.levels.default")
+                    or "INFO"
+                )
+                resolved_log_level = logging._nameToLevel.get(str(configured_level).upper(), logging.INFO)
+            except Exception:
+                resolved_log_level = logging.INFO
+
+    if resolved_log_level is None:
+        resolved_log_level = logging.INFO
     
     # Get root logger
     root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
+    root_logger.setLevel(resolved_log_level)
     
     # Clear any existing handlers
     root_logger.handlers.clear()
@@ -70,7 +98,7 @@ def initialize_logging(
     # Add console handler
     if enable_console:
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(log_level)
+        console_handler.setLevel(resolved_log_level)
         console_formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
@@ -114,7 +142,7 @@ def initialize_logging(
                     flush_interval=5.0,
                     batch_size=100
                 )
-                _influx_handler.setLevel(log_level)
+                _influx_handler.setLevel(resolved_log_level)
                 root_logger.addHandler(_influx_handler)
                 print(f"[Logging] InfluxDB enabled for service '{service_name}'", flush=True)
             else:
