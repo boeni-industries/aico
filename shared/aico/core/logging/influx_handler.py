@@ -136,8 +136,19 @@ class InfluxDBLogHandler(logging.Handler):
         timestamp_ns = int(record.created * 1_000_000_000)
         
         # Tags (indexed, for filtering)
+        inferred_service = self.service_name
+        if isinstance(record.name, str):
+            if record.name.startswith("backend."):
+                inferred_service = "backend"
+            elif record.name.startswith("modelservice."):
+                inferred_service = "modelservice"
+            elif record.name.startswith("cli."):
+                inferred_service = "cli"
+            elif record.name.startswith("shared.") or record.name.startswith("aico."):
+                inferred_service = "shared"
+
         tags = {
-            "service": self.service_name,
+            "service": inferred_service,
             "level": record.levelname,
             "logger": record.name,
         }

@@ -191,7 +191,7 @@ class MemoryManager(BaseAIProcessor):
             logger.error(f"🚨 [CONFIG_ERROR] Memory config keys: {list(self._memory_config.keys())}")
             logger.error("🚨 [CONFIG_ERROR] Expected 'semantic' key with 'enabled' setting")
         
-        logger.info("[DEBUG] MemoryManager: Initialized with configuration")
+        logger.debug("[DEBUG] MemoryManager: Initialized with configuration")
         logger.debug(f"Memory config: {self._memory_config}")
         logger.debug(f"Semantic config check: {semantic_config}")
         logger.debug(f"Semantic enabled check: {semantic_config.get('enabled', False)}")
@@ -201,14 +201,14 @@ class MemoryManager(BaseAIProcessor):
     
     def set_modelservice(self, modelservice):
         """Inject modelservice dependency for semantic memory operations"""
-        logger.info("[SEMANTIC] 🔧 LEGACY: set_modelservice() called - injecting dependency")
+        logger.debug("[SEMANTIC] 🔧 LEGACY: set_modelservice() called - injecting dependency")
         self._modelservice = modelservice
         # If semantic store is already initialized, inject dependency
         if self._semantic_store:
-            logger.info("[SEMANTIC] 🔧 LEGACY: Injecting modelservice into existing semantic store")
+            logger.debug("[SEMANTIC] 🔧 LEGACY: Injecting modelservice into existing semantic store")
             self._semantic_store.set_modelservice(modelservice)
         else:
-            logger.info("[SEMANTIC] 🔧 LEGACY: Semantic store not yet initialized, dependency will be injected during init")
+            logger.debug("[SEMANTIC] 🔧 LEGACY: Semantic store not yet initialized, dependency will be injected during init")
         
     async def initialize(self) -> None:
         """Initialize memory components based on implementation phase"""
@@ -217,7 +217,7 @@ class MemoryManager(BaseAIProcessor):
             return
             
         logger.info("🧠 [MEMORY_MANAGER] 🚀 Starting memory components initialization...")
-        logger.info("[DEBUG] MemoryManager: Initializing memory components.")
+        logger.debug("[DEBUG] MemoryManager: Initializing memory components.")
         
         try:
             # Phase 1: Initialize working memory (immediate)
@@ -235,9 +235,9 @@ class MemoryManager(BaseAIProcessor):
                 try:
                     from backend.services import get_modelservice_client
                     modelservice_client = get_modelservice_client(self.config)
-                    logger.info("[SEMANTIC] 🔧 INJECTING MODELSERVICE DEPENDENCY")
+                    logger.debug("[SEMANTIC] 🔧 INJECTING MODELSERVICE DEPENDENCY")
                     self._semantic_store.set_modelservice(modelservice_client)
-                    logger.info("[SEMANTIC] ✅ Modelservice dependency injected successfully")
+                    logger.debug("[SEMANTIC] ✅ Modelservice dependency injected successfully")
                 except Exception as e:
                     logger.error(f"[SEMANTIC] ❌ FAILED to inject modelservice dependency: {e}")
                     logger.error("[SEMANTIC] ⚠️  Semantic memory will not be able to query facts!")
@@ -843,7 +843,7 @@ class MemoryManager(BaseAIProcessor):
     
     async def _store_interaction(self, context: ProcessingContext) -> None:
         """V2: Use unified store_message() API for consistent fact extraction"""
-        logger.info(f"[DEBUG] MemoryManager: Using unified storage path for conversation {context.conversation_id}")
+        logger.debug(f"[DEBUG] MemoryManager: Using unified storage path for conversation {context.conversation_id}")
         
         # V2: Use the unified store_message API that includes fact extraction
         role = "user" if context.message_type == "user_input" else "assistant"
@@ -879,7 +879,7 @@ class MemoryManager(BaseAIProcessor):
                 "phase": 1
             }
             
-            logger.info("[DEBUG] MemoryManager: Assembling context from working memory.")
+            logger.debug("[DEBUG] MemoryManager: Assembling context from working memory.")
             if self._working_store:
                 working_context = await self._working_store.retrieve_user_history(context.user_id)
                 basic_context["memories"] = working_context

@@ -571,10 +571,6 @@ async def get_system_topology(
         async def check_ollama_status():
             try:
                 import httpx
-                import logging
-                
-                # Disable httpx logging to prevent console spam
-                logging.getLogger("httpx").setLevel(logging.WARNING)
                 
                 async with httpx.AsyncClient(timeout=2.0) as client:
                     response = await client.get("http://localhost:11434/api/version")

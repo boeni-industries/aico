@@ -765,7 +765,7 @@ class GoalArbiter:
             await self._publish_intention_set_update(intention_set)
         
         if self.logger:
-            self.logger.info(
+            self.logger.debug(
                 f"[ARBITER] Updated intention set for {user_id}: "
                 f"{len(intention_set.active_intentions)} active, "
                 f"{len(intention_set.proposed_intentions)} proposed"

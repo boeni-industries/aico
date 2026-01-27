@@ -62,18 +62,20 @@ class ModelserviceMessageFactory:
         # Debug logging for payload unpacking
         from aico.core.logging import get_logger
         logger = get_logger("modelservice.protobuf_debug")
-        
-        logger.info(f"[DEBUG] Attempting to unpack payload as {expected_type.__name__}")
-        logger.info(f"[DEBUG] Payload type URL: {envelope.any_payload.type_url}")
-        logger.info(f"[DEBUG] Payload value length: {len(envelope.any_payload.value)} bytes")
+
+        if logger.isEnabledFor(10):  # logging.DEBUG
+            logger.debug(f"[DEBUG] Attempting to unpack payload as {expected_type.__name__}")
+            logger.debug(f"[DEBUG] Payload type URL: {envelope.any_payload.type_url}")
+            logger.debug(f"[DEBUG] Payload value length: {len(envelope.any_payload.value)} bytes")
         
         payload = expected_type()
         if not envelope.any_payload.Unpack(payload):
             logger.error(f"[DEBUG] FAILED to unpack payload as {expected_type.__name__}")
             logger.error(f"[DEBUG] Expected type URL should contain: {expected_type.DESCRIPTOR.full_name}")
             raise ValueError(f"Failed to unpack payload as {expected_type.__name__}")
-        
-        logger.info(f"[DEBUG] Successfully unpacked payload as {expected_type.__name__}")
+
+        if logger.isEnabledFor(10):  # logging.DEBUG
+            logger.debug(f"[DEBUG] Successfully unpacked payload as {expected_type.__name__}")
         return payload
     
     # Request message factories

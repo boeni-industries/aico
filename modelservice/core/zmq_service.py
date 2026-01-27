@@ -84,7 +84,7 @@ class ModelserviceZMQService:
         self.handlers.transformers_manager = transformers_manager
         self.handlers.transformers_initialized = True  # Mark as initialized
         self.logger.info("✅ TransformersManager injected into ZMQ service with preloaded models")
-        print(f"✅ TransformersManager injected - transformers_initialized={self.handlers.transformers_initialized}")
+        self.logger.debug(f"✅ TransformersManager injected - transformers_initialized={self.handlers.transformers_initialized}")
     
     async def start_early(self):
         """Start ZMQ service early for log capture, without full initialization."""
@@ -160,7 +160,6 @@ class ModelserviceZMQService:
                 else:
                     self.logger.warning(f"No handler found for topic {topic} during subscription")
             
-            print(f"✅ Subscribed to {len(subscribed_topics)} topics")
             self.logger.info(f"Successfully subscribed to {len(subscribed_topics)} modelservice topics")
             
             # Initialize NER system now that all services are ready

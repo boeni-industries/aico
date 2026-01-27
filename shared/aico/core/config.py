@@ -127,6 +127,9 @@ class ConfigurationManager:
             
         self._instance_initialized = True
         ConfigurationManager._initialized = True
+
+        # Track missing configuration keys we've already logged about to avoid log storms
+        self._missing_key_errors_logged: set[str] = set()
         
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -154,9 +157,11 @@ class ConfigurationManager:
                     # This is likely a config section that should exist
                     import logging
                     logger = logging.getLogger("shared.core.config")
-                    logger.error(f"🚨 [CONFIG_ERROR] Configuration key '{key}' not found! Returning empty dict.")
-                    logger.error(f"🚨 [CONFIG_ERROR] Available keys at root: {list(self.config_cache.keys()) if isinstance(self.config_cache, dict) else 'Not a dict'}")
-                    logger.error(f"🚨 [CONFIG_ERROR] This may cause silent initialization failures!")
+                    if key not in self._missing_key_errors_logged:
+                        self._missing_key_errors_logged.add(key)
+                        logger.error(f"🚨 [CONFIG_ERROR] Configuration key '{key}' not found! Returning empty dict.")
+                        logger.error(f"🚨 [CONFIG_ERROR] Available keys at root: {list(self.config_cache.keys()) if isinstance(self.config_cache, dict) else 'Not a dict'}")
+                        logger.error(f"🚨 [CONFIG_ERROR] This may cause silent initialization failures!")
                 return default
                 
         # Additional check: warn if returning an empty dict for a config section

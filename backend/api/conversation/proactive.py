@@ -55,8 +55,6 @@ async def get_pending_initiations(
     """
     try:
         user_id = current_user['user_uuid']
-        
-        print(f"📋 [PROACTIVE_API] Fetching pending initiations for user {user_id[:8]}")
         logger.info(f"📋 [PROACTIVE_API] Fetching pending initiations for user {user_id}")
         
         # Get pending initiations from repository
@@ -79,13 +77,11 @@ async def get_pending_initiations(
                 engagement_score=initiation.engagement_score
             ))
         
-        print(f"📋 [PROACTIVE_API] ✅ Found {len(initiations)} pending initiations")
         logger.info(f"📋 [PROACTIVE_API] Returning {len(initiations)} pending initiations")
         
         return initiations
         
     except Exception as e:
-        print(f"📋 [PROACTIVE_API] ❌ Error fetching pending initiations: {e}")
         logger.error(f"📋 [PROACTIVE_API] Error fetching pending initiations: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -105,8 +101,6 @@ async def respond_to_initiation(
     """
     try:
         user_id = current_user['user_uuid']
-        
-        print(f"📝 [PROACTIVE_API] Recording response to initiation {response.initiation_id[:8]}")
         logger.info(
             f"📝 [PROACTIVE_API] Recording response to initiation {response.initiation_id} "
             f"from user {user_id}"
@@ -116,21 +110,18 @@ async def respond_to_initiation(
         initiation = await uow.conversation_initiations.get_by_id(response.initiation_id)
         
         if not initiation:
-            print(f"📝 [PROACTIVE_API] ⚠️ Initiation not found: {response.initiation_id[:8]}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Initiation not found"
             )
         
         if initiation.user_id != user_id:
-            print(f"📝 [PROACTIVE_API] ⚠️ Unauthorized access attempt")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to respond to this initiation"
             )
         
         if initiation.resolution_status != 'pending':
-            print(f"📝 [PROACTIVE_API] ⚠️ Initiation already resolved: {initiation.resolution_status}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Initiation already {initiation.resolution_status}"
@@ -150,7 +141,6 @@ async def respond_to_initiation(
         await uow.conversation_initiations.update(initiation)
         await uow.commit()
         
-        print(f"📝 [PROACTIVE_API] ✅ Updated initiation status to '{response.response_type}'")
         logger.info(
             f"📝 [PROACTIVE_API] Updated initiation {response.initiation_id} "
             f"status to '{response.response_type}', response_time={response_time}s"
@@ -160,8 +150,6 @@ async def respond_to_initiation(
         try:
             from aico.ai.agency.skills.communication.learning import ContextualBanditLearner
             from aico.ai.agency.skills.communication.learning import extract_contextual_features
-            
-            print(f"🎓 [PROACTIVE_API] Updating learning system...")
             
             # Extract context at time of response
             context = extract_contextual_features(db, user_id)
@@ -182,20 +170,17 @@ async def respond_to_initiation(
                     response_time=float(response_time) if response.response_type == 'answered' else None
                 )
                 
-                print(f"🎓 [PROACTIVE_API] ✅ Learning system updated for strategy {strategy_id}")
                 logger.info(
                     f"🎓 [PROACTIVE_API] Updated bandit for strategy {strategy_id}, "
                     f"outcome={response.response_type}"
                 )
             else:
-                print(f"🎓 [PROACTIVE_API] ⚠️ No strategy ID found in trigger_reason")
                 logger.warning(
                     f"🎓 [PROACTIVE_API] Could not extract strategy from trigger_reason: {trigger_reason}"
                 )
             
         except Exception as learning_error:
             # Don't fail the response if learning update fails
-            print(f"🎓 [PROACTIVE_API] ⚠️ Learning update failed: {learning_error}")
             logger.warning(
                 f"🎓 [PROACTIVE_API] Failed to update learning system: {learning_error}"
             )
@@ -210,7 +195,6 @@ async def respond_to_initiation(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"📝 [PROACTIVE_API] ❌ Error recording response: {e}")
         logger.error(
             f"📝 [PROACTIVE_API] Error recording response: {e}"
         )

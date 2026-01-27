@@ -37,8 +37,22 @@ try:
 except ImportError:
     pass  # InfluxDB client not installed yet
 
-app = typer.Typer(help="📋 Log management and analysis (InfluxDB)")
+app = typer.Typer(
+    help=(
+        "📋 Log management and analysis (InfluxDB)\n\n"
+        "Level filtering:\n"
+        "- --level: minimum severity and above (e.g. --level=info shows INFO+WARNING+ERROR+CRITICAL)\n"
+        "- --exact-level: exact match only (e.g. --exact-level=info shows INFO only)"
+    )
+)
 console = Console()
+
+
+@app.callback(invoke_without_command=True)
+def _logs_main(ctx: typer.Context):
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
+        raise typer.Exit(0)
 
 
 def _get_influx_client():
@@ -74,7 +88,8 @@ def _get_influx_client():
 @app.command("tail")
 def tail_logs(
     service: Optional[str] = typer.Option(None, "--service", "-s", help="Filter by service (backend, modelservice, cli, shared)"),
-    level: Optional[str] = typer.Option(None, "--level", "-l", help="Filter by level and above (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
+    level: Optional[str] = typer.Option(None, "--level", "-l", help="Filter by minimum level and above (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
+    exact_level: Optional[str] = typer.Option(None, "--exact-level", help="Filter by exact level only (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
     logger: Optional[str] = typer.Option(None, "--logger", help="Filter by logger name"),
     lines: int = typer.Option(50, "--lines", "-n", help="Number of lines to show"),
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output (not implemented yet)")
@@ -83,6 +98,10 @@ def tail_logs(
     
     if follow:
         console.print("[yellow]⚠ Follow mode not yet implemented[/yellow]")
+        return
+    
+    if level and exact_level:
+        console.print("[yellow]⚠ Use either --level or --exact-level (not both)[/yellow]")
         return
     
     client, org, bucket = _get_influx_client()
@@ -101,7 +120,6 @@ def tail_logs(
     if level:
         level_upper = level.upper()
         if level_upper in level_hierarchy:
-            # Include this level and all higher severity levels
             min_index = level_hierarchy.index(level_upper)
             allowed_levels = level_hierarchy[min_index:]
             level_filter = " or ".join([f'r.level == "{lvl}"' for lvl in allowed_levels])
@@ -109,19 +127,28 @@ def tail_logs(
         else:
             console.print(f"[yellow]⚠ Invalid level '{level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
             return
+    if exact_level:
+        exact_level_upper = exact_level.upper()
+        if exact_level_upper in level_hierarchy:
+            filters.append(f'r.level == "{exact_level_upper}"')
+        else:
+            console.print(f"[yellow]⚠ Invalid exact level '{exact_level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
+            return
     if logger:
         filters.append(f'r.logger =~ /{logger}/')
     
     filter_str = " and ".join(filters)
     
-    # Use a large time window to ensure we get enough logs
-    # Tail shows the most recent N lines, not time-based filtering
-    # Note: Don't use limit() in Flux - it applies per-table, not globally
+    # Tail shows the most recent N lines.
+    # Keep this query efficient: apply a global limit server-side.
+    # In Flux, limit() applies per-table, so we group() first to get a single table.
     query = f'''
     from(bucket: "{bucket}")
-      |> range(start: -30d)
+      |> range(start: -48h)
       |> filter(fn: (r) => {filter_str})
       |> sort(columns: ["_time"], desc: true)
+      |> group()
+      |> limit(n: {lines})
     '''
     
     try:
@@ -136,17 +163,11 @@ def tail_logs(
         all_records = []
         for table in tables:
             all_records.extend(table.records)
-        
+
         if not all_records:
             console.print("[yellow]No logs found matching criteria[/yellow]")
             return
-        
-        # Sort all records by timestamp (newest first)
-        all_records.sort(key=lambda r: r.get_time(), reverse=True)
-        
-        # Apply limit after collecting from all tables
-        all_records = all_records[:lines]
-        
+
         # Re-sort for display (oldest to newest)
         all_records.sort(key=lambda r: r.get_time())
         
@@ -183,7 +204,8 @@ def tail_logs(
 @app.command("ls")
 def list_logs(
     service: Optional[str] = typer.Option(None, "--service", "-s", help="Filter by service"),
-    level: Optional[str] = typer.Option(None, "--level", "-l", help="Filter by level and above (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
+    level: Optional[str] = typer.Option(None, "--level", "-l", help="Filter by minimum level and above (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
+    exact_level: Optional[str] = typer.Option(None, "--exact-level", help="Filter by exact level only (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
     last: str = typer.Option("1h", "--last", help="Time range (e.g., 1h, 30m, 1d)"),
     limit: int = typer.Option(100, "--limit", "-n", help="Maximum number of logs")
 ):
@@ -199,19 +221,31 @@ def list_logs(
         f'r._measurement == "logs"',
         f'r._field == "message"'
     ]
+
+    if level and exact_level:
+        console.print("[yellow]⚠ Use either --level or --exact-level (not both)[/yellow]")
+        return
     
     if service:
         filters.append(f'r.service == "{service}"')
+
     if level:
         level_upper = level.upper()
         if level_upper in level_hierarchy:
-            # Include this level and all higher severity levels
             min_index = level_hierarchy.index(level_upper)
             allowed_levels = level_hierarchy[min_index:]
             level_filter = " or ".join([f'r.level == "{lvl}"' for lvl in allowed_levels])
             filters.append(f'({level_filter})')
         else:
             console.print(f"[yellow]⚠ Invalid level '{level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
+            return
+
+    if exact_level:
+        exact_level_upper = exact_level.upper()
+        if exact_level_upper in level_hierarchy:
+            filters.append(f'r.level == "{exact_level_upper}"')
+        else:
+            console.print(f"[yellow]⚠ Invalid exact level '{exact_level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
             return
     
     filter_str = " and ".join(filters)
@@ -239,6 +273,8 @@ def list_logs(
         table.add_column("Service", style="cyan")
         table.add_column("Logger", style="dim")
         table.add_column("Message")
+
+        all_records = []
         
         for flux_table in tables:
             for record in reversed(flux_table.records):

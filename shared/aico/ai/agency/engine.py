@@ -1267,7 +1267,7 @@ class AgencyEngine(BaseAIProcessor):
             context=context
         )
         
-        logger.info(
+        logger.debug(
             f"[AGENCY_ENGINE] Updated intention set for {user_id}: "
             f"{len(intention_set.active_intentions)} active, "
             f"{len(intention_set.proposed_intentions)} proposed"

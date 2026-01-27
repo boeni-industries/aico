@@ -139,7 +139,6 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
     logging.getLogger("shared.security.service_auth").setLevel(logging.ERROR)
     logging.getLogger("shared.security.transport_identity").setLevel(logging.ERROR)
     logging.getLogger("shared.security.transport").setLevel(logging.ERROR)
-    logging.getLogger("httpx").setLevel(logging.ERROR)
     # Handle both no command and --help flag with same custom formatting
     if ctx.invoked_subcommand is None or help:
         # Import here to avoid circular imports

@@ -41,7 +41,7 @@ class ModelserviceZMQHandlers:
         self.logger = get_logger("modelservice.core.zmq_handlers")
         
         self.logger.debug("ModelserviceZMQHandlers constructor called - initializing...")
-        self.logger.info("ModelserviceZMQHandlers constructor called - initializing...")
+        self.logger.debug("ModelserviceZMQHandlers constructor called - initializing...")
         self.config = config
         self.ollama_manager = ollama_manager
         self.message_bus_client = message_bus_client
@@ -59,7 +59,7 @@ class ModelserviceZMQHandlers:
         # Initialize Transformers manager lazily (only when needed)
         self.transformers_manager = None
         
-        self.logger.info("About to initialize NER system...")
+        self.logger.debug("About to initialize NER system...")
         # Initialize GLiNER models asynchronously - will be done during startup
         self.ner_initialized = False
         self.transformers_initialized = False
@@ -68,7 +68,7 @@ class ModelserviceZMQHandlers:
         self.tts_handler = TtsFactory.create_handler(config_manager=self.config_manager)
         self.tts_initialized = False
         
-        self.logger.info("ModelserviceZMQHandlers initialization complete")
+        self.logger.debug("ModelserviceZMQHandlers initialization complete")
     
     def get_transformer_model(self, model_name: str) -> Any:
         """Get transformer model from TransformersManager.
@@ -98,7 +98,7 @@ class ModelserviceZMQHandlers:
             return
         
         try:
-            self.logger.info("Starting GLiNER NER system initialization...")
+            self.logger.debug("Starting GLiNER NER system initialization...")
             
             # Lazy initialization of TransformersManager if not already done
             if self.transformers_manager is None:
@@ -112,7 +112,7 @@ class ModelserviceZMQHandlers:
             # Check if entity extraction model is available
             gliner_model = self.transformers_manager.get_model("entity_extraction")
             if gliner_model is not None:
-                self.logger.info("GLiNER NER system initialization completed successfully")
+                self.logger.debug("GLiNER NER system initialization completed successfully")
                 self.ner_initialized = True
             else:
                 self.logger.warning("GLiNER model not available - NER system not initialized")
@@ -126,16 +126,15 @@ class ModelserviceZMQHandlers:
     
     async def initialize_transformers_system(self):
         """Initialize the Transformers system asynchronously using TransformersManager."""
-        print(f"🔍 [INIT_CHECK] initialize_transformers_system() called - transformers_initialized={self.transformers_initialized}")
+        self.logger.debug(f"🔍 [INIT_CHECK] initialize_transformers_system() called - transformers_initialized={self.transformers_initialized}")
         
         if self.transformers_initialized:
-            self.logger.info("✅ Transformers system already initialized - skipping")
-            print("✅ Transformers system already initialized - using preloaded models")
+            self.logger.debug("✅ Transformers system already initialized - skipping")
             return
         
         try:
-            print(f"🔍 [INIT_START] Starting NEW Transformers initialization - transformers_initialized={self.transformers_initialized}")
-            self.logger.info("Starting Transformers system initialization...")
+            self.logger.debug(f"🔍 [INIT_START] Starting NEW Transformers initialization - transformers_initialized={self.transformers_initialized}")
+            self.logger.debug("Starting Transformers system initialization...")
             
             # Lazy initialization of TransformersManager
             if self.transformers_manager is None:
@@ -161,7 +160,7 @@ class ModelserviceZMQHandlers:
                     model = self.transformers_manager.get_model(model_config.name)
                     self.logger.debug(f"Checking model {model_config.name}: {model is not None}")
                     if model is not None:
-                        self.logger.info(f"✅ {model_config.description} verified and ready")
+                        self.logger.debug(f"✅ {model_config.description} verified and ready")
                         loaded_models.append(model_config.name)
                     else:
                         self.logger.warning(f"⚠️ {model_config.description} verification failed")
@@ -172,18 +171,18 @@ class ModelserviceZMQHandlers:
                 total_count = len(required_models)
                 
                 self.transformers_initialized = True
-                self.logger.info("✅ Transformers system initialized successfully")
-                print(f"✅ Transformers System Ready: {loaded_count}/{total_count} required models loaded", flush=True)
+                self.logger.debug("✅ Transformers system initialized successfully")
+                self.logger.debug(f"✅ Transformers System Ready: {loaded_count}/{total_count} required models loaded")
                 
                 if loaded_count == total_count:
-                    print(f"🎯 All transformer models operational: {', '.join(loaded_models)}", flush=True)
+                    self.logger.debug(f"🎯 All transformer models operational: {', '.join(loaded_models)}")
                 else:
-                    print(f"✅ Operational models: {', '.join(loaded_models)}", flush=True)
+                    self.logger.debug(f"✅ Operational models: {', '.join(loaded_models)}")
                     if failed_models:
-                        print(f"⚠️  Failed models: {', '.join(failed_models)} - some features may be limited", flush=True)
+                        self.logger.warning(f"⚠️  Failed models: {', '.join(failed_models)} - some features may be limited")
             else:
                 self.logger.error("❌ Transformers system initialization failed")
-                print("❌ Transformers System Failed: Models not available", flush=True)
+                self.logger.error("❌ Transformers System Failed: Models not available")
                 
         except Exception as e:
             import traceback
@@ -209,7 +208,7 @@ class ModelserviceZMQHandlers:
             import time
             response.uptime_seconds = time.time() - self.start_time
             
-            self.logger.info(
+            self.logger.debug(
                 f"Health check completed: {health_data['status']}",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
@@ -229,13 +228,13 @@ class ModelserviceZMQHandlers:
         response = CompletionsResponse()
         
         try:
-            self.logger.info(f"[CHAT] Processing chat request: {type(request_payload)}")
+            self.logger.debug(f"[CHAT] Processing chat request: {type(request_payload)}")
             
             # Extract data from Protocol Buffer request
             model = request_payload.model
             messages = request_payload.messages
             
-            self.logger.info(f"[CHAT] Request details - model: '{model}', messages count: {len(messages)}")
+            self.logger.debug(f"[CHAT] Request details - model: '{model}', messages count: {len(messages)}")
             
             if not model or not messages:
                 error_msg = "Model and messages are required"
@@ -305,7 +304,7 @@ class ModelserviceZMQHandlers:
                                 tracker.set_error(f"HTTP {stream_response.status_code}")
                                 raise Exception(f"Ollama error: {stream_response.status_code} - {error_text.decode()}")
                             
-                            self.logger.info(f"[CHAT] Streaming response started, forwarding chunks...")
+                            self.logger.debug(f"[CHAT] Streaming response started, forwarding chunks...")
                             
                             async for line in stream_response.aiter_lines():
                                 if not line.strip():

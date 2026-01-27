@@ -118,6 +118,7 @@ class MessageBusClient:
         self.client_id = client_id
         self.zmq_context = zmq_context or zmq.asyncio.Context()
         self.config = config_manager
+        self._no_subscription_warned_topics: Set[str] = set()
         self.running = False
         self.connected = False
         self.subscriber = None
@@ -421,7 +422,12 @@ class MessageBusClient:
                 if matching_callback:
                     await self._invoke_callback(matching_callback, message)
                 else:
-                    self.logger.warning(f"No matching subscription found for topic: {topic}")
+                    # This can be very high-frequency in busy systems; log once per topic.
+                    if topic not in self._no_subscription_warned_topics:
+                        self._no_subscription_warned_topics.add(topic)
+                        self.logger.warning(f"No matching subscription found for topic: {topic}")
+                    else:
+                        self.logger.debug(f"No matching subscription found for topic: {topic}")
                         
             except Exception as e:
                 if self.running:
