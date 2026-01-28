@@ -147,10 +147,10 @@ class GoalArbiter:
         # Load scoring weights from config with validation
         if config:
             try:
-                weights_config = config.get("core.services.agency.arbiter.scoring_weights", {})
+                weights_config = config.get("agency.arbiter.scoring_weights", {})
                 
                 if not weights_config:
-                    raise ValueError("core.services.agency.arbiter.scoring_weights not found in configuration")
+                    raise ValueError("agency.arbiter.scoring_weights not found in configuration")
                 
                 self.weights = {
                     "priority": float(weights_config.get("priority", 0.25)),
@@ -168,7 +168,7 @@ class GoalArbiter:
                 if abs(total_weight - 1.0) > 0.01:
                     raise ValueError(
                         f"Arbiter scoring weights must sum to ~1.0, got {total_weight:.3f}. "
-                        f"Check core.services.agency.arbiter.scoring_weights in configuration."
+                        f"Check agency.arbiter.scoring_weights in configuration."
                     )
                 if logger:
                     logger.debug(f"[ARBITER] Loaded scoring weights from config: {self.weights}")

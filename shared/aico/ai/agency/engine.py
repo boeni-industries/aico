@@ -1255,6 +1255,8 @@ class AgencyEngine(BaseAIProcessor):
         # Get all pending and active goals for this user
         # Get pending goals
         pending_goals = await self.agency_service.list_goals(user_id, status=GoalStatus.PENDING)
+        # Load arbiter configuration
+        arbiter_config = self.config.get("agency.arbiter", {})
         # Get active goals
         active_goals = await self.agency_service.get_active_goals(user_id)
         # Combine
