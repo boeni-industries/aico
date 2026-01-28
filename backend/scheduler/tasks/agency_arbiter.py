@@ -193,20 +193,9 @@ class AgencyArbiterTask(BaseTask):
             
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
-                agency_service = AgencyService(uow)
-                
-                # Query all open goals to get distinct user IDs
-                # Open statuses: pending (not yet evaluated), active (arbiter committed), paused (temporarily inactive)
-                open_goals = []
-                for status in [GoalStatus.PENDING, GoalStatus.ACTIVE, GoalStatus.PAUSED]:
-                    goals = await agency_service.get_goals_by_status(status, limit=10000)
-                    logger.info(f"🎯 [ARBITER_TASK] Found {len(goals)} goals with status={status.value}")
-                    open_goals.extend(goals)
-
-                logger.info(f"🎯 [ARBITER_TASK] Total open goals: {len(open_goals)}")
-
-                # Get distinct user IDs from goals
-                candidate_user_ids = {g.user_id for g in open_goals}
+                # Scalable approach: Query distinct user IDs directly from database
+                # This works efficiently even with millions of goals
+                candidate_user_ids = set(await uow.goals.get_distinct_user_ids_with_open_goals())
                 logger.info(f"🎯 [ARBITER_TASK] Candidate user IDs from goals: {candidate_user_ids}")
 
                 if not candidate_user_ids:
@@ -220,19 +209,22 @@ class AgencyArbiterTask(BaseTask):
                 )
                 allowed_ids = {u.uuid for u in non_technical_users}
                 logger.info(f"🎯 [ARBITER_TASK] Non-technical active users: {len(allowed_ids)} users")
-                logger.info(f"🎯 [ARBITER_TASK] Allowed user IDs: {allowed_ids}")
                 
                 # Special handling for system_user:
                 # - Allow ONLY for origin=system_maintenance (self-healing)
                 # - Block for hobby/curiosity/user origins
                 if 'system_user' in candidate_user_ids:
                     logger.info("🎯 [ARBITER_TASK] system_user found in candidates, checking for maintenance goals")
+                    
                     # Check if system_user has any system_maintenance goals
-                    system_user_goals = [g for g in open_goals if g.user_id == 'system_user']
-                    logger.info(f"🎯 [ARBITER_TASK] system_user has {len(system_user_goals)} goals")
+                    agency_service = AgencyService(uow)
+                    system_user_goals = await agency_service.list_goals(
+                        user_id='system_user',
+                        status=None  # All statuses
+                    )
                     
                     has_maintenance_goals = any(
-                        g.origin.value == 'system_maintenance'
+                        g.origin.value == 'system_maintenance' and g.status.value in ['pending', 'active', 'paused']
                         for g in system_user_goals
                     )
                     

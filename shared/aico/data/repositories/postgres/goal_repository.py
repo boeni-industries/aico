@@ -90,6 +90,23 @@ class PostgresGoalRepository(Repository[Goal]):
         result = await self.session.execute(stmt)
         return result.rowcount > 0
     
+    async def get_distinct_user_ids_with_open_goals(self) -> List[str]:
+        """Get distinct user IDs that have open goals (pending, active, paused).
+        
+        This is optimized for the arbiter - queries only user_ids instead of full goal objects.
+        Scalable to millions of goals.
+        
+        Returns:
+            List of distinct user IDs
+        """
+        stmt = (
+            select(agency_goals.c.user_id)
+            .where(agency_goals.c.status.in_(['pending', 'active', 'paused']))
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+    
     async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[Goal]:
         """List goals with optional filters."""
         stmt = select(agency_goals)
