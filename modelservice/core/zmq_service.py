@@ -32,9 +32,8 @@ class ModelserviceZMQService:
         # Store full config manager for handlers
         self.config_manager = config
         
-        # Configuration is stored under 'core' domain in the config manager
-        core_config = config.get("core", {})
-        self.config = core_config.get("modelservice", {})
+        # Configuration is stored under modelservice domain
+        self.config = config.get("modelservice", {})
         self.ollama_manager = ollama_manager
         self.running = False
         self.bus_client = None

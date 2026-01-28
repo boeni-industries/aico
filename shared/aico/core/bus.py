@@ -487,22 +487,23 @@ class MessageBusClient:
 class MessageBusBroker:
     """Central message bus broker running in the backend service"""
     
-    def __init__(self, config_manager=None):
-        self.config_manager = config_manager
-        self.logger = get_logger("shared.bus.broker")
-        
-        # Parse ports from config
+    def __init__(self, config_manager: Optional[ConfigurationManager] = None):
+        """Initialize the broker with ZeroMQ sockets."""
+        self.config_manager = config_manager or ConfigurationManager()
+        self.config_manager.initialize(lightweight=True)
         bus_config = self.config_manager.get("message_bus", {})
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        bus_config = config.get("message_bus", {})
+        
+        # Get bind_address from config if not provided
+        self.bind_address = bus_config.get("broker_address", "tcp://*:5555")
         self.pub_port = bus_config.get("pub_port", 5555)
         self.sub_port = bus_config.get("sub_port", 5556)
         
         # Check if encryption is enabled
-        security_config = config.get("security", {})
+        security_config = self.config_manager.get("security", {})
         transport_config = security_config.get("transport", {})
         self.encryption_enabled = transport_config.get("message_bus_encryption", True)
+        
+        self.logger = get_logger("shared.bus.broker")
         
         # ZeroMQ context and sockets (use asyncio context for compatibility with async clients)
         import zmq.asyncio

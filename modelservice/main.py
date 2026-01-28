@@ -25,6 +25,7 @@ if sys.platform == "win32":
 
 # Initialize configuration before any imports that get loggers
 from aico.core.config import ConfigurationManager
+from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import get_logger
 config_manager = ConfigurationManager()
 # Use lightweight initialization in modelservice to avoid starting file watchers.
@@ -53,6 +54,20 @@ _start_time = time.time()
 
 async def initialize_modelservice():
     """Initialize modelservice with Ollama and return configuration."""
+    # Initialize configuration
+    cfg = ConfigurationManager()
+    cfg.initialize()
+    
+    # CRITICAL: Validate configuration before proceeding
+    # This ensures NO configuration errors are silently ignored
+    try:
+        validate_startup_config(cfg, service="modelservice", fail_fast=True)
+        print_config_summary(cfg)
+    except Exception as e:
+        print(f"❌ FATAL: Configuration validation failed: {e}")
+        print("Modelservice cannot start with invalid configuration.")
+        raise SystemExit(1)
+    
     # Use the already initialized global config manager
     cfg = config_manager
     
@@ -63,9 +78,9 @@ async def initialize_modelservice():
     # Now we can get a logger
     logger = get_logger("modelservice.main")
     
-    # The modelservice config is actually under the 'core' domain
-    core_config = cfg.get("core", {})
-    modelservice_config = core_config.get("modelservice", {})
+    # Get modelservice config from new domain structure
+    # NOTE: Config is validated at startup - if missing, startup fails
+    modelservice_config = cfg.get("modelservice", {})
     env = os.getenv("AICO_ENV", "development")
 
     # Startup: Display initial info and use standard AICO logging
@@ -97,7 +112,7 @@ async def initialize_modelservice():
     await zmq_service.start_early()  # New method for early startup
     
     # Initialize InfluxDB metrics exporter (honor instrumentation flag)
-    instrumentation_config = core_config.get("instrumentation", {})
+    instrumentation_config = cfg.get("instrumentation", {})
     if instrumentation_config.get("enabled", False):
         print("📊 Initializing InfluxDB metrics exporter...")
         logger.info("Initializing InfluxDB metrics exporter (instrumentation enabled)")
@@ -110,8 +125,7 @@ async def initialize_modelservice():
             import socket
             
             # Get InfluxDB config
-            db_config = core_config.get("database", {})
-            influx_config = db_config.get("influx", {})
+            influx_config = cfg.get("influx", {})
             influx_url = influx_config.get("url", "http://127.0.0.1:8086")
             influx_org = influx_config.get("org", "aico")
             influx_bucket = influx_config.get("bucket", "aico_telemetry")

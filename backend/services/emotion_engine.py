@@ -150,7 +150,7 @@ class EmotionEngine(BaseService):
         # Database connection
         self.db_connection = self.container.get_service("database")
         
-        # Configuration
+        # Configuration - emotion is still in core.yaml under core.emotion
         emotion_config = self.container.config.get("core.emotion", {})
         self.appraisal_sensitivity = emotion_config.get("appraisal_sensitivity", 0.7)
         self.regulation_strength = emotion_config.get("regulation_strength", 0.8)

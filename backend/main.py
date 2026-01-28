@@ -26,11 +26,16 @@ sys.path.insert(0, str(backend_dir))
 
 # Import AICO modules
 from aico.core.config import ConfigurationManager
+from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import initialize_logging, get_logger, shutdown_logging
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
 initialize_logging(service_name="backend", enable_influx=True, enable_console=True)
+
+# Validate startup configuration
+validate_startup_config(config_manager)
+print_config_summary(config_manager)
 
 from core.lifecycle_manager import BackendLifecycleManager
 

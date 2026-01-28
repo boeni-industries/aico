@@ -127,7 +127,7 @@ class CuriosityScanTask(BaseTask):
                 
                 try:
                     # Get config from services.agency.curiosity
-                    curiosity_config = context.config_manager.get("core.services.agency.curiosity", {})
+                    curiosity_config = context.config_manager.get("agency.curiosity", {})
                     max_signals = curiosity_config.get("max_signals_per_scan", 10)
                     min_score = curiosity_config.get("min_signal_score", 0.3)
                     
