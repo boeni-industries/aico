@@ -15,8 +15,8 @@ class CreateUserRequest(BaseModel):
     full_name: str = Field(..., description="User's full name")
     nickname: Optional[str] = Field(None, description="Optional nickname")
     user_type: str = Field(
-        default_factory=lambda: ConfigurationManager().get('user_profiles.default_user_type', 'person'),
-        pattern=f'^{ConfigurationManager().get("user_profiles.default_user_type", "person")}$',
+        default_factory=lambda: ConfigurationManager().get('core.user_profiles.default_user_type', 'person'),
+        pattern=f'^{ConfigurationManager().get("core.user_profiles.default_user_type", "person")}$',
         description="User type"
     )
     pin: Optional[str] = Field(None, description="Optional PIN for authentication")
@@ -46,7 +46,7 @@ class UpdateUserRequest(BaseModel):
     nickname: Optional[str] = Field(None, description="Optional nickname")
     user_type: Optional[str] = Field(
         None,
-        pattern=f'^{ConfigurationManager().get("user_profiles.default_user_type", "person")}$',
+        pattern=f'^{ConfigurationManager().get("core.user_profiles.default_user_type", "person")}$',
         description="User type"
     )
     primary_language: Optional[str] = Field(None, description="Primary language preference (ISO/BCP-47 code)")

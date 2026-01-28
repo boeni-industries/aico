@@ -27,6 +27,8 @@ class AgencyPlugin(AIProcessingPlugin):
     
     def __init__(self, name: str, container):
         super().__init__(name, container)
+        # Override config to use agency domain instead of core.services.agency
+        self.config = container.config.get("agency", {})
         # Resolve shared AgencyEngine from AI processor registry (Phase 1)
         self._agency_engine = ai_registry.get("agency")
         if not self._agency_engine:

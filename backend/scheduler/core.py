@@ -127,7 +127,7 @@ class TaskRegistry:
         """Load tasks from configured plugin modules"""
         try:
             # Get plugin configuration
-            plugins_config = self.config_manager.get("plugins", {})
+            plugins_config = self.config_manager.get("api_gateway.plugins", {})
             enabled_plugins = [name for name, config in plugins_config.items() 
                              if config.get("enabled", False)]
             

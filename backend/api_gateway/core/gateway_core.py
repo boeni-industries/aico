@@ -214,7 +214,8 @@ class GatewayCore:
         self.logger.debug("Starting plugin registration process")
         
         # Get plugins configuration from api_gateway.plugins
-        plugins_config = self.config.get('api_gateway.plugins', {})
+        api_gateway_config = self.config.get('api_gateway', {})
+        plugins_config = api_gateway_config.get('plugins', {})
         
         self.logger.debug(f"Plugin config lookup result: {plugins_config}")
         
