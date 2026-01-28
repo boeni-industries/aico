@@ -905,14 +905,19 @@ class AgencyEngine(BaseAIProcessor):
                 async with UnitOfWork(self._session_factory) as uow:
                     try:
                         # Query for open goal with matching (user_id, origin, title)
+                        # Check for pending OR active status to match unique constraint
+                        # Use repository method instead of direct SQL to avoid import issues
                         filters = {
                             "user_id": user_id,
                             "origin": origin.value,
                             "title": signal.topic,
-                            "status": "active",  # or any open status
                         }
-                        goals = await uow.goals.list(filters=filters, limit=1)
-                        existing = goals[0] if goals else None
+                        goals = await uow.goals.list(filters=filters, limit=100)
+                        # Filter for open statuses
+                        existing = next(
+                            (g for g in goals if g.status in ["pending", "active", "in_progress"]),
+                            None
+                        )
                     except Exception as e:
                         logger.error(
                             f"[AGENCY_ENGINE] Failed to lookup existing goal for reuse: {e}",

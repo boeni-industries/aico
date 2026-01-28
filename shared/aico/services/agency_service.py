@@ -65,21 +65,28 @@ class AgencyService:
             # propagating an error.
 
             if isinstance(e, IntegrityError):
-                orig = getattr(e, "orig", None)
-                constraint_name = getattr(orig, "constraint_name", None)
+                # For asyncpg, constraint name is in the error message, not in orig.constraint_name
+                error_msg = str(e)
+                is_unique_constraint = "uq_agency_goals_user_origin_title_open" in error_msg
+                logger.info(f"[AGENCY_SERVICE] IntegrityError caught: is_unique_constraint={is_unique_constraint}")
 
-                if constraint_name == "uq_agency_goals_user_origin_title_open":
+                if is_unique_constraint:
                     # Roll back the failed insert before running a lookup.
                     await self.uow.rollback()
 
                     origin_value = getattr(goal.origin, "value", goal.origin)
 
+                    # Use a fresh UnitOfWork to look up the existing goal
+                    # The rolled-back session can't see committed data from other transactions
+                    from aico.data.uow import UnitOfWork
                     try:
-                        existing = await self.uow.goals.find_open_goal_by_title(
-                            goal.user_id,
-                            origin_value,
-                            goal.title,
-                        )
+                        async with UnitOfWork(self.uow._session_factory) as fresh_uow:
+                            existing = await fresh_uow.goals.find_open_goal_by_title(
+                                goal.user_id,
+                                origin_value,
+                                goal.title,
+                            )
+                        logger.info(f"[AGENCY_SERVICE] Lookup result: existing={'found' if existing else 'None'}")
                     except Exception as lookup_err:
                         logger.error(
                             "[AGENCY_SERVICE] Failed to resolve existing goal after unique constraint violation: "
@@ -119,7 +126,10 @@ class AgencyService:
                             "title": goal.title,
                         },
                     )
+                    await self.uow.rollback()
+                    raise e
 
+            # For any other exception (not the unique constraint case)
             logger.error(f"[AGENCY_SERVICE] Failed to create goal: {e}", extra={"goal_id": goal.goal_id})
             await self.uow.rollback()
             raise

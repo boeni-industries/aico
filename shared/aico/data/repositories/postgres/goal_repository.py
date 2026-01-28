@@ -48,6 +48,11 @@ class PostgresGoalRepository(Repository[Goal]):
         if not row:
             return None
         
+        # Parse metadata_json if it's a string, otherwise use as-is
+        metadata = row.metadata_json if row.metadata_json else {}
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        
         return Goal(
             goal_id=row.goal_id,
             user_id=row.user_id,
@@ -57,7 +62,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=row.metadata_json if row.metadata_json else {},
+            metadata=metadata,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -107,8 +112,14 @@ class PostgresGoalRepository(Repository[Goal]):
         result = await self.session.execute(stmt)
         rows = result.fetchall()
         
-        return [
-            Goal(
+        goals = []
+        for row in rows:
+            # Parse metadata_json if it's a string, otherwise use as-is
+            metadata = row.metadata_json if row.metadata_json else {}
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            
+            goals.append(Goal(
                 goal_id=row.goal_id,
                 user_id=row.user_id,
                 origin=GoalOrigin(row.origin),
@@ -117,12 +128,12 @@ class PostgresGoalRepository(Repository[Goal]):
                 description=row.description,
                 status=GoalStatus(row.status),
                 priority=GoalPriority(row.priority),
-                metadata=row.metadata_json if row.metadata_json else {},
+                metadata=metadata,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
-            )
-            for row in rows
-        ]
+            ))
+        
+        return goals
     
     async def count(self, filters: Optional[dict] = None) -> int:
         """Count goals with optional filters."""
@@ -157,6 +168,11 @@ class PostgresGoalRepository(Repository[Goal]):
         if not row:
             return None
 
+        # Parse metadata_json if it's a string, otherwise use as-is
+        metadata = row.metadata_json if row.metadata_json else {}
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+
         return Goal(
             goal_id=row.goal_id,
             user_id=row.user_id,
@@ -166,7 +182,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=row.metadata_json if row.metadata_json else {},
+            metadata=metadata,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -195,6 +211,11 @@ class PostgresGoalRepository(Repository[Goal]):
         if not row:
             return None
 
+        # Parse metadata_json if it's a string, otherwise use as-is
+        metadata = row.metadata_json if row.metadata_json else {}
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+
         return Goal(
             goal_id=row.goal_id,
             user_id=row.user_id,
@@ -204,7 +225,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=row.metadata_json if row.metadata_json else {},
+            metadata=metadata,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -220,8 +241,14 @@ class PostgresGoalRepository(Repository[Goal]):
         
         result = await self.session.execute(stmt)
         
-        return [
-            Goal(
+        goals = []
+        for row in result.fetchall():
+            # Parse metadata_json if it's a string, otherwise use as-is
+            metadata = row.metadata_json if row.metadata_json else {}
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            
+            goals.append(Goal(
                 goal_id=row.goal_id,
                 user_id=row.user_id,
                 origin=GoalOrigin(row.origin),
@@ -230,12 +257,12 @@ class PostgresGoalRepository(Repository[Goal]):
                 description=row.description,
                 status=GoalStatus(row.status),
                 priority=GoalPriority(row.priority),
-                metadata=row.metadata_json if row.metadata_json else {},
+                metadata=metadata,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
-            )
-            for row in result.fetchall()
-        ]
+            ))
+        
+        return goals
     
     async def update_status(self, goal_id: str, new_status: str) -> bool:
         """Update goal status."""

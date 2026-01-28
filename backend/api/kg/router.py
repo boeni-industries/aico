@@ -6,7 +6,8 @@ Provides REST endpoints for querying and managing the knowledge graph.
 
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from aico.core.logging import get_logger
@@ -26,6 +27,9 @@ from aico.data.uow import UnitOfWork
 # Initialize router and logger
 router = APIRouter()
 logger = get_logger("backend.api.kg")
+
+# Cache for stats endpoint (30 second TTL)
+_stats_cache: dict[str, tuple[GraphStatsResponse, datetime]] = {}
 
 # Include temporal endpoints
 from backend.api.kg.temporal_router import router as temporal_router
@@ -217,6 +221,13 @@ async def get_graph_stats(
                 detail="User ID not found in token"
             )
         
+        # Check cache first (30 second TTL)
+        now = datetime.utcnow()
+        if user_id in _stats_cache:
+            cached_response, cached_at = _stats_cache[user_id]
+            if now - cached_at < timedelta(seconds=30):
+                return cached_response
+        
         # Fetching graph stats using repositories
         import json
         
@@ -343,6 +354,10 @@ async def get_graph_stats(
             centrality=centrality_metrics,
             clustering=clustering_metrics
         )
+        
+        # Cache the response
+        _stats_cache[user_id] = (response, now)
+        
         # Response prepared
         return response
         

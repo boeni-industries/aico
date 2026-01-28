@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, UTC, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from functools import lru_cache
 
 from aico.core.logging import get_logger
@@ -46,6 +46,10 @@ class HealthService:
         self._skill_invoker = skill_invoker
         self._session_factory = session_factory
         self._start_time = start_time
+        
+        # Cache for health checks (30 second TTL)
+        self._health_cache: Optional[Tuple[SystemHealthResponse, datetime]] = None
+        self._service_health_cache: Optional[Tuple[ServiceHealthResponse, datetime]] = None
     
     @property
     def _uptime_seconds(self) -> int:
@@ -57,6 +61,13 @@ class HealthService:
         
         Cached for 30 seconds to avoid overload.
         """
+        # Check cache first
+        now = datetime.now(UTC)
+        if self._health_cache is not None:
+            cached_response, cached_at = self._health_cache
+            if now - cached_at < timedelta(seconds=30):
+                return cached_response
+        
         # Run all health check skills
         connectivity_result = await self._run_skill("maint.connectivity.full_scan", {})
         resources_result = await self._run_skill("maint.system.scan_resources", {})
@@ -84,7 +95,7 @@ class HealthService:
         uptime_seconds = int(time.time() - self._start_time)
         uptime_percentage = 99.8  # Placeholder - would calculate from historical data
         
-        return SystemHealthResponse(
+        response = SystemHealthResponse(
             status=overall_status,
             healthy_services=healthy_count,
             total_services=total_count,
@@ -97,6 +108,10 @@ class HealthService:
                 healthy_components=healthy_count,
             ),
         )
+        
+        # Cache the response
+        self._health_cache = (response, now)
+        return response
 
     async def run_connectivity_check(self) -> HealthCheckResult:
         """Run connectivity health check bundle."""
@@ -246,7 +261,15 @@ class HealthService:
         """Get service health statuses with metrics.
         
         Uses connectivity tools for status and separate health tools for metrics.
+        Cached for 30 seconds to avoid overload.
         """
+        # Check cache first
+        now = datetime.now(UTC)
+        if self._service_health_cache is not None:
+            cached_response, cached_at = self._service_health_cache
+            if now - cached_at < timedelta(seconds=30):
+                return cached_response
+        
         # Run connectivity check for status
         connectivity = await self._run_skill("maint.connectivity.full_scan", {})
         # Extract checks from the nested output structure
@@ -500,7 +523,11 @@ class HealthService:
             last_checked=now,
         ))
         
-        return ServiceHealthResponse(services=services)
+        response = ServiceHealthResponse(services=services)
+        
+        # Cache the response
+        self._service_health_cache = (response, now)
+        return response
 
     async def _run_skill(self, skill_id: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Run a skill and return its output."""

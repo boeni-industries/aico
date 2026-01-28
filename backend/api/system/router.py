@@ -96,6 +96,7 @@ async def get_system_overview(
         timer.start("lmdb_conversation_scan")
         # Get active conversations count from working memory (LMDB)
         # Conversations are stored in LMDB, not in SQL tables
+        # OPTIMIZED: Limit scan to avoid performance issues
         active_conversations = 0
         try:
             from aico.ai import ai_registry
@@ -113,7 +114,14 @@ async def get_system_overview(
                 if db:
                     with working_store.env.begin(db=db) as txn:
                         cursor = txn.cursor()
+                        # OPTIMIZATION: Limit scan to 1000 keys max to avoid slow full scans
+                        scan_count = 0
+                        max_scan = 1000
                         for key_bytes, _ in cursor:
+                            scan_count += 1
+                            if scan_count > max_scan:
+                                break
+                            
                             key_str = key_bytes.decode('utf-8')
                             # Key format: {conversation_id}:{timestamp}
                             if ':' in key_str:
@@ -132,13 +140,19 @@ async def get_system_overview(
         
         timer.start("db_goals_query")
         # Get active goals count from agency_goals table
+        # OPTIMIZED: Use count query instead of loading all goals
         active_goals = 0
         try:
-            all_goals = await uow.agency_goals.list(
-                filters={"user_id": user_id},
-                limit=10000
+            # Count only active/in_progress goals directly in database
+            from sqlalchemy import text, select, func
+            from aico.data.models import AgencyGoal
+            
+            count_query = select(func.count()).select_from(AgencyGoal).where(
+                AgencyGoal.user_id == user_id,
+                AgencyGoal.status.in_(['active', 'in_progress'])
             )
-            active_goals = sum(1 for g in all_goals if g.status in ['active', 'in_progress'])
+            result = await uow._session.execute(count_query)
+            active_goals = result.scalar() or 0
         except Exception as e:
             logger.debug(f"Goals count unavailable: {e}")
         timer.stop("db_goals_query")
