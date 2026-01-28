@@ -88,12 +88,8 @@ async def main():
     app, lifecycle_manager = await setup_backend_components()
     
     # Get server configuration
-    core_config = config_manager.config_cache.get('core', {})
-    api_gateway_config = core_config.get('api_gateway', {})
-    rest_config = api_gateway_config.get('rest', {})
-    
-    host = rest_config.get('host', '127.0.0.1')
-    port = rest_config.get('port', 8771)
+    host = config_manager.get("api_gateway.rest.host", "127.0.0.1")
+    port = config_manager.get("api_gateway.rest.port", 8771)
     
     # The lifecycle manager already handles all service registration internally
     # No manual service registration needed here

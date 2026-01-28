@@ -62,7 +62,7 @@ class AICOAPIGateway:
         # Configuration
         self.config_manager = config_manager or ConfigurationManager()
         self.config_manager.initialize(lightweight=False)
-        self.config = self.config_manager.config_cache.get('core', {}).get('api_gateway', {})
+        self.config = self.config_manager.get('api_gateway', {})
         
         # Initialize key manager for transport encryption
         self.key_manager = AICOKeyManager(self.config_manager)

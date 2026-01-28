@@ -8,6 +8,7 @@ cors_origins:
   - "http://localhost:3000"
   - "http://127.0.0.1:3000"
 # Ollama server configuration
+default_model: "llama3.2:latest"
 ollama:
   # Connection settings - used by OllamaManager.is_running()
   host: "127.0.0.1"

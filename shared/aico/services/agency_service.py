@@ -15,6 +15,7 @@ from uuid import uuid4
 # Python 3.9 compatibility
 UTC = timezone.utc
 
+from sqlalchemy.exc import IntegrityError
 from aico.core.logging import get_logger
 from aico.data.uow import UnitOfWork
 from aico.ai.agency.models import (

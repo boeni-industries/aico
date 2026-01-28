@@ -25,6 +25,9 @@ auth:
   session:
     cookie_name: "aico_session"
     timeout_minutes: 1440  # 24 hours
+  api_key:
+    header: "X-API-Key"
+    enabled: false
 
 # Rate limiting
 rate_limiting:

@@ -11,3 +11,7 @@ host: "127.0.0.1"
 port: 5432
 user: "postgres"
 sslmode: "prefer"
+
+# Connection pool settings
+pool_size: 20
+max_overflow: 10

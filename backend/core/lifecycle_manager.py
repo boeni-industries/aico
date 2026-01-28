@@ -637,12 +637,17 @@ class BackendLifecycleManager:
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will use deterministic planning only")
 
             ai_registry.register("agency", agency_engine)
-            self.logger.info("Registered 'agency' processor with Phase 2 context services.")
+            self.logger.info("✅ Registered 'agency' processor with Phase 2 context services.")
+            
+            # Verify registration succeeded
+            if ai_registry.get("agency") is None:
+                raise RuntimeError("AgencyEngine registration failed - not found in ai_registry after registration")
             
         except Exception as e:
             import traceback
-            self.logger.error(f"Failed to initialize AgencyEngine during startup: {e}")
+            self.logger.error(f"❌ CRITICAL: Failed to initialize AgencyEngine during startup: {e}")
             self.logger.error(f"Full traceback: {traceback.format_exc()}")
+            # Don't re-raise - allow backend to start but agency endpoints will fail gracefully
         
         # Register CuriosityEngine (Phase 3) - outside try/except to ensure it runs
         try:

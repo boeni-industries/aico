@@ -34,8 +34,7 @@ class UserService:
         
         # Load configuration
         self.config = ConfigurationManager()
-        security_config = self.config.config_cache.get('security', {})
-        auth_config = security_config.get('authentication', {})
+        auth_config = self.config.get('security.authentication', {})
         
         # Password context for PIN hashing with configurable rounds
         bcrypt_rounds = auth_config.get('password_hashing', {}).get('rounds', 12)

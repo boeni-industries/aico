@@ -111,7 +111,7 @@ def validate_user_type(user_type: str) -> str:
     Validate user type is one of the allowed values.
     """
     config_manager = ConfigurationManager()
-    default_user_type = config_manager.get('core.user_profiles.default_user_type', 'person')
+    default_user_type = config_manager.get('user_profiles.default_user_type', 'person')
     allowed_types = {default_user_type}
     if user_type not in allowed_types:
         raise HTTPException(

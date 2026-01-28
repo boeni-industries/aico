@@ -18,7 +18,7 @@ from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
 from .protobuf_messages import ModelserviceMessageParser
 from .ollama_manager import OllamaManager
-from shared.aico.core.config import ConfigurationManager
+from aico.core.config import ConfigurationManager
 
 
 @dataclass

@@ -316,12 +316,7 @@ class GatewayCore:
             }
             
             # Initialize REST adapter for FastAPI integration (no separate server)
-            self.logger.debug(f"Full config structure: {list(self.config.config_cache.keys())}")
-            self.logger.debug(f"Core config: {self.config.config_cache.get('core', {}).keys()}")
-            
-            # Use proper configuration access pattern
-            core_config = self.config.config_cache.get('core', {})
-            api_gateway_config = core_config.get('api_gateway', {})
+            api_gateway_config = self.config.get("api_gateway", {})
             rest_config = api_gateway_config.get('rest', {})
             
             self.logger.debug(f"API Gateway config: {api_gateway_config.keys()}")
