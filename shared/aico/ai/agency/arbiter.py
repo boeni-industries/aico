@@ -654,6 +654,18 @@ class GoalArbiter:
                     existing.updated_at = datetime.now(UTC)
                     await self._update_intention(existing)
                     await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                    
+                    # Generate plan if none exists (architectural requirement)
+                    try:
+                        existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                        if not existing_plans:
+                            await self._generate_plan_for_goal(scored_goal.goal)
+                            if self.logger:
+                                self.logger.info(f"[ARBITER] Generated plan for reactivated urgent intention: '{scored_goal.goal.title}'")
+                    except Exception as e:
+                        if self.logger:
+                            self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                    
                     new_intentions.append(existing)
                     if self.logger:
                         self.logger.info(f"[ARBITER] Reactivated urgent intention: '{scored_goal.goal.title}'")
@@ -667,6 +679,18 @@ class GoalArbiter:
                         existing.updated_at = datetime.now(UTC)
                         await self._update_intention(existing)
                         await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                        
+                        # Generate plan if none exists (architectural requirement)
+                        try:
+                            existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                            if not existing_plans:
+                                await self._generate_plan_for_goal(scored_goal.goal)
+                                if self.logger:
+                                    self.logger.info(f"[ARBITER] Generated plan for reactivated intention: '{scored_goal.goal.title}'")
+                        except Exception as e:
+                            if self.logger:
+                                self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                        
                         new_intentions.append(existing)
                         active_count += 1
                         if self.logger:
@@ -686,6 +710,18 @@ class GoalArbiter:
                                 existing.updated_at = datetime.now(UTC)
                                 await self._update_intention(existing)
                                 await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                                
+                                # Generate plan if none exists (architectural requirement)
+                                try:
+                                    existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                                    if not existing_plans:
+                                        await self._generate_plan_for_goal(scored_goal.goal)
+                                        if self.logger:
+                                            self.logger.info(f"[ARBITER] Generated plan for competitively reactivated intention: '{scored_goal.goal.title}'")
+                                except Exception as e:
+                                    if self.logger:
+                                        self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                                
                                 new_intentions.append(existing)
                                 if self.logger:
                                     self.logger.info(
@@ -857,6 +893,26 @@ class GoalArbiter:
         # Keep goal lifecycle in sync with intention creation
         if activate:
             await self._set_goal_status(scored_goal.goal.goal_id, GoalStatus.ACTIVE)
+            
+            # Generate plan for newly activated intention (architectural requirement)
+            # Per agency-component-planning.md: "Takes a target goal/intention from the Arbiter"
+            try:
+                # Check if plan already exists
+                existing_plans = await self.agency_service.list_plans(goal_id=scored_goal.goal.goal_id)
+                if not existing_plans:
+                    # No plan exists - generate one
+                    plan = await self._generate_plan_for_goal(scored_goal.goal)
+                    if self.logger:
+                        self.logger.info(
+                            f"[ARBITER] Generated plan {plan.plan_id[:8]}... for newly activated intention "
+                            f"(goal: {scored_goal.goal.title})"
+                        )
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(
+                        f"[ARBITER] Failed to generate plan for intention {entity.intention_id}: {e}",
+                        exc_info=True
+                    )
         else:
             # Background / proposed intentions do not change goal status yet
             # (goal remains pending until promoted to active intention)
@@ -982,6 +1038,35 @@ class GoalArbiter:
                     self.logger.exception(
                         f"[ARBITER] Failed to sync plan for intention {intention.intention_id}: {e}"
                     )
+    
+    async def _generate_plan_for_goal(self, goal: Goal) -> Plan:
+        """Generate a plan for a goal using the agency engine's planner.
+        
+        This is called when the arbiter activates an intention, implementing the
+        architectural requirement that plans are created from intentions, not goals.
+        
+        Args:
+            goal: Goal to generate plan for
+            
+        Returns:
+            Generated Plan
+        """
+        # Import here to avoid circular dependency
+        from aico.ai import ai_registry
+        
+        agency_engine = ai_registry.get("agency")
+        if not agency_engine:
+            raise RuntimeError("AgencyEngine not available for plan generation")
+        
+        # Use the engine's plan generation method
+        plan = await agency_engine._generate_and_store_plan(goal)
+        
+        if self.logger:
+            self.logger.debug(
+                f"[ARBITER] Generated plan for goal {goal.goal_id}: {plan.plan_id}"
+            )
+        
+        return plan
     
     async def _publish_intention_set_update(self, intention_set: IntentionSet) -> None:
         """Publish intention set update to message bus."""

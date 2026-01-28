@@ -177,7 +177,7 @@ class AgencyArbiterTask(BaseTask):
     
     async def _get_active_users(self, context: TaskContext, limit: int) -> list[str]:
         """
-        Get list of users with pending goals.
+        Get list of users with open goals (pending, active, in_progress).
         
         Args:
             context: Task execution context
@@ -194,15 +194,23 @@ class AgencyArbiterTask(BaseTask):
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 agency_service = AgencyService(uow)
-                # Use service-layer helper to retrieve pending goals across users
-                pending_goals = await agency_service.get_goals_by_status(
-                    GoalStatus.PENDING, limit=limit * 10
-                )
+                
+                # Query all open goals to get distinct user IDs
+                # Open statuses: pending (not yet evaluated), active (arbiter committed), paused (temporarily inactive)
+                open_goals = []
+                for status in [GoalStatus.PENDING, GoalStatus.ACTIVE, GoalStatus.PAUSED]:
+                    goals = await agency_service.get_goals_by_status(status, limit=10000)
+                    logger.info(f"🎯 [ARBITER_TASK] Found {len(goals)} goals with status={status.value}")
+                    open_goals.extend(goals)
 
-                # Start from users who have pending goals
-                candidate_user_ids = {g.user_id for g in pending_goals}
+                logger.info(f"🎯 [ARBITER_TASK] Total open goals: {len(open_goals)}")
+
+                # Get distinct user IDs from goals
+                candidate_user_ids = {g.user_id for g in open_goals}
+                logger.info(f"🎯 [ARBITER_TASK] Candidate user IDs from goals: {candidate_user_ids}")
 
                 if not candidate_user_ids:
+                    logger.warning("🎯 [ARBITER_TASK] No candidate users found from open goals")
                     return []
 
                 # Filter out technical users via user_profiles
@@ -211,10 +219,33 @@ class AgencyArbiterTask(BaseTask):
                     limit=100000,
                 )
                 allowed_ids = {u.uuid for u in non_technical_users}
+                logger.info(f"🎯 [ARBITER_TASK] Non-technical active users: {len(allowed_ids)} users")
+                logger.info(f"🎯 [ARBITER_TASK] Allowed user IDs: {allowed_ids}")
+                
+                # Special handling for system_user:
+                # - Allow ONLY for origin=system_maintenance (self-healing)
+                # - Block for hobby/curiosity/user origins
+                if 'system_user' in candidate_user_ids:
+                    logger.info("🎯 [ARBITER_TASK] system_user found in candidates, checking for maintenance goals")
+                    # Check if system_user has any system_maintenance goals
+                    system_user_goals = [g for g in open_goals if g.user_id == 'system_user']
+                    logger.info(f"🎯 [ARBITER_TASK] system_user has {len(system_user_goals)} goals")
+                    
+                    has_maintenance_goals = any(
+                        g.origin.value == 'system_maintenance'
+                        for g in system_user_goals
+                    )
+                    
+                    if has_maintenance_goals:
+                        logger.info("🎯 [ARBITER_TASK] system_user has maintenance goals - allowing")
+                        allowed_ids.add('system_user')
+                    else:
+                        logger.info("🎯 [ARBITER_TASK] system_user has no maintenance goals - blocking")
 
                 user_ids = [uid for uid in candidate_user_ids if uid in allowed_ids][:limit]
+                logger.info(f"🎯 [ARBITER_TASK] Final filtered user IDs: {user_ids}")
             
-            logger.debug(f"🎯 [ARBITER_TASK] Found {len(user_ids)} non-technical users with pending goals")
+            logger.info(f"🎯 [ARBITER_TASK] Found {len(user_ids)} non-technical users with open goals")
             return user_ids
             
         except Exception as e:

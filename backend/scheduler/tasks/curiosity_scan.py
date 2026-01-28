@@ -86,11 +86,13 @@ class CuriosityScanTask(BaseTask):
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 # Only scan non-technical active users
+                # CRITICAL: Exclude system_user - it must NEVER have agency goals
                 active_users = await uow.user_profiles.list(
                     filters={"is_active": True, "is_technical": False},
                     limit=100000,
                 )
-            user_ids = [u.uuid for u in active_users]
+            # Explicitly filter out system_user
+            user_ids = [u.uuid for u in active_users if u.uuid != 'system_user']
             
             if not user_ids:
                 _get_logger().warning("[CURIOSITY_SCAN] No active users found")
@@ -157,7 +159,7 @@ class CuriosityScanTask(BaseTask):
                             goal, plan = await agency_engine.create_goal_from_curiosity_signal(
                                 user_id=user_id,
                                 signal=signal,
-                                auto_plan=True,
+                                auto_plan=False,  # Plans created by arbiter, not during goal creation
                             )
                             
                             total_goals_created += 1
