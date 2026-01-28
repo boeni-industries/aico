@@ -28,7 +28,7 @@ class AICOMessageBusHost:
         self.logger = get_logger("backend.message_bus_host")
         
         # Core components
-        self.broker = MessageBusBroker(bind_address)
+        self.broker = MessageBusBroker()
         self.internal_client = None
         
         # Database integration (PostgreSQL migration - no longer needed)

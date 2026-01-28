@@ -42,7 +42,7 @@ class LLMPlanningHelper:
         self.model_name = conversation_model_config.get("name", "huihui_ai/qwen3-abliterated:8b-v2")
         
         # Get agency planning configuration
-        agency_config = config.get("core.services.agency.planning", {})
+        agency_config = config.get("agency.planning", {})
         self.llm_enabled = agency_config.get("enable_llm_refinement", True)
         self.llm_temperature = agency_config.get("llm_temperature", 0.7)
         self.llm_max_tokens = agency_config.get("llm_max_tokens", 1000)

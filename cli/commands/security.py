@@ -2181,7 +2181,8 @@ def user_update(
     from aico.data.user import UserService
     
     # Get default user type from configuration
-    default_user_type = config_manager.get("user_profiles.default_user_type", "person")
+    # NOTE: user_profiles is still in core.yaml (not yet migrated to separate domain)
+    default_user_type = config_manager.get("core.user_profiles.default_user_type", "person")
     
     # Note: user_type field is currently not used - all users are 'person' type
     # Validate user_type if provided (only 'person' is valid)

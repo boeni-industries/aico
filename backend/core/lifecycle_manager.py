@@ -567,15 +567,15 @@ class BackendLifecycleManager:
             # Phase 4: Install default policies if configured
             try:
                 # Validate configuration exists
-                values_ethics_config = self.config.get("core.services.agency.values_ethics", None)
+                values_ethics_config = self.config.get("agency.values_ethics", None)
                 if values_ethics_config is None:
                     raise RuntimeError(
-                        "CRITICAL: core.services.agency.values_ethics configuration not found in core.yaml. "
+                        "CRITICAL: agency.values_ethics configuration not found in agency.yaml. "
                         "Phase 4 requires this configuration section."
                     )
                 
-                install_policies = self.config.get("core.services.agency.values_ethics.install_default_policies", True)
-                policy_mode = self.config.get("core.services.agency.values_ethics.policy_mode", "enforce")
+                install_policies = self.config.get("agency.values_ethics.install_default_policies", True)
+                policy_mode = self.config.get("agency.values_ethics.policy_mode", "enforce")
                 
                 self.logger.info(f"[AI_PROCESSORS] Values/Ethics policy mode: {policy_mode}")
                 

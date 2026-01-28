@@ -147,7 +147,8 @@ class GoalArbiter:
         # Load scoring weights from config with validation
         if config:
             try:
-                weights_config = config.get("agency.arbiter.scoring_weights", {})
+                arbiter_config = config.get("agency.arbiter", {})
+                weights_config = arbiter_config.get("scoring_weights", {})
                 
                 if not weights_config:
                     raise ValueError("agency.arbiter.scoring_weights not found in configuration")

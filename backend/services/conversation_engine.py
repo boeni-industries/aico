@@ -97,6 +97,7 @@ class ConversationEngine(BaseService):
         self.pending_responses: Dict[str, Dict[str, Any]] = {}  # request_id -> response data
 
         # Configuration - access via core.conversation path (like other services)
+        # NOTE: These configs are validated at startup - if missing, startup fails
         engine_config = self.container.config.get("conversation", {})
         features_config = engine_config.get("features", {})
         plugins_config = self.container.config.get("api_gateway.plugins", {})
