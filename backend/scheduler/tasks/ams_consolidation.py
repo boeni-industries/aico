@@ -31,9 +31,9 @@ class MemoryConsolidationTask(BaseTask):
     - Track consolidation state
     
     Configuration:
-    - Schedule: core.memory.consolidation.schedule.cron
-    - User sharding: core.memory.consolidation.schedule.user_shard_days
-    - Idle detection: core.memory.consolidation.idle_detection
+    - Schedule: memory.consolidation.schedule.cron
+    - User sharding: memory.consolidation.schedule.user_shard_days
+    - Idle detection: memory.consolidation.idle_detection
     """
     
     task_id = "ams.memory_consolidation"
@@ -63,7 +63,7 @@ class MemoryConsolidationTask(BaseTask):
             logger.info("🧠 [AMS_TASK] ========================================")
             
             # Load configuration
-            consolidation_config = context.config_manager.get("core.memory.consolidation", {})
+            consolidation_config = context.config_manager.get("memory.consolidation", {})
             enabled = context.get_config("enabled", consolidation_config.get("enabled", False))
             user_shard_days = context.get_config("user_shard_days", 7)
             

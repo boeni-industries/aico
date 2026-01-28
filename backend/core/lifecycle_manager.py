@@ -45,7 +45,7 @@ class BackendLifecycleManager:
         
         # Protocol adapter manager for WebSocket and other protocols
         self.protocol_manager = ProtocolAdapterManager(
-            config_manager.get("core.api_gateway", {}),
+            config_manager.get("api_gateway", {}),
             self.logger
         )
         
@@ -129,12 +129,12 @@ class BackendLifecycleManager:
             from backend.core.telemetry import initialize_telemetry
             
             # Read instrumentation config from core.instrumentation
-            enabled = self.config.get("core.instrumentation.enabled", False)
-            mode = self.config.get("core.instrumentation.mode", "dev")
+            enabled = self.config.get("instrumentation.enabled", False)
+            mode = self.config.get("instrumentation.mode", "dev")
 
             if not enabled:
                 self.logger.debug(
-                    "OpenTelemetry instrumentation disabled via config (core.instrumentation.enabled = false); "
+                    "OpenTelemetry instrumentation disabled via config (instrumentation.enabled = false); "
                     "skipping telemetry setup"
                 )
                 return
@@ -696,7 +696,7 @@ class BackendLifecycleManager:
     async def _register_plugins(self) -> None:
         """Register plugin services"""
         # Get plugin configuration
-        plugin_config = self.config.get("core.api_gateway.plugins", {})
+        plugin_config = self.config.get("api_gateway.plugins", {})
         
         for plugin_name, config in plugin_config.items():
             if not config.get("enabled", False):
@@ -768,7 +768,7 @@ class BackendLifecycleManager:
         """Start protocol adapters (WebSocket, ZeroMQ)"""
         try:
             # Get protocol configuration
-            protocols_config = self.config.get("core.api_gateway.protocols", {})
+            protocols_config = self.config.get("api_gateway.protocols", {})
             
             # Prepare dependencies from service container
             dependencies = {

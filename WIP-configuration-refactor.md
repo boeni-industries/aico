@@ -42,6 +42,33 @@ This makes `core` behave as a de-facto monolith, despite the loader being domain
 
 ## Target End State (Design)
 
+## Namespace / Prefix Rules (MUST be consistent)
+
+### Domain file rule
+- Each `config/defaults/{domain}.yaml` defines the top-level config namespace `{domain}.*`.
+- Therefore the YAML **must not repeat the domain name as a nested top-level key**.
+
+Example:
+- ✅ `config/defaults/system.yaml` contents start with `paths:`, `environment:`, etc. (read as `system.paths.*`, `system.environment`, ...)
+- ❌ `config/defaults/system.yaml` starting with `system:` would create `system.system.*`
+
+### Migration rule from the former mega-config
+- Historically, many values lived in `core.yaml` and were accessed as `core.<section>.*`.
+- After splitting, those keys move to dedicated domains:
+  - `core.system.*` -> `system.*`
+  - `core.logging.*` -> `logging.*`
+  - `core.message_bus.*` -> `message_bus.*`
+  - `core.api_gateway.*` -> `api_gateway.*`
+  - `core.modelservice.*` -> `modelservice.*`
+  - `core.memory.*` -> `memory.*`
+  - `core.agency.*` -> `agency.*`
+  - `core.scheduler.*` -> `scheduler.*`
+  - `core.conversation.*` -> `conversation.*`
+
+### Enforcement during migration
+- During migration, any remaining reads to `core.*` must fail loudly with a guidance message.
+- Final state: no `core.*` reads remain; no compatibility fallbacks remain.
+
 ### 1) “Core” becomes minimal (or renamed)
 Decide one of:
 

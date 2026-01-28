@@ -1,0 +1,108 @@
+# Memory System Configuration
+# Brain-inspired multi-tier memory architecture with consolidation and learning
+
+# Working Memory (LMDB) - Session context and conversation history
+working:
+  ttl_seconds: 2592000 # 30 days TTL for conversation continuity (was 24h/86400)
+  # Named databases (sub-databases) within the LMDB environment
+  named_databases:
+    - "session_memory"
+    - "user_sessions"
+
+# Semantic Memory (ChromaDB) - V3: Conversation segments with embeddings
+semantic:
+  enabled: true  # Enable semantic memory
+  embedding_timeout_seconds: 120.0  # Timeout for embedding generation
+  # V3: Conversation segments collection
+  collections:
+    conversation_segments: "conversation_segments"  # Conversation history with embeddings
+  # Note: Embedding model configured in modelservice.transformers.models.embeddings
+  max_results: 10  # Maximum number of segments to return from queries
+  min_similarity: 0.4  # Minimum similarity threshold for hybrid score (0-1, higher = more strict)
+  min_semantic_score: 0.35  # Minimum semantic score for relevance filtering (0-1)
+                            # Documents below this are filtered as irrelevant (no results returned)
+                            # Prevents false positives from keyword-only matches
+  # Hybrid search fusion method
+  fusion_method: "rrf"  # "rrf" (Reciprocal Rank Fusion) or "weighted" (score-based)
+  rrf_rank_constant: 0  # RRF rank constant (0 = adaptive based on dataset size, or set 10-60 manually)
+  # BM25 configuration
+  bm25_min_idf: 0.6  # Minimum IDF threshold for query terms (0 = no filtering, higher = more aggressive)
+                     # Filters common words (e.g., "today" with IDF≈0.55) to reduce false positives
+  # Weighted fusion (legacy, used if fusion_method="weighted")
+  semantic_weight: 0.7  # Weight for semantic similarity (0-1)
+  bm25_weight: 0.3  # Weight for BM25 keyword matching (0-1)
+  
+  # Knowledge Graph configuration (Property Graph for structured memory)
+  knowledge_graph:
+    max_gleanings: 0  # Number of gleaning passes for completeness (0-2 recommended, 0 = single pass, 3x faster)
+    llm_timeout_seconds: 120.0  # Timeout for LLM operations (4 parallel × 20s avg + buffer)
+    
+    # Entity resolution (deduplication) settings
+    entity_resolution:
+      similarity_threshold: 0.75  # Cosine similarity threshold for semantic blocking (0-1, higher = stricter)
+      use_llm_matching: true  # Use LLM (Eve) for entity matching with chain-of-thought reasoning
+      use_llm_merging: true  # Use LLM (Eve) for entity merging with conflict resolution (intelligent property merging)
+
+# Adaptive Memory System (AMS) - Brain-inspired memory consolidation and learning
+# Temporal Intelligence - Preference evolution and time-aware memory
+temporal:
+  enabled: true
+  metadata_retention_days: 365  # Keep temporal metadata for 1 year
+  evolution_tracking: true  # Track preference evolution over time
+  confidence_decay_rate: 0.001  # Confidence decay per day without access (0.1% per day)
+  max_fact_variants: 3  # Maximum variants per fact (prevents bloat)
+  variant_cleanup_days: 90  # Delete low-confidence variants after 90 days
+
+# Memory Consolidation - Brain-inspired transfer from working to semantic memory and KG extraction
+consolidation:
+  enabled: true
+  user_sharding_cycle_days: 7  # Process 1/7 of users each day (7-day cycle)
+  max_concurrent_users: 4  # Maximum parallel consolidation jobs
+  max_duration_minutes: 60  # Maximum duration per user
+  replay_batch_size: 100  # Experiences per replay batch
+  priority_alpha: 0.6  # Priority sampling weight (0.0 = uniform, 1.0 = greedy)
+  
+  # Idle detection for consolidation
+  idle_detection:
+    cpu_threshold_percent: 20  # Trigger when CPU < 20%
+    idle_duration_seconds: 300  # 5 minutes continuous idle required
+    check_interval_seconds: 60  # Check every minute
+  
+  # Knowledge Graph extraction settings
+  kg_extraction:
+    enabled: true
+    batch_size: 50  # Maximum messages to process per run
+    max_age_hours: 24  # Only process messages from last 24 hours
+    max_concurrent_extractions: 4  # Parallel message processing (LLM queues internally)
+
+# Behavioral Learning - Skill-based interaction with RLHF (Phase 3)
+behavioral:
+  enabled: true  # ENABLED - Phase 3 implementation complete
+  learning_rate: 0.1  # How quickly confidence scores adjust to feedback
+  exploration_rate: 0.1  # Probability of trying lower-confidence skills
+  max_skills_per_user: 100  # Maximum learned skills per user
+  skill_selection_timeout_ms: 10  # Max time for skill selection
+  min_confidence_threshold: 0.3  # Don't use skills below this confidence
+  preference_vector_dim: 16  # Number of explicit style dimensions
+  num_context_buckets: 100  # Context bucketing for contextual learning
+  
+  # Feedback classification (multilingual, uses embeddings)
+  feedback_classifier:
+    similarity_threshold: 0.6  # Minimum cosine similarity for category match
+    embedding_model: "paraphrase-multilingual-mpnet-base-v2"  # Reuse existing model
+  
+  # Contextual bandit learning (Thompson Sampling)
+  contextual_bandit:
+    enabled: true  # ENABLED - Phase 3 implementation complete
+    algorithm: "thompson_sampling"  # Thompson Sampling for exploration/exploitation
+    update_interval_hours: 24  # Run batch learning daily at 4 AM
+    min_trajectories: 10  # Minimum feedback events required before updating skill confidence (prevents updates on insufficient data)
+    prior_alpha: 1.0  # Beta distribution prior (successes)
+    prior_beta: 1.0  # Beta distribution prior (failures)
+  
+  # Trajectory logging for learning
+  trajectory_logging:
+    enabled: true  # ENABLED - Phase 3 implementation complete
+    retention_days: 90  # Archive after 90 days
+    hard_delete_days: 365  # Delete after 1 year
+    keep_feedback_indefinitely: true  # Never delete trajectories with feedback

@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Instrumentation Configuration",
+  "description": "Telemetry, metrics, and tracing configuration",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "description": "Enable instrumentation"
+    },
+    "service_name": {
+      "type": "string",
+      "description": "Service name for telemetry"
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "export_interval": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Metrics export interval in seconds"
+        }
+      }
+    },
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "sample_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Trace sampling rate"
+        }
+      }
+    },
+    "exporters": {
+      "type": "object",
+      "properties": {
+        "console": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "otlp": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "endpoint": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

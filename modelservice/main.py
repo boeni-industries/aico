@@ -279,7 +279,7 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
         import httpx
         
         # Get backend configuration
-        backend_config = cfg.get("core.api_gateway", {})
+        backend_config = cfg.get("api_gateway", {})
         host = backend_config.get("host", "localhost")
         port = backend_config.get("port", 8771)
         

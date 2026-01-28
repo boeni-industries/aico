@@ -112,21 +112,21 @@ console = Console()
 
 
 def _load_postgres_config():
-    """Lightweight helper to read core.database.postgres from config."""
+    """Lightweight helper to read postgres config."""
     from aico.core.config import ConfigurationManager
 
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    return config.get("core.database.postgres", {}) or {}
+    return config.get("postgres", {}) or {}
 
 
 def _load_influx_config():
-    """Lightweight helper to read core.database.influx from config."""
+    """Lightweight helper to read influx config."""
     from aico.core.config import ConfigurationManager
 
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    return config.get("core.database.influx", {}) or {}
+    return config.get("influx", {}) or {}
 
 
 @app.command(
@@ -346,7 +346,7 @@ def pg_set():
 
     pg_cfg = _load_postgres_config()
     if not pg_cfg:
-        console.print("❌ [red]No core.database.postgres configuration found in core.yaml[/red]")
+        console.print("❌ [red]No postgres configuration found[/red]")
         raise typer.Exit(1)
 
     host = pg_cfg.get("host", "127.0.0.1")
@@ -406,7 +406,7 @@ def pg_env(
 
     pg_cfg = _load_postgres_config()
     if not pg_cfg:
-        console.print("❌ [red]No core.database.postgres configuration found in core.yaml[/red]")
+        console.print("❌ [red]No postgres configuration found[/red]")
         raise typer.Exit(1)
 
     host = str(pg_cfg.get("host", "127.0.0.1"))
@@ -458,7 +458,7 @@ def influx_set():
 
     influx_cfg = _load_influx_config()
     if not influx_cfg:
-        console.print("❌ [red]No core.database.influx configuration found in core.yaml[/red]")
+        console.print("❌ [red]No influx configuration found[/red]")
         raise typer.Exit(1)
 
     url = influx_cfg.get("url", "http://127.0.0.1:8086")
@@ -690,7 +690,7 @@ def influx_env(
 
     influx_cfg = _load_influx_config()
     if not influx_cfg:
-        console.print("❌ [red]No core.database.influx configuration found in core.yaml[/red]")
+        console.print("❌ [red]No influx configuration found[/red]")
         raise typer.Exit(1)
 
     url = str(influx_cfg.get("url", "http://127.0.0.1:8086"))
@@ -1430,7 +1430,7 @@ def role_assign(
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.postgres", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
@@ -1487,7 +1487,7 @@ def role_revoke(
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.postgres", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
@@ -1534,7 +1534,7 @@ def role_list(
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.postgres", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
@@ -1633,7 +1633,7 @@ def role_show(
         from aico.core.topics import AICOTopics
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.postgres", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
@@ -1726,7 +1726,7 @@ def role_check(
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.postgres", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
@@ -1790,7 +1790,7 @@ def role_bootstrap(
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.postgres", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)

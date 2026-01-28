@@ -1,0 +1,13 @@
+# PostgreSQL configuration
+# Password / credentials are derived and stored via AICOKeyManager,
+# not kept in this config file.
+
+# Logical database name and schemas inside a single Postgres cluster
+db_name: "aico"
+core_schema: "aico_core"
+
+# Connection settings for local/remote Postgres
+host: "127.0.0.1"
+port: 5432
+user: "postgres"
+sslmode: "prefer"

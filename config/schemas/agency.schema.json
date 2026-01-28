@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agency Configuration",
+  "description": "Autonomous goal management, planning, and safety controls",
+  "type": "object",
+  "properties": {
+    "curiosity": {
+      "type": "object",
+      "properties": {
+        "max_signals_per_scan": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "min_signal_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "planning": {
+      "type": "object",
+      "properties": {
+        "llm_temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "llm_max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "enable_llm_refinement": {
+          "type": "boolean"
+        }
+      }
+    },
+    "values_ethics": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "install_default_policies": {
+          "type": "boolean"
+        },
+        "policy_mode": {
+          "type": "string",
+          "enum": ["enforce", "warn_only", "disabled"]
+        }
+      }
+    },
+    "arbiter": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_active_intentions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_background_intentions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "scoring_weights": {
+          "type": "object",
+          "properties": {
+            "priority": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "origin": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "freshness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    },
+    "safety_control": {
+      "type": "object",
+      "properties": {
+        "autonomy_level": {
+          "type": "string",
+          "enum": ["quiet", "balanced", "proactive", "autonomous"]
+        },
+        "quiet_hours": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "start_time": {
+              "type": "string",
+              "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+            },
+            "end_time": {
+              "type": "string",
+              "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+            }
+          }
+        }
+      }
+    },
+    "execution_retention": {
+      "type": "object",
+      "properties": {
+        "max_age_days": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "max_executions_per_plan": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "min_keep_per_plan": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

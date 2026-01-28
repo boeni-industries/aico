@@ -25,7 +25,7 @@ class CLIModelServiceClient:
         self.config_manager.initialize()
         
         # Get modelservice configuration for direct connection (same path as backend)
-        modelservice_config = self.config_manager.get("core.modelservice", {})
+        modelservice_config = self.config_manager.get("modelservice", {})
         rest_config = modelservice_config.get("rest", {})
         host = rest_config.get("host", "127.0.0.1")
         port = rest_config.get("port", 8773)

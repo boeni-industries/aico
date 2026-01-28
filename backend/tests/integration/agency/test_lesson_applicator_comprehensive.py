@@ -32,9 +32,9 @@ class TestPolicyAmendmentLogic:
     @pytest.mark.asyncio
     async def test_policy_amendment_with_freeze_active(self, test_config, test_db, test_user):
         """Test policy amendment blocked when policy_freeze is active."""
-        test_config.set("core.agency.lesson_application.policy_freeze", True)
-        test_config.set("core.agency.self_reflection.policy_mode", "allow_amend")
-        test_config.set("core.agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.policy_freeze", True)
+        test_config.set("agency.self_reflection.policy_mode", "allow_amend")
+        test_config.set("agency.lesson_application.dry_run", False)
         
         service = LessonApplicationService(test_config, test_db)
         
@@ -65,10 +65,10 @@ class TestPolicyAmendmentLogic:
     @pytest.mark.asyncio
     async def test_policy_amendment_rate_limit_exceeded(self, test_config, test_db, test_user):
         """Test policy amendment blocked when rate limit exceeded."""
-        test_config.set("core.agency.lesson_application.policy_freeze", False)
-        test_config.set("core.agency.self_reflection.policy_mode", "allow_amend")
-        test_config.set("core.agency.lesson_application.dry_run", False)
-        test_config.set("core.agency.lesson_application.policy_amendment_limit_per_day", 2)
+        test_config.set("agency.lesson_application.policy_freeze", False)
+        test_config.set("agency.self_reflection.policy_mode", "allow_amend")
+        test_config.set("agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.policy_amendment_limit_per_day", 2)
         
         service = LessonApplicationService(test_config, test_db)
         
@@ -127,10 +127,10 @@ class TestPolicyAmendmentLogic:
     @pytest.mark.asyncio
     async def test_policy_amendment_weight_tweak(self, test_config, test_db, test_user):
         """Test policy amendment with WEIGHT_TWEAK change type."""
-        test_config.set("core.agency.lesson_application.policy_freeze", False)
-        test_config.set("core.agency.self_reflection.policy_mode", "allow_amend")
-        test_config.set("core.agency.lesson_application.dry_run", False)
-        test_config.set("core.agency.lesson_application.policy_amendment_limit_per_day", 10)
+        test_config.set("agency.lesson_application.policy_freeze", False)
+        test_config.set("agency.self_reflection.policy_mode", "allow_amend")
+        test_config.set("agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.policy_amendment_limit_per_day", 10)
         
         service = LessonApplicationService(test_config, test_db)
         
@@ -179,10 +179,10 @@ class TestPolicyAmendmentLogic:
     @pytest.mark.asyncio
     async def test_policy_amendment_threshold_tweak(self, test_config, test_db, test_user):
         """Test policy amendment with THRESHOLD_TWEAK change type."""
-        test_config.set("core.agency.lesson_application.policy_freeze", False)
-        test_config.set("core.agency.self_reflection.policy_mode", "allow_amend")
-        test_config.set("core.agency.lesson_application.dry_run", False)
-        test_config.set("core.agency.lesson_application.policy_amendment_limit_per_day", 10)
+        test_config.set("agency.lesson_application.policy_freeze", False)
+        test_config.set("agency.self_reflection.policy_mode", "allow_amend")
+        test_config.set("agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.policy_amendment_limit_per_day", 10)
         
         service = LessonApplicationService(test_config, test_db)
         
@@ -233,9 +233,9 @@ class TestPolicyAmendmentLogic:
     @pytest.mark.asyncio
     async def test_policy_amendment_nonexistent_policy(self, test_config, test_db, test_user):
         """Test policy amendment when policy rule doesn't exist."""
-        test_config.set("core.agency.lesson_application.policy_freeze", False)
-        test_config.set("core.agency.self_reflection.policy_mode", "allow_amend")
-        test_config.set("core.agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.policy_freeze", False)
+        test_config.set("agency.self_reflection.policy_mode", "allow_amend")
+        test_config.set("agency.lesson_application.dry_run", False)
         
         service = LessonApplicationService(test_config, test_db)
         
@@ -266,10 +266,10 @@ class TestPolicyAmendmentLogic:
     @pytest.mark.asyncio
     async def test_policy_amendment_invalid_field(self, test_config, test_db, test_user):
         """Test policy amendment with invalid field name."""
-        test_config.set("core.agency.lesson_application.policy_freeze", False)
-        test_config.set("core.agency.self_reflection.policy_mode", "allow_amend")
-        test_config.set("core.agency.lesson_application.dry_run", False)
-        test_config.set("core.agency.lesson_application.policy_amendment_limit_per_day", 10)
+        test_config.set("agency.lesson_application.policy_freeze", False)
+        test_config.set("agency.self_reflection.policy_mode", "allow_amend")
+        test_config.set("agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.policy_amendment_limit_per_day", 10)
         
         service = LessonApplicationService(test_config, test_db)
         
@@ -311,10 +311,10 @@ class TestPolicyAmendmentLogic:
     @pytest.mark.asyncio
     async def test_policy_amendment_unsupported_change_type(self, test_config, test_db, test_user):
         """Test policy amendment with unsupported change type."""
-        test_config.set("core.agency.lesson_application.policy_freeze", False)
-        test_config.set("core.agency.self_reflection.policy_mode", "allow_amend")
-        test_config.set("core.agency.lesson_application.dry_run", False)
-        test_config.set("core.agency.lesson_application.policy_amendment_limit_per_day", 10)
+        test_config.set("agency.lesson_application.policy_freeze", False)
+        test_config.set("agency.self_reflection.policy_mode", "allow_amend")
+        test_config.set("agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.policy_amendment_limit_per_day", 10)
         
         service = LessonApplicationService(test_config, test_db)
         
@@ -356,9 +356,9 @@ class TestPolicyAmendmentLogic:
     @pytest.mark.asyncio
     async def test_policy_amendment_dry_run(self, test_config, test_db, test_user):
         """Test policy amendment in dry_run mode."""
-        test_config.set("core.agency.lesson_application.policy_freeze", False)
-        test_config.set("core.agency.self_reflection.policy_mode", "allow_amend")
-        test_config.set("core.agency.lesson_application.dry_run", True)
+        test_config.set("agency.lesson_application.policy_freeze", False)
+        test_config.set("agency.self_reflection.policy_mode", "allow_amend")
+        test_config.set("agency.lesson_application.dry_run", True)
         
         service = LessonApplicationService(test_config, test_db)
         
@@ -423,7 +423,7 @@ class TestBatchLessonApplication:
     @pytest.mark.asyncio
     async def test_apply_pending_lessons_skips_already_applied(self, test_config, test_db, test_user):
         """Test batch application skips already-applied lessons."""
-        test_config.set("core.agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.dry_run", False)
         service = LessonApplicationService(test_config, test_db)
         
         # Create lesson that's already applied
@@ -463,7 +463,7 @@ class TestBatchLessonApplication:
     @pytest.mark.asyncio
     async def test_apply_pending_lessons_mixed_results(self, test_config, test_db, test_user):
         """Test batch application with mixed success/failure."""
-        test_config.set("core.agency.lesson_application.dry_run", False)
+        test_config.set("agency.lesson_application.dry_run", False)
         service = LessonApplicationService(test_config, test_db)
         
         # Create successful lesson (persona - simple)
@@ -539,7 +539,7 @@ class TestRateLimitChecking:
     @pytest.mark.asyncio
     async def test_rate_limit_within_limit(self, test_config, test_db, test_user):
         """Test rate limit check when within limit."""
-        test_config.set("core.agency.lesson_application.policy_amendment_limit_per_day", 5)
+        test_config.set("agency.lesson_application.policy_amendment_limit_per_day", 5)
         service = LessonApplicationService(test_config, test_db)
         
         # Create 2 policy amendments (below limit of 5)
@@ -576,7 +576,7 @@ class TestRateLimitChecking:
     @pytest.mark.asyncio
     async def test_rate_limit_at_limit(self, test_config, test_db, test_user):
         """Test rate limit check when at exact limit."""
-        test_config.set("core.agency.lesson_application.policy_amendment_limit_per_day", 3)
+        test_config.set("agency.lesson_application.policy_amendment_limit_per_day", 3)
         service = LessonApplicationService(test_config, test_db)
         
         # Create exactly 3 policy amendments (at limit)
@@ -613,7 +613,7 @@ class TestRateLimitChecking:
     @pytest.mark.asyncio
     async def test_rate_limit_old_amendments_ignored(self, test_config, test_db, test_user):
         """Test that old amendments (>24h) don't count toward limit."""
-        test_config.set("core.agency.lesson_application.policy_amendment_limit_per_day", 2)
+        test_config.set("agency.lesson_application.policy_amendment_limit_per_day", 2)
         service = LessonApplicationService(test_config, test_db)
         
         # Create old amendment (2 days ago)
@@ -654,7 +654,7 @@ class TestPolicyLessonModes:
     @pytest.mark.asyncio
     async def test_policy_lesson_unknown_mode(self, test_config, test_db, test_user):
         """Test policy lesson with unknown policy_mode."""
-        test_config.set("core.agency.self_reflection.policy_mode", "unknown_mode")
+        test_config.set("agency.self_reflection.policy_mode", "unknown_mode")
         service = LessonApplicationService(test_config, test_db)
         
         lesson = Lesson(

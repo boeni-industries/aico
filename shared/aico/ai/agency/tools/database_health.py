@@ -237,7 +237,7 @@ async def tool_db_lmdb_health() -> Dict[str, Any]:
         initialize_lmdb_env(config)
         
         # Get named databases from config
-        memory_config = config.get("core.memory.working", {})
+        memory_config = config.get("memory.working", {})
         named_dbs = memory_config.get("named_databases", [])
         
         # Open with enough max_dbs for all named databases

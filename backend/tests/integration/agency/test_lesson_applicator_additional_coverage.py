@@ -137,7 +137,7 @@ class TestApplySkillLesson:
     async def test_apply_skill_lesson_dry_run(self, test_config, test_db, test_user):
         """Test skill lesson application in dry run mode."""
         # Set dry_run config
-        test_config.set("core.agency.lesson_application.dry_run", True)
+        test_config.set("agency.lesson_application.dry_run", True)
         service = LessonApplicationService(test_config, test_db)
         
         lesson = Lesson(
@@ -313,7 +313,7 @@ class TestApplyArbiterWeightLesson:
     @pytest.mark.asyncio
     async def test_apply_arbiter_weight_lesson_dry_run(self, test_config, test_db, test_user):
         """Test arbiter weight lesson in dry run mode."""
-        test_config.set("core.agency.lesson_application.dry_run", True)
+        test_config.set("agency.lesson_application.dry_run", True)
         service = LessonApplicationService(test_config, test_db)
         
         lesson = Lesson(
@@ -372,12 +372,12 @@ class TestApplyPersonaLesson:
         result = await service.apply_lesson(lesson)
         
         # Result may be False if dry_run is enabled in config
-        assert result is False if test_config.get("core.agency.lesson_application.dry_run") else True
+        assert result is False if test_config.get("agency.lesson_application.dry_run") else True
     
     @pytest.mark.asyncio
     async def test_apply_persona_lesson_dry_run(self, test_config, test_db, test_user):
         """Test persona lesson in dry run mode."""
-        test_config.set("core.agency.lesson_application.dry_run", True)
+        test_config.set("agency.lesson_application.dry_run", True)
         service = LessonApplicationService(test_config, test_db)
         
         lesson = Lesson(
@@ -440,8 +440,8 @@ class TestApplyPolicyLesson:
     @pytest.mark.asyncio
     async def test_apply_policy_lesson_with_freeze(self, test_config, test_db, test_user):
         """Test policy lesson when policy freeze is active."""
-        test_config.set("core.agency.self_reflection.policy_mode", "suggest_amendments")
-        test_config.set("core.agency.lesson_application.policy_freeze", True)
+        test_config.set("agency.self_reflection.policy_mode", "suggest_amendments")
+        test_config.set("agency.lesson_application.policy_freeze", True)
         service = LessonApplicationService(test_config, test_db)
         
         lesson = Lesson(

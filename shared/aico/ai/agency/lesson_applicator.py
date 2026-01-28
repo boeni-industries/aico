@@ -60,21 +60,21 @@ class LessonApplicationService:
         
         # Get application thresholds
         self.min_confidence = config.get(
-            "core.agency.lesson_application.min_confidence",
+            "agency.lesson_application.min_confidence",
             0.7
         )
         self.dry_run = config.get(
-            "core.agency.lesson_application.dry_run",
+            "agency.lesson_application.dry_run",
             False
         )
         
         # Policy amendment safety settings
         self.policy_amendment_limit = config.get(
-            "core.agency.lesson_application.policy_amendment_limit_per_day",
+            "agency.lesson_application.policy_amendment_limit_per_day",
             5  # Max 5 policy changes per day
         )
         self.policy_freeze = config.get(
-            "core.agency.lesson_application.policy_freeze",
+            "agency.lesson_application.policy_freeze",
             False  # Emergency freeze mechanism
         )
         
@@ -337,7 +337,7 @@ class LessonApplicationService:
         
         # Check policy_mode configuration
         policy_mode = self.config.get(
-            "core.agency.self_reflection.policy_mode",
+            "agency.self_reflection.policy_mode",
             "observe_only"
         )
         

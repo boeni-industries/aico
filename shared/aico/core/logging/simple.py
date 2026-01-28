@@ -125,9 +125,10 @@ def initialize_logging(
                 config = ConfigurationManager()
                 config.initialize(lightweight=True)
                 
-                influx_url = influx_url or config.get("core.database.influx.url", "http://127.0.0.1:8086")
-                influx_org = influx_org or config.get("core.database.influx.org", "aico")
-                influx_bucket = influx_bucket or config.get("core.database.influx.bucket", "aico_telemetry")
+                influx_url = influx_url or config.get("influx.url", "http://127.0.0.1:8086")
+                influx_org = influx_org or config.get("influx.org", "aico")
+                influx_bucket = influx_bucket or config.get("influx.bucket", "aico_telemetry")
+
                 
                 if not influx_token:
                     security_module = importlib.import_module('aico.security')

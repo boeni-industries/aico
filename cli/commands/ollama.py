@@ -58,7 +58,7 @@ def _get_ollama_config() -> Dict[str, Any]:
     try:
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
-        return config_manager.get("core.modelservice.ollama", {})
+        return config_manager.get("modelservice.ollama", {})
     except Exception:
         return {}
 
@@ -503,15 +503,15 @@ def generate(
                 config_manager = ConfigurationManager()
                 config_manager.initialize()
                 
-                # Update the conversation model name (note: modelservice is under 'core' in config)
-                config_manager.set("core.modelservice.ollama.default_models.conversation.name", character_name, persist=True)
-                console.print(f"[green]✓[/green] Updated config: core.modelservice.ollama.default_models.conversation.name = {character_name}")
+                # Update the conversation model name
+                config_manager.set("modelservice.ollama.default_models.conversation.name", character_name, persist=True)
+                console.print(f"[green]✓[/green] Updated config: modelservice.ollama.default_models.conversation.name = {character_name}")
                 
                 # Update description if we have base model info
                 if base_model:
                     description = f"{character_name.title()} character based on {base_model}"
-                    config_manager.set("core.modelservice.ollama.default_models.conversation.description", description, persist=True)
-                    console.print(f"[green]✓[/green] Updated config: core.modelservice.ollama.default_models.conversation.description")
+                    config_manager.set("modelservice.ollama.default_models.conversation.description", description, persist=True)
+                    console.print(f"[green]✓[/green] Updated config: modelservice.ollama.default_models.conversation.description")
                 
                 # Verify runtime.yaml was created
                 runtime_file = config_manager.user_config_dir / "runtime.yaml"

@@ -51,13 +51,13 @@ async def tool_agency_postgres_cleanup_executions(
     config = ConfigurationManager()
     config.initialize(lightweight=True)
 
-    # IMPORTANT: core.yaml is loaded under the 'core' domain; we must include
-    # that prefix when reading configuration. If the section is missing or
-    # empty, we fail loudly so misconfiguration is not silently ignored.
-    retention_cfg = config.get("core.agency.execution_retention", None)
+    # IMPORTANT: agency.yaml is loaded under the 'agency' domain.
+    # If the section is missing or empty, we fail loudly so misconfiguration
+    # is not silently ignored.
+    retention_cfg = config.get("agency.execution_retention", None)
     if not isinstance(retention_cfg, dict) or not retention_cfg:
         msg = (
-            "Missing or empty configuration section 'core.agency.execution_retention'. "
+            "Missing or empty configuration section 'agency.execution_retention'. "
             "Execution cleanup tool cannot determine retention policy."
         )
         logger.error("[TOOL_AGENCY_CLEANUP] %s", msg)

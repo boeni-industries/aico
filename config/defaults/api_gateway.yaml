@@ -1,0 +1,46 @@
+enabled: true
+host: "127.0.0.1"
+port: 8771  # Used by modelservice for backend health checks
+
+# Main REST API configuration
+rest:
+  port: 8771
+  host: "127.0.0.1"
+
+# Protocol adapters
+protocols:
+  websocket:
+    enabled: true
+    port: 8772
+    path: "/ws"
+  
+  zeromq_ipc:
+    enabled: true
+
+# Authentication
+auth:
+  jwt:
+    algorithm: "HS256"
+    expiry_hours: 24
+  session:
+    cookie_name: "aico_session"
+    timeout_minutes: 1440  # 24 hours
+
+# Rate limiting
+rate_limiting:
+  default_requests_per_minute: 100
+
+# Plugin configuration
+plugins:
+  message_bus:
+    enabled: true
+  security:
+    enabled: true
+  rate_limiting:
+    enabled: true
+  validation:
+    enabled: true
+  encryption:
+    enabled: true
+  agency:
+    enabled: true  # Phase 1: goal system, planning, scheduler integration

@@ -173,7 +173,7 @@ class MemoryManager(BaseAIProcessor):
         self._behavioral_enabled = False
         
         # Configuration following AICO patterns
-        self._memory_config = self.config.get("core.memory", {})
+        self._memory_config = self.config.get("memory", {})
         
         # CRITICAL: Check for empty config - always indicates a major issue
         if not self._memory_config:

@@ -6,15 +6,25 @@ with encryption, validation, and hot reloading capabilities.
 """
 
 import json
+import logging
 import os
 import threading
 import yaml
 from pathlib import Path
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, Optional, List, Tuple, Union
 from dataclasses import dataclass
 from enum import Enum
 
-import jsonschema
+try:
+    import jsonschema
+    from jsonschema import Draft7Validator
+    JSONSCHEMA_AVAILABLE = True
+except ImportError:
+    JSONSCHEMA_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+_CONFIG_DEFAULT_UNSET = object()
 
 
 class ConfigurationError(Exception):
@@ -130,8 +140,78 @@ class ConfigurationManager:
 
         # Track missing configuration keys we've already logged about to avoid log storms
         self._missing_key_errors_logged: set[str] = set()
+        logger.info(f"Configuration initialized from {self.config_dir} (lightweight={lightweight})")
+    
+    def validate_schemas(self, schema_dir: Optional[Path] = None) -> List[Tuple[str, List[str]]]:
+        """
+        Validate all loaded domain configurations against their JSON schemas.
         
-    def get(self, key: str, default: Any = None) -> Any:
+        Args:
+            schema_dir: Directory containing schema files (defaults to config/schemas)
+            
+        Returns:
+            List of (domain_name, errors) tuples for domains with validation errors.
+            Empty list if all domains are valid.
+            
+        Raises:
+            ConfigurationError: If jsonschema is not installed
+        """
+        if not JSONSCHEMA_AVAILABLE:
+            raise ConfigurationError(
+                "jsonschema package is required for schema validation. "
+                "Install with: pip install jsonschema"
+            )
+        
+        if schema_dir is None:
+            schema_dir = self.config_dir / "schemas"
+        
+        if not schema_dir.exists():
+            logger.warning(f"Schema directory not found: {schema_dir}")
+            return []
+        
+        validation_errors = []
+        
+        # Get all domain names from loaded config (top-level keys)
+        domains = list(self.config_cache.keys())
+        
+        for domain in domains:
+            schema_file = schema_dir / f"{domain}.schema.json"
+            
+            if not schema_file.exists():
+                logger.debug(f"No schema found for domain '{domain}' (expected: {schema_file})")
+                continue
+            
+            try:
+                # Load schema
+                with open(schema_file, 'r') as f:
+                    schema = json.load(f)
+                
+                # Validate domain config against schema
+                validator = Draft7Validator(schema)
+                errors = list(validator.iter_errors(self.config_cache[domain]))
+                
+                if errors:
+                    error_messages = [
+                        f"  - {error.json_path}: {error.message}"
+                        for error in errors
+                    ]
+                    validation_errors.append((domain, error_messages))
+                    logger.error(f"Schema validation failed for domain '{domain}':")
+                    for msg in error_messages:
+                        logger.error(msg)
+                else:
+                    logger.debug(f"✓ Schema validation passed for domain '{domain}'")
+                    
+            except json.JSONDecodeError as e:
+                validation_errors.append((domain, [f"Invalid JSON schema: {e}"]))
+                logger.error(f"Failed to parse schema for domain '{domain}': {e}")
+            except Exception as e:
+                validation_errors.append((domain, [f"Validation error: {e}"]))
+                logger.error(f"Error validating domain '{domain}': {e}")
+        
+        return validation_errors
+    
+    def get(self, key: str, default: Any = _CONFIG_DEFAULT_UNSET) -> Any:
         """
         Get configuration value using dot notation.
         
@@ -144,7 +224,34 @@ class ConfigurationManager:
         """
         if not self._instance_initialized:
             self.initialize()
-            
+
+        # Guard against legacy core.<domain> namespace usage during the refactor.
+        # We only block namespaces that have already been migrated to dedicated domains
+        # to keep the repo runnable while we split core.yaml incrementally.
+        migrated_core_prefixes = (
+            "core.system.",
+            "core.logging.",
+            "core.message_bus.",
+            "core.service_auth.",
+            "core.api_gateway.",
+            "core.instrumentation.",
+            "core.modelservice.",
+            "core.database.",
+            "core.scheduler.",
+            "core.conversation.",
+            "core.memory.",
+            "core.agency.",
+        )
+        if key.startswith(migrated_core_prefixes) and os.environ.get("AICO_ALLOW_LEGACY_CORE_NAMESPACE") != "1":
+            raise ConfigurationError(
+                "Legacy configuration namespace 'core.*' is not allowed. "
+                "This repo is migrating from the former mega-config domain to dedicated domains. "
+                "Update your config key to the new domain (e.g. 'core.logging.*' -> 'logging.*', "
+                "'core.message_bus.*' -> 'message_bus.*', 'core.api_gateway.*' -> 'api_gateway.*'). "
+                "If you must temporarily bypass this guard during migration, set "
+                "AICO_ALLOW_LEGACY_CORE_NAMESPACE=1."
+            )
+        
         keys = key.split('.')
         value = self.config_cache
         
@@ -152,24 +259,49 @@ class ConfigurationManager:
             if isinstance(value, dict) and k in value:
                 value = value[k]
             else:
-                # Log when returning default for missing config keys
-                if default == {} and len(keys) > 1:
-                    # This is likely a config section that should exist
+                strict_missing = os.environ.get("AICO_CONFIG_STRICT_MISSING_KEYS") == "1"
+                if default is not _CONFIG_DEFAULT_UNSET and not strict_missing:
                     import logging
                     logger = logging.getLogger("shared.core.config")
                     if key not in self._missing_key_errors_logged:
                         self._missing_key_errors_logged.add(key)
-                        logger.error(f"🚨 [CONFIG_ERROR] Configuration key '{key}' not found! Returning empty dict.")
-                        logger.error(f"🚨 [CONFIG_ERROR] Available keys at root: {list(self.config_cache.keys()) if isinstance(self.config_cache, dict) else 'Not a dict'}")
-                        logger.error(f"🚨 [CONFIG_ERROR] This may cause silent initialization failures!")
-                return default
-                
+                        available = []
+                        if isinstance(value, dict):
+                            available = list(value.keys())
+                        logger.error(
+                            "[CONFIG_ERROR] Configuration key '%s' not found (missing segment '%s'). "
+                            "Returning provided default. Available keys at this level: %s",
+                            key,
+                            k,
+                            available,
+                        )
+                    return default
+
+                available = []
+                if isinstance(value, dict):
+                    available = list(value.keys())
+                raise ConfigurationError(
+                    f"Configuration key '{key}' not found. "
+                    f"Missing segment '{k}'. Available keys at this level: {available}"
+                )
+        
         # Additional check: warn if returning an empty dict for a config section
         if isinstance(value, dict) and not value and len(keys) > 1:
             import logging
             logger = logging.getLogger("shared.core.config")
             logger.warning(f"⚠️ [CONFIG_WARNING] Configuration section '{key}' exists but is EMPTY!")
             
+        return value
+
+    def get_optional(self, key: str, default: Any = None) -> Any:
+        """Get configuration value, always returning a fallback if missing."""
+        return self.get(key, default=default)
+
+    def require(self, key: str, *, allow_empty_dict: bool = False) -> Any:
+        """Get configuration value and fail loudly if missing (or empty dict, unless allowed)."""
+        value = self.get(key)
+        if isinstance(value, dict) and not value and not allow_empty_dict:
+            raise ConfigurationError(f"Configuration key '{key}' exists but is empty")
         return value
         
     def set(self, key: str, value: Any, persist: bool = True) -> None:

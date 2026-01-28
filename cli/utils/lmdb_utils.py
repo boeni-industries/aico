@@ -42,7 +42,7 @@ def list_named_databases(config: Optional[ConfigurationManager] = None) -> list[
     if config is None:
         config = ConfigurationManager()
         config.initialize(lightweight=True)
-    return config.get("core.memory.working.named_databases", [])
+    return config.get("memory.working.named_databases", [])
 
 def get_lmdb_status_cli(config: Optional[ConfigurationManager] = None) -> dict:
     """Get the status of the LMDB database for CLI display."""

@@ -78,7 +78,7 @@ def get_chroma_status_cli(config: Optional[ConfigurationManager] = None) -> Dict
         
         # Get embedding model name from config
         try:
-            embedding_model = config.get("core.modelservice.transformers.models.embeddings.model_id", "unknown")
+            embedding_model = config.get("modelservice.transformers.models.embeddings.model_id", "unknown")
             # Extract just the model name (last part after /)
             if "/" in embedding_model:
                 embedding_model = embedding_model.split("/")[-1]
@@ -204,7 +204,7 @@ def query_chroma_collection(
         from aico.ai.memory.fusion import calculate_rrf_scores, calculate_weighted_scores
         
         # Get hybrid search configuration from config
-        memory_config = config.get("core.memory.semantic", {})
+        memory_config = config.get("memory.semantic", {})
         fusion_method = memory_config.get("fusion_method", "rrf")
         rrf_rank_constant = memory_config.get("rrf_rank_constant", 0)  # 0 = adaptive
         bm25_min_idf = memory_config.get("bm25_min_idf", 0.6)  # IDF filtering threshold
@@ -213,7 +213,7 @@ def query_chroma_collection(
         bm25_weight = memory_config.get("bm25_weight", 0.3)
         
         # Step 1: Generate query embeddings via modelservice
-        embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
+        embedding_model = config.get("modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         
         try:
             from cli.utils.zmq_client import get_embeddings
@@ -313,7 +313,7 @@ def add_chroma_document(
         from chromadb.config import Settings
         
         # Step 1: Generate embeddings via modelservice
-        embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
+        embedding_model = config.get("modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         
         try:
             from cli.utils.zmq_client import get_embeddings

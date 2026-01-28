@@ -149,7 +149,7 @@ def status(
     shadow: bool = typer.Option(
         False,
         "--shadow",
-        help="Use the shadow Postgres instance (core.database.postgres_shadow / aico-postgres-shadow).",
+        help="Use the shadow Postgres instance (postgres_shadow / aico-postgres-shadow).",
     ),
 ):
     """Show configuration and perform comprehensive health checks.
@@ -165,13 +165,12 @@ def status(
 
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    cfg_key = "core.database.postgres_shadow" if shadow else "core.database.postgres"
-    pg_cfg = config.get(cfg_key, {}) or {}
+    pg_cfg = config.get("postgres", {}) or {}
 
     console.rule("[bold cyan]Postgres Backend Status[/bold cyan]")
 
     if not pg_cfg:
-        console.print(format_error(f"No {cfg_key} configuration found in core.yaml"))
+        console.print(format_error(f"No {cfg_key} configuration found"))
         raise typer.Exit(code=1)
 
     # Extract config
@@ -327,7 +326,7 @@ def doctor(
     shadow: bool = typer.Option(
         False,
         "--shadow",
-        help="Use the shadow Postgres instance (core.database.postgres_shadow / aico-postgres-shadow).",
+        help="Use the shadow Postgres instance (postgres_shadow / aico-postgres-shadow).",
     ),
 ):
     """Run a series of checks to validate the Postgres environment.
@@ -336,7 +335,7 @@ def doctor(
     focuses on verifying that AICO can talk to it and that basic tools are
     available:
 
-    - core.database.postgres configuration presence.
+    - postgres configuration presence.
     - TCP connectivity to host:port.
     """
 
@@ -344,12 +343,13 @@ def doctor(
 
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    pg_cfg = config.get("core.database.postgres", {}) or {}
+    cfg_key = "postgres_shadow" if shadow else "postgres"
+    pg_cfg = config.get(cfg_key, {}) or {}
 
     if not pg_cfg:
         console.print(
             format_error(
-                f"No {cfg_key} configuration found in core.yaml. "
+                f"No {cfg_key} configuration found. "
                 "Please configure host/port/db_name/user before running 'aico pg doctor'."
             )
         )
@@ -459,7 +459,7 @@ def init(
     shadow: bool = typer.Option(
         False,
         "--shadow",
-        help="Use the shadow Postgres instance (core.database.postgres_shadow / aico-postgres-shadow).",
+        help="Use the shadow Postgres instance (postgres_shadow / aico-postgres-shadow).",
     ),
 ):
     """Initialize or update the Postgres schema.
@@ -473,12 +473,13 @@ def init(
 
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    pg_cfg = config.get("core.database.postgres", {}) or {}
+    cfg_key = "postgres_shadow" if shadow else "postgres"
+    pg_cfg = config.get(cfg_key, {}) or {}
 
     if not pg_cfg:
         console.print(
             format_error(
-                f"No {cfg_key} configuration found in core.yaml. "
+                f"No {cfg_key} configuration found. "
                 "Please configure host/port/db_name/user before running 'aico pg init'."
             )
         )
@@ -646,7 +647,8 @@ def _get_pg_connection(shadow: bool = False):
     """Get PostgreSQL connection with credentials from keyring."""
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    pg_cfg = config.get("core.database.postgres", {}) or {}
+    cfg_key = "postgres_shadow" if shadow else "postgres"
+    pg_cfg = config.get(cfg_key, {}) or {}
     
     if not pg_cfg:
         console.print(format_error(f"No {cfg_key} configuration found"))
@@ -704,13 +706,13 @@ def test(
     shadow: bool = typer.Option(
         False,
         "--shadow",
-        help="Use the shadow Postgres instance (core.database.postgres_shadow / aico-postgres-shadow).",
+        help="Use the shadow Postgres instance (postgres_shadow / aico-postgres-shadow).",
     ),
 ):
     """Test PostgreSQL connection with comprehensive CRUD operations."""
     console.rule("[bold cyan]PostgreSQL Connection Test[/bold cyan]")
     
-    conn_info = _get_pg_connection()
+    conn_info = _get_pg_connection(shadow=shadow)
     test_table = f"aico_test_{int(__import__('time').time())}"
     
     try:
@@ -801,7 +803,8 @@ def show():
     
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    pg_cfg = config.get("core.database.postgres", {}) or {}
+    cfg_key = "postgres_shadow" if shadow else "postgres"
+    pg_cfg = config.get(cfg_key, {}) or {}
     
     if not pg_cfg:
         console.print(format_error("No PostgreSQL configuration found"))

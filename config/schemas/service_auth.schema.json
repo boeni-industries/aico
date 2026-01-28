@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Service Authentication Configuration",
+  "description": "Service-to-service authentication tokens and permissions",
+  "type": "object",
+  "required": ["defaults"],
+  "properties": {
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "token_ttl": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Default token TTL in seconds"
+        },
+        "require_auth": {
+          "type": "boolean",
+          "description": "Require authentication by default"
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Service authentication token"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Service permissions"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

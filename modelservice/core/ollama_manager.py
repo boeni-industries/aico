@@ -56,9 +56,8 @@ class OllamaManager:
         # Debug: Check what's actually in the config
         full_config = self.config_manager.config_cache
         
-        # The configuration is in core.yaml, loaded under the 'core' key
-        # Access it as: core.modelservice.ollama
-        self.ollama_config = self.config_manager.get("core.modelservice.ollama", {})
+        # The configuration is loaded under the dedicated 'modelservice' domain
+        self.ollama_config = self.config_manager.get("modelservice.ollama", {})
         self.logs_dir = self.aico_root / "logs"
         self.ollama_process: Optional[subprocess.Popen] = None
         

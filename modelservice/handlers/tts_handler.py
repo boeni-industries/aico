@@ -108,25 +108,25 @@ class TtsHandler:
                 raise RuntimeError("TTS handler requires configuration manager")
             
             self._logger.info("Loading TTS configuration from config (XTTS-specific)")
-            tts_config = self._config.get("core.modelservice.tts.xtts", None)
+            tts_config = self._config.get("modelservice.tts.xtts", None)
             if tts_config is None:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: XTTS configuration not found!\n"
-                    "Expected path: core.modelservice.tts.xtts\n"
+                    "Expected path: modelservice.tts.xtts\n"
                     "This is a critical configuration error.\n"
-                    "Check config/defaults/core.yaml for proper structure.\n"
+                    "Check config/defaults/modelservice.yaml for proper structure.\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("XTTS configuration missing at core.modelservice.tts.xtts")
+                raise RuntimeError("XTTS configuration missing at modelservice.tts.xtts")
             
             if not tts_config:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: XTTS configuration is empty!\n"
-                    "Path: core.modelservice.tts.xtts\n"
+                    "Path: modelservice.tts.xtts\n"
                     "Configuration exists but contains no data.\n"
                     "="*80
                 )
@@ -229,13 +229,13 @@ class TtsHandler:
             overall_start = time.time()
             
             # Auto-detect language if enabled (or if language is empty/invalid)
-            auto_detect = self._config.get("core.modelservice.tts.auto_detect_language", None)
+            auto_detect = self._config.get("modelservice.tts.auto_detect_language", None)
             if auto_detect is None:
                 # Config key missing - fail loudly
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: auto_detect_language configuration missing!\n"
-                    "Expected path: core.modelservice.tts.auto_detect_language\n"
+                    "Expected path: modelservice.tts.auto_detect_language\n"
                     "This must be explicitly set to true or false.\n"
                     "="*80
                 )

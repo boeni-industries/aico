@@ -49,19 +49,19 @@ class TtsFactory:
             raise RuntimeError("Configuration manager required for TTS factory")
         
         # Get engine selection from config
-        engine = config_manager.get("core.modelservice.tts.engine", None)
+        engine = config_manager.get("modelservice.tts.engine", None)
         if engine is None:
             error_msg = (
                 "\n" + "="*80 + "\n"
                 "❌ FATAL: TTS engine not configured!\n"
-                "Expected path: core.modelservice.tts.engine\n"
+                "Expected path: modelservice.tts.engine\n"
                 "Valid options: 'xtts', 'piper', 'kokoro'\n"
-                "Check config/defaults/core.yaml\n"
+                "Check config/defaults/modelservice.yaml\n"
                 "="*80
             )
             logger.error(error_msg)
             print(error_msg, flush=True)
-            raise RuntimeError("TTS engine not configured at core.modelservice.tts.engine")
+            raise RuntimeError("TTS engine not configured at modelservice.tts.engine")
         
         logger.info(f"🎤 Creating TTS handler for engine: {engine}")
         

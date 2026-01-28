@@ -64,24 +64,24 @@ class PiperTtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("No configuration manager provided to Piper TTS handler")
             
-            tts_config = self._config.get("core.modelservice.tts.piper", None)
+            tts_config = self._config.get("modelservice.tts.piper", None)
             if tts_config is None:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: Piper TTS configuration not found!\n"
-                    "Expected path: core.modelservice.tts.piper\n"
-                    "Check config/defaults/core.yaml for proper structure.\n"
+                    "Expected path: modelservice.tts.piper\n"
+                    "Check config/defaults/modelservice.yaml for proper structure.\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("No Piper TTS configuration found in core.modelservice.tts.piper")
+                raise RuntimeError("No Piper TTS configuration found in modelservice.tts.piper")
             
             if not tts_config:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: Piper TTS configuration is empty!\n"
-                    "Path: core.modelservice.tts.piper\n"
+                    "Path: modelservice.tts.piper\n"
                     "Configuration exists but contains no data.\n"
                     "="*80
                 )
@@ -97,12 +97,12 @@ class PiperTtsHandler:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: No voices section in Piper configuration!\n"
-                    "Expected path: core.modelservice.tts.piper.voices\n"
+                    "Expected path: modelservice.tts.piper.voices\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("No voices configured in core.modelservice.tts.piper.voices")
+                raise RuntimeError("No voices configured in modelservice.tts.piper.voices")
             
             if not self._voices:
                 error_msg = (
@@ -163,12 +163,12 @@ class PiperTtsHandler:
             overall_start = time.time()
             
             # Auto-detect language if enabled (or if language is empty/invalid)
-            auto_detect = self._config.get("core.modelservice.tts.auto_detect_language", None)
+            auto_detect = self._config.get("modelservice.tts.auto_detect_language", None)
             if auto_detect is None:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: auto_detect_language configuration missing!\n"
-                    "Expected path: core.modelservice.tts.auto_detect_language\n"
+                    "Expected path: modelservice.tts.auto_detect_language\n"
                     "This must be explicitly set to true or false.\n"
                     "="*80
                 )

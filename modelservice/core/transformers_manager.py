@@ -140,7 +140,7 @@ class TransformersManager:
         self.logger = None  # Lazy initialization
         
         # Get transformers configuration
-        self.transformers_config = self.config_manager.get("core.modelservice.transformers", {})
+        self.transformers_config = self.config_manager.get("modelservice.transformers", {})
         
         # Loaded models cache
         self.loaded_models: Dict[str, Any] = {}

@@ -99,7 +99,7 @@ class InfluxDBConnection:
         self.async_mode = async_mode
         
         # Load configuration
-        influx_config = config_manager.get("core.database.influx", {}) or {}
+        influx_config = config_manager.get("influx", {}) or {}
         
         self.url = influx_config.get("url", "http://127.0.0.1:8086")
         self.org = influx_config.get("org", "aico")

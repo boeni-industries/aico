@@ -73,7 +73,7 @@ class SemanticMemoryStore:
         self._modelservice = None
         
         # Configuration
-        memory_config = self.config.get("core.memory.semantic", {})
+        memory_config = self.config.get("memory.semantic", {})
         self._db_path = AICOPaths.get_semantic_memory_path()
         self._collection_name = "conversation_segments"
         self._embedding_model = "paraphrase-multilingual"
@@ -89,7 +89,7 @@ class SemanticMemoryStore:
         self._bm25_weight = memory_config.get("bm25_weight", 0.3)
         
         # Temporal configuration (AMS)
-        temporal_config = self.config.get("core.memory.temporal", {})
+        temporal_config = self.config.get("memory.temporal", {})
         self._temporal_enabled = temporal_config.get("enabled", True)
         self._confidence_decay_rate = temporal_config.get("confidence_decay_rate", 0.001)
         

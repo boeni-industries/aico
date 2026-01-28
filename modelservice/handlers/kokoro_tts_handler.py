@@ -72,9 +72,9 @@ class KokoroTtsHandler:
             if not self._config:
                 raise RuntimeError("No configuration manager provided to Kokoro TTS handler")
             
-            tts_config = self._config.get("core.modelservice.tts.kokoro", None)
+            tts_config = self._config.get("modelservice.tts.kokoro", None)
             if not tts_config:
-                raise RuntimeError("No Kokoro TTS configuration found in core.modelservice.tts.kokoro")
+                raise RuntimeError("No Kokoro TTS configuration found in modelservice.tts.kokoro")
             
             self._logger.info(f"✅ Found Kokoro config: {tts_config}")
             
@@ -214,7 +214,7 @@ class KokoroTtsHandler:
                 return
             
             # Auto-detect language if needed
-            if self._config and self._config.get("core.modelservice.tts.auto_detect_language", True):
+            if self._config and self._config.get("modelservice.tts.auto_detect_language", True):
                 detected_result = detect_language(cleaned_text)
                 if detected_result and detected_result.language:
                     detected_lang = detected_result.language

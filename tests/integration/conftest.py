@@ -39,10 +39,10 @@ def setup_test_database():
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     
-    pg_config = config.get("core.database.postgres", {})
+    pg_config = config.get("postgres", {})
     host = pg_config.get("host", "localhost")
     port = pg_config.get("port", 5432)
-    database = pg_config.get("database", "aico")
+    database = pg_config.get("db_name", "aico")
     user = pg_config.get("user", "postgres")
     
     # Get password from environment or AICOKeyManager (same as connection.py)

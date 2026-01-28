@@ -37,10 +37,10 @@ class IssueDetectionService:
         
         # Thresholds from config or defaults
         self._thresholds = {
-            "cpu_percent": config.get("core.system.health.thresholds.cpu_percent", 80),
-            "memory_percent": config.get("core.system.health.thresholds.memory_percent", 85),
-            "disk_percent": config.get("core.system.health.thresholds.disk_percent", 90),
-            "stalled_plan_hours": config.get("core.system.health.thresholds.stalled_plan_hours", 1),
+            "cpu_percent": config.get("system.health.thresholds.cpu_percent", 80),
+            "memory_percent": config.get("system.health.thresholds.memory_percent", 85),
+            "disk_percent": config.get("system.health.thresholds.disk_percent", 90),
+            "stalled_plan_hours": config.get("system.health.thresholds.stalled_plan_hours", 1),
         }
         
         logger.debug(

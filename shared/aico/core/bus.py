@@ -158,7 +158,7 @@ class MessageBusClient:
             from aico.core.config import ConfigurationManager
             config = ConfigurationManager()
             config.initialize(lightweight=True)
-            bus_config = config.get("core.message_bus", {})
+            bus_config = config.get("message_bus", {})
             host = bus_config.get("host", "localhost")
             pub_port = bus_config.get("pub_port", 5555)
             sub_port = bus_config.get("sub_port", 5556)
@@ -487,15 +487,15 @@ class MessageBusClient:
 class MessageBusBroker:
     """Central message bus broker running in the backend service"""
     
-    def __init__(self, bind_address: str = "tcp://*:5555"):
-        self.bind_address = bind_address
+    def __init__(self, config_manager=None):
+        self.config_manager = config_manager
         self.logger = get_logger("shared.bus.broker")
         
         # Parse ports from config
-        from aico.core.config import ConfigurationManager
+        bus_config = self.config_manager.get("message_bus", {})
         config = ConfigurationManager()
         config.initialize(lightweight=True)
-        bus_config = config.get("core.message_bus", {})
+        bus_config = config.get("message_bus", {})
         self.pub_port = bus_config.get("pub_port", 5555)
         self.sub_port = bus_config.get("sub_port", 5556)
         

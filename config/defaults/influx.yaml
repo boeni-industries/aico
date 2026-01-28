@@ -1,0 +1,38 @@
+# Time-series / telemetry backend (InfluxDB)
+
+# Base URL for the InfluxDB HTTP API (v2 or later)
+url: "http://127.0.0.1:8086"
+
+# Logical organization and bucket used for AICO telemetry data
+org: "aico"
+bucket: "aico_telemetry"
+
+# Retention policies for data management
+retention:
+  # Default retention for all data (used if measurement-specific not defined)
+  default_days: 30  # 30 days (720h)
+
+  # Measurement-specific retention policies
+  # Logs are high-volume, metrics are lower-volume but valuable longer-term
+  measurements:
+    # Application logs (high volume)
+    logs:
+      retention_days: 7  # Keep logs for 7 days only
+      description: "Application logs from all subsystems"
+
+    # OpenTelemetry metrics (lower volume, valuable for trends)
+    otel_traces:
+      retention_days: 30  # Keep traces for 30 days
+      description: "Distributed tracing data"
+
+    otel_spans:
+      retention_days: 30  # Keep spans for 30 days
+      description: "Trace span details"
+
+    otel_scheduler_jobs:
+      retention_days: 30  # Keep scheduler metrics for 30 days
+      description: "Task scheduler execution metrics"
+
+    otel_message_bus_events:
+      retention_days: 30  # Keep message bus metrics for 30 days
+      description: "Message bus activity metrics"

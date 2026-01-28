@@ -97,9 +97,9 @@ class ConversationEngine(BaseService):
         self.pending_responses: Dict[str, Dict[str, Any]] = {}  # request_id -> response data
 
         # Configuration - access via core.conversation path (like other services)
-        engine_config = self.container.config.get("core.conversation", {})
+        engine_config = self.container.config.get("conversation", {})
         features_config = engine_config.get("features", {})
-        plugins_config = self.container.config.get("core.api_gateway.plugins", {})
+        plugins_config = self.container.config.get("api_gateway.plugins", {})
         
         # Feature flags for gradual implementation
         self.enable_emotion_integration = features_config.get("enable_emotion_integration", False)
@@ -118,21 +118,21 @@ class ConversationEngine(BaseService):
         
         # Load conversation model name from configuration
         # NO FALLBACK - fail loudly if model configuration is missing or invalid
-        modelservice_config = self.container.config.get("core.modelservice.ollama")
+        modelservice_config = self.container.config.get("modelservice.ollama")
         if not modelservice_config:
-            raise ValueError("CRITICAL: Missing core.modelservice.ollama configuration")
+            raise ValueError("CRITICAL: Missing modelservice.ollama configuration")
         
         default_models = modelservice_config.get("default_models")
         if not default_models:
-            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models configuration")
+            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models configuration")
         
         conversation_model_config = default_models.get("conversation")
         if not conversation_model_config:
-            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models.conversation configuration")
+            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models.conversation configuration")
         
         self.model_name = conversation_model_config.get("name")
         if not self.model_name:
-            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
+            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
         
         self.logger.debug(f"Conversation engine using model: {self.model_name}")
 

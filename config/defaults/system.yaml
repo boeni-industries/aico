@@ -1,0 +1,19 @@
+name: "AICO"
+environment: "development"
+# Path configuration - uses cross-platform path resolution
+paths:
+  data_root: "~/.local/share/aico"  # Default, overridden by AICOPaths at runtime
+  directory_mode: "auto"  # auto = OS-appropriate dirs, current = ./data, or explicit path
+  data_subdirectory: "data"  # Subdirectory within user data dir for databases
+  config_subdirectory: "config"  # Subdirectory within user config dir
+  cache_subdirectory: "cache"  # Subdirectory within user cache dir
+  logs_subdirectory: "logs"  # Subdirectory within user logs dir
+  frontend_subdirectory: "frontend"  # Frontend state persistence and cache
+log_level: "INFO"
+
+health:
+  thresholds:
+    cpu_percent: 80
+    memory_percent: 85
+    disk_percent: 90
+    stalled_plan_hours: 1

@@ -25,8 +25,8 @@ class ThompsonSamplingUpdateTask(BaseTask):
     triple based on processed feedback events.
     
     Configuration:
-    - Schedule: core.memory.behavioral.contextual_bandit.update_interval_hours
-    - Min trajectories: core.memory.behavioral.contextual_bandit.min_trajectories
+    - Schedule: memory.behavioral.contextual_bandit.update_interval_hours
+    - Min trajectories: memory.behavioral.contextual_bandit.min_trajectories
     """
     
     task_id = "ams.thompson_sampling_update"
@@ -53,7 +53,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
             logger.info("🧠 [AMS_TS] Starting Thompson Sampling update task")
             
             # Check if behavioral learning is enabled
-            behavioral_config = context.config_manager.get("core.memory.behavioral", {})
+            behavioral_config = context.config_manager.get("memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
             print(f"🧠 [AMS_TS] Behavioral learning enabled: {enabled}")

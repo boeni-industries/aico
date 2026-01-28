@@ -30,9 +30,9 @@ def get_pg_connection():
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     
-    pg_cfg = config.get("core.database.postgres", {})
+    pg_cfg = config.get("postgres", {})
     if not pg_cfg:
-        raise ValueError("No PostgreSQL configuration found in core.yaml")
+        raise ValueError("No PostgreSQL configuration found in postgres.yaml")
     
     host = pg_cfg.get("host", "127.0.0.1")
     port = int(pg_cfg.get("port", 5432))

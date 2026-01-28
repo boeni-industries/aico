@@ -32,7 +32,7 @@ class TestSelfReflectionEngineInit:
     async def test_init_with_defaults(self, test_config, test_db):
         """Test initialization with default parameters."""
         # Reset policy_mode to a valid value in case previous tests changed it
-        test_config.set("core.agency.self_reflection.policy_mode", "suggest_amendments")
+        test_config.set("agency.self_reflection.policy_mode", "suggest_amendments")
         
         engine = SelfReflectionEngine(test_config, test_db)
         
@@ -510,7 +510,7 @@ class TestReflectionConfiguration:
     @pytest.mark.asyncio
     async def test_custom_min_sample_size(self, test_config, test_db):
         """Test custom min_sample_size configuration."""
-        test_config.set("core.agency.self_reflection.min_sample_size", 20)
+        test_config.set("agency.self_reflection.min_sample_size", 20)
         engine = SelfReflectionEngine(test_config, test_db)
         
         assert engine.min_sample_size == 20
@@ -518,7 +518,7 @@ class TestReflectionConfiguration:
     @pytest.mark.asyncio
     async def test_custom_confidence_threshold(self, test_config, test_db):
         """Test custom confidence_threshold configuration."""
-        test_config.set("core.agency.self_reflection.confidence_threshold", 0.8)
+        test_config.set("agency.self_reflection.confidence_threshold", 0.8)
         engine = SelfReflectionEngine(test_config, test_db)
         
         assert engine.confidence_threshold == 0.8
@@ -526,7 +526,7 @@ class TestReflectionConfiguration:
     @pytest.mark.asyncio
     async def test_policy_mode_configuration(self, test_config, test_db):
         """Test policy_mode configuration."""
-        test_config.set("core.agency.self_reflection.policy_mode", "suggest_amendments")
+        test_config.set("agency.self_reflection.policy_mode", "suggest_amendments")
         engine = SelfReflectionEngine(test_config, test_db)
         
         assert engine.policy_mode == "suggest_amendments"

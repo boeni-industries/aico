@@ -79,7 +79,7 @@ async def get_database_stats(
             from aico.security.key_manager import AICOKeyManager
             
             config = ConfigurationManager()
-            pg_config = config.get('core.database.postgres', {})
+            pg_config = config.get('postgres', {})
             
             db_host = pg_config.get('host', '127.0.0.1')
             db_port = pg_config.get('port', 5432)
@@ -322,7 +322,7 @@ async def get_database_stats(
             from aico.core.config import ConfigurationManager
             
             config = ConfigurationManager()
-            influx_config = config.get('core.database.influx', {})
+            influx_config = config.get('influx', {})
             
             influx_url = influx_config.get('url', 'http://127.0.0.1:8086')
             influx_org = influx_config.get('org', 'aico')

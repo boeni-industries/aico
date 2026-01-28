@@ -83,15 +83,15 @@ class SelfReflectionEngine:
         
         # Get configuration
         self.policy_mode = config.get(
-            "core.agency.self_reflection.policy_mode",
+            "agency.self_reflection.policy_mode",
             "observe_only"  # Default: safest mode
         )
         self.min_sample_size = config.get(
-            "core.agency.self_reflection.min_sample_size",
+            "agency.self_reflection.min_sample_size",
             10  # Minimum data points before generating lessons
         )
         self.confidence_threshold = config.get(
-            "core.agency.self_reflection.confidence_threshold",
+            "agency.self_reflection.confidence_threshold",
             0.7  # Minimum confidence to apply lessons
         )
         

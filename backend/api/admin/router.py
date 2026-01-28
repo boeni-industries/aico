@@ -382,7 +382,7 @@ async def list_logs(
     config = ConfigurationManager()
     key_manager = AICOKeyManager(config)
     
-    influx_config = config.get('core.database.influx', {})
+    influx_config = config.get('influx', {})
     url = influx_config.get('url', 'http://127.0.0.1:8086')
     org = influx_config.get('org', 'aico')
     bucket = influx_config.get('bucket', 'aico_telemetry')
@@ -530,7 +530,7 @@ async def count_logs(
     config = ConfigurationManager()
     key_manager = AICOKeyManager(config)
 
-    influx_config = config.get("core.database.influx", {})
+    influx_config = config.get("influx", {})
     url = influx_config.get("url", "http://127.0.0.1:8086")
     org = influx_config.get("org", "aico")
     bucket = influx_config.get("bucket", "aico_telemetry")
@@ -628,11 +628,11 @@ async def get_logs_stats(
     config = ConfigurationManager()
     key_manager = AICOKeyManager(config)
     
-    influx_config = config.get('core.database.influx', {})
-    url = influx_config.get('url', 'http://127.0.0.1:8086')
-    org = influx_config.get('org', 'aico')
-    bucket = influx_config.get('bucket', 'aico_telemetry')
-    token = key_manager.get_database_password('influx', username='admin_token')
+    influx_config = config.get("influx", {})
+    url = influx_config.get("url", "http://127.0.0.1:8086")
+    org = influx_config.get("org", "aico")
+    bucket = influx_config.get("bucket", "aico_telemetry")
+    token = key_manager.get_database_password("influx", username="admin_token")
     
     client = InfluxDBClient(url=url, token=token, org=org)
     

@@ -31,9 +31,9 @@ class KGConsolidationTask(BaseTask):
     messages and stores them in the knowledge graph.
     
     Configuration:
-    - Schedule: core.memory.kg_consolidation.schedule.cron
-    - Batch size: core.memory.kg_consolidation.batch_size
-    - Enabled: core.memory.kg_consolidation.enabled
+    - Schedule: memory.kg_consolidation.schedule.cron
+    - Batch size: memory.kg_consolidation.batch_size
+    - Enabled: memory.kg_consolidation.enabled
     """
     
     task_id = "ams.kg_consolidation"
@@ -60,14 +60,14 @@ class KGConsolidationTask(BaseTask):
             print("🕸️ [KG_TASK] ========================================")
             logger.info("🕸️ [KG_TASK] Starting KG consolidation task")
             
-            # Load configuration from core.memory.consolidation.kg_extraction
-            memory_config = context.config_manager.get("core.memory", {})
+            # Load configuration from memory.consolidation.kg_extraction
+            memory_config = context.config_manager.get("memory", {})
             consolidation_config = memory_config.get("consolidation", {})
             kg_config = consolidation_config.get("kg_extraction", {})
             
             if not kg_config:
-                print("🕸️ [KG_TASK] ⚠️  Configuration 'core.memory.consolidation.kg_extraction' not found, using defaults")
-                logger.warning("🕸️ [KG_TASK] Configuration 'core.memory.consolidation.kg_extraction' not found")
+                print("🕸️ [KG_TASK] ⚠️  Configuration 'memory.consolidation.kg_extraction' not found, using defaults")
+                logger.warning("🕸️ [KG_TASK] Configuration 'memory.consolidation.kg_extraction' not found")
             
             enabled = context.get_config("enabled", kg_config.get("enabled", True))
             batch_size = context.get_config("batch_size", kg_config.get("batch_size", 50))

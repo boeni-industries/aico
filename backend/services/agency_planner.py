@@ -38,7 +38,7 @@ class LLMPlanningHelper:
         self.logger = logger
         
         # Use the same conversation model as conversation_engine (no duplicate config)
-        conversation_model_config = config.get("core.modelservice.ollama.default_models.conversation", {})
+        conversation_model_config = config.get("modelservice.ollama.default_models.conversation", {})
         self.model_name = conversation_model_config.get("name", "huihui_ai/qwen3-abliterated:8b-v2")
         
         # Get agency planning configuration

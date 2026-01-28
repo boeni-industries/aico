@@ -81,7 +81,7 @@ class ValidationPlugin(BasePlugin):
         except Exception as e:
             self.logger.error(f"Validation plugin error: {e}")
             # On error, continue processing if not strict validation
-            if not self.config_manager.get("core.api_gateway.validation.strict_validation", False):
+            if not self.config_manager.get("api_gateway.validation.strict_validation", False):
                 return context
             
             context['error'] = {

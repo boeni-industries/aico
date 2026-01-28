@@ -25,7 +25,7 @@ def check_database_sessions():
         from aico.core.paths import AICOPaths
         
         config = ConfigurationManager()
-        db_config = config.get("core.database.postgres", {})
+        db_config = config.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         

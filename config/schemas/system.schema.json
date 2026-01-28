@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "System Configuration",
+  "description": "System-wide paths, environment, and global flags",
+  "type": "object",
+  "required": ["environment", "paths"],
+  "properties": {
+    "environment": {
+      "type": "string",
+      "enum": ["development", "production", "test"],
+      "description": "Deployment environment"
+    },
+    "paths": {
+      "type": "object",
+      "required": ["data_root"],
+      "properties": {
+        "data_root": {
+          "type": "string",
+          "description": "Root directory for all data storage"
+        },
+        "logs": {
+          "type": "string",
+          "description": "Log files directory"
+        },
+        "temp": {
+          "type": "string",
+          "description": "Temporary files directory"
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "thresholds": {
+          "type": "object",
+          "properties": {
+            "cpu_percent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "memory_percent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "disk_percent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        }
+      }
+    },
+    "debug": {
+      "type": "boolean",
+      "description": "Enable debug mode"
+    }
+  }
+}

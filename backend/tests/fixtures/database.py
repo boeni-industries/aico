@@ -26,7 +26,7 @@ def test_db():
     config.initialize(lightweight=True)
     key_manager = AICOKeyManager(config)
     
-    pg_cfg = config.get("core.database.postgres", {})
+    pg_cfg = config.get("postgres", {})
     if not pg_cfg:
         raise RuntimeError("No PostgreSQL configuration found")
     
@@ -158,7 +158,7 @@ async def test_db_file():
     config.initialize(lightweight=True)
     key_manager = AICOKeyManager(config)
     
-    pg_cfg = config.get("core.database.postgres", {})
+    pg_cfg = config.get("postgres", {})
     if not pg_cfg:
         raise RuntimeError("No PostgreSQL configuration found")
     

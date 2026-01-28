@@ -1,0 +1,144 @@
+enabled: true
+host: "127.0.0.1"
+port: 8773
+rest:
+  host: "127.0.0.1"
+  port: 8773
+cors_origins:
+  - "http://localhost:3000"
+  - "http://127.0.0.1:3000"
+# Ollama server configuration
+ollama:
+  # Connection settings - used by OllamaManager.is_running()
+  host: "127.0.0.1"
+  port: 11434
+  
+  # Auto-management settings - used by OllamaManager
+  auto_install: true  # Automatically install Ollama binary if missing
+  auto_start: true    # Start Ollama server with modelservice
+  
+  # Default models by capability role
+  default_models:
+    conversation:
+      name: "huihui_ai/qwen3-abliterated:8b-v2"
+      description: "Qwen3 Abliterated - Uncensored foundation model for character consistency"
+      auto_pull: true
+      auto_start: true  # Preload on startup for fast first response
+      priority: 1
+    # Note: Embeddings are handled by TransformersManager (sentence-transformers)
+    # See modelservice.transformers.models.embeddings configuration below
+    vision:
+      name: "llama3.2-vision:11b"
+      description: "Scene understanding and emotional context"
+      auto_pull: false
+      priority: 2
+    lightweight:
+      name: "llama3.2:1b"
+      description: "Ultra-fast model for simple tasks"
+      auto_pull: false
+      priority: 4
+  
+  # Default model parameters
+  default_parameters:
+    temperature: 0.7
+    max_tokens: 2048
+    top_p: 0.9
+    top_k: 40
+    repeat_penalty: 1.1
+    stop: []
+  
+  # Resource management
+  resources:
+    auto_unload_minutes: 30
+    max_concurrent_models: 2
+    memory_threshold_percent: 85
+  
+  # Ollama 0.12+ parallel processing configuration
+  # These settings enable true parallel request batching
+  num_parallel: 4  # Process up to 4 requests simultaneously per model (batched)
+  max_loaded_models: 2  # Keep 2 models in memory (conversation + embeddings)
+  max_queue: 128  # Queue depth before rejecting requests
+
+# Entity extraction is now handled by GLiNER via the transformers system
+
+# Hugging Face Transformers configuration
+transformers:
+  # Memory management settings
+  max_memory_mb: 2048  # Maximum memory for all transformers models
+  max_concurrent_models: 3  # Maximum number of models loaded simultaneously
+  auto_unload: true  # Automatically unload models when memory is low
+  
+  # Model configurations (can override defaults in TransformersManager)
+  models:
+    # Only override default configurations when needed
+    # The default configurations are defined in modelservice/core/transformers_manager.py
+    
+    # Override model_id for entity extraction if needed
+    entity_extraction:
+      model_id: "urchade/gliner_medium-v2.1"
+      
+    # Override model_id for intent classification if needed
+    intent_classification:
+      model_id: "xlm-roberta-base"
+      
+    # Override model_id for embedding model if needed
+    # Note: Use 'embeddings' as the key name (matches DEFAULT_MODELS)
+    embeddings: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+
+# Text-to-Speech (TTS) configuration
+tts:
+  enabled: true
+  
+  # TTS Engine Selection
+  # Options:
+  #   - "xtts": Coqui XTTS v2 - High-quality voice cloning, slower (~20s for 700 chars)
+  #   - "piper": Piper TTS - Ultra-fast synthesis (<300ms), no voice cloning
+  #   - "kokoro": Kokoro TTS - Fast, high-quality synthesis (~1-3s), no voice cloning
+  engine: "kokoro"  # Testing Kokoro for quality and speed
+  
+  # XTTS Configuration (used when engine="xtts")
+  xtts:
+    model: "xtts_v2"  # Coqui XTTS v2 - multilingual neural TTS
+    
+    # Voice configuration per language
+    voices:
+      en: "Daisy Studious"  # English female voice
+      de: "Daisy Studious"  # Lighter, younger-sounding voice
+      # Other supported languages: es, fr, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, hu, ko, ja, hi
+    
+    # Custom voice cloning (optional)
+    # Place WAV files in modelservice/assets/voices/
+    custom_voice_path: null  # Path to custom voice WAV file (overrides built-in voices)
+  
+  # Piper Configuration (used when engine="piper")
+  piper:
+    # Voice models per language (downloaded automatically on first use)
+    voices:
+      en: "en_US-amy-medium"  # Amy voice - clear, professional English
+      de: "de_DE-kerstin-low"  # Kerstin - German female voice (testing artifacts)
+    
+    # Voice quality settings
+    # Options: x_low (fastest), low, medium (balanced), high (best quality)
+    quality: "medium"  # Default quality level
+  
+  # Kokoro Configuration (used when engine="kokoro")
+  kokoro:
+    # Voice models per language
+    # Available voices: af_bella, af_sarah, af_nicole, af_sky, bf_emma, bf_isabella, etc.
+    # See: https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
+    voices:
+      en: "af_bella"  # Bella - warm, clear American female voice
+      de: "af_bella"  # Fallback to English voice for German (Kokoro has limited German support)
+    
+    # Model variant
+    # Options: "full" (~300MB), "quantized" (~80MB)
+    model_variant: "full"  # Use full model for best quality
+    
+    # GPU acceleration (requires CUDA)
+    use_gpu: false  # CPU-only on M2 Max (MPS not well supported)
+  
+  # Common synthesis parameters (applies to all engines)
+  speed: 1.0  # Speech speed multiplier (0.5-2.0)
+  
+  # Language detection
+  auto_detect_language: true  # Automatically detect language from text

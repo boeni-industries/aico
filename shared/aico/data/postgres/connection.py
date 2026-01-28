@@ -48,9 +48,9 @@ async def get_postgres_pool() -> asyncpg.Pool:
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     
-    pg_config = config.get("core.database.postgres", {})
+    pg_config = config.get("postgres", {})
     if not pg_config:
-        raise RuntimeError("PostgreSQL configuration not found in core.yaml")
+        raise RuntimeError("PostgreSQL configuration not found in postgres.yaml")
     
     # Get password from environment or AICOKeyManager
     import os
@@ -178,9 +178,9 @@ async def get_session_factory() -> async_sessionmaker:
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     
-    pg_config = config.get("core.database.postgres", {})
+    pg_config = config.get("postgres", {})
     if not pg_config:
-        raise RuntimeError("PostgreSQL configuration not found in core.yaml")
+        raise RuntimeError("PostgreSQL configuration not found in postgres.yaml")
     
     host = pg_config.get("host", "localhost")
     import os

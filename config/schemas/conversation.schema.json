@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Conversation Configuration",
+  "description": "Conversation engine settings and feature flags",
+  "type": "object",
+  "required": ["max_context_messages", "response_timeout_seconds"],
+  "properties": {
+    "max_context_messages": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum messages to keep in conversation context"
+    },
+    "response_timeout_seconds": {
+      "type": "number",
+      "minimum": 1,
+      "description": "Timeout for conversation responses"
+    },
+    "default_response_mode": {
+      "type": "string",
+      "enum": ["text_only", "multimodal"],
+      "description": "Default response mode"
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "enable_emotion_integration": {
+          "type": "boolean",
+          "description": "Enable emotion engine integration"
+        },
+        "enable_personality_integration": {
+          "type": "boolean",
+          "description": "Enable personality system integration"
+        },
+        "enable_memory_integration": {
+          "type": "boolean",
+          "description": "Enable memory system integration"
+        },
+        "enable_embodiment": {
+          "type": "boolean",
+          "description": "Enable embodiment features"
+        }
+      }
+    }
+  }
+}

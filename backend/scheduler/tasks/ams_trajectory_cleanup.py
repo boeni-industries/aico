@@ -29,8 +29,8 @@ class TrajectoryCleanupTask(BaseTask):
     
     Configuration:
     - Schedule: Weekly on Sunday at 3 AM
-    - Archive after: core.memory.behavioral.trajectory_logging.retention_days
-    - Delete after: core.memory.behavioral.trajectory_logging.hard_delete_days
+    - Archive after: memory.behavioral.trajectory_logging.retention_days
+    - Delete after: memory.behavioral.trajectory_logging.hard_delete_days
     """
     
     task_id = "ams.trajectory_cleanup"
@@ -57,7 +57,7 @@ class TrajectoryCleanupTask(BaseTask):
             logger.info("🧠 [AMS_CLEANUP] Starting trajectory cleanup task")
             
             # Check if behavioral learning is enabled
-            behavioral_config = context.config_manager.get("core.memory.behavioral", {})
+            behavioral_config = context.config_manager.get("memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
             print(f"🧠 [AMS_CLEANUP] Behavioral learning enabled: {enabled}")

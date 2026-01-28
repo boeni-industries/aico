@@ -57,7 +57,7 @@ async def get_postgresql_details() -> DatabaseDetailsResponse:
         from aico.security.key_manager import AICOKeyManager
         
         config = ConfigurationManager()
-        pg_config = config.get('core.database.postgres', {})
+        pg_config = config.get('postgres', {})
         
         db_user = pg_config.get('user', 'postgres')
         key_manager = AICOKeyManager(config)
@@ -278,7 +278,7 @@ async def get_schema_metadata() -> SchemaMetadata:
         from aico.security.key_manager import AICOKeyManager
         
         config = ConfigurationManager()
-        pg_config = config.get('core.database.postgres', {})
+        pg_config = config.get('postgres', {})
         
         db_user = pg_config.get('user', 'postgres')
         key_manager = AICOKeyManager(config)
@@ -421,7 +421,7 @@ async def execute_sql_query(
         from aico.security.key_manager import AICOKeyManager
         
         config = ConfigurationManager()
-        pg_config = config.get('core.database.postgres', {})
+        pg_config = config.get('postgres', {})
         
         db_user = pg_config.get('user', 'postgres')
         key_manager = AICOKeyManager(config)
