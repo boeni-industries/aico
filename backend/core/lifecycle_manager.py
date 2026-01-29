@@ -465,13 +465,14 @@ class BackendLifecycleManager:
             
             # Create a proxy that wraps AgencyService and manages UoW per method call
             class AgencyServiceProxy:
-                """Proxy that creates fresh UoW for each AgencyService operation"""
-                def __init__(self, session_factory):
+                """Proxy that creates UnitOfWork per method call."""
+                def __init__(self, session_factory, skill_matcher=None):
                     self._session_factory = session_factory
+                    self._skill_matcher = skill_matcher
                 
                 async def _execute_with_uow(self, method_name, *args, **kwargs):
                     async with UnitOfWork(self._session_factory) as uow:
-                        service = AgencyService(uow)
+                        service = AgencyService(uow, skill_matcher=self._skill_matcher)
                         method = getattr(service, method_name)
                         return await method(*args, **kwargs)
                 
@@ -547,6 +548,10 @@ class BackendLifecycleManager:
 
                 async def update_plan_execution(self, execution_id: str, updates: Dict[str, Any]):
                     return await self._execute_with_uow('update_plan_execution', execution_id, updates)
+                
+                def set_skill_matcher(self, skill_matcher):
+                    """Update the skill_matcher reference after AgencyEngine initializes it."""
+                    self._skill_matcher = skill_matcher
             
             agency_service = AgencyServiceProxy(session_factory)
             
@@ -566,6 +571,11 @@ class BackendLifecycleManager:
             self.logger.info("🔧 [AI_PROCESSORS] Initializing AgencyEngine...")
             await agency_engine.initialize()
             self.logger.info("✅ [AI_PROCESSORS] AgencyEngine initialized during startup")
+            
+            # Update AgencyServiceProxy with skill_matcher after AgencyEngine initializes it
+            if agency_engine.planner and agency_engine.planner.skill_matcher:
+                agency_service.set_skill_matcher(agency_engine.planner.skill_matcher)
+                self.logger.info("✅ [AI_PROCESSORS] Injected SkillMatcher into AgencyServiceProxy for auto-fixing old plans")
             
             # Phase 4: Install default policies if configured
             try:

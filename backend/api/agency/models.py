@@ -383,6 +383,7 @@ class PlanStepResponse(BaseModel):
     scheduled_for: Optional[datetime] = None
     depends_on: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    implementation_tools: List[str] = Field(default_factory=list)  # Tools used by this skill
 
 
 class StepExecutionSummary(BaseModel):

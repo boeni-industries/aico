@@ -319,10 +319,19 @@ async with uow_factory() as uow:
    - ✅ Created `shared/aico/services/user_service.py`
    - ✅ **Integration testing:** UserService tests passing
 
+**Priority 7 - SkillMatcher (~50 SQL calls):**
+8. ✅ `shared/aico/ai/agency/skills/matcher.py` - **COMPLETE**
+   - ✅ Migrated from raw SQL to PostgreSQL repository pattern
+   - ✅ Uses session_factory for UnitOfWork access to agency_skill_gaps
+   - ✅ Skill gap logging, deduplication, and frequency tracking
+   - ✅ **Enabled in AgencyEngine** - SkillMatcher now fully operational
+   - ✅ Semantic similarity matching for skill gap deduplication
+
 **Deliverables:**
 - ✅ **6 service classes created** (Agency, KG, AMS, Scheduler, User, Memory)
+- ✅ **SkillMatcher migrated** to PostgreSQL repository pattern
 - ✅ **All services compile successfully**
-- ✅ **~1,450 SQL calls replaced** with repository operations
+- ✅ **~1,500 SQL calls replaced** with repository operations
 - ✅ **Data model boundary clarified (best practice):**
   - ✅ Domain models in `aico.ai.*` (business logic / services)
   - ✅ Persistence models in `aico.data.<ctx>.models` (repository contract; 1:1 with DB schema)

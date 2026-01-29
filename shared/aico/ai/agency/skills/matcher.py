@@ -18,7 +18,7 @@ import re
 import json
 import hashlib
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple, Set
+from typing import Dict, Any, List, Optional, Tuple, Set, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -100,7 +100,7 @@ class SkillMatcher:
         self,
         skill_registry: SkillRegistry,
         embedding_client: Optional[Any] = None,
-        db_connection: Optional[Any] = None,  # Skills being redesigned
+        session_factory: Optional[Callable] = None,
     ):
         """
         Initialize skill matcher.
@@ -108,11 +108,11 @@ class SkillMatcher:
         Args:
             skill_registry: Registry of available skills
             embedding_client: Optional client for semantic embeddings
-            db_connection: Optional database connection for gap tracking
+            session_factory: Optional session factory for PostgreSQL UoW access to skill gaps
         """
         self.skill_registry = skill_registry
         self.embedding_client = embedding_client
-        self.db_connection = db_connection
+        self.session_factory = session_factory
         
         # Build skill metadata index
         self.skill_metadata: Dict[str, SkillMetadata] = {}
@@ -520,8 +520,8 @@ class SkillMatcher:
         llm_suggested_skills: List[str]
     ) -> None:
         """Log unmatched skill pattern for learning and development planning."""
-        if not self.db_connection:
-            logger.debug("🎯 [SKILL_MATCHER] No database connection - skipping gap logging")
+        if not self.session_factory:
+            logger.debug("🎯 [SKILL_MATCHER] No session factory - skipping gap logging")
             return
         
         try:
@@ -546,7 +546,10 @@ class SkillMatcher:
                     f"🎯 [SKILL_MATCHER] Updated existing gap frequency: {similar_gap_id}"
                 )
             else:
-                # Create new gap entry
+                # Create new gap entry using repository
+                from aico.data.uow import UnitOfWork
+                from aico.data.agency.skill_models import AgencySkillGap
+                
                 gap_id = self._generate_gap_id(step_description)
                 skill_spec = self._generate_skill_specification(
                     step_description=step_description,
@@ -554,33 +557,27 @@ class SkillMatcher:
                     step_metadata=step_metadata
                 )
                 
-                now = datetime.utcnow().isoformat()
+                now = datetime.utcnow()
                 
-                self.db_connection.execute(
-                    """
-                    INSERT INTO agency_skill_gaps (
-                        gap_id, step_description, llm_suggested_skills,
-                        step_metadata, pattern_embedding, frequency_count,
-                        first_seen_at, last_seen_at, priority_score,
-                        suggested_skill_spec, notes, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        gap_id,
-                        step_description,
-                        json.dumps(llm_suggested_skills),
-                        json.dumps(step_metadata),
-                        json.dumps(embedding) if embedding else None,
-                        1,  # frequency_count
-                        now,
-                        now,
-                        self._calculate_priority_score(step_metadata),
-                        skill_spec,
-                        None,  # notes
-                        now,
-                        now
-                    )
+                gap = AgencySkillGap(
+                    gap_id=gap_id,
+                    step_description=step_description,
+                    llm_suggested_skills=json.dumps(llm_suggested_skills),
+                    step_metadata=json.dumps(step_metadata),
+                    pattern_embedding=json.dumps(embedding) if embedding else None,
+                    frequency_count=1,
+                    first_seen_at=now,
+                    last_seen_at=now,
+                    priority_score=self._calculate_priority_score(step_metadata),
+                    suggested_skill_spec=skill_spec,
+                    notes=None,
+                    created_at=now,
+                    updated_at=now
                 )
+                
+                async with self.session_factory() as uow:
+                    await uow.agency_skill_gaps.create(gap)
+                    await uow.commit()
                 
                 logger.info(
                     f"📊 [SKILL_MATCHER] Logged new skill gap: {gap_id} - '{step_description[:60]}...'"
@@ -614,49 +611,57 @@ class SkillMatcher:
         embedding: Optional[List[float]] = None
     ) -> Optional[str]:
         """Find similar existing gap to avoid duplicates."""
-        if not self.db_connection:
+        if not self.session_factory:
             return None
         
         try:
-            # First try exact description match
-            result = self.db_connection.execute(
-                "SELECT gap_id FROM agency_skill_gaps WHERE step_description = ?",
-                (step_description,)
-            ).fetchone()
-            if result:
-                return result[0]
+            from aico.data.uow import UnitOfWork
             
-            # If we have embeddings, find semantically similar gaps
-            if embedding:
-                # Fetch all gaps with embeddings
-                gaps = self.db_connection.execute(
-                    "SELECT gap_id, step_description, pattern_embedding FROM agency_skill_gaps WHERE pattern_embedding IS NOT NULL"
-                ).fetchall()
+            async with self.session_factory() as uow:
+                # First try exact description match
+                from sqlalchemy import select
+                from aico.data.tables import agency_skill_gaps
                 
-                # Calculate cosine similarity
-                best_match_id = None
-                best_similarity = 0.0
+                stmt = select(agency_skill_gaps.c.gap_id).where(
+                    agency_skill_gaps.c.step_description == step_description
+                )
+                result = await uow.session.execute(stmt)
+                row = result.fetchone()
+                if row:
+                    return row[0]
                 
-                for gap_id, desc, emb_json in gaps:
-                    try:
-                        gap_embedding = json.loads(emb_json)
-                        similarity = self._cosine_similarity(embedding, gap_embedding)
+                # If we have embeddings, find semantically similar gaps
+                if embedding:
+                    # Fetch all gaps with embeddings
+                    stmt = select(
+                        agency_skill_gaps.c.gap_id,
+                        agency_skill_gaps.c.step_description,
+                        agency_skill_gaps.c.pattern_embedding
+                    ).where(agency_skill_gaps.c.pattern_embedding.isnot(None))
+                    result = await uow.session.execute(stmt)
+                    gaps = result.fetchall()
+                    
+                    # Calculate cosine similarity with each gap
+                    for gap_id, gap_desc, gap_embedding_json in gaps:
+                        if not gap_embedding_json:
+                            continue
                         
-                        # Similarity threshold (0.75) - groups similar patterns while avoiding false positives
-                        if similarity > 0.75 and similarity > best_similarity:
-                            best_similarity = similarity
-                            best_match_id = gap_id
-                    except Exception:
-                        continue
-                
-                if best_match_id:
-                    logger.debug(
-                        f"🎯 [SKILL_MATCHER] Found similar gap (similarity={best_similarity:.2f}): {best_match_id}"
-                    )
-                    return best_match_id
+                        try:
+                            gap_embedding = json.loads(gap_embedding_json)
+                            similarity = self._cosine_similarity(embedding, gap_embedding)
+                            
+                            # If very similar (>0.9), consider it a duplicate
+                            if similarity > 0.9:
+                                logger.debug(
+                                    f"🎯 [SKILL_MATCHER] Found similar gap (similarity={similarity:.3f}): {gap_id}"
+                                )
+                                return gap_id
+                        except Exception as e:
+                            logger.debug(f"🎯 [SKILL_MATCHER] Error comparing embeddings: {e}")
+                            continue
         
         except Exception as e:
-            logger.debug(f"🎯 [SKILL_MATCHER] Error finding similar gap: {e}")
+            logger.error(f"🎯 [SKILL_MATCHER] Error finding similar gap: {e}")
         
         return None
     
@@ -676,21 +681,28 @@ class SkillMatcher:
     
     async def _increment_gap_frequency(self, gap_id: str) -> None:
         """Increment frequency count for existing gap."""
-        if not self.db_connection:
+        if not self.session_factory:
             return
         
         try:
-            now = datetime.utcnow().isoformat()
-            self.db_connection.execute(
-                """
-                UPDATE agency_skill_gaps
-                SET frequency_count = frequency_count + 1,
-                    last_seen_at = ?,
-                    updated_at = ?
-                WHERE gap_id = ?
-                """,
-                (now, now, gap_id)
-            )
+            from aico.data.uow import UnitOfWork
+            from sqlalchemy import update
+            from aico.data.tables import agency_skill_gaps
+            
+            now = datetime.utcnow()
+            
+            async with self.session_factory() as uow:
+                stmt = (
+                    update(agency_skill_gaps)
+                    .where(agency_skill_gaps.c.gap_id == gap_id)
+                    .values(
+                        frequency_count=agency_skill_gaps.c.frequency_count + 1,
+                        last_seen_at=now,
+                        updated_at=now
+                    )
+                )
+                await uow.session.execute(stmt)
+                await uow.commit()
         except Exception as e:
             logger.error(f"🎯 [SKILL_MATCHER] Error incrementing gap frequency: {e}")
     

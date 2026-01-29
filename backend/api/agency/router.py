@@ -463,6 +463,13 @@ async def get_goal_plans(
             # Map plan steps (static plan definition)
             step_responses: List[PlanStepResponse] = []
             for step in plan.steps:
+                # Enrich with implementation_tools from SkillRegistry
+                implementation_tools: List[str] = []
+                if step.skill_id and engine.skill_registry:
+                    skill = engine.skill_registry.get(step.skill_id)
+                    if skill:
+                        implementation_tools = skill.implementation_tools
+                
                 step_responses.append(
                     PlanStepResponse(
                         step_id=step.step_id,
@@ -474,6 +481,7 @@ async def get_goal_plans(
                         scheduled_for=step.scheduled_for,
                         depends_on=step.depends_on or [],
                         metadata=step.metadata or {},
+                        implementation_tools=implementation_tools,
                     )
                 )
 

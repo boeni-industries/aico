@@ -40,8 +40,9 @@ class AgencyService:
     Uses repositories through Unit of Work pattern.
     """
 
-    def __init__(self, uow: UnitOfWork):
+    def __init__(self, uow: UnitOfWork, skill_matcher: Optional[Any] = None):
         self.uow = uow
+        self.skill_matcher = skill_matcher
 
     # ==================== Goal Operations ====================
 
@@ -276,7 +277,17 @@ class AgencyService:
             if not db_plan:
                 return None
 
-            return self._to_domain_plan(db_plan)
+            plan = self._to_domain_plan(db_plan)
+            
+            # Auto-fix old plans with null skill_ids by applying skill matching
+            if self.skill_matcher and any(step.skill_id is None for step in plan.steps):
+                logger.info(f"[AGENCY_SERVICE] Auto-fixing {sum(1 for s in plan.steps if s.skill_id is None)} steps with null skill_id in plan {plan_id[:8]}...")
+                plan.steps = await self._assign_skills_to_steps(plan.steps)
+                # Update plan in database with fixed skills
+                await self.update_plan(plan)
+                await self.uow.commit()
+            
+            return plan
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to retrieve plan: {e}", extra={"plan_id": plan_id})
             raise
@@ -289,10 +300,48 @@ class AgencyService:
                 filters["status"] = status.value
             
             db_plans = await self.uow.plans.list(filters=filters)
-            return [self._to_domain_plan(p) for p in db_plans]
+            plans = [self._to_domain_plan(p) for p in db_plans]
+            
+            # Auto-fix old plans with null skill_ids
+            if self.skill_matcher:
+                for plan in plans:
+                    if any(step.skill_id is None for step in plan.steps):
+                        logger.info(f"[AGENCY_SERVICE] Auto-fixing {sum(1 for s in plan.steps if s.skill_id is None)} steps with null skill_id in plan {plan.plan_id[:8]}...")
+                        plan.steps = await self._assign_skills_to_steps(plan.steps)
+                        await self.update_plan(plan)
+                await self.uow.commit()
+            
+            return plans
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to list plans: {e}", extra={"goal_id": goal_id})
             raise
+
+    async def _assign_skills_to_steps(self, steps: List[PlanStep]) -> List[PlanStep]:
+        """Assign skills to plan steps using SkillMatcher.
+        
+        This auto-fixes old plans that were created before SkillMatcher was enabled.
+        """
+        if not self.skill_matcher:
+            return steps
+        
+        for step in steps:
+            if step.skill_id is None:
+                try:
+                    match = await self.skill_matcher.match_skill(
+                        step_description=step.description,
+                        step_metadata=step.metadata,
+                        llm_suggested_skills=step.metadata.get('suggested_skills', []),
+                    )
+                    if match:
+                        step.skill_id = match.skill_id
+                        step.metadata['skill_match_confidence'] = match.confidence
+                        step.metadata['skill_match_strategy'] = match.strategy.value
+                        step.metadata['skill_match_reasoning'] = match.reasoning
+                        logger.debug(f"[AGENCY_SERVICE] Assigned skill '{match.skill_id}' to step (confidence={match.confidence:.2f}, strategy={match.strategy.value})")
+                except Exception as e:
+                    logger.error(f"[AGENCY_SERVICE] Error assigning skill to step: {e}")
+        
+        return steps
 
     async def update_plan(self, plan: Plan) -> Plan:
         """Update an existing plan."""

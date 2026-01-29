@@ -22,6 +22,7 @@ from .models import (
 )
 # AgencyService imported where needed to avoid circular dependency
 from .planner import Planner
+from .skills.matcher import SkillMatcher
 from .values_ethics import ValuesEthicsService, PolicyEffect
 from .arbiter import GoalArbiter, IntentionSet, IntentionStatus
 
@@ -247,8 +248,16 @@ class AgencyEngine(BaseAIProcessor):
         
         # Now that skill_registry is initialized, set it on the planner
         self.planner.skill_registry = self.skill_registry
-        # SkillMatcher disabled pending migration to PostgreSQL
-        self.planner.skill_matcher = None
+        # Initialize SkillMatcher with session_factory for PostgreSQL skill gap tracking
+        if self.skill_registry and session_factory:
+            self.planner.skill_matcher = SkillMatcher(
+                skill_registry=self.skill_registry,
+                session_factory=session_factory
+            )
+            logger.info("[AGENCY_ENGINE] SkillMatcher initialized with PostgreSQL session factory")
+        else:
+            self.planner.skill_matcher = None
+            logger.warning("[AGENCY_ENGINE] SkillMatcher not initialized - missing skill_registry or session_factory")
         # Planner configured
         
         # Initialize SkillInvoker and PlanExecutor with AgencyService
@@ -323,9 +332,12 @@ class AgencyEngine(BaseAIProcessor):
         """
         if self.modelservice_client and self.planner.skill_matcher:
             self.planner.skill_matcher.embedding_client = self.modelservice_client
-            pass  # Modelservice client injected
+            logger.info("[AGENCY_ENGINE] Injected embedding client into SkillMatcher for semantic similarity matching")
         else:
-            logger.warning("[AGENCY_ENGINE] Cannot update SkillMatcher embedding client - modelservice_client or skill_matcher not available")
+            if not self.planner.skill_matcher:
+                logger.warning("[AGENCY_ENGINE] SkillMatcher not initialized - plan execution will fail (skills cannot be assigned to steps)")
+            elif not self.modelservice_client:
+                logger.info("[AGENCY_ENGINE] Embedding client not available - SkillMatcher will use keyword/category matching only (degraded performance)")
 
     # ------------------------------------------------------------------
     # Goal & plan API (Phase 1 core)
