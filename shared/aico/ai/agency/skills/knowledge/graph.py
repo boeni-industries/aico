@@ -51,6 +51,14 @@ class UpdateKnowledgeGraphSkill(Skill):
         return "knowledge"
     
     @property
+    def implementation_tools(self) -> List[str]:
+        return [
+            "tool.kg.add_entity",
+            "tool.kg.add_relationship",
+            "tool.kg.update_entity",
+        ]
+    
+    @property
     def parameters(self) -> List[SkillParameter]:
         return [
             SkillParameter(

@@ -50,6 +50,13 @@ class SearchMemorySkill(Skill):
         return "memory"
     
     @property
+    def implementation_tools(self) -> List[str]:
+        return [
+            "tool.memory.semantic.search",
+            "tool.memory.episodic.retrieve",
+        ]
+    
+    @property
     def parameters(self) -> List[SkillParameter]:
         return [
             SkillParameter(

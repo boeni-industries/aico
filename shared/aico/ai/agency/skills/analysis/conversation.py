@@ -52,6 +52,14 @@ class AnalyzeConversationSkill(Skill):
         return "analysis"
     
     @property
+    def implementation_tools(self) -> List[str]:
+        return [
+            "tool.memory.working.retrieve_history",
+            "tool.memory.episodic.retrieve",
+            "tool.memory.semantic.search",
+        ]
+    
+    @property
     def parameters(self) -> List[SkillParameter]:
         return [
             SkillParameter(
