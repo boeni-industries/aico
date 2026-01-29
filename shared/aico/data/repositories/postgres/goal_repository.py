@@ -293,3 +293,41 @@ class PostgresGoalRepository(Repository[Goal]):
         )
         result = await self.session.execute(stmt)
         return result.rowcount > 0
+    
+    async def get_by_ids_bulk(self, goal_ids: List[str]) -> List[Goal]:
+        """Get multiple goals by IDs in a single query (optimized for N+1 prevention).
+        
+        Args:
+            goal_ids: List of goal IDs to fetch
+            
+        Returns:
+            List of Goal objects (may be fewer than requested if some IDs don't exist)
+        """
+        if not goal_ids:
+            return []
+        
+        stmt = select(agency_goals).where(agency_goals.c.goal_id.in_(goal_ids))
+        result = await self.session.execute(stmt)
+        
+        goals = []
+        for row in result.fetchall():
+            # Parse metadata_json if it's a string, otherwise use as-is
+            metadata = row.metadata_json if row.metadata_json else {}
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            
+            goals.append(Goal(
+                goal_id=row.goal_id,
+                user_id=row.user_id,
+                origin=GoalOrigin(row.origin),
+                goal_type=row.goal_type,
+                title=row.title,
+                description=row.description,
+                status=GoalStatus(row.status),
+                priority=GoalPriority(row.priority),
+                metadata=metadata,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            ))
+        
+        return goals

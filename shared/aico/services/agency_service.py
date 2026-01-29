@@ -235,6 +235,21 @@ class AgencyService:
         """Get all completed goals for a user."""
         return await self.list_goals(user_id, status=GoalStatus.COMPLETED)
 
+    async def get_goals_bulk(self, goal_ids: List[str]) -> List[Goal]:
+        """Get multiple goals by IDs in a single query (optimized for N+1 prevention).
+        
+        Args:
+            goal_ids: List of goal IDs to fetch
+            
+        Returns:
+            List of Goal objects, maintaining order where possible
+        """
+        try:
+            return await self.uow.goals.get_by_ids_bulk(goal_ids)
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get goals in bulk: {e}", extra={"count": len(goal_ids)})
+            raise
+
     # ==================== Plan Operations ====================
 
     async def create_plan(self, plan: Plan) -> Plan:

@@ -9,10 +9,10 @@ import asyncio
 import importlib
 import json
 import pkgutil
-from datetime import datetime
+from datetime import datetime, UTC, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import Annotated, Optional, List, Dict, Any
+from typing import Annotated, Optional, List, Dict, Any, Tuple
 from pydantic import BaseModel
 
 from backend.api.conversation.dependencies import get_current_user
@@ -64,6 +64,35 @@ from backend.core.postgres_dependencies import get_uow
 
 logger = get_logger("backend.api.agency")
 router = APIRouter()
+
+# ============================================================================
+# Caching
+# ============================================================================
+
+# Simple in-memory cache for agency endpoints
+_agency_cache: Dict[str, Tuple[Any, datetime]] = {}
+
+async def _get_cached(key: str, ttl_seconds: int = 30) -> Optional[Any]:
+    """Get cached value if not expired."""
+    if key in _agency_cache:
+        value, cached_at = _agency_cache[key]
+        age = (datetime.now(UTC) - cached_at).total_seconds()
+        
+        if age < ttl_seconds:
+            logger.info(f"[AGENCY_CACHE] Cache HIT for {key} (age: {age:.1f}s)")
+            return value
+        else:
+            logger.info(f"[AGENCY_CACHE] Cache EXPIRED for {key} (age: {age:.1f}s)")
+            del _agency_cache[key]
+    else:
+        logger.info(f"[AGENCY_CACHE] Cache MISS for {key}")
+    
+    return None
+
+async def _set_cached(key: str, value: Any):
+    """Store value in cache."""
+    _agency_cache[key] = (value, datetime.now(UTC))
+    logger.debug(f"[AGENCY_CACHE] Cached {key}")
 
 
 # ============================================================================
@@ -127,29 +156,36 @@ async def get_intention_set(
         intentions = intention_set.intentions[:limit]
         logger.debug(f"[DEBUG] intentions after limit: {len(intentions)}")
         
-        # Fetch actual Goal objects for each intention
+        # Optimized: Fetch all Goal objects in a single bulk query instead of N+1 queries
         active_intentions = []
-        for intention in intentions:
-            logger.debug(f"[DEBUG] Processing intention: goal_id={intention.goal_id}, score={intention.arbiter_score}")
-            goal = await engine.get_goal(intention.goal_id)
-            if goal:
-                logger.debug(f"[DEBUG] Found goal: {goal.title} (status={goal.status.value})")
-                active_intentions.append(
-                    GoalSummary(
-                        goal_id=goal.goal_id,
-                        title=goal.title,
-                        description=goal.description,
-                        origin=GoalOrigin(goal.origin.value),
-                        priority=GoalPriority(goal.priority.value),
-                        status=GoalStatus(goal.status.value),
-                        score=intention.arbiter_score,
-                        priority_band=intention.priority_band.value,
-                        created_at=goal.created_at,
-                        metadata=goal.metadata
+        if intentions:
+            goal_ids = [intention.goal_id for intention in intentions]
+            goals = await engine.agency_service.get_goals_bulk(goal_ids)
+            
+            # Create lookup dict for O(1) access
+            goals_by_id = {goal.goal_id: goal for goal in goals}
+            logger.debug(f"[DEBUG] Fetched {len(goals)} goals in single bulk query")
+            
+            for intention in intentions:
+                goal = goals_by_id.get(intention.goal_id)
+                if goal:
+                    logger.debug(f"[DEBUG] Found goal: {goal.title} (status={goal.status.value})")
+                    active_intentions.append(
+                        GoalSummary(
+                            goal_id=goal.goal_id,
+                            title=goal.title,
+                            description=goal.description,
+                            origin=GoalOrigin(goal.origin.value),
+                            priority=GoalPriority(goal.priority.value),
+                            status=GoalStatus(goal.status.value),
+                            score=intention.arbiter_score,
+                            priority_band=intention.priority_band.value,
+                            created_at=goal.created_at,
+                            metadata=goal.metadata
+                        )
                     )
-                )
-            else:
-                logger.debug(f"[DEBUG] Goal not found for intention: {intention.goal_id}")
+                else:
+                    logger.debug(f"[DEBUG] Goal not found for intention: {intention.goal_id}")
         
         logger.debug(f"[DEBUG] active_intentions final count: {len(active_intentions)}")
         
@@ -1152,9 +1188,16 @@ async def list_goals(
 ):
     """
     List goals for the current user with optional filters.
+    Cached for 20 seconds to reduce database load.
     """
     try:
         user_id = user["user_uuid"]
+        
+        # Check cache first (20s TTL, includes filter params in key)
+        cache_key = f"goals_list:{user_id}:{status}:{origin}:{priority}:{limit}:{page}"
+        cached_response = await _get_cached(cache_key, ttl_seconds=20)
+        if cached_response is not None:
+            return cached_response
         
         # Get all goals for user
         all_goals = await engine.list_goals_for_user(user_id)
@@ -1192,12 +1235,17 @@ async def list_goals(
             for g in paginated_goals
         ]
         
-        return GoalListResponse(
+        response = GoalListResponse(
             goals=goal_responses,
             total=total,
             page=page,
             page_size=limit
         )
+        
+        # Cache the response
+        await _set_cached(cache_key, response)
+        
+        return response
         
     except Exception as e:
         logger.error(f"Failed to list goals: {e}")
@@ -1362,6 +1410,7 @@ async def get_agency_state(
     """Get complete agency state - intentions, curiosity, profile, and pending consents.
 
     This is a convenience endpoint that combines multiple agency metrics.
+    Cached for 15 seconds to handle rapid-fire Studio requests.
     """
     try:
         # Agency state is a user-facing construct; do not compute it for
@@ -1370,6 +1419,12 @@ async def get_agency_state(
             raise HTTPException(status_code=403, detail="Technical users are excluded from agency state")
 
         user_id = user["user_uuid"]
+        
+        # Check cache first (15s TTL for rapid-fire requests)
+        cache_key = f"agency_state:{user_id}"
+        cached_response = await _get_cached(cache_key, ttl_seconds=15)
+        if cached_response is not None:
+            return cached_response
         
         # Get all components in parallel
         intention_set_task = get_intention_set(user, engine, limit=10)
@@ -1396,26 +1451,24 @@ async def get_agency_state(
             f"{len(active_goal_ids)} active goals"
         )
 
+        # Optimized: Fetch all events in a single bulk query instead of N+1 queries
         projected_events: list[Event] = []
-        for goal_id in active_goal_ids:
+        if active_goal_ids:
             try:
-                rows = await uow.agency_events_log.get_by_entity(
+                rows = await uow.agency_events_log.get_by_entities_bulk(
                     entity_type="goal",
-                    entity_id=goal_id,
-                    limit=20,
+                    entity_ids=list(active_goal_ids),
+                    limit_per_entity=20,
                 )
                 logger.info(
-                    f"[AGENCY_API] Found {len(rows)} events for goal {goal_id}"
+                    f"[AGENCY_API] Fetched {len(rows)} events for {len(active_goal_ids)} goals in single query"
                 )
+                projected_events = [_event_log_to_api(row) for row in rows]
             except Exception as e:
                 logger.error(
-                    f"[AGENCY_API] Failed to fetch events for goal {goal_id}: {e}",
+                    f"[AGENCY_API] Failed to fetch events in bulk: {e}",
                     exc_info=True,
                 )
-                continue
-
-            for row in rows:
-                projected_events.append(_event_log_to_api(row))
 
         # Deduplicate by event_id so each raw event is only represented once
         seen_ids: set[str] = set()
@@ -1459,7 +1512,7 @@ async def get_agency_state(
         # This would require querying for blocked actions - placeholder for now
         consent_required_actions = []
         
-        return AgencyStateResponse(
+        response = AgencyStateResponse(
             user_id=user_id,
             intention_set=intention_set,
             curiosity_status=curiosity_status,
@@ -1468,6 +1521,11 @@ async def get_agency_state(
             recent_events=recent_events,
             timestamp=datetime.utcnow(),
         )
+        
+        # Cache the response
+        await _set_cached(cache_key, response)
+        
+        return response
         
     except Exception as e:
         logger.error(f"Failed to get agency state: {e}")

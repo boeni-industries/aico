@@ -225,3 +225,63 @@ class PostgresAgencyEventsLogRepository(Repository[AgencyEventLog]):
             )
             for row in result.fetchall()
         ]
+    
+    async def get_by_entities_bulk(self, entity_type: str, entity_ids: List[str], limit_per_entity: int = 20) -> List[AgencyEventLog]:
+        """Get events for multiple entities in a single query (optimized for N+1 prevention).
+        
+        Args:
+            entity_type: Type of entity (e.g., 'goal')
+            entity_ids: List of entity IDs to fetch events for
+            limit_per_entity: Maximum events per entity (applied via window function)
+            
+        Returns:
+            List of events for all specified entities, ordered by created_at desc
+        """
+        if not entity_ids:
+            return []
+        
+        # Use window function to limit results per entity efficiently
+        from sqlalchemy import literal_column
+        
+        # Build subquery with row_number() partitioned by entity_id
+        subquery = (
+            select(
+                agency_events_log,
+                func.row_number()
+                .over(
+                    partition_by=agency_events_log.c.entity_id,
+                    order_by=agency_events_log.c.created_at.desc()
+                )
+                .label('rn')
+            )
+            .where(
+                and_(
+                    agency_events_log.c.entity_type == entity_type,
+                    agency_events_log.c.entity_id.in_(entity_ids)
+                )
+            )
+            .subquery()
+        )
+        
+        # Select only rows within limit per entity
+        stmt = select(subquery).where(literal_column('rn') <= limit_per_entity)
+        
+        result = await self.session.execute(stmt)
+        
+        return [
+            AgencyEventLog(
+                event_id=row.event_id,
+                user_id=row.user_id,
+                event_type=row.event_type,
+                event_category=row.event_category,
+                source_component=row.source_component,
+                entity_type=row.entity_type,
+                entity_id=row.entity_id,
+                event_data=row.event_data,
+                workflow_trace_id=row.workflow_trace_id,
+                parent_event_id=row.parent_event_id,
+                severity=row.severity,
+                created_at=row.created_at,
+            )
+            for row in result.fetchall()
+        ]

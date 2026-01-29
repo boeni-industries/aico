@@ -491,6 +491,9 @@ class BackendLifecycleManager:
                 async def get_active_goals(self, user_id):
                     return await self._execute_with_uow('get_active_goals', user_id)
                 
+                async def get_goals_bulk(self, goal_ids):
+                    return await self._execute_with_uow('get_goals_bulk', goal_ids)
+                
                 async def create_plan(self, plan):
                     return await self._execute_with_uow('create_plan', plan)
 

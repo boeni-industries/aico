@@ -45,6 +45,15 @@
       "type": "number",
       "minimum": 0,
       "description": "Connection pool timeout in seconds"
+    },
+    "pool_recycle": {
+      "type": "integer",
+      "minimum": -1,
+      "description": "Recycle connections after N seconds (-1 = never, 0 = always, >0 = after N seconds)"
+    },
+    "pool_pre_ping": {
+      "type": "boolean",
+      "description": "Verify connections are alive before using them (health check)"
     }
   }
 }

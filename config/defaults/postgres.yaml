@@ -13,5 +13,8 @@ user: "postgres"
 sslmode: "prefer"
 
 # Connection pool settings
-pool_size: 20
-max_overflow: 10
+pool_size: 20              # Number of persistent connections
+max_overflow: 10           # Additional connections when pool exhausted
+pool_timeout: 30           # Seconds to wait for available connection
+pool_recycle: 3600         # Recycle connections after N seconds (1 hour)
+pool_pre_ping: true        # Verify connections before use (health check)
