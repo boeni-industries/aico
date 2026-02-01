@@ -413,7 +413,11 @@ aico deploy pg --nuke
 - Docker installed and running
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
 - Database credentials configured in `datastores.yaml`
+=======
+- Database credentials configured in `config/defaults/postgres.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
 =======
 - Database credentials configured in `config/defaults/postgres.yaml`
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
@@ -467,7 +471,11 @@ aico deploy influx --nuke
 - Docker installed and running
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
 - InfluxDB URL configured in `datastores.yaml` (http://localhost:8086)
+=======
+- InfluxDB URL configured in `config/defaults/influx.yaml` (http://localhost:8086)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
 =======
 - InfluxDB URL configured in `config/defaults/influx.yaml` (http://localhost:8086)
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
@@ -507,6 +515,7 @@ aico logs query --limit 10  # Query recent logs
 
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
 Edit `config/defaults/datastores.yaml`:
 
 ```yaml
@@ -532,6 +541,11 @@ Edit `config/defaults/postgres.yaml` and `config/defaults/influx.yaml`:
 
 ```yaml
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
+=======
+Edit `config/defaults/postgres.yaml` and `config/defaults/influx.yaml`:
+
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
 db_name: "aico"
 core_schema: "aico_core"
 host: "127.0.0.1"
@@ -546,6 +560,9 @@ org: "aico"
 bucket: "aico_telemetry"
 # Token stored in keyring
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
+=======
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
 =======
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md

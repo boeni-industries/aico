@@ -241,6 +241,7 @@ class ConfigurationManager:
             "core.conversation.",
             "core.memory.",
             "core.agency.",
+            "core.emotion.",
         )
         if key.startswith(migrated_core_prefixes) and os.environ.get("AICO_ALLOW_LEGACY_CORE_NAMESPACE") != "1":
             raise ConfigurationError(

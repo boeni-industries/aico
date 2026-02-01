@@ -55,9 +55,15 @@ OLLAMA_MAX_QUEUE=128         # Max queued requests
 
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/modelservice/modelservice.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/modelservice/modelservice.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/modelservice/modelservice.md
 **Port**: 11434 (from modelservice.yaml configuration)
 
 **Resource Management** (modelservice.yaml):
+=======
+**Port**: 11434 (from `config/defaults/modelservice.yaml` configuration)
+
+**Resource Management** (`config/defaults/modelservice.yaml`):
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/modelservice/modelservice.md
 =======
 **Port**: 11434 (from `config/defaults/modelservice.yaml` configuration)
 

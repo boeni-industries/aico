@@ -215,6 +215,7 @@ AICO's backend supports two TTS engines: **Piper TTS** (ultra-fast, local) and *
 
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/speech/tts.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/speech/tts.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/speech/tts.md
 Both engines are configured in `config/defaults/modelservice.yaml` under the `tts` section:
 
 ```yaml
@@ -248,6 +249,11 @@ Both engines are configured in `config/defaults/modelservice.yaml` under the `mo
 
 ```yaml
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/speech/tts.md
+=======
+Both engines are configured in `config/defaults/modelservice.yaml` under the `modelservice.tts` section:
+
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/speech/tts.md
 tts:
   enabled: true
   engine: "piper"  # or "xtts" / "kokoro"
@@ -269,6 +275,9 @@ tts:
   
   speed: 1.0
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/speech/tts.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/speech/tts.md
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/speech/tts.md
+=======
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/speech/tts.md
 =======
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/speech/tts.md

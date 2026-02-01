@@ -286,7 +286,11 @@ if current_intent == "greeting" and not conversation_active:
 
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/ai/intent_classification.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/ai/intent_classification.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/ai/intent_classification.md
 ### Config File (`modelservice.yaml`)
+=======
+### Config File (`config/defaults/modelservice.yaml`)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/ai/intent_classification.md
 =======
 ### Config File (`config/defaults/modelservice.yaml`)
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/ai/intent_classification.md
@@ -300,11 +304,15 @@ transformers:
     intent_classification:
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/ai/intent_classification.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/ai/intent_classification.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/ai/intent_classification.md
   intent_classifier:
     confidence_threshold: 0.7  # Minimum confidence for prediction
     cache_size: 1000           # Max cached embeddings
     context_window: 10         # Recent intents to track
     enable_few_shot: true      # Enable learning from examples
+=======
+      model_id: "xlm-roberta-base"
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/ai/intent_classification.md
 =======
       model_id: "xlm-roberta-base"
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/ai/intent_classification.md

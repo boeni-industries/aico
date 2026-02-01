@@ -94,7 +94,11 @@ Build the **essential** system infrastructure required for MVP companion feature
 - [x] **Job Scheduler**: Cron-based task scheduler with resource awareness
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/roadmap/foundation-I.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/roadmap/foundation-I.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/roadmap/foundation-I.md
 - [x] **Resource Policies**: Configurable limits via scheduler.yaml (memory_threshold_percent: 85)
+=======
+- [x] **Resource Policies**: Configurable limits via `config/defaults/modelservice.yaml` (ollama.resources.memory_threshold_percent: 85)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/roadmap/foundation-I.md
 =======
 - [x] **Resource Policies**: Configurable limits via `config/defaults/modelservice.yaml` (ollama.resources.memory_threshold_percent: 85)
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/roadmap/foundation-I.md

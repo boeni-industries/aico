@@ -160,7 +160,11 @@ class MyPlugin(BasePlugin):
 3. **Register Plugin**: Add to plugin registry in lifecycle manager
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
 4. **Configure**: Add plugin settings to `plugins.yaml` and/or `api_gateway.yaml`
+=======
+4. **Configure**: Add plugin settings to `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
 =======
 4. **Configure**: Add plugin settings to `config/defaults/api_gateway.yaml`
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
@@ -183,6 +187,7 @@ backend/api_gateway/plugins/
 
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
 **Configuration in `api_gateway.yaml`**:
 ```yaml
 server:
@@ -198,12 +203,19 @@ server:
 **Configuration in `config/defaults/api_gateway.yaml`**:
 ```yaml
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
+**Configuration in `config/defaults/api_gateway.yaml`**:
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
 plugins:
   message_bus:
     enabled: true
   encryption:
     enabled: true
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
 =======
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
@@ -271,7 +283,11 @@ def metadata(self) -> PluginMetadata:
 **Configuration Management**:
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
 - Plugin settings in `plugins.yaml` and `api_gateway.yaml`
+=======
+- Plugin settings in `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
 =======
 - Plugin settings in `config/defaults/api_gateway.yaml`
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md

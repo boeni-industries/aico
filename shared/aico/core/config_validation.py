@@ -37,7 +37,7 @@ REQUIRED_CONFIG_KEYS = {
         "message_bus.sub_port",
         "security.transport.message_bus_encryption",
         "conversation.features",
-        "core.emotion.appraisal_sensitivity",
+        "emotion.appraisal_sensitivity",
         "agency.arbiter.enabled",
         "agency.planning.enable_llm_refinement",
         "memory.working.ttl_seconds",
@@ -132,7 +132,7 @@ def validate_config_types(config: ConfigurationManager) -> List[str]:
         "memory.semantic.enabled": bool,
         "agency.arbiter.enabled": bool,
         "agency.arbiter.max_active_intentions": int,
-        "core.emotion.appraisal_sensitivity": (int, float),
+        "emotion.appraisal_sensitivity": (int, float),
     }
     
     for key, expected_type in type_checks.items():
@@ -171,8 +171,8 @@ def validate_config_ranges(config: ConfigurationManager) -> List[str]:
         "message_bus.sub_port": (1, 65535),
         "memory.working.ttl_seconds": (60, 2592000),  # 60 seconds to 30 days
         "agency.arbiter.max_active_intentions": (1, 20),
-        "core.emotion.appraisal_sensitivity": (0.0, 1.0),
-        "core.emotion.regulation_strength": (0.0, 1.0),
+        "emotion.appraisal_sensitivity": (0.0, 1.0),
+        "emotion.regulation_strength": (0.0, 1.0),
     }
     
     for key, (min_val, max_val) in range_checks.items():

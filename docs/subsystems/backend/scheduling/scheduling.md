@@ -393,12 +393,17 @@ The scheduler uses a simplified configuration approach to avoid YAML bloat while
 
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
 #### 1. Core Scheduler Configuration (scheduler.yaml)
 ```yaml
 # config/defaults/scheduler.yaml - Only scheduler-level settings
 =======
 #### 1. Scheduler Configuration (scheduler.yaml)
 ```yaml
+=======
+#### 1. Scheduler Configuration (scheduler.yaml)
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md
 =======
 #### 1. Scheduler Configuration (scheduler.yaml)
 ```yaml
@@ -455,7 +460,11 @@ This approach provides:
 - **DRY**: Configuration defaults co-located with task implementation
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
 - **Scalable**: Unlimited tasks without bloating scheduler.yaml
+=======
+- **Scalable**: Unlimited tasks without bloating the scheduler YAML
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md
 =======
 - **Scalable**: Unlimited tasks without bloating the scheduler YAML
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md

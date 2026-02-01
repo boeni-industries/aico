@@ -199,7 +199,11 @@ class ThreadResolver:
 **Vector Similarity Matching**:
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/context-management.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/context-management.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/context-management.md
 - Generate embeddings using the configured embedding model (see `transformers.models.embeddings` in `config/defaults/modelservice.yaml`)
+=======
+- Generate embeddings using the configured embedding model (see `modelservice.transformers.models.embeddings` in `config/defaults/modelservice.yaml`)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/context-management.md
 =======
 - Generate embeddings using the configured embedding model (see `modelservice.transformers.models.embeddings` in `config/defaults/modelservice.yaml`)
 >>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/context-management.md

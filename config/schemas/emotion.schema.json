@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Emotion Configuration",
+  "description": "Emotion engine configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "appraisal_sensitivity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "regulation_strength": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "threat_arousal_boost": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "inertia": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reactivity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "decay_per_turn": {
+          "type": "number",
+          "minimum": 0
+        },
+        "supportive_context_bias": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled",
+        "weight",
+        "reactivity",
+        "decay_per_turn",
+        "supportive_context_bias"
+      ]
+    },
+    "enable_user_emotion_detection": {
+      "type": "boolean"
+    },
+    "enable_llm_conditioning": {
+      "type": "boolean"
+    },
+    "max_history_size": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "appraisal_sensitivity",
+    "regulation_strength",
+    "threat_arousal_boost",
+    "inertia",
+    "enable_user_emotion_detection",
+    "enable_llm_conditioning",
+    "max_history_size"
+  ]
+}

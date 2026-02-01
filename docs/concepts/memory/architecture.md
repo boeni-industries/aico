@@ -466,8 +466,14 @@ The consolidation process transfers experiences from working memory to long-term
 ```yaml
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
 <<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
 # Unified configuration in modelservice.yaml
 modelservice:
+=======
+# Model configuration lives in the modelservice domain
+modelservice:
+  ollama:
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/architecture.md
 =======
 # Model configuration lives in the modelservice domain
 modelservice:

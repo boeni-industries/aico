@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Core Configuration",
-  "description": "Minimal remaining core configuration for emotion engine and service flags",
+  "description": "Minimal remaining core configuration for user profile defaults and service flags",
   "type": "object",
   "properties": {
     "user_profiles": {
@@ -9,54 +9,6 @@
       "properties": {
         "default_user_type": {
           "type": "string"
-        }
-      }
-    },
-    "emotion": {
-      "type": "object",
-      "properties": {
-        "appraisal_sensitivity": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "regulation_strength": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "threat_arousal_boost": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "inertia": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            },
-            "weight": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "reactivity": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            }
-          }
-        },
-        "enable_user_emotion_detection": {
-          "type": "boolean"
-        },
-        "enable_llm_conditioning": {
-          "type": "boolean"
-        },
-        "max_history_size": {
-          "type": "integer",
-          "minimum": 1
         }
       }
     },
