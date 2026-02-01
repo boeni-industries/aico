@@ -23,9 +23,9 @@ from typing import Dict, Optional, Tuple
 from urllib.parse import urljoin
 
 import httpx
-from shared.aico.core.logging import get_logger
-from shared.aico.core.config import ConfigurationManager
-from shared.aico.core.paths import get_aico_root_path
+from aico.core.logging import get_logger
+from aico.core.config import ConfigurationManager
+from aico.core.paths import get_aico_root_path
 
 
 class OllamaManager:
@@ -75,7 +75,6 @@ class OllamaManager:
         """Ensure logger is initialized (lazy initialization)."""
         if self.logger is None:
             try:
-                from shared.aico.core.logging import get_logger
                 self.logger = get_logger("modelservice.core.ollama_manager")
             except RuntimeError:
                 # Logging not initialized yet, use basic Python logger as fallback

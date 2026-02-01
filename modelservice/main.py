@@ -54,12 +54,10 @@ _start_time = time.time()
 
 async def initialize_modelservice():
     """Initialize modelservice with Ollama and return configuration."""
-    # Initialize configuration
-    cfg = ConfigurationManager()
-    cfg.initialize()
-    
-    # CRITICAL: Validate configuration before proceeding
-    # This ensures NO configuration errors are silently ignored
+    # CRITICAL: Validate configuration before proceeding.
+    # Validate the already-initialized global config manager to avoid starting file
+    # watchers (and to avoid validating a different initialization mode).
+    cfg = config_manager
     try:
         validate_startup_config(cfg, service="modelservice", fail_fast=True)
         print_config_summary(cfg)
@@ -67,9 +65,6 @@ async def initialize_modelservice():
         print(f"❌ FATAL: Configuration validation failed: {e}")
         print("Modelservice cannot start with invalid configuration.")
         raise SystemExit(1)
-    
-    # Use the already initialized global config manager
-    cfg = config_manager
     
     # Initialize service-specific logging first to capture all subsequent logs
     from aico.core.logging import initialize_logging

@@ -33,6 +33,10 @@ from aico.core.logging import initialize_logging, get_logger, shutdown_logging
 config_manager = ConfigurationManager()
 initialize_logging(service_name="backend", enable_influx=True, enable_console=True)
 
+# Explicitly initialize configuration before validation to avoid implicit initialization
+# (and file watcher startup) during validate_startup_config().
+config_manager.initialize(lightweight=False)
+
 # Validate startup configuration
 validate_startup_config(config_manager)
 print_config_summary(config_manager)
@@ -49,9 +53,6 @@ process_manager = None
 shutdown_event = asyncio.Event()
 
 try:
-    # Configuration already initialized above
-    config_manager.initialize(lightweight=False)
-    
     # Initialize process manager AFTER logging is set up
     from aico.core.process import ProcessManager
     process_manager = ProcessManager("gateway")

@@ -30,8 +30,8 @@ REQUIRED_CONFIG_KEYS = {
         "postgres.host",
         "postgres.port",
         "postgres.db_name",
-        "api_gateway.host",
-        "api_gateway.port",
+        "api_gateway.rest.host",
+        "api_gateway.rest.port",
         "message_bus.broker_address",
         "message_bus.pub_port",
         "message_bus.sub_port",
@@ -49,12 +49,12 @@ REQUIRED_CONFIG_KEYS = {
         "modelservice.ollama.host",
         "modelservice.ollama.port",
         "modelservice.transformers.models",
-        "api_gateway.host",
-        "api_gateway.port",
+        "api_gateway.rest.host",
+        "api_gateway.rest.port",
     ],
     "cli": [
-        "api_gateway.host",
-        "api_gateway.port",
+        "api_gateway.rest.host",
+        "api_gateway.rest.port",
         "security.transport.encryption_enabled",
     ],
     "shared": [
@@ -124,7 +124,7 @@ def validate_config_types(config: ConfigurationManager) -> List[str]:
     type_checks = {
         "postgres.port": int,
         "postgres.pool_size": int,
-        "api_gateway.port": int,
+        "api_gateway.rest.port": int,
         "message_bus.pub_port": int,
         "message_bus.sub_port": int,
         "security.transport.message_bus_encryption": bool,
@@ -139,9 +139,13 @@ def validate_config_types(config: ConfigurationManager) -> List[str]:
         try:
             value = config.get(key, None)
             if value is not None and not isinstance(value, expected_type):
+                if isinstance(expected_type, tuple):
+                    expected_type_name = " | ".join(t.__name__ for t in expected_type)
+                else:
+                    expected_type_name = expected_type.__name__
                 errors.append(
                     f"Config key '{key}' has wrong type: "
-                    f"expected {expected_type.__name__}, got {type(value).__name__}"
+                    f"expected {expected_type_name}, got {type(value).__name__}"
                 )
         except ConfigurationError:
             # Key doesn't exist - will be caught by required_keys check
@@ -166,7 +170,7 @@ def validate_config_ranges(config: ConfigurationManager) -> List[str]:
     range_checks = {
         "postgres.port": (1, 65535),
         "postgres.pool_size": (1, 100),
-        "api_gateway.port": (1, 65535),
+        "api_gateway.rest.port": (1, 65535),
         "message_bus.pub_port": (1, 65535),
         "message_bus.sub_port": (1, 65535),
         "memory.working.ttl_seconds": (60, 2592000),  # 60 seconds to 30 days

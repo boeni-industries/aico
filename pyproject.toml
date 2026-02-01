@@ -40,6 +40,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.0",  # SQLAlchemy Core with async support
     "requests>=2.31.0,<3.0.0", # HTTP client for CLI
     "pyjwt>=2.10.1", # JWT token handling for service authentication
+    "fastapi>=0.116.1", # Backend API framework (backend imports fastapi unconditionally)
     # OpenTelemetry - Core instrumentation (always installed)
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
@@ -55,7 +56,6 @@ dependencies = [
 [project.optional-dependencies]
 backend = [
     "duckdb>=1.3.2",
-    "fastapi>=0.116.1",
     "httpx>=0.28.1",
     "pydantic>=2.11.7",
     "pyjwt>=2.10.1",
