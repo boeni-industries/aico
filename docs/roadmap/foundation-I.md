@@ -92,7 +92,15 @@ Build the **essential** system infrastructure required for MVP companion feature
 ### Basic Resource Management (Required for LLM Operations) ✅
 - [x] **Resource Monitor**: CPU, memory tracking implemented in task scheduler
 - [x] **Job Scheduler**: Cron-based task scheduler with resource awareness
-- [x] **Resource Policies**: Configurable limits via core.yaml (memory_threshold_percent: 85)
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/roadmap/foundation-I.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/roadmap/foundation-I.md
+- [x] **Resource Policies**: Configurable limits via scheduler.yaml (memory_threshold_percent: 85)
+=======
+- [x] **Resource Policies**: Configurable limits via `config/defaults/modelservice.yaml` (ollama.resources.memory_threshold_percent: 85)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/roadmap/foundation-I.md
+=======
+- [x] **Resource Policies**: Configurable limits via `config/defaults/modelservice.yaml` (ollama.resources.memory_threshold_percent: 85)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/roadmap/foundation-I.md
 - [x] **Background Processing**: Task scheduler with adaptive execution
 - [x] **Ollama Resource Management**: Auto-unload after 30 minutes, max 2 concurrent models
 - [ ] **Battery Awareness**: Not yet implemented (future enhancement)

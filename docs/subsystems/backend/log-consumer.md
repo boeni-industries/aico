@@ -72,13 +72,24 @@ CREATE TABLE logs (
 
 ## Configuration ✅
 
-**Message Bus Settings** (`config/defaults/core.yaml`):
+**Message Bus Settings** (`config/defaults/message_bus.yaml`):
 ```yaml
-core:
-  message_bus:
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/log-consumer.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/log-consumer.md
+broker:
     host: "localhost"
     pub_port: 5555    # Publisher port
     sub_port: 5556    # Subscriber port
+=======
+host: "localhost"
+pub_port: 5555    # Publisher port
+sub_port: 5556    # Subscriber port
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/log-consumer.md
+=======
+host: "localhost"
+pub_port: 5555    # Publisher port
+sub_port: 5556    # Subscriber port
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/log-consumer.md
 ```
 
 ## Backend Integration ✅

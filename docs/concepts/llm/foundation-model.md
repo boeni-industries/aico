@@ -72,7 +72,7 @@ AICO:
 - **Context Window**: 32,768 tokens (8,192 in Modelfile.eve)
 - **Hardware Requirements**: 8GB+ RAM, modern CPU
 - **Deployment**: Ollama with automatic binary management
-- **Configuration**: Defined in `config/defaults/core.yaml`
+- **Configuration**: Defined in `config/defaults/modelservice.yaml`
 - **Character Definition**: `config/modelfiles/Modelfile.eve` (Eve personality)
 
 ### **Optional Models (Configured)**
@@ -286,10 +286,17 @@ repeat_penalty: 1.1        # Repetition control
 ollama create eve -f config/modelfiles/Modelfile.eve
 ```
 
-### **Production Configuration (core.yaml)**
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/llm/foundation-model.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/llm/foundation-model.md
+### **Production Configuration (modelservice.yaml)**
+=======
+### **Production Configuration (`config/defaults/modelservice.yaml`)**
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/llm/foundation-model.md
+=======
+### **Production Configuration (`config/defaults/modelservice.yaml`)**
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/llm/foundation-model.md
 ```yaml
-modelservice:
-  ollama:
+ollama:
     host: "127.0.0.1"
     port: 11434
     auto_install: true

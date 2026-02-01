@@ -411,7 +411,15 @@ aico deploy pg --nuke
 
 **Prerequisites**:
 - Docker installed and running
-- Database credentials configured in `core.yaml`
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+- Database credentials configured in `datastores.yaml`
+=======
+- Database credentials configured in `config/defaults/postgres.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
+=======
+- Database credentials configured in `config/defaults/postgres.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
 - Password stored in system keyring via `aico security setup`
 
 ### InfluxDB Deployment
@@ -457,7 +465,15 @@ aico deploy influx --nuke
 
 **Prerequisites**:
 - Docker installed and running
-- InfluxDB URL configured in `core.yaml` (http://localhost:8086)
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+- InfluxDB URL configured in `datastores.yaml` (http://localhost:8086)
+=======
+- InfluxDB URL configured in `config/defaults/influx.yaml` (http://localhost:8086)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
+=======
+- InfluxDB URL configured in `config/defaults/influx.yaml` (http://localhost:8086)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
 - API token stored in system keyring
 
 ### Verification
@@ -489,23 +505,50 @@ aico logs query --limit 10  # Query recent logs
 
 ### Database Configuration
 
-Edit `config/defaults/core.yaml`:
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+Edit `config/defaults/datastores.yaml`:
 
 ```yaml
-database:
-  postgres:
-    db_name: "aico"
-    core_schema: "aico_core"
-    host: "127.0.0.1"
-    port: 5432
-    user: "postgres"
-    # Password stored in keyring
-  
-  influx:
-    url: "http://127.0.0.1:8086"
-    org: "aico"
-    bucket: "aico_telemetry"
-    # Token stored in keyring
+postgres:
+  db_name: "aico"
+  core_schema: "aico_core"
+  host: "127.0.0.1"
+  port: 5432
+  user: "postgres"
+  # Password stored in keyring
+
+influx:
+  url: "http://127.0.0.1:8086"
+  org: "aico"
+  bucket: "aico_telemetry"
+  # Token stored in keyring
+=======
+Edit `config/defaults/postgres.yaml` and `config/defaults/influx.yaml`:
+
+```yaml
+=======
+Edit `config/defaults/postgres.yaml` and `config/defaults/influx.yaml`:
+
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
+db_name: "aico"
+core_schema: "aico_core"
+host: "127.0.0.1"
+port: 5432
+user: "postgres"
+# Password stored in keyring
+
+# ---
+
+url: "http://127.0.0.1:8086"
+org: "aico"
+bucket: "aico_telemetry"
+# Token stored in keyring
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/guides/developer/getting-started.md
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
+=======
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/guides/developer/getting-started.md
 ```
 
 ### Troubleshooting
@@ -672,7 +715,7 @@ aico config show
 aico db show
 
 # Get specific configuration values
-aico config get database.PostgreSQL.journal_mode
+aico config get postgres.host
 aico config get system.paths.directory_mode
 ```
 

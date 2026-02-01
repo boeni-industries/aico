@@ -107,10 +107,17 @@ def fuse_with_rrf(documents, k=60, min_semantic_score=0.35):
 
 ## Configuration
 
-### Core Settings (`config/defaults/core.yaml`)
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/hybrid-search.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/hybrid-search.md
+### Core Settings (`config/defaults/memory.yaml`)
+=======
+### Settings (`config/defaults/memory.yaml`)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/hybrid-search.md
+=======
+### Settings (`config/defaults/memory.yaml`)
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/hybrid-search.md
 
 ```yaml
-memory:
   semantic:
     # Hybrid search fusion method
     fusion_method: "rrf"  # "rrf" (recommended) or "weighted" (legacy)

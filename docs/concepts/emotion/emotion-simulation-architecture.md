@@ -357,7 +357,7 @@ Implements emotional state persistence based on Kuppens et al. (2010) and Schere
   - Puccetti et al. (2021): "Leaky integrator neurons with accumulation and decay"
   - Scherer CPM: "Recursive appraisal process continuously updating results"
 
-**Configuration** (core.yaml):
+**Configuration** (agency.yaml):
 ```yaml
 emotion:
   inertia:
@@ -412,7 +412,7 @@ emotion:
 - **Context Sensitivity**: Different regulation strategies for different situational contexts
 - **Multilingual Support**: Threat detection uses sentiment model output, not language-specific keywords
 
-**Configuration** (core.yaml):
+**Configuration** (agency.yaml):
 ```yaml
 emotion:
   regulation_strength: 0.3  # Base dampening (0.3 = 9% reduction)

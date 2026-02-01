@@ -165,14 +165,14 @@ The layer exposes a small set of operations that other components call synchrono
 The **Self-Reflection & Self-Model** component can influence Values & Ethics in two config-controlled modes (see `agency-component-self-reflection.md`):
 
 - **Observe-only (default)**  
-  - Config: `core.agency.self_reflection.policy_mode = "observe_only"`.  
+  - Config: `values_ethics.policy_mode = "enforce"` (default).  
   - Behaviour:
     - Self-Reflection analyses behaviour and policy outcomes.  
     - It writes `MemoryItem(type="reflection")` records with `lesson_type = "policy_suggestion"` and `target_kind = "policy_rule"`, linked via ontology to specific `PolicyRule`/ValueProfile entries.  
     - Values & Ethics does **not** automatically change any rules based on these memories; a separate policy-authoring process (human or tool) may review and apply them.
 
 - **Allow-amend (advanced, opt-in)**  
-  - Config: `core.agency.self_reflection.policy_mode = "allow_amend"`.  
+  - Config: `values_ethics.policy_mode = "warn_only"` (opt-in).  
   - Behaviour:
     - Self-Reflection is allowed to propose and apply **small, local amendments** to policy **only through the Values & Ethics service APIs** (no direct DB writes).  
     - Typical allowed changes: tuning thresholds/weights, adjusting rule priorities/soft caps, adding/removing narrowly-scoped exceptions.  

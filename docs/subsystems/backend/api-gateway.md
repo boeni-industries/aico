@@ -95,7 +95,15 @@ api/{domain}/
 
 **Configuration Management**:
 - YAML-based configuration with schema validation
-- Plugin-specific sections in `core.yaml`
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/api-gateway.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/api-gateway.md
+- Plugin-specific sections in `api_gateway.yaml` and `plugins.yaml`
+=======
+- Plugin-specific sections in `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/api-gateway.md
+=======
+- Plugin-specific sections in `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/api-gateway.md
 - Runtime updates via `ConfigurationManager`
 
 **Process Management**:
@@ -198,7 +206,7 @@ In federated mode, where multiple devices synchronize data across the network:
 - ZeroMQ message bus (ports 5555/5556)
 
 **Configuration**:
-- YAML-based configuration (`config/defaults/core.yaml`)
+- YAML-based configuration (`config/defaults/api_gateway.yaml`)
 - Schema validation
 - Runtime updates via `ConfigurationManager`
 

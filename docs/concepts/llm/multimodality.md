@@ -309,7 +309,15 @@ self.bus.publish("avatar.context.visual", avatar_context)
 3. **Environmental Awareness**: Scene mood and context understanding
 4. **Multi-hop Visual Reasoning**: Complex visual relationship understanding
 
-**Note**: Llama 3.2 Vision 11B is configured in `core.yaml` as an optional model (auto_pull: false, priority: 2) but not yet integrated into the processing pipeline.
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/llm/multimodality.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/llm/multimodality.md
+**Note**: Llama 3.2 Vision 11B is configured in `modelservice.yaml` as an optional model (auto_pull: false, priority: 2) but not yet integrated into the processing pipeline.
+=======
+**Note**: Llama 3.2 Vision 11B is configured in `config/defaults/modelservice.yaml` as an optional model (auto_pull: false, priority: 2) but not yet integrated into the processing pipeline.
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/llm/multimodality.md
+=======
+**Note**: Llama 3.2 Vision 11B is configured in `config/defaults/modelservice.yaml` as an optional model (auto_pull: false, priority: 2) but not yet integrated into the processing pipeline.
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/llm/multimodality.md
 
 ## Model Selection Matrix
 

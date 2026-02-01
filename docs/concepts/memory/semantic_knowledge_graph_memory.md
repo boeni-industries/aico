@@ -367,7 +367,7 @@ core:
 - `cli/utils/lmdb_utils.py` (working memory management)
 
 **🔄 Update:**
-- `config/defaults/core.yaml`: Remove `user_sessions` from `core.memory.working.named_databases` list
+- `config/defaults/memory.yaml`: Remove `user_sessions` from `working.named_databases` list
 
 **📝 Notes:**
 - Working memory (LMDB) handles short-term conversation context (TTL: 24 hours)
@@ -979,10 +979,23 @@ This ensures clean entity resolution while preserving the relationship semantics
 
 ## Configuration
 
-**Note:** Knowledge graph uses existing model configuration from `core.yaml`. Models are managed centrally:
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/semantic_knowledge_graph_memory.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/semantic_knowledge_graph_memory.md
+**Note:** Knowledge graph uses existing model configuration from `modelservice.yaml`. Models are managed centrally:
+- **Entity extraction:** Uses `transformers.models.entity_extraction` (GLiNER)
+- **Embeddings:** Uses `default_models.embedding` (paraphrase-multilingual)
+- **LLM operations:** Uses `default_models.conversation` (qwen3-abliterated:8b-v2)
+=======
+=======
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/semantic_knowledge_graph_memory.md
+**Note:** Knowledge graph uses the existing model configuration from `config/defaults/modelservice.yaml`. Models are managed centrally:
 - **Entity extraction:** Uses `modelservice.transformers.models.entity_extraction` (GLiNER)
-- **Embeddings:** Uses `modelservice.default_models.embedding` (paraphrase-multilingual)
-- **LLM operations:** Uses `modelservice.default_models.conversation` (hermes3:8b)
+- **Embeddings:** Uses `modelservice.transformers.models.embeddings` (sentence-transformers)
+- **LLM operations:** Uses `modelservice.ollama.default_models.conversation.name`
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/semantic_knowledge_graph_memory.md
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/semantic_knowledge_graph_memory.md
+=======
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/semantic_knowledge_graph_memory.md
 
 ```yaml
 memory:

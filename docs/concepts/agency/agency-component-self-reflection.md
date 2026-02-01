@@ -58,7 +58,15 @@ It is intentionally conservative: Self-Reflection adjusts **parameters and prefe
 
 ## 4. Policy Interaction Modes
 
-Self-Reflection interacts with Values & Ethics in **two modes**, controlled by configuration (e.g. `core.agency.self_reflection.policy_mode` in `core.yaml`):
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/agency/agency-component-self-reflection.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/agency/agency-component-self-reflection.md
+Self-Reflection interacts with Values & Ethics in **two modes**, controlled by configuration (e.g. `agency.self_reflection.policy_mode` in `agency.yaml`):
+=======
+Self-Reflection interacts with Values & Ethics in **two modes**, controlled by configuration (see `values_ethics.policy_mode` in `config/defaults/agency.yaml`):
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/agency/agency-component-self-reflection.md
+=======
+Self-Reflection interacts with Values & Ethics in **two modes**, controlled by configuration (see `values_ethics.policy_mode` in `config/defaults/agency.yaml`):
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/agency/agency-component-self-reflection.md
 
 - `observe_only` (default / safest)
   - Self-Reflection:
