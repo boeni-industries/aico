@@ -65,6 +65,10 @@ def _domain_exists(cfg: ConfigurationManager, domain: str) -> bool:
     return _schema_path(cfg, domain).exists() or _default_config_path(cfg, domain).exists() or domain in cfg.schemas
 
 
+def _domain_has_schema(cfg: ConfigurationManager, domain: str) -> bool:
+    return domain in cfg.schemas or _schema_path(cfg, domain).exists()
+
+
 def _detect_domain_format(cfg: ConfigurationManager, domain: str) -> schemas.ConfigFormat:
     if _user_config_path(cfg, domain).exists():
         return "yaml"
@@ -271,6 +275,8 @@ async def list_domains(
     for domain in domains:
         if not _domain_exists(cfg, domain):
             continue
+        if not _domain_has_schema(cfg, domain):
+            continue
 
         etag, last_modified = _domain_etag(cfg, domain)
 
@@ -461,6 +467,42 @@ async def save_domain(
     return schemas.SaveDomainResponse(
         domain=domain,
         saved=True,
+        applied=True,
+        etag=new_etag,
+        last_modified=last_modified,
+        result={
+            "changed_paths": changed_paths,
+            "restart_required": False,
+            "affected_services": ["backend"],
+        },
+    )
+
+
+@router.delete("/domain/{domain}", response_model=schemas.RevertDomainResponse)
+async def revert_domain_to_factory_defaults(
+    domain: str,
+    request: Request,
+    _: Dict[str, Any] = Depends(verify_admin_token),
+) -> schemas.RevertDomainResponse:
+    cfg = _config_manager(request)
+    if not _domain_exists(cfg, domain):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Domain not found")
+
+    existing_effective = cfg.config_cache.get(domain, {}) if isinstance(cfg.config_cache.get(domain, {}), dict) else {}
+
+    user_path = _user_config_path(cfg, domain)
+    if user_path.exists():
+        user_path.unlink()
+
+    cfg.reload()
+
+    new_effective = cfg.config_cache.get(domain, {}) if isinstance(cfg.config_cache.get(domain, {}), dict) else {}
+    changed_paths = _diff_paths(existing_effective, new_effective)
+
+    new_etag, last_modified = _domain_etag(cfg, domain)
+    return schemas.RevertDomainResponse(
+        domain=domain,
+        reverted=True,
         applied=True,
         etag=new_etag,
         last_modified=last_modified,

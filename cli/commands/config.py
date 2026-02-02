@@ -481,6 +481,20 @@ def init(
         # Determine which files to actually create/update
         files_to_process = config_files_to_create if force else missing_configs
         modelfiles_to_process = modelfiles_to_copy if force else missing_modelfiles
+
+        # Clean up deprecated config artifacts (only when forcing)
+        if force:
+            deprecated_paths = [
+                config_dir / "defaults" / "database.yaml",
+                config_dir / "schemas" / "database.schema.json",
+            ]
+            for p in deprecated_paths:
+                try:
+                    if p.exists():
+                        p.unlink()
+                        console.print(f"{chars['check']} [green]Removed deprecated config file[/green]: {format_smart_path(p)}")
+                except Exception as e:
+                    console.print(f"{chars['cross']} [yellow]Could not remove deprecated file[/yellow]: {format_smart_path(p)} ({e})")
         
         # Initialize all platform directories including new frontend paths
         base_data_dir = AICOPaths.get_data_directory()

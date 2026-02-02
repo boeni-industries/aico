@@ -81,6 +81,15 @@ class SaveDomainResponse(BaseModel):
     result: Dict[str, Any] = Field(default_factory=dict)
 
 
+class RevertDomainResponse(BaseModel):
+    domain: str
+    reverted: bool
+    applied: bool
+    etag: str
+    last_modified: str
+    result: Dict[str, Any] = Field(default_factory=dict)
+
+
 class ReloadRequest(BaseModel):
     scope: Literal["all", "domain"]
     domain: Optional[str] = None
