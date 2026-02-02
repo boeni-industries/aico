@@ -22,6 +22,9 @@ router = APIRouter()
 from backend.api.metrics import router as metrics_router
 router.include_router(metrics_router)
 
+from backend.api.system.config.router import router as system_config_router
+router.include_router(system_config_router, prefix="/config", tags=["system-config"])
+
 # Import shared start_time to ensure consistency across all endpoints
 from backend.api.metrics.start_time import start_time
 
