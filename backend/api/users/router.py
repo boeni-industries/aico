@@ -12,6 +12,7 @@ from aico.core.logging import get_logger
 from aico.data.uow import UnitOfWork
 from aico.data.user.models import UserProfile
 from aico.data.user import UserService
+from aico.data.system.models import SystemEvent
 from .schemas import (
     CreateUserRequest, UpdateUserRequest, AuthenticateRequest, SetPinRequest,
     UserResponse, AuthenticationResponse, UserStatsResponse, UserListResponse
@@ -263,15 +264,48 @@ async def authenticate_user(
     try:
         from datetime import datetime, UTC
         from passlib.context import CryptContext
+        import uuid
         
         # Initialize bcrypt context (must match CLI UserService)
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+        async def _emit_auth_event(*, topic: str, user_uuid: str, user_name: str | None, reason: str | None) -> None:
+            now = datetime.now(UTC)
+            ip_address = getattr(request_obj.client, "host", None)
+            device_type = request_obj.headers.get("user-agent", None)
+            await uow.system_events.create(
+                SystemEvent(
+                    timestamp=now.isoformat().replace("+00:00", "Z"),
+                    topic=topic,
+                    source="backend.api.users",
+                    message_type="auth",
+                    message_id=str(uuid.uuid4()),
+                    priority=1,
+                    correlation_id=None,
+                    payload=None,
+                    metadata={
+                        "user_uuid": user_uuid,
+                        "user_name": user_name,
+                        "ip_address": ip_address,
+                        "device_type": device_type,
+                        "reason": reason,
+                    },
+                    created_at=now,
+                )
+            )
         
         logger.info(f"Starting authentication for user: {request.user_uuid}")
         
         # Get user via repository
         user = await uow.users.get_by_id(request.user_uuid)
         if not user:
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=None,
+                reason="user_not_found",
+            )
+            await uow.commit()
             return AuthenticationResponse(
                 success=False,
                 error="User not found"
@@ -280,6 +314,13 @@ async def authenticate_user(
         # Get credentials via repository
         credentials = await uow.credentials.get_by_user_uuid(request.user_uuid)
         if not credentials:
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="no_credentials",
+            )
+            await uow.commit()
             return AuthenticationResponse(
                 success=False,
                 error="No credentials found for user"
@@ -287,6 +328,13 @@ async def authenticate_user(
         
         # Check if account is locked
         if credentials.locked_until and credentials.locked_until > datetime.now(UTC):
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="account_locked",
+            )
+            await uow.commit()
             return AuthenticationResponse(
                 success=False,
                 error=f"Account locked until {credentials.locked_until.isoformat()}"
@@ -296,6 +344,13 @@ async def authenticate_user(
         if not pwd_context.verify(request.pin, credentials.pin_hash):
             # Increment failed attempts
             await uow.credentials.increment_failed_attempts(request.user_uuid)
+
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="invalid_pin",
+            )
             await uow.commit()
             
             return AuthenticationResponse(
@@ -306,6 +361,13 @@ async def authenticate_user(
         # Reset failed attempts on successful login
         await uow.credentials.reset_failed_attempts(request.user_uuid)
         await uow.credentials.update_last_login(request.user_uuid)
+
+        await _emit_auth_event(
+            topic="auth.login.success",
+            user_uuid=request.user_uuid,
+            user_name=user.full_name,
+            reason=None,
+        )
         await uow.commit()
         
         logger.info(f"Authentication successful for user: {user.uuid}")
@@ -399,6 +461,37 @@ async def authenticate_user(
         logger.error(f"Authentication failed: {e}")
         import traceback
         logger.error(traceback.format_exc())
+        try:
+            from datetime import datetime, UTC
+            import uuid
+
+            now = datetime.now(UTC)
+            ip_address = getattr(request_obj.client, "host", None)
+            device_type = request_obj.headers.get("user-agent", None)
+            await uow.system_events.create(
+                SystemEvent(
+                    timestamp=now.isoformat().replace("+00:00", "Z"),
+                    topic="auth.login.failed",
+                    source="backend.api.users",
+                    message_type="auth",
+                    message_id=str(uuid.uuid4()),
+                    priority=1,
+                    correlation_id=None,
+                    payload=None,
+                    metadata={
+                        "user_uuid": request.user_uuid,
+                        "user_name": None,
+                        "ip_address": ip_address,
+                        "device_type": device_type,
+                        "reason": "system_error",
+                    },
+                    created_at=now,
+                )
+            )
+            await uow.commit()
+        except Exception:
+            # Avoid masking the original auth failure.
+            pass
         return AuthenticationResponse(
             success=False,
             error="Authentication system error"

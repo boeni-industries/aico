@@ -4,7 +4,7 @@ Admin Management API Schemas
 Pydantic models for admin-related API requests and responses.
 """
 
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Literal
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -214,3 +214,150 @@ class ConfigValidationResponse(BaseModel):
     valid: bool = Field(..., description="Whether configuration is valid")
     errors: List[str] = Field(..., description="Validation errors")
     warnings: List[str] = Field(..., description="Validation warnings")
+
+
+# ============================================================================
+# USERS & SECURITY (ADMIN) SCHEMAS
+# ============================================================================
+
+
+class Pagination(BaseModel):
+    limit: int = Field(..., description="Page size")
+    offset: int = Field(..., description="Offset")
+    total_count: int = Field(..., description="Total matching entries")
+
+
+class AdminUserResponse(BaseModel):
+    uuid: str = Field(..., description="User UUID")
+    full_name: str = Field(..., description="User full name")
+    nickname: Optional[str] = Field(None, description="User nickname")
+    user_type: str = Field(..., description="User type")
+    is_active: bool = Field(..., description="Whether user is active")
+    primary_language: Optional[str] = Field(None, description="Primary language preference")
+    created_at: Optional[str] = Field(None, description="Creation timestamp (ISO 8601)")
+    updated_at: Optional[str] = Field(None, description="Update timestamp (ISO 8601)")
+
+
+class AdminUserCreateRequest(BaseModel):
+    full_name: str = Field(..., description="Full name")
+    nickname: Optional[str] = Field(None, description="Nickname")
+    user_type: str = Field(..., description="User type")
+    pin: str = Field(..., description="Initial PIN")
+    primary_language: Optional[str] = Field(None, description="Primary language")
+
+
+class AdminUserUpdateRequest(BaseModel):
+    full_name: Optional[str] = Field(None, description="Full name")
+    nickname: Optional[str] = Field(None, description="Nickname")
+    user_type: Optional[str] = Field(None, description="User type")
+    primary_language: Optional[str] = Field(None, description="Primary language")
+    is_active: Optional[bool] = Field(None, description="Active flag")
+
+
+class AdminUserDeleteRequest(BaseModel):
+    hard_delete: bool = Field(False, description="Hard delete (default: soft delete)")
+    confirm: bool = Field(False, description="Required confirmation flag")
+    reason: Optional[str] = Field(None, description="Reason")
+
+
+class AdminUserSetPinRequest(BaseModel):
+    new_pin: str = Field(..., description="New PIN")
+    require_change_on_login: Optional[bool] = Field(None, description="If true, forces change on next login")
+    confirm: bool = Field(False, description="Required confirmation flag")
+
+
+class AdminUserRestoreRequest(BaseModel):
+    reason: Optional[str] = Field(None, description="Reason")
+    confirm: bool = Field(False, description="Required confirmation flag")
+
+
+class AuditEntry(BaseModel):
+    entry_id: str = Field(..., description="Audit entry ID")
+    timestamp: str = Field(..., description="Timestamp (ISO 8601)")
+    actor_uuid: Optional[str] = Field(None, description="Actor UUID")
+    actor_name: Optional[str] = Field(None, description="Actor display name")
+    action: str = Field(..., description="Action")
+    resource_type: Optional[str] = Field(None, description="Resource type")
+    resource_id: Optional[str] = Field(None, description="Resource ID")
+    severity: str = Field("info", description="Severity")
+    result: str = Field(..., description="Result")
+    details: Optional[Dict[str, Any]] = Field(None, description="Details")
+    ip_address: Optional[str] = Field(None, description="Client IP")
+
+
+class AuditListResponse(BaseModel):
+    entries: List[AuditEntry] = Field(..., description="Audit entries")
+    pagination: Pagination = Field(..., description="Pagination metadata")
+
+
+class AuditDetailResponse(BaseModel):
+    entry: AuditEntry = Field(..., description="Audit entry")
+    related_events: List[Dict[str, Any]] = Field(default_factory=list, description="Related events")
+
+
+class SecurityPostureResponse(BaseModel):
+    encryption: Dict[str, Any] = Field(..., description="Encryption posture")
+    transport: Dict[str, Any] = Field(..., description="Transport posture")
+    authentication: Dict[str, Any] = Field(..., description="Authentication posture")
+    audit: Dict[str, Any] = Field(..., description="Audit posture")
+
+
+class SecurityKeyInfoResponse(BaseModel):
+    current_key_id: Optional[str] = Field(None, description="Current key identifier")
+    created_at: Optional[str] = Field(None, description="Creation timestamp (ISO 8601)")
+    age_days: Optional[int] = Field(None, description="Age in days")
+    rotation_due: bool = Field(False, description="Rotation recommended")
+    algorithm: str = Field(..., description="KDF / algorithm")
+    key_strength: Optional[Dict[str, Any]] = Field(None, description="Key strength information")
+
+
+class SecurityKeyHistoryEntry(BaseModel):
+    key_id: str = Field(..., description="Key identifier")
+    created_at: str = Field(..., description="Created timestamp")
+    rotated_at: Optional[str] = Field(None, description="Rotated timestamp")
+    reason: Optional[str] = Field(None, description="Reason")
+    performed_by: Optional[str] = Field(None, description="Actor UUID")
+
+
+class SecurityKeyHistoryResponse(BaseModel):
+    history: List[SecurityKeyHistoryEntry] = Field(..., description="Key history")
+
+
+class RotateKeysRequest(BaseModel):
+    reason: str = Field(..., description="Rotation reason")
+    confirm: bool = Field(False, description="Required confirmation flag")
+
+
+class RotateKeysResponse(BaseModel):
+    success: bool = Field(..., description="Success")
+    new_key_id: Optional[str] = Field(None, description="New key identifier")
+    old_key_id: Optional[str] = Field(None, description="Old key identifier")
+    rotation_timestamp: str = Field(..., description="Rotation timestamp")
+
+
+class AuthStatsResponse(BaseModel):
+    total_attempts: int = Field(..., description="Total attempts")
+    successful: int = Field(..., description="Successful attempts")
+    failed: int = Field(..., description="Failed attempts")
+    success_rate_percent: float = Field(..., description="Success rate")
+    attempts_by_hour: Dict[str, int] = Field(..., description="Attempts by hour")
+    top_failing_users: List[Dict[str, Any]] = Field(..., description="Top failing users")
+
+
+class FailedAuthAttempt(BaseModel):
+    timestamp: str = Field(..., description="Timestamp")
+    user_uuid: Optional[str] = Field(None, description="User UUID")
+    user_name: Optional[str] = Field(None, description="User display name")
+    ip_address: Optional[str] = Field(None, description="IP address")
+    device_type: Optional[str] = Field(None, description="Device type")
+    reason: Optional[str] = Field(None, description="Failure reason")
+
+
+class FailedAuthAttemptsResponse(BaseModel):
+    attempts: List[FailedAuthAttempt] = Field(..., description="Failed auth attempts")
+    pagination: Pagination = Field(..., description="Pagination metadata")
+
+
+class AuditExportRequest(BaseModel):
+    format: Literal["csv", "json"] = Field(..., description="Export format")
+    filters: Dict[str, Any] = Field(default_factory=dict, description="Filters")

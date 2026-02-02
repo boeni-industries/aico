@@ -141,7 +141,7 @@ class PostgresUserRepository(Repository[UserProfile]):
         Returns:
             List of UserProfile instances
         """
-        stmt = select(user_profiles).where(user_profiles.c.is_active == True)
+        stmt = select(user_profiles)
         
         # Apply filters
         if filters:
@@ -174,9 +174,7 @@ class PostgresUserRepository(Repository[UserProfile]):
         Returns:
             Number of users
         """
-        stmt = select(func.count()).select_from(user_profiles).where(
-            user_profiles.c.is_active == True
-        )
+        stmt = select(func.count()).select_from(user_profiles)
         
         # Apply filters
         if filters:
@@ -184,6 +182,8 @@ class PostgresUserRepository(Repository[UserProfile]):
                 stmt = stmt.where(user_profiles.c.user_type == filters['user_type'])
             if 'primary_language' in filters:
                 stmt = stmt.where(user_profiles.c.primary_language == filters['primary_language'])
+            if 'is_active' in filters:
+                stmt = stmt.where(user_profiles.c.is_active == filters['is_active'])
         
         result = await self.session.execute(stmt)
         return result.scalar()
