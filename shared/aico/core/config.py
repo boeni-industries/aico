@@ -89,25 +89,14 @@ class ConfigurationManager:
         if ConfigurationManager._initialized:
             return
             
-        if config_dir is None:
-            # Find project root by looking for config directory
-            current = Path(__file__).parent
-            while current.parent != current:  # Not at filesystem root
-                config_path = current.parent / "config"
-                if config_path.exists():
-                    config_dir = config_path
-                    break
-                current = current.parent
-            else:
-                # Fallback to relative path
-                config_dir = Path("./config")
-        
-        self.config_dir = config_dir
-        
-        # User config directory for runtime overrides (platform-specific)
         # Import here to avoid circular dependency
         from aico.core.paths import AICOPaths
-        self.user_config_dir = AICOPaths.get_config_directory()
+
+        if config_dir is None:
+            config_dir = AICOPaths.get_config_directory()
+
+        self.config_dir = config_dir
+        self.user_config_dir = config_dir
         self.schemas: Dict[str, Dict] = {}
         self.config_cache: Dict[str, Any] = {}
         self.sources: List[ConfigSource] = []

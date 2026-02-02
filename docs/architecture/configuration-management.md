@@ -99,10 +99,7 @@ aico/
 │   │   ├── message_bus.schema.json
 │   │   ├── api_gateway.schema.json
 │   │   ├── modelservice.schema.json
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/architecture/configuration-management.md
-=======
 │   │   ├── emotion.schema.json
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/architecture/configuration-management.md
 │   │   ├── memory.schema.json
 │   │   ├── agency.schema.json
 │   │   ├── scheduler.schema.json
@@ -116,10 +113,7 @@ aico/
 │   │   ├── message_bus.yaml
 │   │   ├── api_gateway.yaml
 │   │   ├── modelservice.yaml
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/architecture/configuration-management.md
-=======
 │   │   ├── emotion.yaml
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/architecture/configuration-management.md
 │   │   ├── memory.yaml
 │   │   ├── agency.yaml
 │   │   ├── scheduler.yaml
@@ -130,11 +124,13 @@ aico/
 │   ├── environments/               # Environment-specific configs
 │   │   ├── development.yaml
 │   │   └── production.yaml
-│   └── user/                       # User override configs (optional)
-│       └── *.yaml
-└── (platform user config dir)/
-    └── runtime.yaml                # Runtime overrides persisted by ConfigurationManager
+│   ├── modelfiles/                  # Modelfiles (e.g. Modelfile.eve)
+│   ├── user/                        # User override configs (optional)
+│   │   └── *.yaml
+│   └── runtime.yaml                 # Persisted runtime overrides
 ```
+
+The runtime config root is platform-dependent and can be overridden via `AICO_CONFIG_DIR`.
 
 ## Configuration Domains
 
@@ -157,12 +153,8 @@ Primary domains:
 ### Modelservice
 - **Modelservice**: Ollama config, transformers models, TTS
 
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/architecture/configuration-management.md
-=======
 ### Emotion
 - **Emotion**: emotion simulation engine configuration
-
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/architecture/configuration-management.md
 ### Memory
 - **Memory**: working/semantic/AMS settings
 

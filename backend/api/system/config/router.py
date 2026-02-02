@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import jsonschema
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -151,6 +153,103 @@ def _domain_etag(cfg: ConfigurationManager, domain: str) -> Tuple[str, str]:
     return _stable_etag("none", domain, lm), lm
 
 
+def _jsonschema_error_path(err: jsonschema.ValidationError) -> str:
+    segments: List[object] = list(getattr(err, "absolute_path", []) or [])
+    params = getattr(err, "params", None) or {}
+    missing_prop = params.get("property")
+    if missing_prop is not None:
+        segments.append(missing_prop)
+
+    if not segments:
+        return ""
+
+    out = ""
+    for seg in segments:
+        if isinstance(seg, int):
+            out += f"[{seg}]"
+            continue
+        if not out:
+            out = str(seg)
+        else:
+            out += f".{seg}"
+    return out
+
+
+def _best_effort_location_for_key(
+    raw_content: str,
+    fmt: schemas.ConfigFormat,
+    key: str,
+) -> Optional[schemas.Location]:
+    if not key:
+        return None
+
+    if fmt == "yaml":
+        pattern = re.compile(rf"^([ \t]*){re.escape(key)}\s*:\s*.*$", re.MULTILINE)
+        match = pattern.search(raw_content)
+        if not match:
+            return None
+
+        start_index = match.start(0)
+        start_line = raw_content.count("\n", 0, start_index) + 1
+        line_start = raw_content.rfind("\n", 0, start_index)
+        if line_start < 0:
+            line_start = 0
+        else:
+            line_start += 1
+        start_col = (start_index - line_start) + 1
+        end_col = start_col + len(key)
+        return schemas.Location(
+            start_line=start_line,
+            start_col=start_col,
+            end_line=start_line,
+            end_col=end_col,
+        )
+
+    if fmt == "json":
+        needle = f"\"{key}\""
+        idx = raw_content.find(needle)
+        if idx < 0:
+            return None
+
+        start_line = raw_content.count("\n", 0, idx) + 1
+        line_start = raw_content.rfind("\n", 0, idx)
+        if line_start < 0:
+            line_start = 0
+        else:
+            line_start += 1
+        start_col = (idx - line_start) + 1
+        end_col = start_col + len(needle)
+        return schemas.Location(
+            start_line=start_line,
+            start_col=start_col,
+            end_line=start_line,
+            end_col=end_col,
+        )
+
+    return None
+
+
+def _issue_from_jsonschema_error(
+    err: jsonschema.ValidationError,
+    raw_content: str,
+    fmt: schemas.ConfigFormat,
+) -> schemas.ValidationIssue:
+    path = _jsonschema_error_path(err)
+    key_for_location = ""
+    if path:
+        key_for_location = path.split(".")[-1]
+        if "[" in key_for_location:
+            key_for_location = key_for_location.split("[")[0]
+
+    location = _best_effort_location_for_key(raw_content=raw_content, fmt=fmt, key=key_for_location)
+    return schemas.ValidationIssue(
+        path=path,
+        message=getattr(err, "message", str(err)),
+        severity="error",
+        location=location,
+    )
+
+
 @router.get("/domains", response_model=schemas.DomainsResponse)
 async def list_domains(
     request: Request,
@@ -286,7 +385,17 @@ async def validate_draft(
     valid = True
     try:
         if domain in cfg.schemas:
-            cfg.validate(domain, merged)
+            schema = cfg.schemas.get(domain)
+            if not schema:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schema not found")
+            validator = jsonschema.Draft7Validator(schema)
+            errors = sorted(validator.iter_errors(merged), key=lambda e: list(e.absolute_path))
+            if errors:
+                valid = False
+                issues.extend([
+                    _issue_from_jsonschema_error(e, raw_content=body.content, fmt=body.format)
+                    for e in errors
+                ])
     except ConfigurationValidationError as exc:
         valid = False
         issues.append(schemas.ValidationIssue(message=str(exc), severity="error"))

@@ -7,6 +7,9 @@ Provides:
 - Common fixtures for users, goals, plans, etc.
 """
 
+import os
+import shutil
+
 import pytest
 import uuid
 from datetime import datetime, UTC
@@ -18,6 +21,33 @@ from sqlalchemy.pool import NullPool
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
 from aico.ai.user.models import UserProfile
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_runtime_config_dir(tmp_path_factory):
+    config_root = tmp_path_factory.mktemp("aico_test") / "config"
+    os.environ["AICO_CONFIG_DIR"] = str(config_root)
+
+    project_root = Path(__file__).parent.parent.parent
+    project_config_dir = project_root / "config"
+
+    for subdir, pattern in (
+        ("defaults", "*.yaml"),
+        ("environments", "*.yaml"),
+        ("schemas", "*.schema.json"),
+        ("modelfiles", "Modelfile.*"),
+    ):
+        src = project_config_dir / subdir
+        dst = config_root / subdir
+        if not src.exists():
+            continue
+        dst.mkdir(parents=True, exist_ok=True)
+        for p in src.glob(pattern):
+            shutil.copy2(p, dst / p.name)
+
+    yield
+
+    os.environ.pop("AICO_CONFIG_DIR", None)
 
 
 @pytest.fixture(scope="session", autouse=True)

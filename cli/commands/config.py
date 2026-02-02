@@ -416,13 +416,22 @@ def init(
             project_config_dir = Path(__file__).parent.parent.parent / "config"
         
         # Define configuration files to create
-        config_files_to_create = [
-            ("environments/development.yaml", project_config_dir / "environments" / "development.yaml"),
-            ("environments/production.yaml", project_config_dir / "environments" / "production.yaml"),
-            ("defaults/core.yaml", project_config_dir / "defaults" / "core.yaml"),
-            ("defaults/security.yaml", project_config_dir / "defaults" / "security.yaml"),
-            ("defaults/database.yaml", project_config_dir / "defaults" / "database.yaml"),
-        ]
+        config_files_to_create = []
+
+        defaults_source_dir = project_config_dir / "defaults"
+        if defaults_source_dir.exists():
+            for p in sorted(defaults_source_dir.glob("*.yaml")):
+                config_files_to_create.append((f"defaults/{p.name}", p))
+
+        environments_source_dir = project_config_dir / "environments"
+        if environments_source_dir.exists():
+            for p in sorted(environments_source_dir.glob("*.yaml")):
+                config_files_to_create.append((f"environments/{p.name}", p))
+
+        schemas_source_dir = project_config_dir / "schemas"
+        if schemas_source_dir.exists():
+            for p in sorted(schemas_source_dir.glob("*.schema.json")):
+                config_files_to_create.append((f"schemas/{p.name}", p))
         
         # Find all Modelfiles in project to copy
         modelfiles_source_dir = project_config_dir / "modelfiles"
