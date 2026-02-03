@@ -223,11 +223,12 @@ async def trigger_remediation(
             detail=f"Remediation skill '{skill_id}' not found"
         )
     
-    # Ensure dry_run is set in parameters
-    # Use skill parameter dry_run if provided, otherwise use request-level dry_run
+    # Ensure dry_run is set in parameters.
+    # Safety-first: the request-level dry_run flag must never be overridden to False.
+    # (Some clients may still send a legacy `parameters.dry_run=false` field.)
     input_data = request.parameters.copy()
-    if "dry_run" not in input_data:
-        input_data["dry_run"] = request.dry_run
+    effective_dry_run = bool(request.dry_run) or bool(input_data.get("dry_run", False))
+    input_data["dry_run"] = effective_dry_run
     
     print(f"\n{'='*80}")
     print(f"[REMEDIATION ENDPOINT] Skill Execution Request")
@@ -297,7 +298,7 @@ async def trigger_remediation(
         logger.info(
             "[REMEDIATION] Executed skill '%s' (dry_run=%s): success=%s",
             skill_id,
-            request.dry_run,
+            input_data.get("dry_run", request.dry_run),
             success,
         )
         

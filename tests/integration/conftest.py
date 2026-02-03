@@ -27,6 +27,7 @@ from aico.ai.user.models import UserProfile
 def _isolate_runtime_config_dir(tmp_path_factory):
     config_root = tmp_path_factory.mktemp("aico_test") / "config"
     os.environ["AICO_CONFIG_DIR"] = str(config_root)
+    os.environ.setdefault("AICO_ENV", "development")
 
     project_root = Path(__file__).parent.parent.parent
     project_config_dir = project_root / "config"

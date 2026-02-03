@@ -12,8 +12,7 @@ import re
 import uuid
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
-from aico.data.user import UserService
-from backend.core.lifecycle_manager import get_service_container, get_user_service, get_auth_manager
+from backend.core.lifecycle_manager import get_auth_manager
 
 security = HTTPBearer()
 logger = get_logger("api.users_dependencies")

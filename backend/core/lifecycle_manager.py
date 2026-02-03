@@ -16,7 +16,6 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger, initialize_logging
 from aico.security import AICOKeyManager
 from aico.core.paths import AICOPaths
-from aico.data.user import UserService
 
 from .service_container import ServiceContainer, BaseService
 from backend.core.plugin_base import get_plugin_registry
@@ -219,10 +218,6 @@ class BackendLifecycleManager:
             import zmq
             return zmq.Context()
         
-        # User service factory
-        def create_user_service(container: ServiceContainer, database: Any) -> UserService:
-            return UserService(database)
-        
         # Config service factory
         def create_config_service(container: ServiceContainer):
             return container.config
@@ -272,12 +267,10 @@ class BackendLifecycleManager:
             priority=10  # Start after database, stop before database
         )
         
-        self.container.register_service(
-            "user_service",
-            create_user_service,
-            dependencies=["database"],
-            priority=20
-        )
+        # NOTE: Do not register shared UserService here.
+        # Backend uses PostgreSQL via UnitOfWork/repositories; the shared UserService
+        # expects an asyncpg connection and would be constructed with database=None
+        # (since the backend's legacy `database` service is intentionally unused).
         
         # Task scheduler factory
         def create_task_scheduler(container: ServiceContainer):
@@ -1110,10 +1103,6 @@ def get_service_container(request: Request) -> ServiceContainer:
     if not hasattr(request.app.state, 'service_container'):
         raise RuntimeError("Service container not available")
     return request.app.state.service_container
-
-def get_user_service(container: ServiceContainer = Depends(get_service_container)) -> UserService:
-    """Get user service via dependency injection"""
-    return container.get_service("user_service")
 
 def get_auth_manager(container: ServiceContainer = Depends(get_service_container)):
     """Get auth manager via dependency injection"""

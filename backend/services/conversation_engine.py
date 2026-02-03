@@ -304,11 +304,12 @@ class ConversationEngine(BaseService):
             # Load user data from database
             user_profile = None
             try:
-                # Access user_service directly from service container (not via dependency injection)
-                if hasattr(self, 'container') and self.container:
-                    user_service = self.container.get_service("user_service")
-                    if user_service:
-                        user_profile = await user_service.get_user(user_id)
+                from aico.data.postgres.connection import get_session_factory
+                from aico.data.uow import UnitOfWork
+
+                session_factory = await get_session_factory()
+                async with UnitOfWork(session_factory) as uow:
+                    user_profile = await uow.users.get_by_id(user_id)
             except Exception as e:
                 self.logger.warning(f"Failed to load user profile from database: {e}")
             
@@ -389,12 +390,14 @@ class ConversationEngine(BaseService):
             # Skip agency for technical users
             is_technical_user = False
             try:
-                if hasattr(self, "container") and self.container:
-                    user_service = self.container.get_service("user_service")
-                    if user_service:
-                        profile = await user_service.get_user(user_context.user_id)
-                        if profile and getattr(profile, "is_technical", False):
-                            is_technical_user = True
+                from aico.data.postgres.connection import get_session_factory
+                from aico.data.uow import UnitOfWork
+
+                session_factory = await get_session_factory()
+                async with UnitOfWork(session_factory) as uow:
+                    profile = await uow.users.get_by_id(user_context.user_id)
+                    if profile and getattr(profile, "is_technical", False):
+                        is_technical_user = True
             except Exception:
                 is_technical_user = False
 
@@ -1184,21 +1187,6 @@ class ConversationEngine(BaseService):
             skill_id if selected, None otherwise
         """
         try:
-            # Do not extract or create goals for technical users
-            try:
-                if hasattr(self, "container") and self.container:
-                    user_service = self.container.get_service("user_service")
-                    if user_service:
-                        profile = await user_service.get_user(user_id)
-                        if profile and getattr(profile, "is_technical", False):
-                            self.logger.debug(
-                                "[GOAL_EXTRACTION] Skipping goal extraction for technical user",
-                                extra={"user_id": user_id},
-                            )
-                            return
-            except Exception:
-                # On failure, fall back to treating user as non-technical
-                pass
             # Check if behavioral learning is enabled
             memory_manager = ai_registry.get("memory")
             
@@ -1437,7 +1425,7 @@ class ConversationEngine(BaseService):
             
             # Get agency engine to access event store and database connection
             agency_engine = ai_registry.get("agency")
-            event_store = agency_engine.agency_service.event_store if agency_engine and hasattr(agency_engine, 'agency_service') else None
+            event_store = getattr(agency_engine, "event_store", None) if agency_engine else None
             db_connection = self.container.get_service("database") if hasattr(self, 'container') else None
             
             extractor = UserGoalExtractor(event_store=event_store, db_connection=db_connection)

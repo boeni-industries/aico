@@ -718,12 +718,24 @@ class AgencyService:
         """Update a step execution record."""
         try:
             step = await self.uow.agency_step_executions.get_by_id(step_execution_id)
-            if step:
-                for key, value in updates.items():
-                    setattr(step, key, value)
-                await self.uow.agency_step_executions.update(step)
+            if not step:
+                # First write for this step execution: create it.
+                # The executor always passes a full record (ids + required fields),
+                # so we can safely create from `updates`.
+                from aico.data.agency.execution_models import AgencyStepExecution
+                step = AgencyStepExecution(**updates)
+                await self.uow.agency_step_executions.create(step)
                 await self.uow.commit()
-                logger.debug(f"[AGENCY_SERVICE] Updated step execution: {step_execution_id}")
+                logger.debug(f"[AGENCY_SERVICE] Created step execution (via upsert): {step_execution_id}")
+                return
+
+            for key, value in updates.items():
+                setattr(step, key, value)
+
+            # Repository API expects (step_execution_id, entity)
+            await self.uow.agency_step_executions.update(step_execution_id, step)
+            await self.uow.commit()
+            logger.debug(f"[AGENCY_SERVICE] Updated step execution: {step_execution_id}")
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to update step execution: {e}")
             await self.uow.rollback()
@@ -792,7 +804,11 @@ class AgencyService:
             )
             if steps:
                 step = steps[0]
-                return step.to_dict() if hasattr(step, 'to_dict') else step
+                if hasattr(step, "to_dict"):
+                    return step.to_dict()
+                if hasattr(step, "model_dump"):
+                    return step.model_dump()
+                return dict(step)
             return None
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get next pending step: {e}")

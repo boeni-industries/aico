@@ -62,25 +62,21 @@ class ModelServiceClient:
             bool: True if modelservice is healthy, False otherwise
         """
         try:
-            # Use a very short timeout for health check
-            original_timeout = self.config.timeout
-            self.config.timeout = 2.0
-            
-            # Send a simple ping request
+            # Use a very short timeout for health check.
+            # IMPORTANT: do not mutate self.config.timeout (shared state) because health probes
+            # can run concurrently with chat/completions requests.
             result = await self._send_request(
-                "modelservice/health/request/v1", 
-                "modelservice/health/response/v1", 
-                {"check": "ping"}
+                "modelservice/health/request/v1",
+                "modelservice/health/response/v1",
+                {"check": "ping"},
+                timeout_override=2.0,
             )
-            
-            # Restore original timeout
-            self.config.timeout = original_timeout
             return result.get('success', False)
         except TimeoutError:
-            self.logger.error("Modelservice health check failed - service appears to be offline")
+            self.logger.warning("Modelservice health check timed out - service may be offline")
             return False
         except Exception as e:
-            self.logger.error(f"Modelservice health check failed: {e}")
+            self.logger.warning(f"Modelservice health check failed: {e}")
             return False
     
     async def _ensure_connection(self):
@@ -96,10 +92,18 @@ class ModelServiceClient:
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
     
-    async def _send_request(self, request_topic: str, response_topic: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _send_request(
+        self,
+        request_topic: str,
+        response_topic: str,
+        data: Dict[str, Any],
+        timeout_override: Optional[float] = None,
+    ) -> Dict[str, Any]:
         """Send a request via ZMQ and wait for response."""
         import time
         start_time = time.time()
+
+        timeout_seconds = timeout_override if timeout_override is not None else self.config.timeout
         
         # Add detailed debugging for embedding and chat requests
         is_embedding_request = "embeddings" in request_topic
@@ -464,7 +468,7 @@ class ModelServiceClient:
             # Wait for response with timeout
             wait_start = time.time()
             # Reduced wait debug noise
-            await asyncio.wait_for(response_received.wait(), timeout=self.config.timeout)
+            await asyncio.wait_for(response_received.wait(), timeout=timeout_seconds)
             wait_time = time.time() - wait_start
             total_time = time.time() - start_time
             # Log slow responses
@@ -479,22 +483,24 @@ class ModelServiceClient:
             
         except asyncio.TimeoutError:
             total_time = time.time() - start_time
-            error_msg = f"Request timed out after {self.config.timeout}s - MODELSERVICE MAY BE OFFLINE"
+            error_msg = f"Request timed out after {timeout_seconds}s - MODELSERVICE MAY BE OFFLINE"
+
+            is_health_request = "health" in request_topic
             
             if is_embedding_request:
                 print(f"⏱️ [MODELSERVICE_TIMING] ❌ TIMEOUT after {total_time:.4f}s!")
-                print(f"⏱️ [MODELSERVICE_TIMING] Breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                print(f"⏱️ [MODELSERVICE_TIMING] Breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={timeout_seconds:.4f}s")
                 self.logger.error(f"🔍 [ZMQ_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
-                self.logger.error(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                self.logger.error(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={timeout_seconds:.4f}s")
             elif is_chat_request:
                 self.logger.error(f"💬 [CHAT_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
-                self.logger.error(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                self.logger.error(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={timeout_seconds:.4f}s")
                 self.logger.error(f"💬 [CHAT_DEBUG] Model requested: {data.get('model', 'unknown')}. Check if this model is available in Ollama.")
             
-            self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
-            import time
-            timestamp = time.time()
-            print(f"⚠️ {error_msg} [{timestamp:.6f}]")
+            if is_health_request:
+                self.logger.warning(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
+            else:
+                self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
             return {"success": False, "error": error_msg}
             
         except Exception as e:

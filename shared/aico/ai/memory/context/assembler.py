@@ -173,13 +173,32 @@ class ContextAssembler:
                         # Use KG storage to get edges instead of direct DB access
                         try:
                             for node in kg_nodes[:5]:  # Limit to avoid too many queries
-                                edges = await self.kg_storage.get_node_edges(node.id, limit=5)
-                                import json
+                                edges = await self.kg_storage.get_edges_for_node(node.id, direction="both")
                                 for edge in edges:
+                                    source_props = getattr(edge, "source_properties", None)
+                                    if isinstance(source_props, str):
+                                        try:
+                                            import json
+                                            source_props = json.loads(source_props)
+                                        except Exception:
+                                            source_props = {}
+                                    if not isinstance(source_props, dict):
+                                        source_props = {}
+
+                                    target_props = getattr(edge, "target_properties", None)
+                                    if isinstance(target_props, str):
+                                        try:
+                                            import json
+                                            target_props = json.loads(target_props)
+                                        except Exception:
+                                            target_props = {}
+                                    if not isinstance(target_props, dict):
+                                        target_props = {}
+
                                     kg_edges.append({
                                         "relation": edge.relation_type,
-                                        "source": edge.source_properties.get("name", "?") if edge.source_properties else "?",
-                                        "target": edge.target_properties.get("name", "?") if edge.target_properties else "?",
+                                        "source": source_props.get("name", "?"),
+                                        "target": target_props.get("name", "?"),
                                         "confidence": edge.confidence
                                     })
                         except Exception as e:
@@ -188,7 +207,7 @@ class ContextAssembler:
                     kg_context = {
                         "entities": [
                             {
-                                "name": node.properties.get("name", "?"),
+                                "name": (node.properties.get("name", "?") if isinstance(node.properties, dict) else "?"),
                                 "type": node.label,
                                 "confidence": node.confidence
                             }
@@ -421,7 +440,7 @@ class ContextAssembler:
         try:
             # Query active lessons from database via UoW
             async with self.uow_factory() as uow:
-                lessons = await uow.agency_lessons.list(
+                lessons = await uow.lessons.list(
                     filters={"user_id": user_id, "status": "active"},
                     limit=5
                 )
@@ -438,13 +457,23 @@ class ContextAssembler:
                 description = row[4]
                 confidence = row[5]
                 created_at = row[6]
+
+                if isinstance(created_at, str):
+                    try:
+                        created_at_dt = datetime.fromisoformat(created_at)
+                    except Exception:
+                        created_at_dt = datetime.utcnow()
+                elif isinstance(created_at, datetime):
+                    created_at_dt = created_at
+                else:
+                    created_at_dt = datetime.utcnow()
                 
                 # Create context item
                 item = ContextItem(
                     content=f"[Lesson: {lesson_type}] {description}",
                     source_tier="behavioral",
                     item_type="pattern",
-                    timestamp=datetime.fromisoformat(created_at) if created_at else datetime.utcnow(),
+                    timestamp=created_at_dt,
                     relevance_score=confidence,  # Use lesson confidence as relevance
                     metadata={
                         "lesson_id": row[0],

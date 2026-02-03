@@ -273,7 +273,7 @@ class AskUserSkill(Skill):
                 "urgency": urgency,
                 "expected_answer_type": expected_answer_type,
                 "status": "pending",
-                "initiated_at": now,
+                "initiated_at": now_iso,
             }
             
             logger.info(

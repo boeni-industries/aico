@@ -283,7 +283,7 @@ class InitiateConversationSkill(Skill):
                 "reason": reason,
                 "emotional_context": emotional_context,
                 "status": "pending",
-                "initiated_at": now,
+                "initiated_at": now_iso,
             }
             
             logger.info(

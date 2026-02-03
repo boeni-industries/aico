@@ -9,7 +9,7 @@ Provides the foundational components for AICO's backend architecture:
 
 from .service_container import ServiceContainer, BaseService, ServiceState, ServiceError
 from .plugin_base import BasePlugin, PluginMetadata, PluginPriority, get_plugin_registry
-from .lifecycle_manager import BackendLifecycleManager, get_service_container, get_user_service, get_auth_manager
+from .lifecycle_manager import BackendLifecycleManager, get_service_container, get_auth_manager
 
 __all__ = [
     "ServiceContainer",
@@ -22,6 +22,5 @@ __all__ = [
     "get_plugin_registry",
     "BackendLifecycleManager",
     "get_service_container",
-    "get_user_service", 
     "get_auth_manager"
 ]
