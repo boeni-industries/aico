@@ -77,6 +77,14 @@ class SkillInvoker:
         start_time = datetime.now(UTC)
         timeout = timeout or self.default_timeout
         context = context or {}
+
+        # Backward/forward compatibility: many skills are goal-scoped, but older
+        # plan steps may not explicitly pass goal_id. If the execution context
+        # has a goal_id, inject it before validation.
+        if isinstance(input_data, dict) and "goal_id" not in input_data:
+            goal_id = context.get("goal_id")
+            if goal_id:
+                input_data = {**input_data, "goal_id": goal_id}
         
         # Check if skill exists
         skill = self.skill_registry.get(skill_id)

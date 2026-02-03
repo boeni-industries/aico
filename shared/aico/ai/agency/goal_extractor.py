@@ -680,13 +680,13 @@ Return ONLY valid JSON, no other text."""
             from aico.data.postgres.connection import get_session_factory
             print(f"🔍 [SIMILARITY] Creating GoalStore with db_connection={self._db_connection}")
             session_factory = await get_session_factory()
-            uow = UnitOfWork(session_factory)
-            agency_service = AgencyService(uow)
-            print(f"🔍 [SIMILARITY] Calling list_goals(user_id={user_id}, status=PENDING)...")
-            pending_goals = await agency_service.list_goals(
-                user_id=user_id,
-                status=GoalStatus.PENDING
-            )
+            async with UnitOfWork(session_factory) as uow:
+                agency_service = AgencyService(uow)
+                print(f"🔍 [SIMILARITY] Calling list_goals(user_id={user_id}, status=PENDING)...")
+                pending_goals = await agency_service.list_goals(
+                    user_id=user_id,
+                    status=GoalStatus.PENDING
+                )
             
             print(f"🔍 [SIMILARITY] Found {len(pending_goals)} pending goals to compare")
             
@@ -796,9 +796,9 @@ Return ONLY valid JSON, no other text."""
             
             # Save updated goal
             session_factory = await get_session_factory()
-            uow = UnitOfWork(session_factory)
-            agency_service = AgencyService(uow)
-            await agency_service.update_goal(goal)
+            async with UnitOfWork(session_factory) as uow:
+                agency_service = AgencyService(uow)
+                await agency_service.update_goal(goal)
             
             logger.info(
                 f"[GOAL_EXTRACTOR] Reinforced goal {goal.goal_id}: "
