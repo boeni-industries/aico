@@ -106,6 +106,7 @@ dev_dependencies:
     sdk: flutter
   mockito: ^5.4.4
   bloc_test: ^10.0.0
+  flutter_launcher_icons: ^0.14.2
   
   # Code generation
   build_runner: ^2.10.5
@@ -136,12 +137,33 @@ flutter:
   assets:
     - assets/images/aico.png
     - assets/images/noise_tile.png
+    - assets/app_icon/
     - assets/avatar/
     - assets/avatar/libs/
     - assets/avatar/libs/addons/loaders/
     - assets/avatar/libs/addons/utils/
     - assets/avatar/models/
     - assets/avatar/animations/
+
+flutter_launcher_icons:
+  image_path: assets/app_icon/app_icon.png
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  macos:
+    generate: true
+    image_path: assets/app_icon/app_icon.png
+  windows:
+    generate: true
+    image_path: assets/app_icon/app_icon.png
+  linux:
+    generate: true
+    image_path: assets/app_icon/app_icon.png
+  web:
+    generate: true
+    image_path: assets/app_icon/app_icon.png
+    background_color: "#000000"
+    theme_color: "#000000"
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
