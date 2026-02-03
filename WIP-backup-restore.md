@@ -28,7 +28,8 @@ Goal: define a restore order and the validations we must enforce to avoid orphan
   - `backend/services/backup/restore/lmdb.py`
 - **Telemetry**
   - InfluxDB client: `shared/aico/data/influx/connection.py`
-  - OTel storage exporter: `backend/core/otel_storage_adapter.py`
+  - OTel wiring: `backend/core/telemetry.py`
+  - OTel Influx exporter: `backend/core/otel_influx_exporter.py`
 
 ---
 
