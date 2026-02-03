@@ -209,37 +209,109 @@ class SchemaMetadata(BaseModel):
     columns: dict[str, list[str]] = Field(default_factory=dict, description="Columns per table")
 
 
-class BackupInfo(BaseModel):
-    """Information about a database backup"""
-    id: str = Field(..., description="Backup ID")
-    database_name: str = Field(..., description="Database name")
-    created_at: str = Field(..., description="Backup creation timestamp")
-    size_bytes: int = Field(..., description="Backup size in bytes")
-    backup_path: str = Field(..., description="Path to backup file")
-    status: str = Field(..., description="Backup status (completed, failed, in_progress)")
+class BackupSetCreateRequest(BaseModel):
+    """Request to create a coordinated backup set."""
+    output_path: Optional[str] = Field(
+        None,
+        description="Optional host filesystem path where the backup set directory should be created. If omitted, a platform-dependent default derived from AICOPaths is used.",
+    )
+    include_influx: bool = Field(
+        False,
+        description="Whether to include InfluxDB (telemetry) in the backup set. Excluded by default.",
+    )
 
 
-class BackupResponse(BaseModel):
-    """Response for backup operation"""
-    success: bool = Field(..., description="Whether backup succeeded")
-    backup_info: Optional[BackupInfo] = Field(None, description="Backup information")
+class BackupSetInfo(BaseModel):
+    """Lightweight registry information for a backup set."""
+    backup_id: str = Field(..., description="Backup set ID")
+    created_at: str = Field(..., description="Backup set creation timestamp")
+    path: str = Field(..., description="Absolute path to the backup set directory on disk")
+    included: dict = Field(..., description="Component inclusion map (postgres/chromadb/lmdb/influxdb)")
+
+
+class BackupSetCreateResponse(BaseModel):
+    """Response for backup set creation."""
+    success: bool = Field(..., description="Whether backup set creation succeeded")
+    backup_set: Optional[BackupSetInfo] = Field(None, description="Backup set info")
     message: str = Field(..., description="Status message")
 
 
-class BackupHistoryResponse(BaseModel):
-    """Response for backup history"""
-    backups: list[BackupInfo] = Field(..., description="List of backups")
-    total_count: int = Field(..., description="Total number of backups")
+class BackupSetListResponse(BaseModel):
+    """Response for listing backup sets."""
+    backup_sets: list[BackupSetInfo] = Field(..., description="Known backup sets")
+    total_count: int = Field(..., description="Total number of backup sets")
 
 
-class RestoreRequest(BaseModel):
-    """Request to restore from backup"""
-    backup_id: str = Field(..., description="Backup ID to restore from")
+class BackupSetStatusResponse(BaseModel):
+    """Response for backup set status."""
+    backup_set: BackupSetInfo = Field(..., description="Backup set info")
+    manifest: Optional[dict] = Field(None, description="Parsed manifest.json (if available)")
 
 
-class RestoreResponse(BaseModel):
-    """Response for restore operation"""
+class BackupSetUploadResponse(BaseModel):
+    """Response for uploading/importing a backup set archive."""
+    success: bool = Field(..., description="Whether upload succeeded")
+    backup_id: str = Field(..., description="Imported backup set ID")
+    message: str = Field(..., description="Status message")
+
+
+class BackupSetRestoreRequest(BaseModel):
+    """Request to restore a coordinated backup set."""
+    backup_id: str = Field(..., description="Backup set ID to restore")
+    confirm_destroy_existing: bool = Field(
+        False,
+        description="Must be true to perform restore operations that replace existing databases.",
+    )
+    restore_to_primary: bool = Field(
+        False,
+        description="If true, restore PostgreSQL to the primary container after restoring+verifying postgres-shadow.",
+    )
+    restore_influx: bool = Field(
+        False,
+        description="If true and the backup set includes InfluxDB, restore InfluxDB telemetry.",
+    )
+
+
+class BackupSetRestoreResponse(BaseModel):
+    """Response for backup set restore."""
     success: bool = Field(..., description="Whether restore succeeded")
+    message: str = Field(..., description="Status message")
+
+
+class BackupSetDeleteResponse(BaseModel):
+    """Response for deleting a backup set."""
+    success: bool = Field(..., description="Whether delete succeeded")
+    backup_id: str = Field(..., description="Backup set ID")
+    deleted_dir: bool = Field(..., description="Whether the backup set directory was deleted")
+    deleted_archive: bool = Field(..., description="Whether the backup set tar.gz archive was deleted")
+    freed_bytes: int = Field(..., description="Estimated bytes freed")
+    message: str = Field(..., description="Status message")
+
+
+class BackupSetPruneRequest(BaseModel):
+    """Request to prune backup sets."""
+    keep_last_n: Optional[int] = Field(
+        None,
+        description="If provided, keep the newest N backup sets and delete older ones.",
+    )
+    older_than_days: Optional[int] = Field(
+        None,
+        description="If provided, delete backup sets older than this many days.",
+    )
+    dry_run: bool = Field(
+        True,
+        description="If true, only report what would be deleted without deleting anything.",
+    )
+
+
+class BackupSetPruneResponse(BaseModel):
+    """Response for pruning backup sets."""
+    success: bool = Field(..., description="Whether prune operation succeeded")
+    dry_run: bool = Field(..., description="Whether this was a dry-run")
+    considered_count: int = Field(..., description="Total backup sets considered")
+    deleted_count: int = Field(..., description="Number of backup sets deleted")
+    would_delete_backup_ids: list[str] = Field(..., description="Backup IDs that were (or would be) deleted")
+    freed_bytes: int = Field(..., description="Estimated bytes freed")
     message: str = Field(..., description="Status message")
 
 

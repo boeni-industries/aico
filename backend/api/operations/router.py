@@ -19,7 +19,6 @@ from backend.api.operations.schemas import (
     DatabaseStatsResponse, DatabaseMetrics,
     DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo,
     QueryRequest, QueryResult, SchemaMetadata,
-    BackupInfo, BackupResponse, BackupHistoryResponse, RestoreRequest, RestoreResponse,
     StorageTrendResponse, StorageDataPoint,
     ActiveSessionsResponse, UserSession,
     TopologyResponse, ServiceNode, ServiceConnection
@@ -36,7 +35,7 @@ logger = get_logger("backend.api.operations")
 
 router = APIRouter()
 
-# Include database routes (LMDB/ChromaDB browsing, SQL queries, backups)
+# Include database routes (LMDB/ChromaDB browsing, SQL queries, backup sets)
 router.include_router(database_routes.router, tags=["databases"])
 
 

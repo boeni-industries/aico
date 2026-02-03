@@ -41,6 +41,7 @@ dependencies = [
     "requests>=2.31.0,<3.0.0", # HTTP client for CLI
     "pyjwt>=2.10.1", # JWT token handling for service authentication
     "fastapi>=0.116.1", # Backend API framework (backend imports fastapi unconditionally)
+    "python-multipart>=0.0.20", # Required by FastAPI for Form/UploadFile (e.g. backup upload endpoints)
     # OpenTelemetry - Core instrumentation (always installed)
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
