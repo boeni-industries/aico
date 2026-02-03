@@ -6,6 +6,7 @@ library;
 
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
+import 'package:aico_frontend/presentation/widgets/chat/markdown_content.dart';
 import 'package:flutter/material.dart';
 
 class MemoryCard extends StatefulWidget {
@@ -156,9 +157,13 @@ class _MemoryCardState extends State<MemoryCard> {
                     // Content
                     Flexible(
                       child: Text(
-                        (widget.memory.isConversationMemory 
-                            ? (widget.memory.conversationSummary ?? widget.memory.content)
-                            : widget.memory.content).trim(),
+                        MarkdownContent.stripMarkdownForPreview(
+                          (widget.memory.isConversationMemory
+                                  ? (widget.memory.conversationSummary ?? widget.memory.content)
+                                  : widget.memory.content)
+                              .trim(),
+                          maxChars: 500,
+                        ),
                         style: const TextStyle(
                           fontSize: 15,
                           color: MemoryAlbumTheme.textPrimary,

@@ -9,8 +9,9 @@ import 'package:aico_frontend/presentation/providers/memory_album_provider.dart'
 import 'package:aico_frontend/presentation/screens/memory_album/memory_detail_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory_album/widgets/memory_card.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
-import 'package:aico_frontend/presentation/widgets/timeline/timeline_widget.dart';
+import 'package:aico_frontend/presentation/widgets/chat/markdown_content.dart';
 import 'package:aico_frontend/presentation/widgets/journey_map/journey_map_widget.dart';
+import 'package:aico_frontend/presentation/widgets/timeline/timeline_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -347,7 +348,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
   }
 
   void _deleteMemory(MemoryEntry memory) {
-    // TODO: Implement delete functionality
+    // NOTE: Implement delete functionality
     ref.read(memoryAlbumProvider.notifier).deleteMemory(memory.memoryId);
   }
 
@@ -363,7 +364,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
         isFavorite: memory.isFavorite,
         isMilestone: isMilestone,
         milestoneReason: isMilestone ? _getMilestoneReason(memory, memories) : null,
-        revisitCount: 0, // TODO: Track revisit count
+        revisitCount: 0, // NOTE: Track revisit count
         hasNote: memory.userNote != null && memory.userNote!.isNotEmpty,
         color: memory.isConversationMemory 
             ? Colors.amber 
@@ -585,16 +586,18 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
       }
       
       final userQuery = userLines.join(' ').trim();
-      contentPreview = userQuery.length > 500 
-          ? '${userQuery.substring(0, 500)}...' 
-          : userQuery;
+      contentPreview = MarkdownContent.stripMarkdownForPreview(
+        userQuery,
+        maxChars: 500,
+      );
     } else {
       // For non-conversation memories, use summary or content
       final rawContent = memory.conversationSummary ?? memory.content;
       final trimmedContent = rawContent.replaceAll(RegExp(r'^\n+'), '');
-      contentPreview = trimmedContent.length > 500 
-          ? '${trimmedContent.substring(0, 500)}...' 
-          : trimmedContent;
+      contentPreview = MarkdownContent.stripMarkdownForPreview(
+        trimmedContent,
+        maxChars: 500,
+      );
     }
     
     return GestureDetector(

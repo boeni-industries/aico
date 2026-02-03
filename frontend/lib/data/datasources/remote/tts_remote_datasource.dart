@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:aico_frontend/networking/services/resilient_api_service.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/networking/services/resilient_api_service.dart';
 
 /// Remote data source for TTS synthesis via backend
 abstract class TtsRemoteDataSource {

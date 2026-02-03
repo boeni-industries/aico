@@ -1,9 +1,11 @@
 import 'dart:io';
+
 import 'package:aico_frontend/core/services/local_key_manager.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
 
 part 'message_database.g.dart';
@@ -107,7 +109,7 @@ LazyDatabase _openConnection() {
     final file = File(p.join(dbFolder.path, 'aico_messages.db'));
     
     // Debug: Print database location
-    print('📁 [Database] Location: ${file.path}');
+    debugPrint('📁 [Database] Location: ${file.path}');
 
     if (Platform.isAndroid) {
       await applyWorkaroundToOpenSqlCipherOnOldAndroidVersions();

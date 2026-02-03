@@ -149,8 +149,8 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
           debugPrint('[AvatarViewer] JS: $msg');
         }
       },
-      onLoadError: (controller, url, code, message) {
-        debugPrint('[AvatarViewer] Load error: $message');
+      onReceivedError: (controller, request, error) {
+        debugPrint('[AvatarViewer] Load error: ${error.description}');
       },
     );
   }

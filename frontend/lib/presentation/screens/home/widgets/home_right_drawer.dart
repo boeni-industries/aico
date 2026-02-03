@@ -7,10 +7,10 @@ import 'package:aico_frontend/presentation/providers/settings_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/drawer/drawer_tab_switcher.dart';
 import 'package:aico_frontend/presentation/widgets/emotion/emotional_timeline.dart';
+import 'package:aico_frontend/presentation/widgets/proactive/proactive_timeline.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/ambient_drawer_indicator.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/thinking_preview_card.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
-import 'package:aico_frontend/presentation/widgets/proactive/proactive_timeline.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

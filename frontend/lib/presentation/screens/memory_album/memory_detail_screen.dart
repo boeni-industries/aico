@@ -9,6 +9,7 @@ import 'dart:ui';
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
+import 'package:aico_frontend/presentation/widgets/chat/markdown_content.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -431,18 +432,22 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                                   ),
                                                 ],
                                               ),
-                                              child: Text(
-                                                content.trim(),
-                                                style: TextStyle(
-                                                  fontSize: 16.0,
-                                                  fontWeight: isYou ? FontWeight.w400 : FontWeight.w500,
-                                                  color: isYou
-                                                      ? const Color(0xFFB8BCC8)
-                                                      : MemoryAlbumTheme.textPrimary,
-                                                  height: 1.6,
-                                                  letterSpacing: 0.01,
-                                                ),
-                                              ),
+                                              child: isYou
+                                                  ? SelectableText(
+                                                      content.trim(),
+                                                      style: TextStyle(
+                                                        fontSize: 16.0,
+                                                        fontWeight: FontWeight.w400,
+                                                        color: const Color(0xFFB8BCC8),
+                                                        height: 1.6,
+                                                        letterSpacing: 0.01,
+                                                      ),
+                                                    )
+                                                  : MarkdownContent(
+                                                      data: content.trim(),
+                                                      isDark: true,
+                                                      accentColor: moodColor,
+                                                    ),
                                             ),
                                           ),
                                         ),

@@ -7,8 +7,9 @@
 /// - Milestone markers
 library;
 
-import 'package:flutter/material.dart';
 import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
 
 /// Data model for a memory node on the journey map
 class JourneyNode {
@@ -228,7 +229,7 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
             onChanged: (value) {
               setState(() {
                 _currentZoom = value;
-                _transformController.value = Matrix4.identity()..scale(value);
+                _transformController.value = Matrix4.identity()..scaleByDouble(value, value, 1.0, 1.0);
               });
             },
           ),

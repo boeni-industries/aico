@@ -1,8 +1,9 @@
 import 'dart:async';
+
+import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
+import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/avatar_state_provider.dart';
-import '../../../providers/conversation_provider.dart';
 
 /// Controller for typing detection and avatar state synchronization
 /// 

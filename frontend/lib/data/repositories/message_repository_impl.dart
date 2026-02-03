@@ -1,12 +1,13 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+
 import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/data/database/message_database.dart' hide Message;
 import 'package:aico_frontend/data/models/message_model.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
-import 'package:aico_frontend/data/database/message_database.dart' hide Message;
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 
 /// Implementation of MessageRepository with local persistence
 class MessageRepositoryImpl implements MessageRepository {
@@ -320,7 +321,7 @@ class MessageRepositoryImpl implements MessageRepository {
     final queryParams = <String, String>{
       'page': '1',
       'page_size': (limit ?? 100).toString(), // Default to 100 messages (backend max)
-      if (beforeMessageId != null) 'before': beforeMessageId,
+      ...?(beforeMessageId != null ? {'before': beforeMessageId} : null),
       // Note: No conversation_id - backend returns all user messages in sequence
     };
 

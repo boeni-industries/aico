@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:aico_frontend/data/models/emotion_model.dart';
 import 'package:aico_frontend/presentation/widgets/emotion/emotion_color_mapper.dart';
 import 'package:aico_frontend/presentation/widgets/emotion/emotion_formatter.dart';
+import 'package:flutter/material.dart';
 
 /// Compact emotion badge showing current emotional state
 class EmotionBadge extends StatelessWidget {

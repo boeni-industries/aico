@@ -93,8 +93,9 @@ dependencies:
   flutter_inappwebview: ^6.1.5
   
   # Markdown rendering with full styling control
-  flutter_markdown: ^0.7.4+1
+  flutter_markdown_plus: ^1.0.4
   flutter_highlight: ^0.7.0
+  markdown: ^7.3.0
 
   # Audio playback for TTS (backend streaming)
   just_audio: ^0.10.5

@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aico_frontend/data/models/proactive_model.dart';
 import 'package:aico_frontend/presentation/providers/proactive_state_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
-import 'package:aico_frontend/data/models/proactive_model.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Timeline view for proactive notifications
 /// Matches the design pattern of ThinkingDisplay and EmotionalTimeline

@@ -1,8 +1,9 @@
 import 'dart:ui';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:aico_frontend/presentation/providers/proactive_state_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Ambient floating orb that pulses when AICO wants to initiate conversation.
 /// Replaces enterprise-style notification badge with immersive, mood-aware presence.
@@ -413,7 +414,7 @@ class ProactiveConversationCard extends ConsumerWidget {
     );
     if (context.mounted) {
       Navigator.of(context).pop();
-      // TODO: Open conversation with this initiation as context
+      // NOTE: Open conversation with this initiation as context
     }
   }
 

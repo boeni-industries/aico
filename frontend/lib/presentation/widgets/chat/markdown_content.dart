@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 
 /// Markdown content renderer for AI responses
@@ -33,8 +33,10 @@ class MarkdownContent extends StatelessWidget {
     final theme = Theme.of(context);
     final effectiveAccentColor = accentColor ?? theme.colorScheme.primary;
 
+    final normalizedData = normalizeMarkdownForRendering(data);
+
     return MarkdownBody(
-      data: data,
+      data: normalizedData,
       selectable: true,
       styleSheet: _buildStyleSheet(theme, effectiveAccentColor),
       builders: {
@@ -42,6 +44,68 @@ class MarkdownContent extends StatelessWidget {
       },
       extensionSet: md.ExtensionSet.gitHubFlavored,
     );
+  }
+
+  static String normalizeMarkdownForRendering(String input) {
+    final text = input.replaceAll('\r\n', '\n').trim();
+    if (text.isEmpty) return text;
+
+    final lines = text.split('\n');
+
+    int? minIndent;
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      final indent = _leadingSpaces(line);
+      minIndent = minIndent == null ? indent : (indent < minIndent ? indent : minIndent);
+    }
+
+    if (minIndent == null || minIndent == 0) return text;
+
+    return lines
+        .map((line) {
+          if (line.trim().isEmpty) return '';
+          if (line.length <= minIndent!) return line.trimLeft();
+          return line.substring(minIndent);
+        })
+        .join('\n')
+        .trim();
+  }
+
+  static String stripMarkdownForPreview(String input, {int? maxChars}) {
+    var text = normalizeMarkdownForRendering(input);
+    if (text.isEmpty) return text;
+
+    text = text
+        // Links: [text](url) -> text
+        .replaceAll(RegExp(r'\[([^\]]+)\]\(([^)]+)\)'), r'$1')
+        // Inline code: `code` -> code
+        .replaceAll(RegExp(r'`([^`]+)`'), r'$1')
+        // Bold/italic: **x**/*x*/__x__/_x_ -> x
+        .replaceAll(RegExp(r'(\*\*|__)(.*?)\1'), r'$2')
+        .replaceAll(RegExp(r'(\*|_)(.*?)\1'), r'$2')
+        // Headings and blockquotes
+        .replaceAll(RegExp(r'^[ \t]*#{1,6}[ \t]+', multiLine: true), '')
+        .replaceAll(RegExp(r'^[ \t]*>[ \t]?', multiLine: true), '')
+        // Unordered/ordered list markers
+        .replaceAll(RegExp(r'^[ \t]*([-*+]|\d+\.)[ \t]+', multiLine: true), '')
+        // Horizontal rules
+        .replaceAll(RegExp(r'^[ \t]*(-{3,}|\*{3,}|_{3,})[ \t]*$', multiLine: true), '')
+        // Collapse whitespace
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
+
+    if (maxChars != null && maxChars > 0 && text.length > maxChars) {
+      return '${text.substring(0, maxChars)}...';
+    }
+    return text;
+  }
+
+  static int _leadingSpaces(String line) {
+    var i = 0;
+    while (i < line.length && line.codeUnitAt(i) == 32) {
+      i++;
+    }
+    return i;
   }
 
   /// Build markdown style sheet matching AICO design system

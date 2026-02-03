@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:aico_frontend/domain/providers/tts_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_audio_settings_provider.dart';

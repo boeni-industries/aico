@@ -105,27 +105,27 @@ class _ConversationSkeletonLoaderState extends State<ConversationSkeletonLoader>
             height: 60,
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.04 * opacity)
-                  : Colors.white.withOpacity(0.5 * opacity),
+                  ? Colors.white.withValues(alpha: 0.04 * opacity)
+                  : Colors.white.withValues(alpha: 0.5 * opacity),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.1 * opacity)
-                    : Colors.white.withOpacity(0.3 * opacity),
+                    ? Colors.white.withValues(alpha: 0.1 * opacity)
+                    : Colors.white.withValues(alpha: 0.3 * opacity),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
                   color: isDark
-                      ? Colors.black.withOpacity(0.3 * opacity)
-                      : Colors.black.withOpacity(0.08 * opacity),
+                      ? Colors.black.withValues(alpha: 0.3 * opacity)
+                      : Colors.black.withValues(alpha: 0.08 * opacity),
                   blurRadius: 20,
                   offset: const Offset(0, 6),
                   spreadRadius: -4,
                 ),
                 if (!isUser)
                   BoxShadow(
-                    color: const Color(0xFFB8A1EA).withOpacity(0.1 * opacity),
+                    color: const Color(0xFFB8A1EA).withValues(alpha: 0.1 * opacity),
                     blurRadius: 40,
                     spreadRadius: -5,
                   ),
