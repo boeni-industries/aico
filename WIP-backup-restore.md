@@ -6,7 +6,7 @@ This document captures **repo-specific** findings for AICO’s backup/restore wo
 - PostgreSQL (primary system-of-record)
 - ChromaDB (vector storage)
 - LMDB (working memory)
-- Telemetry (InfluxDB and/or OpenTelemetry → SQLite exporter)
+- Telemetry (InfluxDB)
 
 Goal: define a restore order and the validations we must enforce to avoid orphaned data and silent corruption.
 
@@ -43,6 +43,32 @@ Goal: define a restore order and the validations we must enforce to avoid orphan
 | InfluxDB | Time-Series | Telemetry/ops metrics/logging | Telemetry storage DB of choice |
 
 Important: telemetry storage DB of choice is **InfluxDB**. There is no supported SQLite/libsql telemetry path.
+
+---
+
+## Implementation decisions (Studio + CLI)
+
+### Backup set UX and I/O
+
+- Backups/restores will be triggered from:
+  - Studio (AICO management website)
+  - CLI (`/cli`)
+- The backend must support both:
+  - **Download/upload** of a backup set (Studio + CLI)
+  - **Path-based** restore/backup via CLI (provide a path)
+- Default backup set location (when no explicit path is provided) should be platform-dependent and derived from `AICOPaths`.
+
+### PostgreSQL restore safety
+
+- Default restore target is **`postgres-shadow`** first.
+- After restoring into `postgres-shadow`, backend must run verification.
+- Only then proceed to restore into primary Postgres, with an explicit override option to restore directly to primary.
+
+### Telemetry (InfluxDB) backup/restore
+
+- InfluxDB backup/restore must be fully implemented.
+- InfluxDB is **excluded by default**.
+- The backup set manifest and API responses must make it unambiguous whether InfluxDB is included.
 
 ---
 
@@ -176,6 +202,8 @@ Based on observed patterns:
 4. **Telemetry** (InfluxDB; optional)
 
 If we implement “backup sets”, restore all of them as a coordinated unit (but still apply the order above internally).
+
+Operationally, PostgreSQL restores should default to restoring to `postgres-shadow` first, verifying, and only then restoring to primary (unless explicitly overridden).
 
 ---
 
