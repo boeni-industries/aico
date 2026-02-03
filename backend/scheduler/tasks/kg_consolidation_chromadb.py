@@ -13,7 +13,7 @@ async def cleanup_chromadb_historical(memory_manager) -> Dict[str, int]:
     """
     Clean up historical node and edge embeddings from ChromaDB.
     
-    This ensures ChromaDB stays in sync with libSQL by removing embeddings
+    This ensures ChromaDB stays in sync with PostgreSQL by removing embeddings
     for nodes/edges that have been marked as historical (is_current = 0).
     
     Args:

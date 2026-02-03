@@ -6,7 +6,7 @@ Provides entity extraction, deduplication, and graph-based reasoning.
 
 Public API:
     - PropertyGraph, Node, Edge: Core data models
-    - PropertyGraphStorage: Hybrid ChromaDB + libSQL storage
+    - PropertyGraphStorage: Hybrid ChromaDB + PostgreSQL storage
     - MultiPassExtractor: Multi-pass extraction with gleanings
     - EntityResolver: Semantic entity resolution
     - GraphFusion: Graph fusion with conflict resolution

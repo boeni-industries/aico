@@ -27,9 +27,6 @@ from aico.security.key_manager import AICOKeyManager
 from aico.security.service_auth import ServiceAuthManager
 from aico.security.transport import TransportIdentityManager
 
-# Session management now handled at endpoint level with AsyncSessionService
-# from aico.security import SessionService, SessionInfo  # DEPRECATED - uses LibSQL syntax
-
 # Logger will be initialized in classes
 
 

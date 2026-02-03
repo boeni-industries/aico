@@ -160,14 +160,14 @@ class AICOPaths:
     
     @classmethod
     def get_episodic_memory_path(cls) -> Path:
-        """Get episodic memory directory (libSQL files)."""
+        """Get episodic memory directory."""
         episodic_dir = cls.get_memory_directory() / "episodic"
         episodic_dir.mkdir(parents=True, exist_ok=True)
         return episodic_dir
     
     @classmethod
     def get_behavioral_memory_path(cls) -> Path:
-        """Get behavioral memory directory (libSQL files for skills, preferences, patterns)."""
+        """Get behavioral memory directory."""
         behavioral_dir = cls.get_memory_directory() / "behavioral"
         behavioral_dir.mkdir(parents=True, exist_ok=True)
         return behavioral_dir

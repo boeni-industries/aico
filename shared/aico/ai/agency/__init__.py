@@ -1,6 +1,7 @@
 from .models import (
+    ActionIntent,
     Goal,
-    GoalOrigin,
+    Intention,
     GoalPriority,
     GoalStatus,
     Plan,
@@ -11,7 +12,7 @@ from .models import (
     ReflectionNote,
 )
 # GoalStore and PlanStore REMOVED - use aico.services.agency_service.AgencyService instead
-# AgencyEventStore and ReflectionStore REMOVED - legacy LibSQL code eliminated
+# AgencyEventStore and ReflectionStore REMOVED - legacy storage code eliminated
 from .planner import Planner
 from .engine import AgencyEngine
 from .values_ethics import (
