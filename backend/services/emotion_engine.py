@@ -204,7 +204,7 @@ class EmotionEngine(BaseService):
             self.logger.info("Subscriptions established")
             
             # Publish initial neutral state
-            await self._publish_emotional_state(self.current_state)
+            await self._publish_emotional_state(self.current_state, persist_history=False)
             
             self.logger.info("Emotion processor started successfully")
             
@@ -917,7 +917,7 @@ class EmotionEngine(BaseService):
     # STATE PUBLISHING & HISTORY
     # ============================================================================
     
-    async def _publish_emotional_state(self, state: EmotionalState) -> None:
+    async def _publish_emotional_state(self, state: EmotionalState, *, persist_history: bool = True) -> None:
         """Publish emotional state to message bus for consumers"""
         try:
             # Create protobuf timestamp
@@ -953,7 +953,7 @@ class EmotionEngine(BaseService):
             self.logger.debug(f"Published emotional state: {state.subjective_feeling.value}")
             
             # Persist state to database
-            await self._persist_state(state)
+            await self._persist_state(state, persist_history=persist_history)
             
         except Exception as e:
             self.logger.error(f"Error publishing emotional state: {e}")
@@ -1049,7 +1049,7 @@ class EmotionEngine(BaseService):
             self.current_state = self._create_neutral_state()
             self.state_history = []
     
-    async def _persist_state(self, state: EmotionalState) -> None:
+    async def _persist_state(self, state: EmotionalState, *, persist_history: bool = True) -> None:
         """Persist emotional state to database via UoW"""
         try:
             from aico.data.postgres.connection import get_session_factory
@@ -1082,20 +1082,21 @@ class EmotionEngine(BaseService):
                     await uow.emotion_state.update(state_model)
                 else:
                     await uow.emotion_state.create(state_model)
-                
-                # Add to history
-                compact_state = state.to_compact_dict()
-                history_model = EmotionHistory(
-                    user_id='system',
-                    timestamp=compact_state["timestamp"],
-                    feeling=compact_state["label"]["primary"],
-                    valence=compact_state["mood"]["valence"],
-                    arousal=compact_state["mood"]["arousal"],
-                    intensity=compact_state["label"]["intensity"],
-                    created_at=datetime.now(UTC).isoformat()
-                )
-                
-                await uow.emotion_history.create(history_model)
+
+                if persist_history:
+                    # Add to history
+                    compact_state = state.to_compact_dict()
+                    history_model = EmotionHistory(
+                        user_id='system',
+                        timestamp=compact_state["timestamp"],
+                        feeling=compact_state["label"]["primary"],
+                        valence=compact_state["mood"]["valence"],
+                        arousal=compact_state["mood"]["arousal"],
+                        intensity=compact_state["label"]["intensity"],
+                        created_at=datetime.now(UTC).isoformat()
+                    )
+
+                    await uow.emotion_history.create(history_model)
                 await uow.commit()
                 
                 self.logger.debug(f"🎭 Persisted emotional state: {state.subjective_feeling.value}")
