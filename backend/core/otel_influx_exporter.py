@@ -2,8 +2,7 @@
 OpenTelemetry to InfluxDB Exporter
 
 Exports OpenTelemetry metrics directly to InfluxDB using the line protocol.
-This replaces the SQLite-based OTelStorageExporter and implements the schema
-defined in shared/aico/data/influx/schema.lp with 100% fidelity.
+Implements the schema defined in shared/aico/data/influx/schema.lp with 100% fidelity.
 
 Design Principles:
 - Direct InfluxDB writes via HTTP API (line protocol)

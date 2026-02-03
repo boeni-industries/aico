@@ -1240,9 +1240,9 @@ Each telemetry table becomes a **hypertable** with retention and optional compre
    - Backend:
      - Replace LibSQL connection usage in repositories/services with the Postgres abstraction.
      - Update log consumer to write to `telemetry.system_logs` in Postgres instead of LibSQL.
-     - Update any metrics/OTel exporters to use a Postgres-based exporter that writes to Timescale hypertables.
+     - Telemetry storage DB of choice is InfluxDB.
    - Modelservice:
-     - Replace LibSQL-based `OTelStorageExporter` with a Postgres/Timescale-backed exporter.
+     - Telemetry storage DB of choice is InfluxDB.
    - CLI:
      - Point admin commands and inspectors at Postgres instead of LibSQL.
 
