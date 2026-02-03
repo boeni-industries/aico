@@ -80,39 +80,58 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       }];
     }
     
-    // For conversations, parse the dialogue
-    final lines = content.split('\n\n');
+    // For conversations, parse the dialogue line-by-line.
+    // This is more robust than splitting on "\n\n" because markdown/code blocks
+    // and different transcript formats can vary in whitespace.
+    final normalized = content.replaceAll('\r\n', '\n');
+    final lines = normalized.split('\n');
     final exchanges = <Map<String, String>>[];
-    
-    for (final line in lines) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) continue;
-      
-      if (trimmed.startsWith('You:')) {
-        exchanges.add({
-          'speaker': 'YOU',
-          'content': trimmed.substring(4).trim(),
-        });
-      } else if (trimmed.startsWith('AICO:')) {
-        exchanges.add({
-          'speaker': 'AICO',
-          'content': trimmed.substring(5).trim(),
-        });
+
+    String? currentSpeaker;
+    final buffer = StringBuffer();
+
+    void flush() {
+      final text = buffer.toString().trim();
+      if (currentSpeaker == null || text.isEmpty) {
+        buffer.clear();
+        return;
+      }
+
+      exchanges.add({
+        'speaker': currentSpeaker,
+        'content': text,
+      });
+      buffer.clear();
+    }
+
+    for (final rawLine in lines) {
+      if (rawLine.startsWith('You:')) {
+        flush();
+        currentSpeaker = 'YOU';
+        buffer.write(rawLine.substring(4).trimLeft());
+        continue;
+      }
+
+      if (rawLine.startsWith('AICO:')) {
+        flush();
+        currentSpeaker = 'AICO';
+        buffer.write(rawLine.substring(5).trimLeft());
+        continue;
+      }
+
+      // Continuation line.
+      // Preserve blank lines to keep markdown paragraph separation intact.
+      if (currentSpeaker == null) {
+        if (rawLine.trim().isEmpty) continue;
+        currentSpeaker = 'CONTENT';
+        buffer.write(rawLine);
       } else {
-        // If no prefix, treat as continuation of previous or standalone
-        if (exchanges.isEmpty) {
-          exchanges.add({
-            'speaker': 'CONTENT',
-            'content': trimmed,
-          });
-        } else {
-          // Append to previous exchange
-          final last = exchanges.last;
-          last['content'] = '${last['content']}\n\n$trimmed';
-        }
+        buffer.write('\n');
+        buffer.write(rawLine);
       }
     }
-    
+
+    flush();
     return exchanges;
   }
 

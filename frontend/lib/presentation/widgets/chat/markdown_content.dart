@@ -71,6 +71,44 @@ class MarkdownContent extends StatelessWidget {
         .trim();
   }
 
+  static String truncateMarkdownSafely(
+    String input, {
+    required int maxChars,
+  }) {
+    final normalized = normalizeMarkdownForRendering(input);
+    if (maxChars <= 0 || normalized.length <= maxChars) return normalized;
+
+    var truncated = normalized.substring(0, maxChars).trimRight();
+    truncated = '$truncated…';
+
+    String withoutCode = truncated;
+    withoutCode = withoutCode.replaceAll(RegExp(r'```[\s\S]*?```'), '');
+    withoutCode = withoutCode.replaceAll(RegExp(r'`[^`]*`'), '');
+
+    final boldAsteriskCount = RegExp(r'\*\*').allMatches(withoutCode).length;
+    if (boldAsteriskCount.isOdd) {
+      truncated = '${truncated}**';
+    }
+
+    final boldUnderscoreCount = RegExp(r'__').allMatches(withoutCode).length;
+    if (boldUnderscoreCount.isOdd) {
+      truncated = '${truncated}__';
+    }
+
+    final fenceMatches = RegExp(r'```').allMatches(truncated).length;
+    if (fenceMatches.isOdd) {
+      truncated = '$truncated\n```';
+    }
+
+    final withoutFences = truncated.replaceAll(RegExp(r'```[\s\S]*?```'), '');
+    final inlineTickMatches = RegExp(r'(?<!`)`(?!`)').allMatches(withoutFences).length;
+    if (inlineTickMatches.isOdd) {
+      truncated = '$truncated`';
+    }
+
+    return truncated;
+  }
+
   static String stripMarkdownForPreview(String input, {int? maxChars}) {
     var text = normalizeMarkdownForRendering(input);
     if (text.isEmpty) return text;

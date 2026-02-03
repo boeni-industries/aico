@@ -586,19 +586,18 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
       }
       
       final userQuery = userLines.join(' ').trim();
-      contentPreview = MarkdownContent.stripMarkdownForPreview(
-        userQuery,
-        maxChars: 500,
-      );
+      contentPreview = userQuery;
     } else {
       // For non-conversation memories, use summary or content
       final rawContent = memory.conversationSummary ?? memory.content;
       final trimmedContent = rawContent.replaceAll(RegExp(r'^\n+'), '');
-      contentPreview = MarkdownContent.stripMarkdownForPreview(
-        trimmedContent,
-        maxChars: 500,
-      );
+      contentPreview = trimmedContent;
     }
+
+    final previewMarkdown = MarkdownContent.truncateMarkdownSafely(
+      contentPreview,
+      maxChars: 800,
+    );
     
     return GestureDetector(
       onTap: () => _openMemoryDetail(memory),
@@ -624,12 +623,26 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Content preview
-            Text(
-              contentPreview,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                height: 1.5,
+            ClipRect(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 110),
+                child: DefaultTextStyle.merge(
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                  child: IgnorePointer(
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: MarkdownContent(
+                        data: previewMarkdown,
+                        isDark: true,
+                        accentColor: memory.accentColor,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             

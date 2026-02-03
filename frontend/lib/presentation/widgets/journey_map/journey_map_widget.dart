@@ -9,6 +9,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:aico_frontend/presentation/widgets/chat/markdown_content.dart';
 import 'package:flutter/material.dart';
 
 /// Data model for a memory node on the journey map
@@ -331,15 +332,16 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     String displayText;
     if (node.isMilestone && node.milestoneReason != null) {
       displayText = '⭐ ${node.milestoneReason}\n\n${node.preview ?? node.title}';
-      if (displayText.length > 150) {
-        displayText = '⭐ ${node.milestoneReason}\n\n${(node.preview ?? node.title).substring(0, 100)}...';
-      }
     } else {
       final preview = node.preview ?? node.title;
-      displayText = preview.length > 120 
-          ? '${preview.substring(0, 120)}...' 
-          : preview;
+      displayText = preview;
     }
+
+    final maxChars = node.isMilestone ? 150 : 120;
+    final displayMarkdown = MarkdownContent.truncateMarkdownSafely(
+      displayText,
+      maxChars: maxChars,
+    );
     
     // Calculate position accounting for scroll
     final nodeY = _getNodeYPosition(node);
@@ -366,21 +368,37 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
             ),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(22, 14, 16, 14),
-              child: Text(
-                displayText,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.95),
-                  fontSize: 13,
-                  height: 1.5,
-                  fontWeight: FontWeight.w400,
-                  letterSpacing: 0.3,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      offset: const Offset(0, 1),
-                      blurRadius: 2,
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  textTheme: Theme.of(context).textTheme.copyWith(
+                        bodyMedium: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          fontSize: 13,
+                          height: 1.5,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 0.3,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              offset: const Offset(0, 1),
+                              blurRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                ),
+                child: ClipRect(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 120),
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: MarkdownContent(
+                        data: displayMarkdown,
+                        isDark: true,
+                        accentColor: node.color,
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

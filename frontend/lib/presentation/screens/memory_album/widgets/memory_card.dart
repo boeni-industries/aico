@@ -36,6 +36,16 @@ class _MemoryCardState extends State<MemoryCard> {
       widget.memory.emotionalTone,
     );
 
+    final rawPreview = (widget.memory.isConversationMemory
+            ? (widget.memory.conversationSummary ?? widget.memory.content)
+            : widget.memory.content)
+        .trim();
+
+    final previewMarkdown = MarkdownContent.truncateMarkdownSafely(
+      rawPreview,
+      maxChars: 800,
+    );
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -156,21 +166,27 @@ class _MemoryCardState extends State<MemoryCard> {
                     
                     // Content
                     Flexible(
-                      child: Text(
-                        MarkdownContent.stripMarkdownForPreview(
-                          (widget.memory.isConversationMemory
-                                  ? (widget.memory.conversationSummary ?? widget.memory.content)
-                                  : widget.memory.content)
-                              .trim(),
-                          maxChars: 500,
+                      child: ClipRect(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 92),
+                          child: DefaultTextStyle.merge(
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: MemoryAlbumTheme.textPrimary,
+                              height: 1.6,
+                            ),
+                            child: IgnorePointer(
+                              child: SingleChildScrollView(
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: MarkdownContent(
+                                  data: previewMarkdown,
+                                  isDark: true,
+                                  accentColor: emotionalColor,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: MemoryAlbumTheme.textPrimary,
-                          height: 1.6,
-                        ),
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     
