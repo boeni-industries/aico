@@ -45,10 +45,10 @@ dependencies:
   # Storage and paths
   path_provider: ^2.1.4
   path: ^1.9.0
-  flutter_secure_storage: ^9.2.2
+  flutter_secure_storage: ^10.0.0
   shared_preferences: ^2.2.2
   crypto: ^3.0.3
-  file_picker: ^8.1.6
+  file_picker: ^10.3.10
   
   # Database - Drift with SQLCipher encryption
   drift: ^2.29.0
@@ -65,13 +65,13 @@ dependencies:
   connectivity_plus: ^7.0.0
   
   # Package info for version
-  package_info_plus: ^8.1.2
+  package_info_plus: ^9.0.0
   
   # JSON serialization
   json_annotation: ^4.8.1
   
   # Protocol Buffers (Dart max 5.0.0, backend 6.32.0 - wire format compatible)
-  protobuf: ^5.0.0
+  protobuf: ^6.0.0
   fixnum: ^1.1.0
   
   # JWT handling
@@ -82,7 +82,7 @@ dependencies:
   yaml: ^3.1.2
   
   # Navigation
-  go_router: ^16.2.0
+  go_router: ^17.1.0
   
   # Window management
   window_manager: ^0.5.1
@@ -108,11 +108,11 @@ dev_dependencies:
   bloc_test: ^10.0.0
   
   # Code generation
-  build_runner: ^2.4.7
-  json_serializable: ^6.7.1
+  build_runner: ^2.10.5
+  json_serializable: ^6.11.2
   riverpod_generator: ^3.0.3
   riverpod_lint: ^3.0.3
-  drift_dev: ^2.29.0  # Code generation for Drift
+  drift_dev: ^2.30.1  # Code generation for Drift
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
