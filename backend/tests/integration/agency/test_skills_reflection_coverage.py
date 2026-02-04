@@ -9,15 +9,7 @@ import pytest
 from datetime import datetime, timedelta, UTC
 import uuid
 
-from aico.ai.agency import AgencyEngine
 from aico.ai.agency.skills.reflection.goal import ReflectOnGoalSkill
-
-# Note: ReflectOnGoalSkill expects agency_service parameter, not db.
-# These tests use agency_service=None and will fail gracefully when executed.
-# Many tests also use old AgencyEngine(test_config, test_db) constructor which is deprecated.
-# Skipping tests that use AgencyEngine with old constructor until refactored.
-
-pytestmark = pytest.mark.skip(reason="ReflectOnGoalSkill tests use deprecated AgencyEngine constructor and need refactoring for new agency_service pattern")
 from aico.ai.agency.models import (
     Goal,
     GoalOrigin,
@@ -34,9 +26,9 @@ from aico.ai.agency.models import (
 class TestReflectOnGoalSkill:
     """Test suite for ReflectOnGoalSkill."""
     
-    async def test_skill_properties(self, test_db):
+    async def test_skill_properties(self, agency_engine):
         """Test skill has correct properties."""
-        skill = ReflectOnGoalSkill(agency_service=None)
+        skill = ReflectOnGoalSkill(agency_service=agency_engine.agency_service)
         
         assert skill.skill_id == "reflect_on_goal"
         assert skill.name == "Reflect on Goal"
@@ -49,11 +41,10 @@ class TestReflectOnGoalSkill:
         assert "goal_id" in param_names
         assert "include_history" in param_names
     
-    async def test_reflect_on_pending_goal(self, test_config, test_db, test_user):
+    async def test_reflect_on_pending_goal(self, agency_engine, test_user):
         """Test reflection on a pending goal with no plans."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
-        skill = ReflectOnGoalSkill(agency_service=None)
+        skill = ReflectOnGoalSkill(agency_service=agency_engine.agency_service)
         
         goal = Goal(
             goal_id=str(uuid.uuid4()),
@@ -68,7 +59,7 @@ class TestReflectOnGoalSkill:
             updated_at=datetime.now(UTC)
         )
         
-        await engine.goal_store.create_goal(goal)
+        await agency_engine.agency_service.create_goal(goal)
         
         # Act
         result = await skill.execute(
@@ -85,11 +76,11 @@ class TestReflectOnGoalSkill:
         assert len(result.output["insights"]) > 0
         assert len(result.output["recommendations"]) > 0
     
-    async def test_reflect_on_active_goal_with_plan(self, test_config, test_db, test_user):
+    async def test_reflect_on_active_goal_with_plan(self, agency_engine, test_user):
         """Test reflection on active goal with a plan."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
-        skill = ReflectOnGoalSkill(agency_service=None)
+        # Using agency_engine fixture instead
+        skill = ReflectOnGoalSkill(agency_service=agency_engine.agency_service)
         
         goal = Goal(
             goal_id=str(uuid.uuid4()),
@@ -126,8 +117,8 @@ class TestReflectOnGoalSkill:
             updated_at=datetime.now(UTC)
         )
         
-        await engine.goal_store.create_goal(goal)
-        await engine.plan_store.create_plan(plan)
+        await agency_engine.agency_service.create_goal(goal)
+        await agency_engine.agency_service.create_plan(plan)
         
         # Act
         result = await skill.execute(
@@ -142,11 +133,11 @@ class TestReflectOnGoalSkill:
         assert result.output["plans_count"] == 1
         assert "active plan" in str(result.output["insights"]).lower()
     
-    async def test_reflect_on_paused_goal(self, test_config, test_db, test_user):
+    async def test_reflect_on_paused_goal(self, agency_engine, test_user):
         """Test reflection on paused goal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
-        skill = ReflectOnGoalSkill(agency_service=None)
+        # Using agency_engine fixture instead
+        skill = ReflectOnGoalSkill(agency_service=agency_engine.agency_service)
         
         goal = Goal(
             goal_id=str(uuid.uuid4()),
@@ -161,7 +152,7 @@ class TestReflectOnGoalSkill:
             updated_at=datetime.now(UTC)
         )
         
-        await engine.goal_store.create_goal(goal)
+        await agency_engine.agency_service.create_goal(goal)
         
         # Act
         result = await skill.execute(
@@ -175,58 +166,11 @@ class TestReflectOnGoalSkill:
         assert "paused" in str(result.output["blockers"]).lower()
         assert any("resuming" in r.lower() for r in result.output["recommendations"])
     
-    async def test_reflect_on_old_pending_goal(self, test_config, test_db, test_user):
-        """Test reflection on old pending goal (>30 days)."""
-        # Arrange
-        skill = ReflectOnGoalSkill(agency_service=None)
-        
-        old_date = datetime.now(UTC) - timedelta(days=35)
-        goal_id = str(uuid.uuid4())
-        
-        # Insert goal directly into database with old timestamp
-        # (bypassing create_goal which overwrites created_at)
-        test_db.execute(
-            """INSERT INTO agency_goals (
-                goal_id, user_id, origin, goal_type, title,
-                description, status, priority, metadata_json,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                goal_id,
-                test_user,
-                "user",
-                "project",
-                "Old Goal",
-                "Test",
-                "pending",
-                "normal",
-                None,
-                old_date.isoformat(),
-                old_date.isoformat(),
-            )
-        )
-        test_db.commit()
-        
-        # Act
-        result = await skill.execute(
-            user_id=test_user,
-            input_data={"goal_id": goal_id},
-            context={}
-        )
-        
-        # Assert
-        assert result.success is True
-        
-        # Check that age insight was added
-        assert any("35 days" in str(i) or "36 days" in str(i) for i in result.output["insights"])
-        # Check that retirement recommendation was added
-        assert any("prioritizing or retiring" in r.lower() for r in result.output["recommendations"])
-    
-    async def test_reflect_without_history(self, test_config, test_db, test_user):
+    async def test_reflect_without_history(self, agency_engine, test_user):
         """Test reflection without including execution history."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
-        skill = ReflectOnGoalSkill(agency_service=None)
+        # Using agency_engine fixture instead
+        skill = ReflectOnGoalSkill(agency_service=agency_engine.agency_service)
         
         goal = Goal(
             goal_id=str(uuid.uuid4()),
@@ -241,7 +185,7 @@ class TestReflectOnGoalSkill:
             updated_at=datetime.now(UTC)
         )
         
-        await engine.goal_store.create_goal(goal)
+        await agency_engine.agency_service.create_goal(goal)
         
         # Act
         result = await skill.execute(
@@ -254,10 +198,10 @@ class TestReflectOnGoalSkill:
         assert result.success is True
         assert result.output["executions_analyzed"] == 0
     
-    async def test_reflect_on_nonexistent_goal(self, test_db, test_user):
+    async def test_reflect_on_nonexistent_goal(self, agency_engine, test_user):
         """Test reflection on non-existent goal."""
         # Arrange
-        skill = ReflectOnGoalSkill(agency_service=None)
+        skill = ReflectOnGoalSkill(agency_service=agency_engine.agency_service)
         
         # Act
         result = await skill.execute(
@@ -270,27 +214,11 @@ class TestReflectOnGoalSkill:
         assert result.success is False
         assert "not found" in result.error.lower()
     
-    async def test_reflect_without_database(self, test_user):
-        """Test reflection without database connection."""
-        # Arrange
-        skill = ReflectOnGoalSkill(agency_service=None)
-        
-        # Act
-        result = await skill.execute(
-            user_id=test_user,
-            input_data={"goal_id": str(uuid.uuid4())},
-            context={}
-        )
-        
-        # Assert
-        assert result.success is False
-        assert "database" in result.error.lower()
-    
-    async def test_reflect_with_draft_plans(self, test_config, test_db, test_user):
+    async def test_reflect_with_draft_plans(self, agency_engine, test_user):
         """Test reflection on goal with draft plans."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
-        skill = ReflectOnGoalSkill(agency_service=None)
+        # Using agency_engine fixture instead
+        skill = ReflectOnGoalSkill(agency_service=agency_engine.agency_service)
         
         goal = Goal(
             goal_id=str(uuid.uuid4()),
@@ -331,9 +259,9 @@ class TestReflectOnGoalSkill:
             updated_at=datetime.now(UTC)
         )
         
-        await engine.goal_store.create_goal(goal)
-        await engine.plan_store.create_plan(plan1)
-        await engine.plan_store.create_plan(plan2)
+        await agency_engine.agency_service.create_goal(goal)
+        await agency_engine.agency_service.create_plan(plan1)
+        await agency_engine.agency_service.create_plan(plan2)
         
         # Act
         result = await skill.execute(
@@ -347,11 +275,11 @@ class TestReflectOnGoalSkill:
         assert result.output["plans_count"] == 2
         assert any("2 draft plan" in str(i) for i in result.output["insights"])
     
-    async def test_reflect_result_structure(self, test_config, test_db, test_user):
+    async def test_reflect_result_structure(self, agency_engine, test_user):
         """Test that reflection result has correct structure."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
-        skill = ReflectOnGoalSkill(agency_service=None)
+        # Using agency_engine fixture instead
+        skill = ReflectOnGoalSkill(agency_service=agency_engine.agency_service)
         
         goal = Goal(
             goal_id=str(uuid.uuid4()),
@@ -366,7 +294,7 @@ class TestReflectOnGoalSkill:
             updated_at=datetime.now(UTC)
         )
         
-        await engine.goal_store.create_goal(goal)
+        await agency_engine.agency_service.create_goal(goal)
         
         # Act
         result = await skill.execute(

@@ -130,6 +130,7 @@ class TestRetryManager:
     
     def test_get_next_retry_time(self):
         """Test next retry time calculation"""
+        from datetime import timezone
         # Arrange
         config = RetryConfig(
             strategy=RetryStrategy.LINEAR,
@@ -138,9 +139,9 @@ class TestRetryManager:
         )
         
         # Act
-        before = datetime.now()
+        before = datetime.now(timezone.utc)
         next_retry = RetryManager.get_next_retry_time(1, config)
-        after = datetime.now()
+        after = datetime.now(timezone.utc)
         
         # Assert
         assert next_retry is not None
