@@ -10,6 +10,7 @@ Focuses on testing uncovered lines:
 """
 
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, patch
 import json
@@ -25,34 +26,37 @@ from aico.ai.agency.arbiter_adaptive import (
 class TestAdaptiveScoringEngineCoverage:
     """Tests targeting uncovered lines in arbiter_adaptive.py."""
     
-    @pytest.fixture
-    def db(self, test_db):
-        """Use test database fixture."""
-        # Clean up test data (but preserve bandit arms for FK constraints)
-        test_db.execute("PRAGMA foreign_keys = OFF")
-        try:
-            test_db.execute("DELETE FROM agency_goal_outcomes")
-        except:
-            pass
-        try:
-            test_db.execute("DELETE FROM arbiter_ab_tests")
-        except:
-            pass
-        # Don't delete arbiter_bandit_arms - they're needed for FK constraints
-        # and will be recreated by AdaptiveScoringEngine initialization
-        test_db.commit()
-        test_db.execute("PRAGMA foreign_keys = ON")
-        return test_db
+    @pytest_asyncio.fixture
+    async def agency_service(self, test_config):
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.agency_service import AgencyService
+
+        session_factory = await get_session_factory()
+        uow = UnitOfWork(session_factory)
+        async with uow:
+            service = AgencyService(uow)
+            yield service
+            await uow.rollback()
+
+    @pytest_asyncio.fixture
+    async def engine(self, agency_service):
+        config = AdaptiveConfig()
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
+        return engine
     
-    def test_thompson_sampling_algorithm(self, db):
+    @pytest.mark.asyncio
+    async def test_thompson_sampling_algorithm(self, agency_service):
         """Test Thompson sampling algorithm (covers lines 274-302, 297)."""
         config = AdaptiveConfig(algorithm=BanditAlgorithm.THOMPSON_SAMPLING)
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Update arms with different success rates
-        engine.update_arm("balanced", reward=1.0, success=True)
-        engine.update_arm("balanced", reward=1.0, success=True)
-        engine.update_arm("priority_focused", reward=0.0, success=False)
+        await engine.update_arm("balanced", reward=1.0, success=True)
+        await engine.update_arm("balanced", reward=1.0, success=True)
+        await engine.update_arm("priority_focused", reward=0.0, success=False)
         
         # Select arm using Thompson sampling
         arm_id, weights = engine.select_arm()
@@ -61,34 +65,38 @@ class TestAdaptiveScoringEngineCoverage:
         assert isinstance(weights, dict)
         # Thompson sampling should favor the successful arm
     
-    def test_ucb1_with_logging(self, db):
+    @pytest.mark.asyncio
+    async def test_ucb1_with_logging(self, agency_service):
         """Test UCB1 algorithm with logging enabled (covers lines 257-272)."""
         config = AdaptiveConfig(algorithm=BanditAlgorithm.UCB1)
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Give arms different pull counts to trigger UCB1 exploration bonus
         for _ in range(10):
-            engine.update_arm("balanced", reward=0.7, success=True)
+            await engine.update_arm("balanced", reward=0.7, success=True)
         
         for _ in range(2):
-            engine.update_arm("priority_focused", reward=0.8, success=True)
+            await engine.update_arm("priority_focused", reward=0.8, success=True)
         
         # Select arm - should consider exploration bonus
         arm_id, weights = engine.select_arm()
         
         assert arm_id in engine.arms
     
-    def test_epsilon_greedy_exploration(self, db):
+    @pytest.mark.asyncio
+    async def test_epsilon_greedy_exploration(self, agency_service):
         """Test epsilon-greedy exploration path (covers lines 213, 225, 230)."""
         config = AdaptiveConfig(
             algorithm=BanditAlgorithm.EPSILON_GREEDY,
             epsilon=0.5  # High epsilon for more exploration
         )
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Make one arm clearly better
         for _ in range(10):
-            engine.update_arm("balanced", reward=1.0, success=True)
+            await engine.update_arm("balanced", reward=1.0, success=True)
         
         # Select multiple times - should sometimes explore
         selections = []
@@ -100,43 +108,47 @@ class TestAdaptiveScoringEngineCoverage:
         unique_arms = set(selections)
         assert len(unique_arms) >= 1  # At least one arm selected
     
-    def test_weight_optimization_triggers(self, db):
+    @pytest.mark.asyncio
+    async def test_weight_optimization_triggers(self, agency_service):
         """Test weight optimization when min_pulls_per_arm is met (covers lines 357-373)."""
         config = AdaptiveConfig(
             min_pulls_per_arm=3,  # Low threshold for testing
             learning_rate=0.1
         )
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Pull all arms enough times with good rewards
         for arm_id in list(engine.arms.keys()):
             for _ in range(5):
-                engine.update_arm(arm_id, reward=0.9, success=True)
+                await engine.update_arm(arm_id, reward=0.9, success=True)
         
         # Trigger optimization by updating the best arm
         best_arm_id = max(engine.arms.keys(), key=lambda a: engine.arms[a].average_reward)
         initial_arm_count = len(engine.arms)
         
         # Update best arm to potentially trigger variation creation
-        engine.update_arm(best_arm_id, reward=1.0, success=True)
+        await engine.update_arm(best_arm_id, reward=1.0, success=True)
         
         # May or may not create new arm depending on conditions
         # Just verify no errors occurred
         assert len(engine.arms) >= initial_arm_count
     
-    def test_create_arm_variation(self, db):
+    @pytest.mark.asyncio
+    async def test_create_arm_variation(self, agency_service):
         """Test creating arm variations (covers lines 375-397)."""
         config = AdaptiveConfig(min_pulls_per_arm=2)
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Create a high-performing arm
         best_arm_id = "balanced"
         for _ in range(10):
-            engine.update_arm(best_arm_id, reward=0.95, success=True)
+            await engine.update_arm(best_arm_id, reward=0.95, success=True)
         
         # Manually trigger variation creation
         best_arm = engine.arms[best_arm_id]
-        engine._create_arm_variation(best_arm)
+        await engine._create_arm_variation(best_arm)
         
         # Verify at least one optimized arm exists (may have been created now or earlier)
         optimized_arms = [a for a in engine.arms.keys() if a.startswith("optimized_")]
@@ -147,22 +159,26 @@ class TestAdaptiveScoringEngineCoverage:
         assert isinstance(optimized_arm.weights, dict)
         assert len(optimized_arm.weights) > 0
     
-    def test_load_arms_error_handling(self, db):
+    @pytest.mark.asyncio
+    async def test_load_arms_error_handling(self, agency_service):
         """Test error handling in _load_arms (covers lines 130-132)."""
         # Test that engine handles missing/corrupted data gracefully
         # We can't actually DROP the table without breaking other tests
         # Instead, test that engine initializes with default arms
         config = AdaptiveConfig()
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Should have default arms from initialization
         assert len(engine.arms) > 0
         assert "balanced" in engine.arms
     
-    def test_initialize_default_arms_logging(self, db):
+    @pytest.mark.asyncio
+    async def test_initialize_default_arms_logging(self, agency_service):
         """Test default arms initialization with logging (covers line 161)."""
         config = AdaptiveConfig()
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Should have initialized default arms
         assert "balanced" in engine.arms
@@ -176,17 +192,19 @@ class TestAdaptiveScoringEngineCoverage:
             total = sum(arm.weights.values())
             assert 0.90 <= total <= 1.15  # Relaxed tolerance for floating point
     
-    def test_ab_test_start(self, db):
+    @pytest.mark.asyncio
+    async def test_ab_test_start(self, agency_service):
         """Test starting A/B test (covers lines 403-457)."""
         config = AdaptiveConfig(enable_ab_testing=True)
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Ensure arms exist in database (they should from initialization)
         assert "priority_focused" in engine.arms
         assert "curiosity_focused" in engine.arms
         
         # Start an A/B test
-        test_id = engine.start_ab_test(
+        test_id = await engine.start_ab_test(
             test_name="priority_vs_curiosity",
             arm_a_id="priority_focused",
             arm_b_id="curiosity_focused",
@@ -196,13 +214,15 @@ class TestAdaptiveScoringEngineCoverage:
         assert test_id is not None
         assert isinstance(test_id, str)
     
-    def test_ab_test_get_results(self, db):
+    @pytest.mark.asyncio
+    async def test_ab_test_get_results(self, agency_service):
         """Test getting A/B test results (covers lines 459-499)."""
         config = AdaptiveConfig(enable_ab_testing=True)
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Start a test
-        test_id = engine.start_ab_test(
+        test_id = await engine.start_ab_test(
             test_name="test_comparison",
             arm_a_id="balanced",
             arm_b_id="priority_focused",
@@ -210,51 +230,58 @@ class TestAdaptiveScoringEngineCoverage:
         )
         
         # Get results
-        results = engine.get_ab_test_results(test_id)
+        results = await engine.get_ab_test_results(test_id)
         
         assert results is not None
         assert isinstance(results, dict)
     
-    def test_arm_persistence_across_instances(self, db):
+    @pytest.mark.asyncio
+    async def test_arm_persistence_across_instances(self, agency_service):
         """Test that arms persist in database."""
         config = AdaptiveConfig()
-        engine1 = AdaptiveScoringEngine(db, config)
+        engine1 = AdaptiveScoringEngine(agency_service, config)
+        await engine1.load_arms()
         
         # Update an arm
-        engine1.update_arm("balanced", reward=0.8, success=True)
+        await engine1.update_arm("balanced", reward=0.8, success=True)
         initial_pulls = engine1.arms["balanced"].pulls
         
         # Verify arm was updated
         assert initial_pulls >= 1
         
         # Create new engine instance - will reload from DB
-        engine2 = AdaptiveScoringEngine(db, config)
+        engine2 = AdaptiveScoringEngine(agency_service, config)
+        await engine2.load_arms()
         
         # Should have the arm (may be fresh if DB was cleaned)
         assert "balanced" in engine2.arms
     
-    def test_update_arm_with_high_pulls(self, db):
+    @pytest.mark.asyncio
+    async def test_update_arm_with_high_pulls(self, agency_service):
         """Test arm update triggers optimization check (covers line 349)."""
         config = AdaptiveConfig(min_pulls_per_arm=5)
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Pull all arms past threshold
         for arm_id in list(engine.arms.keys()):
             for _ in range(6):
-                engine.update_arm(arm_id, reward=0.7, success=True)
+                await engine.update_arm(arm_id, reward=0.7, success=True)
         
         # Update again to trigger optimization check
-        engine.update_arm("balanced", reward=0.9, success=True)
+        await engine.update_arm("balanced", reward=0.9, success=True)
         
         # Should complete without error
         assert engine.arms["balanced"].pulls >= 6
     
-    def test_select_arm_with_no_pulls(self, db):
+    @pytest.mark.asyncio
+    async def test_select_arm_with_no_pulls(self, agency_service):
         """Test arm selection when some arms have no pulls (covers exploration)."""
         config = AdaptiveConfig(algorithm=BanditAlgorithm.UCB1)
         
         # Create engine with default arms
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Select arm when all have 0 pulls (or minimal pulls)
         arm_id, weights = engine.select_arm()
@@ -303,10 +330,12 @@ class TestAdaptiveScoringEngineCoverage:
             config = AdaptiveConfig(algorithm=algo)
             assert config.algorithm == algo
     
-    def test_exp3_algorithm_fallback(self, db):
+    @pytest.mark.asyncio
+    async def test_exp3_algorithm_fallback(self, agency_service):
         """Test EXP3 algorithm (currently falls back to UCB1) (covers line 213)."""
         config = AdaptiveConfig(algorithm=BanditAlgorithm.EXP3)
-        engine = AdaptiveScoringEngine(db, config)
+        engine = AdaptiveScoringEngine(agency_service, config)
+        await engine.load_arms()
         
         # Should still work (falls back to UCB1)
         arm_id, weights = engine.select_arm()

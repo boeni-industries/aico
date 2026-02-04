@@ -515,7 +515,11 @@ class AgencyService:
         try:
             from aico.data.agency.models import ArbiterBanditArm
             arm = ArbiterBanditArm(**arm_data)
-            await self.uow.arbiter_bandit_arms.upsert(arm)
+            existing = await self.uow.arbiter_bandit_arms.get_by_id(arm.arm_id)
+            if existing:
+                await self.uow.arbiter_bandit_arms.update(arm)
+            else:
+                await self.uow.arbiter_bandit_arms.create(arm)
             await self.uow.commit()
             logger.debug(f"[AGENCY_SERVICE] Saved bandit arm: {arm_data.get('arm_id')}")
         except Exception as e:

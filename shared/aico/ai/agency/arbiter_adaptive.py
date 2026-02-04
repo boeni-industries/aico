@@ -165,7 +165,7 @@ class AdaptiveScoringEngine:
             now = datetime.now(UTC)
             arm_data = {
                 "arm_id": arm.arm_id,
-                "weights_json": json.dumps(arm.weights),
+                "weights_json": arm.weights,
                 "pulls": arm.pulls,
                 "total_reward": arm.total_reward,
                 "success_count": arm.success_count,

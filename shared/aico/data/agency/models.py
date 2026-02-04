@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from aico.data.agency.followup_models import AgencyFollowup
 from aico.data.conversation.models import ConversationInitiation
+from aico.data.arbiter.models import ArbiterABTest, ArbiterBanditArm
 
 
 class Goal(BaseModel):
@@ -113,3 +114,18 @@ class Policy(BaseModel):
     active: bool = True
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+
+__all__ = [
+    "Goal",
+    "Plan",
+    "AgencyEvent",
+    "AgencyEventLog",
+    "AgencyReflectionNote",
+    "AgencyReminder",
+    "Policy",
+    "AgencyFollowup",
+    "ConversationInitiation",
+    "ArbiterBanditArm",
+    "ArbiterABTest",
+]

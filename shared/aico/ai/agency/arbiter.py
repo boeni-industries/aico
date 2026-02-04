@@ -1097,6 +1097,8 @@ class GoalArbiter:
         metadata: Optional[Dict] = None
     ) -> None:
         """Record goal outcome for adaptive learning using an internal UoW."""
+        if not self.enable_adaptive:
+            return
         if not self._session_factory:
             raise RuntimeError("GoalArbiter requires session_factory to record goal outcomes")
 

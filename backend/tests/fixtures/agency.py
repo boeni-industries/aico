@@ -5,6 +5,7 @@ Provides reusable test data and fixtures for agency system testing.
 """
 
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta, UTC
 from typing import Dict, Any
 
@@ -331,15 +332,24 @@ def mock_message_bus():
     return mock
 
 
-@pytest.fixture
-def agency_engine(test_db, test_config, mock_message_bus):
+@pytest_asyncio.fixture
+async def agency_engine(test_config, mock_message_bus):
     """Provide an initialized AgencyEngine for testing."""
     from aico.ai.agency.engine import AgencyEngine
-    
-    engine = AgencyEngine(
-        config=test_config,
-        db_connection=test_db,
-        message_bus=mock_message_bus,
-    )
-    
-    return engine
+    from aico.data.postgres.connection import get_session_factory
+    from aico.data.uow import UnitOfWork
+    from aico.services.agency_service import AgencyService
+
+    session_factory = await get_session_factory()
+    uow = UnitOfWork(session_factory)
+    async with uow:
+        service = AgencyService(uow)
+        engine = AgencyEngine(
+            config=test_config,
+            agency_service=service,
+            message_bus=mock_message_bus,
+            session_factory=session_factory,
+        )
+        yield engine
+
+        await uow.rollback()

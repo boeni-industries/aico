@@ -15,10 +15,10 @@ from aico.ai.agency.models import GoalStatus, GoalOrigin, GoalPriority
 class TestPhase4Basic:
     """Basic test suite for Phase 4 components."""
     
-    async def test_agency_engine_initializes_with_phase4_components(self, test_config, test_db):
+    async def test_agency_engine_initializes_with_phase4_components(self, agency_engine):
         """Test that AgencyEngine initializes with Values & Ethics and Goal Arbiter."""
         # Act
-        engine = AgencyEngine(test_config, test_db)
+        engine = agency_engine
         
         # Assert
         assert engine is not None
@@ -27,10 +27,10 @@ class TestPhase4Basic:
         assert engine.values_ethics is not None
         assert engine.arbiter is not None
     
-    async def test_goal_arbiter_has_scoring_weights(self, test_config, test_db):
+    async def test_goal_arbiter_has_scoring_weights(self, agency_engine):
         """Test that Goal Arbiter loads scoring weights from config."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = agency_engine
         
         # Assert
         assert hasattr(engine.arbiter, 'weights')
@@ -43,20 +43,20 @@ class TestPhase4Basic:
         total = sum(engine.arbiter.weights.values())
         assert abs(total - 1.0) < 0.01
     
-    async def test_values_ethics_service_exists(self, test_config, test_db):
+    async def test_values_ethics_service_exists(self, agency_engine):
         """Test that Values & Ethics service is accessible."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = agency_engine
         
         # Assert
         assert engine.values_ethics is not None
         assert hasattr(engine.values_ethics, 'evaluate_goal')
         assert hasattr(engine.values_ethics, 'evaluate_plan')
     
-    async def test_create_goal_with_phase4_engine(self, test_config, test_db, test_user):
+    async def test_create_goal_with_phase4_engine(self, agency_engine, test_user):
         """Test creating a goal with Phase 4 engine (should work same as Phase 1)."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = agency_engine
         
         # Act
         goal, plan = await engine.create_goal_with_optional_plan(
@@ -72,10 +72,10 @@ class TestPhase4Basic:
         assert goal.title == "Test Goal"
         assert goal.status == GoalStatus.PENDING
     
-    async def test_intention_set_method_exists(self, test_config, test_db, test_user):
+    async def test_intention_set_method_exists(self, agency_engine, test_user):
         """Test that intention set methods are available."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = agency_engine
         
         # Assert
         assert hasattr(engine, 'get_intention_set')
