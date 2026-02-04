@@ -788,7 +788,19 @@ class AgencyService:
             steps = await self.uow.agency_step_executions.list(
                 filters={"execution_id": execution_id}
             )
-            return [s.to_dict() if hasattr(s, 'to_dict') else s for s in steps]
+            # Convert Pydantic models to dicts properly
+            result = []
+            for s in steps:
+                if hasattr(s, 'model_dump'):
+                    result.append(s.model_dump())
+                elif hasattr(s, 'to_dict'):
+                    result.append(s.to_dict())
+                elif isinstance(s, dict):
+                    result.append(s)
+                else:
+                    # Fallback: convert to dict manually
+                    result.append(dict(s))
+            return result
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get step executions: {e}")
             raise
