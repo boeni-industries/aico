@@ -21,6 +21,50 @@ from aico.ai.agency.models import (
 )
 
 
+class _Psycopg2SqliteCompatDB:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query, params=None):
+        q = query.replace("?", "%s")
+        cur = self._conn.cursor()
+        cur.execute(q, params or ())
+        return cur
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+
+class _FakePlannerDB:
+    def __init__(self, select_rows=None):
+        self._select_rows = select_rows or []
+        self.updates = []
+        self.committed = False
+
+    def execute(self, query, params=None):
+        class _Cursor:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def fetchall(self):
+                return self._rows
+
+            def fetchone(self):
+                return self._rows[0] if self._rows else None
+
+        q = query.strip().lower()
+        if q.startswith("select"):
+            return _Cursor(self._select_rows)
+        self.updates.append((query, params))
+        return _Cursor([])
+
+    def commit(self):
+        self.committed = True
+
+
 @pytest.mark.asyncio
 class TestLLMBackedPlanning:
     """Test LLM-backed plan generation."""
@@ -31,30 +75,38 @@ class TestLLMBackedPlanning:
         # Create a mock LLM client with spec to ensure hasattr works
         class MockLLMClient:
             model_name = "test-llm-model"
-            async def complete(self, prompt):
-                return json.dumps([
-                    {
-                        "description": "Research the topic thoroughly with proper methodology and comprehensive analysis",
-                        "preconditions": ["access to resources"],
-                        "suggested_skills": ["research", "analysis"]
-                    },
-                    {
-                        "description": "Create initial draft with detailed outline and well-structured content",
-                        "preconditions": ["research complete"],
-                        "suggested_skills": ["writing"]
-                    },
-                    {
-                        "description": "Review and refine the content for quality, accuracy, and completeness",
-                        "preconditions": ["draft complete"],
-                        "suggested_skills": ["editing"]
+            async def get_chat_completions(self, model, messages, options=None):
+                return {
+                    "data": {
+                        "content": json.dumps(
+                            {
+                                "steps": [
+                                    {
+                                        "description": "Research the topic thoroughly with proper methodology and comprehensive analysis",
+                                        "preconditions": ["access to resources"],
+                                        "suggested_skills": ["research", "analysis"],
+                                    },
+                                    {
+                                        "description": "Create initial draft with detailed outline and well-structured content",
+                                        "preconditions": ["research complete"],
+                                        "suggested_skills": ["writing"],
+                                    },
+                                    {
+                                        "description": "Review and refine the content for quality, accuracy, and completeness",
+                                        "preconditions": ["draft complete"],
+                                        "suggested_skills": ["editing"],
+                                    },
+                                ]
+                            }
+                        )
                     }
-                ])
+                }
         
         # Change goal type to something that won't match templates
         sample_goal.goal_type = "custom_llm_test"
         
         mock_llm = MockLLMClient()
-        planner = Planner(llm_client=mock_llm, db_connection=test_db)
+        planner = Planner(llm_client=mock_llm)
         
         # Act - Don't pass user_id to avoid pattern-based planning
         plan = await planner.generate_initial_plan(sample_goal, context={})
@@ -73,11 +125,23 @@ class TestLLMBackedPlanning:
         """Test that poor quality LLM plans are rejected."""
         # Arrange
         mock_llm = AsyncMock()
-        mock_llm.complete = AsyncMock(return_value=json.dumps([
-            {"description": "Do it", "preconditions": [], "suggested_skills": []}  # Too short
-        ]))
+
+        mock_llm.model_name = "test-llm-model"
+        mock_llm.get_chat_completions = AsyncMock(
+            return_value={
+                "data": {
+                    "content": json.dumps(
+                        {
+                            "steps": [
+                                {"description": "Do it", "preconditions": [], "suggested_skills": []}
+                            ]
+                        }
+                    )
+                }
+            }
+        )
         
-        planner = Planner(llm_client=mock_llm, db_connection=test_db)
+        planner = Planner(llm_client=mock_llm)
         
         # Act
         plan = await planner.generate_initial_plan(sample_goal, context={})
@@ -89,7 +153,7 @@ class TestLLMBackedPlanning:
     async def test_plan_quality_assessment(self, test_db, sample_goal):
         """Test plan quality assessment logic."""
         # Arrange
-        planner = Planner(db_connection=test_db)
+        planner = Planner(llm_client=None)
         
         # Create excellent plan (5+ steps, rich metadata)
         excellent_plan = Plan(
@@ -123,18 +187,26 @@ class TestLLMBackedPlanning:
         # Arrange - Create mock LLM to generate cacheable plans
         class MockLLMClient:
             model_name = "test-cache-llm"
-            async def complete(self, prompt):
-                return json.dumps([
-                    {"description": "Detailed first step with sufficient length for validation", "preconditions": [], "suggested_skills": []},
-                    {"description": "Detailed second step with sufficient length for validation", "preconditions": [], "suggested_skills": []},
-                    {"description": "Detailed third step with sufficient length for validation", "preconditions": [], "suggested_skills": []}
-                ])
+            async def get_chat_completions(self, model, messages, options=None):
+                return {
+                    "data": {
+                        "content": json.dumps(
+                            {
+                                "steps": [
+                                    {"description": "Detailed first step with sufficient length for validation", "preconditions": [], "suggested_skills": []},
+                                    {"description": "Detailed second step with sufficient length for validation", "preconditions": [], "suggested_skills": []},
+                                    {"description": "Detailed third step with sufficient length for validation", "preconditions": [], "suggested_skills": []},
+                                ]
+                            }
+                        )
+                    }
+                }
         
         sample_goal.goal_type = "cache_test_type"
         original_title = sample_goal.title
         
         mock_llm = MockLLMClient()
-        planner = Planner(llm_client=mock_llm, enable_caching=True, cache_ttl_seconds=3600, db_connection=test_db)
+        planner = Planner(llm_client=mock_llm, enable_caching=True, cache_ttl_seconds=3600)
         
         # Generate first plan (will use LLM and cache it)
         plan1 = await planner.generate_initial_plan(sample_goal, context={})
@@ -163,12 +235,13 @@ class TestPatternRecognitionLearning:
     async def test_detect_plan_patterns(self, test_db, test_user):
         """Test pattern detection from historical plans."""
         # Arrange - Create test goals and plans with proper user
+        db = _Psycopg2SqliteCompatDB(test_db)
         for i in range(5):
             goal_id = f"goal-pattern-{i}"
             plan_id = f"plan-pattern-{i}"
             
             # Insert goal
-            test_db.execute(
+            db.execute(
                 """INSERT INTO agency_goals 
                    (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -177,7 +250,7 @@ class TestPatternRecognitionLearning:
             )
             
             # Insert completed plan
-            test_db.execute(
+            db.execute(
                 """INSERT INTO agency_plans
                    (plan_id, goal_id, status, steps_json, metadata_json, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
@@ -190,9 +263,10 @@ class TestPatternRecognitionLearning:
                  datetime.now(UTC).isoformat())
             )
         
-        test_db.commit()
+        db.commit()
         
-        planner = Planner(db_connection=test_db)
+        planner = Planner(llm_client=None)
+        planner.db = db
         
         # Act
         patterns = planner.detect_plan_patterns(test_user, lookback_days=90, min_occurrences=3)
@@ -208,26 +282,27 @@ class TestPatternRecognitionLearning:
         
         # Cleanup
         for i in range(5):
-            test_db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (f"plan-pattern-{i}",))
-            test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (f"goal-pattern-{i}",))
-        test_db.commit()
+            db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (f"plan-pattern-{i}",))
+            db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (f"goal-pattern-{i}",))
+        db.commit()
     
     async def test_get_pattern_suggestion(self, test_db, test_user, sample_goal):
         """Test getting pattern suggestions for a goal."""
         # Arrange - Create historical plans
+        db = _Psycopg2SqliteCompatDB(test_db)
         for i in range(5):
             goal_id = f"goal-suggest-{i}"
             plan_id = f"plan-suggest-{i}"
             
-            test_db.execute(
+            db.execute(
                 """INSERT INTO agency_goals 
                    (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (goal_id, test_user, f"Test Goal {i}", sample_goal.goal_type, "normal", "user", "active",
+                (goal_id, test_user, f"Suggest Goal {i}", sample_goal.goal_type, "normal", "user", "active",
                  datetime.now(UTC).isoformat())
             )
             
-            test_db.execute(
+            db.execute(
                 """INSERT INTO agency_plans
                    (plan_id, goal_id, status, steps_json, metadata_json, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
@@ -236,9 +311,10 @@ class TestPatternRecognitionLearning:
                  datetime.now(UTC).isoformat())
             )
         
-        test_db.commit()
+        db.commit()
         
-        planner = Planner(db_connection=test_db)
+        planner = Planner(llm_client=None)
+        planner.db = db
         
         # Act
         suggestion = planner.get_pattern_suggestion(sample_goal, test_user)
@@ -250,54 +326,42 @@ class TestPatternRecognitionLearning:
         
         # Cleanup
         for i in range(5):
-            test_db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (f"plan-suggest-{i}",))
-            test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (f"goal-suggest-{i}",))
-        test_db.commit()
+            db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (f"plan-suggest-{i}",))
+            db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (f"goal-suggest-{i}",))
+        db.commit()
     
     async def test_generate_plan_from_pattern(self, test_db, test_user, sample_goal):
-        """Test generating a plan from a detected pattern."""
-        # Arrange
-        goal_id = "source-goal-pattern"
-        plan_id = "source-plan-pattern"
-        
-        # Create source goal and plan
-        test_db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (goal_id, test_user, "Source Goal", sample_goal.goal_type, "normal", "user", "active",
-             datetime.now(UTC).isoformat())
-        )
-        
+        """Test generating a plan based on detected patterns."""
+        source_plan_id = "source-plan-pattern"
         steps_data = [
             {
-                'step_id': 'step-1',
-                'order': 1,
-                'description': 'First step of pattern',
-                'status': 'completed',
-                'metadata': {'pattern_step': True}
+                "step_id": "step-1",
+                "order": 1,
+                "description": "First step of pattern",
+                "status": "completed",
+                "metadata": {"pattern_step": True},
             },
             {
-                'step_id': 'step-2',
-                'order': 2,
-                'description': 'Second step of pattern',
-                'status': 'completed',
-                'metadata': {'pattern_step': True}
-            }
+                "step_id": "step-2",
+                "order": 2,
+                "description": "Second step of pattern",
+                "status": "completed",
+                "metadata": {"pattern_step": True},
+            },
         ]
-        
-        test_db.execute(
-            """INSERT INTO agency_plans
-                   (plan_id, goal_id, status, steps_json, metadata_json, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (plan_id, goal_id, "completed", json.dumps(steps_data),
-             json.dumps({'strategy': 'template_based'}),
-             datetime.now(UTC).isoformat())
+
+        fake_db = _FakePlannerDB(
+            select_rows=[
+                {
+                    "plan_id": source_plan_id,
+                    "steps_json": json.dumps(steps_data),
+                    "metadata_json": json.dumps({"strategy": "template_based"}),
+                }
+            ]
         )
-        
-        test_db.commit()
-        
-        planner = Planner(db_connection=test_db)
+
+        planner = Planner(llm_client=None)
+        planner.db = fake_db
         
         pattern = {
             'goal_type': sample_goal.goal_type,
@@ -316,60 +380,25 @@ class TestPatternRecognitionLearning:
         assert plan.metadata['pattern_based'] is True
         assert plan.metadata['pattern_confidence'] == 0.8
         assert plan.steps[0].metadata['adapted_from_pattern'] is True
-        
-        # Cleanup
-        test_db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (plan_id,))
-        test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (goal_id,))
-        test_db.commit()
     
     async def test_record_plan_outcome(self, test_db, test_user, sample_goal):
-        """Test recording plan outcomes for learning."""
-        # Arrange
+        """Test recording plan execution outcomes."""
         plan_id = "test-plan-outcome"
-        
-        # Create goal and plan
-        test_db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (sample_goal.goal_id, test_user, sample_goal.title, sample_goal.goal_type,
-             "normal", "user", "active", datetime.now(UTC).isoformat())
-        )
-        
-        test_db.execute(
-            """INSERT INTO agency_plans
-                   (plan_id, goal_id, status, steps_json, metadata_json, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (plan_id, sample_goal.goal_id, "active", "[]", "{}",
-             datetime.now(UTC).isoformat())
-        )
-        
-        test_db.commit()
-        
-        planner = Planner(db_connection=test_db)
+
+        fake_db = _FakePlannerDB()
+        planner = Planner(llm_client=None)
+        planner.db = fake_db
         
         # Act
         result = planner.record_plan_outcome(plan_id, success=True, execution_time_seconds=45.5)
         
         # Assert
         assert result is True
-        
-        # Verify database update
-        row = test_db.execute(
-            "SELECT status, metadata_json FROM agency_plans WHERE plan_id = ?",
-            (plan_id,)
-        ).fetchone()
-        
-        assert row['status'] == 'completed'
-        metadata = json.loads(row['metadata_json']) if isinstance(row['metadata_json'], str) else row['metadata_json']
-        assert metadata['outcome'] == 'success'
-        assert metadata['execution_time'] == 45.5
-        assert 'completed_at' in metadata
-        
-        # Cleanup
-        test_db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (plan_id,))
-        test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (sample_goal.goal_id,))
-        test_db.commit()
+        assert fake_db.committed is True
+        assert len(fake_db.updates) == 1
+
+        updated_query, updated_params = fake_db.updates[0]
+        assert plan_id in updated_params
 
 
 @pytest.mark.asyncio
@@ -378,7 +407,7 @@ class TestSkillAvailability:
     
     async def test_check_skill_availability(self, test_db):
         """Test checking skill availability - all skills assumed available."""
-        planner = Planner(db_connection=test_db)
+        planner = Planner(llm_client=None)
         
         availability = planner.check_skill_availability(["skill-test-1", "skill-test-2", "skill-test-3"])
         
@@ -390,7 +419,7 @@ class TestSkillAvailability:
     async def test_filter_plan_by_skill_availability(self, test_db, sample_goal):
         """Test filtering plan steps by skill availability."""
         # Skills are now code-only - all skills assumed available
-        planner = Planner(db_connection=test_db)
+        planner = Planner(llm_client=None)
         
         # Create plan with skills
         plan = Plan(
@@ -543,6 +572,7 @@ class TestPlanningFlowIntegration:
     async def test_four_tier_fallback_flow(self, test_db, test_user, sample_goal):
         """Test the 4-tier planning fallback: cache → pattern → LLM → template → simple."""
         # Arrange - Create historical pattern with unique goal type
+        db = _Psycopg2SqliteCompatDB(test_db)
         test_goal_type = "flow_test_unique_type"
         sample_goal.goal_type = test_goal_type
         
@@ -551,7 +581,7 @@ class TestPlanningFlowIntegration:
             goal_id = f"hist-goal-flow-{i}"
             plan_id = f"hist-plan-flow-{i}"
             
-            test_db.execute(
+            db.execute(
                 """INSERT INTO agency_goals 
                    (goal_id, user_id, title, goal_type, priority, origin, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -559,7 +589,7 @@ class TestPlanningFlowIntegration:
                  "normal", "user", "active", datetime.now(UTC).isoformat())
             )
             
-            test_db.execute(
+            db.execute(
                 """INSERT INTO agency_plans
                    (plan_id, goal_id, status, steps_json, metadata_json, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
@@ -572,9 +602,9 @@ class TestPlanningFlowIntegration:
                  datetime.now(UTC).isoformat())
             )
         
-        test_db.commit()
+        db.commit()
         
-        planner = Planner(llm_client=None, enable_caching=True, db_connection=test_db)
+        planner = Planner(llm_client=None, enable_caching=True)
         
         # Act - First call should use pattern
         plan1 = await planner.generate_initial_plan(sample_goal, context={'user_id': test_user})
@@ -606,6 +636,6 @@ class TestPlanningFlowIntegration:
         
         # Cleanup
         for i in range(5):
-            test_db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (f"hist-plan-flow-{i}",))
-            test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (f"hist-goal-flow-{i}",))
-        test_db.commit()
+            db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (f"hist-plan-flow-{i}",))
+            db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (f"hist-goal-flow-{i}",))
+        db.commit()

@@ -16,10 +16,15 @@ from aico.ai.agency.skills.knowledge.graph import UpdateKnowledgeGraphSkill
 @pytest.mark.asyncio
 class TestUpdateKnowledgeGraphSkill:
     """Test suite for UpdateKnowledgeGraphSkill."""
+
+    def _make_mock_storage(self):
+        storage = MagicMock()
+        storage.save_graph = AsyncMock(return_value=None)
+        return storage
     
     async def test_skill_properties(self, test_db):
         """Test skill has correct properties."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         assert skill.skill_id == "update_knowledge_graph"
         assert skill.name == "Update Knowledge Graph"
@@ -34,7 +39,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_with_entities_only(self, test_db, test_user):
         """Test updating knowledge graph with entities only."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         entities = [
             {"type": "person", "value": "Alice", "metadata": {"age": 30}},
@@ -55,7 +60,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_with_entities_and_relationships(self, test_db, test_user):
         """Test updating with both entities and relationships."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         entities = [
             {"type": "person", "value": "Bob", "metadata": {}},
@@ -81,7 +86,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_with_custom_source(self, test_db, test_user):
         """Test updating with custom source."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         entities = [{"type": "fact", "value": "Test fact", "metadata": {}}]
         
@@ -99,7 +104,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_with_string_entities(self, test_db, test_user):
         """Test updating with simple string entities."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         entities = ["Alice", "Bob", "Charlie"]
         
@@ -114,7 +119,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_without_entities(self, test_db, test_user):
         """Test updating without entities."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         result = await skill.execute(
             user_id=test_user,
@@ -128,7 +133,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_without_database(self, test_user):
         """Test updating without database fails."""
-        skill = UpdateKnowledgeGraphSkill(db=None)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -137,11 +142,11 @@ class TestUpdateKnowledgeGraphSkill:
         )
         
         assert result.success is False
-        assert "database" in result.error.lower()
+        assert "storage" in result.error.lower()
     
     async def test_update_result_structure(self, test_db, test_user):
         """Test that result has correct structure."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         entities = [{"type": "test", "value": "test"}]
         
@@ -171,7 +176,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_metadata(self, test_db, test_user):
         """Test that metadata is included in result."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         result = await skill.execute(
             user_id=test_user,
@@ -186,7 +191,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_with_empty_relationships(self, test_db, test_user):
         """Test updating with empty relationships list."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         result = await skill.execute(
             user_id=test_user,
@@ -202,7 +207,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_with_complex_metadata(self, test_db, test_user):
         """Test updating with complex entity metadata."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         entities = [
             {
@@ -227,7 +232,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_replaces_existing_entities(self, test_db, test_user):
         """Test that updating same entity replaces it."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         # First update
         entities1 = [{"type": "person", "value": "Alice", "metadata": {"age": 30}}]
@@ -251,7 +256,7 @@ class TestUpdateKnowledgeGraphSkill:
     
     async def test_update_with_relationship_metadata(self, test_db, test_user):
         """Test updating relationships with metadata."""
-        skill = UpdateKnowledgeGraphSkill(db=test_db)
+        skill = UpdateKnowledgeGraphSkill(kg_storage=self._make_mock_storage())
         
         relationships = [
             {

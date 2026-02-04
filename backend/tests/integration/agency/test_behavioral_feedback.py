@@ -30,35 +30,105 @@ class TestSkillExecutionTracking:
     def db(self, test_db):
         """Use test database fixture."""
         return test_db
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
     
     @pytest.fixture
-    def feedback_service(self, db):
+    def feedback_service(self, agency_service):
         """Create behavioral feedback service."""
-        return BehavioralFeedbackService(db)
+        return BehavioralFeedbackService(agency_service)
     
     @pytest.fixture
     def test_skill_id(self, db):
         """Create a test skill."""
         skill_id = "test-skill-1"
-        db.execute(
-            """INSERT OR IGNORE INTO ams_behavioral_skills 
-               (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base", 
-             '{"intent": ["test"], "time_of_day": "any"}',
-             "test_template",
-             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO ams_behavioral_skills 
+                   (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (skill_id) DO NOTHING""",
+                (
+                    skill_id,
+                    "Test Skill",
+                    "base",
+                    '{"intent": ["test"], "time_of_day": "any"}',
+                    "test_template",
+                    '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         yield skill_id
         # Cleanup after test
-        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = %s", (skill_id,))
         db.commit()
     
-    def test_record_skill_execution_success(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_record_skill_execution_success(self, feedback_service, test_user, test_skill_id, db):
         """Test recording a successful skill execution."""
-        execution_id = feedback_service.record_skill_execution(
+        execution_id = await feedback_service.record_skill_execution(
+            execution_id="",
             skill_id=test_skill_id,
             user_id=test_user,
             outcome=SkillOutcome.SUCCESS,
@@ -70,10 +140,12 @@ class TestSkillExecutionTracking:
         assert len(execution_id) > 0
         
         # Verify in database
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM agency_skill_executions WHERE execution_id = ?",
-            (execution_id,)
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM agency_skill_executions WHERE execution_id = %s",
+                (execution_id,),
+            )
+            row = cursor.fetchone()
         
         assert row is not None
         assert row["skill_id"] == test_skill_id
@@ -81,9 +153,11 @@ class TestSkillExecutionTracking:
         assert row["outcome"] == "success"
         assert row["execution_time_ms"] == 150
     
-    def test_record_skill_execution_failure(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_record_skill_execution_failure(self, feedback_service, test_user, test_skill_id, db):
         """Test recording a failed skill execution."""
-        execution_id = feedback_service.record_skill_execution(
+        execution_id = await feedback_service.record_skill_execution(
+            execution_id="",
             skill_id=test_skill_id,
             user_id=test_user,
             outcome=SkillOutcome.FAILURE,
@@ -92,64 +166,96 @@ class TestSkillExecutionTracking:
         )
         
         assert execution_id is not None
-        
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM agency_skill_executions WHERE execution_id = ?",
-            (execution_id,)
-        )
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM agency_skill_executions WHERE execution_id = %s",
+                (execution_id,),
+            )
+            row = cursor.fetchone()
         
         assert row["outcome"] == "failure"
         assert row["error_message"] == "Test error"
     
-    def test_record_skill_execution_with_goal(self, feedback_service, test_user, test_skill_id, db):
+    @pytest.mark.asyncio
+    async def test_record_skill_execution_with_goal(self, feedback_service, test_user, test_skill_id, db):
         """Test recording skill execution linked to a goal."""
         # Create test goal
         goal_id = "test-goal-exec-1"
-        db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO agency_goals 
+                   (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (goal_id) DO NOTHING""",
+                (
+                    goal_id,
+                    test_user,
+                    "user",
+                    "work",
+                    "Test goal",
+                    "Test",
+                    "normal",
+                    "active",
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         
-        execution_id = feedback_service.record_skill_execution(
+        execution_id = await feedback_service.record_skill_execution(
+            execution_id="",
             skill_id=test_skill_id,
             user_id=test_user,
             outcome=SkillOutcome.SUCCESS,
             goal_id=goal_id
         )
         
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM agency_skill_executions WHERE execution_id = ?",
-            (execution_id,)
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM agency_skill_executions WHERE execution_id = %s",
+                (execution_id,),
+            )
+            row = cursor.fetchone()
         
         assert row["goal_id"] == goal_id
     
-    def test_link_execution_to_goal(self, feedback_service, test_user, test_skill_id, db):
+    @pytest.mark.asyncio
+    async def test_link_execution_to_goal(self, feedback_service, test_user, test_skill_id, db):
         """Test linking an execution to a goal."""
         # Create goal
         goal_id = "test-goal-link-1"
-        db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO agency_goals 
+                   (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (goal_id) DO NOTHING""",
+                (
+                    goal_id,
+                    test_user,
+                    "user",
+                    "work",
+                    "Test goal",
+                    "Test",
+                    "normal",
+                    "active",
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         
         # Record execution
-        execution_id = feedback_service.record_skill_execution(
+        execution_id = await feedback_service.record_skill_execution(
+            execution_id="",
             skill_id=test_skill_id,
             user_id=test_user,
             outcome=SkillOutcome.SUCCESS
         )
         
         # Link to goal
-        feedback_service.link_execution_to_goal(
+        await feedback_service.link_execution_to_goal(
             goal_id=goal_id,
             skill_id=test_skill_id,
             execution_id=execution_id,
@@ -157,44 +263,61 @@ class TestSkillExecutionTracking:
         )
         
         # Verify link
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM agency_goal_skill_executions WHERE execution_id = ?",
-            (execution_id,)
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM agency_goal_skill_executions WHERE execution_id = %s",
+                (execution_id,),
+            )
+            row = cursor.fetchone()
         
         assert row is not None
         assert row["goal_id"] == goal_id
         assert row["execution_order"] == 1
     
-    def test_get_goal_executions(self, feedback_service, test_user, test_skill_id, db):
+    @pytest.mark.asyncio
+    async def test_get_goal_executions(self, feedback_service, test_user, test_skill_id, db):
         """Test retrieving all executions for a goal."""
         # Clean up first
         goal_id = "test-goal-get-exec-1"
-        db.execute("PRAGMA foreign_keys = OFF")
-        db.execute("DELETE FROM agency_goal_skill_executions WHERE goal_id = ?", (goal_id,))
-        db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (goal_id,))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM agency_goal_skill_executions WHERE goal_id = %s", (goal_id,))
+            cursor.execute("DELETE FROM agency_skill_executions WHERE goal_id = %s", (goal_id,))
+            cursor.execute("DELETE FROM agency_goals WHERE goal_id = %s", (goal_id,))
         db.commit()
-        db.execute("PRAGMA foreign_keys = ON")
         
         # Create goal
-        db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO agency_goals 
+                   (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (goal_id) DO NOTHING""",
+                (
+                    goal_id,
+                    test_user,
+                    "user",
+                    "work",
+                    "Test goal",
+                    "Test",
+                    "normal",
+                    "active",
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         
         # Record multiple executions
         exec_ids = []
         for i in range(3):
-            exec_id = feedback_service.record_skill_execution(
+            exec_id = await feedback_service.record_skill_execution(
+                execution_id="",
                 skill_id=test_skill_id,
                 user_id=test_user,
-                outcome=SkillOutcome.SUCCESS if i < 2 else SkillOutcome.FAILURE
+                goal_id=goal_id,
+                outcome=SkillOutcome.SUCCESS if i < 2 else SkillOutcome.FAILURE,
             )
-            feedback_service.link_execution_to_goal(
+            await feedback_service.link_execution_to_goal(
                 goal_id=goal_id,
                 skill_id=test_skill_id,
                 execution_id=exec_id,
@@ -203,12 +326,12 @@ class TestSkillExecutionTracking:
             exec_ids.append(exec_id)
         
         # Get executions
-        executions = feedback_service.get_goal_executions(goal_id)
+        executions = await feedback_service.get_goal_executions(goal_id)
         
         assert len(executions) == 3
-        assert executions[0].outcome == SkillOutcome.SUCCESS
-        assert executions[1].outcome == SkillOutcome.SUCCESS
-        assert executions[2].outcome == SkillOutcome.FAILURE
+        outcomes = [e.outcome for e in executions]
+        assert outcomes.count(SkillOutcome.SUCCESS) == 2
+        assert outcomes.count(SkillOutcome.FAILURE) == 1
 
 
 # ============================================================================
@@ -222,35 +345,64 @@ class TestBehavioralFeedback:
     def db(self, test_db):
         """Use test database fixture."""
         return test_db
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
     
     @pytest.fixture
-    def feedback_service(self, db):
+    def feedback_service(self, agency_service):
         """Create behavioral feedback service."""
-        return BehavioralFeedbackService(db)
+        return BehavioralFeedbackService(agency_service)
     
     @pytest.fixture
     def test_skill_id(self, db):
         """Create a test skill."""
         skill_id = "test-skill-feedback-1"
-        db.execute(
-            """INSERT OR IGNORE INTO ams_behavioral_skills 
-               (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base",
-             '{"intent": ["test"], "time_of_day": "any"}',
-             "test_template",
-             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO ams_behavioral_skills 
+                   (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (skill_id) DO NOTHING""",
+                (
+                    skill_id,
+                    "Test Skill",
+                    "base",
+                    '{"intent": ["test"], "time_of_day": "any"}',
+                    "test_template",
+                    '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         yield skill_id
         # Cleanup after test
-        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = %s", (skill_id,))
         db.commit()
     
-    def test_record_behavioral_feedback_with_outcome(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_record_behavioral_feedback_with_outcome(self, feedback_service, test_user, test_skill_id, db):
         """Test recording behavioral feedback with outcome."""
-        feedback_id = feedback_service.record_behavioral_feedback(
+        feedback_id = await feedback_service.record_behavioral_feedback(
             user_id=test_user,
             message_id="msg-1",
             skill_id=test_skill_id,
@@ -264,10 +416,12 @@ class TestBehavioralFeedback:
         assert feedback_id is not None
         
         # Verify in database
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = ?",
-            (feedback_id,)
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = %s",
+                (feedback_id,),
+            )
+            row = cursor.fetchone()
         
         assert row is not None
         assert row["reward"] == 1
@@ -275,9 +429,10 @@ class TestBehavioralFeedback:
         assert row["execution_time_ms"] == 200
         assert row["user_satisfaction"] == 0.9
     
-    def test_record_behavioral_feedback_negative(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_record_behavioral_feedback_negative(self, feedback_service, test_user, test_skill_id, db):
         """Test recording negative behavioral feedback."""
-        feedback_id = feedback_service.record_behavioral_feedback(
+        feedback_id = await feedback_service.record_behavioral_feedback(
             user_id=test_user,
             message_id="msg-2",
             skill_id=test_skill_id,
@@ -286,17 +441,20 @@ class TestBehavioralFeedback:
             reason="Did not work",
             user_satisfaction=0.2
         )
-        
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = ?",
-            (feedback_id,)
-        )
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = %s",
+                (feedback_id,),
+            )
+            row = cursor.fetchone()
         
         assert row["reward"] == -1
         assert row["outcome"] == "failure"
         assert row["user_satisfaction"] == 0.2
     
-    def test_record_behavioral_feedback_with_context(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_record_behavioral_feedback_with_context(self, feedback_service, test_user, test_skill_id, db):
         """Test recording feedback with execution context."""
         context = {
             "input": "test input",
@@ -304,7 +462,7 @@ class TestBehavioralFeedback:
             "environment": "test"
         }
         
-        feedback_id = feedback_service.record_behavioral_feedback(
+        feedback_id = await feedback_service.record_behavioral_feedback(
             user_id=test_user,
             message_id="msg-3",
             skill_id=test_skill_id,
@@ -312,19 +470,22 @@ class TestBehavioralFeedback:
             outcome=SkillOutcome.SUCCESS,
             context=context
         )
-        
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = ?",
-            (feedback_id,)
-        )
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = %s",
+                (feedback_id,),
+            )
+            row = cursor.fetchone()
         
         stored_context = json.loads(row["context_json"])
         assert stored_context == context
     
-    def test_record_behavioral_feedback_invalid_reward(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_record_behavioral_feedback_invalid_reward(self, feedback_service, test_user, test_skill_id):
         """Test that invalid reward values are rejected."""
         with pytest.raises(ValueError, match="Reward must be -1, 0, or 1"):
-            feedback_service.record_behavioral_feedback(
+            await feedback_service.record_behavioral_feedback(
                 user_id=test_user,
                 message_id="msg-4",
                 skill_id=test_skill_id,
@@ -344,47 +505,78 @@ class TestOutcomeDetection:
     def db(self, test_db):
         """Use test database fixture."""
         return test_db
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
     
     @pytest.fixture
-    def feedback_service(self, db):
+    def feedback_service(self, agency_service):
         """Create behavioral feedback service."""
-        return BehavioralFeedbackService(db)
+        return BehavioralFeedbackService(agency_service)
     
     @pytest.fixture
     def test_skill_id(self, db):
         """Create a test skill."""
         skill_id = "test-skill-outcome-1"
-        db.execute(
-            """INSERT OR IGNORE INTO ams_behavioral_skills 
-               (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base",
-             '{"intent": ["test"], "time_of_day": "any"}',
-             "test_template",
-             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO ams_behavioral_skills 
+                   (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (skill_id) DO NOTHING""",
+                (
+                    skill_id,
+                    "Test Skill",
+                    "base",
+                    '{"intent": ["test"], "time_of_day": "any"}',
+                    "test_template",
+                    '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         yield skill_id
         # Cleanup after test
-        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = %s", (skill_id,))
         db.commit()
     
-    def test_detect_outcome_from_execution(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_detect_outcome_from_execution(self, feedback_service, test_user, test_skill_id):
         """Test detecting outcome from execution record."""
-        execution_id = feedback_service.record_skill_execution(
+        execution_id = await feedback_service.record_skill_execution(
+            execution_id="",
             skill_id=test_skill_id,
             user_id=test_user,
-            outcome=SkillOutcome.SUCCESS
+            outcome=SkillOutcome.SUCCESS,
         )
-        
-        detected_outcome = feedback_service.detect_outcome_from_execution(execution_id)
+
+        detected_outcome = await feedback_service.detect_outcome_from_execution(execution_id)
         
         assert detected_outcome == SkillOutcome.SUCCESS
     
-    def test_detect_outcome_nonexistent_execution(self, feedback_service):
+    @pytest.mark.asyncio
+    async def test_detect_outcome_nonexistent_execution(self, feedback_service):
         """Test detecting outcome for nonexistent execution."""
-        outcome = feedback_service.detect_outcome_from_execution("nonexistent-id")
+        outcome = await feedback_service.detect_outcome_from_execution("nonexistent-id")
         
         assert outcome is None
     
@@ -406,10 +598,11 @@ class TestOutcomeDetection:
         
         assert outcome == SkillOutcome.PARTIAL
     
-    def test_update_feedback_with_outcome(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_update_feedback_with_outcome(self, feedback_service, test_user, test_skill_id, db):
         """Test updating existing feedback with detected outcome."""
         # Record feedback without outcome
-        feedback_id = feedback_service.record_behavioral_feedback(
+        feedback_id = await feedback_service.record_behavioral_feedback(
             user_id=test_user,
             message_id="msg-5",
             skill_id=test_skill_id,
@@ -417,16 +610,18 @@ class TestOutcomeDetection:
         )
         
         # Update with outcome
-        feedback_service.update_feedback_with_outcome(
+        await feedback_service.update_feedback_with_outcome(
             feedback_id=feedback_id,
             outcome=SkillOutcome.SUCCESS
         )
         
         # Verify update
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = ?",
-            (feedback_id,)
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = %s",
+                (feedback_id,),
+            )
+            row = cursor.fetchone()
         
         assert row["outcome"] == "success"
 
@@ -437,126 +632,170 @@ class TestOutcomeDetection:
 
 class TestUserFeedbackCollection:
     """Test user feedback request and response system."""
-    
+
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
         return test_db
-    
+
     @pytest.fixture
-    def feedback_service(self, db):
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
+
+    @pytest.fixture
+    def feedback_service(self, agency_service):
         """Create behavioral feedback service."""
-        return BehavioralFeedbackService(db)
-    
-    def test_create_feedback_request(self, feedback_service, test_user):
+        return BehavioralFeedbackService(agency_service)
+
+    @pytest.mark.asyncio
+    async def test_create_feedback_request(self, feedback_service, test_user, db):
         """Test creating a user feedback request."""
-        request_id = feedback_service.create_feedback_request(
+        request_id = await feedback_service.create_feedback_request(
             user_id=test_user,
             feedback_type=FeedbackType.SATISFACTION,
-            question="How satisfied are you with this result?"
+            question="How satisfied are you with this result?",
         )
-        
+
         assert request_id is not None
-        
-        # Verify in database
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM user_feedback_requests WHERE request_id = ?",
-            (request_id,)
-        )
-        
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM user_feedback_requests WHERE request_id = %s",
+                (request_id,),
+            )
+            row = cursor.fetchone()
+
         assert row is not None
         assert row["user_id"] == test_user
         assert row["feedback_type"] == "satisfaction"
         assert row["responded_at"] is None
     
-    def test_create_feedback_request_with_goal(self, feedback_service, test_user, db):
+    @pytest.mark.asyncio
+    async def test_create_feedback_request_with_goal(self, feedback_service, test_user, db):
         """Test creating feedback request linked to a goal."""
         # Create goal
         goal_id = "test-goal-feedback-1"
-        db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO agency_goals 
+                   (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (goal_id) DO NOTHING""",
+                (
+                    goal_id,
+                    test_user,
+                    "user",
+                    "work",
+                    "Test goal",
+                    "Test",
+                    "normal",
+                    "active",
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         
-        request_id = feedback_service.create_feedback_request(
+        request_id = await feedback_service.create_feedback_request(
             user_id=test_user,
             feedback_type=FeedbackType.QUALITY,
             question="Was this goal helpful?",
             goal_id=goal_id
         )
-        
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM user_feedback_requests WHERE request_id = ?",
-            (request_id,)
-        )
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM user_feedback_requests WHERE request_id = %s",
+                (request_id,),
+            )
+            row = cursor.fetchone()
         
         assert row["goal_id"] == goal_id
     
-    def test_record_feedback_response_text(self, feedback_service, test_user):
+    @pytest.mark.asyncio
+    async def test_record_feedback_response_text(self, feedback_service, test_user, db):
         """Test recording text response to feedback request."""
-        request_id = feedback_service.create_feedback_request(
+        request_id = await feedback_service.create_feedback_request(
             user_id=test_user,
             feedback_type=FeedbackType.HELPFULNESS,
             question="What could be improved?"
         )
         
-        feedback_service.record_feedback_response(
+        await feedback_service.record_feedback_response(
             request_id=request_id,
             response="It was very helpful, thanks!"
         )
-        
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM user_feedback_requests WHERE request_id = ?",
-            (request_id,)
-        )
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM user_feedback_requests WHERE request_id = %s",
+                (request_id,),
+            )
+            row = cursor.fetchone()
         
         assert row["response"] == "It was very helpful, thanks!"
         assert row["responded_at"] is not None
     
-    def test_record_feedback_response_rating(self, feedback_service, test_user):
+    @pytest.mark.asyncio
+    async def test_record_feedback_response_rating(self, feedback_service, test_user, db):
         """Test recording numeric rating response."""
-        request_id = feedback_service.create_feedback_request(
+        request_id = await feedback_service.create_feedback_request(
             user_id=test_user,
             feedback_type=FeedbackType.SATISFACTION,
             question="Rate your satisfaction (1-5)"
         )
         
-        feedback_service.record_feedback_response(
+        await feedback_service.record_feedback_response(
             request_id=request_id,
             rating=4.5
         )
-        
-        row = feedback_service.db.fetch_one(
-            "SELECT * FROM user_feedback_requests WHERE request_id = ?",
-            (request_id,)
-        )
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM user_feedback_requests WHERE request_id = %s",
+                (request_id,),
+            )
+            row = cursor.fetchone()
         
         assert row["rating"] == 4.5
     
-    def test_get_pending_feedback_requests(self, feedback_service, test_user):
+    @pytest.mark.asyncio
+    async def test_get_pending_feedback_requests(self, feedback_service, test_user):
         """Test retrieving pending feedback requests."""
         # Create multiple requests
         for i in range(3):
-            feedback_service.create_feedback_request(
+            await feedback_service.create_feedback_request(
                 user_id=test_user,
                 feedback_type=FeedbackType.SATISFACTION,
                 question=f"Question {i}"
             )
         
         # Respond to one
-        requests = feedback_service.get_pending_feedback_requests(test_user)
+        requests = await feedback_service.get_pending_feedback_requests(test_user)
         if requests:
-            feedback_service.record_feedback_response(
+            await feedback_service.record_feedback_response(
                 request_id=requests[0].request_id,
                 rating=5.0
             )
         
         # Get pending (should be 2 now)
-        pending = feedback_service.get_pending_feedback_requests(test_user)
+        pending = await feedback_service.get_pending_feedback_requests(test_user)
         
         assert len(pending) == 2
         for req in pending:
@@ -574,55 +813,87 @@ class TestAnalytics:
     def db(self, test_db):
         """Use test database fixture."""
         return test_db
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
     
     @pytest.fixture
-    def feedback_service(self, db):
+    def feedback_service(self, agency_service):
         """Create behavioral feedback service."""
-        return BehavioralFeedbackService(db)
+        return BehavioralFeedbackService(agency_service)
     
     @pytest.fixture
     def test_skill_id(self, db):
         """Create a test skill."""
         skill_id = "test-skill-analytics-1"
-        db.execute(
-            """INSERT OR IGNORE INTO ams_behavioral_skills 
-               (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base",
-             '{"intent": ["test"], "time_of_day": "any"}',
-             "test_template",
-             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO ams_behavioral_skills 
+                   (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (skill_id) DO NOTHING""",
+                (
+                    skill_id,
+                    "Test Skill",
+                    "base",
+                    '{"intent": ["test"], "time_of_day": "any"}',
+                    "test_template",
+                    '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         yield skill_id
         # Cleanup after test
-        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = %s", (skill_id,))
         db.commit()
     
-    def test_get_skill_success_rate(self, feedback_service, test_user, test_skill_id, db):
+    @pytest.mark.asyncio
+    async def test_get_skill_success_rate(self, feedback_service, test_user, test_skill_id, db):
         """Test calculating skill success rate."""
-        # Clean up any existing executions for this skill
-        db.execute("DELETE FROM agency_skill_executions WHERE skill_id = ?", (test_skill_id,))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM ams_behavioral_feedback WHERE skill_id = %s", (test_skill_id,))
         db.commit()
         
-        # Record multiple executions
+        # Record multiple feedback entries
         for i in range(10):
             outcome = SkillOutcome.SUCCESS if i < 7 else SkillOutcome.FAILURE
-            feedback_service.record_skill_execution(
-                skill_id=test_skill_id,
+            await feedback_service.record_behavioral_feedback(
                 user_id=test_user,
-                outcome=outcome
+                message_id=f"msg-analytics-{i}",
+                skill_id=test_skill_id,
+                reward=1 if outcome == SkillOutcome.SUCCESS else -1,
+                outcome=outcome,
             )
-        
-        # Verify executions were recorded
-        count = db.fetch_one(
-            "SELECT COUNT(*) as count FROM agency_skill_executions WHERE skill_id = ? AND user_id = ?",
-            (test_skill_id, test_user)
-        )
-        assert count["count"] == 10, f"Expected 10 executions, got {count['count']}"
-        
-        success_rate = feedback_service.get_skill_success_rate(
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) AS count FROM ams_behavioral_feedback WHERE skill_id = %s AND user_id = %s",
+                (test_skill_id, test_user),
+            )
+            count_row = cursor.fetchone()
+        assert count_row["count"] == 10, f"Expected 10 feedback rows, got {count_row['count']}"
+
+        success_rate = await feedback_service.get_skill_success_rate(
             skill_id=test_skill_id,
             user_id=test_user,
             days=30
@@ -630,34 +901,36 @@ class TestAnalytics:
         
         assert success_rate == pytest.approx(0.7, abs=0.01)
     
-    def test_get_skill_success_rate_no_data(self, feedback_service, db):
+    @pytest.mark.asyncio
+    async def test_get_skill_success_rate_no_data(self, feedback_service, db):
         """Test success rate with no data returns neutral."""
-        # Clean up any leftover data for this skill
-        db.execute("DELETE FROM agency_skill_executions WHERE skill_id = ?", ("nonexistent-skill",))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM ams_behavioral_feedback WHERE skill_id = %s", ("nonexistent-skill",))
         db.commit()
         
-        success_rate = feedback_service.get_skill_success_rate(
+        success_rate = await feedback_service.get_skill_success_rate(
             skill_id="nonexistent-skill",
             days=30
         )
         
         assert success_rate == 0.5
     
-    def test_get_user_satisfaction_trend(self, feedback_service, test_user):
+    @pytest.mark.asyncio
+    async def test_get_user_satisfaction_trend(self, feedback_service, test_user):
         """Test getting user satisfaction trend over time."""
         # Create feedback requests with ratings
         for i in range(5):
-            request_id = feedback_service.create_feedback_request(
+            request_id = await feedback_service.create_feedback_request(
                 user_id=test_user,
                 feedback_type=FeedbackType.SATISFACTION,
                 question="Rate satisfaction"
             )
-            feedback_service.record_feedback_response(
+            await feedback_service.record_feedback_response(
                 request_id=request_id,
                 rating=float(i + 1)  # Ratings 1-5
             )
         
-        trend = feedback_service.get_user_satisfaction_trend(
+        trend = await feedback_service.get_user_satisfaction_trend(
             user_id=test_user,
             days=30
         )
@@ -679,55 +952,96 @@ class TestBehavioralFeedbackIntegration:
     def db(self, test_db):
         """Use test database fixture."""
         return test_db
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
     
     @pytest.fixture
-    def feedback_service(self, db):
+    def feedback_service(self, agency_service):
         """Create behavioral feedback service."""
-        return BehavioralFeedbackService(db)
+        return BehavioralFeedbackService(agency_service)
     
     @pytest.fixture
     def test_skill_id(self, db):
         """Create a test skill."""
         skill_id = "test-skill-integration-1"
-        db.execute(
-            """INSERT OR IGNORE INTO ams_behavioral_skills 
-               (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (skill_id, "Test Skill", "base",
-             '{"intent": ["test"], "time_of_day": "any"}',
-             "test_template",
-             '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO ams_behavioral_skills 
+                   (skill_id, skill_name, skill_type, trigger_context, procedure_template, dimension_vector, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (skill_id) DO NOTHING""",
+                (
+                    skill_id,
+                    "Test Skill",
+                    "base",
+                    '{"intent": ["test"], "time_of_day": "any"}',
+                    "test_template",
+                    '[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]',
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         yield skill_id
         # Cleanup after test
-        db.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = ?", (skill_id,))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM ams_behavioral_skills WHERE skill_id = %s", (skill_id,))
         db.commit()
     
-    def test_complete_feedback_loop(self, feedback_service, test_user, test_skill_id, db):
+    @pytest.mark.asyncio
+    async def test_complete_feedback_loop(self, feedback_service, test_user, test_skill_id, db):
         """Test complete feedback loop from execution to user feedback."""
         # Clean up first
         goal_id = "test-goal-complete-1"
-        db.execute("PRAGMA foreign_keys = OFF")
-        db.execute("DELETE FROM agency_goal_skill_executions WHERE goal_id = ?", (goal_id,))
-        db.execute("DELETE FROM agency_skill_executions WHERE skill_id = ?", (test_skill_id,))
-        db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (goal_id,))
+        with db.cursor() as cursor:
+            cursor.execute("DELETE FROM agency_goal_skill_executions WHERE goal_id = %s", (goal_id,))
+            cursor.execute("DELETE FROM agency_skill_executions WHERE goal_id = %s", (goal_id,))
+            cursor.execute("DELETE FROM agency_goals WHERE goal_id = %s", (goal_id,))
         db.commit()
-        db.execute("PRAGMA foreign_keys = ON")
         
         # 1. Create goal
-        db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO agency_goals 
+                   (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (goal_id) DO NOTHING""",
+                (
+                    goal_id,
+                    test_user,
+                    "user",
+                    "work",
+                    "Test goal",
+                    "Test",
+                    "normal",
+                    "active",
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
         db.commit()
         
         # 2. Record skill execution
-        execution_id = feedback_service.record_skill_execution(
+        execution_id = await feedback_service.record_skill_execution(
+            execution_id="",
             skill_id=test_skill_id,
             user_id=test_user,
             outcome=SkillOutcome.SUCCESS,
@@ -736,14 +1050,14 @@ class TestBehavioralFeedbackIntegration:
         )
         
         # 3. Link to goal
-        feedback_service.link_execution_to_goal(
+        await feedback_service.link_execution_to_goal(
             goal_id=goal_id,
             skill_id=test_skill_id,
             execution_id=execution_id
         )
         
         # 4. Record behavioral feedback
-        feedback_id = feedback_service.record_behavioral_feedback(
+        feedback_id = await feedback_service.record_behavioral_feedback(
             user_id=test_user,
             message_id="msg-complete-1",
             skill_id=test_skill_id,
@@ -753,7 +1067,7 @@ class TestBehavioralFeedbackIntegration:
         )
         
         # 5. Create user feedback request
-        request_id = feedback_service.create_feedback_request(
+        request_id = await feedback_service.create_feedback_request(
             user_id=test_user,
             feedback_type=FeedbackType.SATISFACTION,
             question="How satisfied are you?",
@@ -763,36 +1077,40 @@ class TestBehavioralFeedbackIntegration:
         )
         
         # 6. User responds
-        feedback_service.record_feedback_response(
+        await feedback_service.record_feedback_response(
             request_id=request_id,
             rating=4.5,
             response="Very satisfied!"
         )
         
         # Verify complete loop
-        executions = feedback_service.get_goal_executions(goal_id)
+        executions = await feedback_service.get_goal_executions(goal_id)
         assert len(executions) == 1
         assert executions[0].outcome == SkillOutcome.SUCCESS
-        
-        feedback_row = feedback_service.db.fetch_one(
-            "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = ?",
-            (feedback_id,)
-        )
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM ams_behavioral_feedback WHERE feedback_id = %s",
+                (feedback_id,),
+            )
+            feedback_row = cursor.fetchone()
+            cursor.execute(
+                "SELECT * FROM user_feedback_requests WHERE request_id = %s",
+                (request_id,),
+            )
+            request_row = cursor.fetchone()
+
         assert feedback_row["outcome"] == "success"
-        
-        request_row = feedback_service.db.fetch_one(
-            "SELECT * FROM user_feedback_requests WHERE request_id = ?",
-            (request_id,)
-        )
         assert request_row["rating"] == 4.5
         assert request_row["response"] == "Very satisfied!"
     
-    def test_reflection_engine_compatibility(self, feedback_service, test_user, test_skill_id):
+    @pytest.mark.asyncio
+    async def test_reflection_engine_compatibility(self, feedback_service, test_user, test_skill_id, db):
         """Test that schema supports reflection engine queries."""
         # Record feedback with outcomes
         for i in range(5):
             outcome = SkillOutcome.SUCCESS if i < 3 else SkillOutcome.FAILURE
-            feedback_service.record_behavioral_feedback(
+            await feedback_service.record_behavioral_feedback(
                 user_id=test_user,
                 message_id=f"msg-reflect-{i}",
                 skill_id=test_skill_id,
@@ -801,13 +1119,15 @@ class TestBehavioralFeedbackIntegration:
             )
         
         # Query like reflection engine does
-        rows = feedback_service.db.fetch_all(
-            """SELECT skill_id, outcome, COUNT(*) as count
-               FROM ams_behavioral_feedback
-               WHERE user_id = ? AND outcome IS NOT NULL
-               GROUP BY skill_id, outcome""",
-            (test_user,)
-        )
+        with db.cursor() as cursor:
+            cursor.execute(
+                """SELECT skill_id, outcome, COUNT(*) as count
+                   FROM ams_behavioral_feedback
+                   WHERE user_id = %s AND outcome IS NOT NULL
+                   GROUP BY skill_id, outcome""",
+                (test_user,),
+            )
+            rows = cursor.fetchall()
         
         assert len(rows) > 0
         # Should have both success and failure outcomes

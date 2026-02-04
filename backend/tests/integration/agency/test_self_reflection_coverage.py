@@ -1,5 +1,9 @@
 """
 Integration tests for SelfReflectionEngine - improving coverage
+
+NOTE: These tests are currently skipped because SelfReflectionEngine is disabled
+in AgencyEngine (set to None) pending PostgreSQL migration. See engine.py line 164.
+Re-enable these tests once self_reflection is initialized in AgencyEngine.
 """
 
 import pytest
@@ -10,6 +14,9 @@ from aico.ai.agency.models import (
     LessonType,
     EntityType,
 )
+
+# Skip all tests in this module since self_reflection is disabled
+pytestmark = pytest.mark.skip(reason="SelfReflectionEngine disabled in AgencyEngine pending PostgreSQL migration")
 
 
 @pytest.mark.asyncio

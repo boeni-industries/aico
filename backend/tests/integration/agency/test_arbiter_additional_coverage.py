@@ -592,7 +592,19 @@ class TestAdaptiveLearning:
     @pytest.mark.asyncio
     async def test_record_goal_outcome_disabled(self, test_config, test_db, test_user):
         """Test recording outcome when adaptive is disabled."""
-        arbiter = GoalArbiter(test_db, config=test_config, enable_adaptive=False)
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            agency_service = AgencyService(uow)
+            arbiter = GoalArbiter(
+                agency_service,
+                config=test_config,
+                enable_adaptive=False,
+                session_factory=session_factory,
+            )
         
         # Should not raise error, just return early
         await arbiter.record_goal_outcome(
@@ -604,104 +616,166 @@ class TestAdaptiveLearning:
     @pytest.mark.asyncio
     async def test_record_goal_outcome_completed(self, test_config, test_db, test_user):
         """Test recording completed outcome."""
-        arbiter = GoalArbiter(test_db, config=test_config, enable_adaptive=True)
-        
-        # Create test goal
-        test_db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("outcome-test-1", test_user, "user", "work", "Test", "Test", "normal", "active",
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
-        test_db.commit()
-        
-        await arbiter.record_goal_outcome(
-            goal_id="outcome-test-1",
-            outcome="completed",
-            success=True,
-            user_satisfaction=0.9,
-            metadata={"user_id": test_user}
-        )
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            agency_service = AgencyService(uow)
+            arbiter = GoalArbiter(
+                agency_service,
+                config=test_config,
+                enable_adaptive=True,
+                session_factory=session_factory,
+            )
+
+            # Create test goal
+            goal = Goal(
+                goal_id="outcome-test-1",
+                user_id=test_user,
+                origin=GoalOrigin.USER,
+                goal_type="work",
+                title="Test",
+                description="Test",
+                priority=GoalPriority.NORMAL,
+                status=GoalStatus.ACTIVE,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            await agency_service.create_goal(goal)
+
+            await arbiter.record_goal_outcome(
+                goal_id="outcome-test-1",
+                outcome="completed",
+                success=True,
+                user_satisfaction=0.9,
+                metadata={"user_id": test_user},
+            )
         
         # Verify outcome was recorded
-        outcomes = test_db.fetch_all(
-            "SELECT * FROM agency_goal_outcomes WHERE goal_id = ?",
-            ("outcome-test-1",)
-        )
+        async with UnitOfWork(session_factory) as verify_uow:
+            outcomes = await verify_uow.agency_goal_outcomes.get_goal_outcomes("outcome-test-1")
         
         assert len(outcomes) >= 1
-        assert outcomes[0]["outcome"] == "completed"
+        first = outcomes[0]
+        assert getattr(first, "outcome", None) == "completed" or first.get("outcome") == "completed"
     
     @pytest.mark.asyncio
     async def test_record_goal_outcome_abandoned(self, test_config, test_db, test_user):
         """Test recording abandoned outcome."""
-        arbiter = GoalArbiter(test_db, config=test_config, enable_adaptive=True)
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            agency_service = AgencyService(uow)
+            arbiter = GoalArbiter(
+                agency_service,
+                config=test_config,
+                enable_adaptive=True,
+                session_factory=session_factory,
+            )
+
+            goal = Goal(
+                goal_id="outcome-test-2",
+                user_id=test_user,
+                origin=GoalOrigin.USER,
+                goal_type="work",
+                title="Test",
+                description="Test",
+                priority=GoalPriority.NORMAL,
+                status=GoalStatus.ACTIVE,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            await agency_service.create_goal(goal)
+
+            await arbiter.record_goal_outcome(
+                goal_id="outcome-test-2",
+                outcome="abandoned",
+                success=False,
+                metadata={"user_id": test_user},
+            )
         
-        test_db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("outcome-test-2", test_user, "user", "work", "Test", "Test", "normal", "active",
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
-        test_db.commit()
-        
-        await arbiter.record_goal_outcome(
-            goal_id="outcome-test-2",
-            outcome="abandoned",
-            success=False,
-            metadata={"user_id": test_user}
-        )
-        
-        outcomes = test_db.fetch_all(
-            "SELECT * FROM agency_goal_outcomes WHERE goal_id = ?",
-            ("outcome-test-2",)
-        )
+        async with UnitOfWork(session_factory) as verify_uow:
+            outcomes = await verify_uow.agency_goal_outcomes.get_goal_outcomes("outcome-test-2")
         
         assert len(outcomes) >= 1
-        assert outcomes[0]["outcome"] == "abandoned"
-        assert outcomes[0]["reward"] < 0.5  # Low reward for abandoned
+        first = outcomes[0]
+        outcome_val = getattr(first, "outcome", None) if not isinstance(first, dict) else first.get("outcome")
+        reward_val = getattr(first, "reward", None) if not isinstance(first, dict) else first.get("reward")
+        assert outcome_val == "abandoned"
+        assert float(reward_val) < 0.5  # Low reward for abandoned
     
     @pytest.mark.asyncio
     async def test_record_goal_outcome_with_arm_id(self, test_config, test_db, test_user):
         """Test recording outcome with arm_id updates adaptive engine."""
-        arbiter = GoalArbiter(test_db, config=test_config, enable_adaptive=True)
-        
-        test_db.execute(
-            """INSERT INTO agency_goals 
-               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("outcome-test-3", test_user, "user", "work", "Test", "Test", "normal", "active",
-             datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
-        )
-        test_db.commit()
-        
-        # Ensure arm exists
-        if "balanced" in arbiter.adaptive_engine.arms:
-            arbiter.adaptive_engine._save_arm(arbiter.adaptive_engine.arms["balanced"])
-        
-        await arbiter.record_goal_outcome(
-            goal_id="outcome-test-3",
-            outcome="completed",
-            success=True,
-            metadata={"user_id": test_user, "selected_arm_id": "balanced"}
-        )
-        
-        # Verify arm was updated
-        arm = arbiter.adaptive_engine.arms.get("balanced")
-        if arm:
-            assert arm.pulls > 0
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            agency_service = AgencyService(uow)
+            arbiter = GoalArbiter(
+                agency_service,
+                config=test_config,
+                enable_adaptive=True,
+                session_factory=session_factory,
+            )
+
+            goal = Goal(
+                goal_id="outcome-test-3",
+                user_id=test_user,
+                origin=GoalOrigin.USER,
+                goal_type="work",
+                title="Test",
+                description="Test",
+                priority=GoalPriority.NORMAL,
+                status=GoalStatus.ACTIVE,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            await agency_service.create_goal(goal)
+
+            await arbiter.record_goal_outcome(
+                goal_id="outcome-test-3",
+                outcome="completed",
+                success=True,
+                metadata={"user_id": test_user, "selected_arm_id": "balanced"},
+            )
+
+        async with UnitOfWork(session_factory) as verify_uow:
+            outcomes = await verify_uow.agency_goal_outcomes.get_goal_outcomes("outcome-test-3")
+        assert len(outcomes) >= 1
+
+        first = outcomes[0]
+        arm_id = getattr(first, "arm_id", None) if not isinstance(first, dict) else first.get("arm_id")
+        assert arm_id == "balanced"
     
     @pytest.mark.asyncio
     async def test_record_goal_outcome_error_handling(self, test_config, test_db, test_user):
         """Test outcome recording handles errors gracefully."""
-        arbiter = GoalArbiter(test_db, config=test_config, enable_adaptive=True)
-        
-        # Try to record outcome for nonexistent goal - should not crash
-        await arbiter.record_goal_outcome(
-            goal_id="nonexistent-goal",
-            outcome="completed",
-            success=True,
-            metadata={"user_id": test_user}
-        )
+        from aico.services.agency_service import AgencyService
+        from aico.data.uow import UnitOfWork
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            agency_service = AgencyService(uow)
+            arbiter = GoalArbiter(
+                agency_service,
+                config=test_config,
+                enable_adaptive=True,
+                session_factory=session_factory,
+            )
+
+            # Try to record outcome for nonexistent goal - should not crash
+            await arbiter.record_goal_outcome(
+                goal_id="nonexistent-goal",
+                outcome="completed",
+                success=True,
+                metadata={"user_id": test_user},
+            )

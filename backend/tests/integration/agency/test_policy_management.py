@@ -19,6 +19,35 @@ from aico.ai.agency.policy_manager import (
 )
 
 
+class _DB:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query, params=None):
+        q = query.replace("?", "%s")
+        cur = self._conn.cursor()
+        cur.execute(q, params or ())
+        return cur
+
+    def fetch_one(self, query, params=None):
+        cur = self.execute(query, params)
+        row = cur.fetchone()
+        cur.close()
+        return row
+
+    def fetch_all(self, query, params=None):
+        cur = self.execute(query, params)
+        rows = cur.fetchall()
+        cur.close()
+        return rows
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+
 # ============================================================================
 # HELPERS
 # ============================================================================
@@ -38,7 +67,7 @@ class TestPolicyManager:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def policy_manager(self, db):
@@ -201,7 +230,7 @@ class TestConsentManager:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def consent_manager(self, db):
@@ -340,7 +369,7 @@ class TestEnhancedEthicsGate:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def policy_manager(self, db):
@@ -479,7 +508,6 @@ class TestEnhancedEthicsGate:
         assert audit_rows[0]["check_level"] == 2
         assert audit_rows[0]["processing_time_ms"] is not None
 
-
 # ============================================================================
 # INTEGRATION TESTS
 # ============================================================================
@@ -490,7 +518,7 @@ class TestPolicyEthicsIntegration:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def policy_manager(self, db):

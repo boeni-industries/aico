@@ -16,11 +16,31 @@ from aico.ai.personality import PersonalityService
 @pytest.mark.asyncio
 class TestPhase2ContextIntegration:
     """Test Phase 2 world model and personality integration."""
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
     
-    async def test_create_goal_without_phase2_services(self, test_config, test_db, test_user):
+    async def test_create_goal_without_phase2_services(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test that goal creation works without Phase 2 services (backward compatibility)."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act - Create goal without Phase 2 services
         goal, plan = await engine.create_goal_with_optional_plan(
@@ -37,10 +57,10 @@ class TestPhase2ContextIntegration:
         assert plan is not None
         assert len(plan.steps) > 0
     
-    async def test_create_goal_with_world_context_no_service(self, test_config, test_db, test_user):
+    async def test_create_goal_with_world_context_no_service(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test create_goal_with_world_context falls back gracefully without service."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act - Call Phase 2 method without world model service
         goal, plan = await engine.create_goal_with_world_context(
@@ -57,10 +77,10 @@ class TestPhase2ContextIntegration:
         # Metadata should not have world_context since service unavailable
         assert 'world_context' not in (goal.metadata or {})
     
-    async def test_create_goal_with_full_context_no_services(self, test_config, test_db, test_user):
+    async def test_create_goal_with_full_context_no_services(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test create_goal_with_full_context falls back gracefully without services."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act - Call Phase 2 full context method without services
         goal, plan = await engine.create_goal_with_full_context(
@@ -125,14 +145,15 @@ class TestPhase2ContextIntegration:
         # Assert - Should return value between 0 and 1
         assert 0.0 <= proactivity <= 1.0
     
-    async def test_agency_engine_with_personality_service(self, test_config, test_db, test_user):
+    async def test_agency_engine_with_personality_service(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test AgencyEngine with PersonalityService integration."""
         # Arrange
         personality = PersonalityService(db_connection=test_db)
         engine = AgencyEngine(
             test_config,
-            test_db,
+            agency_service,
             personality_service=personality,
+            session_factory=session_factory,
         )
         
         # Act - Create goal with full context (only personality available)
@@ -154,14 +175,15 @@ class TestPhase2ContextIntegration:
         # Priority might be adjusted
         assert goal.priority in [GoalPriority.LOW, GoalPriority.NORMAL, GoalPriority.HIGH]
     
-    async def test_goal_metadata_enrichment(self, test_config, test_db, test_user):
+    async def test_goal_metadata_enrichment(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test that Phase 2 enriches goal metadata correctly."""
         # Arrange
         personality = PersonalityService(db_connection=test_db)
         engine = AgencyEngine(
             test_config,
-            test_db,
+            agency_service,
             personality_service=personality,
+            session_factory=session_factory,
         )
         
         # Act - Create goal with custom metadata
@@ -182,10 +204,10 @@ class TestPhase2ContextIntegration:
         if goal.priority != GoalPriority.HIGH:
             assert goal.metadata['personality_context']['original_priority'] == 'high'
     
-    async def test_create_goal_with_world_context_fallback(self, test_config, test_db, test_user):
+    async def test_create_goal_with_world_context_fallback(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test world context creation falls back when no world model."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db, world_model=None)
+        engine = AgencyEngine(test_config, agency_service, world_model=None, session_factory=session_factory)
         
         # Act
         goal, _ = await engine.create_goal_with_world_context(
@@ -198,10 +220,10 @@ class TestPhase2ContextIntegration:
         assert goal is not None
         assert 'world_context' not in goal.metadata
     
-    async def test_hobby_goal_creation(self, test_config, test_db, test_user):
+    async def test_hobby_goal_creation(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test hobby goal creation helper."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act
         goal, plan = await engine.create_hobby_goal_with_optional_plan(
@@ -216,10 +238,10 @@ class TestPhase2ContextIntegration:
         assert goal.title == "Learn guitar"
         assert plan is not None
     
-    async def test_maintenance_goal_creation(self, test_config, test_db, test_user):
+    async def test_maintenance_goal_creation(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test maintenance goal creation helper."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act
         goal, plan = await engine.create_maintenance_goal_with_optional_plan(

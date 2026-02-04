@@ -19,13 +19,52 @@ from aico.ai.agency.proactive import (
 )
 
 
+class _DB:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query, params=None):
+        q = query.replace("?", "%s")
+        cur = self._conn.cursor()
+        try:
+            cur.execute(q, params or ())
+            return cur
+        except Exception:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+            cur.close()
+            raise
+
+    def fetch_one(self, query, params=None):
+        cur = self.execute(query, params)
+        try:
+            return cur.fetchone()
+        finally:
+            cur.close()
+
+    def fetch_all(self, query, params=None):
+        cur = self.execute(query, params)
+        try:
+            return cur.fetchall()
+        finally:
+            cur.close()
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+
 class TestFollowupSystemCoverage:
     """Tests targeting uncovered lines in FollowupSystem."""
     
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def followup_system(self, db):
@@ -38,9 +77,10 @@ class TestFollowupSystemCoverage:
         """Create a test goal."""
         goal_id = "test-goal-coverage-1"
         db.execute(
-            """INSERT OR IGNORE INTO agency_goals 
+            """INSERT INTO agency_goals 
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (goal_id) DO NOTHING""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
@@ -215,13 +255,16 @@ class TestFollowupSystemCoverage:
     # Policy Approval Tests
     # ========================================================================
     
-    def test_policy_approval_in_create_followup(self, followup_system, test_user, db):
+    def test_policy_approval_disabled_followups(self, followup_system, test_user, db):
         """Test that policy approval is checked during followup creation."""
         # Disable followups
         db.execute(
-            """INSERT OR REPLACE INTO user_proactive_preferences 
+            """INSERT INTO user_proactive_preferences 
                (user_id, followup_enabled, updated_at)
-               VALUES (?, 0, ?)""",
+               VALUES (?, FALSE, ?)
+               ON CONFLICT (user_id) DO UPDATE SET
+                   followup_enabled = EXCLUDED.followup_enabled,
+                   updated_at = EXCLUDED.updated_at""",
             (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
@@ -273,7 +316,7 @@ class TestReminderSystemCoverage:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def reminder_system(self, db):
@@ -286,9 +329,10 @@ class TestReminderSystemCoverage:
         """Create a test goal."""
         goal_id = "test-goal-reminder-coverage-1"
         db.execute(
-            """INSERT OR IGNORE INTO agency_goals 
+            """INSERT INTO agency_goals 
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (goal_id) DO NOTHING""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
@@ -532,13 +576,16 @@ class TestReminderSystemCoverage:
     # Clustering Tests
     # ========================================================================
     
-    def test_clustering_disabled_in_preferences(self, reminder_system, test_user, db):
+    def test_clustering_respects_user_preferences(self, reminder_system, test_user, db):
         """Test that clustering respects user preferences."""
         # Disable clustering
         db.execute(
-            """INSERT OR REPLACE INTO user_proactive_preferences 
+            """INSERT INTO user_proactive_preferences 
                (user_id, cluster_reminders, updated_at)
-               VALUES (?, 0, ?)""",
+               VALUES (?, 0, ?)
+               ON CONFLICT (user_id) DO UPDATE SET
+                   cluster_reminders = EXCLUDED.cluster_reminders,
+                   updated_at = EXCLUDED.updated_at""",
             (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()

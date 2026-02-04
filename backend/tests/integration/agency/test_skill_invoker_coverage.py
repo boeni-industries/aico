@@ -69,6 +69,48 @@ class TestSkill(Skill):
         )
 
 
+class TestOptionalDefaultsSkill(Skill):
+    """Test skill with optional parameters and defaults for normalization tests."""
+
+    @property
+    def skill_id(self):
+        return "test_optional_defaults"
+
+    @property
+    def name(self):
+        return "Test Optional Defaults"
+
+    @property
+    def description(self):
+        return "Test optional parameter normalization"
+
+    @property
+    def parameters(self):
+        return [
+            SkillParameter(
+                name="required_param",
+                type=SkillParameterType.STRING,
+                description="Required",
+                required=True,
+            ),
+            SkillParameter(
+                name="optional_list",
+                type=SkillParameterType.ARRAY,
+                description="Optional list",
+                required=False,
+                default=[],
+            ),
+        ]
+
+    async def execute(self, user_id, input_data, context):
+        return SkillResult(
+            success=True,
+            output={
+                "optional_list": input_data.get("optional_list"),
+            },
+        )
+
+
 @pytest.mark.asyncio
 class TestSkillInvoker:
     """Test suite for SkillInvoker."""
@@ -78,12 +120,11 @@ class TestSkillInvoker:
         # Arrange
         registry = SkillRegistry()
         registry.register(TestSkill(skill_id_val="test_skill"))
-        
+
         invoker = SkillInvoker(
-            db=test_db,
             skill_registry=registry,
             default_timeout=5,
-            max_retries=2
+            max_retries=2,
         )
         
         # Act
@@ -99,16 +140,40 @@ class TestSkillInvoker:
         # SkillResult.output contains the actual output dict
         assert result["output"]["output"]["result"] == "Success with hello"
         assert result["duration_ms"] >= 0
-    
+
+    async def test_optional_defaults_normalized_when_none(self, test_db, test_user):
+        """Optional params set to None should be replaced with their defaults before validation."""
+        registry = SkillRegistry()
+        registry.register(TestOptionalDefaultsSkill())
+
+        with patch.object(SkillInvoker, '_record_invocation_start', new_callable=AsyncMock):
+            with patch.object(SkillInvoker, '_record_invocation_complete', new_callable=AsyncMock):
+                invoker = SkillInvoker(
+                    skill_registry=registry,
+                    default_timeout=5,
+                    max_retries=0,
+                )
+
+                result = await invoker.invoke_skill(
+                    skill_id="test_optional_defaults",
+                    user_id=test_user,
+                    input_data={"required_param": "ok", "optional_list": None},
+                )
+
+                assert result["success"] is True
+                assert result["output"]["output"]["optional_list"] == []
+
     async def test_invoke_skill_not_found(self, test_db, test_user):
         """Test invoking non-existent skill."""
         # Arrange
         registry = SkillRegistry()
+        from aico.data.postgres.connection import get_session_factory
+        session_factory = await get_session_factory()
         invoker = SkillInvoker(
-            db=test_db,
             skill_registry=registry,
             default_timeout=5,
-            max_retries=2
+            max_retries=2,
+            session_factory=session_factory
         )
         
         # Act
@@ -130,11 +195,13 @@ class TestSkillInvoker:
         registry = SkillRegistry()
         registry.register(TestSkill(skill_id_val="test_skill"))
         
+        from aico.data.postgres.connection import get_session_factory
+        session_factory = await get_session_factory()
         invoker = SkillInvoker(
-            db=test_db,
             skill_registry=registry,
             default_timeout=5,
-            max_retries=2
+            max_retries=2,
+            session_factory=session_factory
         )
         
         # Act - missing required test_param
@@ -155,13 +222,15 @@ class TestSkillInvoker:
         registry.register(TestSkill(skill_id_val="failing_skill", should_fail=True))
         
         # Patch database recording to avoid foreign key constraints
+        from aico.data.postgres.connection import get_session_factory
+        session_factory = await get_session_factory()
         with patch.object(SkillInvoker, '_record_invocation_start', new_callable=AsyncMock):
             with patch.object(SkillInvoker, '_record_invocation_complete', new_callable=AsyncMock):
                 invoker = SkillInvoker(
-                    db=test_db,
                     skill_registry=registry,
                     default_timeout=5,
-                    max_retries=2
+                    max_retries=3,
+                    session_factory=session_factory
                 )
                 
                 # Act
@@ -177,16 +246,18 @@ class TestSkillInvoker:
                 assert "Test skill failure" in result["error"]
     
     async def test_invoke_skill_with_context(self, test_db, test_user):
-        """Test skill invocation with execution context."""
+        """Test skill invocation with context."""
         # Arrange
         registry = SkillRegistry()
         registry.register(TestSkill(skill_id_val="test_skill"))
         
+        from aico.data.postgres.connection import get_session_factory
+        session_factory = await get_session_factory()
         invoker = SkillInvoker(
-            db=test_db,
             skill_registry=registry,
             default_timeout=5,
-            max_retries=2
+            max_retries=2,
+            session_factory=session_factory
         )
         
         context = {
@@ -213,13 +284,15 @@ class TestSkillInvoker:
         registry.register(TestSkill(skill_id_val="slow_skill", delay=0.1))
         
         # Patch database recording to avoid foreign key constraints
+        from aico.data.postgres.connection import get_session_factory
+        session_factory = await get_session_factory()
         with patch.object(SkillInvoker, '_record_invocation_start', new_callable=AsyncMock):
             with patch.object(SkillInvoker, '_record_invocation_complete', new_callable=AsyncMock):
                 invoker = SkillInvoker(
-                    db=test_db,
                     skill_registry=registry,
                     default_timeout=5,
-                    max_retries=2
+                    max_retries=2,
+                    session_factory=session_factory
                 )
                 
                 # Act
@@ -240,11 +313,13 @@ class TestSkillInvoker:
         registry = SkillRegistry()
         registry.register(TestSkill(skill_id_val="test_skill"))
         
+        from aico.data.postgres.connection import get_session_factory
+        session_factory = await get_session_factory()
         invoker = SkillInvoker(
-            db=test_db,
             skill_registry=registry,
             default_timeout=5,
-            max_retries=2
+            max_retries=2,
+            session_factory=session_factory
         )
         
         # Act
@@ -267,15 +342,18 @@ class TestSkillInvoker:
     
     async def test_invoke_skill_with_empty_context(self, test_db, test_user):
         """Test skill invocation with None context."""
+        from aico.data.postgres.connection import get_session_factory
+        
         # Arrange
         registry = SkillRegistry()
         registry.register(TestSkill(skill_id_val="test_skill"))
         
+        session_factory = await get_session_factory()
         invoker = SkillInvoker(
-            db=test_db,
             skill_registry=registry,
             default_timeout=5,
-            max_retries=2
+            max_retries=2,
+            session_factory=session_factory
         )
         
         # Act
@@ -296,9 +374,8 @@ class TestSkillInvokerInitialization:
     def test_initialization_with_defaults(self, test_db):
         """Test initialization with default parameters."""
         registry = SkillRegistry()
-        invoker = SkillInvoker(db=test_db, skill_registry=registry)
+        invoker = SkillInvoker(skill_registry=registry)
         
-        assert invoker.db == test_db
         assert invoker.skill_registry == registry
         assert invoker.default_timeout == 30
         assert invoker.max_retries == 2
@@ -307,7 +384,6 @@ class TestSkillInvokerInitialization:
         """Test initialization with custom parameters."""
         registry = SkillRegistry()
         invoker = SkillInvoker(
-            db=test_db,
             skill_registry=registry,
             default_timeout=60,
             max_retries=5
@@ -322,7 +398,6 @@ class TestSkillInvokerInitialization:
         custom_logger = MagicMock()
         
         invoker = SkillInvoker(
-            db=test_db,
             skill_registry=registry,
             logger=custom_logger
         )

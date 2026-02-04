@@ -22,13 +22,36 @@ from aico.ai.agency.engine import AgencyEngine
 from aico.ai.agency.values_ethics import PolicyEffect
 
 
+@pytest.fixture
+async def session_factory():
+    from aico.data.postgres.connection import get_session_factory
+
+    return await get_session_factory()
+
+
+@pytest.fixture
+async def uow(session_factory):
+    from aico.data.uow import UnitOfWork
+
+    async with UnitOfWork(session_factory) as uow:
+        yield uow
+        await uow.rollback()
+
+
+@pytest.fixture
+def agency_service(uow):
+    from aico.services.agency_service import AgencyService
+
+    return AgencyService(uow)
+
+
 class TestEngineErrorHandling:
     """Tests for AgencyEngine error handling and edge cases."""
     
     @pytest.mark.asyncio
-    async def test_create_goal_blocked_by_ethics(self, test_config, test_db, test_user):
+    async def test_create_goal_blocked_by_ethics(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test goal creation blocked by ethics policy."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Mock ethics evaluation to block
         with patch.object(engine.values_ethics, 'evaluate_goal') as mock_eval:
@@ -48,9 +71,9 @@ class TestEngineErrorHandling:
                 )
     
     @pytest.mark.asyncio
-    async def test_create_goal_with_warning(self, test_config, test_db, test_user):
+    async def test_create_goal_with_warning(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test goal creation with ethics warning."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Mock ethics evaluation to allow with warning
         with patch.object(engine.values_ethics, 'evaluate_goal') as mock_eval:
@@ -72,9 +95,9 @@ class TestEngineErrorHandling:
             assert goal.metadata["ethics_warning"] == "Proceed with caution"
     
     @pytest.mark.asyncio
-    async def test_create_hobby_goal(self, test_config, test_db, test_user):
+    async def test_create_hobby_goal(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test creating hobby goal with correct origin."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         goal, _ = await engine.create_hobby_goal_with_optional_plan(
             user_id=test_user,
@@ -88,9 +111,9 @@ class TestEngineErrorHandling:
         assert goal.goal_type == "hobby"
     
     @pytest.mark.asyncio
-    async def test_create_maintenance_goal(self, test_config, test_db, test_user):
+    async def test_create_maintenance_goal(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test creating maintenance goal with correct origin."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         goal, _ = await engine.create_maintenance_goal_with_optional_plan(
             user_id=test_user,
@@ -104,9 +127,9 @@ class TestEngineErrorHandling:
         assert goal.goal_type == "maintenance"
     
     @pytest.mark.asyncio
-    async def test_create_goal_with_world_context_no_world_model(self, test_config, test_db, test_user):
+    async def test_create_goal_with_world_context_no_world_model(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test world context creation falls back when world model unavailable."""
-        engine = AgencyEngine(test_config, test_db, world_model=None)
+        engine = AgencyEngine(test_config, agency_service, world_model=None, session_factory=session_factory)
         
         goal, _ = await engine.create_goal_with_world_context(
             user_id=test_user,
@@ -119,12 +142,12 @@ class TestEngineErrorHandling:
         assert "world_context" not in goal.metadata
     
     @pytest.mark.asyncio
-    async def test_create_goal_with_world_context_error(self, test_config, test_db, test_user):
+    async def test_create_goal_with_world_context_error(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test world context creation handles errors gracefully."""
         mock_world_model = Mock()
         mock_world_model.get_world_context = AsyncMock(side_effect=Exception("World model error"))
         
-        engine = AgencyEngine(test_config, test_db, world_model=mock_world_model)
+        engine = AgencyEngine(test_config, agency_service, world_model=mock_world_model, session_factory=session_factory)
         
         # Should fall back to basic creation
         goal, _ = await engine.create_goal_with_world_context(
@@ -138,9 +161,9 @@ class TestEngineErrorHandling:
         assert "world_context" not in goal.metadata
     
     @pytest.mark.asyncio
-    async def test_create_goal_with_full_context_no_services(self, test_config, test_db, test_user):
+    async def test_create_goal_with_full_context_no_services(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test full context creation falls back when no Phase 2 services available."""
-        engine = AgencyEngine(test_config, test_db, world_model=None, personality_service=None)
+        engine = AgencyEngine(test_config, agency_service, world_model=None, personality_service=None, session_factory=session_factory)
         
         goal, _ = await engine.create_goal_with_full_context(
             user_id=test_user,
@@ -154,12 +177,12 @@ class TestEngineErrorHandling:
         assert "personality_context" not in goal.metadata
     
     @pytest.mark.asyncio
-    async def test_create_goal_with_full_context_error(self, test_config, test_db, test_user):
+    async def test_create_goal_with_full_context_error(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test full context creation handles errors gracefully."""
         mock_personality = Mock()
         mock_personality.get_personality_context = AsyncMock(side_effect=Exception("Personality error"))
         
-        engine = AgencyEngine(test_config, test_db, personality_service=mock_personality)
+        engine = AgencyEngine(test_config, agency_service, personality_service=mock_personality, session_factory=session_factory)
         
         # Should fall back to basic creation
         goal, _ = await engine.create_goal_with_full_context(
@@ -172,11 +195,11 @@ class TestEngineErrorHandling:
         assert goal is not None
     
     @pytest.mark.asyncio
-    async def test_create_goal_from_curiosity_signal_blocked(self, test_config, test_db, test_user):
+    async def test_create_goal_from_curiosity_signal_blocked(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test curiosity signal blocked by ethics."""
         from aico.ai.curiosity.models import IntrinsicSignal, CuriosityType
         
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="test-signal",
@@ -208,11 +231,11 @@ class TestEngineErrorHandling:
                 )
     
     @pytest.mark.asyncio
-    async def test_create_goal_from_curiosity_signal_needs_consent(self, test_config, test_db, test_user):
+    async def test_create_goal_from_curiosity_signal_needs_consent(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test curiosity signal requiring consent."""
         from aico.ai.curiosity.models import IntrinsicSignal, CuriosityType
         
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="test-signal",
@@ -244,11 +267,11 @@ class TestEngineErrorHandling:
                 )
     
     @pytest.mark.asyncio
-    async def test_create_goal_from_curiosity_signal_with_warning(self, test_config, test_db, test_user):
+    async def test_create_goal_from_curiosity_signal_with_warning(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test curiosity signal allowed with warning."""
         from aico.ai.curiosity.models import IntrinsicSignal, CuriosityType
         
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="test-signal",
@@ -282,11 +305,11 @@ class TestEngineErrorHandling:
             assert goal.origin == GoalOrigin.CURIOSITY
     
     @pytest.mark.asyncio
-    async def test_create_goal_from_hobby_signal(self, test_config, test_db, test_user):
+    async def test_create_goal_from_hobby_play_signal(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test creating goal from hobby play signal."""
         from aico.ai.curiosity.models import IntrinsicSignal, CuriosityType
         
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="hobby-signal",
@@ -316,17 +339,17 @@ class TestEngineErrorHandling:
         assert goal.metadata["hobby_template_id"] == "chess_template"
     
     @pytest.mark.asyncio
-    async def test_generate_and_store_plan_with_llm_refiner(self, test_config, test_db, test_user, sample_goal):
+    async def test_generate_and_store_plan_with_llm_refiner(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test plan generation with LLM refinement."""
         # Create mock LLM refiner
         async def mock_refiner(goal, plan):
             plan.metadata["llm_refined"] = True
             return plan
         
-        engine = AgencyEngine(test_config, test_db, llm_plan_refiner=mock_refiner)
+        engine = AgencyEngine(test_config, agency_service, llm_plan_refiner=mock_refiner, session_factory=session_factory)
         
         # Create goal first
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Generate plan
         plan = await engine._generate_and_store_plan(sample_goal)
@@ -335,16 +358,16 @@ class TestEngineErrorHandling:
         assert plan.metadata.get("llm_refined") is True
     
     @pytest.mark.asyncio
-    async def test_generate_and_store_plan_llm_refiner_fails(self, test_config, test_db, test_user, sample_goal):
+    async def test_generate_and_store_plan_llm_refiner_fails(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test plan generation when LLM refiner fails."""
         # Create mock LLM refiner that fails
         async def failing_refiner(goal, plan):
             raise Exception("LLM refinement failed")
         
-        engine = AgencyEngine(test_config, test_db, llm_plan_refiner=failing_refiner)
+        engine = AgencyEngine(test_config, agency_service, llm_plan_refiner=failing_refiner, session_factory=session_factory)
         
         # Create goal first
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Should still generate plan using base planner
         plan = await engine._generate_and_store_plan(sample_goal)
@@ -357,9 +380,9 @@ class TestEngineGoalLifecycle:
     """Tests for goal lifecycle methods."""
     
     @pytest.mark.asyncio
-    async def test_change_goal_status_nonexistent_goal(self, test_config, test_db):
+    async def test_change_goal_status_nonexistent_goal(self, test_config, test_db, agency_service, session_factory):
         """Test changing status of nonexistent goal returns None."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         result = await engine._change_goal_status(
             goal_id="nonexistent",
@@ -370,12 +393,12 @@ class TestEngineGoalLifecycle:
         assert result is None
     
     @pytest.mark.asyncio
-    async def test_activate_goal(self, test_config, test_db, test_user, sample_goal):
+    async def test_activate_goal(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test activating a goal."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Create goal
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Activate it
         updated = await engine.activate_goal(sample_goal.goal_id)
@@ -384,11 +407,11 @@ class TestEngineGoalLifecycle:
         assert updated.status == GoalStatus.ACTIVE
     
     @pytest.mark.asyncio
-    async def test_pause_goal(self, test_config, test_db, test_user, sample_goal):
+    async def test_pause_goal(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test pausing a goal."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         updated = await engine.pause_goal(sample_goal.goal_id)
         
@@ -396,11 +419,11 @@ class TestEngineGoalLifecycle:
         assert updated.status == GoalStatus.PAUSED
     
     @pytest.mark.asyncio
-    async def test_complete_goal(self, test_config, test_db, test_user, sample_goal):
+    async def test_complete_goal(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test completing a goal."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         updated = await engine.complete_goal(sample_goal.goal_id)
         
@@ -408,11 +431,11 @@ class TestEngineGoalLifecycle:
         assert updated.status == GoalStatus.COMPLETED
     
     @pytest.mark.asyncio
-    async def test_retire_goal(self, test_config, test_db, test_user, sample_goal):
+    async def test_retire_goal(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test retiring a goal."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         updated = await engine.retire_goal(sample_goal.goal_id)
         
@@ -420,11 +443,11 @@ class TestEngineGoalLifecycle:
         assert updated.status == GoalStatus.RETIRED
     
     @pytest.mark.asyncio
-    async def test_get_goal(self, test_config, test_db, test_user, sample_goal):
+    async def test_get_goal(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test retrieving a goal."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         retrieved = await engine.get_goal(sample_goal.goal_id)
         
@@ -432,11 +455,11 @@ class TestEngineGoalLifecycle:
         assert retrieved.goal_id == sample_goal.goal_id
     
     @pytest.mark.asyncio
-    async def test_list_goals_for_user(self, test_config, test_db, test_user, sample_goal):
+    async def test_list_goals_for_user(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test listing goals for a user."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         goals = await engine.list_goals_for_user(test_user)
         
@@ -444,11 +467,11 @@ class TestEngineGoalLifecycle:
         assert goals[0].goal_id == sample_goal.goal_id
     
     @pytest.mark.asyncio
-    async def test_list_goals_with_status_filter(self, test_config, test_db, test_user, sample_goal):
+    async def test_list_goals_with_status_filter(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test listing goals with status filter."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Filter for pending
         pending = await engine.list_goals_for_user(test_user, status=GoalStatus.PENDING)
@@ -463,9 +486,9 @@ class TestEngineIntentionSet:
     """Tests for intention set management."""
     
     @pytest.mark.asyncio
-    async def test_get_intention_set(self, test_config, test_db, test_user):
+    async def test_get_intention_set(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test getting intention set."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         intention_set = await engine.get_intention_set(test_user)
         
@@ -474,12 +497,12 @@ class TestEngineIntentionSet:
         assert hasattr(intention_set, 'proposed_intentions')
     
     @pytest.mark.asyncio
-    async def test_update_intention_set_for_user(self, test_config, test_db, test_user, sample_goal):
+    async def test_update_intention_set_for_user(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test updating intention set."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Create a goal
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Update intention set
         intention_set = await engine.update_intention_set_for_user(test_user)
@@ -491,9 +514,9 @@ class TestEngineBaseProcessor:
     """Tests for BaseAIProcessor interface methods."""
     
     @pytest.mark.asyncio
-    async def test_analyze_conversation_turn(self, test_config, test_db, test_user):
+    async def test_analyze_conversation_turn(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test analyze_conversation_turn returns contract-compliant response."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         result = await engine.analyze_conversation_turn(
             user_id=test_user,
@@ -509,28 +532,28 @@ class TestEngineBaseProcessor:
         assert result["metadata"]["phase"] == "1"
     
     @pytest.mark.asyncio
-    async def test_health_check(self, test_config, test_db):
+    async def test_health_check(self, test_config, test_db, agency_service, session_factory):
         """Test health check."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         is_healthy = await engine.health_check()
         
         assert is_healthy is True
     
     @pytest.mark.asyncio
-    async def test_health_check_failure(self, test_config, test_db):
+    async def test_health_check_failure(self, test_config, test_db, agency_service, session_factory):
         """Test health check when database fails."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Mock store to fail
-        with patch.object(engine.goal_store, 'list_goals', side_effect=Exception("DB error")):
+        with patch.object(engine.agency_service, 'list_goals', side_effect=Exception("DB error")):
             is_healthy = await engine.health_check()
             
             assert is_healthy is False
     
-    def test_get_supported_operations(self, test_config, test_db):
+    def test_get_supported_operations(self, test_config, test_db, agency_service, session_factory):
         """Test getting supported operations."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         operations = engine.get_supported_operations()
         
@@ -544,12 +567,14 @@ class TestEngineSelfReflection:
     """Tests for self-reflection methods."""
     
     @pytest.mark.asyncio
-    async def test_run_self_reflection(self, test_config, test_db, test_user):
+    async def test_run_self_reflection(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test running self-reflection."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
+
+        engine.self_reflection = Mock()
         
         # Mock the self_reflection engine
-        with patch.object(engine.self_reflection, 'run_reflection') as mock_run:
+        with patch.object(engine.self_reflection, 'run_reflection', new_callable=AsyncMock) as mock_run:
             from aico.ai.agency.models import RunType, RunStatus, ReflectionRun
             
             mock_run.return_value = ReflectionRun(
@@ -574,12 +599,14 @@ class TestEngineSelfReflection:
             assert result.run_id == "test-run"
     
     @pytest.mark.asyncio
-    async def test_get_active_lessons(self, test_config, test_db, test_user):
+    async def test_get_active_lessons(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test getting active lessons."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
+
+        engine.self_reflection = Mock()
         
         # Mock the self_reflection engine
-        with patch.object(engine.self_reflection, 'get_active_lessons') as mock_get:
+        with patch.object(engine.self_reflection, 'get_active_lessons', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = []
             
             lessons = await engine.get_active_lessons(test_user)
@@ -587,12 +614,14 @@ class TestEngineSelfReflection:
             assert lessons == []
     
     @pytest.mark.asyncio
-    async def test_get_skill_performance(self, test_config, test_db, test_user):
+    async def test_get_skill_performance(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test getting skill performance."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
+
+        engine.self_reflection = Mock()
         
         # Mock the self_reflection engine
-        with patch.object(engine.self_reflection, 'get_skill_performance') as mock_get:
+        with patch.object(engine.self_reflection, 'get_skill_performance', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = 0.85
             
             perf = await engine.get_skill_performance(test_user, "test-skill")
@@ -600,15 +629,17 @@ class TestEngineSelfReflection:
             assert perf == 0.85
     
     @pytest.mark.asyncio
-    async def test_get_goal_type_performance_context(self, test_config, test_db, test_user, sample_goal):
+    async def test_get_goal_type_performance_context(self, test_config, test_db, test_user, sample_goal, agency_service, session_factory):
         """Test getting goal type performance context."""
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
+
+        engine.self_reflection = Mock()
         
         # Create a goal to have data
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Mock the self_reflection engine
-        with patch.object(engine.self_reflection, 'get_goal_type_performance') as mock_get:
+        with patch.object(engine.self_reflection, 'get_goal_type_performance', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = {"success_rate": 0.8, "completion_rate": 0.7}
             
             context = await engine.get_goal_type_performance_context(test_user)

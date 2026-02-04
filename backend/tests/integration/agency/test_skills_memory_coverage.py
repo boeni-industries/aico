@@ -19,7 +19,7 @@ class TestSearchMemorySkill:
     
     async def test_skill_properties(self, test_db):
         """Test skill has correct properties."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         assert skill.skill_id == "search_memory"
         assert skill.name == "Search Memory"
@@ -34,7 +34,7 @@ class TestSearchMemorySkill:
     
     async def test_search_with_query(self, test_db, test_user):
         """Test searching memory with a query."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -49,7 +49,7 @@ class TestSearchMemorySkill:
     
     async def test_search_with_limit(self, test_db, test_user):
         """Test searching with custom limit."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -63,7 +63,7 @@ class TestSearchMemorySkill:
     
     async def test_search_semantic_memory(self, test_db, test_user):
         """Test searching semantic memory type."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -80,7 +80,7 @@ class TestSearchMemorySkill:
     
     async def test_search_episodic_memory(self, test_db, test_user):
         """Test searching episodic memory type."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -97,7 +97,7 @@ class TestSearchMemorySkill:
     
     async def test_search_multiple_memory_types(self, test_db, test_user):
         """Test searching multiple memory types."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -114,7 +114,7 @@ class TestSearchMemorySkill:
     
     async def test_search_without_query(self, test_db, test_user):
         """Test searching without query."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -125,9 +125,9 @@ class TestSearchMemorySkill:
         # Should handle gracefully even without query
         assert result.success is True or result.success is False
     
-    async def test_search_without_database(self, test_user):
-        """Test searching without database fails."""
-        skill = SearchMemorySkill(db=None)
+    async def test_search_without_memory_manager(self, test_user):
+        """Test searching without memory manager fails."""
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -136,11 +136,11 @@ class TestSearchMemorySkill:
         )
         
         assert result.success is False
-        assert "database" in result.error.lower()
+        assert "memory manager" in result.error.lower()
     
     async def test_search_result_structure(self, test_db, test_user):
         """Test that result has correct structure."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -166,7 +166,7 @@ class TestSearchMemorySkill:
     
     async def test_search_metadata(self, test_db, test_user):
         """Test that metadata is included in result."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -182,7 +182,7 @@ class TestSearchMemorySkill:
     
     async def test_search_default_limit(self, test_db, test_user):
         """Test that default limit is applied."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -197,7 +197,7 @@ class TestSearchMemorySkill:
     
     async def test_search_default_memory_types(self, test_db, test_user):
         """Test that default memory types is semantic."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -212,7 +212,7 @@ class TestSearchMemorySkill:
     
     async def test_search_empty_results(self, test_db, test_user):
         """Test searching with no matching results."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -227,7 +227,7 @@ class TestSearchMemorySkill:
     
     async def test_search_with_special_characters(self, test_db, test_user):
         """Test searching with special characters in query."""
-        skill = SearchMemorySkill(db=test_db)
+        skill = SearchMemorySkill(memory_manager=None)
         
         result = await skill.execute(
             user_id=test_user,

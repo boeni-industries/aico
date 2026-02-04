@@ -20,11 +20,42 @@ from aico.ai.agency.models import PlanStatus
 @pytest.mark.asyncio
 class TestPlanning:
     """Test suite for planning system."""
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        mock_client = AsyncMock()
+        mock_client.model_name = "test-model"
+
+        async def failing_chat(*args, **kwargs):
+            raise Exception("LLM unavailable")
+
+        mock_client.get_chat_completions = AsyncMock(side_effect=failing_chat)
+        return mock_client
     
-    async def test_generate_plan_with_shape_match(self, test_db, sample_goal):
+    async def test_generate_plan_with_shape_match(self, test_db, sample_goal, mock_llm_client):
         """Test plan generation when goal type matches a template shape."""
         # Arrange
-        planner = Planner()
+        planner = Planner(mock_llm_client)
         sample_goal.goal_type = "project"  # Should match "research_then_act" or "implement_feature"
         
         # Act
@@ -40,10 +71,10 @@ class TestPlanning:
         assert "shape_id" in plan.steps[0].metadata
         assert "shape_role" in plan.steps[0].metadata
     
-    async def test_generate_plan_fallback(self, test_db, sample_goal):
+    async def test_generate_plan_fallback(self, test_db, sample_goal, mock_llm_client):
         """Test plan generation falls back to default plan when no shape matches."""
         # Arrange
-        planner = Planner()
+        planner = Planner(mock_llm_client)
         sample_goal.goal_type = "unknown_type"  # Won't match any shape
         
         # Act
@@ -54,22 +85,22 @@ class TestPlanning:
         assert len(plan.steps) >= 2  # At least clarify and act steps
         assert plan.steps[0].description  # Has some description
     
-    async def test_plan_storage_and_retrieval(self, test_config, test_db, sample_goal, sample_plan):
+    async def test_plan_storage_and_retrieval(self, test_config, test_db, sample_goal, sample_plan, agency_service, session_factory):
         """Test that plans persist correctly."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
-        
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
+
         # Create goal first
-        await engine.goal_store.create_goal(sample_goal)
-        
+        await agency_service.create_goal(sample_goal)
+
         # Act: Store plan
-        stored_plan = await engine.plan_store.create_plan(sample_plan)
+        stored_plan = await agency_service.create_plan(sample_plan)
         
         # Assert: Plan stored
         assert stored_plan.plan_id == sample_plan.plan_id
         
         # Act: Retrieve plan
-        retrieved_plan = await engine.plan_store.get_plan(sample_plan.plan_id)
+        retrieved_plan = await agency_service.get_plan(sample_plan.plan_id)
         
         # Assert: Plan retrieved correctly
         assert retrieved_plan is not None
@@ -77,10 +108,10 @@ class TestPlanning:
         assert len(retrieved_plan.steps) == len(sample_plan.steps)
         assert retrieved_plan.steps[0].description == sample_plan.steps[0].description
     
-    async def test_plan_shape_selection_by_goal_type(self, test_db):
+    async def test_plan_shape_selection_by_goal_type(self, test_db, mock_llm_client):
         """Test that different goal types select appropriate plan shapes."""
         # Arrange
-        planner = Planner()
+        planner = Planner(mock_llm_client)
         from aico.ai.agency.models import Goal, GoalOrigin, GoalPriority, GoalStatus
         
         test_cases = [
@@ -116,7 +147,14 @@ class TestPlanning:
     async def test_llm_plan_refinement_success(self, mock_client_class, test_config, test_db, sample_goal, mock_llm_plan_response):
         """Test LLM-enhanced plan refinement when LLM call succeeds."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.agency_service import AgencyService
+
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            service = AgencyService(uow)
+            engine = AgencyEngine(test_config, service, session_factory=session_factory)
         
         # Mock ModelServiceClient
         mock_client = AsyncMock()
@@ -145,7 +183,14 @@ class TestPlanning:
     async def test_llm_plan_refinement_failure_fallback(self, mock_client_class, test_config, test_db, sample_goal, mock_llm_plan_response_failure):
         """Test that plan refinement falls back to base plan when LLM fails."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.agency_service import AgencyService
+
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            service = AgencyService(uow)
+            engine = AgencyEngine(test_config, service, session_factory=session_factory)
         
         # Mock ModelServiceClient with failure
         mock_client = AsyncMock()
@@ -180,10 +225,10 @@ class TestPlanning:
             assert step.metadata["shape_id"] == "research_then_act"
             assert step.metadata["shape_role"] in ["clarify", "research", "synthesize", "act"]
     
-    async def test_goal_with_plan_end_to_end(self, test_config, test_db, test_user):
+    async def test_goal_with_plan_end_to_end(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test complete flow: create goal → generate plan → store both → retrieve both."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act: Create goal with plan
         goal, plan = await engine.create_goal_with_optional_plan(
@@ -206,7 +251,7 @@ class TestPlanning:
         assert retrieved_goal.goal_id == goal.goal_id
         
         # Act: Retrieve plans for goal
-        plans = await engine.plan_store.list_plans_for_goal(goal.goal_id)
+        plans = await agency_service.list_plans(goal.goal_id)
         
         # Assert: Plan retrieved
         assert len(plans) == 1
