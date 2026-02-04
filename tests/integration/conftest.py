@@ -11,6 +11,7 @@ import os
 import shutil
 
 import pytest
+import pytest_asyncio
 import uuid
 from datetime import datetime, UTC
 from pathlib import Path
@@ -21,7 +22,6 @@ from sqlalchemy.pool import NullPool
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
 from aico.ai.user.models import UserProfile
-
 
 @pytest.fixture(scope="session", autouse=True)
 def _isolate_runtime_config_dir(tmp_path_factory):
@@ -51,8 +51,8 @@ def _isolate_runtime_config_dir(tmp_path_factory):
     os.environ.pop("AICO_CONFIG_DIR", None)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_test_database():
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def setup_test_database():
     """
     Automatically create and setup test database before all tests.
     
@@ -92,55 +92,39 @@ def setup_test_database():
     # Connect to postgres (admin database) to create test database
     admin_url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/postgres"
     admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
-    
-    import asyncio
-    
-    async def _setup():
-        try:
-            # Drop and recreate test database
-            async with admin_engine.connect() as conn:
-                # Terminate existing connections to test database
-                await conn.execute(text("""
+
+    try:
+        async with admin_engine.connect() as conn:
+            await conn.execute(
+                text(
+                    """
                     SELECT pg_terminate_backend(pg_stat_activity.pid)
                     FROM pg_stat_activity
                     WHERE pg_stat_activity.datname = 'aico_test'
                     AND pid <> pg_backend_pid()
-                """))
-                
-                # Drop and create fresh test database
-                await conn.execute(text("DROP DATABASE IF EXISTS aico_test"))
-                await conn.execute(text("CREATE DATABASE aico_test"))
-            
-            # Connect to test database and apply schema
-            test_url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/aico_test"
-            test_engine = create_async_engine(test_url, poolclass=NullPool)
-            
-            # Use raw asyncpg connection to execute multi-statement schema
-            import asyncpg
-            raw_conn = await asyncpg.connect(
-                host=host,
-                port=port,
-                user=user,
-                password=password,
-                database='aico_test'
+                    """
+                )
             )
-            
-            try:
-                # Read and execute schema.sql
-                schema_path = Path(__file__).parent.parent.parent / "shared" / "aico" / "data" / "postgres" / "schema.sql"
-                schema_sql = schema_path.read_text()
-                
-                # Execute entire schema as one script (asyncpg handles multiple statements)
-                await raw_conn.execute(schema_sql)
-            finally:
-                await raw_conn.close()
-            
-            await test_engine.dispose()
+            await conn.execute(text("DROP DATABASE IF EXISTS aico_test"))
+            await conn.execute(text("CREATE DATABASE aico_test"))
+
+        import asyncpg
+
+        raw_conn = await asyncpg.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database="aico_test",
+        )
+        try:
+            schema_path = Path(__file__).parent.parent.parent / "shared" / "aico" / "data" / "postgres" / "schema.sql"
+            schema_sql = schema_path.read_text()
+            await raw_conn.execute(schema_sql)
         finally:
-            await admin_engine.dispose()
-    
-    # Run async setup synchronously
-    asyncio.run(_setup())
+            await raw_conn.close()
+    finally:
+        await admin_engine.dispose()
     
     # CRITICAL: Override database name BEFORE any imports that create session factory
     os.environ["AICO_POSTGRES_DATABASE"] = "aico_test"

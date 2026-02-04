@@ -1,105 +1,72 @@
-"""
-Self-Reflection Engine for Agency Phase 5
-
-Analyzes AICO's past behavior, outcomes, and user feedback to generate
-structured lessons for behavioral improvement. Runs periodically during
-sleep-like phases or triggered by significant events.
-
-Design: See docs/concepts/agency/agency-component-self-reflection.md
-"""
-
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, UTC
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from aico.core.logging import get_logger
+from sqlalchemy import and_, case, func, select, update
+
 from aico.core.config import ConfigurationManager
-
-from .models import (
-    Lesson, LessonType, TargetKind, ChangeType, LessonScope, LessonStatus,
-    ProposedChange, MetricsBasis,
-    SelfModelEntry, EntityType, PerformanceSummary,
-    ReflectionRun, RunType, RunStatus,
+from aico.core.logging import get_logger
+from aico.data.agency.lesson_models import Lesson as DbLesson
+from aico.data.agency.reflection_models import AgencyReflectionRun, AgencySelfModel
+from aico.data.ethics.policy_models import EthicsPolicyRule
+from aico.data.tables import (
+    agency_goals,
+    agency_skill_executions,
+    ams_behavioral_feedback,
+    agency_lessons,
+    emotion_history,
+    ethics_gate_audit,
+    user_relationships,
 )
-from .store import LessonStore, SelfModelStore, ReflectionRunStore
-from .lesson_applicator import LessonApplicationService
-from .lesson_projector import LessonMemoryProjector
+from aico.data.uow import UnitOfWork
 
+from .lesson_applicator import LessonApplicationService
+from .models import LessonScope, LessonStatus, LessonType, ReflectionRun, RunStatus, RunType
 
 logger = get_logger("agency.reflection")
 
 
 class SelfReflectionEngine:
-    """
-    Self-Reflection Engine for behavioral learning (Phase 5).
-    
-    Analyzes logs, trajectories, goals, and outcomes to generate lessons
-    that improve AICO's behavior over time.
-    """
-    
     def __init__(
         self,
         config: ConfigurationManager,
-        db_connection,
+        session_factory,
         llm_client: Optional[Any] = None,
-        kg_storage=None,  # PropertyGraphStorage for World Model integration
     ):
-        """
-        Initialize the Self-Reflection Engine.
-        
-        Args:
-            config: Configuration manager
-            db_connection: Database connection (encrypted)
-            llm_client: Optional LLM client for lesson generation
-            kg_storage: Optional PropertyGraphStorage for World Model integration
-        """
         self.config = config
-        self.db = db_connection
+        self.session_factory = session_factory
         self.llm_client = llm_client
-        self.kg_storage = kg_storage
-        
-        # Initialize stores
-        self.lesson_store = LessonStore(db_connection)
-        self.self_model_store = SelfModelStore(db_connection)
-        self.run_store = ReflectionRunStore(db_connection)
-        
-        # Initialize projector for World Model integration
-        self.projector = LessonMemoryProjector(
-            config=config,
-            db_connection=db_connection,
-            kg_storage=kg_storage,
-        )
-        
-        # Initialize lesson applicator
+
+        self.policy_mode = config.get("agency.self_reflection.policy_mode", "observe_only")
+        self.min_sample_size = int(config.get("agency.self_reflection.min_sample_size", 10))
+        self.confidence_threshold = float(config.get("agency.self_reflection.confidence_threshold", 0.7))
+
         self.lesson_applicator = LessonApplicationService(
             config=config,
-            db_connection=db_connection,
-            lesson_store=self.lesson_store,
-            kg_storage=kg_storage,
+            session_factory=session_factory,
         )
-        
-        # Get configuration
-        self.policy_mode = config.get(
-            "agency.self_reflection.policy_mode",
-            "observe_only"  # Default: safest mode
-        )
-        self.min_sample_size = config.get(
-            "agency.self_reflection.min_sample_size",
-            10  # Minimum data points before generating lessons
-        )
-        self.confidence_threshold = config.get(
-            "agency.self_reflection.confidence_threshold",
-            0.7  # Minimum confidence to apply lessons
-        )
-        
-        logger.debug(
-            f"[SELF_REFLECTION] Initialized in '{self.policy_mode}' mode "
-            f"(min_samples={self.min_sample_size}, confidence_threshold={self.confidence_threshold})"
-        )
-    
+
+    def _should_apply_lessons(self) -> bool:
+        mode = str(self.policy_mode or "observe_only").lower()
+        self._validate_policy_mode(mode)
+        return mode in {"allow_amend"}
+
+    def _is_disabled(self) -> bool:
+        mode = str(self.policy_mode or "observe_only").lower()
+        self._validate_policy_mode(mode)
+        return mode in {"disabled", "off", "false"}
+
+    def _validate_policy_mode(self, mode: str) -> None:
+        allowed = {"observe_only", "allow_amend", "disabled", "off", "false"}
+        if mode not in allowed:
+            raise ValueError(
+                "Invalid agency.self_reflection.policy_mode: "
+                f"{mode!r}. Allowed: observe_only | allow_amend | disabled"
+            )
+
     async def run_reflection(
         self,
         user_id: str,
@@ -107,1002 +74,1048 @@ class SelfReflectionEngine:
         trigger_reason: Optional[str] = None,
         analysis_window_days: int = 7,
     ) -> ReflectionRun:
-        """
-        Run a reflection job to analyze recent behavior and generate lessons.
-        
-        Args:
-            user_id: User to reflect on
-            run_type: Type of reflection run
-            trigger_reason: Why this run was triggered
-            analysis_window_days: How many days back to analyze
-            
-        Returns:
-            ReflectionRun with results
-        """
+        if self._is_disabled():
+            raise RuntimeError("Self-reflection is disabled via agency.self_reflection.policy_mode")
+
         run_id = str(uuid.uuid4())
         started_at = datetime.now(UTC)
-        
-        # Define analysis window
         window_end = started_at
         window_start = window_end - timedelta(days=analysis_window_days)
-        
-        logger.info(
-            f"[SELF_REFLECTION] Starting reflection run {run_id} for user {user_id} "
-            f"(window: {window_start.date()} to {window_end.date()})"
-        )
-        
-        # Create run record
-        run = ReflectionRun(
+
+        db_run = AgencyReflectionRun(
             run_id=run_id,
             user_id=user_id,
-            run_type=run_type,
+            run_type=run_type.value,
             trigger_reason=trigger_reason,
             analysis_window_start=window_start,
             analysis_window_end=window_end,
+            lessons_generated=0,
+            lessons_applied=0,
             started_at=started_at,
-            status=RunStatus.RUNNING,
+            completed_at=None,
+            duration_seconds=None,
+            status=RunStatus.RUNNING.value,
+            error_message=None,
+            created_at=started_at,
         )
-        await self.run_store.create_run(run)
-        
+
+        async with UnitOfWork(self.session_factory) as uow:
+            await uow.agency_reflection_runs.create(db_run)
+            await uow.commit()
+
         try:
-            # Step 1: Analyze skill performance
-            skill_lessons = await self._analyze_skill_performance(
-                user_id, window_start, window_end, run_id
-            )
-            
-            # Step 2: Analyze goal completion patterns
-            goal_lessons = await self._analyze_goal_patterns(
-                user_id, window_start, window_end, run_id
-            )
-            
-            # Step 3: Analyze user feedback and sentiment
-            feedback_lessons = await self._analyze_user_feedback(
-                user_id, window_start, window_end, run_id
-            )
-            
-            # Step 4: Analyze emotion patterns
-            emotion_lessons = await self._analyze_emotion_patterns(
-                user_id, window_start, window_end, run_id
-            )
-            
-            # Step 5: Analyze social relationship patterns
-            social_lessons = await self._analyze_social_patterns(
-                user_id, window_start, window_end, run_id
-            )
-            
-            # Step 6: Analyze curiosity exploration outcomes
-            curiosity_lessons = await self._analyze_curiosity_outcomes(
-                user_id, window_start, window_end, run_id
-            )
-            
-            # Combine all lessons
-            all_lessons = (
-                skill_lessons + goal_lessons + feedback_lessons + 
-                emotion_lessons + social_lessons + curiosity_lessons
-            )
-            
-            # Step 4: Apply lessons (if confidence threshold met)
-            applied_count = 0
-            for lesson in all_lessons:
-                if lesson.confidence >= self.confidence_threshold:
-                    if await self.lesson_applicator.apply_lesson(lesson, reflection_run=run):
-                        applied_count += 1
-            
-            # Complete the run
+            lessons: List[DbLesson] = []
+            lessons.extend(await self._analyze_skill_executions(user_id, window_start, window_end, run_id))
+            lessons.extend(await self._analyze_goal_patterns(user_id, window_start, window_end, run_id))
+            lessons.extend(await self._analyze_user_feedback(user_id, window_start, window_end, run_id))
+            lessons.extend(await self._analyze_curiosity_outcomes(user_id, window_start, window_end, run_id))
+            lessons.extend(await self._analyze_emotion_patterns(user_id, window_start, window_end, run_id))
+            lessons.extend(await self._analyze_social_patterns(user_id, window_start, window_end, run_id))
+            lessons.extend(await self._analyze_policy_patterns(user_id, window_start, window_end, run_id))
+
+            applied = 0
+            async with UnitOfWork(self.session_factory) as uow:
+                for lesson in lessons:
+                    await uow.lessons.create(lesson)
+
+                    now = datetime.now(UTC)
+                    if getattr(lesson, "target_id", None) is not None:
+                        await uow._session.execute(
+                            update(agency_lessons)
+                            .where(
+                                and_(
+                                    agency_lessons.c.user_id == lesson.user_id,
+                                    agency_lessons.c.lesson_type == lesson.lesson_type,
+                                    agency_lessons.c.target_kind == lesson.target_kind,
+                                    agency_lessons.c.target_id == lesson.target_id,
+                                    agency_lessons.c.status == LessonStatus.ACTIVE.value,
+                                    agency_lessons.c.superseded_by.is_(None),
+                                    agency_lessons.c.lesson_id != lesson.lesson_id,
+                                )
+                            )
+                            .values(
+                                superseded_by=lesson.lesson_id,
+                                status=LessonStatus.SUPERSEDED.value,
+                                updated_at=now,
+                            )
+                        )
+                await uow.commit()
+
+            if self._should_apply_lessons():
+                for lesson in lessons:
+                    try:
+                        if float(lesson.confidence or 0.0) < self.confidence_threshold:
+                            continue
+                        did_apply = await self.lesson_applicator.apply_lesson(lesson)
+                        if did_apply:
+                            applied += 1
+                    except Exception as e:
+                        logger.exception(
+                            f"[REFLECTION] Failed applying lesson {getattr(lesson, 'lesson_id', None)}: {e}"
+                        )
+
             completed_at = datetime.now(UTC)
-            duration = (completed_at - started_at).total_seconds()
-            
-            await self.run_store.update_run(
+            duration_seconds = float((completed_at - started_at).total_seconds())
+
+            async with UnitOfWork(self.session_factory) as uow:
+                run_entity: Optional[AgencyReflectionRun] = await uow.agency_reflection_runs.get_by_id(run_id)
+                if run_entity:
+                    run_entity.lessons_generated = len(lessons)
+                    run_entity.lessons_applied = applied
+                    run_entity.completed_at = completed_at
+                    run_entity.duration_seconds = duration_seconds
+                    run_entity.status = RunStatus.COMPLETED.value
+                    await uow.agency_reflection_runs.update(run_id, run_entity)
+                await uow.commit()
+
+            return ReflectionRun(
                 run_id=run_id,
-                status=RunStatus.COMPLETED,
+                user_id=user_id,
+                run_type=run_type,
+                trigger_reason=trigger_reason,
+                analysis_window_start=window_start,
+                analysis_window_end=window_end,
+                lessons_generated=len(lessons),
+                lessons_applied=applied,
+                started_at=started_at,
                 completed_at=completed_at,
-                duration_seconds=duration,
-                lessons_generated=len(all_lessons),
-                lessons_applied=applied_count,
+                duration_seconds=duration_seconds,
+                status=RunStatus.COMPLETED,
+                error_message=None,
             )
-            
-            logger.info(
-                f"[SELF_REFLECTION] Completed run {run_id}: "
-                f"{len(all_lessons)} lessons generated, {applied_count} applied "
-                f"(duration: {duration:.1f}s)"
-            )
-            
-            # Return updated run
-            return await self.run_store.get_run(run_id)
-            
         except Exception as e:
-            logger.exception(f"[SELF_REFLECTION] Run {run_id} failed: {e}")
-            
-            await self.run_store.update_run(
-                run_id=run_id,
-                status=RunStatus.FAILED,
-                error_message=str(e),
-            )
-            
+            completed_at = datetime.now(UTC)
+            duration_seconds = float((completed_at - started_at).total_seconds())
+
+            async with UnitOfWork(self.session_factory) as uow:
+                run_entity: Optional[AgencyReflectionRun] = await uow.agency_reflection_runs.get_by_id(run_id)
+                if run_entity:
+                    run_entity.completed_at = completed_at
+                    run_entity.duration_seconds = duration_seconds
+                    run_entity.status = RunStatus.FAILED.value
+                    run_entity.error_message = str(e)
+                    await uow.agency_reflection_runs.update(run_id, run_entity)
+                await uow.commit()
+
             raise
-    
-    async def _generate_llm_lesson(
-        self,
-        lesson_type: LessonType,
-        context: Dict[str, Any],
-    ) -> Optional[str]:
-        """
-        Use LLM to generate richer lesson insights.
-        
-        Args:
-            lesson_type: Type of lesson being generated
-            context: Context data (metrics, patterns, etc.)
-            
-        Returns:
-            LLM-generated lesson text or None if LLM unavailable
-        """
-        if not self.llm_client:
+
+    async def get_active_lessons(self, user_id: str) -> List[DbLesson]:
+        async with UnitOfWork(self.session_factory) as uow:
+            return await uow.lessons.get_active_lessons(user_id)
+
+    async def get_self_model(self, user_id: str, entity_type: str, entity_id: str) -> Optional[AgencySelfModel]:
+        async with UnitOfWork(self.session_factory) as uow:
+            return await uow.agency_self_model.get_by_entity(user_id, entity_type, entity_id)
+
+    async def get_skill_performance(self, user_id: str, skill_id: str) -> Optional[Dict[str, Any]]:
+        model = await self.get_self_model(user_id, "skill", skill_id)
+        if not model:
             return None
-        
         try:
-            # Build prompt based on lesson type
-            if lesson_type == LessonType.SKILL_TUNING:
-                prompt = f"""Analyze this skill performance data and suggest a specific behavioral adjustment:
-
-Skill: {context.get('skill_id')}
-Success Rate: {context.get('success_rate', 0):.1%}
-Total Uses: {context.get('total_uses', 0)}
-Failures: {context.get('failures', 0)}
-
-Provide a concise, actionable lesson (1-2 sentences) about how to improve or adjust usage of this skill."""
-
-            elif lesson_type == LessonType.PLANNER_HEURISTIC:
-                prompt = f"""Analyze this goal completion pattern and suggest a planning adjustment:
-
-Goal Type: {context.get('goal_type')}
-Completion Rate: {context.get('completion_rate', 0):.1%}
-Retirement Rate: {context.get('retirement_rate', 0):.1%}
-Total Goals: {context.get('total_goals', 0)}
-
-Provide a concise, actionable lesson (1-2 sentences) about how to adjust goal prioritization or planning for this type."""
-
-            elif lesson_type == LessonType.PERSONA_STYLE:
-                prompt = f"""Analyze this user feedback pattern and suggest a communication adjustment:
-
-Average Rating: {context.get('avg_rating', 0):.1f}/5
-Low Ratings: {context.get('low_rating_count', 0)}
-Total Feedback: {context.get('total_feedback', 0)}
-
-Provide a concise, actionable lesson (1-2 sentences) about how to adjust communication style or tone."""
-
-            else:
-                return None
-            
-            # Call LLM (placeholder - actual implementation depends on LLM client interface)
-            # response = await self.llm_client.generate(prompt, max_tokens=100)
-            # return response.text
-            
-            # For now, return None to use statistical summaries
-            logger.debug(f"[SELF_REFLECTION] LLM lesson generation not yet implemented for {lesson_type}")
+            return json.loads(model.performance_summary) if model.performance_summary else None
+        except Exception:
             return None
-            
-        except Exception as e:
-            logger.warning(f"[SELF_REFLECTION] LLM lesson generation failed: {e}")
-            return None
-    
-    async def _analyze_skill_performance(
+
+    async def _analyze_skill_executions(
         self,
         user_id: str,
         window_start: datetime,
         window_end: datetime,
         run_id: str,
-    ) -> List[Lesson]:
-        """
-        Analyze skill usage and outcomes to generate skill-tuning lessons.
-        
-        Returns:
-            List of skill-related lessons
-        """
-        lessons = []
-        
-        # Query skill usage from behavioral feedback
-        rows = self.db.execute(
-            """SELECT skill_id, outcome, COUNT(*) as count
-               FROM ams_behavioral_feedback
-               WHERE user_id = ? AND timestamp BETWEEN ? AND ?
-               GROUP BY skill_id, outcome""",
-            (user_id, window_start.isoformat(), window_end.isoformat())
-        ).fetchall()
-        
-        # Aggregate by skill
-        skill_stats = {}
-        for row in rows:
-            skill_id = row["skill_id"]
-            if skill_id not in skill_stats:
-                skill_stats[skill_id] = {"success": 0, "failure": 0, "total": 0}
-            
-            outcome = row["outcome"]
-            count = row["count"]
-            skill_stats[skill_id][outcome] = count
-            skill_stats[skill_id]["total"] += count
-        
-        # Generate lessons for skills with sufficient data
-        for skill_id, stats in skill_stats.items():
-            if stats["total"] < self.min_sample_size:
-                continue
-            
-            success_rate = stats["success"] / stats["total"]
-            
-            # Update self-model
-            performance_summary = PerformanceSummary(
-                success_rate=success_rate,
-                additional_metrics={"total_uses": stats["total"]}
+    ) -> List[DbLesson]:
+        def _percentile(values: List[float], p: float) -> Optional[float]:
+            if not values:
+                return None
+            if p <= 0:
+                return float(min(values))
+            if p >= 1:
+                return float(max(values))
+            sorted_vals = sorted(values)
+            k = (len(sorted_vals) - 1) * p
+            f = int(k)
+            c = min(f + 1, len(sorted_vals) - 1)
+            if f == c:
+                return float(sorted_vals[f])
+            d0 = sorted_vals[f] * (c - k)
+            d1 = sorted_vals[c] * (k - f)
+            return float(d0 + d1)
+
+        async with UnitOfWork(self.session_factory) as uow:
+            session = uow._session
+            stmt = (
+                select(
+                    ams_behavioral_feedback.c.skill_id.label("skill_id"),
+                    ams_behavioral_feedback.c.outcome.label("outcome"),
+                    func.count().label("count"),
+                    func.avg(ams_behavioral_feedback.c.reward).label("avg_reward"),
+                    func.avg(ams_behavioral_feedback.c.execution_time_ms).label("avg_exec_ms"),
+                )
+                .where(
+                    and_(
+                        ams_behavioral_feedback.c.user_id == user_id,
+                        ams_behavioral_feedback.c.skill_id.is_not(None),
+                        ams_behavioral_feedback.c.timestamp >= window_start,
+                        ams_behavioral_feedback.c.timestamp <= window_end,
+                    )
+                )
+                .group_by(ams_behavioral_feedback.c.skill_id, ams_behavioral_feedback.c.outcome)
             )
-            
-            model_entry = SelfModelEntry(
+            result = await session.execute(stmt)
+            rows = result.fetchall()
+
+            raw_stmt = (
+                select(
+                    ams_behavioral_feedback.c.skill_id.label("skill_id"),
+                    ams_behavioral_feedback.c.outcome.label("outcome"),
+                    ams_behavioral_feedback.c.reward.label("reward"),
+                    ams_behavioral_feedback.c.execution_time_ms.label("execution_time_ms"),
+                )
+                .where(
+                    and_(
+                        ams_behavioral_feedback.c.user_id == user_id,
+                        ams_behavioral_feedback.c.skill_id.is_not(None),
+                        ams_behavioral_feedback.c.timestamp >= window_start,
+                        ams_behavioral_feedback.c.timestamp <= window_end,
+                    )
+                )
+            )
+            raw_result = await session.execute(raw_stmt)
+            raw_rows = raw_result.fetchall()
+
+        per_skill: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            skill_id = str(row.skill_id or "")
+            if not skill_id:
+                continue
+            outcome = str(row.outcome or "")
+            count = int(row.count or 0)
+            if skill_id not in per_skill:
+                per_skill[skill_id] = {
+                    "success": 0,
+                    "failure": 0,
+                    "total": 0,
+                    "outcomes": {},
+                    "reward_sum": 0.0,
+                    "reward_n": 0,
+                    "exec_ms_sum": 0.0,
+                    "exec_ms_n": 0,
+                }
+            if outcome in {"success", "ok"}:
+                per_skill[skill_id]["success"] += count
+            else:
+                per_skill[skill_id]["failure"] += count
+            per_skill[skill_id]["total"] += count
+
+            outcomes = per_skill[skill_id].setdefault("outcomes", {})
+            outcomes[outcome] = int(outcomes.get(outcome, 0) or 0) + count
+
+            if row.avg_reward is not None:
+                per_skill[skill_id]["reward_sum"] += float(row.avg_reward) * float(count)
+                per_skill[skill_id]["reward_n"] += count
+            if row.avg_exec_ms is not None:
+                per_skill[skill_id]["exec_ms_sum"] += float(row.avg_exec_ms) * float(count)
+                per_skill[skill_id]["exec_ms_n"] += count
+
+        per_skill_samples: Dict[str, Dict[str, List[float]]] = {}
+        for row in raw_rows:
+            skill_id = str(row.skill_id or "")
+            if not skill_id:
+                continue
+            if skill_id not in per_skill_samples:
+                per_skill_samples[skill_id] = {"rewards": [], "exec_ms": []}
+
+            if row.reward is not None:
+                try:
+                    per_skill_samples[skill_id]["rewards"].append(float(row.reward))
+                except Exception:
+                    pass
+            if row.execution_time_ms is not None:
+                try:
+                    per_skill_samples[skill_id]["exec_ms"].append(float(row.execution_time_ms))
+                except Exception:
+                    pass
+
+        lessons: List[DbLesson] = []
+        now = datetime.now(UTC)
+
+        for skill_id, stats in per_skill.items():
+            total = int(stats.get("total", 0) or 0)
+            if total < self.min_sample_size:
+                continue
+
+            success = int(stats.get("success", 0) or 0)
+            failure = int(stats.get("failure", 0) or 0)
+            success_rate = (success / total) if total else 0.0
+
+            avg_reward = None
+            if int(stats.get("reward_n", 0) or 0) > 0:
+                avg_reward = float(stats.get("reward_sum", 0.0) or 0.0) / float(stats.get("reward_n", 1) or 1)
+
+            avg_exec_ms = None
+            if int(stats.get("exec_ms_n", 0) or 0) > 0:
+                avg_exec_ms = float(stats.get("exec_ms_sum", 0.0) or 0.0) / float(stats.get("exec_ms_n", 1) or 1)
+
+            samples = per_skill_samples.get(skill_id, {"rewards": [], "exec_ms": []})
+            reward_values = samples.get("rewards", [])
+            exec_values = samples.get("exec_ms", [])
+
+            reward_min = float(min(reward_values)) if reward_values else None
+            reward_max = float(max(reward_values)) if reward_values else None
+
+            latency_p50_ms = _percentile(exec_values, 0.50)
+            latency_p90_ms = _percentile(exec_values, 0.90)
+            latency_p99_ms = _percentile(exec_values, 0.99)
+
+            outcomes = stats.get("outcomes", {}) if isinstance(stats.get("outcomes", {}), dict) else {}
+
+            model = AgencySelfModel(
                 model_id=str(uuid.uuid4()),
                 user_id=user_id,
-                entity_type=EntityType.SKILL,
+                entity_type="skill",
                 entity_id=skill_id,
-                performance_summary=performance_summary,
+                performance_summary=json.dumps(
+                    {
+                        "success_rate": success_rate,
+                        "total": total,
+                        "failure": failure,
+                        "avg_reward": avg_reward,
+                        "reward_min": reward_min,
+                        "reward_max": reward_max,
+                        "avg_execution_time_ms": avg_exec_ms,
+                        "latency_p50_ms": latency_p50_ms,
+                        "latency_p90_ms": latency_p90_ms,
+                        "latency_p99_ms": latency_p99_ms,
+                        "outcome_breakdown": outcomes,
+                    }
+                ),
                 window_start=window_start,
                 window_end=window_end,
-                sample_size=stats["total"],
-                confidence=min(0.9, stats["total"] / 50.0),  # More data = higher confidence
+                sample_size=total,
+                confidence=min(1.0, total / max(self.min_sample_size, 1)),
+                last_updated=now,
+                created_at=now,
             )
-            await self.self_model_store.upsert_entry(model_entry)
-            
-            # Project self-model entry to World Model KG
-            if self.kg_storage:
-                await self.projector.project_self_model_to_kg(model_entry)
-            
-            # Generate lesson if performance is poor
-            if success_rate < 0.5 and stats["total"] >= self.min_sample_size:
-                # Try to generate LLM-enhanced summary
-                llm_summary = await self._generate_llm_lesson(
-                    lesson_type=LessonType.SKILL_TUNING,
-                    context={
-                        "skill_id": skill_id,
+
+            async with UnitOfWork(self.session_factory) as uow:
+                await uow.agency_self_model.create(model)
+                await uow.commit()
+
+            if failure <= 0 and (avg_reward is None or avg_reward >= 0.0):
+                continue
+
+            confidence = min(1.0, max(failure / total if total else 0.0, abs(avg_reward) if avg_reward is not None else 0.0))
+
+            lesson = DbLesson(
+                lesson_id=str(uuid.uuid4()),
+                user_id=user_id,
+                lesson_type=LessonType.SKILL_TUNING.value,
+                target_kind="skill",
+                target_id=skill_id,
+                summary_text="Adjust skill usage based on observed outcomes.",
+                proposed_change={
+                    "change_type": "weight_tweak",
+                    "notes": {
                         "success_rate": success_rate,
-                        "total_uses": stats["total"],
-                        "failures": stats["failure"],
-                    }
-                )
-                
-                # Use LLM summary if available, otherwise use statistical summary
-                summary_text = llm_summary if llm_summary else (
-                    f"Skill '{skill_id}' has low success rate ({success_rate:.1%}). "
-                    f"Consider reducing usage or improving implementation."
-                )
-                
-                lesson = Lesson(
-                    lesson_id=str(uuid.uuid4()),
-                    user_id=user_id,
-                    lesson_type=LessonType.SKILL_TUNING,
-                    target_kind=TargetKind.SKILL,
-                    target_id=skill_id,
-                    summary_text=summary_text,
-                    proposed_change=ProposedChange(
-                        change_type=ChangeType.WEIGHT_TWEAK,
-                        field="selection_weight",
-                        old=1.0,
-                        new=0.5,  # Reduce selection probability
-                        notes=f"Based on {stats['total']} uses with {success_rate:.1%} success rate"
-                    ),
-                    confidence=min(0.8, stats["total"] / 30.0),
-                    metrics_basis=MetricsBasis(
-                        time_span=f"{(window_end - window_start).days} days",
-                        sample_size=stats["total"],
-                        outcome_counts={"success": stats["success"], "failure": stats["failure"]}
-                    ),
-                    scope=LessonScope.THIS_USER,
-                    status=LessonStatus.ACTIVE,
-                    source_reflection_run_id=run_id,
-                    evidence_window_start=window_start,
-                    evidence_window_end=window_end,
-                )
-                
-                await self.lesson_store.create_lesson(lesson)
-                lessons.append(lesson)
-                
-                logger.info(
-                    f"[SELF_REFLECTION] Generated skill lesson for {skill_id}: "
-                    f"success_rate={success_rate:.1%}, confidence={lesson.confidence:.2f}"
-                )
-        
+                        "total": total,
+                        "failure": failure,
+                        "avg_reward": avg_reward,
+                        "reward_min": reward_min,
+                        "reward_max": reward_max,
+                        "avg_execution_time_ms": avg_exec_ms,
+                        "latency_p50_ms": latency_p50_ms,
+                        "latency_p90_ms": latency_p90_ms,
+                        "latency_p99_ms": latency_p99_ms,
+                        "outcome_breakdown": outcomes,
+                    },
+                },
+                confidence=float(confidence),
+                metrics_basis={
+                    "window_start": window_start.isoformat(),
+                    "window_end": window_end.isoformat(),
+                    "success": success,
+                    "failure": failure,
+                    "total": total,
+                    "outcome_breakdown": outcomes,
+                },
+                scope=LessonScope.THIS_USER.value,
+                status=LessonStatus.ACTIVE.value,
+                superseded_by=None,
+                applied_at=None,
+                applied_by=None,
+                source_reflection_run_id=run_id,
+                evidence_window_start=window_start,
+                evidence_window_end=window_end,
+                related_goal_ids=[],
+                related_trajectory_ids=[],
+                related_event_ids=[],
+                metadata=None,
+                created_at=now,
+                updated_at=now,
+            )
+            lessons.append(lesson)
+
         return lessons
-    
+
     async def _analyze_goal_patterns(
         self,
         user_id: str,
         window_start: datetime,
         window_end: datetime,
         run_id: str,
-    ) -> List[Lesson]:
-        """
-        Analyze goal completion patterns to generate planner heuristics.
-        
-        Returns:
-            List of goal-related lessons
-        """
-        lessons = []
-        
-        # Query goal outcomes
-        rows = self.db.execute(
-            """SELECT goal_type, status, COUNT(*) as count
-               FROM agency_goals
-               WHERE user_id = ? AND created_at BETWEEN ? AND ?
-               GROUP BY goal_type, status""",
-            (user_id, window_start.isoformat(), window_end.isoformat())
-        ).fetchall()
-        
-        # Aggregate by goal type
-        goal_stats = {}
+    ) -> List[DbLesson]:
+        async with UnitOfWork(self.session_factory) as uow:
+            session = uow._session
+            stmt = (
+                select(
+                    agency_goals.c.goal_type.label("goal_type"),
+                    agency_goals.c.status.label("status"),
+                    func.count().label("count"),
+                )
+                .where(
+                    and_(
+                        agency_goals.c.user_id == user_id,
+                        agency_goals.c.created_at >= window_start,
+                        agency_goals.c.created_at <= window_end,
+                    )
+                )
+                .group_by(agency_goals.c.goal_type, agency_goals.c.status)
+            )
+            result = await session.execute(stmt)
+            rows = result.fetchall()
+
+        stats: Dict[str, Dict[str, int]] = {}
         for row in rows:
-            goal_type = row["goal_type"]
-            if goal_type not in goal_stats:
-                goal_stats[goal_type] = {"completed": 0, "retired": 0, "active": 0, "total": 0}
-            
-            status = row["status"]
-            count = row["count"]
-            if status in goal_stats[goal_type]:
-                goal_stats[goal_type][status] = count
-            goal_stats[goal_type]["total"] += count
-        
-        # Generate lessons for goal types with patterns
-        for goal_type, stats in goal_stats.items():
-            if stats["total"] < self.min_sample_size:
+            gt = str(row.goal_type or "")
+            if not gt:
                 continue
-            
-            completion_rate = stats["completed"] / stats["total"]
-            retirement_rate = stats["retired"] / stats["total"]
-            
-            # If many goals are retired, suggest deprioritizing this type
-            if retirement_rate > 0.5 and stats["total"] >= self.min_sample_size:
-                # Try to generate LLM-enhanced summary
-                llm_summary = await self._generate_llm_lesson(
-                    lesson_type=LessonType.PLANNER_HEURISTIC,
-                    context={
-                        "goal_type": goal_type,
+            if gt not in stats:
+                stats[gt] = {"completed": 0, "retired": 0, "active": 0, "total": 0}
+            status = str(row.status or "")
+            count = int(row.count or 0)
+            if status in stats[gt]:
+                stats[gt][status] += count
+            stats[gt]["total"] += count
+
+        lessons: List[DbLesson] = []
+        now = datetime.now(UTC)
+
+        for goal_type, s in stats.items():
+            total = int(s.get("total", 0) or 0)
+            if total < self.min_sample_size:
+                continue
+
+            completed = int(s.get("completed", 0) or 0)
+            retired = int(s.get("retired", 0) or 0)
+            completion_rate = (completed / total) if total else 0.0
+            retirement_rate = (retired / total) if total else 0.0
+
+            model = AgencySelfModel(
+                model_id=str(uuid.uuid4()),
+                user_id=user_id,
+                entity_type="goal_type",
+                entity_id=goal_type,
+                performance_summary=json.dumps(
+                    {
                         "completion_rate": completion_rate,
                         "retirement_rate": retirement_rate,
-                        "total_goals": stats["total"],
+                        "total": total,
                     }
-                )
-                
-                summary_text = llm_summary if llm_summary else (
-                    f"Goal type '{goal_type}' has high retirement rate ({retirement_rate:.1%}). "
-                    f"Consider lowering priority."
-                )
-                
-                lesson = Lesson(
+                ),
+                window_start=window_start,
+                window_end=window_end,
+                sample_size=total,
+                confidence=min(1.0, total / max(self.min_sample_size, 1)),
+                last_updated=now,
+                created_at=now,
+            )
+            async with UnitOfWork(self.session_factory) as uow:
+                await uow.agency_self_model.create(model)
+                await uow.commit()
+
+            if retirement_rate <= 0.5:
+                continue
+
+            confidence = min(1.0, retired / total) if total else 0.0
+            adjustment_key = f"goal_type_{goal_type}"
+            new_weight = max(0.1, 1.0 - (0.5 * retirement_rate))
+
+            lessons.append(
+                DbLesson(
                     lesson_id=str(uuid.uuid4()),
                     user_id=user_id,
-                    lesson_type=LessonType.PLANNER_HEURISTIC,
-                    target_kind=TargetKind.ARBITER_WEIGHT,
-                    target_id=f"goal_type_{goal_type}",
-                    summary_text=summary_text,
-                    proposed_change=ProposedChange(
-                        change_type=ChangeType.WEIGHT_TWEAK,
-                        field="goal_type_priority_weight",
-                        old=1.0,
-                        new=0.7,
-                        notes=f"Based on {stats['total']} goals with {retirement_rate:.1%} retirement rate"
-                    ),
-                    confidence=min(0.75, stats["total"] / 20.0),
-                    metrics_basis=MetricsBasis(
-                        time_span=f"{(window_end - window_start).days} days",
-                        sample_size=stats["total"],
-                        outcome_counts={
-                            "completed": stats["completed"],
-                            "retired": stats["retired"],
-                            "active": stats["active"]
-                        }
-                    ),
-                    scope=LessonScope.THIS_USER,
-                    status=LessonStatus.ACTIVE,
+                    lesson_type=LessonType.PLANNER_HEURISTIC.value,
+                    target_kind="arbiter_weight",
+                    target_id=adjustment_key,
+                    summary_text="Adjust goal prioritization based on observed goal outcomes.",
+                    proposed_change={
+                        "change_type": "weight_tweak",
+                        "adjustment_key": adjustment_key,
+                        "adjustment_value": new_weight,
+                        "notes": {
+                            "completion_rate": completion_rate,
+                            "retirement_rate": retirement_rate,
+                            "total": total,
+                        },
+                    },
+                    confidence=float(confidence),
+                    metrics_basis={
+                        "window_start": window_start.isoformat(),
+                        "window_end": window_end.isoformat(),
+                        "completed": completed,
+                        "retired": retired,
+                        "total": total,
+                    },
+                    scope=LessonScope.THIS_USER.value,
+                    status=LessonStatus.ACTIVE.value,
+                    superseded_by=None,
+                    applied_at=None,
+                    applied_by=None,
                     source_reflection_run_id=run_id,
                     evidence_window_start=window_start,
                     evidence_window_end=window_end,
+                    related_goal_ids=[],
+                    related_trajectory_ids=[],
+                    related_event_ids=[],
+                    metadata=None,
+                    created_at=now,
+                    updated_at=now,
                 )
-                
-                await self.lesson_store.create_lesson(lesson)
-                lessons.append(lesson)
-                
-                logger.info(
-                    f"[SELF_REFLECTION] Generated goal pattern lesson for {goal_type}: "
-                    f"retirement_rate={retirement_rate:.1%}"
-                )
-        
+            )
+
         return lessons
-    
+
     async def _analyze_user_feedback(
         self,
         user_id: str,
         window_start: datetime,
         window_end: datetime,
         run_id: str,
-    ) -> List[Lesson]:
-        """
-        Analyze user feedback and sentiment to generate persona/style lessons.
-        
-        Returns:
-            List of feedback-related lessons
-        """
-        lessons = []
-        
-        # Query feedback events (reward is the rating in this table)
+    ) -> List[DbLesson]:
+        async with UnitOfWork(self.session_factory) as uow:
+            session = uow._session
+            stmt = (
+                select(
+                    func.avg(ams_behavioral_feedback.c.user_satisfaction).label("avg_satisfaction"),
+                    func.avg(ams_behavioral_feedback.c.reward).label("avg_reward"),
+                    func.count().label("count"),
+                )
+                .where(
+                    and_(
+                        ams_behavioral_feedback.c.user_id == user_id,
+                        ams_behavioral_feedback.c.timestamp >= window_start,
+                        ams_behavioral_feedback.c.timestamp <= window_end,
+                    )
+                )
+            )
+            result = await session.execute(stmt)
+            row = result.fetchone()
+
+            reason_stmt = (
+                select(
+                    ams_behavioral_feedback.c.reason.label("reason"),
+                    func.count().label("count"),
+                )
+                .where(
+                    and_(
+                        ams_behavioral_feedback.c.user_id == user_id,
+                        ams_behavioral_feedback.c.timestamp >= window_start,
+                        ams_behavioral_feedback.c.timestamp <= window_end,
+                        ams_behavioral_feedback.c.reason.is_not(None),
+                    )
+                )
+                .group_by(ams_behavioral_feedback.c.reason)
+            )
+            reason_result = await session.execute(reason_stmt)
+            reason_rows = reason_result.fetchall()
+
+        if not row:
+            return []
+
+        avg_sat = row.avg_satisfaction
+        avg_reward = row.avg_reward
+        count = int(row.count or 0)
+        if count < self.min_sample_size:
+            return []
+
+        reasons: Dict[str, int] = {}
+        for r in reason_rows:
+            reason = str(r.reason or "")
+            if not reason:
+                continue
+            reasons[reason] = int(r.count or 0)
+
+        now = datetime.now(UTC)
+
+        sat_bad = avg_sat is not None and float(avg_sat) < 0.5
+        reward_bad = avg_reward is not None and float(avg_reward) < 0.0
+        if not (sat_bad or reward_bad):
+            return []
+
+        confidence = min(1.0, count / max(self.min_sample_size, 1))
+        return [
+            DbLesson(
+                lesson_id=str(uuid.uuid4()),
+                user_id=user_id,
+                lesson_type=LessonType.PERSONA_STYLE.value,
+                target_kind="persona_trait",
+                target_id="response_style",
+                summary_text="Adjust interaction style based on user satisfaction signals.",
+                proposed_change={
+                    "change_type": "template_update",
+                    "notes": {
+                        "avg_satisfaction": float(avg_sat) if avg_sat is not None else None,
+                        "avg_reward": float(avg_reward) if avg_reward is not None else None,
+                        "reasons": reasons,
+                        "count": count,
+                    },
+                },
+                confidence=float(confidence),
+                metrics_basis={
+                    "window_start": window_start.isoformat(),
+                    "window_end": window_end.isoformat(),
+                    "avg_satisfaction": float(avg_sat) if avg_sat is not None else None,
+                    "avg_reward": float(avg_reward) if avg_reward is not None else None,
+                    "reasons": reasons,
+                    "count": count,
+                },
+                scope=LessonScope.THIS_USER.value,
+                status=LessonStatus.ACTIVE.value,
+                superseded_by=None,
+                applied_at=None,
+                applied_by=None,
+                source_reflection_run_id=run_id,
+                evidence_window_start=window_start,
+                evidence_window_end=window_end,
+                related_goal_ids=[],
+                related_trajectory_ids=[],
+                related_event_ids=[],
+                metadata=None,
+                created_at=now,
+                updated_at=now,
+            )
+        ]
+
+    def _parse_policy_rules_applied(self, raw: Optional[str]) -> List[str]:
+        if not raw:
+            return []
+
         try:
-            rows = self.db.fetch_all(
-                """SELECT reward, reason, classified_categories
-                   FROM feedback_events
-                   WHERE user_id = ? AND timestamp BETWEEN ? AND ?""",
-                (user_id, window_start.isoformat(), window_end.isoformat())
-            )
-        except Exception as e:
-            logger.debug(f"[SELF_REFLECTION] Could not query feedback_events: {e}")
-            return lessons
-        
-        if len(rows) < self.min_sample_size:
-            logger.debug(
-                f"[SELF_REFLECTION] Insufficient feedback data for user {user_id}: "
-                f"{len(rows)} events (need {self.min_sample_size})"
-            )
-            return lessons
-        
-        # Analyze ratings (reward column contains the rating)
-        ratings = []
-        for row in rows:
-            if row["reward"] is not None:
-                # Reward is stored as integer, convert to rating scale
-                ratings.append(row["reward"])
-        
-        if ratings:
-            avg_rating = sum(ratings) / len(ratings)
-            
-            # If average rating is low, suggest persona adjustment
-            if avg_rating < 3.0:  # Assuming 1-5 scale
-                # Try to generate LLM-enhanced summary
-                low_rating_count = sum(1 for r in ratings if r < 3)
-                llm_summary = await self._generate_llm_lesson(
-                    lesson_type=LessonType.PERSONA_STYLE,
-                    context={
-                        "avg_rating": avg_rating,
-                        "low_rating_count": low_rating_count,
-                        "total_feedback": len(ratings),
-                    }
-                )
-                
-                summary_text = llm_summary if llm_summary else (
-                    f"User feedback shows low satisfaction (avg rating: {avg_rating:.1f}/5). "
-                    f"Consider adjusting communication style."
-                )
-                
-                lesson = Lesson(
-                    lesson_id=str(uuid.uuid4()),
-                    user_id=user_id,
-                    lesson_type=LessonType.PERSONA_STYLE,
-                    target_kind=TargetKind.PERSONA_TRAIT,
-                    target_id="response_style",
-                    summary_text=summary_text,
-                    proposed_change=ProposedChange(
-                        change_type=ChangeType.TEMPLATE_UPDATE,
-                        field="response_tone",
-                        old="current",
-                        new="more_empathetic",
-                        notes=f"Based on {len(ratings)} ratings with average {avg_rating:.1f}/5"
-                    ),
-                    confidence=min(0.7, len(ratings) / 30.0),
-                    metrics_basis=MetricsBasis(
-                        time_span=f"{(window_end - window_start).days} days",
-                        sample_size=len(ratings),
-                        outcome_counts={"low_rating": sum(1 for r in ratings if r < 3)}
-                    ),
-                    scope=LessonScope.THIS_USER,
-                    status=LessonStatus.ACTIVE,
-                    source_reflection_run_id=run_id,
-                    evidence_window_start=window_start,
-                    evidence_window_end=window_end,
-                )
-                
-                await self.lesson_store.create_lesson(lesson)
-                lessons.append(lesson)
-                
-                logger.info(
-                    f"[SELF_REFLECTION] Generated persona lesson: "
-                    f"avg_rating={avg_rating:.1f}, confidence={lesson.confidence:.2f}"
-                )
-        
-        return lessons
-    
-    async def get_active_lessons(
-        self,
-        user_id: str,
-        lesson_type: Optional[LessonType] = None,
-    ) -> List[Lesson]:
-        """
-        Get active lessons for a user.
-        
-        Args:
-            user_id: User ID
-            lesson_type: Optional filter by lesson type
-            
-        Returns:
-            List of active lessons
-        """
-        return await self.lesson_store.get_active_lessons(
-            user_id=user_id,
-            lesson_type=lesson_type
-        )
-    
-    async def get_self_model(
-        self,
-        user_id: str,
-        entity_type: EntityType,
-        entity_id: str,
-    ) -> Optional[SelfModelEntry]:
-        """
-        Get the latest self-model entry for an entity.
-        
-        Args:
-            user_id: User ID
-            entity_type: Type of entity
-            entity_id: Entity ID
-            
-        Returns:
-            Latest self-model entry or None
-        """
-        return await self.self_model_store.get_latest_entry(
-            user_id=user_id,
-            entity_type=entity_type,
-            entity_id=entity_id
-        )
-    
-    async def get_skill_performance(self, user_id: str, skill_id: str) -> Optional[float]:
-        """
-        Get success rate for a skill (for use by Planner/Arbiter).
-        
-        Args:
-            user_id: User ID
-            skill_id: Skill ID
-            
-        Returns:
-            Success rate (0.0-1.0) or None if no data
-        """
-        entry = await self.self_model_store.get_latest_entry(
-            user_id=user_id,
-            entity_type=EntityType.SKILL,
-            entity_id=skill_id
-        )
-        
-        if entry and entry.performance_summary:
-            return entry.performance_summary.success_rate
-        
-        return None
-    
-    async def get_goal_type_performance(self, user_id: str, goal_type: str) -> Optional[Dict[str, Any]]:
-        """
-        Get performance metrics for a goal type (for use by Arbiter).
-        
-        Args:
-            user_id: User ID
-            goal_type: Goal type (e.g., "learning", "project")
-            
-        Returns:
-            Dictionary with completion_rate, retirement_rate, sample_size
-        """
-        entry = await self.self_model_store.get_latest_entry(
-            user_id=user_id,
-            entity_type=EntityType.GOAL_TYPE,
-            entity_id=goal_type
-        )
-        
-        if entry and entry.performance_summary:
-            return {
-                "success_rate": entry.performance_summary.success_rate,
-                "sample_size": entry.sample_size,
-                "confidence": entry.confidence,
-                "additional_metrics": entry.performance_summary.additional_metrics or {}
-            }
-        
-        return None
-    
-    async def get_all_skill_performances(self, user_id: str) -> Dict[str, float]:
-        """
-        Get success rates for all skills with data (for use by Curiosity Engine).
-        
-        Args:
-            user_id: User ID
-            
-        Returns:
-            Dictionary of skill_id -> success_rate
-        """
-        # Query all skill entries for user
-        rows = self.db.execute(
-            """SELECT entity_id, performance_summary, sample_size
-               FROM agency_self_model
-               WHERE user_id = ? AND entity_type = 'skill'
-               ORDER BY window_end DESC""",
-            (user_id,)
-        ).fetchall()
-        
-        performances = {}
-        seen_skills = set()
-        
-        for row in rows:
-            skill_id = row["entity_id"]
-            
-            # Only use most recent entry per skill
-            if skill_id in seen_skills:
-                continue
-            seen_skills.add(skill_id)
-            
-            # Parse performance summary
-            try:
-                import json
-                summary_data = json.loads(row["performance_summary"])
-                success_rate = summary_data.get("success_rate")
-                sample_size = row["sample_size"]
-                
-                # Only include if we have enough data
-                if success_rate is not None and sample_size >= 5:
-                    performances[skill_id] = success_rate
-            except (json.JSONDecodeError, KeyError):
-                continue
-        
-        return performances
-    
-    async def _analyze_emotion_patterns(
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(x) for x in parsed if x]
+            if isinstance(parsed, dict):
+                return [str(x) for x in parsed.get("rule_ids", []) if x]
+        except Exception:
+            pass
+
+        parts = [p.strip() for p in str(raw).replace(";", ",").split(",")]
+        return [p for p in parts if p]
+
+    async def _analyze_policy_patterns(
         self,
         user_id: str,
         window_start: datetime,
         window_end: datetime,
         run_id: str,
-    ) -> List[Lesson]:
+    ) -> List[DbLesson]:
+        """Generate policy suggestion lessons based on repeated ethics gate blocks.
+
+        This is intentionally conservative: it proposes small threshold relaxations
+        (increase numeric condition thresholds) only when a specific rule repeatedly
+        blocks within the analysis window.
         """
-        Analyze user emotional patterns to generate persona adjustment lessons.
-        
-        Examines emotion history to detect:
-        - High-stress periods requiring more supportive interaction
-        - Low-satisfaction patterns suggesting persona mismatch
-        - Emotional trajectories indicating needed style changes
-        
-        Args:
-            user_id: User to analyze
-            window_start: Start of analysis window
-            window_end: End of analysis window
-            run_id: Reflection run ID for provenance
-            
-        Returns:
-            List of emotion-based persona lessons
-        """
-        lessons = []
-        
-        try:
-            # Query emotion history
-            # Note: Some deployments only have valence/arousal columns. We
-            # don't require richer fields for current analysis, so we select
-            # only the stable subset.
-            #
-            # Emotion Simulation persists AICO's own emotional trajectory under
-            # user_id = 'system' (single-agent emotion model).
-            emotion_history_user_id = "system"
-            rows = self.db.execute(
-                """SELECT timestamp, valence, arousal
-                   FROM emotion_history
-                   WHERE user_id = ? AND timestamp BETWEEN ? AND ?
-                   ORDER BY timestamp DESC""",
-                (
-                    emotion_history_user_id,
-                    window_start.isoformat(),
-                    window_end.isoformat(),
+
+        async with UnitOfWork(self.session_factory) as uow:
+            session = uow._session
+            stmt = (
+                select(
+                    ethics_gate_audit.c.decision.label("decision"),
+                    ethics_gate_audit.c.policy_rules_applied.label("policy_rules_applied"),
+                    func.count().label("count"),
                 )
-            ).fetchall()
-            
-            if len(rows) < self.min_sample_size:
-                # Degradation: not enough data to analyze emotion patterns
-                logger.warning(
-                    f"[SELF_REFLECTION] Emotion analysis degraded for user {user_id}: "
-                    f"{len(rows)} entries (need {self.min_sample_size}) "
-                    f"from emotion_history user_id='{emotion_history_user_id}'"
+                .where(
+                    and_(
+                        ethics_gate_audit.c.user_id == user_id,
+                        ethics_gate_audit.c.created_at >= window_start.isoformat(),
+                        ethics_gate_audit.c.created_at <= window_end.isoformat(),
+                    )
                 )
-                return lessons
-            
-            # Calculate average emotional metrics
-            # Rows are tuples: (timestamp, valence, arousal)
-            avg_valence = sum(row[1] for row in rows) / len(rows)
-            avg_arousal = sum(row[2] for row in rows) / len(rows)
-            
-            # Detect high-stress pattern (low valence + high arousal)
-            stress_score = (1.0 - avg_valence) * avg_arousal
-            
-            if stress_score > 0.6:  # Threshold for high stress
-                # Generate lesson for more supportive interaction
-                lesson = Lesson(
-                    lesson_id=str(uuid.uuid4()),
-                    user_id=user_id,
-                    lesson_type=LessonType.PERSONA_STYLE,
-                    target_kind=TargetKind.PERSONA_TRAIT,
-                    target_id="supportiveness",
-                    summary_text=(
-                        f"Elevated stress detected in AICO emotion history (stress_score={stress_score:.2f}). "
-                        "Increase supportiveness and empathy in interactions."
-                    ),
-                    proposed_change=ProposedChange(
-                        change_type=ChangeType.WEIGHT_TWEAK,
-                        field="supportiveness",
-                        old=None,
-                        new="+0.2",
-                        notes="Increase supportiveness under sustained high-stress patterns.",
-                    ),
-                    confidence=min(0.9, stress_score),
-                    metrics_basis=MetricsBasis(
-                        time_span=f"{(window_end - window_start).days} days",
-                        sample_size=len(rows),
-                        outcome_counts={},
-                        additional_metrics={
-                            "stress_score": stress_score,
-                            "avg_valence": avg_valence,
-                            "avg_arousal": avg_arousal,
+                .group_by(ethics_gate_audit.c.decision, ethics_gate_audit.c.policy_rules_applied)
+            )
+            result = await session.execute(stmt)
+            rows = result.fetchall()
+
+        counts_by_rule: Dict[str, Dict[str, int]] = {}
+        for row in rows:
+            decision = str(row.decision or "")
+            count = int(row.count or 0)
+            for rule_id in self._parse_policy_rules_applied(row.policy_rules_applied):
+                if rule_id not in counts_by_rule:
+                    counts_by_rule[rule_id] = {"block": 0, "total": 0}
+                if decision == "block":
+                    counts_by_rule[rule_id]["block"] += count
+                counts_by_rule[rule_id]["total"] += count
+
+        lessons: List[DbLesson] = []
+        now = datetime.now(UTC)
+
+        async with UnitOfWork(self.session_factory) as uow:
+            for rule_id, stats in counts_by_rule.items():
+                total = int(stats.get("total", 0) or 0)
+                block = int(stats.get("block", 0) or 0)
+                if total < self.min_sample_size:
+                    continue
+
+                block_rate = (block / total) if total else 0.0
+                if block_rate < 0.7:
+                    continue
+
+                rule: Optional[EthicsPolicyRule] = await uow.ethics_policy_rules.get_by_id(rule_id)
+                if not rule:
+                    continue
+
+                conditions = rule.conditions_json if isinstance(rule.conditions_json, dict) else {}
+                numeric_keys = [k for k, v in conditions.items() if isinstance(v, (int, float))]
+                if not numeric_keys:
+                    continue
+
+                key = numeric_keys[0]
+                old = float(conditions[key])
+                new = max(old, min(1.0, old + 0.05))
+                if abs(new - old) < 1e-9:
+                    continue
+
+                confidence = min(1.0, block / max(self.min_sample_size, 1))
+
+                lessons.append(
+                    DbLesson(
+                        lesson_id=str(uuid.uuid4()),
+                        user_id=user_id,
+                        lesson_type=LessonType.POLICY_SUGGESTION.value,
+                        target_kind="policy_rule",
+                        target_id=rule_id,
+                        summary_text="Adjust policy threshold based on repeated ethics blocks.",
+                        proposed_change={
+                            "change_type": "threshold_tweak",
+                            "field": f"conditions_json.{key}",
+                            "old": old,
+                            "new": new,
+                            "notes": {
+                                "block": block,
+                                "total": total,
+                                "block_rate": block_rate,
+                            },
                         },
-                    ),
-                    scope=LessonScope.THIS_USER,
-                    status=LessonStatus.ACTIVE,
-                    source_reflection_run_id=run_id,
-                    evidence_window_start=window_start,
-                    evidence_window_end=window_end,
-                )
-                lessons.append(lesson)
-                await self.lesson_store.create_lesson(lesson)
-                
-                logger.info(
-                    f"[SELF_REFLECTION] Generated stress-response lesson for user {user_id}",
-                    extra={"stress_score": stress_score, "avg_valence": avg_valence}
-                )
-            
-            # Detect low satisfaction pattern (consistently low valence)
-            if avg_valence < 0.3:  # Threshold for low satisfaction
-                lesson = Lesson(
-                    lesson_id=str(uuid.uuid4()),
-                    user_id=user_id,
-                    lesson_type=LessonType.PERSONA_STYLE,
-                    target_kind=TargetKind.PERSONA_TRAIT,
-                    target_id="interaction_style",
-                    summary_text=(
-                        f"Low average valence in AICO emotion history (avg_valence={avg_valence:.2f}). "
-                        "Consider adjusting interaction style and tone."
-                    ),
-                    proposed_change=ProposedChange(
-                        change_type=ChangeType.WEIGHT_TWEAK,
-                        field="warmth",
-                        old=None,
-                        new="+0.15",
-                        notes="Increase warmth when sustained low-valence patterns are observed.",
-                    ),
-                    confidence=0.7,
-                    metrics_basis=MetricsBasis(
-                        time_span=f"{(window_end - window_start).days} days",
-                        sample_size=len(rows),
-                        outcome_counts={},
-                        additional_metrics={
-                            "avg_valence": avg_valence,
-                            "avg_arousal": avg_arousal,
+                        confidence=float(confidence),
+                        metrics_basis={
+                            "window_start": window_start.isoformat(),
+                            "window_end": window_end.isoformat(),
+                            "block": block,
+                            "total": total,
+                            "block_rate": block_rate,
                         },
-                    ),
-                    scope=LessonScope.THIS_USER,
-                    status=LessonStatus.ACTIVE,
-                    source_reflection_run_id=run_id,
-                    evidence_window_start=window_start,
-                    evidence_window_end=window_end,
+                        scope=LessonScope.THIS_USER.value,
+                        status=LessonStatus.ACTIVE.value,
+                        superseded_by=None,
+                        applied_at=None,
+                        applied_by=None,
+                        source_reflection_run_id=run_id,
+                        evidence_window_start=window_start,
+                        evidence_window_end=window_end,
+                        related_goal_ids=[],
+                        related_trajectory_ids=[],
+                        related_event_ids=[],
+                        metadata=None,
+                        created_at=now,
+                        updated_at=now,
+                    )
                 )
-                lessons.append(lesson)
-                await self.lesson_store.create_lesson(lesson)
-                
-                logger.info(
-                    f"[SELF_REFLECTION] Generated low-satisfaction lesson for user {user_id}",
-                    extra={"avg_valence": avg_valence}
-                )
-        
-        except Exception as e:
-            # Hard failure analyzing emotion patterns
-            logger.exception(f"[SELF_REFLECTION] Failed to analyze emotion patterns: {e}")
-        
+
+            await uow.commit()
+
         return lessons
-    
+
     async def _analyze_social_patterns(
         self,
         user_id: str,
         window_start: datetime,
         window_end: datetime,
         run_id: str,
-    ) -> List[Lesson]:
+    ) -> List[DbLesson]:
+        """Analyze relationship changes as a conservative proxy for social churn.
+
+        Note: user_relationships is relationship metadata, not interaction telemetry.
+        We therefore only infer coarse signals (e.g., many deactivations).
         """
-        Analyze social relationship patterns to generate interaction lessons.
-        
-        Examines relationship data to detect:
-        - Declining relationship strength requiring maintenance
-        - Interaction frequency mismatches
-        - Communication style preferences
-        
-        Args:
-            user_id: User to analyze
-            window_start: Start of analysis window
-            window_end: End of analysis window
-            run_id: Reflection run ID for provenance
-            
-        Returns:
-            List of social relationship lessons
-        """
-        lessons = []
-        
-        try:
-            # Query relationship data using actual schema columns
-            # Current schema: uuid, user_uuid, related_user_uuid, relationship_type,
-            # is_active, created_at, updated_at
-            # 
-            # NOTE: The full social analysis design requires richer metrics like
-            # closeness, trust, interaction_frequency, last_interaction. Until those
-            # are added to the schema, we degrade gracefully with a WARNING.
-            rows = self.db.execute(
-                """SELECT uuid, related_user_uuid, relationship_type, 
-                          is_active, created_at, updated_at
-                       FROM user_relationships
-                       WHERE user_uuid = ?""",
-                (user_id,),
-            ).fetchall()
-            
-            if not rows:
-                logger.debug(f"[SELF_REFLECTION] No relationship data for user {user_id}")
-                return lessons
-            
-            # Degradation: current schema lacks closeness/trust/interaction metrics.
-            # We log this once per run and skip rich social analysis until schema is extended.
-            logger.warning(
-                f"[SELF_REFLECTION] Social analysis degraded for user {user_id}: "
-                f"relationship metrics (closeness, trust, interaction_frequency) not yet "
-                f"in schema. Found {len(rows)} relationships but cannot analyze interaction patterns."
+
+        async with UnitOfWork(self.session_factory) as uow:
+            session = uow._session
+            stmt = (
+                select(
+                    func.count().label("changed_count"),
+                    func.sum(case((user_relationships.c.is_active.is_(False), 1), else_=0)).label("deactivated_count"),
+                )
+                .where(
+                    and_(
+                        user_relationships.c.user_uuid == user_id,
+                        user_relationships.c.updated_at >= window_start,
+                        user_relationships.c.updated_at <= window_end,
+                    )
+                )
             )
-            return lessons
-        
-        except Exception as e:
-            logger.exception(f"[SELF_REFLECTION] Failed to analyze social patterns: {e}")
-        
-        return lessons
-    
+            result = await session.execute(stmt)
+            row = result.fetchone()
+
+        if not row:
+            return []
+
+        changed_count = int(row.changed_count or 0)
+        deactivated_count = int(row.deactivated_count or 0)
+
+        if changed_count < self.min_sample_size:
+            return []
+
+        churn_rate = (deactivated_count / changed_count) if changed_count else 0.0
+        if churn_rate <= 0.5:
+            return []
+
+        now = datetime.now(UTC)
+        confidence = min(1.0, changed_count / max(self.min_sample_size, 1))
+
+        return [
+            DbLesson(
+                lesson_id=str(uuid.uuid4()),
+                user_id=user_id,
+                lesson_type=LessonType.PERSONA_STYLE.value,
+                target_kind="persona_trait",
+                target_id="response_style",
+                summary_text="Adjust interaction style based on social/relationship churn signals.",
+                proposed_change={
+                    "change_type": "template_update",
+                    "notes": {
+                        "changed_count": changed_count,
+                        "deactivated_count": deactivated_count,
+                        "churn_rate": churn_rate,
+                    },
+                },
+                confidence=float(confidence),
+                metrics_basis={
+                    "window_start": window_start.isoformat(),
+                    "window_end": window_end.isoformat(),
+                    "changed_count": changed_count,
+                    "deactivated_count": deactivated_count,
+                    "churn_rate": churn_rate,
+                },
+                scope=LessonScope.THIS_USER.value,
+                status=LessonStatus.ACTIVE.value,
+                superseded_by=None,
+                applied_at=None,
+                applied_by=None,
+                source_reflection_run_id=run_id,
+                evidence_window_start=window_start,
+                evidence_window_end=window_end,
+                related_goal_ids=[],
+                related_trajectory_ids=[],
+                related_event_ids=[],
+                metadata=None,
+                created_at=now,
+                updated_at=now,
+            )
+        ]
+
+    async def _analyze_emotion_patterns(
+        self,
+        user_id: str,
+        window_start: datetime,
+        window_end: datetime,
+        run_id: str,
+    ) -> List[DbLesson]:
+        async with UnitOfWork(self.session_factory) as uow:
+            session = uow._session
+            stmt = (
+                select(
+                    func.avg(emotion_history.c.valence).label("avg_valence"),
+                    func.avg(emotion_history.c.arousal).label("avg_arousal"),
+                    func.avg(emotion_history.c.intensity).label("avg_intensity"),
+                    func.count().label("count"),
+                )
+                .where(
+                    and_(
+                        emotion_history.c.user_id == user_id,
+                        emotion_history.c.timestamp >= window_start.isoformat(),
+                        emotion_history.c.timestamp <= window_end.isoformat(),
+                    )
+                )
+            )
+            result = await session.execute(stmt)
+            row = result.fetchone()
+
+        if not row:
+            return []
+
+        count = int(row.count or 0)
+        if count < self.min_sample_size:
+            return []
+
+        avg_valence = float(row.avg_valence) if row.avg_valence is not None else 0.0
+        avg_intensity = float(row.avg_intensity) if row.avg_intensity is not None else 0.0
+        avg_arousal = float(row.avg_arousal) if row.avg_arousal is not None else 0.0
+
+        if avg_valence >= -0.2:
+            return []
+
+        if avg_intensity < 0.6:
+            return []
+
+        now = datetime.now(UTC)
+        confidence = min(1.0, count / max(self.min_sample_size, 1))
+
+        return [
+            DbLesson(
+                lesson_id=str(uuid.uuid4()),
+                user_id=user_id,
+                lesson_type=LessonType.PERSONA_STYLE.value,
+                target_kind="persona_trait",
+                target_id="response_style",
+                summary_text="Adjust interaction style based on sustained emotional distress signals.",
+                proposed_change={
+                    "change_type": "template_update",
+                    "notes": {
+                        "avg_valence": avg_valence,
+                        "avg_arousal": avg_arousal,
+                        "avg_intensity": avg_intensity,
+                        "count": count,
+                    },
+                },
+                confidence=float(confidence),
+                metrics_basis={
+                    "window_start": window_start.isoformat(),
+                    "window_end": window_end.isoformat(),
+                    "avg_valence": avg_valence,
+                    "avg_arousal": avg_arousal,
+                    "avg_intensity": avg_intensity,
+                    "count": count,
+                },
+                scope=LessonScope.THIS_USER.value,
+                status=LessonStatus.ACTIVE.value,
+                superseded_by=None,
+                applied_at=None,
+                applied_by=None,
+                source_reflection_run_id=run_id,
+                evidence_window_start=window_start,
+                evidence_window_end=window_end,
+                related_goal_ids=[],
+                related_trajectory_ids=[],
+                related_event_ids=[],
+                metadata=None,
+                created_at=now,
+                updated_at=now,
+            )
+        ]
+
     async def _analyze_curiosity_outcomes(
         self,
         user_id: str,
         window_start: datetime,
         window_end: datetime,
         run_id: str,
-    ) -> List[Lesson]:
-        """
-        Analyze curiosity exploration outcomes to generate policy adjustment lessons.
-        
-        Examines curiosity-driven goals to detect:
-        - Successful explorations leading to skill improvements
-        - Failed explorations indicating poor curiosity policies
-        - Curiosity → learning → skill improvement pipeline effectiveness
-        
-        Args:
-            user_id: User to analyze
-            window_start: Start of analysis window
-            window_end: End of analysis window
-            run_id: Reflection run ID for provenance
-            
-        Returns:
-            List of curiosity policy adjustment lessons
-        """
-        lessons = []
-        
-        try:
-            # Query curiosity-driven goals
-            # Use the actual agency_goals schema: metadata is stored as metadata_json.
-            # We include it in the SELECT even if current analysis only uses status
-            # and counts, to keep this query schema-accurate and future-safe.
-            rows = self.db.execute(
-                """SELECT goal_id, status, created_at, metadata_json
-                   FROM agency_goals
-                   WHERE user_id = ? 
-                     AND origin = 'curiosity'
-                     AND created_at BETWEEN ? AND ?
-                   ORDER BY created_at DESC""",
-                (user_id, window_start.isoformat(), window_end.isoformat())
-            ).fetchall()
-            
-            if len(rows) < 3:  # Need at least a few curiosity goals to analyze
-                logger.debug(
-                    f"[SELF_REFLECTION] Insufficient curiosity goals for user {user_id}: "
-                    f"{len(rows)} goals (need 3+)"
+    ) -> List[DbLesson]:
+        async with UnitOfWork(self.session_factory) as uow:
+            session = uow._session
+            stmt = (
+                select(
+                    agency_goals.c.status.label("status"),
+                    func.count().label("count"),
                 )
-                return lessons
-            
-            # Analyze completion rates
-            total_goals = len(rows)
-            completed_goals = sum(1 for row in rows if row["status"] == "completed")
-            abandoned_goals = sum(1 for row in rows if row["status"] == "abandoned")
-            
-            completion_rate = completed_goals / total_goals if total_goals > 0 else 0
-            abandonment_rate = abandoned_goals / total_goals if total_goals > 0 else 0
-            
-            # Detect poor curiosity policy (high abandonment rate)
-            if abandonment_rate > 0.5 and total_goals >= 5:
-                lesson = Lesson(
-                    lesson_id=str(uuid.uuid4()),
-                    user_id=user_id,
-                    run_id=run_id,
-                    lesson_type=LessonType.POLICY_SUGGESTION,
-                    target_kind=TargetKind.POLICY_RULE,
-                    target_id="curiosity_policy",
-                    description=(
-                        f"High curiosity goal abandonment rate ({abandonment_rate:.1%}). "
-                        f"Curiosity policy may be generating goals that are too ambitious or "
-                        "not aligned with user interests. Consider tightening curiosity filters."
-                    ),
-                    confidence=0.75,
-                    metrics_basis=MetricsBasis(
-                        sample_size=total_goals,
-                        success_rate=completion_rate,
-                        avg_duration_seconds=None,
-                        error_rate=abandonment_rate,
-                    ),
-                    proposed_changes=[
-                        ProposedChange(
-                            change_type=ChangeType.ADJUST_WEIGHT,
-                            target_field="curiosity_threshold",
-                            old_value=None,
-                            new_value="+0.1",  # Increase threshold (be more selective)
-                        )
-                    ],
-                    created_at=datetime.now(UTC),
+                .where(
+                    and_(
+                        agency_goals.c.user_id == user_id,
+                        agency_goals.c.origin == "curiosity",
+                        agency_goals.c.created_at >= window_start,
+                        agency_goals.c.created_at <= window_end,
+                    )
                 )
-                lessons.append(lesson)
-                
-                logger.info(
-                    f"[SELF_REFLECTION] Generated curiosity policy adjustment lesson",
-                    extra={
-                        "abandonment_rate": abandonment_rate,
-                        "total_goals": total_goals
-                    }
-                )
-            
-            # Detect successful curiosity → learning pipeline
-            elif completion_rate > 0.7 and total_goals >= 5:
-                lesson = Lesson(
-                    lesson_id=str(uuid.uuid4()),
-                    user_id=user_id,
-                    run_id=run_id,
-                    lesson_type=LessonType.POLICY_SUGGESTION,
-                    target_kind=TargetKind.POLICY_RULE,
-                    target_id="curiosity_policy",
-                    description=(
-                        f"High curiosity goal completion rate ({completion_rate:.1%}). "
-                        "Curiosity policy is working well. Consider slightly loosening "
-                        "filters to explore more opportunities."
-                    ),
-                    confidence=0.7,
-                    metrics_basis=MetricsBasis(
-                        sample_size=total_goals,
-                        success_rate=completion_rate,
-                        avg_duration_seconds=None,
-                        error_rate=abandonment_rate,
-                    ),
-                    proposed_changes=[
-                        ProposedChange(
-                            change_type=ChangeType.ADJUST_WEIGHT,
-                            target_field="curiosity_threshold",
-                            old_value=None,
-                            new_value="-0.05",  # Decrease threshold (be more exploratory)
-                        )
-                    ],
-                    created_at=datetime.now(UTC),
-                )
-                lessons.append(lesson)
-                
-                logger.info(
-                    f"[SELF_REFLECTION] Generated curiosity encouragement lesson",
-                    extra={
-                        "completion_rate": completion_rate,
-                        "total_goals": total_goals
-                    }
-                )
-        
-        except Exception as e:
-            logger.exception(f"[SELF_REFLECTION] Failed to analyze curiosity outcomes: {e}")
-        
-        return lessons
+                .group_by(agency_goals.c.status)
+            )
+            result = await session.execute(stmt)
+            rows = result.fetchall()
+
+            profile = await uow.ethics_value_profiles.get_by_user_id(user_id)
+
+        stats: Dict[str, int] = {"completed": 0, "retired": 0, "active": 0, "total": 0}
+        for row in rows:
+            status = str(row.status or "")
+            count = int(row.count or 0)
+            if status in stats:
+                stats[status] += count
+            stats["total"] += count
+
+        total = int(stats.get("total", 0) or 0)
+        if total < self.min_sample_size:
+            return []
+
+        retired = int(stats.get("retired", 0) or 0)
+        retirement_rate = (retired / total) if total else 0.0
+        if retirement_rate <= 0.5:
+            return []
+
+        old_intensity = 0.5
+        if profile and getattr(profile, "curiosity_intensity", None) is not None:
+            try:
+                old_intensity = float(profile.curiosity_intensity)
+            except Exception:
+                old_intensity = 0.5
+
+        new_intensity = max(0.0, min(1.0, old_intensity - (0.2 * retirement_rate)))
+        if abs(new_intensity - old_intensity) < 1e-6:
+            return []
+
+        now = datetime.now(UTC)
+        confidence = min(1.0, retired / total) if total else 0.0
+
+        return [
+            DbLesson(
+                lesson_id=str(uuid.uuid4()),
+                user_id=user_id,
+                lesson_type=LessonType.CURIOSITY_FOCUS.value,
+                target_kind="curiosity_policy",
+                target_id="curiosity_intensity",
+                summary_text="Adjust curiosity intensity based on outcomes of curiosity-origin goals.",
+                proposed_change={
+                    "change_type": "threshold_tweak",
+                    "field": "curiosity_intensity",
+                    "old": old_intensity,
+                    "new": new_intensity,
+                    "notes": {
+                        "retirement_rate": retirement_rate,
+                        "total": total,
+                        "retired": retired,
+                    },
+                },
+                confidence=float(confidence),
+                metrics_basis={
+                    "window_start": window_start.isoformat(),
+                    "window_end": window_end.isoformat(),
+                    "total": total,
+                    "retired": retired,
+                    "retirement_rate": retirement_rate,
+                },
+                scope=LessonScope.THIS_USER.value,
+                status=LessonStatus.ACTIVE.value,
+                superseded_by=None,
+                applied_at=None,
+                applied_by=None,
+                source_reflection_run_id=run_id,
+                evidence_window_start=window_start,
+                evidence_window_end=window_end,
+                related_goal_ids=[],
+                related_trajectory_ids=[],
+                related_event_ids=[],
+                metadata=None,
+                created_at=now,
+                updated_at=now,
+            )
+        ]
+
+
+__all__ = ["SelfReflectionEngine"]

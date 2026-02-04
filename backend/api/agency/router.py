@@ -14,6 +14,7 @@ from datetime import datetime, UTC, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import Annotated, Optional, List, Dict, Any, Tuple
 from pydantic import BaseModel
+from sqlalchemy import select, func, case
 
 from backend.api.conversation.dependencies import get_current_user
 from backend.api.agency.models import (
@@ -50,6 +51,14 @@ from backend.api.agency.models import (
     PlanStatusAPI,
     ExecutionStatusAPI,
     StepExecutionStatusAPI,
+    ReflectionRunResponse,
+    ReflectionRunsListResponse,
+    LessonResponse,
+    LessonListResponse,
+    SelfModelResponse,
+    SelfModelListResponse,
+    SkillPerformanceResponse,
+    ReflectionSummaryResponse,
 )
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
@@ -60,10 +69,96 @@ import aico.ai.agency.tools as tools_package
 from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorLevel
 from aico.ai import ai_registry
 from aico.data.uow import UnitOfWork
+from aico.data.tables import agency_lessons, agency_reflection_runs
 from backend.core.postgres_dependencies import get_uow
 
 logger = get_logger("backend.api.agency")
 router = APIRouter()
+
+
+def _reflection_run_to_api(run) -> ReflectionRunResponse:
+    return ReflectionRunResponse(
+        run_id=run.run_id,
+        user_id=run.user_id,
+        run_type=run.run_type,
+        trigger_reason=getattr(run, "trigger_reason", None),
+        analysis_window_start=run.analysis_window_start,
+        analysis_window_end=run.analysis_window_end,
+        lessons_generated=int(getattr(run, "lessons_generated", 0) or 0),
+        lessons_applied=int(getattr(run, "lessons_applied", 0) or 0),
+        started_at=run.started_at,
+        completed_at=getattr(run, "completed_at", None),
+        duration_seconds=getattr(run, "duration_seconds", None),
+        status=str(getattr(run, "status", "")),
+        error_message=getattr(run, "error_message", None),
+        created_at=getattr(run, "created_at", None),
+    )
+
+
+def _lesson_to_api(lesson) -> LessonResponse:
+    proposed_change = getattr(lesson, "proposed_change", None)
+    if proposed_change is None:
+        proposed_change = {}
+    if isinstance(proposed_change, str):
+        try:
+            proposed_change = json.loads(proposed_change)
+        except Exception:
+            proposed_change = {}
+
+    metrics_basis = getattr(lesson, "metrics_basis", None)
+    if isinstance(metrics_basis, str):
+        try:
+            metrics_basis = json.loads(metrics_basis)
+        except Exception:
+            metrics_basis = None
+
+    return LessonResponse(
+        lesson_id=lesson.lesson_id,
+        user_id=lesson.user_id,
+        lesson_type=str(getattr(lesson, "lesson_type", "")),
+        target_kind=str(getattr(lesson, "target_kind", "")),
+        target_id=getattr(lesson, "target_id", None),
+        summary_text=getattr(lesson, "summary_text", ""),
+        proposed_change=proposed_change if isinstance(proposed_change, dict) else {},
+        confidence=float(getattr(lesson, "confidence", 0.0) or 0.0),
+        metrics_basis=metrics_basis if isinstance(metrics_basis, dict) else None,
+        scope=str(getattr(lesson, "scope", "")),
+        status=str(getattr(lesson, "status", "")),
+        superseded_by=getattr(lesson, "superseded_by", None),
+        applied_at=getattr(lesson, "applied_at", None),
+        applied_by=getattr(lesson, "applied_by", None),
+        source_reflection_run_id=getattr(lesson, "source_reflection_run_id", None),
+        evidence_window_start=getattr(lesson, "evidence_window_start", None),
+        evidence_window_end=getattr(lesson, "evidence_window_end", None),
+        created_at=getattr(lesson, "created_at", datetime.now(UTC)),
+        updated_at=getattr(lesson, "updated_at", datetime.now(UTC)),
+    )
+
+
+def _self_model_to_api(model) -> SelfModelResponse:
+    summary = getattr(model, "performance_summary", None)
+    parsed: Dict[str, Any] = {}
+    if isinstance(summary, str) and summary:
+        try:
+            loaded = json.loads(summary)
+            if isinstance(loaded, dict):
+                parsed = loaded
+        except Exception:
+            parsed = {}
+
+    return SelfModelResponse(
+        model_id=model.model_id,
+        user_id=model.user_id,
+        entity_type=model.entity_type,
+        entity_id=model.entity_id,
+        performance_summary=parsed,
+        window_start=model.window_start,
+        window_end=model.window_end,
+        sample_size=int(getattr(model, "sample_size", 0) or 0),
+        confidence=float(getattr(model, "confidence", 0.0) or 0.0),
+        last_updated=getattr(model, "last_updated", None),
+        created_at=getattr(model, "created_at", None),
+    )
 
 # ============================================================================
 # Caching
@@ -1537,4 +1632,172 @@ async def get_agency_state(
         
     except Exception as e:
         logger.error(f"Failed to get agency state: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================================================
+# Self-Reflection Transparency Endpoints (Studio-facing)
+# ==========================================================================
+
+
+@router.get("/reflection/runs", response_model=ReflectionRunsListResponse)
+async def list_reflection_runs(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    limit: int = Query(50, ge=1, le=200),
+):
+    try:
+        user_id = user["user_uuid"]
+        runs = await uow.agency_reflection_runs.get_user_runs(user_id)
+        runs = runs[:limit]
+        return ReflectionRunsListResponse(runs=[_reflection_run_to_api(r) for r in runs], total=len(runs))
+    except Exception as e:
+        logger.error(f"Failed to list reflection runs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reflection/lessons", response_model=LessonListResponse)
+async def list_reflection_lessons(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    active_only: bool = Query(True),
+    lesson_type: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    try:
+        user_id = user["user_uuid"]
+        if active_only:
+            lessons = await uow.lessons.get_active_lessons_for_user(user_id=user_id, lesson_type=lesson_type)
+        else:
+            filters: Dict[str, Any] = {"user_id": user_id}
+            if lesson_type:
+                filters["lesson_type"] = lesson_type
+            lessons = await uow.lessons.list(filters=filters, limit=limit)
+        lessons = lessons[:limit]
+        return LessonListResponse(lessons=[_lesson_to_api(l) for l in lessons], total=len(lessons))
+    except Exception as e:
+        logger.error(f"Failed to list reflection lessons: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reflection/self-model", response_model=SelfModelListResponse)
+async def list_self_model(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    entity_type: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    try:
+        user_id = user["user_uuid"]
+        models = await uow.agency_self_model.get_user_models(user_id=user_id, entity_type=entity_type)
+        models = models[:limit]
+        return SelfModelListResponse(models=[_self_model_to_api(m) for m in models], total=len(models))
+    except Exception as e:
+        logger.error(f"Failed to list self model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reflection/skills/{skill_id}/performance", response_model=SkillPerformanceResponse)
+async def get_skill_performance(
+    skill_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+):
+    try:
+        user_id = user["user_uuid"]
+        model = await uow.agency_self_model.get_by_entity(user_id=user_id, entity_type="skill", entity_id=skill_id)
+        if not model:
+            return SkillPerformanceResponse(user_id=user_id, skill_id=skill_id, performance_summary=None)
+        return SkillPerformanceResponse(
+            user_id=user_id,
+            skill_id=skill_id,
+            performance_summary=_self_model_to_api(model).performance_summary,
+        )
+    except Exception as e:
+        logger.error(f"Failed to get skill performance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reflection/summary", response_model=ReflectionSummaryResponse)
+async def get_reflection_summary(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    days: int = Query(7, ge=1, le=365),
+    recent_lessons_limit: int = Query(10, ge=1, le=100),
+):
+    try:
+        user_id = user["user_uuid"]
+        window_end = datetime.now(UTC)
+        window_start = window_end - timedelta(days=days)
+
+        runs_stmt = (
+            select(func.count())
+            .select_from(agency_reflection_runs)
+            .where(
+                (agency_reflection_runs.c.user_id == user_id)
+                & (agency_reflection_runs.c.started_at >= window_start)
+                & (agency_reflection_runs.c.started_at <= window_end)
+            )
+        )
+        runs_res = await uow._session.execute(runs_stmt)
+        reflections = int(runs_res.scalar() or 0)
+
+        lessons_agg_stmt = (
+            select(
+                func.count().label("lessons_total"),
+                func.coalesce(
+                    func.sum(case((agency_lessons.c.applied_at.is_not(None), 1), else_=0)),
+                    0,
+                ).label("lessons_applied"),
+                func.avg(agency_lessons.c.confidence).label("avg_confidence"),
+            )
+            .select_from(agency_lessons)
+            .where(
+                (agency_lessons.c.user_id == user_id)
+                & (agency_lessons.c.created_at >= window_start)
+                & (agency_lessons.c.created_at <= window_end)
+            )
+        )
+        lessons_agg_res = await uow._session.execute(lessons_agg_stmt)
+        lessons_agg_row = lessons_agg_res.fetchone()
+        lessons_total = int(getattr(lessons_agg_row, "lessons_total", 0) or 0) if lessons_agg_row else 0
+        lessons_applied = int(getattr(lessons_agg_row, "lessons_applied", 0) or 0) if lessons_agg_row else 0
+        avg_confidence_raw = getattr(lessons_agg_row, "avg_confidence", None) if lessons_agg_row else None
+        avg_confidence = float(avg_confidence_raw) if avg_confidence_raw is not None else None
+
+        recent_stmt = (
+            select(agency_lessons)
+            .where(
+                (agency_lessons.c.user_id == user_id)
+                & (agency_lessons.c.created_at >= window_start)
+                & (agency_lessons.c.created_at <= window_end)
+            )
+            .order_by(agency_lessons.c.created_at.desc())
+            .limit(recent_lessons_limit)
+        )
+        recent_res = await uow._session.execute(recent_stmt)
+        recent_rows = recent_res.fetchall()
+        recent_lessons = []
+        for row in recent_rows:
+            try:
+                recent_lessons.append(_lesson_to_api(row[0]))
+            except Exception:
+                try:
+                    recent_lessons.append(_lesson_to_api(row))
+                except Exception:
+                    pass
+
+        return ReflectionSummaryResponse(
+            user_id=user_id,
+            window_days=days,
+            window_start=window_start,
+            window_end=window_end,
+            reflections=reflections,
+            lessons_total=lessons_total,
+            lessons_applied=lessons_applied,
+            avg_confidence=avg_confidence,
+            recent_lessons=recent_lessons,
+        )
+    except Exception as e:
+        logger.error(f"Failed to get reflection summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))

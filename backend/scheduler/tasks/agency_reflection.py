@@ -54,6 +54,16 @@ class AgencyReflectionTask(BaseTask):
         start_time = datetime.now(timezone.utc)
         
         try:
+            # Self-reflection is an opt-in Phase 5 feature.
+            # The scheduler task should not attempt to run unless explicitly enabled.
+            if not context.config_manager.get("agency.self_reflection.enabled", False):
+                logger.info("[REFLECTION] Skipping reflection - disabled in configuration")
+                return TaskResult(
+                    success=True,
+                    message="Skipped - disabled in configuration",
+                    skipped=True,
+                )
+
             # Get configuration
             analysis_window_days = context.get_config("analysis_window_days", 7)
             min_idle_minutes = context.get_config("min_idle_minutes", 30)
@@ -87,6 +97,16 @@ class AgencyReflectionTask(BaseTask):
                     success=False,
                     message="Agency engine not available",
                     error="AgencyEngine not registered in ai_registry"
+                )
+
+            if getattr(agency_engine, "self_reflection", None) is None:
+                return TaskResult(
+                    success=False,
+                    message="Self-reflection is enabled but engine is not initialized",
+                    error=(
+                        "CRITICAL: agency.self_reflection.enabled=true but AgencyEngine.self_reflection is None. "
+                        "Check backend startup wiring in lifecycle_manager.py."
+                    ),
                 )
             
             # Get active users

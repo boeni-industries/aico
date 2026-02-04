@@ -241,6 +241,7 @@ async def get_session_factory() -> async_sessionmaker:
                 "server_settings": {
                     "jit": "on",
                     "application_name": "aico_backend",
+                    "search_path": "aico_core,public",
                 },
             },
         )

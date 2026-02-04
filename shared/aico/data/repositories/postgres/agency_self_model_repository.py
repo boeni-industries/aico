@@ -79,3 +79,19 @@ class PostgresAgencySelfModelRepository:
         stmt = stmt.order_by(agency_self_model.c.last_updated.desc())
         result = await self.session.execute(stmt)
         return [AgencySelfModel(**dict(row._mapping)) for row in result.fetchall()]
+
+    async def get_by_entity(self, user_id: str, entity_type: str, entity_id: str) -> Optional[AgencySelfModel]:
+        """Get the latest self model entry for a specific entity."""
+        stmt = (
+            select(agency_self_model)
+            .where(
+                agency_self_model.c.user_id == user_id,
+                agency_self_model.c.entity_type == entity_type,
+                agency_self_model.c.entity_id == entity_id,
+            )
+            .order_by(agency_self_model.c.last_updated.desc(), agency_self_model.c.created_at.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        row = result.fetchone()
+        return AgencySelfModel(**dict(row._mapping)) if row else None

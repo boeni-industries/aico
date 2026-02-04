@@ -490,7 +490,7 @@ class ConfigurationManager:
     def _load_default_configs(self) -> None:
         """Load default configuration values."""
         defaults_dir = self.config_dir / "defaults"
-        
+
         for config_file in defaults_dir.glob("*.yaml"):
             domain = config_file.stem
             try:

@@ -1357,6 +1357,12 @@ class AgencyEngine(BaseAIProcessor):
         if run_type is None:
             run_type = RunType.SCHEDULED
         
+        if self.self_reflection is None:
+            raise RuntimeError(
+                "CRITICAL: Self-reflection engine is not initialized. "
+                "Enable it via agency.self_reflection.enabled=true and ensure backend startup wires it in."
+            )
+        
         return await self.self_reflection.run_reflection(
             user_id=user_id,
             run_type=run_type,
@@ -1379,6 +1385,11 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             List of active lessons
         """
+        if self.self_reflection is None:
+            raise RuntimeError(
+                "CRITICAL: Self-reflection engine is not initialized. "
+                "Enable it via agency.self_reflection.enabled=true and ensure backend startup wires it in."
+            )
         return await self.self_reflection.get_active_lessons(
             user_id=user_id,
             lesson_type=lesson_type
@@ -1401,6 +1412,11 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             Latest self-model entry or None
         """
+        if self.self_reflection is None:
+            raise RuntimeError(
+                "CRITICAL: Self-reflection engine is not initialized. "
+                "Enable it via agency.self_reflection.enabled=true and ensure backend startup wires it in."
+            )
         return await self.self_reflection.get_self_model(
             user_id=user_id,
             entity_type=entity_type,
@@ -1418,6 +1434,11 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             Success rate (0.0-1.0) or None
         """
+        if self.self_reflection is None:
+            raise RuntimeError(
+                "CRITICAL: Self-reflection engine is not initialized. "
+                "Enable it via agency.self_reflection.enabled=true and ensure backend startup wires it in."
+            )
         return await self.self_reflection.get_skill_performance(user_id, skill_id)
     
     async def get_goal_type_performance_context(self, user_id: str) -> Dict[str, Any]:

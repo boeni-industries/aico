@@ -63,6 +63,97 @@ class PolicyEffect(str, Enum):
 
 
 # ============================================================================
+# Self-Reflection Transparency Models (Studio-facing)
+# ============================================================================
+
+
+class ReflectionRunResponse(BaseModel):
+    run_id: str
+    user_id: str
+    run_type: str
+    trigger_reason: Optional[str] = None
+    analysis_window_start: datetime
+    analysis_window_end: datetime
+    lessons_generated: int
+    lessons_applied: int
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+    status: str
+    error_message: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class ReflectionRunsListResponse(BaseModel):
+    runs: List[ReflectionRunResponse]
+    total: int
+
+
+class LessonResponse(BaseModel):
+    lesson_id: str
+    user_id: str
+    lesson_type: str
+    target_kind: str
+    target_id: Optional[str] = None
+    summary_text: str
+    proposed_change: Dict[str, Any] = Field(default_factory=dict)
+    confidence: float
+    metrics_basis: Optional[Dict[str, Any]] = None
+    scope: str
+    status: str
+    superseded_by: Optional[str] = None
+    applied_at: Optional[datetime] = None
+    applied_by: Optional[str] = None
+    source_reflection_run_id: Optional[str] = None
+    evidence_window_start: Optional[datetime] = None
+    evidence_window_end: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class LessonListResponse(BaseModel):
+    lessons: List[LessonResponse]
+    total: int
+
+
+class SelfModelResponse(BaseModel):
+    model_id: str
+    user_id: str
+    entity_type: str
+    entity_id: str
+    performance_summary: Dict[str, Any] = Field(default_factory=dict)
+    window_start: datetime
+    window_end: datetime
+    sample_size: int
+    confidence: float
+    last_updated: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
+class SelfModelListResponse(BaseModel):
+    models: List[SelfModelResponse]
+    total: int
+
+
+class SkillPerformanceResponse(BaseModel):
+    user_id: str
+    skill_id: str
+    performance_summary: Optional[Dict[str, Any]] = None
+
+
+class ReflectionSummaryResponse(BaseModel):
+    user_id: str
+    window_days: int
+    window_start: datetime
+    window_end: datetime
+    reflections: int
+    lessons_total: int
+    lessons_applied: int
+    avg_confidence: Optional[float] = None
+    recent_lessons: List[LessonResponse] = Field(default_factory=list)
+
+
+# ============================================================================
 # Goal & Intention Models
 # ============================================================================
 

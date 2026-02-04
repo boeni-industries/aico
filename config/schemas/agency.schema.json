@@ -35,6 +35,27 @@
         }
       }
     },
+    "self_reflection": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "policy_mode": {
+          "type": "string",
+          "enum": ["observe_only", "allow_amend", "disabled"]
+        },
+        "min_sample_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
     "values_ethics": {
       "type": "object",
       "properties": {

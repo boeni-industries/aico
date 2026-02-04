@@ -241,7 +241,10 @@ class SchedulerService:
             
             for execution in all_executions:
                 if execution.started_at and execution.started_at < cutoff_date:
-                    await self.uow.scheduler_task_executions.delete(execution.execution_id)
+                    # Repository delete() targets the numeric DB primary key (id), not the UUID execution_id.
+                    # Passing execution_id would raise int() conversion errors.
+                    if execution.id is not None:
+                        await self.uow.scheduler_task_executions.delete(str(execution.id))
                     deleted_count += 1
             
             logger.info(f"[SCHEDULER_SERVICE] Cleaned up {deleted_count} old executions before {cutoff_date}")

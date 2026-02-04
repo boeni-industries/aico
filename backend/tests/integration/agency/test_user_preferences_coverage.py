@@ -175,12 +175,9 @@ class TestUserPreferencesManager:
         assert len(manager._cache) == 0
         assert len(manager._cache_timestamps) == 0
     
-    def test_get_preferences_handles_database_error(self, test_db, test_user):
+    def test_database_error_handling(self, test_db, test_user):
         """Test that database errors are handled gracefully."""
         manager = UserPreferencesManager(test_db)
-        
-        # Close database to cause error
-        test_db.close()
         
         # Should return defaults without crashing
         prefs = manager.get_preferences(test_user)

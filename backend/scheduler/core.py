@@ -652,6 +652,8 @@ class TaskExecutor:
                 "success": bool(getattr(result, "success", False)),
                 "skipped": bool(getattr(result, "skipped", False)),
                 "message": getattr(result, "message", None),
+                "data": getattr(result, "data", None),
+                "error": getattr(result, "error", None),
             }
 
             session_factory = await get_session_factory()

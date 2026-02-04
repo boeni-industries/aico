@@ -642,6 +642,26 @@ class BackendLifecycleManager:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject LLM planning helper: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will use deterministic planning only")
 
+            # Phase 5: Self-Reflection Engine (PostgreSQL)
+            try:
+                self_reflection_enabled = self.config.get("agency.self_reflection.enabled", False)
+                if self_reflection_enabled:
+                    from aico.ai.agency.reflection import SelfReflectionEngine
+
+                    agency_engine.self_reflection = SelfReflectionEngine(
+                        config=self.config,
+                        session_factory=session_factory,
+                        llm_client=modelservice_client,
+                    )
+                    self.logger.info("✅ [AI_PROCESSORS] Self-reflection engine enabled")
+                else:
+                    self.logger.info("[AI_PROCESSORS] Self-reflection engine disabled in configuration")
+            except Exception as e:
+                self.logger.error(f"CRITICAL: Failed to initialize self-reflection engine: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                raise RuntimeError(f"CRITICAL: Failed to initialize self-reflection engine: {e}")
+
             ai_registry.register("agency", agency_engine)
             self.logger.info("✅ Registered 'agency' processor with Phase 2 context services.")
             

@@ -43,6 +43,11 @@ def test_db():
         password=password,
         cursor_factory=RealDictCursor
     )
+
+    cursor = db.cursor()
+    cursor.execute("SET search_path TO aico_core,public")
+    db.commit()
+    cursor.close()
     
     yield db
     
@@ -131,17 +136,20 @@ async def test_user(test_db):
     cursor.execute("DELETE FROM aico_core.agency_goal_dependencies WHERE goal_id IN (SELECT goal_id FROM aico_core.agency_goals WHERE user_id = %s)", (user_uuid,))
     
     # Delete Phase 5 data (reflection)
-    test_db.execute("DELETE FROM aico_core.agency_arbiter_adjustments WHERE user_id = %s", (user_uuid,))
-    test_db.execute("DELETE FROM aico_core.agency_lessons WHERE user_id = %s", (user_uuid,))
+    cursor.execute("DELETE FROM aico_core.agency_arbiter_adjustments WHERE user_id = %s", (user_uuid,))
+    cursor.execute("DELETE FROM aico_core.agency_lessons WHERE user_id = %s", (user_uuid,))
     
     # Delete Phase 1-4 data
-    test_db.execute("DELETE FROM aico_core.agency_events WHERE user_id = %s", (user_uuid,))
-    test_db.execute("DELETE FROM aico_core.agency_plans WHERE goal_id IN (SELECT goal_id FROM aico_core.agency_goals WHERE user_id = %s)", (user_uuid,))
-    test_db.execute("DELETE FROM aico_core.agency_goals WHERE user_id = %s", (user_uuid,))
+    cursor.execute("DELETE FROM aico_core.agency_events WHERE user_id = %s", (user_uuid,))
+    cursor.execute(
+        "DELETE FROM aico_core.agency_plans WHERE goal_id IN (SELECT goal_id FROM aico_core.agency_goals WHERE user_id = %s)",
+        (user_uuid,),
+    )
+    cursor.execute("DELETE FROM aico_core.agency_goals WHERE user_id = %s", (user_uuid,))
     
     # Delete user authentication and user
-    test_db.execute("DELETE FROM aico_core.auth_user_credentials WHERE user_uuid = %s", (user_uuid,))
-    test_db.execute("DELETE FROM aico_core.user_profiles WHERE uuid = %s", (user_uuid,))
+    cursor.execute("DELETE FROM aico_core.auth_user_credentials WHERE user_uuid = %s", (user_uuid,))
+    cursor.execute("DELETE FROM aico_core.user_profiles WHERE uuid = %s", (user_uuid,))
     test_db.commit()
     
     cursor.close()
