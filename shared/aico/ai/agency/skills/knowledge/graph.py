@@ -65,7 +65,8 @@ class UpdateKnowledgeGraphSkill(Skill):
                 name="entities",
                 type=SkillParameterType.ARRAY,
                 description="Entities to add/update",
-                required=True,
+                required=False,
+                default=[],
             ),
             SkillParameter(
                 name="relationships",
@@ -93,6 +94,7 @@ class UpdateKnowledgeGraphSkill(Skill):
         entities = input_data.get("entities", [])
         relationships = input_data.get("relationships", [])
         source = input_data.get("source", "conversation")
+        source_text = input_data.get("source_text") or context.get("source_text") or ""
         
         logger.info(
             f"📊 [UPDATE_KNOWLEDGE_GRAPH] Updating knowledge graph for user {user_id[:8]}... "
@@ -103,7 +105,6 @@ class UpdateKnowledgeGraphSkill(Skill):
             if not self.kg_storage:
                 raise RuntimeError("Knowledge graph storage not available")
 
-            now = datetime.now(UTC).isoformat()
             entities_added = 0
             relationships_added = 0
 
@@ -114,22 +115,21 @@ class UpdateKnowledgeGraphSkill(Skill):
                     entity_type = entity.get("type", "unknown")
                     entity_value = entity.get("value", "")
                     entity_metadata = entity.get("metadata", {})
+                    confidence = entity.get("confidence")
                 else:
                     entity_type = "unknown"
                     entity_value = str(entity)
                     entity_metadata = {}
+                    confidence = None
 
-                node_id = str(uuid.uuid4())
                 properties = {"value": entity_value, **entity_metadata, "source": source}
-
-                node = Node(
-                    id=node_id,
+                node = Node.create(
                     user_id=user_id,
-                    label=entity_type,
+                    label=str(entity_type),
                     properties=properties,
-                    is_current=True,
-                    created_at=now,
-                    updated_at=now,
+                    confidence=float(confidence) if confidence is not None else 0.8,
+                    source_text=source_text or entity_value,
+                    language=input_data.get("language"),
                 )
                 nodes.append(node)
                 entities_added += 1
@@ -148,7 +148,7 @@ class UpdateKnowledgeGraphSkill(Skill):
                 "source": source,
                 "entities": entities,
                 "relationships": relationships,
-                "updated_at": now,
+                "updated_at": datetime.now(UTC).isoformat(),
             }
             
             logger.info(

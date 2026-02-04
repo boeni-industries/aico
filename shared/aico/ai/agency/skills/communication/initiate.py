@@ -116,78 +116,31 @@ class InitiateConversationSkill(Skill):
             now_dt = datetime.now(UTC)
             now_iso = now_dt.isoformat()
 
-            # Prefer PostgreSQL UnitOfWork/session_factory path when available
-            if self._session_factory is not None:
-                from aico.data.uow import UnitOfWork
-                from aico.data.conversation.models import ConversationInitiation
+            # Use UnitOfWork pattern for database operations
+            if self._session_factory is None:
+                raise RuntimeError("session_factory is required for InitiateConversationSkill")
+            
+            from aico.data.uow import UnitOfWork
+            from aico.data.conversation.models import ConversationInitiation
 
-                async with UnitOfWork(self._session_factory) as uow:
-                    recent_initiations = await uow.conversation_initiations.list(
-                        filters={"user_id": user_id},
-                        limit=1000,
-                    )
+            async with UnitOfWork(self._session_factory) as uow:
+                recent_initiations = await uow.conversation_initiations.list(
+                    filters={"user_id": user_id},
+                    limit=1000,
+                )
 
-                    duplicate_found = False
-                    for init in recent_initiations:
-                        if (
-                            init.question == message
-                            and init.trigger_reason == trigger_reason
-                            and init.initiated_at
-                            and (now_dt - init.initiated_at).total_seconds() < 86400
-                        ):
-                            duplicate_found = True
-                            break
+                duplicate_found = False
+                for init in recent_initiations:
+                    if (
+                        init.question == message
+                        and init.trigger_reason == trigger_reason
+                        and init.initiated_at
+                        and (now_dt - init.initiated_at).total_seconds() < 86400
+                    ):
+                        duplicate_found = True
+                        break
 
-                    if duplicate_found:
-                        logger.debug(
-                            f"💭 [INITIATE_CONVERSATION] Duplicate conversation detected for user {user_id[:8]}, "
-                            f"skipping creation"
-                        )
-                        return SkillResult(
-                            success=True,
-                            output={
-                                "status": "skipped",
-                                "reason": "duplicate_conversation",
-                                "message": "Conversation already initiated recently",
-                            },
-                            metadata={"skill_id": self.skill_id},
-                        )
-
-                    initiation = ConversationInitiation(
-                        initiation_id=initiation_id,
-                        user_id=user_id,
-                        conversation_id=conversation_id,
-                        trigger_source="skill",
-                        trigger_reason=trigger_reason,
-                        question=message,
-                        context=json.dumps({"topic": topic, "emotional_context": emotional_context}),
-                        urgency="low",
-                        expected_answer_type="dialogue",
-                        initiated_at=now_dt,
-                        resolution_status="pending",
-                        resolved_at=None,
-                        user_response_time=None,
-                        engagement_score=None,
-                    )
-
-                    await uow.conversation_initiations.create(initiation)
-                    await uow.commit()
-
-            else:
-                if not self.db:
-                    raise RuntimeError("Database connection not available")
-
-                duplicate = self.db.execute(
-                    """SELECT COUNT(*) as count
-                       FROM conversation_initiations
-                       WHERE user_id = ?
-                       AND question = ?
-                       AND trigger_reason = ?
-                       AND datetime(initiated_at) > datetime('now', '-24 hours')""",
-                    (user_id, message, trigger_reason),
-                ).fetchone()
-
-                if duplicate and duplicate["count"] > 0:
+                if duplicate_found:
                     logger.debug(
                         f"💭 [INITIATE_CONVERSATION] Duplicate conversation detected for user {user_id[:8]}, "
                         f"skipping creation"
@@ -202,27 +155,25 @@ class InitiateConversationSkill(Skill):
                         metadata={"skill_id": self.skill_id},
                     )
 
-                self.db.execute(
-                    """INSERT INTO conversation_initiations 
-                       (initiation_id, user_id, conversation_id, trigger_source, 
-                        trigger_reason, question, context, urgency, expected_answer_type,
-                        initiated_at, resolution_status)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        initiation_id,
-                        user_id,
-                        conversation_id,
-                        "skill",
-                        trigger_reason,
-                        message,
-                        json.dumps({"topic": topic, "emotional_context": emotional_context}),
-                        "low",  # Conversations are typically low urgency
-                        "dialogue",
-                        now_iso,
-                        "pending",
-                    ),
+                initiation = ConversationInitiation(
+                    initiation_id=initiation_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    trigger_source="skill",
+                    trigger_reason=trigger_reason,
+                    question=message,
+                    context=json.dumps({"topic": topic, "emotional_context": emotional_context}),
+                    urgency="low",
+                    expected_answer_type="dialogue",
+                    initiated_at=now_dt,
+                    resolution_status="pending",
+                    resolved_at=None,
+                    user_response_time=None,
+                    engagement_score=None,
                 )
-                self.db.commit()
+
+                await uow.conversation_initiations.create(initiation)
+                await uow.commit()
             
             # Publish to conversation initiation topic
             message_published = False

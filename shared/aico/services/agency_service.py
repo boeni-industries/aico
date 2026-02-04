@@ -531,7 +531,15 @@ class AgencyService:
         """Get all bandit arm configurations."""
         try:
             arms = await self.uow.arbiter_bandit_arms.list()
-            return [arm.to_dict() if hasattr(arm, 'to_dict') else arm for arm in arms]
+            normalized: List[Dict[str, Any]] = []
+            for arm in arms:
+                if hasattr(arm, "to_dict"):
+                    normalized.append(arm.to_dict())
+                elif hasattr(arm, "model_dump"):
+                    normalized.append(arm.model_dump())
+                else:
+                    normalized.append(dict(arm.__dict__))
+            return normalized
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get bandit arms: {e}")
             raise
@@ -553,7 +561,13 @@ class AgencyService:
         """Get A/B test results."""
         try:
             test = await self.uow.arbiter_ab_tests.get_by_id(test_id)
-            return test.to_dict() if test and hasattr(test, 'to_dict') else test
+            if not test:
+                return None
+            if hasattr(test, "to_dict"):
+                return test.to_dict()
+            if hasattr(test, "model_dump"):
+                return test.model_dump()
+            return dict(test.__dict__)
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get A/B test: {e}")
             raise
@@ -592,7 +606,15 @@ class AgencyService:
         try:
             # Use a join query through the repository
             executions = await self.uow.agency_skill_executions.get_by_goal(goal_id)
-            return [e.to_dict() if hasattr(e, 'to_dict') else e for e in executions]
+            normalized: List[Dict[str, Any]] = []
+            for e in executions:
+                if hasattr(e, "to_dict"):
+                    normalized.append(e.to_dict())
+                elif hasattr(e, "model_dump"):
+                    normalized.append(e.model_dump())
+                else:
+                    normalized.append(dict(e.__dict__))
+            return normalized
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get goal executions: {e}")
             raise
@@ -600,8 +622,8 @@ class AgencyService:
     async def record_behavioral_feedback(self, feedback_data: Dict[str, Any]) -> str:
         """Record behavioral feedback."""
         try:
-            from aico.data.agency.models import AMSBehavioralFeedback
-            feedback = AMSBehavioralFeedback(**feedback_data)
+            from aico.data.ams.models import BehavioralFeedback
+            feedback = BehavioralFeedback(**feedback_data)
             created = await self.uow.ams_behavioral_feedback.create(feedback)
             await self.uow.commit()
             logger.info(f"[AGENCY_SERVICE] Recorded behavioral feedback: {created.feedback_id}")
@@ -655,7 +677,7 @@ class AgencyService:
             if request:
                 request.response = response
                 request.rating = rating
-                request.responded_at = datetime.now(UTC)
+                request.responded_at = datetime.now(UTC).isoformat()
                 await self.uow.user_feedback_requests.update(request)
                 await self.uow.commit()
                 logger.info(f"[AGENCY_SERVICE] Recorded feedback response: {request_id}")
@@ -667,10 +689,16 @@ class AgencyService:
     async def get_pending_feedback_requests(self, user_id: str) -> List[Dict[str, Any]]:
         """Get pending feedback requests for a user."""
         try:
-            requests = await self.uow.user_feedback_requests.list(
-                filters={"user_id": user_id, "responded_at": None}
-            )
-            return [r.to_dict() if hasattr(r, 'to_dict') else r for r in requests]
+            requests = await self.uow.user_feedback_requests.get_pending_for_user(user_id)
+            normalized: List[Dict[str, Any]] = []
+            for r in requests:
+                if hasattr(r, "to_dict"):
+                    normalized.append(r.to_dict())
+                elif hasattr(r, "model_dump"):
+                    normalized.append(r.model_dump())
+                else:
+                    normalized.append(dict(r.__dict__))
+            return normalized
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get pending feedback requests: {e}")
             raise
@@ -687,6 +715,15 @@ class AgencyService:
             return stats
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get skill performance stats: {e}")
+            raise
+
+    async def get_user_satisfaction_trend(self, user_id: str, days: int = 30) -> List[Dict[str, Any]]:
+        """Get user satisfaction trend over time."""
+        try:
+            from_iso = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            return await self.uow.user_feedback_requests.get_satisfaction_trend(user_id, from_iso)
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get user satisfaction trend: {e}")
             raise
 
     async def get_skill_trend_data(self, skill_id: str, days: int = 30) -> List[Dict[str, Any]]:

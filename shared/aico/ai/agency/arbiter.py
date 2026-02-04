@@ -460,6 +460,23 @@ class GoalArbiter:
         
         persistence_weight = self._get_adjusted_weight("persistence", self.weights.get("persistence", 0.15), user_id)
         breakdown["persistence"] = persistence_score * persistence_weight
+
+        deadline_boost = 0.0
+        deadline_raw = (goal.metadata or {}).get("deadline")
+        if deadline_raw:
+            try:
+                deadline_dt = datetime.fromisoformat(deadline_raw)
+                if deadline_dt.tzinfo is None:
+                    deadline_dt = deadline_dt.replace(tzinfo=UTC)
+                hours_to_deadline = (deadline_dt - datetime.now(UTC)).total_seconds() / 3600
+                if hours_to_deadline > 0:
+                    if hours_to_deadline <= 24:
+                        deadline_boost = 0.15 * (1.0 - (hours_to_deadline / 24.0))
+                    elif hours_to_deadline <= 168:
+                        deadline_boost = 0.05 * (1.0 - (hours_to_deadline / 168.0))
+            except Exception:
+                deadline_boost = 0.0
+        breakdown["deadline_boost"] = deadline_boost
         
         if self.logger and mention_count > 1:
             self.logger.debug(
@@ -506,6 +523,8 @@ class GoalArbiter:
             reasons.append("high_curiosity")
         if freshness_score > 0.8:
             reasons.append("recently_created")
+        if deadline_boost > 0.0:
+            reasons.append("deadline_approaching")
         
         if self.logger:
             self.logger.debug(
@@ -1128,15 +1147,15 @@ class GoalArbiter:
             outcome_entity = AgencyGoalOutcome(
                 outcome_id=str(uuid.uuid4()),
                 goal_id=goal_id,
-                user_id=metadata.get("user_id") if metadata else None,
+                user_id=str(metadata.get("user_id")) if metadata and metadata.get("user_id") is not None else "",
                 arm_id=arm_id,
                 outcome=outcome,
                 success=success,
                 reward=reward,
                 completion_time_minutes=completion_time_minutes,
                 user_satisfaction=user_satisfaction,
-                metadata_json=json.dumps(metadata or {}),
-                created_at=datetime.now(UTC)
+                metadata_json=metadata or {},
+                created_at=datetime.now(UTC).isoformat(),
             )
             
             # Store in database

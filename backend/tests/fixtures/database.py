@@ -1,12 +1,13 @@
 """
 Database Test Fixtures
 
-Connects to the actual production database for testing.
+Connects to the dedicated test database for testing.
 Tests can read and write, but must clean up their test data.
 """
 
 import pytest
 from pathlib import Path
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from aico.security import AICOKeyManager
 
@@ -29,6 +30,9 @@ def test_db():
     pg_cfg = config.get("postgres", {})
     if not pg_cfg:
         raise RuntimeError("No PostgreSQL configuration found")
+
+    import os
+    expected_db_name = os.environ.get("AICO_TEST_DB_NAME", "aico_test")
     
     password = key_manager.get_database_password("postgres", username=pg_cfg.get("user", "postgres"))
     if not password:
@@ -38,13 +42,23 @@ def test_db():
     db = psycopg2.connect(
         host=pg_cfg.get("host", "127.0.0.1"),
         port=int(pg_cfg.get("port", 5432)),
-        dbname=pg_cfg.get("db_name", "aico"),
+        dbname=expected_db_name,
         user=pg_cfg.get("user", "postgres"),
         password=password,
         cursor_factory=RealDictCursor
     )
 
     cursor = db.cursor()
+    cursor.execute("SELECT current_database() AS db")
+    row = cursor.fetchone()
+    current_db = (row or {}).get("db")
+    if current_db != expected_db_name:
+        cursor.close()
+        db.close()
+        raise RuntimeError(
+            f"Refusing to run tests against non-test database: '{current_db}'. "
+            f"Expected '{expected_db_name}'. Set AICO_TEST_DB_NAME if needed."
+        )
     cursor.execute("SET search_path TO aico_core,public")
     db.commit()
     cursor.close()
@@ -52,6 +66,45 @@ def test_db():
     yield db
     
     db.close()
+
+
+@pytest.fixture(scope="session")
+def session_factory(test_db):
+    """
+    Create async SQLAlchemy session factory for tests.
+    
+    Uses the same test database connection info as test_db fixture.
+    """
+    from aico.core.config import ConfigurationManager
+    
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    key_manager = AICOKeyManager(config)
+    
+    pg_cfg = config.get("postgres", {})
+    password = key_manager.get_database_password("postgres", username=pg_cfg.get("user", "postgres"))
+    
+    import os
+    expected_db_name = os.environ.get("AICO_TEST_DB_NAME", "aico_test")
+    
+    # Create async engine
+    database_url = f"postgresql+asyncpg://{pg_cfg.get('user', 'postgres')}:{password}@{pg_cfg.get('host', '127.0.0.1')}:{pg_cfg.get('port', 5432)}/{expected_db_name}"
+    
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+    )
+    
+    # Create session factory
+    factory = async_sessionmaker(
+        engine,
+        expire_on_commit=False,
+    )
+    
+    yield factory
+    
+    # Cleanup is handled by engine disposal
 
 
 @pytest.fixture
@@ -62,6 +115,13 @@ async def test_user(test_db):
     Uses direct SQL to avoid UserService creating additional connections.
     """
     import uuid
+
+    # The session-scoped psycopg2 connection can be left in an aborted transaction
+    # state after any earlier SQL error. Always reset before executing statements.
+    try:
+        test_db.rollback()
+    except Exception:
+        pass
     
     # Create user directly via SQL (no UserService = no extra connections)
     user_uuid = str(uuid.uuid4())
@@ -161,6 +221,7 @@ async def test_db_file():
     import psycopg2
     from psycopg2.extras import RealDictCursor
     from aico.core.config import ConfigurationManager
+    import os
     
     config = ConfigurationManager()
     config.initialize(lightweight=True)
@@ -169,6 +230,8 @@ async def test_db_file():
     pg_cfg = config.get("postgres", {})
     if not pg_cfg:
         raise RuntimeError("No PostgreSQL configuration found")
+
+    expected_db_name = os.environ.get("AICO_TEST_DB_NAME", "aico_test")
     
     password = key_manager.get_database_password("postgres", username=pg_cfg.get("user", "postgres"))
     if not password:
@@ -177,11 +240,24 @@ async def test_db_file():
     db = psycopg2.connect(
         host=pg_cfg.get("host", "127.0.0.1"),
         port=int(pg_cfg.get("port", 5432)),
-        dbname=pg_cfg.get("db_name", "aico"),
+        dbname=expected_db_name,
         user=pg_cfg.get("user", "postgres"),
         password=password,
         cursor_factory=RealDictCursor
     )
+
+    cursor = db.cursor()
+    cursor.execute("SELECT current_database() AS db")
+    row = cursor.fetchone()
+    current_db = (row or {}).get("db")
+    if current_db != expected_db_name:
+        cursor.close()
+        db.close()
+        raise RuntimeError(
+            f"Refusing to run tests against non-test database: '{current_db}'. "
+            f"Expected '{expected_db_name}'. Set AICO_TEST_DB_NAME if needed."
+        )
+    cursor.close()
     yield db
     db.close()
 
@@ -189,4 +265,4 @@ async def test_db_file():
 @pytest.fixture
 def test_db_empty():
     """Not applicable - we use the real database."""
-    raise NotImplementedError("Use test_db instead - we use the real production database")
+    raise NotImplementedError("Use test_db instead - we use the dedicated test database")

@@ -57,7 +57,13 @@ async def get_postgres_pool() -> asyncpg.Pool:
     
     host = pg_config.get("host", "localhost")
     port = pg_config.get("port", 5432)
-    database = os.environ.get("AICO_POSTGRES_DATABASE", pg_config.get("database", "aico"))
+    database = (
+        os.environ.get("AICO_TEST_DB_NAME")
+        or os.environ.get("AICO_POSTGRES_DATABASE")
+        or pg_config.get("db_name")
+        or pg_config.get("database")
+        or "aico"
+    )
     user = pg_config.get("user", "postgres")
     
     password = os.environ.get("AICO_PG_PASSWORD")
@@ -185,7 +191,13 @@ async def get_session_factory() -> async_sessionmaker:
     host = pg_config.get("host", "localhost")
     import os
     port = pg_config.get("port", 5432)
-    database = os.environ.get("AICO_POSTGRES_DATABASE", pg_config.get("database", "aico"))
+    database = (
+        os.environ.get("AICO_TEST_DB_NAME")
+        or os.environ.get("AICO_POSTGRES_DATABASE")
+        or pg_config.get("db_name")
+        or pg_config.get("database")
+        or "aico"
+    )
     user = pg_config.get("user", "postgres")
     
     # Get password from environment or AICOKeyManager

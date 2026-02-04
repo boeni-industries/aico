@@ -203,6 +203,9 @@ class PriorityTaskQueue:
             # Time since last execution (favor starved queues)
             last_exec = self.last_execution.get(queue_name)
             if last_exec:
+                # Ensure last_exec is timezone-aware
+                if last_exec.tzinfo is None:
+                    last_exec = last_exec.replace(tzinfo=timezone.utc)
                 seconds_since = (now - last_exec).total_seconds()
                 starvation_weight = min(seconds_since / 60.0, 5.0)  # Cap at 5x
             else:

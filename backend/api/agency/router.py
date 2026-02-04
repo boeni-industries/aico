@@ -608,17 +608,36 @@ async def get_goal_plans(
                                     continue
 
                                 step_execs: List[StepExecutionSummary] = []
+
+                                def _step_field(step_obj: Any, field: str, default: Any = None) -> Any:
+                                    if isinstance(step_obj, dict):
+                                        return step_obj.get(field, default)
+                                    if hasattr(step_obj, field):
+                                        return getattr(step_obj, field)
+                                    # Pydantic BaseModel (v1/v2) fallback
+                                    if hasattr(step_obj, "model_dump"):
+                                        try:
+                                            return step_obj.model_dump().get(field, default)
+                                        except Exception:
+                                            return default
+                                    if hasattr(step_obj, "dict"):
+                                        try:
+                                            return step_obj.dict().get(field, default)
+                                        except Exception:
+                                            return default
+                                    return default
+
                                 for s in status_dict.get("steps", []):
                                     step_execs.append(
                                         StepExecutionSummary(
-                                            step_execution_id=s["step_execution_id"],
-                                            step_id=str(s.get("step_id", "")),
-                                            step_order=s.get("step_order", 0),
-                                            status=_map_step_execution_status(s.get("status", "pending")),
-                                            duration_ms=s.get("duration_ms"),
-                                            error_message=s.get("error_message"),
-                                            skill_id=s.get("skill_id"),
-                                            skill_invocation_id=s.get("skill_invocation_id"),
+                                            step_execution_id=str(_step_field(s, "step_execution_id", "")),
+                                            step_id=str(_step_field(s, "step_id", "")),
+                                            step_order=int(_step_field(s, "step_order", 0) or 0),
+                                            status=_map_step_execution_status(str(_step_field(s, "status", "pending"))),
+                                            duration_ms=_step_field(s, "duration_ms"),
+                                            error_message=_step_field(s, "error_message"),
+                                            skill_id=_step_field(s, "skill_id"),
+                                            skill_invocation_id=_step_field(s, "skill_invocation_id"),
                                         )
                                     )
 

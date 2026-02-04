@@ -4,7 +4,7 @@ UserFeedbackRequestsRepository - PostgreSQL implementation
 Handles CRUD operations for user feedback requests.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -173,3 +173,28 @@ class PostgresUserFeedbackRequestsRepository(Repository[UserFeedbackRequest]):
         )
         result = await self.session.execute(stmt)
         return result.rowcount > 0
+
+    async def get_satisfaction_trend(self, user_id: str, from_iso: str) -> List[Dict[str, Any]]:
+        """Get satisfaction rating trend for a user grouped by day."""
+        day_expr = func.substr(user_feedback_requests.c.responded_at, 1, 10)
+        stmt = (
+            select(
+                day_expr.label("day"),
+                func.avg(user_feedback_requests.c.rating).label("avg_rating"),
+                func.count().label("count"),
+            )
+            .where(
+                and_(
+                    user_feedback_requests.c.user_id == user_id,
+                    user_feedback_requests.c.feedback_type == "satisfaction",
+                    user_feedback_requests.c.responded_at.is_not(None),
+                    user_feedback_requests.c.rating.is_not(None),
+                    user_feedback_requests.c.responded_at >= from_iso,
+                )
+            )
+            .group_by(day_expr)
+            .order_by(day_expr.asc())
+        )
+
+        result = await self.session.execute(stmt)
+        return [dict(row._mapping) for row in result.fetchall()]

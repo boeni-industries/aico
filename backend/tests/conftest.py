@@ -54,6 +54,7 @@ from backend.tests.fixtures.database import (
     test_db_file,
     test_db_empty,
     test_user,
+    session_factory,
 )
 from backend.tests.fixtures.config import test_config
 from backend.tests.fixtures.agency import (
@@ -78,6 +79,7 @@ __all__ = [
     "test_db_file",
     "test_db_empty",
     "test_user",
+    "session_factory",
     "test_config",
     "sample_goal",
     "sample_hobby_goal",

@@ -142,7 +142,7 @@ class BehavioralFeedbackService:
                 "outcome": outcome.value,
                 "error_message": error_message,
                 "context_json": context,
-                "created_at": datetime.now(UTC)
+                "created_at": datetime.now(UTC).isoformat(),
             }
             
             await self.agency_service.record_skill_execution(execution_data)
@@ -183,7 +183,7 @@ class BehavioralFeedbackService:
                 "skill_id": skill_id,
                 "execution_id": execution_id,
                 "execution_order": execution_order,
-                "created_at": datetime.now(UTC)
+                "created_at": datetime.now(UTC).isoformat(),
             }
             
             await self.agency_service.link_goal_skill_execution(link_data)
@@ -263,6 +263,7 @@ class BehavioralFeedbackService:
         feedback_id = str(uuid.uuid4())
         
         try:
+            context_json = json.dumps(context) if context is not None else None
             feedback_data = {
                 "feedback_id": feedback_id,
                 "user_id": user_id,
@@ -271,10 +272,10 @@ class BehavioralFeedbackService:
                 "reward": reward,
                 "reason": reason,
                 "timestamp": datetime.now(UTC),
-                "processed": False,
+                "processed": 0,
                 "outcome": outcome.value if outcome else None,
                 "execution_time_ms": execution_time_ms,
-                "context_json": context,
+                "context_json": context_json,
                 "user_satisfaction": user_satisfaction
             }
             
@@ -403,7 +404,7 @@ class BehavioralFeedbackService:
                 "execution_id": execution_id,
                 "feedback_type": feedback_type.value,
                 "question": question,
-                "created_at": datetime.now(UTC)
+                "created_at": datetime.now(UTC).isoformat(),
             }
             
             await self.agency_service.create_feedback_request(request_data)
@@ -524,12 +525,7 @@ class BehavioralFeedbackService:
             List of satisfaction data points
         """
         try:
-            # Note: This would need a new AgencyService method for trend data
-            # For now, return empty list as this is analytics/reporting
-            # TODO: Add get_user_satisfaction_trend to AgencyService
-            if self.logger:
-                self.logger.warning("[FEEDBACK] get_user_satisfaction_trend not yet implemented in AgencyService")
-            return []
+            return await self.agency_service.get_user_satisfaction_trend(user_id=user_id, days=days)
             
         except Exception as e:
             if self.logger:

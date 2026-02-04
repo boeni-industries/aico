@@ -199,9 +199,9 @@ class SelfReflectionEngine:
 
             raise
 
-    async def get_active_lessons(self, user_id: str) -> List[DbLesson]:
+    async def get_active_lessons(self, user_id: str, lesson_type: Optional[str] = None) -> List[DbLesson]:
         async with UnitOfWork(self.session_factory) as uow:
-            return await uow.lessons.get_active_lessons(user_id)
+            return await uow.lessons.get_active_lessons(user_id, lesson_type)
 
     async def get_self_model(self, user_id: str, entity_type: str, entity_id: str) -> Optional[AgencySelfModel]:
         async with UnitOfWork(self.session_factory) as uow:
@@ -215,6 +215,29 @@ class SelfReflectionEngine:
             return json.loads(model.performance_summary) if model.performance_summary else None
         except Exception:
             return None
+
+    async def get_goal_type_performance(self, user_id: str, goal_type: str) -> Optional[Dict[str, Any]]:
+        """Get performance metrics for a specific goal type."""
+        model = await self.get_self_model(user_id, "goal_type", goal_type)
+        if not model:
+            return None
+        try:
+            return json.loads(model.performance_summary) if model.performance_summary else None
+        except Exception:
+            return None
+
+    async def get_all_skill_performances(self, user_id: str) -> Dict[str, Any]:
+        """Get performance metrics for all skills."""
+        async with UnitOfWork(self.session_factory) as uow:
+            models = await uow.agency_self_model.get_user_models(user_id, entity_type="skill")
+            performances = {}
+            for model in models:
+                try:
+                    perf = json.loads(model.performance_summary) if model.performance_summary else {}
+                    performances[model.entity_id] = perf
+                except Exception:
+                    continue
+            return performances
 
     async def _analyze_skill_executions(
         self,

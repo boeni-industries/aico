@@ -159,10 +159,13 @@ class AgencyEngine(BaseAIProcessor):
         )
         # Goal Arbiter initialized
         
-        # Phase 5: Self-Reflection Engine - DISABLED (requires migration to PostgreSQL)
-        # TODO: Migrate SelfReflectionEngine to use AgencyService instead of db_connection
-        self.self_reflection = None
-        # Self-Reflection Engine disabled pending migration
+        # Phase 5: Self-Reflection Engine
+        from aico.ai.agency.reflection import SelfReflectionEngine
+        self.self_reflection = SelfReflectionEngine(
+            config=config,
+            session_factory=session_factory,
+            llm_client=None  # Will be set later if available
+        )
         
         # Initialize modelservice client for embeddings (needed for goal deduplication)
         self.modelservice_client = None  # Will be set via set_modelservice_client() if available

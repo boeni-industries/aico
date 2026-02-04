@@ -306,3 +306,7 @@ class PostgresLessonRepository(Repository[Lesson]):
         )
         result = await self.session.execute(stmt)
         return result.rowcount > 0
+    
+    async def get_active_lessons(self, user_id: str, lesson_type: Optional[str] = None) -> List[Lesson]:
+        """Alias for get_active_lessons_for_user to match SelfReflectionEngine interface."""
+        return await self.get_active_lessons_for_user(user_id, lesson_type)

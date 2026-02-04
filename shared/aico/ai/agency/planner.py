@@ -69,6 +69,7 @@ class Planner:
             cache_ttl_seconds: Cache TTL in seconds
         """
         self.llm_client = llm_client
+        self.db = None
         self.skill_registry = skill_registry
         self.enable_caching = enable_caching
         self.cache_ttl_seconds = cache_ttl_seconds
@@ -1005,9 +1006,6 @@ Return your plan as a JSON object with a "steps" array."""
         Returns:
             Filtered plan with only steps using available skills
         """
-        if not self.db:
-            return plan
-        
         # Collect all skill IDs from plan steps
         skill_ids = []
         for step in plan.steps:

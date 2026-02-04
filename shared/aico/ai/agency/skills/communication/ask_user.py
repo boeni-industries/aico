@@ -183,7 +183,7 @@ class AskUserSkill(Skill):
                        WHERE user_id = ?
                        AND question = ?
                        AND trigger_reason = 'information_gap'
-                       AND datetime(initiated_at) > datetime('now', '-24 hours')""",
+                       AND initiated_at > NOW() - INTERVAL '24 hours'""",
                     (user_id, question),
                 ).fetchone()
 

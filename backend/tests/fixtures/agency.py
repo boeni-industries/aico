@@ -240,21 +240,19 @@ async def seeded_goals(test_db, sample_goals):
     from aico.services.agency_service import AgencyService
     from aico.data.uow import UnitOfWork
     from aico.data.postgres.connection import get_session_factory
-    
-    # Clean up any existing goals with these IDs first
-    test_db.execute("PRAGMA foreign_keys = OFF")
-    for goal in sample_goals:
-        test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (goal.goal_id,))
-    test_db.commit()
-    test_db.execute("PRAGMA foreign_keys = ON")
-    
+
     session_factory = await get_session_factory()
-    uow = UnitOfWork(session_factory)
-    agency_service = AgencyService(uow)
-    for goal in sample_goals:
-        await agency_service.create_goal(goal)
-    await uow.commit()
-    
+    async with UnitOfWork(session_factory) as uow:
+        agency_service = AgencyService(uow)
+
+        # Clean up any existing goals with these IDs first
+        for goal in sample_goals:
+            await uow.goals.delete(goal.goal_id)
+
+        # Seed goals
+        for goal in sample_goals:
+            await agency_service.create_goal(goal)
+
     return sample_goals
 
 
@@ -264,50 +262,50 @@ async def seeded_goal_with_plan(test_db, sample_goal, sample_plan):
     from aico.services.agency_service import AgencyService
     from aico.data.uow import UnitOfWork
     from aico.data.postgres.connection import get_session_factory
-    
-    # Clean up any existing goal/plan with these IDs first
-    test_db.execute("PRAGMA foreign_keys = OFF")
-    test_db.execute("DELETE FROM agency_plans WHERE plan_id = ?", (sample_plan.plan_id,))
-    test_db.execute("DELETE FROM agency_goals WHERE goal_id = ?", (sample_goal.goal_id,))
-    test_db.commit()
-    test_db.execute("PRAGMA foreign_keys = ON")
-    
+
     session_factory = await get_session_factory()
-    uow = UnitOfWork(session_factory)
-    agency_service = AgencyService(uow)
-    
-    await agency_service.create_goal(sample_goal)
-    await agency_service.create_plan(sample_plan)
-    await uow.commit()
-    
+    async with UnitOfWork(session_factory) as uow:
+        agency_service = AgencyService(uow)
+
+        # Clean up any existing goal/plan with these IDs first
+        await uow.plans.delete(sample_plan.plan_id)
+        await uow.goals.delete(sample_goal.goal_id)
+        await uow.commit()
+
+        await agency_service.create_goal(sample_goal)
+        await agency_service.create_plan(sample_plan)
+
     return sample_goal, sample_plan
 
 
 @pytest.fixture
-def permissive_value_profile(test_user, test_db):
+async def permissive_value_profile(test_user):
     """Create a permissive value profile for testing that allows all curiosity signals."""
     from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorLevel
+    from aico.data.postgres.connection import get_session_factory
+    from aico.data.uow import UnitOfWork
     
-    service = ValuesEthicsService(test_db)
+    service = ValuesEthicsService()
+    session_factory = await get_session_factory()
     
-    # Get or create profile
-    profile = service._get_or_create_profile(test_user)
+    async with UnitOfWork(session_factory) as uow:
+        # Get or create profile
+        profile = await service._get_or_create_profile(test_user, uow)
     
-    # Make it permissive - no sensitive areas, high curiosity intensity
-    profile.sensitive_life_areas = []  # No sensitive areas
-    profile.curiosity_intensity = 1.0  # Allow all curiosity signals
-    profile.proactive_behavior_level = ProactiveBehaviorLevel.PROACTIVE
-    
-    # Update in database
-    test_db.execute(
-        """
-        UPDATE ethics_value_profiles 
-        SET sensitive_life_areas = ?, curiosity_intensity = ?, proactive_behavior_level = ?
-        WHERE profile_id = ?
-        """,
-        ("[]", 1.0, "proactive", profile.profile_id)
-    )
-    test_db.commit()
+        # Make it permissive - no sensitive areas, high curiosity intensity
+        profile.sensitive_life_areas = []  # No sensitive areas
+        profile.curiosity_intensity = 1.0  # Allow all curiosity signals
+        profile.proactive_behavior_level = ProactiveBehaviorLevel.PROACTIVE
+
+        entity = await uow.ethics_value_profiles.get_by_user_id(test_user)
+        if entity is not None:
+            entity.sensitive_life_areas = "[]"
+            entity.allowed_curiosity_domains = "[]"
+            entity.curiosity_intensity = 1.0
+            entity.proactive_behavior_level = ProactiveBehaviorLevel.PROACTIVE.value
+            entity.storage_preferences = "{}"
+            await uow.ethics_value_profiles.update(entity)
+        await uow.commit()
     
     return profile
 
