@@ -57,8 +57,10 @@ from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
 from aico.data.tables import system_events
 from aico.data.system.models import SystemEvent
+from backend.api.admin.user_cleanup import cleanup_user_data
 from aico.security.key_manager import AICOKeyManager
 from aico.core.config import ConfigurationManager
+from aico.core.logging import get_logger
 from aico.data.user.models import UserProfile
 from aico.data.auth.models import AuthUserCredentials
 from passlib.context import CryptContext
@@ -70,6 +72,7 @@ from passlib.context import CryptContext
 # Protected admin endpoints - authentication handled per endpoint
 router = APIRouter()
 
+logger = get_logger("backend.api.admin")
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -276,6 +279,12 @@ async def admin_delete_user(
         raise HTTPException(status_code=400, detail="confirm=true is required")
 
     now = datetime.now(UTC)
+    
+    # Clean up LMDB and ChromaDB data first
+    cleanup_result = await cleanup_user_data(user_uuid)
+    if cleanup_result["errors"]:
+        logger.warning(f"Cleanup errors for user {user_uuid}: {cleanup_result['errors']}")
+    
     if body.hard_delete:
         try:
             await uow.users.delete(user_uuid)
@@ -314,6 +323,124 @@ async def admin_delete_user(
     )
     await uow.commit()
     return AdminOperationResponse(success=True, message="User deactivated")
+
+
+@router.post("/users/bulk-delete", response_model=admin_schemas.AdminBulkDeleteResponse)
+@handle_admin_service_exceptions
+async def admin_bulk_delete_users(
+    body: admin_schemas.AdminBulkDeleteRequest,
+    request: Request,
+    actor: Dict[str, Any] = Depends(verify_admin_token),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    """
+    Bulk delete multiple users (soft or hard delete).
+    
+    - Supports up to 100 users per request
+    - Requires explicit confirmation
+    - Continues processing even if individual deletions fail
+    - Returns detailed results for each user
+    """
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="confirm=true is required")
+    
+    if not body.user_uuids:
+        raise HTTPException(status_code=400, detail="user_uuids list cannot be empty")
+    
+    now = datetime.now(UTC)
+    results = []
+    successful = 0
+    failed = 0
+    
+    for user_uuid in body.user_uuids:
+        try:
+            # Clean up LMDB and ChromaDB data first
+            cleanup_result = await cleanup_user_data(user_uuid)
+            if cleanup_result["errors"]:
+                logger.warning(f"Cleanup errors for user {user_uuid}: {cleanup_result['errors']}")
+            
+            if body.hard_delete:
+                # Hard delete - remove from database
+                deleted = await uow.users.delete(user_uuid)
+                if not deleted:
+                    results.append(admin_schemas.BulkDeleteResult(
+                        user_uuid=user_uuid,
+                        success=False,
+                        error="User not found"
+                    ))
+                    failed += 1
+                    continue
+                
+                await _write_audit_event(
+                    uow=uow,
+                    timestamp=now,
+                    action="admin.user.bulk_delete.hard",
+                    actor=actor,
+                    resource_type="user",
+                    resource_id=user_uuid,
+                    severity="warning",
+                    ip_address=getattr(request.client, "host", None),
+                    details={"reason": body.reason, "bulk_operation": True},
+                )
+                
+                results.append(admin_schemas.BulkDeleteResult(
+                    user_uuid=user_uuid,
+                    success=True,
+                    error=None
+                ))
+                successful += 1
+            else:
+                # Soft delete - set is_active = False
+                user = await uow.users.get_by_id(user_uuid)
+                if not user:
+                    results.append(admin_schemas.BulkDeleteResult(
+                        user_uuid=user_uuid,
+                        success=False,
+                        error="User not found"
+                    ))
+                    failed += 1
+                    continue
+                
+                user.is_active = False
+                await uow.users.update(user)
+                await _write_audit_event(
+                    uow=uow,
+                    timestamp=now,
+                    action="admin.user.bulk_delete.soft",
+                    actor=actor,
+                    resource_type="user",
+                    resource_id=user_uuid,
+                    severity="warning",
+                    ip_address=getattr(request.client, "host", None),
+                    details={"reason": body.reason, "bulk_operation": True},
+                )
+                
+                results.append(admin_schemas.BulkDeleteResult(
+                    user_uuid=user_uuid,
+                    success=True,
+                    error=None
+                ))
+                successful += 1
+                
+        except Exception as e:
+            logger.error(f"Failed to delete user {user_uuid} in bulk operation: {e}")
+            results.append(admin_schemas.BulkDeleteResult(
+                user_uuid=user_uuid,
+                success=False,
+                error=str(e)
+            ))
+            failed += 1
+    
+    # Commit all changes
+    await uow.commit()
+    
+    return admin_schemas.AdminBulkDeleteResponse(
+        success=(failed == 0),
+        total_requested=len(body.user_uuids),
+        successful=successful,
+        failed=failed,
+        results=results
+    )
 
 
 @router.put("/users/{user_uuid}/password", response_model=AdminOperationResponse)

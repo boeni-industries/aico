@@ -260,6 +260,30 @@ class AdminUserDeleteRequest(BaseModel):
     reason: Optional[str] = Field(None, description="Reason")
 
 
+class AdminBulkDeleteRequest(BaseModel):
+    """Request schema for bulk user deletion"""
+    user_uuids: List[str] = Field(..., min_length=1, max_length=100, description="List of user UUIDs to delete (max 100)")
+    hard_delete: bool = Field(False, description="Hard delete (default: soft delete)")
+    confirm: bool = Field(False, description="Required confirmation flag")
+    reason: Optional[str] = Field(None, description="Reason for deletion")
+
+
+class BulkDeleteResult(BaseModel):
+    """Result for individual user deletion in bulk operation"""
+    user_uuid: str = Field(..., description="User UUID")
+    success: bool = Field(..., description="Whether deletion succeeded")
+    error: Optional[str] = Field(None, description="Error message if failed")
+
+
+class AdminBulkDeleteResponse(BaseModel):
+    """Response schema for bulk user deletion"""
+    success: bool = Field(..., description="Whether overall operation succeeded")
+    total_requested: int = Field(..., description="Total number of users requested for deletion")
+    successful: int = Field(..., description="Number of successfully deleted users")
+    failed: int = Field(..., description="Number of failed deletions")
+    results: List[BulkDeleteResult] = Field(..., description="Detailed results for each user")
+
+
 class AdminUserSetPinRequest(BaseModel):
     new_pin: str = Field(..., description="New PIN")
     require_change_on_login: Optional[bool] = Field(None, description="If true, forces change on next login")

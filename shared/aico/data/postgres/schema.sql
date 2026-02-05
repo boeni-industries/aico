@@ -1239,6 +1239,7 @@ ALTER TABLE agency_followups ADD CONSTRAINT fk_agency_followups_goal_id_agency_g
 ALTER TABLE agency_goal_dependencies ADD CONSTRAINT fk_agency_goal_dependencies_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id);
 ALTER TABLE agency_goal_dependencies ADD CONSTRAINT fk_agency_goal_dependencies_prerequisite_goal_id_agency_goals FOREIGN KEY (prerequisite_goal_id) REFERENCES agency_goals(goal_id);
 ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id);
+ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_arm_id_arbiter_bandit_arms FOREIGN KEY (arm_id) REFERENCES arbiter_bandit_arms(arm_id);
 ALTER TABLE agency_goal_skill_executions ADD CONSTRAINT fk_agency_goal_skill_executions_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE;
 ALTER TABLE agency_goals ADD CONSTRAINT fk_agency_goals_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
@@ -1246,6 +1247,7 @@ ALTER TABLE agency_intention_set ADD CONSTRAINT fk_agency_intention_set_goal_id_
 ALTER TABLE agency_intention_set ADD CONSTRAINT fk_agency_intention_set_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE agency_lessons ADD CONSTRAINT fk_agency_lessons_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE agency_lessons ADD CONSTRAINT fk_agency_lessons_superseded_by_agency_lessons FOREIGN KEY (superseded_by) REFERENCES agency_lessons(lesson_id) ON DELETE SET NULL;
+ALTER TABLE agency_plan_executions ADD CONSTRAINT fk_agency_plan_executions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE agency_plans ADD CONSTRAINT fk_agency_plans_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE;
 ALTER TABLE agency_policy_rules ADD CONSTRAINT fk_agency_policy_rules_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE agency_reflection_notes ADD CONSTRAINT fk_agency_reflection_notes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
