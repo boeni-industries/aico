@@ -215,6 +215,15 @@ async def get_user_detail(
                 detail=f"User {user_uuid} not found"
             )
         
+        # Get autonomy level from ethics_value_profiles
+        autonomy_level = None
+        try:
+            value_profiles = await uow.ethics_value_profiles.list(filters={"user_id": user_uuid}, limit=1)
+            if value_profiles:
+                autonomy_level = value_profiles[0].autonomy_level
+        except Exception as e:
+            logger.warning(f"Failed to fetch autonomy_level for user {user_uuid}: {e}")
+        
         profile_response = UserProfile(
             uuid=user_profile.uuid,
             full_name=user_profile.full_name,
@@ -222,6 +231,7 @@ async def get_user_detail(
             user_type=user_profile.user_type,
             is_active=user_profile.is_active,
             primary_language=user_profile.primary_language,
+            autonomy_level=autonomy_level,
             created_at=user_profile.created_at.isoformat() if hasattr(user_profile.created_at, 'isoformat') else user_profile.created_at,
             updated_at=user_profile.updated_at.isoformat() if hasattr(user_profile.updated_at, 'isoformat') else user_profile.updated_at
         )

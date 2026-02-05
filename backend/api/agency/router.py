@@ -1091,7 +1091,8 @@ async def update_value_profile(
             profile.curiosity_intensity = request.curiosity_intensity
         
         if request.autonomy_level is not None:
-            profile.autonomy_level = request.autonomy_level
+            # Convert enum to string value for database storage
+            profile.autonomy_level = request.autonomy_level.value if hasattr(request.autonomy_level, 'value') else request.autonomy_level
         
         # Handle sensitive areas as list
         sensitive_areas = profile.sensitive_life_areas if profile.sensitive_life_areas else []
@@ -1109,7 +1110,8 @@ async def update_value_profile(
                 if area not in request.remove_sensitive_areas
             ]
         
-        profile.sensitive_life_areas = sensitive_areas
+        # Serialize list to JSON string for database storage
+        profile.sensitive_life_areas = json.dumps(sensitive_areas) if sensitive_areas else None
         profile.updated_at = datetime.utcnow()
         
         # Update via repository

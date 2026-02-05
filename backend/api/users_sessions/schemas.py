@@ -17,6 +17,7 @@ class UserProfile(BaseModel):
     user_type: str = Field(..., description="User type (person, system, admin)")
     is_active: bool = Field(..., description="User active status")
     primary_language: Optional[str] = Field(None, description="User's primary language")
+    autonomy_level: Optional[str] = Field(None, description="User's autonomy level (quiet, balanced, proactive, autonomous)")
     created_at: str = Field(..., description="Account creation timestamp")
     updated_at: str = Field(..., description="Last update timestamp")
 
