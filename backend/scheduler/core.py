@@ -308,8 +308,13 @@ class TaskExecutor:
         self.task_start_times[task_id] = start_time
         
         # Store configured timeout for this task (for stuck detection)
-        scheduler_config = self.get_config("scheduler", {})
-        task_timeout = scheduler_config.get("task_timeout", 3600)  # 1 hour default
+        # Prefer task-specific max_duration_seconds over global timeout
+        task_specific_timeout = task_config.get('config', {}).get('max_duration_seconds') if isinstance(task_config.get('config'), dict) else None
+        if task_specific_timeout:
+            task_timeout = task_specific_timeout
+        else:
+            scheduler_config = self.get_config("scheduler", {})
+            task_timeout = scheduler_config.get("task_timeout", 3600)  # 1 hour default
         self.task_timeouts[task_id] = task_timeout
         
         # Get session factory for database operations
@@ -373,8 +378,15 @@ class TaskExecutor:
                     return result
                 
                 # Execute task with timeout
-                scheduler_config = self.get_config("scheduler", {})
-                timeout = scheduler_config.get("task_timeout", 3600)  # 1 hour default
+                # Prefer task-specific max_duration_seconds over global scheduler.task_timeout
+                task_specific_timeout = instance_config.get("max_duration_seconds")
+                if task_specific_timeout:
+                    timeout = task_specific_timeout
+                    self.logger.info(f"Using task-specific timeout: {timeout}s for {task_id}")
+                else:
+                    scheduler_config = self.get_config("scheduler", {})
+                    timeout = scheduler_config.get("task_timeout", 3600)  # 1 hour default
+                    self.logger.debug(f"Using global timeout: {timeout}s for {task_id}")
                 
                 try:
                     result = await asyncio.wait_for(task_instance.execute(context), timeout=timeout)

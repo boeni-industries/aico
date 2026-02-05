@@ -163,9 +163,8 @@ class KGConsolidationTask(BaseTask):
             
             # Get users with unconsolidated messages
             print("🕸️ [KG_TASK] Getting users with unconsolidated messages...")
-            users_with_pending = await self._get_users_with_unconsolidated_messages(
+            users_with_pending = await self._get_users_with_pending_messages(
                 memory_manager=memory_manager,
-                max_age_hours=max_age_hours,
                 batch_size=batch_size,
             )
 
