@@ -171,7 +171,7 @@ class LessonApplicationService:
                     sensitive_life_areas=json.dumps([]),
                     allowed_curiosity_domains=json.dumps([]),
                     curiosity_intensity=new_intensity,
-                    proactive_behavior_level="balanced",
+                    autonomy_level="balanced",
                     storage_preferences=json.dumps({}),
                     created_at=now,
                     updated_at=now,

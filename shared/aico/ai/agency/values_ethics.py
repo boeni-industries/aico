@@ -52,11 +52,12 @@ class ConsentDecision(str, Enum):
     DENIED = "denied"
 
 
-class ProactiveBehaviorLevel(str, Enum):
-    """User preference for proactive behavior."""
+class AutonomyLevel(str, Enum):
+    """User preference for autonomy level."""
     QUIET = "quiet"
     BALANCED = "balanced"
     PROACTIVE = "proactive"
+    AUTONOMOUS = "autonomous"
 
 
 # ============================================================================
@@ -71,7 +72,7 @@ class ValueProfile(BaseModel):
     sensitive_life_areas: List[str] = Field(default_factory=list)
     allowed_curiosity_domains: List[str] = Field(default_factory=list)
     curiosity_intensity: float = 0.5  # 0.0-1.0
-    proactive_behavior_level: ProactiveBehaviorLevel = ProactiveBehaviorLevel.BALANCED
+    autonomy_level: AutonomyLevel  # No default - must be set explicitly from config
     storage_preferences: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -411,7 +412,7 @@ class ValuesEthicsService:
                 sensitive_life_areas=json.loads(entity.sensitive_life_areas) if entity.sensitive_life_areas else [],
                 allowed_curiosity_domains=json.loads(entity.allowed_curiosity_domains) if entity.allowed_curiosity_domains else [],
                 curiosity_intensity=entity.curiosity_intensity,
-                proactive_behavior_level=ProactiveBehaviorLevel(entity.proactive_behavior_level),
+                autonomy_level=AutonomyLevel(entity.autonomy_level),
                 storage_preferences=json.loads(entity.storage_preferences) if entity.storage_preferences else {},
                 created_at=entity.created_at,
                 updated_at=entity.updated_at
@@ -419,15 +420,22 @@ class ValuesEthicsService:
             self._profile_cache[user_id] = profile
             return profile
         else:
-            # Create default profile
-            profile = ValueProfile(user_id=user_id)
+            # Create default profile - read autonomy level from configuration
+            from aico.core.config import ConfigurationManager
+            config = ConfigurationManager()
+            default_autonomy = config.get("agency.safety_control.autonomy_level", "balanced")
+            
+            profile = ValueProfile(
+                user_id=user_id,
+                autonomy_level=AutonomyLevel(default_autonomy)
+            )
             entity = EthicsValueProfile(
                 profile_id=profile.profile_id,
                 user_id=profile.user_id,
                 sensitive_life_areas=json.dumps(profile.sensitive_life_areas),
                 allowed_curiosity_domains=json.dumps(profile.allowed_curiosity_domains),
                 curiosity_intensity=profile.curiosity_intensity,
-                proactive_behavior_level=profile.proactive_behavior_level.value,
+                autonomy_level=profile.autonomy_level.value,
                 storage_preferences=json.dumps(profile.storage_preferences),
                 created_at=profile.created_at,
                 updated_at=profile.updated_at

@@ -886,7 +886,7 @@ CREATE TABLE IF NOT EXISTS "ethics_value_profiles" (
                 sensitive_life_areas TEXT,         -- JSONB array of LifeArea IDs
                 allowed_curiosity_domains TEXT,    -- JSONB array of allowed domains
                 curiosity_intensity DOUBLE PRECISION DEFAULT 0.5,  -- 0.0-1.0 scale
-                proactive_behavior_level TEXT DEFAULT 'balanced',  -- quiet, balanced, proactive
+                autonomy_level TEXT DEFAULT 'balanced',  -- quiet, balanced, proactive, autonomous
                 storage_preferences TEXT,          -- JSONB object with storage rules
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

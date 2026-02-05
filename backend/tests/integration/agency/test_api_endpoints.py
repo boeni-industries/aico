@@ -10,7 +10,7 @@ from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from aico.ai.agency.models import GoalOrigin, GoalPriority, GoalStatus
-from aico.ai.agency.values_ethics import ProactiveBehaviorLevel
+from aico.ai.agency.values_ethics import AutonomyLevel
 
 
 @pytest.mark.asyncio
@@ -148,7 +148,7 @@ class TestAgencyAPIEndpoints:
         assert profile is not None
         assert profile.user_id == test_user
         assert 0.0 <= profile.curiosity_intensity <= 1.0
-        assert isinstance(profile.proactive_behavior_level, ProactiveBehaviorLevel)
+        assert isinstance(profile.autonomy_level, AutonomyLevel)
         assert isinstance(profile.sensitive_life_areas, list)
         assert isinstance(profile.allowed_curiosity_domains, list)
     
@@ -164,7 +164,7 @@ class TestAgencyAPIEndpoints:
         
         # Assert - defaults from default_policies.py
         assert profile.curiosity_intensity == 0.5  # Default medium
-        assert profile.proactive_behavior_level == ProactiveBehaviorLevel.BALANCED
+        assert profile.autonomy_level == AutonomyLevel.BALANCED
     
     async def test_list_policies(self, test_db):
         """Test listing policy rules."""

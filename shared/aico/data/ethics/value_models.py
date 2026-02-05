@@ -14,7 +14,7 @@ class EthicsValueProfile(BaseModel):
     allowed_curiosity_domains: Optional[str] = None
 
     curiosity_intensity: float = 0.5
-    proactive_behavior_level: str = "balanced"
+    autonomy_level: str = "balanced"
 
     storage_preferences: Optional[str] = None
 

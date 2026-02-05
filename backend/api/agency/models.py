@@ -47,11 +47,12 @@ class CuriosityLevel(str, Enum):
     HIGH = "high"
 
 
-class ProactiveBehaviorLevel(str, Enum):
-    """Proactive behavior levels"""
+class AutonomyLevel(str, Enum):
+    """Autonomy levels"""
     QUIET = "quiet"
     BALANCED = "balanced"
     PROACTIVE = "proactive"
+    AUTONOMOUS = "autonomous"
 
 
 class PolicyEffect(str, Enum):
@@ -233,7 +234,7 @@ class ValueProfileResponse(BaseModel):
         le=1.0,
         description="Curiosity intensity threshold (0.0-1.0)"
     )
-    proactive_behavior_level: ProactiveBehaviorLevel
+    autonomy_level: AutonomyLevel
     sensitive_life_areas: List[str] = Field(
         default_factory=list,
         description="Life areas requiring consent"
@@ -247,7 +248,7 @@ class ValueProfileResponse(BaseModel):
 class UpdateValueProfileRequest(BaseModel):
     """Request to update value profile"""
     curiosity_intensity: Optional[float] = Field(None, ge=0.0, le=1.0)
-    proactive_behavior_level: Optional[ProactiveBehaviorLevel] = None
+    autonomy_level: Optional[AutonomyLevel] = None
     add_sensitive_areas: Optional[List[str]] = None
     remove_sensitive_areas: Optional[List[str]] = None
 

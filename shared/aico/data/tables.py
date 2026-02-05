@@ -1056,7 +1056,7 @@ ethics_value_profiles = Table(
     Column('sensitive_life_areas', String),
     Column('allowed_curiosity_domains', String),
     Column('curiosity_intensity', Float, default=0.5),
-    Column('proactive_behavior_level', String, default='balanced'),
+    Column('autonomy_level', String, default='balanced'),
     Column('storage_preferences', String),
     Column('created_at', TIMESTAMP(timezone=True)),
     Column('updated_at', TIMESTAMP(timezone=True)),

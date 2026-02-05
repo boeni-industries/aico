@@ -281,7 +281,7 @@ async def seeded_goal_with_plan(test_db, sample_goal, sample_plan):
 @pytest.fixture
 async def permissive_value_profile(test_user):
     """Create a permissive value profile for testing that allows all curiosity signals."""
-    from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorLevel
+    from aico.ai.agency.values_ethics import ValuesEthicsService, AutonomyLevel
     from aico.data.postgres.connection import get_session_factory
     from aico.data.uow import UnitOfWork
     
@@ -295,14 +295,14 @@ async def permissive_value_profile(test_user):
         # Make it permissive - no sensitive areas, high curiosity intensity
         profile.sensitive_life_areas = []  # No sensitive areas
         profile.curiosity_intensity = 1.0  # Allow all curiosity signals
-        profile.proactive_behavior_level = ProactiveBehaviorLevel.PROACTIVE
+        profile.autonomy_level = AutonomyLevel.PROACTIVE
 
         entity = await uow.ethics_value_profiles.get_by_user_id(test_user)
         if entity is not None:
             entity.sensitive_life_areas = "[]"
             entity.allowed_curiosity_domains = "[]"
             entity.curiosity_intensity = 1.0
-            entity.proactive_behavior_level = ProactiveBehaviorLevel.PROACTIVE.value
+            entity.autonomy_level = AutonomyLevel.PROACTIVE.value
             entity.storage_preferences = "{}"
             await uow.ethics_value_profiles.update(entity)
         await uow.commit()

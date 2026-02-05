@@ -35,7 +35,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
 from aico.security import AICOKeyManager
 from aico.ai.agency import AgencyEngine
-from aico.ai.agency.values_ethics import ValuesEthicsService, PolicyEffect, ProactiveBehaviorLevel
+from aico.ai.agency.values_ethics import ValuesEthicsService, PolicyEffect, AutonomyLevel
 from cli.utils.pg_connection import get_pg_connection
 
 console = Console()
@@ -511,7 +511,7 @@ def status(
                 "timestamp": datetime.utcnow().isoformat(),
                 "profile": {
                     "curiosity_intensity": profile.curiosity_intensity,
-                    "proactive_behavior_level": profile.proactive_behavior_level.value,
+                    "autonomy_level": profile.autonomy_level.value,
                     "sensitive_life_areas": profile.sensitive_life_areas,
                 },
                 "goals": goals_summary,
@@ -573,7 +573,7 @@ def status(
         console.print()
         
         # Profile section - inline compact
-        profile_content = f"[dim]Curiosity:[/dim] {profile.curiosity_intensity:.0%}  [dim]Proactive:[/dim] {profile.proactive_behavior_level.value.title()}"
+        profile_content = f"[dim]Curiosity:[/dim] {profile.curiosity_intensity:.0%}  [dim]Proactive:[/dim] {profile.autonomy_level.value.title()}"
         if profile.sensitive_life_areas:
             sensitive = ", ".join(profile.sensitive_life_areas)
             profile_content += f"  [dim]Sensitive:[/dim] {sensitive}"
@@ -996,11 +996,11 @@ def profile(
         
         if set_proactive:
             try:
-                level = ProactiveBehaviorLevel(set_proactive.lower())
-                profile.proactive_behavior_level = level
+                level = AutonomyLevel(set_proactive.lower())
+                profile.autonomy_level = level
                 updated = True
             except ValueError:
-                console.print(f"[red]✗[/red] Invalid proactive level. Use: quiet, balanced, or proactive")
+                console.print(f"[red]✗[/red] Invalid autonomy level. Use: quiet, balanced, proactive, or autonomous")
                 raise typer.Exit(1)
         
         if add_sensitive:
@@ -1020,14 +1020,14 @@ def profile(
                 """
                 UPDATE ethics_value_profiles 
                 SET curiosity_intensity = %s, 
-                    proactive_behavior_level = %s,
+                    autonomy_level = %s,
                     sensitive_life_areas = %s,
                     updated_at = %s
                 WHERE profile_id = %s
                 """,
                 (
                     profile.curiosity_intensity,
-                    profile.proactive_behavior_level.value,
+                    profile.autonomy_level.value,
                     json.dumps(profile.sensitive_life_areas),
                     datetime.utcnow().isoformat(),
                     profile.profile_id
@@ -1042,7 +1042,7 @@ def profile(
                 "profile_id": profile.profile_id,
                 "user_id": profile.user_id,
                 "curiosity_intensity": profile.curiosity_intensity,
-                "proactive_behavior_level": profile.proactive_behavior_level.value,
+                "autonomy_level": profile.autonomy_level.value,
                 "sensitive_life_areas": profile.sensitive_life_areas,
                 "allowed_curiosity_domains": profile.allowed_curiosity_domains,
             }
@@ -1053,7 +1053,7 @@ def profile(
 
 [bold cyan]Behavior Settings[/bold cyan]
 [bold]Curiosity Intensity:[/bold] {profile.curiosity_intensity:.2f}
-[bold]Proactive Level:[/bold] {profile.proactive_behavior_level.value}
+[bold]Proactive Level:[/bold] {profile.autonomy_level.value}
 
 [bold cyan]Sensitive Life Areas[/bold cyan]
 {', '.join(profile.sensitive_life_areas) if profile.sensitive_life_areas else '[dim]None configured[/dim]'}

@@ -66,7 +66,7 @@ from aico.ai.agency import AgencyEngine
 from aico.ai.agency.skills.registry import SkillRegistry
 from aico.ai.agency.tools.registry import get_tool_registry, ToolDefinition
 import aico.ai.agency.tools as tools_package
-from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorLevel
+from aico.ai.agency.values_ethics import ValuesEthicsService
 from aico.ai import ai_registry
 from aico.data.uow import UnitOfWork
 from aico.data.tables import agency_lessons, agency_reflection_runs
@@ -1034,11 +1034,15 @@ async def get_value_profile(
             from aico.data.ethics.models import EthicsValueProfile
             import uuid as uuid_lib
             
+            # Read default autonomy level from configuration
+            config = ConfigurationManager()
+            default_autonomy = config.get("agency.safety_control.autonomy_level", "balanced")
+            
             profile = EthicsValueProfile(
                 profile_id=str(uuid_lib.uuid4()),
                 user_id=user_id,
                 curiosity_intensity=0.5,
-                proactive_behavior_level="balanced",
+                autonomy_level=default_autonomy,
                 sensitive_life_areas=None,
                 allowed_curiosity_domains=None,
                 created_at=datetime.utcnow(),
@@ -1053,7 +1057,7 @@ async def get_value_profile(
             profile_id=profile.profile_id,
             user_id=profile.user_id,
             curiosity_intensity=profile.curiosity_intensity,
-            proactive_behavior_level=profile.proactive_behavior_level,
+            autonomy_level=profile.autonomy_level,
             sensitive_life_areas=profile.sensitive_life_areas if profile.sensitive_life_areas else [],
             allowed_curiosity_domains=profile.allowed_curiosity_domains if profile.allowed_curiosity_domains else []
         )
@@ -1086,8 +1090,8 @@ async def update_value_profile(
         if request.curiosity_intensity is not None:
             profile.curiosity_intensity = request.curiosity_intensity
         
-        if request.proactive_behavior_level is not None:
-            profile.proactive_behavior_level = request.proactive_behavior_level
+        if request.autonomy_level is not None:
+            profile.autonomy_level = request.autonomy_level
         
         # Handle sensitive areas as list
         sensitive_areas = profile.sensitive_life_areas if profile.sensitive_life_areas else []
@@ -1116,7 +1120,7 @@ async def update_value_profile(
             profile_id=profile.profile_id,
             user_id=profile.user_id,
             curiosity_intensity=profile.curiosity_intensity,
-            proactive_behavior_level=profile.proactive_behavior_level,
+            autonomy_level=profile.autonomy_level,
             sensitive_life_areas=profile.sensitive_life_areas if profile.sensitive_life_areas else [],
             allowed_curiosity_domains=profile.allowed_curiosity_domains if profile.allowed_curiosity_domains else []
         )

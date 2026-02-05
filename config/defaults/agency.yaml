@@ -81,7 +81,7 @@ safety_control:
   # - "balanced": Create goals from curiosity but require user activation (default)
   # - "proactive": Autonomously activate goals and send occasional suggestions
   # - "autonomous": Fully autonomous goal pursuit within safety constraints
-  autonomy_level: "balanced"
+  autonomy_level: "proactive"
   
   # Quiet hours - time periods when AICO should not initiate proactive actions
   quiet_hours:

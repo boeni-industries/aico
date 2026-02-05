@@ -17,7 +17,7 @@ from aico.ai.agency.values_ethics import (
     PolicyRule, 
     PolicyTargetType, 
     PolicyScope,
-    ProactiveBehaviorLevel
+    AutonomyLevel
 )
 from aico.ai.curiosity import IntrinsicSignal, CuriosityType
 
@@ -276,7 +276,7 @@ class TestPhase4EthicsGates:
         assert goal.origin == GoalOrigin.USER
         assert goal.metadata["ethics_evaluation"]["decision"] == "allow"
     
-    async def test_proactive_behavior_level_affects_evaluation(self, test_config, test_db, test_user, session_factory):
+    async def test_autonomy_level_affects_evaluation(self, test_config, test_db, test_user, session_factory):
         """Test that proactive behavior level is stored in profile."""
         # Arrange
         from aico.data.uow import UnitOfWork
@@ -285,9 +285,9 @@ class TestPhase4EthicsGates:
         
         # Test each proactive behavior level
         levels = [
-            ProactiveBehaviorLevel.QUIET,
-            ProactiveBehaviorLevel.BALANCED,
-            ProactiveBehaviorLevel.PROACTIVE
+            AutonomyLevel.QUIET,
+            AutonomyLevel.BALANCED,
+            AutonomyLevel.PROACTIVE
         ]
         
         for level in levels:
@@ -296,14 +296,14 @@ class TestPhase4EthicsGates:
                 await service._get_or_create_profile(test_user, uow)
                 entity = await uow.ethics_value_profiles.get_by_user_id(test_user)
                 assert entity is not None
-                entity.proactive_behavior_level = level.value
+                entity.autonomy_level = level.value
                 await uow.ethics_value_profiles.update(entity)
                 await uow.commit()
 
             async with UnitOfWork(session_factory) as uow:
                 fresh_service = ValuesEthicsService()
                 retrieved = await fresh_service._get_or_create_profile(test_user, uow)
-                assert retrieved.proactive_behavior_level == level
+                assert retrieved.autonomy_level == level
     
     async def test_multiple_sensitive_areas_all_enforced(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test that multiple sensitive life areas are all enforced."""
