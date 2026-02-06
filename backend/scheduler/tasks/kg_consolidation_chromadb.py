@@ -13,7 +13,7 @@ async def cleanup_chromadb_historical(memory_manager) -> Dict[str, int]:
     """
     Clean up historical node and edge embeddings from ChromaDB.
     
-    This ensures ChromaDB stays in sync with libSQL by removing embeddings
+    This ensures ChromaDB stays in sync with PostgreSQL by removing embeddings
     for nodes/edges that have been marked as historical (is_current = 0).
     
     Args:
@@ -23,7 +23,6 @@ async def cleanup_chromadb_historical(memory_manager) -> Dict[str, int]:
         Dict with cleanup statistics
     """
     try:
-        db = memory_manager._kg_storage.db
         node_collection = memory_manager._kg_storage._node_collection
         edge_collection = memory_manager._kg_storage._edge_collection
         
@@ -38,6 +37,13 @@ async def cleanup_chromadb_historical(memory_manager) -> Dict[str, int]:
                 limit=100000
             )
             historical_node_ids = [n.id for n in historical_nodes]
+
+            # Query ALL historical edges from database
+            historical_edges = await uow.kg_edges.list(
+                filters={'is_current': False},
+                limit=100000
+            )
+            historical_edge_ids = [e.id for e in historical_edges]
         
         # Delete historical node embeddings
         nodes_deleted = 0
@@ -48,13 +54,6 @@ async def cleanup_chromadb_historical(memory_manager) -> Dict[str, int]:
                 logger.info(f"Deleted {nodes_deleted} historical node embeddings from ChromaDB")
             except Exception as e:
                 logger.warning(f"Failed to delete ChromaDB embeddings for historical nodes: {e}")
-        
-            # Query ALL historical edges from database
-            historical_edges = await uow.kg_edges.list(
-                filters={'is_current': False},
-                limit=100000
-            )
-            historical_edge_ids = [e.id for e in historical_edges]
         
         # Delete historical edge embeddings
         edges_deleted = 0

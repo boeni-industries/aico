@@ -1,6 +1,6 @@
+import 'package:aico_frontend/presentation/providers/proactive_state_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:aico_frontend/presentation/providers/proactive_state_provider.dart';
 
 /// Ambient indicator for collapsed right drawer
 /// Vertical pill showing thinking count and notification count

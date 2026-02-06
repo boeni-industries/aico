@@ -713,7 +713,7 @@ class LLMRelationExtractor(ExtractionStrategy):
         self.config = config
         
         # Get LLM timeout from config
-        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
+        kg_config = config.get("memory.semantic.knowledge_graph", {})
         self.llm_timeout = kg_config.get("llm_timeout_seconds", 30.0)
         
         # Initialize JSON sanitizer for robust LLM response parsing
@@ -974,7 +974,7 @@ class MultiPassExtractor:
         self.config = config
         
         # Get config settings
-        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
+        kg_config = config.get("memory.semantic.knowledge_graph", {})
         self.max_gleanings = kg_config.get("max_gleanings", 2)
         
         # Initialize extraction strategies

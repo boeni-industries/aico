@@ -26,11 +26,20 @@ sys.path.insert(0, str(backend_dir))
 
 # Import AICO modules
 from aico.core.config import ConfigurationManager
+from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import initialize_logging, get_logger, shutdown_logging
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
 initialize_logging(service_name="backend", enable_influx=True, enable_console=True)
+
+# Explicitly initialize configuration before validation to avoid implicit initialization
+# (and file watcher startup) during validate_startup_config().
+config_manager.initialize(lightweight=False)
+
+# Validate startup configuration
+validate_startup_config(config_manager)
+print_config_summary(config_manager)
 
 from core.lifecycle_manager import BackendLifecycleManager
 
@@ -44,9 +53,6 @@ process_manager = None
 shutdown_event = asyncio.Event()
 
 try:
-    # Configuration already initialized above
-    config_manager.initialize(lightweight=False)
-    
     # Initialize process manager AFTER logging is set up
     from aico.core.process import ProcessManager
     process_manager = ProcessManager("gateway")
@@ -83,12 +89,8 @@ async def main():
     app, lifecycle_manager = await setup_backend_components()
     
     # Get server configuration
-    core_config = config_manager.config_cache.get('core', {})
-    api_gateway_config = core_config.get('api_gateway', {})
-    rest_config = api_gateway_config.get('rest', {})
-    
-    host = rest_config.get('host', '127.0.0.1')
-    port = rest_config.get('port', 8771)
+    host = config_manager.get("api_gateway.rest.host", "127.0.0.1")
+    port = config_manager.get("api_gateway.rest.port", 8771)
     
     # The lifecycle manager already handles all service registration internally
     # No manual service registration needed here

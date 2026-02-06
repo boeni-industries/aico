@@ -34,7 +34,10 @@ class TestContextualFeatureExtraction:
     @pytest.mark.asyncio
     async def test_extract_features_basic(self, test_db, test_user):
         """Test basic feature extraction."""
-        context = extract_contextual_features(test_db, test_user)
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        context = await extract_contextual_features(session_factory, test_user)
         
         assert isinstance(context, ContextualFeatures)
         assert context.hour_of_day >= 0 and context.hour_of_day < 24
@@ -46,30 +49,33 @@ class TestContextualFeatureExtraction:
     @pytest.mark.asyncio
     async def test_extract_features_with_history(self, test_db, test_user):
         """Test feature extraction with conversation history."""
-        # Insert some initiation history instead of conversations
-        # (using the actual table that exists in the schema)
+        from aico.data.conversation.models import ConversationInitiation
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+
+        session_factory = await get_session_factory()
+
+        # Seed initiation history
         now = datetime.now(UTC)
-        for i in range(5):
-            test_db.execute("""
-                INSERT INTO conversation_initiations (
-                    initiation_id, user_id, conversation_id,
-                    trigger_source, trigger_reason, question,
-                    initiated_at, resolution_status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                str(uuid.uuid4()),
-                test_user,
-                f"{test_user}_test_{i}",
-                "test",
-                "test",
-                "Test question",
-                (now - timedelta(hours=i)).isoformat(),
-                "answered" if i % 2 == 0 else "pending",
-                (now - timedelta(hours=i)).isoformat()
-            ))
-        test_db.commit()
+        async with UnitOfWork(session_factory) as uow:
+            for i in range(5):
+                await uow.conversation_initiations.create(
+                    ConversationInitiation(
+                        initiation_id=str(uuid.uuid4()),
+                        user_id=test_user,
+                        conversation_id=f"{test_user}_test_{i}",
+                        trigger_source="test",
+                        trigger_reason="test",
+                        question="Test question",
+                        initiated_at=now - timedelta(hours=i),
+                        resolution_status="answered" if i % 2 == 0 else "pending",
+                        created_at=now - timedelta(hours=i),
+                        updated_at=now - timedelta(hours=i),
+                    )
+                )
+            await uow.commit()
         
-        context = extract_contextual_features(test_db, test_user)
+        context = await extract_contextual_features(session_factory, test_user)
         
         # Should have detected recent activity
         assert context.time_since_last_interaction >= 0
@@ -170,12 +176,16 @@ class TestAdaptivityScoring:
 class TestCivilityScoring:
     """Test civility dimension scoring."""
     
-    def test_boundary_respect_with_preferences(self, test_db, test_user):
+    @pytest.mark.asyncio
+    async def test_boundary_respect_with_preferences(self, test_db, test_user):
         """Test boundary respect with user preferences."""
         scorer = CivilityScorer()
         
         # Load default preferences
-        prefs = load_user_preferences(test_db, test_user)
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        prefs = await load_user_preferences(session_factory, test_user)
         
         context = ContextualFeatures(
             hour_of_day=14,
@@ -196,12 +206,16 @@ class TestCivilityScoring:
         # Should respect boundaries (no pending, reasonable time)
         assert score > 0.5
     
-    def test_boundary_respect_quiet_hours(self, test_db, test_user):
+    @pytest.mark.asyncio
+    async def test_boundary_respect_quiet_hours(self, test_db, test_user):
         """Test boundary respect during quiet hours."""
         scorer = CivilityScorer()
         
         # Set quiet hours (list of hours that are quiet)
-        prefs = load_user_preferences(test_db, test_user)
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        prefs = await load_user_preferences(session_factory, test_user)
         prefs['quiet_hours'] = [22, 23, 0, 1, 2, 3, 4, 5, 6, 7]  # 10 PM to 7 AM
         
         # Context during quiet hours
@@ -387,7 +401,10 @@ class TestUserPreferences:
     @pytest.mark.asyncio
     async def test_load_default_preferences(self, test_db, test_user):
         """Test loading default preferences."""
-        prefs = load_user_preferences(test_db, test_user)
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        prefs = await load_user_preferences(session_factory, test_user)
         
         assert isinstance(prefs, dict)
         assert 'enabled' in prefs
@@ -404,13 +421,16 @@ class TestUserPreferences:
     @pytest.mark.asyncio
     async def test_preferences_caching(self, test_db, test_user):
         """Test preferences caching."""
-        manager = UserPreferencesManager(test_db)
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        manager = UserPreferencesManager(session_factory)
         
         # First load
-        prefs1 = manager.get_preferences(test_user)
+        prefs1 = await manager.get_preferences(test_user)
         
         # Second load should use cache
-        prefs2 = manager.get_preferences(test_user)
+        prefs2 = await manager.get_preferences(test_user)
         
         assert prefs1 == prefs2
         assert test_user in manager._cache
@@ -422,152 +442,150 @@ class TestProactiveInitiationFlow:
     @pytest.mark.asyncio
     async def test_create_initiation(self, test_db, test_user):
         """Test creating a proactive initiation."""
+        from aico.data.conversation.models import ConversationInitiation
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+
+        session_factory = await get_session_factory()
+
         initiation_id = str(uuid.uuid4())
         conversation_id = f"{test_user}_{int(datetime.now(UTC).timestamp())}"
-        
-        test_db.execute("""
-            INSERT INTO conversation_initiations (
-                initiation_id, user_id, conversation_id,
-                trigger_source, trigger_reason, question,
-                context, urgency, expected_answer_type,
-                initiated_at, resolution_status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            initiation_id,
-            test_user,
-            conversation_id,
-            "scheduler",
-            "strategy_time_morning",
-            "How are you doing today?",
-            "Adaptivity: 0.75, Civility: 0.82",
-            "low",
-            "text",
-            datetime.now(UTC).isoformat(),
-            "pending",
-            datetime.now(UTC).isoformat()
-        ))
-        test_db.commit()
+
+        now = datetime.now(UTC)
+        async with UnitOfWork(session_factory) as uow:
+            await uow.conversation_initiations.create(
+                ConversationInitiation(
+                    initiation_id=initiation_id,
+                    user_id=test_user,
+                    conversation_id=conversation_id,
+                    trigger_source="scheduler",
+                    trigger_reason="strategy_time_morning",
+                    question="How are you doing today?",
+                    context="Adaptivity: 0.75, Civility: 0.82",
+                    urgency="low",
+                    expected_answer_type="text",
+                    initiated_at=now,
+                    resolution_status="pending",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await uow.commit()
         
         # Verify creation
-        cursor = test_db.execute("""
-            SELECT * FROM conversation_initiations
-            WHERE initiation_id = ?
-        """, (initiation_id,))
-        
-        row = cursor.fetchone()
+        async with UnitOfWork(session_factory) as uow:
+            row = await uow.conversation_initiations.get_by_id(initiation_id)
         assert row is not None
-        assert row['user_id'] == test_user
-        assert row['resolution_status'] == 'pending'
+        assert row.user_id == test_user
+        assert row.resolution_status == 'pending'
     
     @pytest.mark.asyncio
     async def test_respond_to_initiation(self, test_db, test_user):
         """Test responding to an initiation."""
+        from aico.data.conversation.models import ConversationInitiation
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+
+        session_factory = await get_session_factory()
+
         # Create initiation
         initiation_id = str(uuid.uuid4())
         conversation_id = f"{test_user}_{int(datetime.now(UTC).timestamp())}"
         initiated_at = datetime.now(UTC)
-        
-        test_db.execute("""
-            INSERT INTO conversation_initiations (
-                initiation_id, user_id, conversation_id,
-                trigger_source, trigger_reason, question,
-                initiated_at, resolution_status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            initiation_id,
-            test_user,
-            conversation_id,
-            "scheduler",
-            "strategy_time_morning",
-            "How are you?",
-            initiated_at.isoformat(),
-            "pending",
-            initiated_at.isoformat()
-        ))
-        test_db.commit()
+
+        async with UnitOfWork(session_factory) as uow:
+            await uow.conversation_initiations.create(
+                ConversationInitiation(
+                    initiation_id=initiation_id,
+                    user_id=test_user,
+                    conversation_id=conversation_id,
+                    trigger_source="scheduler",
+                    trigger_reason="strategy_time_morning",
+                    question="How are you?",
+                    initiated_at=initiated_at,
+                    resolution_status="pending",
+                    created_at=initiated_at,
+                    updated_at=initiated_at,
+                )
+            )
+            await uow.commit()
         
         # Respond to initiation
         resolved_at = datetime.now(UTC)
         response_time = int((resolved_at - initiated_at).total_seconds())
-        
-        test_db.execute("""
-            UPDATE conversation_initiations
-            SET resolution_status = ?,
-                resolved_at = ?,
-                user_response_time = ?,
-                engagement_score = ?,
-                updated_at = ?
-            WHERE initiation_id = ?
-        """, (
-            'answered',
-            resolved_at.isoformat(),
-            response_time,
-            0.85,
-            resolved_at.isoformat(),
-            initiation_id
-        ))
-        test_db.commit()
+
+        async with UnitOfWork(session_factory) as uow:
+            entity = await uow.conversation_initiations.get_by_id(initiation_id)
+            assert entity is not None
+            entity.resolution_status = "answered"
+            entity.resolved_at = resolved_at
+            entity.user_response_time = response_time
+            entity.engagement_score = 0.85
+            entity.updated_at = resolved_at
+            await uow.conversation_initiations.update(entity)
+            await uow.commit()
         
         # Verify update
-        cursor = test_db.execute("""
-            SELECT * FROM conversation_initiations
-            WHERE initiation_id = ?
-        """, (initiation_id,))
-        
-        row = cursor.fetchone()
-        assert row['resolution_status'] == 'answered'
-        assert row['user_response_time'] == response_time
-        assert row['engagement_score'] == 0.85
+        async with UnitOfWork(session_factory) as uow:
+            row = await uow.conversation_initiations.get_by_id(initiation_id)
+        assert row.resolution_status == 'answered'
+        assert row.user_response_time == response_time
+        assert row.engagement_score == 0.85
     
     @pytest.mark.asyncio
     async def test_check_pending_initiations(self, test_db, test_user):
         """Test checking for pending initiations."""
+        from aico.data.conversation.models import ConversationInitiation
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+
+        session_factory = await get_session_factory()
+
         # Create pending initiation
         initiation_id = str(uuid.uuid4())
-        
-        test_db.execute("""
-            INSERT INTO conversation_initiations (
-                initiation_id, user_id, conversation_id,
-                trigger_source, trigger_reason, question,
-                initiated_at, resolution_status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            initiation_id,
-            test_user,
-            f"{test_user}_test",
-            "scheduler",
-            "test",
-            "Test question",
-            datetime.now(UTC).isoformat(),
-            "pending",
-            datetime.now(UTC).isoformat()
-        ))
-        test_db.commit()
-        
+        now = datetime.now(UTC)
+        async with UnitOfWork(session_factory) as uow:
+            await uow.conversation_initiations.create(
+                ConversationInitiation(
+                    initiation_id=initiation_id,
+                    user_id=test_user,
+                    conversation_id=f"{test_user}_test",
+                    trigger_source="scheduler",
+                    trigger_reason="test",
+                    question="Test question",
+                    initiated_at=now,
+                    resolution_status="pending",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await uow.commit()
+
         # Check for pending
-        cursor = test_db.execute("""
-            SELECT COUNT(*) as count
-            FROM conversation_initiations
-            WHERE user_id = ? AND resolution_status = 'pending'
-        """, (test_user,))
-        
-        row = cursor.fetchone()
-        assert row['count'] >= 1
+        async with UnitOfWork(session_factory) as uow:
+            pending = await uow.conversation_initiations.list(
+                filters={"user_id": test_user, "resolution_status": "pending"},
+                limit=100,
+            )
+        assert len(pending) >= 1
 
 
-class TestIntegrationScenarios:
+class TestIntegrationFlow:
     """Test complete integration scenarios."""
     
     @pytest.mark.asyncio
-    async def test_full_decision_flow(self, test_db, test_user):
+    async def test_full_initiation_flow(self, test_db, test_user):
         """Test complete decision flow from context to initiation."""
         # Extract context
-        context = extract_contextual_features(test_db, test_user)
+        from aico.data.postgres.connection import get_session_factory
+
+        session_factory = await get_session_factory()
+        context = await extract_contextual_features(session_factory, test_user)
         
         # Score dimensions
         adaptivity_scorer = AdaptivityScorer()
         civility_scorer = CivilityScorer()
-        user_prefs = load_user_preferences(test_db, test_user)
+        user_prefs = await load_user_preferences(session_factory, test_user)
         
         patience = adaptivity_scorer.calculate_patience_score(context, context.time_since_last_interaction)
         timing = adaptivity_scorer.calculate_timing_sensitivity(context)
@@ -580,7 +598,7 @@ class TestIntegrationScenarios:
         overall = adaptivity * 0.6 + civility * 0.4
         
         # Select strategy
-        bandit = ContextualBanditLearner(test_db)
+        bandit = ContextualBanditLearner(session_factory)
         strategy_id, expected_reward = bandit.select_strategy(context)
         
         # Verify all components work together

@@ -1,6 +1,6 @@
 import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/repositories/user_repository.dart';
-import 'package:aico_frontend/networking/models/user_models.dart' as NetworkingModels;
+import 'package:aico_frontend/networking/models/user_models.dart' as networking_models;
 import 'package:aico_frontend/networking/services/user_service.dart';
 
 /// Clean architecture implementation of UserRepository using networking services
@@ -41,7 +41,7 @@ class UserDataRepository implements UserRepository {
   Future<User> updateUser(User user) async {
     try {
       // Convert domain User to networking UpdateUserRequest
-      final updateRequest = NetworkingModels.UpdateUserRequest(
+      final updateRequest = networking_models.UpdateUserRequest(
         fullName: user.username, // Using username as fullName for now
         nickname: user.username,
         userType: _convertRoleToUserType(user.role),
@@ -106,7 +106,7 @@ class UserDataRepository implements UserRepository {
   }
 
   /// Converts networking layer User model to domain layer User entity
-  User _convertNetworkingUserToDomainUser(NetworkingModels.User networkingUser) {
+  User _convertNetworkingUserToDomainUser(networking_models.User networkingUser) {
     return User(
       id: networkingUser.uuid,
       username: networkingUser.nickname, // networking uses nickname as username

@@ -27,9 +27,6 @@ from aico.security.key_manager import AICOKeyManager
 from aico.security.service_auth import ServiceAuthManager
 from aico.security.transport import TransportIdentityManager
 
-# Session management now handled at endpoint level with AsyncSessionService
-# from aico.security import SessionService, SessionInfo  # DEPRECATED - uses LibSQL syntax
-
 # Logger will be initialized in classes
 
 
@@ -96,21 +93,20 @@ class AuthenticationManager:
         self.service_auth = ServiceAuthManager(self.key_manager, self.identity_manager)
         
         # JWT configuration - secrets managed by AICOKeyManager
-        self.jwt_algorithm = config.get("api_gateway.security.auth.jwt.algorithm", "HS256")
-        self.jwt_expiry_minutes = config.get("api_gateway.security.auth.jwt.expiry_minutes", 15)  # Short-lived tokens
+        self.jwt_algorithm = config.get("api_gateway.auth.jwt.algorithm", "HS256")
+        self.jwt_expiry_minutes = config.get("api_gateway.auth.jwt.expiry_hours", 24) * 60  # Convert hours to minutes
         
         # Get JWT secret from AICOKeyManager (zero-effort security)
         self.jwt_secret = self._get_jwt_secret()
         
-        # Session management moved to endpoint level with AsyncSessionService + UoW
-        # No longer using LibSQL-based SessionService
-        
-        # Password context for API key hashing
+        # Password hashing configuration
+        # bcrypt is the recommended algorithm for password hashing
+        # https://passlib.readthedocs.io/en/stable/lib/passlib.hash.bcrypt.html
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
         # API key configuration
-        self.api_key_header = config.get("api_gateway.security.auth.api_key.header", "X-API-Key")
-        self.session_cookie = config.get("api_gateway.security.auth.session.cookie", "aico_session")
+        self.api_key_header = config.get("api_gateway.auth.api_key.header", "X-API-Key")
+        self.session_cookie = config.get("api_gateway.auth.session.cookie_name", "aico_session")
         
         # In-memory stores for API keys and fallback token revocation
         self.api_keys: Dict[str, User] = {}

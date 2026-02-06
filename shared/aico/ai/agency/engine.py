@@ -22,6 +22,7 @@ from .models import (
 )
 # AgencyService imported where needed to avoid circular dependency
 from .planner import Planner
+from .skills.matcher import SkillMatcher
 from .values_ethics import ValuesEthicsService, PolicyEffect
 from .arbiter import GoalArbiter, IntentionSet, IntentionStatus
 
@@ -158,10 +159,13 @@ class AgencyEngine(BaseAIProcessor):
         )
         # Goal Arbiter initialized
         
-        # Phase 5: Self-Reflection Engine - DISABLED (requires migration to PostgreSQL)
-        # TODO: Migrate SelfReflectionEngine to use AgencyService instead of db_connection
-        self.self_reflection = None
-        # Self-Reflection Engine disabled pending migration
+        # Phase 5: Self-Reflection Engine
+        from aico.ai.agency.reflection import SelfReflectionEngine
+        self.self_reflection = SelfReflectionEngine(
+            config=config,
+            session_factory=session_factory,
+            llm_client=None  # Will be set later if available
+        )
         
         # Initialize modelservice client for embeddings (needed for goal deduplication)
         self.modelservice_client = None  # Will be set via set_modelservice_client() if available
@@ -181,6 +185,21 @@ class AgencyEngine(BaseAIProcessor):
             AskUserSkill,
             InitiateConversationSkill,
         )
+        from .skills.remediation import (
+            RemediationPostgresVacuumSkill,
+            RemediationPostgresArchiveSkill,
+            RemediationDatabaseDiskPressureSkill,
+            RemediationChromaCompactSkill,
+            RemediationLmdbCompactSkill,
+            RemediationLmdbCleanupSkill,
+            RemediationInfluxGetMeasurementsSkill,
+            RemediationInfluxApplyRetentionSkill,
+            RemediationInfluxDropMeasurementSkill,
+            RemediationModelserviceStabiliseSkill,
+            RemediationAgencyRecoverPlansSkill,
+            RemediationAgencyRebalanceLoadSkill,
+        )
+        from aico.core.config import ConfigurationManager
         
         # Initialize skill registry - DISABLED (skills require migration to PostgreSQL)
         # TODO: Migrate all skills to use AgencyService/UoW instead of db_connection
@@ -241,14 +260,38 @@ class AgencyEngine(BaseAIProcessor):
                 self.skill_registry.register(
                     ReflectOnGoalSkill(agency_service=self.agency_service)
                 )
+
+            # Remediation skills (used by both manual Health UI triggers and autonomous self-healing plans)
+            # IMPORTANT: These must be registered here so the Planner/Executor can invoke them end-to-end.
+            config_manager = ConfigurationManager()
+            self.skill_registry.register(RemediationPostgresVacuumSkill(session_factory))
+            self.skill_registry.register(RemediationPostgresArchiveSkill(session_factory))
+            self.skill_registry.register(RemediationDatabaseDiskPressureSkill(session_factory))
+            self.skill_registry.register(RemediationChromaCompactSkill())
+            self.skill_registry.register(RemediationLmdbCompactSkill())
+            self.skill_registry.register(RemediationLmdbCleanupSkill())
+            self.skill_registry.register(RemediationInfluxGetMeasurementsSkill(config_manager))
+            self.skill_registry.register(RemediationInfluxApplyRetentionSkill(config_manager))
+            self.skill_registry.register(RemediationInfluxDropMeasurementSkill(config_manager))
+            self.skill_registry.register(RemediationModelserviceStabiliseSkill())
+            self.skill_registry.register(RemediationAgencyRecoverPlansSkill(session_factory))
+            self.skill_registry.register(RemediationAgencyRebalanceLoadSkill(session_factory))
         
         # Initialize PlanStore with skill_registry for auto-fixing old plans
         # PlanStore replaced by AgencyService
         
         # Now that skill_registry is initialized, set it on the planner
         self.planner.skill_registry = self.skill_registry
-        # SkillMatcher disabled pending migration to PostgreSQL
-        self.planner.skill_matcher = None
+        # Initialize SkillMatcher with session_factory for PostgreSQL skill gap tracking
+        if self.skill_registry and session_factory:
+            self.planner.skill_matcher = SkillMatcher(
+                skill_registry=self.skill_registry,
+                session_factory=session_factory
+            )
+            logger.info("[AGENCY_ENGINE] SkillMatcher initialized with PostgreSQL session factory")
+        else:
+            self.planner.skill_matcher = None
+            logger.warning("[AGENCY_ENGINE] SkillMatcher not initialized - missing skill_registry or session_factory")
         # Planner configured
         
         # Initialize SkillInvoker and PlanExecutor with AgencyService
@@ -323,9 +366,12 @@ class AgencyEngine(BaseAIProcessor):
         """
         if self.modelservice_client and self.planner.skill_matcher:
             self.planner.skill_matcher.embedding_client = self.modelservice_client
-            pass  # Modelservice client injected
+            logger.info("[AGENCY_ENGINE] Injected embedding client into SkillMatcher for semantic similarity matching")
         else:
-            logger.warning("[AGENCY_ENGINE] Cannot update SkillMatcher embedding client - modelservice_client or skill_matcher not available")
+            if not self.planner.skill_matcher:
+                logger.warning("[AGENCY_ENGINE] SkillMatcher not initialized - plan execution will fail (skills cannot be assigned to steps)")
+            elif not self.modelservice_client:
+                logger.info("[AGENCY_ENGINE] Embedding client not available - SkillMatcher will use keyword/category matching only (degraded performance)")
 
     # ------------------------------------------------------------------
     # Goal & plan API (Phase 1 core)
@@ -341,9 +387,14 @@ class AgencyEngine(BaseAIProcessor):
         goal_type: str = "project",
         priority: GoalPriority = GoalPriority.NORMAL,
         metadata: Optional[Dict[str, Any]] = None,
-        auto_plan: bool = True,
+        auto_plan: bool = False,  # Changed default to False - plans created by arbiter
     ) -> Tuple[Goal, Optional[Plan]]:
-        """Create a new goal and (optionally) generate an initial plan."""
+        """Create a new goal. Plans are generated by the arbiter when intentions are activated.
+        
+        Note: auto_plan parameter is deprecated and should not be used. Plans are now
+        created by the Goal Arbiter after evaluating goals and creating intentions,
+        following the documented architecture in agency-component-planning.md.
+        """
 
         goal = Goal(
             goal_id=str(uuid.uuid4()),
@@ -905,14 +956,19 @@ class AgencyEngine(BaseAIProcessor):
                 async with UnitOfWork(self._session_factory) as uow:
                     try:
                         # Query for open goal with matching (user_id, origin, title)
+                        # Check for pending OR active status to match unique constraint
+                        # Use repository method instead of direct SQL to avoid import issues
                         filters = {
                             "user_id": user_id,
                             "origin": origin.value,
                             "title": signal.topic,
-                            "status": "active",  # or any open status
                         }
-                        goals = await uow.goals.list(filters=filters, limit=1)
-                        existing = goals[0] if goals else None
+                        goals = await uow.goals.list(filters=filters, limit=100)
+                        # Filter for open statuses
+                        existing = next(
+                            (g for g in goals if g.status in ["pending", "active", "in_progress"]),
+                            None
+                        )
                     except Exception as e:
                         logger.error(
                             f"[AGENCY_ENGINE] Failed to lookup existing goal for reuse: {e}",
@@ -1255,6 +1311,8 @@ class AgencyEngine(BaseAIProcessor):
         # Get all pending and active goals for this user
         # Get pending goals
         pending_goals = await self.agency_service.list_goals(user_id, status=GoalStatus.PENDING)
+        # Load arbiter configuration
+        arbiter_config = self.config.get("agency.arbiter", {})
         # Get active goals
         active_goals = await self.agency_service.get_active_goals(user_id)
         # Combine
@@ -1333,6 +1391,12 @@ class AgencyEngine(BaseAIProcessor):
         if run_type is None:
             run_type = RunType.SCHEDULED
         
+        if self.self_reflection is None:
+            raise RuntimeError(
+                "CRITICAL: Self-reflection engine is not initialized. "
+                "Enable it via agency.self_reflection.enabled=true and ensure backend startup wires it in."
+            )
+        
         return await self.self_reflection.run_reflection(
             user_id=user_id,
             run_type=run_type,
@@ -1355,6 +1419,11 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             List of active lessons
         """
+        if self.self_reflection is None:
+            raise RuntimeError(
+                "CRITICAL: Self-reflection engine is not initialized. "
+                "Enable it via agency.self_reflection.enabled=true and ensure backend startup wires it in."
+            )
         return await self.self_reflection.get_active_lessons(
             user_id=user_id,
             lesson_type=lesson_type
@@ -1377,6 +1446,11 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             Latest self-model entry or None
         """
+        if self.self_reflection is None:
+            raise RuntimeError(
+                "CRITICAL: Self-reflection engine is not initialized. "
+                "Enable it via agency.self_reflection.enabled=true and ensure backend startup wires it in."
+            )
         return await self.self_reflection.get_self_model(
             user_id=user_id,
             entity_type=entity_type,
@@ -1394,6 +1468,11 @@ class AgencyEngine(BaseAIProcessor):
         Returns:
             Success rate (0.0-1.0) or None
         """
+        if self.self_reflection is None:
+            raise RuntimeError(
+                "CRITICAL: Self-reflection engine is not initialized. "
+                "Enable it via agency.self_reflection.enabled=true and ensure backend startup wires it in."
+            )
         return await self.self_reflection.get_skill_performance(user_id, skill_id)
     
     async def get_goal_type_performance_context(self, user_id: str) -> Dict[str, Any]:

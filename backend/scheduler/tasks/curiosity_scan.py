@@ -5,6 +5,7 @@ Periodically scans for curiosity opportunities and creates hobby goals.
 Based on agency-component-curiosity-engine.md Section 4.4.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -86,11 +87,13 @@ class CuriosityScanTask(BaseTask):
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 # Only scan non-technical active users
+                # CRITICAL: Exclude system_user - it must NEVER have agency goals
                 active_users = await uow.user_profiles.list(
                     filters={"is_active": True, "is_technical": False},
                     limit=100000,
                 )
-            user_ids = [u.uuid for u in active_users]
+            # Explicitly filter out system_user
+            user_ids = [u.uuid for u in active_users if u.uuid != 'system_user']
             
             if not user_ids:
                 _get_logger().warning("[CURIOSITY_SCAN] No active users found")
@@ -118,30 +121,52 @@ class CuriosityScanTask(BaseTask):
             total_signals = 0
             total_goals_created = 0
             total_goals_failed = 0
+            
+            # Performance tracking
+            user_timings = []
+            users_skipped = 0
+            users_timeout = 0
+            
             print(f"\n🔍 Scanning {len(user_ids)} user(s) for curiosity opportunities...")
             for idx, user_id in enumerate(user_ids, 1):
+                user_start_time = datetime.now(timezone.utc)
+                timings = {"user_id": user_id[:8], "operations": {}}
+                
                 print(f"\n{'='*60}")
                 print(f"👤 User {idx}/{len(user_ids)}: {user_id[:8]}...")
                 print(f"{'='*60}")
                 _get_logger().info(f"[CURIOSITY_SCAN] Scanning for user {user_id}")
                 
-                try:
+                # Per-user timeout wrapper (60s max)
+                async def process_user():
+                    """Process single user with detailed timing."""
                     # Get config from services.agency.curiosity
-                    curiosity_config = context.config_manager.get("core.services.agency.curiosity", {})
+                    config_start = datetime.now(timezone.utc)
+                    curiosity_config = context.config_manager.get("agency.curiosity", {})
                     max_signals = curiosity_config.get("max_signals_per_scan", 10)
                     min_score = curiosity_config.get("min_signal_score", 0.3)
+                    timings["operations"]["config_load"] = (datetime.now(timezone.utc) - config_start).total_seconds()
                     
+                    # Scan for opportunities with timing
+                    scan_start = datetime.now(timezone.utc)
                     signals = await curiosity_engine.scan_for_opportunities(
                         user_id=user_id,
                         max_signals=max_signals,
                     )
+                    scan_duration = (datetime.now(timezone.utc) - scan_start).total_seconds()
+                    timings["operations"]["scan_opportunities"] = scan_duration
                     
-                    _get_logger().info(f"[CURIOSITY_SCAN] Found {len(signals)} curiosity signals for {user_id}")
+                    _get_logger().info(
+                        f"[CURIOSITY_SCAN] Found {len(signals)} curiosity signals for {user_id} "
+                        f"in {scan_duration:.2f}s"
+                    )
+                    nonlocal total_signals
                     total_signals += len(signals)
                     high_score_signals = [s for s in signals if s.total_score >= min_score]
-                    print(f"  ✨ Found {len(signals)} curiosity signals ({len(high_score_signals)} above {min_score} threshold)")
+                    print(f"  ✨ Found {len(signals)} curiosity signals ({len(high_score_signals)} above {min_score} threshold) in {scan_duration:.2f}s")
                     
                     # Create goals from high-scoring signals
+                    goal_creation_times = []
                     for signal_idx, signal in enumerate(signals, 1):
                         # Only create goals for signals with score >= min_score threshold
                         if signal.total_score < min_score:
@@ -154,31 +179,109 @@ class CuriosityScanTask(BaseTask):
                         print(f"  📝 Creating goal {signal_idx}/{len(signals)}: {signal.topic}...", end=" ", flush=True)
                         
                         try:
-                            goal, plan = await agency_engine.create_goal_from_curiosity_signal(
-                                user_id=user_id,
-                                signal=signal,
-                                auto_plan=True,
+                            goal_start = datetime.now(timezone.utc)
+                            # Per-goal timeout (30s max)
+                            goal, plan = await asyncio.wait_for(
+                                agency_engine.create_goal_from_curiosity_signal(
+                                    user_id=user_id,
+                                    signal=signal,
+                                    auto_plan=False,
+                                ),
+                                timeout=30.0
                             )
+                            goal_duration = (datetime.now(timezone.utc) - goal_start).total_seconds()
+                            goal_creation_times.append(goal_duration)
                             
+                            nonlocal total_goals_created
                             total_goals_created += 1
                             _get_logger().info(
                                 f"[CURIOSITY_SCAN] Created {signal.signal_type.value} goal: "
-                                f"{goal.title} (score={signal.total_score:.2f})"
+                                f"{goal.title} (score={signal.total_score:.2f}) in {goal_duration:.2f}s"
                             )
-                            print(f"✅")
-                        except Exception as e:
+                            print(f"✅ ({goal_duration:.1f}s)")
+                        except asyncio.TimeoutError:
+                            goal_duration = (datetime.now(timezone.utc) - goal_start).total_seconds()
+                            goal_creation_times.append(goal_duration)
+                            nonlocal total_goals_failed
                             total_goals_failed += 1
-                            print(f"❌ {str(e)[:50]}")
+                            print(f"❌ TIMEOUT ({goal_duration:.1f}s)")
+                            _get_logger().error(
+                                f"[CURIOSITY_SCAN] Goal creation timed out after {goal_duration:.2f}s "
+                                f"for signal {signal.signal_id}"
+                            )
+                        except Exception as e:
+                            goal_duration = (datetime.now(timezone.utc) - goal_start).total_seconds()
+                            goal_creation_times.append(goal_duration)
+                            total_goals_failed += 1
+                            print(f"❌ {str(e)[:50]} ({goal_duration:.1f}s)")
                             _get_logger().error(
                                 f"[CURIOSITY_SCAN] Failed to create goal from signal "
-                                f"{signal.signal_id}: {e}"
+                                f"{signal.signal_id} after {goal_duration:.2f}s: {e}"
                             )
+                    
+                    # Record goal creation timings
+                    if goal_creation_times:
+                        timings["operations"]["goal_creation_total"] = sum(goal_creation_times)
+                        timings["operations"]["goal_creation_avg"] = sum(goal_creation_times) / len(goal_creation_times)
+                        timings["operations"]["goal_creation_max"] = max(goal_creation_times)
+                        timings["operations"]["goal_count"] = len(goal_creation_times)
                 
+                try:
+                    # Execute with 60s timeout per user
+                    await asyncio.wait_for(process_user(), timeout=60.0)
+                except asyncio.TimeoutError:
+                    user_duration = (datetime.now(timezone.utc) - user_start_time).total_seconds()
+                    _get_logger().error(
+                        f"[CURIOSITY_SCAN] User {user_id} timed out after {user_duration:.2f}s"
+                    )
+                    timings["operations"]["error"] = "User processing timeout (60s)"
+                    users_timeout += 1
                 except Exception as e:
-                    _get_logger().error(f"[CURIOSITY_SCAN] Failed to scan for user {user_id}: {e}")
+                    scan_duration = (datetime.now(timezone.utc) - user_start_time).total_seconds()
+                    _get_logger().error(
+                        f"[CURIOSITY_SCAN] Failed to scan for user {user_id} after {scan_duration:.2f}s: {e}"
+                    )
+                    timings["operations"]["error"] = str(e)
+                
+                # Record total user processing time
+                user_duration = (datetime.now(timezone.utc) - user_start_time).total_seconds()
+                timings["total_duration"] = user_duration
+                user_timings.append(timings)
+                
+                # Log performance summary for this user
+                _get_logger().info(
+                    f"[CURIOSITY_SCAN] User {user_id[:8]} completed in {user_duration:.2f}s - "
+                    f"Scan: {timings['operations'].get('scan_opportunities', 0):.2f}s, "
+                    f"Goals: {timings['operations'].get('goal_creation_total', 0):.2f}s "
+                    f"({timings['operations'].get('goal_count', 0)} goals)"
+                )
+                print(f"⏱️  User processing time: {user_duration:.2f}s")
             
             # Calculate execution time
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            
+            # Performance analysis
+            if user_timings:
+                total_scan_time = sum(t["operations"].get("scan_opportunities", 0) for t in user_timings)
+                total_goal_time = sum(t["operations"].get("goal_creation_total", 0) for t in user_timings)
+                avg_user_time = sum(t["total_duration"] for t in user_timings) / len(user_timings)
+                max_user_time = max(t["total_duration"] for t in user_timings)
+                
+                _get_logger().info(
+                    f"[CURIOSITY_SCAN] Performance Summary - "
+                    f"Total scan time: {total_scan_time:.2f}s, "
+                    f"Total goal creation: {total_goal_time:.2f}s, "
+                    f"Avg per user: {avg_user_time:.2f}s, "
+                    f"Max user: {max_user_time:.2f}s"
+                )
+                
+                # Identify slow users
+                slow_users = [t for t in user_timings if t["total_duration"] > 30]
+                if slow_users:
+                    _get_logger().warning(
+                        f"[CURIOSITY_SCAN] {len(slow_users)} slow users detected (>30s): "
+                        f"{[u['user_id'] for u in slow_users]}"
+                    )
             
             # Build result
             result = TaskResult(
@@ -186,10 +289,19 @@ class CuriosityScanTask(BaseTask):
                 message=f"Scan complete: {total_goals_created} goals created for {len(user_ids)} users",
                 data={
                     "users_scanned": len(user_ids),
+                    "users_timeout": users_timeout,
+                    "users_skipped": users_skipped,
                     "signals_found": total_signals,
                     "goals_created": total_goals_created,
                     "goals_failed": total_goals_failed,
                     "lifecycle_state": lifecycle_state,
+                    "performance": {
+                        "user_timings": user_timings,
+                        "total_scan_time": sum(t["operations"].get("scan_opportunities", 0) for t in user_timings) if user_timings else 0,
+                        "total_goal_time": sum(t["operations"].get("goal_creation_total", 0) for t in user_timings) if user_timings else 0,
+                        "avg_user_time": sum(t["total_duration"] for t in user_timings) / len(user_timings) if user_timings else 0,
+                        "max_user_time": max(t["total_duration"] for t in user_timings) if user_timings else 0,
+                    },
                 },
                 duration_seconds=duration,
             )

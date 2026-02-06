@@ -729,6 +729,16 @@ class PlanExecutor:
     async def _save_step_execution(self, step_exec: StepExecution) -> None:
         """Save step execution to database."""
         now = datetime.now(UTC)
+
+        def _safe_json(value: Any) -> str:
+            if value is None:
+                return "{}"
+            if isinstance(value, str):
+                return value
+            try:
+                return json.dumps(value)
+            except Exception:
+                return "{}"
         
         step_data = {
             "step_execution_id": step_exec.step_execution_id,
@@ -741,8 +751,8 @@ class PlanExecutor:
             "duration_ms": step_exec.duration_ms,
             "skill_id": step_exec.skill_id,
             "skill_invocation_id": step_exec.skill_invocation_id,
-            "input_data": step_exec.input_data,
-            "output_data": step_exec.output_data,
+            "input_data": _safe_json(step_exec.input_data),
+            "output_data": _safe_json(step_exec.output_data),
             "error_message": step_exec.error_message,
             "retry_count": step_exec.retry_count,
             "blocked_reason": step_exec.blocked_reason,

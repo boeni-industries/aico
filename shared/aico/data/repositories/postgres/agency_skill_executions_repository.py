@@ -67,3 +67,11 @@ class PostgresAgencySkillExecutionsRepository:
         ).order_by(agency_skill_executions.c.created_at.desc())
         result = await self.session.execute(stmt)
         return [AgencySkillExecution(**dict(row._mapping)) for row in result.fetchall()]
+
+    async def get_by_goal(self, goal_id: str) -> List[AgencySkillExecution]:
+        """Get all executions for a goal."""
+        stmt = select(agency_skill_executions).where(
+            agency_skill_executions.c.goal_id == goal_id
+        ).order_by(agency_skill_executions.c.created_at.desc())
+        result = await self.session.execute(stmt)
+        return [AgencySkillExecution(**dict(row._mapping)) for row in result.fetchall()]

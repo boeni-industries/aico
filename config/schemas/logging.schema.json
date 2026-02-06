@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Logging Configuration",
+  "description": "Logging levels, handlers, and retention policies",
+  "type": "object",
+  "required": ["level"],
+  "properties": {
+    "level": {
+      "type": "string",
+      "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+      "description": "Default logging level"
+    },
+    "format": {
+      "type": "string",
+      "description": "Log message format string"
+    },
+    "handlers": {
+      "type": "object",
+      "properties": {
+        "console": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "level": {
+              "type": "string",
+              "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            }
+          }
+        },
+        "file": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "level": {
+              "type": "string",
+              "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            },
+            "path": {
+              "type": "string"
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "backup_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "influx": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "level": {
+              "type": "string",
+              "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            },
+            "batch_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "flush_interval": {
+              "type": "number",
+              "minimum": 0.1
+            }
+          }
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "properties": {
+        "days": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

@@ -173,7 +173,7 @@ class MemoryManager(BaseAIProcessor):
         self._behavioral_enabled = False
         
         # Configuration following AICO patterns
-        self._memory_config = self.config.get("core.memory", {})
+        self._memory_config = self.config.get("memory", {})
         
         # CRITICAL: Check for empty config - always indicates a major issue
         if not self._memory_config:
@@ -592,21 +592,66 @@ class MemoryManager(BaseAIProcessor):
             await self.initialize()
             
         start_time = datetime.utcnow()
-        
-        if self._context_assembler:
-            result = await self._context_assembler.query_memories(query)
+
+        try:
+            if query.query_type == "semantic" and self._semantic_store:
+                segments = await self._semantic_store.query_segments(
+                    query_text=query.query_text,
+                    user_id=query.user_id,
+                    max_results=query.max_results,
+                )
+
+                memories: List[Dict[str, Any]] = []
+                relevance_scores: List[float] = []
+                for seg in segments or []:
+                    if not isinstance(seg, dict):
+                        continue
+
+                    metadata = seg.get("metadata", {})
+                    if not isinstance(metadata, dict):
+                        metadata = {}
+
+                    memories.append(
+                        {
+                            "type": "semantic",
+                            "content": seg.get("content", ""),
+                            "timestamp": metadata.get("timestamp"),
+                            "conversation_id": metadata.get("conversation_id"),
+                        }
+                    )
+                    relevance_scores.append(float(seg.get("hybrid_score", 0.0) or 0.0))
+
+                processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+                return MemoryResult(
+                    memories=memories,
+                    context_summary="",
+                    relevance_scores=relevance_scores,
+                    total_found=len(memories),
+                    processing_time_ms=processing_time,
+                )
+
             processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            result.processing_time_ms = processing_time
-            return result
-        else:
-            # Fallback - basic working memory query
-            logger.warning("Context assembler not available, using basic query")
+            logger.warning(
+                "query_memory fallback path used (query_type=%s, semantic_store=%s)",
+                query.query_type,
+                bool(self._semantic_store),
+            )
             return MemoryResult(
                 memories=[],
                 context_summary="Limited query capability in current phase",
                 relevance_scores=[],
                 total_found=0,
-                processing_time_ms=0.0
+                processing_time_ms=processing_time,
+            )
+        except Exception as e:
+            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            logger.error("query_memory failed: %s", e)
+            return MemoryResult(
+                memories=[],
+                context_summary=f"Memory query failed: {e}",
+                relevance_scores=[],
+                total_found=0,
+                processing_time_ms=processing_time,
             )
 
     async def get_user_interests(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
@@ -970,6 +1015,14 @@ class MemoryManager(BaseAIProcessor):
             entity_context = []
             for node in existing_nodes:
                 props = node.properties or {}
+                # Defensive: properties can be persisted as JSON strings depending on storage layer.
+                if isinstance(props, str):
+                    try:
+                        props = json.loads(props)
+                    except Exception:
+                        props = {"name": props}
+                if not isinstance(props, dict):
+                    props = {}
                 entity_context.append({
                     "id": node.id,
                     "label": node.label,

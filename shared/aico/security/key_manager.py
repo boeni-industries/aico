@@ -156,9 +156,17 @@ class AICOKeyManager:
     def _get_security_config(self, key: str):
         """Get security configuration value using hierarchical YAML system."""
         from aico.core.config import ConfigurationManager
+        from aico.core.config import ConfigurationError
         config_manager = ConfigurationManager()
         config_manager.initialize()
-        return config_manager.get(f"security.encryption.{key}")
+
+        try:
+            return config_manager.get(f"security.encryption.{key}")
+        except ConfigurationError:
+            try:
+                return config_manager.get(f"security.{key}")
+            except ConfigurationError:
+                return None
     
     @property
     def KEY_LENGTH(self) -> int:
@@ -205,10 +213,12 @@ class AICOKeyManager:
         if len(password) < min_length:
             raise ValueError(f"Password must be at least {min_length} characters long")
         
-        # Check for common weak passwords
-        weak_passwords = {"password", "123456", "12345", "admin", "qwerty", "letmein"}
-        if password.lower() in weak_passwords:
-            raise ValueError("Password is too common and easily guessable")
+        weak_passwords = self._get_security_config("password_policy.weak_passwords")
+        if isinstance(weak_passwords, (list, tuple, set)):
+            if password in weak_passwords:
+                raise ValueError("Password is too common and easily guessable")
+            if password.lower() in {str(p).lower() for p in weak_passwords}:
+                raise ValueError("Password is too common and easily guessable")
         
         # Basic complexity check
         has_upper = any(c.isupper() for c in password)

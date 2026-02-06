@@ -77,7 +77,7 @@ def format_last_activity(timestamp: str) -> str:
 
 
 @router.get("/users", response_model=UsersListResponse)
-async def get_users(
+async def get_users_list(
     user: Annotated[dict, Depends(get_current_user)],
     uow: Annotated[UnitOfWork, Depends(get_uow)],
     user_type: Optional[str] = Query(None, description="Filter by user type"),
@@ -101,37 +101,65 @@ async def get_users(
             filters["is_active"] = is_active
         
         all_users = await uow.users.list(filters=filters, limit=10000)
-        
-        # Get all active sessions
-        all_sessions = await uow.sessions.list(filters={"is_active": True}, limit=10000)
-        
+
+        now = datetime.now(timezone.utc)
+
+        # Load sessions once and compute counts in-memory
+        all_sessions = await uow.sessions.list(filters={}, limit=10000)
+
+        active_sessions = [
+            s for s in all_sessions
+            if bool(getattr(s, "is_active", False)) and getattr(s, "expires_at", None) and s.expires_at > now
+        ]
+
         # Group sessions by user
-        sessions_by_user = {}
+        total_sessions_by_user: dict[str, list] = {}
         for session in all_sessions:
-            if session.user_uuid not in sessions_by_user:
-                sessions_by_user[session.user_uuid] = []
-            sessions_by_user[session.user_uuid].append(session)
+            total_sessions_by_user.setdefault(session.user_uuid, []).append(session)
+
+        active_sessions_by_user: dict[str, list] = {}
+        for session in active_sessions:
+            active_sessions_by_user.setdefault(session.user_uuid, []).append(session)
+
+        # Load credentials once and map by user_uuid
+        all_credentials = await uow.credentials.list(filters={}, limit=10000)
+        credentials_by_user_uuid = {c.user_uuid: c for c in all_credentials if getattr(c, "user_uuid", None)}
         
         # Build result
         users = []
         active_users_count = 0
         
         for user_profile in all_users:
-            user_sessions = sessions_by_user.get(user_profile.uuid, [])
-            session_count = len(user_sessions)
+            user_active_sessions = active_sessions_by_user.get(user_profile.uuid, [])
+            active_session_count = len(user_active_sessions)
+            total_session_count = len(total_sessions_by_user.get(user_profile.uuid, []))
             
             # Apply has_sessions filter
-            if has_sessions and session_count == 0:
+            if has_sessions and active_session_count == 0:
                 continue
             
-            if session_count > 0:
+            if active_session_count > 0:
                 active_users_count += 1
             
             # Get last activity from sessions
             last_activity = None
-            if user_sessions:
-                latest_session = max(user_sessions, key=lambda s: s.created_at if s.created_at else datetime.min)
+            if user_active_sessions:
+                latest_session = max(user_active_sessions, key=lambda s: s.created_at if s.created_at else datetime.min)
                 last_activity = latest_session.created_at
+
+            # Credentials summary
+            credentials = None
+            cred = credentials_by_user_uuid.get(user_profile.uuid)
+            if cred:
+                locked_until = getattr(cred, "locked_until", None)
+                last_login = getattr(cred, "last_login", None)
+                credentials = UserCredentials(
+                    has_pin=bool(getattr(cred, "pin_hash", None)),
+                    failed_attempts=int(getattr(cred, "failed_attempts", 0) or 0),
+                    is_locked=bool(locked_until and locked_until > now),
+                    locked_until=locked_until.isoformat().replace("+00:00", "Z") if locked_until else None,
+                    last_login=last_login.isoformat().replace("+00:00", "Z") if last_login else None,
+                )
             
             users.append(UserWithSessions(
                 uuid=user_profile.uuid,
@@ -142,9 +170,10 @@ async def get_users(
                 primary_language=user_profile.primary_language,
                 created_at=user_profile.created_at.isoformat() if hasattr(user_profile.created_at, 'isoformat') else user_profile.created_at,
                 updated_at=user_profile.updated_at.isoformat() if hasattr(user_profile.updated_at, 'isoformat') else user_profile.updated_at,
-                active_session_count=session_count,
-                total_session_count=len(user_sessions),
-                last_activity=format_last_activity(last_activity.isoformat() if hasattr(last_activity, 'isoformat') else str(last_activity)) if last_activity else "Never"
+                active_session_count=active_session_count,
+                total_session_count=total_session_count,
+                last_activity=format_last_activity(last_activity.isoformat() if hasattr(last_activity, 'isoformat') else str(last_activity)) if last_activity else "Never",
+                credentials=credentials,
             ))
         
         # Sort by last activity
@@ -186,6 +215,15 @@ async def get_user_detail(
                 detail=f"User {user_uuid} not found"
             )
         
+        # Get autonomy level from ethics_value_profiles
+        autonomy_level = None
+        try:
+            value_profiles = await uow.ethics_value_profiles.list(filters={"user_id": user_uuid}, limit=1)
+            if value_profiles:
+                autonomy_level = value_profiles[0].autonomy_level
+        except Exception as e:
+            logger.warning(f"Failed to fetch autonomy_level for user {user_uuid}: {e}")
+        
         profile_response = UserProfile(
             uuid=user_profile.uuid,
             full_name=user_profile.full_name,
@@ -193,6 +231,7 @@ async def get_user_detail(
             user_type=user_profile.user_type,
             is_active=user_profile.is_active,
             primary_language=user_profile.primary_language,
+            autonomy_level=autonomy_level,
             created_at=user_profile.created_at.isoformat() if hasattr(user_profile.created_at, 'isoformat') else user_profile.created_at,
             updated_at=user_profile.updated_at.isoformat() if hasattr(user_profile.updated_at, 'isoformat') else user_profile.updated_at
         )

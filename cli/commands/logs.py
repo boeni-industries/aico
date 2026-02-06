@@ -63,9 +63,9 @@ def _get_influx_client():
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         
-        influx_url = config.get("core.database.influx.url", "http://127.0.0.1:8086")
-        org = config.get("core.database.influx.org", "aico")
-        bucket = config.get("core.database.influx.bucket", "aico_telemetry")
+        influx_url = config.get("influx.url", "http://127.0.0.1:8086")
+        org = config.get("influx.org", "aico")
+        bucket = config.get("influx.bucket", "aico_telemetry")
         
         key_manager = AICOKeyManager(config)
         token = key_manager.get_database_password("influx", username="admin_token")

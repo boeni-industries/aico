@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/database/message_database.dart' hide Message;
@@ -12,6 +11,7 @@ import 'package:aico_frontend/domain/usecases/send_message_usecase.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_controller_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_audio_settings_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:uuid/uuid.dart';
 

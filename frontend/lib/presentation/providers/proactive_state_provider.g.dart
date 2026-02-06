@@ -45,7 +45,7 @@ final class ProactiveStateNotifierProvider
 }
 
 String _$proactiveStateNotifierHash() =>
-    r'46228dead88a1a5448db51d15f95504dac9b6d33';
+    r'0e0d494d124fa795443a85527bdede46bcb4cd3c';
 
 /// Provider for proactive conversation state
 

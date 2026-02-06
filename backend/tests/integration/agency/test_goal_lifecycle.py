@@ -20,11 +20,31 @@ from aico.ai.agency.models import GoalStatus, GoalOrigin, GoalPriority
 @pytest.mark.asyncio
 class TestGoalLifecycle:
     """Test suite for goal lifecycle operations."""
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
     
-    async def test_create_goal_without_plan(self, test_config, test_db, test_user):
+    async def test_create_goal_without_plan(self, test_config, test_db, test_user, agency_service, session_factory, uow):
         """Test creating a goal without an automatic plan."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act - Use test user (will be cleaned up automatically)
         goal, plan = await engine.create_goal_with_optional_plan(
@@ -46,17 +66,15 @@ class TestGoalLifecycle:
         assert plan is None
         
         # Assert: Telemetry logged
-        events = test_db.execute(
-            "SELECT * FROM agency_events WHERE goal_id = ?",
-            (goal.goal_id,)
-        ).fetchall()
-        assert len(events) == 1
-        assert events[0][4] == "goal_created"  # event_type column
+        events = await uow.agency_events_log.list(filters={"entity_id": goal.goal_id})
+        event_types = {e.event_type for e in events}
+        assert "goal_created" in event_types
+        assert "user_requested_goal" in event_types
     
-    async def test_create_goal_with_plan(self, test_config, test_db, test_user):
+    async def test_create_goal_with_plan(self, test_config, test_db, test_user, agency_service, session_factory, uow):
         """Test creating a goal with automatic plan generation."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act
         goal, plan = await engine.create_goal_with_optional_plan(
@@ -82,19 +100,16 @@ class TestGoalLifecycle:
             assert plan.metadata["shape_id"] == "research_then_act"
         
         # Assert: Telemetry logged
-        events = test_db.execute(
-            "SELECT * FROM agency_events WHERE goal_id = ?",
-            (goal.goal_id,)
-        ).fetchall()
-        assert len(events) == 2  # goal_created + plan_generated
-        event_types = [e[4] for e in events]
+        events = await uow.agency_events_log.list(filters={"entity_id": goal.goal_id})
+        event_types = {e.event_type for e in events}
         assert "goal_created" in event_types
+        assert "user_requested_goal" in event_types
         assert "plan_generated" in event_types
     
-    async def test_create_hobby_goal(self, test_config, test_db, test_user):
+    async def test_create_hobby_goal(self, test_config, test_db, test_user, agency_service, session_factory):
         """Test creating an agent-self hobby goal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act
         goal, plan = await engine.create_hobby_goal_with_optional_plan(
@@ -113,13 +128,13 @@ class TestGoalLifecycle:
         # Assert: Plan generated
         assert plan is not None
     
-    async def test_activate_goal(self, test_config, test_db, sample_goal):
+    async def test_activate_goal(self, test_config, test_db, sample_goal, agency_service, session_factory, uow):
         """Test activating a pending goal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Create goal first
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Act
         activated_goal = await engine.activate_goal(sample_goal.goal_id)
@@ -129,20 +144,17 @@ class TestGoalLifecycle:
         assert activated_goal.status == GoalStatus.ACTIVE
         
         # Assert: Telemetry logged
-        events = test_db.execute(
-            "SELECT * FROM agency_events WHERE goal_id = ? AND event_type = ?",
-            (sample_goal.goal_id, "goal_activated")
-        ).fetchall()
+        events = await uow.agency_events_log.list(filters={"entity_id": sample_goal.goal_id, "event_type": "goal_activated"})
         assert len(events) == 1
     
-    async def test_pause_goal(self, test_config, test_db, sample_goal):
+    async def test_pause_goal(self, test_config, test_db, sample_goal, agency_service, session_factory, uow):
         """Test pausing an active goal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Create and activate goal
         sample_goal.status = GoalStatus.ACTIVE
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Act
         paused_goal = await engine.pause_goal(sample_goal.goal_id)
@@ -152,19 +164,16 @@ class TestGoalLifecycle:
         assert paused_goal.status == GoalStatus.PAUSED
         
         # Assert: Telemetry logged
-        events = test_db.execute(
-            "SELECT * FROM agency_events WHERE goal_id = ? AND event_type = ?",
-            (sample_goal.goal_id, "goal_paused")
-        ).fetchall()
+        events = await uow.agency_events_log.list(filters={"entity_id": sample_goal.goal_id, "event_type": "goal_paused"})
         assert len(events) == 1
     
-    async def test_complete_goal(self, test_config, test_db, sample_goal):
+    async def test_complete_goal(self, test_config, test_db, sample_goal, agency_service, session_factory, uow):
         """Test completing a goal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Create goal
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Act
         completed_goal = await engine.complete_goal(sample_goal.goal_id)
@@ -174,19 +183,16 @@ class TestGoalLifecycle:
         assert completed_goal.status == GoalStatus.COMPLETED
         
         # Assert: Telemetry logged
-        events = test_db.execute(
-            "SELECT * FROM agency_events WHERE goal_id = ? AND event_type = ?",
-            (sample_goal.goal_id, "goal_completed")
-        ).fetchall()
+        events = await uow.agency_events_log.list(filters={"entity_id": sample_goal.goal_id, "event_type": "goal_completed"})
         assert len(events) == 1
     
-    async def test_retire_goal(self, test_config, test_db, sample_goal):
+    async def test_retire_goal(self, test_config, test_db, sample_goal, agency_service, session_factory, uow):
         """Test retiring a goal (abandoned/no longer relevant)."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Create goal
-        await engine.goal_store.create_goal(sample_goal)
+        await agency_service.create_goal(sample_goal)
         
         # Act
         retired_goal = await engine.retire_goal(sample_goal.goal_id)
@@ -196,16 +202,13 @@ class TestGoalLifecycle:
         assert retired_goal.status == GoalStatus.RETIRED
         
         # Assert: Telemetry logged
-        events = test_db.execute(
-            "SELECT * FROM agency_events WHERE goal_id = ? AND event_type = ?",
-            (sample_goal.goal_id, "goal_retired")
-        ).fetchall()
+        events = await uow.agency_events_log.list(filters={"entity_id": sample_goal.goal_id, "event_type": "goal_retired"})
         assert len(events) == 1
     
-    async def test_lifecycle_state_transitions(self, test_config, test_db, test_user):
+    async def test_lifecycle_state_transitions(self, test_config, test_db, test_user, agency_service, session_factory, uow):
         """Test a complete lifecycle: pending → active → paused → active → completed."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act: Create goal
         goal, _ = await engine.create_goal_with_optional_plan(
@@ -234,23 +237,22 @@ class TestGoalLifecycle:
         assert goal.status == GoalStatus.COMPLETED
         
         # Assert: All transitions logged
-        events = test_db.execute(
-            "SELECT event_type FROM agency_events WHERE goal_id = ? ORDER BY created_at",
-            (goal.goal_id,)
-        ).fetchall()
-        event_types = [e[0] for e in events]
+        events = await uow.agency_events_log.list(filters={"entity_id": goal.goal_id})
+        events_sorted = sorted(events, key=lambda e: e.created_at)
+        event_types = [e.event_type for e in events_sorted]
         assert event_types == [
             "goal_created",
+            "user_requested_goal",
             "goal_activated",
             "goal_paused",
             "goal_activated",
             "goal_completed",
         ]
     
-    async def test_list_goals_for_user(self, test_config, test_db, test_user, seeded_goals):
+    async def test_list_goals_for_user(self, test_config, test_db, test_user, seeded_goals, agency_service, session_factory):
         """Test listing goals for a user with optional status filter."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Act: List all goals
         all_goals = await engine.list_goals_for_user(test_user)
@@ -265,24 +267,29 @@ class TestGoalLifecycle:
         assert len(active_goals) == 1
         assert active_goals[0].status == GoalStatus.ACTIVE
     
-    async def test_goal_persistence(self, test_config, test_db, test_user):
+    async def test_goal_persistence(self, test_config, test_db, test_user, session_factory):
         """Test that goals persist correctly across engine instances."""
         # Arrange
-        engine1 = AgencyEngine(test_config, test_db)
+        from aico.data.uow import UnitOfWork
+        from aico.services.agency_service import AgencyService
+
+        async with UnitOfWork(session_factory) as uow1:
+            service1 = AgencyService(uow1)
+            engine1 = AgencyEngine(test_config, service1, session_factory=session_factory)
         
         # Act: Create goal with first engine
-        goal, _ = await engine1.create_goal_with_optional_plan(
-            user_id=test_user,
-            title="Persistent Goal",
-            auto_plan=False,
-        )
+            goal, _ = await engine1.create_goal_with_optional_plan(
+                user_id=test_user,
+                title="Persistent Goal",
+                auto_plan=False,
+            )
         goal_id = goal.goal_id
         
-        # Create new engine instance
-        engine2 = AgencyEngine(test_config, test_db)
-        
-        # Act: Retrieve goal with second engine
-        retrieved_goal = await engine2.get_goal(goal_id)
+        async with UnitOfWork(session_factory) as uow2:
+            service2 = AgencyService(uow2)
+            engine2 = AgencyEngine(test_config, service2, session_factory=session_factory)
+            # Act: Retrieve goal with second engine
+            retrieved_goal = await engine2.get_goal(goal_id)
         
         # Assert: Goal retrieved successfully
         assert retrieved_goal is not None

@@ -1,7 +1,7 @@
+import 'package:aico_frontend/core/responsive/breakpoints.dart';
+import 'package:aico_frontend/presentation/providers/layout_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/responsive/breakpoints.dart';
-import '../../providers/layout_provider.dart';
 
 /// Animated container for avatar that smoothly transitions between modalities
 /// 

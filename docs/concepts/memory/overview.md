@@ -23,7 +23,7 @@ Conversation history and immediate context management.
 - Sub-millisecond retrieval performance
 - **Dual Role**: Serves both immediate context AND conversation history (no separate episodic tier needed)
 
-**Current default:** `ttl_seconds: 2592000` (30 days) in `config/defaults/core.yaml`.
+**Current default:** `ttl_seconds: 2592000` (30 days) in `config/defaults/memory.yaml`.
 
 ### 2. Semantic Memory + Knowledge Graph ✅ IMPLEMENTED
 Long-term knowledge storage with semantic search and graph relationships.
@@ -97,7 +97,7 @@ The memory system is implemented as a shared AI module at `shared/aico/ai/memory
 - Contextual bandit learning (Thompson Sampling)
 - User preference vectors
 
-Behavioral learning is enabled by default in `config/defaults/core.yaml` under `memory.behavioral.enabled`.
+Behavioral learning is enabled by default in `config/defaults/memory.yaml` under `behavioral.enabled`.
 
 ### ❌ Phase 4: Proactive Engagement (NOT IMPLEMENTED)
 - Predictive triggers

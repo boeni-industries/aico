@@ -94,64 +94,81 @@ Configuration values are resolved using a hierarchical override system:
 aico/
 ├── config/
 │   ├── schemas/                    # Configuration schemas
-│   │   ├── core.schema.json
+│   │   ├── system.schema.json
+│   │   ├── logging.schema.json
+│   │   ├── message_bus.schema.json
+│   │   ├── api_gateway.schema.json
+│   │   ├── modelservice.schema.json
+│   │   ├── emotion.schema.json
+│   │   ├── memory.schema.json
+│   │   ├── agency.schema.json
+│   │   ├── scheduler.schema.json
 │   │   ├── security.schema.json
-│   │   ├── database.schema.json
-│   │   ├── personality.schema.json
-│   │   ├── plugins.schema.json
-│   │   └── ui.schema.json
+│   │   ├── service_auth.schema.json
+│   │   ├── postgres.schema.json
+│   │   └── influx.schema.json
 │   ├── defaults/                   # Default configurations
-│   │   ├── core.yaml
+│   │   ├── system.yaml
+│   │   ├── logging.yaml
+│   │   ├── message_bus.yaml
+│   │   ├── api_gateway.yaml
+│   │   ├── modelservice.yaml
+│   │   ├── emotion.yaml
+│   │   ├── memory.yaml
+│   │   ├── agency.yaml
+│   │   ├── scheduler.yaml
 │   │   ├── security.yaml
-│   │   ├── database.yaml
-│   │   └── personality.yaml
+│   │   ├── service_auth.yaml
+│   │   ├── postgres.yaml
+│   │   └── influx.yaml
 │   ├── environments/               # Environment-specific configs
 │   │   ├── development.yaml
-│   │   ├── staging.yaml
 │   │   └── production.yaml
-│   └── user/                       # User customizations
-│       ├── overrides.yaml
-│       ├── personality.yaml
-│       └── plugins/
-│           ├── plugin1.yaml
-│           └── plugin2.yaml
-├── data/
-│   ├── config.db                   # Encrypted configuration store
-│   ├── config.db.salt             # Encryption salt
-│   └── audit/
-│       └── config_changes.log     # Configuration audit trail
-└── logs/
-    └── config.log                 # Configuration system logs
+│   ├── modelfiles/                  # Modelfiles (e.g. Modelfile.eve)
+│   ├── user/                        # User override configs (optional)
+│   │   └── *.yaml
+│   └── runtime.yaml                 # Persisted runtime overrides
 ```
+
+The runtime config root is platform-dependent and can be overridden via `AICO_CONFIG_DIR`.
 
 ## Configuration Domains
 
-The system manages configuration across five primary domains:
+Configuration is split into domain files. Each file `config/defaults/{domain}.yaml` defines the top-level `{domain}.*` namespace.
 
-### Core System Configuration
-- **System Settings**: Environment, data directories, logging levels
-- **Message Bus**: Port assignments, message limits, heartbeat intervals  
-- **API Gateway**: Host/port bindings, CORS policies, rate limiting
+Primary domains:
 
-### Security Configuration
-- **Encryption**: Algorithm selection, key derivation parameters
-- **Authentication**: Session timeouts, failed attempt limits, lockout policies
-- **Audit**: Logging levels, retention periods, compliance settings
+### System
+- **System Settings**: environment, paths, global flags
 
-### Database Configuration
-- **PostgreSQL**: Connection paths, encryption settings, journal modes
-- **ChromaDB**: Vector storage paths, collection names, distance functions
-- **Analytics DB (planned)**: Future analytical database settings, memory limits, threading
+### Logging
+- **Logging**: log level and logging-related defaults
 
-### Personality Configuration
-- **Traits**: Big Five personality dimensions (0.0-1.0 scale)
-- **Values**: Core ethical and behavioral values
-- **Expression**: Communication style parameters (formality, enthusiasm, verbosity)
+### Message Bus
+- **Message Bus**: broker ports, timeouts, transport behavior
 
-### UI Configuration
-- **Theme**: Color schemes, fonts, display modes (light/dark/auto)
-- **Avatar**: Animation settings, lip-sync, facial expressions
-- **Chat Interface**: History limits, notifications, interaction preferences
+### API Gateway
+- **API Gateway**: REST/WebSocket ports, auth policies, plugin toggles
+
+### Modelservice
+- **Modelservice**: Ollama config, transformers models, TTS
+
+### Emotion
+- **Emotion**: emotion simulation engine configuration
+### Memory
+- **Memory**: working/semantic/AMS settings
+
+### Agency & Scheduler
+- **Agency**: planning/safety policies
+- **Scheduler**: scheduler tuning and execution policies
+
+### Security & Service Auth
+- **Security**: encryption/KDF/RBAC/transport settings
+- **Service Auth**: service-to-service tokens/defaults/permissions
+
+### Datastores
+- **Postgres**: `postgres.*` connection + pool settings
+- **InfluxDB**: `influx.*` telemetry backend settings
 
 ## Configuration Management API
 
@@ -162,20 +179,20 @@ from aico.core.config import ConfigurationManager
 config = ConfigurationManager()
 config.initialize()
 
-# Get configuration with fallback
-api_port = config.get("api.port", 8771)
-db_path = config.get("database.PostgreSQL.path", "PostgreSQL database")
+# Get configuration with fallback (optional values)
+api_port = config.get("api_gateway.rest.port", 8771)
+pg_host = config.get("postgres.host", "127.0.0.1")
 
 # Set configuration values
-config.set("personality.traits.openness", 0.8, persist=True)
+config.set("system.log_level", "DEBUG", persist=True)
 
 # Validate configuration
-config.validate("security", security_config)
+validation_errors = config.validate_schemas()
 ```
 
 ### Core Operations
 - **Initialization**: Loads schemas and configurations with file watchers
-- **Dot-notation access**: `api.port`, `personality.traits.openness`
+- **Dot-notation access**: `api_gateway.rest.port`, `postgres.host`, `system.log_level`
 - **Schema validation**: JSON Schema-based validation
 - **Hot reloading**: Automatic reload on file changes
 - **Encrypted persistence**: Runtime changes stored securely
@@ -242,10 +259,10 @@ aico config validate
 ### Backend Configuration Access
 ```python
 # Get database configuration
-db_config = config_manager.get("database.PostgreSQL")
+db_config = config_manager.get("postgres")
 
 # Get API settings with fallback
-api_port = config_manager.get("api.port", 8771)
+api_port = config_manager.get("api_gateway.rest.port", 8771)
 ```
 
 This configuration management system provides a robust, secure, and flexible foundation for managing AICO's complex configuration needs across all subsystems while maintaining the privacy-first, local-first principles of the project.

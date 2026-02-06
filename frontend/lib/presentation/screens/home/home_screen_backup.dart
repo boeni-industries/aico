@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
+import 'package:aico_frontend/presentation/providers/behavioral_feedback_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
@@ -16,11 +17,10 @@ import 'package:aico_frontend/presentation/screens/home/widgets/home_toolbar.dar
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
-import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
 import 'package:aico_frontend/presentation/widgets/chat/feedback_dialog.dart';
+import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
 import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
 import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
-import 'package:aico_frontend/presentation/providers/behavioral_feedback_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -562,7 +562,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     showDialog(
       context: context,
       barrierColor: Colors.transparent, // Dialog has its own backdrop
-      builder: (context) => FeedbackDialog(
+      builder: (dialogContext) => FeedbackDialog(
         isPositive: isPositive,
         messageId: messageId,
         accentColor: accentColor,
@@ -576,9 +576,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           );
           
           // Show elegant glassmorphic toast for success
-          if (!mounted) return;
+          if (!dialogContext.mounted) return;
           GlassmorphicToast.show(
-            context,
+            dialogContext,
             message: 'Thank you for your feedback!',
             icon: Icons.check_circle_outline_rounded,
             accentColor: accentColor,
@@ -678,7 +678,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                   focusNode: _messageFocusNode,
                   accentColor: accentColor,
                   onSend: () => _sendMessage(_messageController.text),
-                  onVoice: () {}, // TODO: Implement voice input
+                  onVoice: () {}, // NOTE: Implement voice input
                   sendButtonKey: _sendButtonKey,
                   voiceButtonKey: _voiceButtonKey,
                 ),

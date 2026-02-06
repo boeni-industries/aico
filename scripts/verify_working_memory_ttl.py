@@ -19,7 +19,7 @@ def verify_working_memory_ttl():
     config.initialize()
     
     # Simulate what WorkingMemoryStore does in __init__
-    ttl_seconds = config.get("core.memory.working.ttl_seconds", 86400)
+    ttl_seconds = config.get("memory.working.ttl_seconds", 86400)
     
     print(f"\n✓ WorkingMemoryStore initialized")
     print(f"  TTL value: {ttl_seconds} seconds")

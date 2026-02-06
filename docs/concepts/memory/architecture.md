@@ -286,8 +286,8 @@ class ModelServiceIntegration:
         self.modelservice_client = ModelserviceClient()
         
         # Model configurations from unified config
-        self.llm_model = config.get("core.modelservice.default_models.conversation", "hermes3:8b")
-        self.embedding_model = config.get("memory.semantic.embedding_model", "paraphrase-multilingual")
+        self.llm_model = config.get("modelservice.ollama.default_models.conversation.name")
+        self.embedding_model = config.get("modelservice.transformers.models.embeddings")
         
     async def generate_embeddings(self, texts: List[str]) -> List[np.ndarray]:
         """Generate embeddings via modelservice/Ollama."""
@@ -464,9 +464,26 @@ The consolidation process transfers experiences from working memory to long-term
 ### Model Configuration Strategy
 
 ```yaml
-# Unified configuration in core.yaml
-core:
-  modelservice:
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
+# Unified configuration in modelservice.yaml
+modelservice:
+=======
+# Model configuration lives in the modelservice domain
+modelservice:
+  ollama:
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/architecture.md
+=======
+# Model configuration lives in the modelservice domain
+modelservice:
+  ollama:
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/architecture.md
+=======
+# Model configuration lives in the modelservice domain
+modelservice:
+  ollama:
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/architecture.md
     default_models:
       conversation: "hermes3:8b"
       embedding: "paraphrase-multilingual"  # Primary multilingual model

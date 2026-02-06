@@ -25,7 +25,7 @@ def main():
     config.initialize(lightweight=True)
     key_manager = AICOKeyManager(config)
     
-    pg_cfg = config.get("core.database.postgres", {})
+    pg_cfg = config.get("postgres", {})
     password = key_manager.get_database_password("postgres", username=pg_cfg.get("user", "postgres"))
     
     db = psycopg2.connect(

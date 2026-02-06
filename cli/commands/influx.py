@@ -92,7 +92,7 @@ def _get_influx_config() -> dict:
     try:
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
-        return config_manager.get("core.database.influx", {}) or {}
+        return config_manager.get("influx", {}) or {}
     except Exception:
         return {}
 
@@ -164,7 +164,7 @@ def status():
     console.rule("[bold cyan]InfluxDB Backend Status[/bold cyan]")
 
     if not cfg:
-        console.print(format_error("No core.database.influx configuration found in core.yaml"))
+        console.print(format_error("No influx configuration found"))
         raise typer.Exit(code=1)
 
     # Extract config
@@ -480,7 +480,7 @@ def doctor():
     if not cfg:
         console.print(
             format_error(
-                "No core.database.influx configuration found in core.yaml. "
+                "No influx configuration found. "
                 "Please configure url/org/bucket before running 'aico influx doctor'."
             )
         )
@@ -656,7 +656,7 @@ def init(
     if not cfg:
         console.print(
             format_error(
-                "No core.database.influx configuration found in core.yaml. "
+                "No influx configuration found. "
                 "Please configure url/org/bucket before running 'aico influx init'."
             )
         )

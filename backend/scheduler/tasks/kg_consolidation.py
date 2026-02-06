@@ -31,9 +31,9 @@ class KGConsolidationTask(BaseTask):
     messages and stores them in the knowledge graph.
     
     Configuration:
-    - Schedule: core.memory.kg_consolidation.schedule.cron
-    - Batch size: core.memory.kg_consolidation.batch_size
-    - Enabled: core.memory.kg_consolidation.enabled
+    - Schedule: memory.kg_consolidation.schedule.cron
+    - Batch size: memory.kg_consolidation.batch_size
+    - Enabled: memory.kg_consolidation.enabled
     """
     
     task_id = "ams.kg_consolidation"
@@ -60,14 +60,14 @@ class KGConsolidationTask(BaseTask):
             print("🕸️ [KG_TASK] ========================================")
             logger.info("🕸️ [KG_TASK] Starting KG consolidation task")
             
-            # Load configuration from core.memory.consolidation.kg_extraction
-            memory_config = context.config_manager.get("core.memory", {})
+            # Load configuration from memory.consolidation.kg_extraction
+            memory_config = context.config_manager.get("memory", {})
             consolidation_config = memory_config.get("consolidation", {})
             kg_config = consolidation_config.get("kg_extraction", {})
             
             if not kg_config:
-                print("🕸️ [KG_TASK] ⚠️  Configuration 'core.memory.consolidation.kg_extraction' not found, using defaults")
-                logger.warning("🕸️ [KG_TASK] Configuration 'core.memory.consolidation.kg_extraction' not found")
+                print("🕸️ [KG_TASK] ⚠️  Configuration 'memory.consolidation.kg_extraction' not found, using defaults")
+                logger.warning("🕸️ [KG_TASK] Configuration 'memory.consolidation.kg_extraction' not found")
             
             enabled = context.get_config("enabled", kg_config.get("enabled", True))
             batch_size = context.get_config("batch_size", kg_config.get("batch_size", 50))
@@ -163,8 +163,8 @@ class KGConsolidationTask(BaseTask):
             
             # Get users with unconsolidated messages
             print("🕸️ [KG_TASK] Getting users with unconsolidated messages...")
-            users_with_pending = await memory_manager._get_users_with_unconsolidated_messages(
-                max_age_hours=max_age_hours,
+            users_with_pending = await self._get_users_with_pending_messages(
+                memory_manager=memory_manager,
                 batch_size=batch_size,
             )
 

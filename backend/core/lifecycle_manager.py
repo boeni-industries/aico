@@ -16,7 +16,6 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger, initialize_logging
 from aico.security import AICOKeyManager
 from aico.core.paths import AICOPaths
-from aico.data.user import UserService
 
 from .service_container import ServiceContainer, BaseService
 from backend.core.plugin_base import get_plugin_registry
@@ -45,7 +44,7 @@ class BackendLifecycleManager:
         
         # Protocol adapter manager for WebSocket and other protocols
         self.protocol_manager = ProtocolAdapterManager(
-            config_manager.get("core.api_gateway", {}),
+            config_manager.get("api_gateway", {}),
             self.logger
         )
         
@@ -129,12 +128,12 @@ class BackendLifecycleManager:
             from backend.core.telemetry import initialize_telemetry
             
             # Read instrumentation config from core.instrumentation
-            enabled = self.config.get("core.instrumentation.enabled", False)
-            mode = self.config.get("core.instrumentation.mode", "dev")
+            enabled = self.config.get("instrumentation.enabled", False)
+            mode = self.config.get("instrumentation.mode", "dev")
 
             if not enabled:
                 self.logger.debug(
-                    "OpenTelemetry instrumentation disabled via config (core.instrumentation.enabled = false); "
+                    "OpenTelemetry instrumentation disabled via config (instrumentation.enabled = false); "
                     "skipping telemetry setup"
                 )
                 return
@@ -219,10 +218,6 @@ class BackendLifecycleManager:
             import zmq
             return zmq.Context()
         
-        # User service factory
-        def create_user_service(container: ServiceContainer, database: Any) -> UserService:
-            return UserService(database)
-        
         # Config service factory
         def create_config_service(container: ServiceContainer):
             return container.config
@@ -272,12 +267,10 @@ class BackendLifecycleManager:
             priority=10  # Start after database, stop before database
         )
         
-        self.container.register_service(
-            "user_service",
-            create_user_service,
-            dependencies=["database"],
-            priority=20
-        )
+        # NOTE: Do not register shared UserService here.
+        # Backend uses PostgreSQL via UnitOfWork/repositories; the shared UserService
+        # expects an asyncpg connection and would be constructed with database=None
+        # (since the backend's legacy `database` service is intentionally unused).
         
         # Task scheduler factory
         def create_task_scheduler(container: ServiceContainer):
@@ -465,13 +458,14 @@ class BackendLifecycleManager:
             
             # Create a proxy that wraps AgencyService and manages UoW per method call
             class AgencyServiceProxy:
-                """Proxy that creates fresh UoW for each AgencyService operation"""
-                def __init__(self, session_factory):
+                """Proxy that creates UnitOfWork per method call."""
+                def __init__(self, session_factory, skill_matcher=None):
                     self._session_factory = session_factory
+                    self._skill_matcher = skill_matcher
                 
                 async def _execute_with_uow(self, method_name, *args, **kwargs):
                     async with UnitOfWork(self._session_factory) as uow:
-                        service = AgencyService(uow)
+                        service = AgencyService(uow, skill_matcher=self._skill_matcher)
                         method = getattr(service, method_name)
                         return await method(*args, **kwargs)
                 
@@ -490,6 +484,9 @@ class BackendLifecycleManager:
                 
                 async def get_active_goals(self, user_id):
                     return await self._execute_with_uow('get_active_goals', user_id)
+                
+                async def get_goals_bulk(self, goal_ids):
+                    return await self._execute_with_uow('get_goals_bulk', goal_ids)
                 
                 async def create_plan(self, plan):
                     return await self._execute_with_uow('create_plan', plan)
@@ -544,6 +541,10 @@ class BackendLifecycleManager:
 
                 async def update_plan_execution(self, execution_id: str, updates: Dict[str, Any]):
                     return await self._execute_with_uow('update_plan_execution', execution_id, updates)
+                
+                def set_skill_matcher(self, skill_matcher):
+                    """Update the skill_matcher reference after AgencyEngine initializes it."""
+                    self._skill_matcher = skill_matcher
             
             agency_service = AgencyServiceProxy(session_factory)
             
@@ -564,18 +565,23 @@ class BackendLifecycleManager:
             await agency_engine.initialize()
             self.logger.info("✅ [AI_PROCESSORS] AgencyEngine initialized during startup")
             
+            # Update AgencyServiceProxy with skill_matcher after AgencyEngine initializes it
+            if agency_engine.planner and agency_engine.planner.skill_matcher:
+                agency_service.set_skill_matcher(agency_engine.planner.skill_matcher)
+                self.logger.info("✅ [AI_PROCESSORS] Injected SkillMatcher into AgencyServiceProxy for auto-fixing old plans")
+            
             # Phase 4: Install default policies if configured
             try:
                 # Validate configuration exists
-                values_ethics_config = self.config.get("core.services.agency.values_ethics", None)
+                values_ethics_config = self.config.get("agency.values_ethics", None)
                 if values_ethics_config is None:
                     raise RuntimeError(
-                        "CRITICAL: core.services.agency.values_ethics configuration not found in core.yaml. "
+                        "CRITICAL: agency.values_ethics configuration not found in agency.yaml. "
                         "Phase 4 requires this configuration section."
                     )
                 
-                install_policies = self.config.get("core.services.agency.values_ethics.install_default_policies", True)
-                policy_mode = self.config.get("core.services.agency.values_ethics.policy_mode", "enforce")
+                install_policies = self.config.get("agency.values_ethics.install_default_policies", True)
+                policy_mode = self.config.get("agency.values_ethics.policy_mode", "enforce")
                 
                 self.logger.info(f"[AI_PROCESSORS] Values/Ethics policy mode: {policy_mode}")
                 
@@ -636,13 +642,38 @@ class BackendLifecycleManager:
                 self.logger.warning(f"⚠️ [AI_PROCESSORS] Failed to inject LLM planning helper: {e}")
                 self.logger.warning("⚠️ [AI_PROCESSORS] AgencyEngine will use deterministic planning only")
 
+            # Phase 5: Self-Reflection Engine (PostgreSQL)
+            try:
+                self_reflection_enabled = self.config.get("agency.self_reflection.enabled", False)
+                if self_reflection_enabled:
+                    from aico.ai.agency.reflection import SelfReflectionEngine
+
+                    agency_engine.self_reflection = SelfReflectionEngine(
+                        config=self.config,
+                        session_factory=session_factory,
+                        llm_client=modelservice_client,
+                    )
+                    self.logger.info("✅ [AI_PROCESSORS] Self-reflection engine enabled")
+                else:
+                    self.logger.info("[AI_PROCESSORS] Self-reflection engine disabled in configuration")
+            except Exception as e:
+                self.logger.error(f"CRITICAL: Failed to initialize self-reflection engine: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                raise RuntimeError(f"CRITICAL: Failed to initialize self-reflection engine: {e}")
+
             ai_registry.register("agency", agency_engine)
-            self.logger.info("Registered 'agency' processor with Phase 2 context services.")
+            self.logger.info("✅ Registered 'agency' processor with Phase 2 context services.")
+            
+            # Verify registration succeeded
+            if ai_registry.get("agency") is None:
+                raise RuntimeError("AgencyEngine registration failed - not found in ai_registry after registration")
             
         except Exception as e:
             import traceback
-            self.logger.error(f"Failed to initialize AgencyEngine during startup: {e}")
+            self.logger.error(f"❌ CRITICAL: Failed to initialize AgencyEngine during startup: {e}")
             self.logger.error(f"Full traceback: {traceback.format_exc()}")
+            # Don't re-raise - allow backend to start but agency endpoints will fail gracefully
         
         # Register CuriosityEngine (Phase 3) - outside try/except to ensure it runs
         try:
@@ -696,7 +727,7 @@ class BackendLifecycleManager:
     async def _register_plugins(self) -> None:
         """Register plugin services"""
         # Get plugin configuration
-        plugin_config = self.config.get("core.api_gateway.plugins", {})
+        plugin_config = self.config.get("api_gateway.plugins", {})
         
         for plugin_name, config in plugin_config.items():
             if not config.get("enabled", False):
@@ -768,7 +799,7 @@ class BackendLifecycleManager:
         """Start protocol adapters (WebSocket, ZeroMQ)"""
         try:
             # Get protocol configuration
-            protocols_config = self.config.get("core.api_gateway.protocols", {})
+            protocols_config = self.config.get("api_gateway.protocols", {})
             
             # Prepare dependencies from service container
             dependencies = {
@@ -1092,10 +1123,6 @@ def get_service_container(request: Request) -> ServiceContainer:
     if not hasattr(request.app.state, 'service_container'):
         raise RuntimeError("Service container not available")
     return request.app.state.service_container
-
-def get_user_service(container: ServiceContainer = Depends(get_service_container)) -> UserService:
-    """Get user service via dependency injection"""
-    return container.get_service("user_service")
 
 def get_auth_manager(container: ServiceContainer = Depends(get_service_container)):
     """Get auth manager via dependency injection"""

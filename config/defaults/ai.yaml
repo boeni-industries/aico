@@ -1,0 +1,5 @@
+intent_classifier:
+  confidence_threshold: 0.7
+  cache_size: 1000
+  context_window: 10
+  enable_few_shot: true

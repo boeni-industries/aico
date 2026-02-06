@@ -1,0 +1,13 @@
+# Conversation Engine Configuration
+# Controls conversation context, timeouts, and AI feature integration
+
+max_context_messages: 10
+response_timeout_seconds: 120.0  # Increased from 30s to match message bus timeout
+default_response_mode: "text_only"  # Valid values: text_only, multimodal
+
+# Feature flags for AI components
+features:
+  enable_emotion_integration: true  # ENABLED - Phase 1 complete
+  enable_personality_integration: false
+  enable_memory_integration: true
+  enable_embodiment: false

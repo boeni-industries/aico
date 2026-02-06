@@ -37,10 +37,10 @@ class IssueDetectionService:
         
         # Thresholds from config or defaults
         self._thresholds = {
-            "cpu_percent": config.get("core.system.health.thresholds.cpu_percent", 80),
-            "memory_percent": config.get("core.system.health.thresholds.memory_percent", 85),
-            "disk_percent": config.get("core.system.health.thresholds.disk_percent", 90),
-            "stalled_plan_hours": config.get("core.system.health.thresholds.stalled_plan_hours", 1),
+            "cpu_percent": config.get("system.health.thresholds.cpu_percent", 80),
+            "memory_percent": config.get("system.health.thresholds.memory_percent", 85),
+            "disk_percent": config.get("system.health.thresholds.disk_percent", 90),
+            "stalled_plan_hours": config.get("system.health.thresholds.stalled_plan_hours", 1),
         }
         
         logger.debug(
@@ -57,6 +57,13 @@ class IssueDetectionService:
         
         detected_issues = []
         resolved_issues = []
+        healing = {
+            "enabled": bool(self._config.get("system.self_healing.enabled", False)),
+            "triggered": False,
+            "goals_created": 0,
+            "executions_started": 0,
+            "error": None,
+        }
         
         try:
             # Run all health checks
@@ -80,6 +87,16 @@ class IssueDetectionService:
                 resolved_issues.extend(resolved)
                 
                 await uow.commit()
+
+            # Optionally trigger autonomous self-healing via agency goal/intention/plan flow.
+            # This is intentionally disabled by default and must be enabled in config.
+            if healing["enabled"] and detected_issues:
+                try:
+                    healing_result = await self._trigger_self_healing(detected_issues)
+                    healing.update(healing_result)
+                except Exception as exc:  # pragma: no cover - defensive
+                    healing["error"] = str(exc)
+                    logger.error("[ISSUE_DETECTION] Self-healing trigger failed: %s", exc, exc_info=True)
             
             logger.debug(
                 "[ISSUE_DETECTION] Cycle complete: %d detected, %d resolved",
@@ -92,6 +109,7 @@ class IssueDetectionService:
                 "resolved_count": len(resolved_issues),
                 "detected_issues": [i["issue_id"] for i in detected_issues],
                 "resolved_issues": resolved_issues,
+                "self_healing": healing,
             }
             
         except Exception as exc:
@@ -100,7 +118,158 @@ class IssueDetectionService:
                 "detected_count": 0,
                 "resolved_count": 0,
                 "error": str(exc),
+                "self_healing": healing,
             }
+
+    async def _trigger_self_healing(self, detected_issues: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Convert detected issues into system_maintenance goals and run agency flow.
+
+        This is the missing glue between System Health detection and the Agency
+        loop described in docs (maintenance goal → intention → plan → skill execution).
+
+        Behavior:
+        - Creates/updates maintenance goals for user_id='system_user'
+        - Stores remediation/verification intent in goal metadata
+        - Triggers arbiter intention-set update immediately
+        - Optionally executes the resulting plan immediately (for end-to-end proof)
+        """
+
+        from aico.ai import ai_registry
+
+        agency_engine = ai_registry.get("agency")
+        if not agency_engine:
+            raise RuntimeError("AgencyEngine not available in ai_registry")
+
+        user_id = "system_user"
+        run_immediately = bool(self._config.get("system.self_healing.run_immediately", True))
+        allow_side_effects = bool(self._config.get("system.self_healing.allow_side_effects", False))
+
+        goals_created = 0
+        executions_started = 0
+
+        for issue in detected_issues:
+            remediation_actions = issue.get("remediation") or []
+            if not remediation_actions:
+                continue
+
+            # For now we take the first remediation action from IssueDetectionService.
+            # Future: choose via policy/risk scoring and past success rates.
+            action_id = remediation_actions[0].get("action_id")
+            if not action_id:
+                continue
+
+            remediation_skill_id = self._map_action_id_to_skill_id(action_id)
+            if not remediation_skill_id:
+                continue
+
+            goal_title = f"Self-heal: {issue.get('title') or issue.get('issue_id')}"
+            goal_description = (
+                f"Autonomously remediate detected system issue '{issue.get('issue_id')}'. "
+                f"Action: {action_id} → Skill: {remediation_skill_id}."
+            )
+
+            # Safety-first: autonomous self-healing defaults to dry-run.
+            remediation_params: Dict[str, Any] = {"dry_run": (not allow_side_effects)}
+
+            # Verification defaults: re-run connectivity scan.
+            verify_skill_id = "maint.connectivity.full_scan"
+            verify_params: Dict[str, Any] = {}
+
+            _, _ = await agency_engine.create_maintenance_goal_with_optional_plan(
+                user_id=user_id,
+                title=goal_title,
+                description=goal_description,
+                goal_type="maintenance",
+                metadata={
+                    "issue_id": issue.get("issue_id"),
+                    "severity": issue.get("severity"),
+                    "service": issue.get("service"),
+                    "remediation_action_id": action_id,
+                    "remediation_skill_id": remediation_skill_id,
+                    "remediation_params": remediation_params,
+                    "verify_skill_id": verify_skill_id,
+                    "verify_params": verify_params,
+                    "origin": "issue_detection",
+                },
+                auto_plan=False,
+            )
+            goals_created += 1
+
+        if goals_created == 0:
+            return {
+                "triggered": False,
+                "goals_created": 0,
+                "executions_started": 0,
+            }
+
+        # Trigger arbiter now (instead of waiting up to 5 minutes).
+        intention_set = await agency_engine.update_intention_set_for_user(
+            user_id=user_id,
+            context={
+                "trigger": "issue_detection_self_healing",
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
+
+        # Optionally execute immediately to prove end-to-end behavior.
+        if run_immediately:
+            # For any active intention, start plan execution if not already running.
+            for intention in intention_set.active_intentions:
+                plans = await agency_engine.agency_service.list_plans(goal_id=intention.goal_id)
+                if not plans:
+                    continue
+                plan = plans[0]
+
+                # Skip if an execution is already pending/running.
+                existing = await agency_engine.agency_service.get_plan_executions(plan.plan_id)
+                has_active_exec = any(
+                    getattr(e, "status", None) in ("pending", "running")
+                    for e in existing
+                )
+                if has_active_exec:
+                    continue
+
+                execution = await agency_engine.executor.start_execution(
+                    plan_id=plan.plan_id,
+                    goal_id=plan.goal_id,
+                    user_id=user_id,
+                    context={
+                        "trigger": "issue_detection_self_healing",
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    },
+                )
+                executions_started += 1
+
+                # Execute steps synchronously (bounded) so detection cycle can report outcome.
+                max_steps = int(self._config.get("system.self_healing.max_steps_per_goal", 10))
+                steps_run = 0
+                while steps_run < max_steps:
+                    has_more, _ = await agency_engine.executor.execute_next_step(execution.execution_id)
+                    steps_run += 1
+                    if not has_more:
+                        break
+
+        return {
+            "triggered": True,
+            "goals_created": goals_created,
+            "executions_started": executions_started,
+        }
+
+    def _map_action_id_to_skill_id(self, action_id: str) -> Optional[str]:
+        """Map an issue remediation action_id to a concrete maintenance skill.
+
+        This keeps IssueDetectionService agnostic of how skills are implemented,
+        while still producing deterministic plans.
+        """
+
+        mapping = {
+            "stabilize_modelservice": "maint.modelservice.stabilise",
+            "restart_modelservice": "maint.modelservice.stabilise",
+            "archive_conversations": "maint.db.reduce_disk_pressure",
+            "reduce_disk_pressure": "maint.db.reduce_disk_pressure",
+            "rebalance_agency_load": "maint.agency.rebalance_load",
+        }
+        return mapping.get(action_id)
 
     async def _check_connectivity(self) -> List[Dict[str, Any]]:
         """Check connectivity and detect issues."""

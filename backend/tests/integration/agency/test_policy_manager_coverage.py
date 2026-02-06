@@ -20,6 +20,45 @@ from aico.ai.agency.policy_manager import (
 )
 
 
+class _DB:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query, params=None):
+        q = query.replace("?", "%s")
+        cur = self._conn.cursor()
+        try:
+            cur.execute(q, params or ())
+            return cur
+        except Exception:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+            cur.close()
+            raise
+
+    def fetch_one(self, query, params=None):
+        cur = self.execute(query, params)
+        try:
+            return cur.fetchone()
+        finally:
+            cur.close()
+
+    def fetch_all(self, query, params=None):
+        cur = self.execute(query, params)
+        try:
+            return cur.fetchall()
+        finally:
+            cur.close()
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+
 def unique_rule_id(prefix="test_rule"):
     """Generate a unique rule ID for testing."""
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
@@ -31,7 +70,7 @@ class TestPolicyManagerCoverage:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def policy_manager(self, db):
@@ -492,7 +531,7 @@ class TestConsentManagerCoverage:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def consent_manager(self, db):
@@ -595,7 +634,7 @@ class TestEnhancedEthicsGateCoverage:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def policy_manager(self, db):

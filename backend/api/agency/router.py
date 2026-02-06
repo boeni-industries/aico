@@ -9,11 +9,12 @@ import asyncio
 import importlib
 import json
 import pkgutil
-from datetime import datetime
+from datetime import datetime, UTC, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import Annotated, Optional, List, Dict, Any
+from typing import Annotated, Optional, List, Dict, Any, Tuple
 from pydantic import BaseModel
+from sqlalchemy import select, func, case
 
 from backend.api.conversation.dependencies import get_current_user
 from backend.api.agency.models import (
@@ -50,6 +51,14 @@ from backend.api.agency.models import (
     PlanStatusAPI,
     ExecutionStatusAPI,
     StepExecutionStatusAPI,
+    ReflectionRunResponse,
+    ReflectionRunsListResponse,
+    LessonResponse,
+    LessonListResponse,
+    SelfModelResponse,
+    SelfModelListResponse,
+    SkillPerformanceResponse,
+    ReflectionSummaryResponse,
 )
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
@@ -57,13 +66,128 @@ from aico.ai.agency import AgencyEngine
 from aico.ai.agency.skills.registry import SkillRegistry
 from aico.ai.agency.tools.registry import get_tool_registry, ToolDefinition
 import aico.ai.agency.tools as tools_package
-from aico.ai.agency.values_ethics import ValuesEthicsService, ProactiveBehaviorLevel
+from aico.ai.agency.values_ethics import ValuesEthicsService
 from aico.ai import ai_registry
 from aico.data.uow import UnitOfWork
+from aico.data.tables import agency_lessons, agency_reflection_runs
 from backend.core.postgres_dependencies import get_uow
 
 logger = get_logger("backend.api.agency")
 router = APIRouter()
+
+
+def _reflection_run_to_api(run) -> ReflectionRunResponse:
+    return ReflectionRunResponse(
+        run_id=run.run_id,
+        user_id=run.user_id,
+        run_type=run.run_type,
+        trigger_reason=getattr(run, "trigger_reason", None),
+        analysis_window_start=run.analysis_window_start,
+        analysis_window_end=run.analysis_window_end,
+        lessons_generated=int(getattr(run, "lessons_generated", 0) or 0),
+        lessons_applied=int(getattr(run, "lessons_applied", 0) or 0),
+        started_at=run.started_at,
+        completed_at=getattr(run, "completed_at", None),
+        duration_seconds=getattr(run, "duration_seconds", None),
+        status=str(getattr(run, "status", "")),
+        error_message=getattr(run, "error_message", None),
+        created_at=getattr(run, "created_at", None),
+    )
+
+
+def _lesson_to_api(lesson) -> LessonResponse:
+    proposed_change = getattr(lesson, "proposed_change", None)
+    if proposed_change is None:
+        proposed_change = {}
+    if isinstance(proposed_change, str):
+        try:
+            proposed_change = json.loads(proposed_change)
+        except Exception:
+            proposed_change = {}
+
+    metrics_basis = getattr(lesson, "metrics_basis", None)
+    if isinstance(metrics_basis, str):
+        try:
+            metrics_basis = json.loads(metrics_basis)
+        except Exception:
+            metrics_basis = None
+
+    return LessonResponse(
+        lesson_id=lesson.lesson_id,
+        user_id=lesson.user_id,
+        lesson_type=str(getattr(lesson, "lesson_type", "")),
+        target_kind=str(getattr(lesson, "target_kind", "")),
+        target_id=getattr(lesson, "target_id", None),
+        summary_text=getattr(lesson, "summary_text", ""),
+        proposed_change=proposed_change if isinstance(proposed_change, dict) else {},
+        confidence=float(getattr(lesson, "confidence", 0.0) or 0.0),
+        metrics_basis=metrics_basis if isinstance(metrics_basis, dict) else None,
+        scope=str(getattr(lesson, "scope", "")),
+        status=str(getattr(lesson, "status", "")),
+        superseded_by=getattr(lesson, "superseded_by", None),
+        applied_at=getattr(lesson, "applied_at", None),
+        applied_by=getattr(lesson, "applied_by", None),
+        source_reflection_run_id=getattr(lesson, "source_reflection_run_id", None),
+        evidence_window_start=getattr(lesson, "evidence_window_start", None),
+        evidence_window_end=getattr(lesson, "evidence_window_end", None),
+        created_at=getattr(lesson, "created_at", datetime.now(UTC)),
+        updated_at=getattr(lesson, "updated_at", datetime.now(UTC)),
+    )
+
+
+def _self_model_to_api(model) -> SelfModelResponse:
+    summary = getattr(model, "performance_summary", None)
+    parsed: Dict[str, Any] = {}
+    if isinstance(summary, str) and summary:
+        try:
+            loaded = json.loads(summary)
+            if isinstance(loaded, dict):
+                parsed = loaded
+        except Exception:
+            parsed = {}
+
+    return SelfModelResponse(
+        model_id=model.model_id,
+        user_id=model.user_id,
+        entity_type=model.entity_type,
+        entity_id=model.entity_id,
+        performance_summary=parsed,
+        window_start=model.window_start,
+        window_end=model.window_end,
+        sample_size=int(getattr(model, "sample_size", 0) or 0),
+        confidence=float(getattr(model, "confidence", 0.0) or 0.0),
+        last_updated=getattr(model, "last_updated", None),
+        created_at=getattr(model, "created_at", None),
+    )
+
+# ============================================================================
+# Caching
+# ============================================================================
+
+# Simple in-memory cache for agency endpoints
+_agency_cache: Dict[str, Tuple[Any, datetime]] = {}
+
+async def _get_cached(key: str, ttl_seconds: int = 30) -> Optional[Any]:
+    """Get cached value if not expired."""
+    if key in _agency_cache:
+        value, cached_at = _agency_cache[key]
+        age = (datetime.now(UTC) - cached_at).total_seconds()
+        
+        if age < ttl_seconds:
+            logger.info(f"[AGENCY_CACHE] Cache HIT for {key} (age: {age:.1f}s)")
+            return value
+        else:
+            logger.info(f"[AGENCY_CACHE] Cache EXPIRED for {key} (age: {age:.1f}s)")
+            del _agency_cache[key]
+    else:
+        logger.info(f"[AGENCY_CACHE] Cache MISS for {key}")
+    
+    return None
+
+async def _set_cached(key: str, value: Any):
+    """Store value in cache."""
+    _agency_cache[key] = (value, datetime.now(UTC))
+    logger.debug(f"[AGENCY_CACHE] Cached {key}")
 
 
 # ============================================================================
@@ -127,29 +251,36 @@ async def get_intention_set(
         intentions = intention_set.intentions[:limit]
         logger.debug(f"[DEBUG] intentions after limit: {len(intentions)}")
         
-        # Fetch actual Goal objects for each intention
+        # Optimized: Fetch all Goal objects in a single bulk query instead of N+1 queries
         active_intentions = []
-        for intention in intentions:
-            logger.debug(f"[DEBUG] Processing intention: goal_id={intention.goal_id}, score={intention.arbiter_score}")
-            goal = await engine.get_goal(intention.goal_id)
-            if goal:
-                logger.debug(f"[DEBUG] Found goal: {goal.title} (status={goal.status.value})")
-                active_intentions.append(
-                    GoalSummary(
-                        goal_id=goal.goal_id,
-                        title=goal.title,
-                        description=goal.description,
-                        origin=GoalOrigin(goal.origin.value),
-                        priority=GoalPriority(goal.priority.value),
-                        status=GoalStatus(goal.status.value),
-                        score=intention.arbiter_score,
-                        priority_band=intention.priority_band.value,
-                        created_at=goal.created_at,
-                        metadata=goal.metadata
+        if intentions:
+            goal_ids = [intention.goal_id for intention in intentions]
+            goals = await engine.agency_service.get_goals_bulk(goal_ids)
+            
+            # Create lookup dict for O(1) access
+            goals_by_id = {goal.goal_id: goal for goal in goals}
+            logger.debug(f"[DEBUG] Fetched {len(goals)} goals in single bulk query")
+            
+            for intention in intentions:
+                goal = goals_by_id.get(intention.goal_id)
+                if goal:
+                    logger.debug(f"[DEBUG] Found goal: {goal.title} (status={goal.status.value})")
+                    active_intentions.append(
+                        GoalSummary(
+                            goal_id=goal.goal_id,
+                            title=goal.title,
+                            description=goal.description,
+                            origin=GoalOrigin(goal.origin.value),
+                            priority=GoalPriority(goal.priority.value),
+                            status=GoalStatus(goal.status.value),
+                            score=intention.arbiter_score,
+                            priority_band=intention.priority_band.value,
+                            created_at=goal.created_at,
+                            metadata=goal.metadata
+                        )
                     )
-                )
-            else:
-                logger.debug(f"[DEBUG] Goal not found for intention: {intention.goal_id}")
+                else:
+                    logger.debug(f"[DEBUG] Goal not found for intention: {intention.goal_id}")
         
         logger.debug(f"[DEBUG] active_intentions final count: {len(active_intentions)}")
         
@@ -427,6 +558,13 @@ async def get_goal_plans(
             # Map plan steps (static plan definition)
             step_responses: List[PlanStepResponse] = []
             for step in plan.steps:
+                # Enrich with implementation_tools from SkillRegistry
+                implementation_tools: List[str] = []
+                if step.skill_id and engine.skill_registry:
+                    skill = engine.skill_registry.get(step.skill_id)
+                    if skill:
+                        implementation_tools = skill.implementation_tools
+                
                 step_responses.append(
                     PlanStepResponse(
                         step_id=step.step_id,
@@ -438,6 +576,7 @@ async def get_goal_plans(
                         scheduled_for=step.scheduled_for,
                         depends_on=step.depends_on or [],
                         metadata=step.metadata or {},
+                        implementation_tools=implementation_tools,
                     )
                 )
 
@@ -469,17 +608,36 @@ async def get_goal_plans(
                                     continue
 
                                 step_execs: List[StepExecutionSummary] = []
+
+                                def _step_field(step_obj: Any, field: str, default: Any = None) -> Any:
+                                    if isinstance(step_obj, dict):
+                                        return step_obj.get(field, default)
+                                    if hasattr(step_obj, field):
+                                        return getattr(step_obj, field)
+                                    # Pydantic BaseModel (v1/v2) fallback
+                                    if hasattr(step_obj, "model_dump"):
+                                        try:
+                                            return step_obj.model_dump().get(field, default)
+                                        except Exception:
+                                            return default
+                                    if hasattr(step_obj, "dict"):
+                                        try:
+                                            return step_obj.dict().get(field, default)
+                                        except Exception:
+                                            return default
+                                    return default
+
                                 for s in status_dict.get("steps", []):
                                     step_execs.append(
                                         StepExecutionSummary(
-                                            step_execution_id=s["step_execution_id"],
-                                            step_id=str(s.get("step_id", "")),
-                                            step_order=s.get("step_order", 0),
-                                            status=_map_step_execution_status(s.get("status", "pending")),
-                                            duration_ms=s.get("duration_ms"),
-                                            error_message=s.get("error_message"),
-                                            skill_id=s.get("skill_id"),
-                                            skill_invocation_id=s.get("skill_invocation_id"),
+                                            step_execution_id=str(_step_field(s, "step_execution_id", "")),
+                                            step_id=str(_step_field(s, "step_id", "")),
+                                            step_order=int(_step_field(s, "step_order", 0) or 0),
+                                            status=_map_step_execution_status(str(_step_field(s, "status", "pending"))),
+                                            duration_ms=_step_field(s, "duration_ms"),
+                                            error_message=_step_field(s, "error_message"),
+                                            skill_id=_step_field(s, "skill_id"),
+                                            skill_invocation_id=_step_field(s, "skill_invocation_id"),
                                         )
                                     )
 
@@ -876,11 +1034,15 @@ async def get_value_profile(
             from aico.data.ethics.models import EthicsValueProfile
             import uuid as uuid_lib
             
+            # Read default autonomy level from configuration
+            config = ConfigurationManager()
+            default_autonomy = config.get("agency.safety_control.autonomy_level", "balanced")
+            
             profile = EthicsValueProfile(
                 profile_id=str(uuid_lib.uuid4()),
                 user_id=user_id,
                 curiosity_intensity=0.5,
-                proactive_behavior_level="balanced",
+                autonomy_level=default_autonomy,
                 sensitive_life_areas=None,
                 allowed_curiosity_domains=None,
                 created_at=datetime.utcnow(),
@@ -895,7 +1057,7 @@ async def get_value_profile(
             profile_id=profile.profile_id,
             user_id=profile.user_id,
             curiosity_intensity=profile.curiosity_intensity,
-            proactive_behavior_level=profile.proactive_behavior_level,
+            autonomy_level=profile.autonomy_level,
             sensitive_life_areas=profile.sensitive_life_areas if profile.sensitive_life_areas else [],
             allowed_curiosity_domains=profile.allowed_curiosity_domains if profile.allowed_curiosity_domains else []
         )
@@ -928,8 +1090,9 @@ async def update_value_profile(
         if request.curiosity_intensity is not None:
             profile.curiosity_intensity = request.curiosity_intensity
         
-        if request.proactive_behavior_level is not None:
-            profile.proactive_behavior_level = request.proactive_behavior_level
+        if request.autonomy_level is not None:
+            # Convert enum to string value for database storage
+            profile.autonomy_level = request.autonomy_level.value if hasattr(request.autonomy_level, 'value') else request.autonomy_level
         
         # Handle sensitive areas as list
         sensitive_areas = profile.sensitive_life_areas if profile.sensitive_life_areas else []
@@ -947,7 +1110,8 @@ async def update_value_profile(
                 if area not in request.remove_sensitive_areas
             ]
         
-        profile.sensitive_life_areas = sensitive_areas
+        # Serialize list to JSON string for database storage
+        profile.sensitive_life_areas = json.dumps(sensitive_areas) if sensitive_areas else None
         profile.updated_at = datetime.utcnow()
         
         # Update via repository
@@ -958,7 +1122,7 @@ async def update_value_profile(
             profile_id=profile.profile_id,
             user_id=profile.user_id,
             curiosity_intensity=profile.curiosity_intensity,
-            proactive_behavior_level=profile.proactive_behavior_level,
+            autonomy_level=profile.autonomy_level,
             sensitive_life_areas=profile.sensitive_life_areas if profile.sensitive_life_areas else [],
             allowed_curiosity_domains=profile.allowed_curiosity_domains if profile.allowed_curiosity_domains else []
         )
@@ -1152,9 +1316,16 @@ async def list_goals(
 ):
     """
     List goals for the current user with optional filters.
+    Cached for 20 seconds to reduce database load.
     """
     try:
         user_id = user["user_uuid"]
+        
+        # Check cache first (20s TTL, includes filter params in key)
+        cache_key = f"goals_list:{user_id}:{status}:{origin}:{priority}:{limit}:{page}"
+        cached_response = await _get_cached(cache_key, ttl_seconds=20)
+        if cached_response is not None:
+            return cached_response
         
         # Get all goals for user
         all_goals = await engine.list_goals_for_user(user_id)
@@ -1192,12 +1363,17 @@ async def list_goals(
             for g in paginated_goals
         ]
         
-        return GoalListResponse(
+        response = GoalListResponse(
             goals=goal_responses,
             total=total,
             page=page,
             page_size=limit
         )
+        
+        # Cache the response
+        await _set_cached(cache_key, response)
+        
+        return response
         
     except Exception as e:
         logger.error(f"Failed to list goals: {e}")
@@ -1362,6 +1538,7 @@ async def get_agency_state(
     """Get complete agency state - intentions, curiosity, profile, and pending consents.
 
     This is a convenience endpoint that combines multiple agency metrics.
+    Cached for 15 seconds to handle rapid-fire Studio requests.
     """
     try:
         # Agency state is a user-facing construct; do not compute it for
@@ -1370,6 +1547,12 @@ async def get_agency_state(
             raise HTTPException(status_code=403, detail="Technical users are excluded from agency state")
 
         user_id = user["user_uuid"]
+        
+        # Check cache first (15s TTL for rapid-fire requests)
+        cache_key = f"agency_state:{user_id}"
+        cached_response = await _get_cached(cache_key, ttl_seconds=15)
+        if cached_response is not None:
+            return cached_response
         
         # Get all components in parallel
         intention_set_task = get_intention_set(user, engine, limit=10)
@@ -1396,26 +1579,24 @@ async def get_agency_state(
             f"{len(active_goal_ids)} active goals"
         )
 
+        # Optimized: Fetch all events in a single bulk query instead of N+1 queries
         projected_events: list[Event] = []
-        for goal_id in active_goal_ids:
+        if active_goal_ids:
             try:
-                rows = await uow.agency_events_log.get_by_entity(
+                rows = await uow.agency_events_log.get_by_entities_bulk(
                     entity_type="goal",
-                    entity_id=goal_id,
-                    limit=20,
+                    entity_ids=list(active_goal_ids),
+                    limit_per_entity=20,
                 )
                 logger.info(
-                    f"[AGENCY_API] Found {len(rows)} events for goal {goal_id}"
+                    f"[AGENCY_API] Fetched {len(rows)} events for {len(active_goal_ids)} goals in single query"
                 )
+                projected_events = [_event_log_to_api(row) for row in rows]
             except Exception as e:
                 logger.error(
-                    f"[AGENCY_API] Failed to fetch events for goal {goal_id}: {e}",
+                    f"[AGENCY_API] Failed to fetch events in bulk: {e}",
                     exc_info=True,
                 )
-                continue
-
-            for row in rows:
-                projected_events.append(_event_log_to_api(row))
 
         # Deduplicate by event_id so each raw event is only represented once
         seen_ids: set[str] = set()
@@ -1459,7 +1640,7 @@ async def get_agency_state(
         # This would require querying for blocked actions - placeholder for now
         consent_required_actions = []
         
-        return AgencyStateResponse(
+        response = AgencyStateResponse(
             user_id=user_id,
             intention_set=intention_set,
             curiosity_status=curiosity_status,
@@ -1469,6 +1650,179 @@ async def get_agency_state(
             timestamp=datetime.utcnow(),
         )
         
+        # Cache the response
+        await _set_cached(cache_key, response)
+        
+        return response
+        
     except Exception as e:
         logger.error(f"Failed to get agency state: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================================================
+# Self-Reflection Transparency Endpoints (Studio-facing)
+# ==========================================================================
+
+
+@router.get("/reflection/runs", response_model=ReflectionRunsListResponse)
+async def list_reflection_runs(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    limit: int = Query(50, ge=1, le=200),
+):
+    try:
+        user_id = user["user_uuid"]
+        runs = await uow.agency_reflection_runs.get_user_runs(user_id)
+        runs = runs[:limit]
+        return ReflectionRunsListResponse(runs=[_reflection_run_to_api(r) for r in runs], total=len(runs))
+    except Exception as e:
+        logger.error(f"Failed to list reflection runs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reflection/lessons", response_model=LessonListResponse)
+async def list_reflection_lessons(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    active_only: bool = Query(True),
+    lesson_type: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    try:
+        user_id = user["user_uuid"]
+        if active_only:
+            lessons = await uow.lessons.get_active_lessons_for_user(user_id=user_id, lesson_type=lesson_type)
+        else:
+            filters: Dict[str, Any] = {"user_id": user_id}
+            if lesson_type:
+                filters["lesson_type"] = lesson_type
+            lessons = await uow.lessons.list(filters=filters, limit=limit)
+        lessons = lessons[:limit]
+        return LessonListResponse(lessons=[_lesson_to_api(l) for l in lessons], total=len(lessons))
+    except Exception as e:
+        logger.error(f"Failed to list reflection lessons: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reflection/self-model", response_model=SelfModelListResponse)
+async def list_self_model(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    entity_type: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    try:
+        user_id = user["user_uuid"]
+        models = await uow.agency_self_model.get_user_models(user_id=user_id, entity_type=entity_type)
+        models = models[:limit]
+        return SelfModelListResponse(models=[_self_model_to_api(m) for m in models], total=len(models))
+    except Exception as e:
+        logger.error(f"Failed to list self model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reflection/skills/{skill_id}/performance", response_model=SkillPerformanceResponse)
+async def get_skill_performance(
+    skill_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+):
+    try:
+        user_id = user["user_uuid"]
+        model = await uow.agency_self_model.get_by_entity(user_id=user_id, entity_type="skill", entity_id=skill_id)
+        if not model:
+            return SkillPerformanceResponse(user_id=user_id, skill_id=skill_id, performance_summary=None)
+        return SkillPerformanceResponse(
+            user_id=user_id,
+            skill_id=skill_id,
+            performance_summary=_self_model_to_api(model).performance_summary,
+        )
+    except Exception as e:
+        logger.error(f"Failed to get skill performance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reflection/summary", response_model=ReflectionSummaryResponse)
+async def get_reflection_summary(
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    days: int = Query(7, ge=1, le=365),
+    recent_lessons_limit: int = Query(10, ge=1, le=100),
+):
+    try:
+        user_id = user["user_uuid"]
+        window_end = datetime.now(UTC)
+        window_start = window_end - timedelta(days=days)
+
+        runs_stmt = (
+            select(func.count())
+            .select_from(agency_reflection_runs)
+            .where(
+                (agency_reflection_runs.c.user_id == user_id)
+                & (agency_reflection_runs.c.started_at >= window_start)
+                & (agency_reflection_runs.c.started_at <= window_end)
+            )
+        )
+        runs_res = await uow._session.execute(runs_stmt)
+        reflections = int(runs_res.scalar() or 0)
+
+        lessons_agg_stmt = (
+            select(
+                func.count().label("lessons_total"),
+                func.coalesce(
+                    func.sum(case((agency_lessons.c.applied_at.is_not(None), 1), else_=0)),
+                    0,
+                ).label("lessons_applied"),
+                func.avg(agency_lessons.c.confidence).label("avg_confidence"),
+            )
+            .select_from(agency_lessons)
+            .where(
+                (agency_lessons.c.user_id == user_id)
+                & (agency_lessons.c.created_at >= window_start)
+                & (agency_lessons.c.created_at <= window_end)
+            )
+        )
+        lessons_agg_res = await uow._session.execute(lessons_agg_stmt)
+        lessons_agg_row = lessons_agg_res.fetchone()
+        lessons_total = int(getattr(lessons_agg_row, "lessons_total", 0) or 0) if lessons_agg_row else 0
+        lessons_applied = int(getattr(lessons_agg_row, "lessons_applied", 0) or 0) if lessons_agg_row else 0
+        avg_confidence_raw = getattr(lessons_agg_row, "avg_confidence", None) if lessons_agg_row else None
+        avg_confidence = float(avg_confidence_raw) if avg_confidence_raw is not None else None
+
+        recent_stmt = (
+            select(agency_lessons)
+            .where(
+                (agency_lessons.c.user_id == user_id)
+                & (agency_lessons.c.created_at >= window_start)
+                & (agency_lessons.c.created_at <= window_end)
+            )
+            .order_by(agency_lessons.c.created_at.desc())
+            .limit(recent_lessons_limit)
+        )
+        recent_res = await uow._session.execute(recent_stmt)
+        recent_rows = recent_res.fetchall()
+        recent_lessons = []
+        for row in recent_rows:
+            try:
+                recent_lessons.append(_lesson_to_api(row[0]))
+            except Exception:
+                try:
+                    recent_lessons.append(_lesson_to_api(row))
+                except Exception:
+                    pass
+
+        return ReflectionSummaryResponse(
+            user_id=user_id,
+            window_days=days,
+            window_start=window_start,
+            window_end=window_end,
+            reflections=reflections,
+            lessons_total=lessons_total,
+            lessons_applied=lessons_applied,
+            avg_confidence=avg_confidence,
+            recent_lessons=recent_lessons,
+        )
+    except Exception as e:
+        logger.error(f"Failed to get reflection summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))

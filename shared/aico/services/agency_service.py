@@ -15,6 +15,7 @@ from uuid import uuid4
 # Python 3.9 compatibility
 UTC = timezone.utc
 
+from sqlalchemy.exc import IntegrityError
 from aico.core.logging import get_logger
 from aico.data.uow import UnitOfWork
 from aico.ai.agency.models import (
@@ -39,8 +40,9 @@ class AgencyService:
     Uses repositories through Unit of Work pattern.
     """
 
-    def __init__(self, uow: UnitOfWork):
+    def __init__(self, uow: UnitOfWork, skill_matcher: Optional[Any] = None):
         self.uow = uow
+        self.skill_matcher = skill_matcher
 
     # ==================== Goal Operations ====================
 
@@ -64,21 +66,28 @@ class AgencyService:
             # propagating an error.
 
             if isinstance(e, IntegrityError):
-                orig = getattr(e, "orig", None)
-                constraint_name = getattr(orig, "constraint_name", None)
+                # For asyncpg, constraint name is in the error message, not in orig.constraint_name
+                error_msg = str(e)
+                is_unique_constraint = "uq_agency_goals_user_origin_title_open" in error_msg
+                logger.info(f"[AGENCY_SERVICE] IntegrityError caught: is_unique_constraint={is_unique_constraint}")
 
-                if constraint_name == "uq_agency_goals_user_origin_title_open":
+                if is_unique_constraint:
                     # Roll back the failed insert before running a lookup.
                     await self.uow.rollback()
 
                     origin_value = getattr(goal.origin, "value", goal.origin)
 
+                    # Use a fresh UnitOfWork to look up the existing goal
+                    # The rolled-back session can't see committed data from other transactions
+                    from aico.data.uow import UnitOfWork
                     try:
-                        existing = await self.uow.goals.find_open_goal_by_title(
-                            goal.user_id,
-                            origin_value,
-                            goal.title,
-                        )
+                        async with UnitOfWork(self.uow._session_factory) as fresh_uow:
+                            existing = await fresh_uow.goals.find_open_goal_by_title(
+                                goal.user_id,
+                                origin_value,
+                                goal.title,
+                            )
+                        logger.info(f"[AGENCY_SERVICE] Lookup result: existing={'found' if existing else 'None'}")
                     except Exception as lookup_err:
                         logger.error(
                             "[AGENCY_SERVICE] Failed to resolve existing goal after unique constraint violation: "
@@ -118,7 +127,10 @@ class AgencyService:
                             "title": goal.title,
                         },
                     )
+                    await self.uow.rollback()
+                    raise e
 
+            # For any other exception (not the unique constraint case)
             logger.error(f"[AGENCY_SERVICE] Failed to create goal: {e}", extra={"goal_id": goal.goal_id})
             await self.uow.rollback()
             raise
@@ -224,11 +236,32 @@ class AgencyService:
         """Get all completed goals for a user."""
         return await self.list_goals(user_id, status=GoalStatus.COMPLETED)
 
+    async def get_goals_bulk(self, goal_ids: List[str]) -> List[Goal]:
+        """Get multiple goals by IDs in a single query (optimized for N+1 prevention).
+        
+        Args:
+            goal_ids: List of goal IDs to fetch
+            
+        Returns:
+            List of Goal objects, maintaining order where possible
+        """
+        try:
+            return await self.uow.goals.get_by_ids_bulk(goal_ids)
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get goals in bulk: {e}", extra={"count": len(goal_ids)})
+            raise
+
     # ==================== Plan Operations ====================
 
     async def create_plan(self, plan: Plan) -> Plan:
         """Create a new plan."""
         try:
+            # Defensive FK safety: never create a plan if its goal row is missing.
+            # Scheduler/arbiter flows can sometimes operate on stale goal IDs.
+            goal = await self.uow.goals.get_by_id(plan.goal_id)
+            if goal is None:
+                raise ValueError(f"Goal not found for plan creation: goal_id={plan.goal_id}")
+
             now = datetime.now(UTC)
             plan.created_at = now
             plan.updated_at = now
@@ -250,7 +283,17 @@ class AgencyService:
             if not db_plan:
                 return None
 
-            return self._to_domain_plan(db_plan)
+            plan = self._to_domain_plan(db_plan)
+            
+            # Auto-fix old plans with null skill_ids by applying skill matching
+            if self.skill_matcher and any(step.skill_id is None for step in plan.steps):
+                logger.info(f"[AGENCY_SERVICE] Auto-fixing {sum(1 for s in plan.steps if s.skill_id is None)} steps with null skill_id in plan {plan_id[:8]}...")
+                plan.steps = await self._assign_skills_to_steps(plan.steps)
+                # Update plan in database with fixed skills
+                await self.update_plan(plan)
+                await self.uow.commit()
+            
+            return plan
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to retrieve plan: {e}", extra={"plan_id": plan_id})
             raise
@@ -263,10 +306,48 @@ class AgencyService:
                 filters["status"] = status.value
             
             db_plans = await self.uow.plans.list(filters=filters)
-            return [self._to_domain_plan(p) for p in db_plans]
+            plans = [self._to_domain_plan(p) for p in db_plans]
+            
+            # Auto-fix old plans with null skill_ids
+            if self.skill_matcher:
+                for plan in plans:
+                    if any(step.skill_id is None for step in plan.steps):
+                        logger.info(f"[AGENCY_SERVICE] Auto-fixing {sum(1 for s in plan.steps if s.skill_id is None)} steps with null skill_id in plan {plan.plan_id[:8]}...")
+                        plan.steps = await self._assign_skills_to_steps(plan.steps)
+                        await self.update_plan(plan)
+                await self.uow.commit()
+            
+            return plans
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to list plans: {e}", extra={"goal_id": goal_id})
             raise
+
+    async def _assign_skills_to_steps(self, steps: List[PlanStep]) -> List[PlanStep]:
+        """Assign skills to plan steps using SkillMatcher.
+        
+        This auto-fixes old plans that were created before SkillMatcher was enabled.
+        """
+        if not self.skill_matcher:
+            return steps
+        
+        for step in steps:
+            if step.skill_id is None:
+                try:
+                    match = await self.skill_matcher.match_skill(
+                        step_description=step.description,
+                        step_metadata=step.metadata,
+                        llm_suggested_skills=step.metadata.get('suggested_skills', []),
+                    )
+                    if match:
+                        step.skill_id = match.skill_id
+                        step.metadata['skill_match_confidence'] = match.confidence
+                        step.metadata['skill_match_strategy'] = match.strategy.value
+                        step.metadata['skill_match_reasoning'] = match.reasoning
+                        logger.debug(f"[AGENCY_SERVICE] Assigned skill '{match.skill_id}' to step (confidence={match.confidence:.2f}, strategy={match.strategy.value})")
+                except Exception as e:
+                    logger.error(f"[AGENCY_SERVICE] Error assigning skill to step: {e}")
+        
+        return steps
 
     async def update_plan(self, plan: Plan) -> Plan:
         """Update an existing plan."""
@@ -440,7 +521,11 @@ class AgencyService:
         try:
             from aico.data.agency.models import ArbiterBanditArm
             arm = ArbiterBanditArm(**arm_data)
-            await self.uow.arbiter_bandit_arms.upsert(arm)
+            existing = await self.uow.arbiter_bandit_arms.get_by_id(arm.arm_id)
+            if existing:
+                await self.uow.arbiter_bandit_arms.update(arm)
+            else:
+                await self.uow.arbiter_bandit_arms.create(arm)
             await self.uow.commit()
             logger.debug(f"[AGENCY_SERVICE] Saved bandit arm: {arm_data.get('arm_id')}")
         except Exception as e:
@@ -452,7 +537,15 @@ class AgencyService:
         """Get all bandit arm configurations."""
         try:
             arms = await self.uow.arbiter_bandit_arms.list()
-            return [arm.to_dict() if hasattr(arm, 'to_dict') else arm for arm in arms]
+            normalized: List[Dict[str, Any]] = []
+            for arm in arms:
+                if hasattr(arm, "to_dict"):
+                    normalized.append(arm.to_dict())
+                elif hasattr(arm, "model_dump"):
+                    normalized.append(arm.model_dump())
+                else:
+                    normalized.append(dict(arm.__dict__))
+            return normalized
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get bandit arms: {e}")
             raise
@@ -474,7 +567,13 @@ class AgencyService:
         """Get A/B test results."""
         try:
             test = await self.uow.arbiter_ab_tests.get_by_id(test_id)
-            return test.to_dict() if test and hasattr(test, 'to_dict') else test
+            if not test:
+                return None
+            if hasattr(test, "to_dict"):
+                return test.to_dict()
+            if hasattr(test, "model_dump"):
+                return test.model_dump()
+            return dict(test.__dict__)
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get A/B test: {e}")
             raise
@@ -513,7 +612,15 @@ class AgencyService:
         try:
             # Use a join query through the repository
             executions = await self.uow.agency_skill_executions.get_by_goal(goal_id)
-            return [e.to_dict() if hasattr(e, 'to_dict') else e for e in executions]
+            normalized: List[Dict[str, Any]] = []
+            for e in executions:
+                if hasattr(e, "to_dict"):
+                    normalized.append(e.to_dict())
+                elif hasattr(e, "model_dump"):
+                    normalized.append(e.model_dump())
+                else:
+                    normalized.append(dict(e.__dict__))
+            return normalized
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get goal executions: {e}")
             raise
@@ -521,8 +628,8 @@ class AgencyService:
     async def record_behavioral_feedback(self, feedback_data: Dict[str, Any]) -> str:
         """Record behavioral feedback."""
         try:
-            from aico.data.agency.models import AMSBehavioralFeedback
-            feedback = AMSBehavioralFeedback(**feedback_data)
+            from aico.data.ams.models import BehavioralFeedback
+            feedback = BehavioralFeedback(**feedback_data)
             created = await self.uow.ams_behavioral_feedback.create(feedback)
             await self.uow.commit()
             logger.info(f"[AGENCY_SERVICE] Recorded behavioral feedback: {created.feedback_id}")
@@ -576,7 +683,7 @@ class AgencyService:
             if request:
                 request.response = response
                 request.rating = rating
-                request.responded_at = datetime.now(UTC)
+                request.responded_at = datetime.now(UTC).isoformat()
                 await self.uow.user_feedback_requests.update(request)
                 await self.uow.commit()
                 logger.info(f"[AGENCY_SERVICE] Recorded feedback response: {request_id}")
@@ -588,10 +695,16 @@ class AgencyService:
     async def get_pending_feedback_requests(self, user_id: str) -> List[Dict[str, Any]]:
         """Get pending feedback requests for a user."""
         try:
-            requests = await self.uow.user_feedback_requests.list(
-                filters={"user_id": user_id, "responded_at": None}
-            )
-            return [r.to_dict() if hasattr(r, 'to_dict') else r for r in requests]
+            requests = await self.uow.user_feedback_requests.get_pending_for_user(user_id)
+            normalized: List[Dict[str, Any]] = []
+            for r in requests:
+                if hasattr(r, "to_dict"):
+                    normalized.append(r.to_dict())
+                elif hasattr(r, "model_dump"):
+                    normalized.append(r.model_dump())
+                else:
+                    normalized.append(dict(r.__dict__))
+            return normalized
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get pending feedback requests: {e}")
             raise
@@ -608,6 +721,15 @@ class AgencyService:
             return stats
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get skill performance stats: {e}")
+            raise
+
+    async def get_user_satisfaction_trend(self, user_id: str, days: int = 30) -> List[Dict[str, Any]]:
+        """Get user satisfaction trend over time."""
+        try:
+            from_iso = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            return await self.uow.user_feedback_requests.get_satisfaction_trend(user_id, from_iso)
+        except Exception as e:
+            logger.error(f"[AGENCY_SERVICE] Failed to get user satisfaction trend: {e}")
             raise
 
     async def get_skill_trend_data(self, skill_id: str, days: int = 30) -> List[Dict[str, Any]]:
@@ -643,12 +765,24 @@ class AgencyService:
         """Update a step execution record."""
         try:
             step = await self.uow.agency_step_executions.get_by_id(step_execution_id)
-            if step:
-                for key, value in updates.items():
-                    setattr(step, key, value)
-                await self.uow.agency_step_executions.update(step)
+            if not step:
+                # First write for this step execution: create it.
+                # The executor always passes a full record (ids + required fields),
+                # so we can safely create from `updates`.
+                from aico.data.agency.execution_models import AgencyStepExecution
+                step = AgencyStepExecution(**updates)
+                await self.uow.agency_step_executions.create(step)
                 await self.uow.commit()
-                logger.debug(f"[AGENCY_SERVICE] Updated step execution: {step_execution_id}")
+                logger.debug(f"[AGENCY_SERVICE] Created step execution (via upsert): {step_execution_id}")
+                return
+
+            for key, value in updates.items():
+                setattr(step, key, value)
+
+            # Repository API expects (step_execution_id, entity)
+            await self.uow.agency_step_executions.update(step_execution_id, step)
+            await self.uow.commit()
+            logger.debug(f"[AGENCY_SERVICE] Updated step execution: {step_execution_id}")
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to update step execution: {e}")
             await self.uow.rollback()
@@ -660,7 +794,19 @@ class AgencyService:
             steps = await self.uow.agency_step_executions.list(
                 filters={"execution_id": execution_id}
             )
-            return [s.to_dict() if hasattr(s, 'to_dict') else s for s in steps]
+            # Convert Pydantic models to dicts properly
+            result = []
+            for s in steps:
+                if hasattr(s, 'model_dump'):
+                    result.append(s.model_dump())
+                elif hasattr(s, 'to_dict'):
+                    result.append(s.to_dict())
+                elif isinstance(s, dict):
+                    result.append(s)
+                else:
+                    # Fallback: convert to dict manually
+                    result.append(dict(s))
+            return result
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get step executions: {e}")
             raise
@@ -717,7 +863,11 @@ class AgencyService:
             )
             if steps:
                 step = steps[0]
-                return step.to_dict() if hasattr(step, 'to_dict') else step
+                if hasattr(step, "to_dict"):
+                    return step.to_dict()
+                if hasattr(step, "model_dump"):
+                    return step.model_dump()
+                return dict(step)
             return None
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get next pending step: {e}")

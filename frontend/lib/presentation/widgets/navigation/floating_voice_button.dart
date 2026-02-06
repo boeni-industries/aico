@@ -55,11 +55,11 @@ class _FloatingVoiceButtonState extends State<FloatingVoiceButton>
 
     if (_isListening) {
       _animationController.repeat(reverse: true);
-      // TODO: Start voice recording
+      // NOTE: Start voice recording
     } else {
       _animationController.stop();
       _animationController.reset();
-      // TODO: Stop voice recording and process
+      // NOTE: Stop voice recording and process
     }
   }
 

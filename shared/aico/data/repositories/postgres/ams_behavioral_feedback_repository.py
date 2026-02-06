@@ -6,7 +6,7 @@ Handles CRUD operations for AMS behavioral feedback.
 
 from typing import Optional, List
 from datetime import datetime, UTC
-from sqlalchemy import select, update, delete, and_, func
+from sqlalchemy import select, update, delete, and_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aico.data.ams.models import BehavioralFeedback
@@ -124,6 +124,46 @@ class PostgresAMSBehavioralFeedbackRepository(Repository[BehavioralFeedback]):
             )
             for row in result.fetchall()
         ]
+
+    async def get_skill_stats(
+        self,
+        skill_id: str,
+        user_id: Optional[str] = None,
+        from_date: Optional[datetime] = None,
+    ) -> dict:
+        """Get aggregate performance stats for a skill."""
+        conditions = [ams_behavioral_feedback.c.skill_id == skill_id]
+        if user_id:
+            conditions.append(ams_behavioral_feedback.c.user_id == user_id)
+        if from_date:
+            conditions.append(ams_behavioral_feedback.c.timestamp >= from_date)
+
+        stmt = (
+            select(
+                func.count().label("total"),
+                func.coalesce(
+                    func.sum(case((ams_behavioral_feedback.c.outcome == "success", 1), else_=0)),
+                    0,
+                ).label("successes"),
+                func.coalesce(
+                    func.sum(case((ams_behavioral_feedback.c.outcome == "failure", 1), else_=0)),
+                    0,
+                ).label("failures"),
+            )
+            .where(and_(*conditions))
+        )
+
+        result = await self.session.execute(stmt)
+        row = result.fetchone()
+        if not row:
+            return {"total": 0, "successes": 0, "failures": 0}
+
+        mapping = row._mapping
+        return {
+            "total": int(mapping["total"] or 0),
+            "successes": int(mapping["successes"] or 0),
+            "failures": int(mapping["failures"] or 0),
+        }
     
     async def count(self, filters: Optional[dict] = None) -> int:
         """Count behavioral feedback with optional filters."""

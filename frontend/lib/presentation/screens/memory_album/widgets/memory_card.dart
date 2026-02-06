@@ -6,6 +6,7 @@ library;
 
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
+import 'package:aico_frontend/presentation/widgets/chat/markdown_content.dart';
 import 'package:flutter/material.dart';
 
 class MemoryCard extends StatefulWidget {
@@ -33,6 +34,16 @@ class _MemoryCardState extends State<MemoryCard> {
   Widget build(BuildContext context) {
     final emotionalColor = MemoryAlbumTheme.getEmotionalToneColor(
       widget.memory.emotionalTone,
+    );
+
+    final rawPreview = (widget.memory.isConversationMemory
+            ? (widget.memory.conversationSummary ?? widget.memory.content)
+            : widget.memory.content)
+        .trim();
+
+    final previewMarkdown = MarkdownContent.truncateMarkdownSafely(
+      rawPreview,
+      maxChars: 800,
     );
 
     return MouseRegion(
@@ -155,17 +166,27 @@ class _MemoryCardState extends State<MemoryCard> {
                     
                     // Content
                     Flexible(
-                      child: Text(
-                        (widget.memory.isConversationMemory 
-                            ? (widget.memory.conversationSummary ?? widget.memory.content)
-                            : widget.memory.content).trim(),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: MemoryAlbumTheme.textPrimary,
-                          height: 1.6,
+                      child: ClipRect(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 92),
+                          child: DefaultTextStyle.merge(
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: MemoryAlbumTheme.textPrimary,
+                              height: 1.6,
+                            ),
+                            child: IgnorePointer(
+                              child: SingleChildScrollView(
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: MarkdownContent(
+                                  data: previewMarkdown,
+                                  isDark: true,
+                                  accentColor: emotionalColor,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     

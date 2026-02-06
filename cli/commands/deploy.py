@@ -639,7 +639,7 @@ def deploy_pg(
     shadow: bool = typer.Option(
         False,
         "--shadow",
-        help="Provision the shadow Postgres instance (postgres-shadow / core.database.postgres_shadow).",
+        help="Provision the shadow Postgres instance (postgres-shadow / postgres_shadow).",
     ),
 ):
     """Deploy or refresh the Postgres backend on the current environment.
@@ -674,7 +674,7 @@ def deploy_pg(
     from aico.core.config import ConfigurationManager
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    cfg_key = "core.database.postgres_shadow" if shadow else "core.database.postgres"
+    cfg_key = "postgres_shadow" if shadow else "postgres"
     pg_cfg = config.get(cfg_key, {}) or {}
     host = pg_cfg.get("host", "127.0.0.1")
     port = int(pg_cfg.get("port", 5432))

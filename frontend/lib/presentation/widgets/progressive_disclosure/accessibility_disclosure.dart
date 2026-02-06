@@ -73,7 +73,8 @@ class _AccessibilityProgressiveDisclosureState extends State<AccessibilityProgre
     widget.onExpansionChanged?.call();
     
     // Announce state change to screen readers
-    SemanticsService.announce(
+    SemanticsService.sendAnnouncement(
+      View.of(context),
       _isExpanded 
           ? (widget.expandedSemanticLabel ?? '${widget.title} expanded')
           : (widget.collapsedSemanticLabel ?? '${widget.title} collapsed'),
@@ -264,7 +265,7 @@ class _ScreenReaderOptimizedDisclosureState extends State<ScreenReaderOptimizedD
           ? _buildExpandedAnnouncement()
           : '${widget.title} collapsed';
       
-      SemanticsService.announce(announcement, TextDirection.ltr);
+      SemanticsService.sendAnnouncement(View.of(context), announcement, TextDirection.ltr);
     }
   }
 

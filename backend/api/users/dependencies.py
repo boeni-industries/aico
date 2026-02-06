@@ -12,8 +12,7 @@ import re
 import uuid
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
-from aico.data.user import UserService
-from backend.core.lifecycle_manager import get_service_container, get_user_service, get_auth_manager
+from backend.core.lifecycle_manager import get_auth_manager
 
 security = HTTPBearer()
 logger = get_logger("api.users_dependencies")
@@ -111,7 +110,7 @@ def validate_user_type(user_type: str) -> str:
     Validate user type is one of the allowed values.
     """
     config_manager = ConfigurationManager()
-    default_user_type = config_manager.get('user_profiles.default_user_type', 'person')
+    default_user_type = config_manager.get('core.user_profiles.default_user_type', 'person')
     allowed_types = {default_user_type}
     if user_type not in allowed_types:
         raise HTTPException(

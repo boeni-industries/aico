@@ -109,6 +109,7 @@ class UnitOfWork:
         self._user_skill_confidence_repository = None
         self._system_health_checks_repository = None
         self._system_issues_repository = None
+        self._policy_rules_repository = None
     
     async def __aenter__(self):
         """Enter context - create session."""
@@ -795,6 +796,14 @@ class UnitOfWork:
             from .repositories.system_issues import SystemIssueRepository
             self._system_issues_repository = SystemIssueRepository(self._session)
         return self._system_issues_repository
+    
+    @property
+    def policy_rules(self):
+        """Get PolicyRuleRepository instance."""
+        if self._policy_rules_repository is None:
+            from .repositories.postgres.policy_rule_repository import PostgresPolicyRuleRepository
+            self._policy_rules_repository = PostgresPolicyRuleRepository(self._session)
+        return self._policy_rules_repository
 
 
 @asynccontextmanager

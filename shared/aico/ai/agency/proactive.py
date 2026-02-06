@@ -13,6 +13,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass
 from enum import Enum
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from aico.data.uow import UnitOfWork
 
 
 
@@ -127,17 +130,17 @@ class FollowupSystem:
     
     def __init__(
         self,
-        db: Any,  # Agency system being redesigned
+        session_factory: async_sessionmaker,
         policy_service=None,
         values_service=None,
         logger=None
     ):
-        self.db = db
+        self.session_factory = session_factory
         self.policy_service = policy_service
         self.values_service = values_service
         self.logger = logger
     
-    def create_followup(
+    async def create_followup(
         self,
         user_id: str,
         followup_type: FollowupType,
@@ -178,33 +181,28 @@ class FollowupSystem:
             values_alignment = self._calculate_values_alignment(user_id, goal_id)
         
         try:
-            self.db.execute(
-                """
-                INSERT INTO agency_followups (
-                    followup_id, user_id, goal_id, related_message_id,
-                    followup_type, content, scheduled_at, status, priority,
-                    policy_approved, relationship_context, values_alignment,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    followup_id,
-                    user_id,
-                    goal_id,
-                    related_message_id,
-                    followup_type.value,
-                    content,
-                    scheduled_at.isoformat(),
-                    FollowupStatus.PENDING.value,
-                    priority,
-                    1 if policy_approved else 0,
-                    json.dumps(relationship_context),
-                    values_alignment,
-                    datetime.now(UTC).isoformat(),
-                    datetime.now(UTC).isoformat()
+            async with UnitOfWork(self.session_factory) as uow:
+                from aico.ai.agency.models import AgencyFollowup
+                
+                followup = AgencyFollowup(
+                    followup_id=followup_id,
+                    user_id=user_id,
+                    goal_id=goal_id,
+                    related_message_id=related_message_id,
+                    followup_type=followup_type.value,
+                    content=content,
+                    scheduled_at=scheduled_at,
+                    status=FollowupStatus.PENDING.value,
+                    priority=priority,
+                    policy_approved=policy_approved,
+                    relationship_context=relationship_context,
+                    values_alignment=values_alignment,
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC)
                 )
-            )
-            self.db.commit()
+                
+                await uow.agency_followups.create(followup)
+                await uow.commit()
             
             if self.logger:
                 self.logger.info(
@@ -259,65 +257,47 @@ class FollowupSystem:
             return 0.5
     
     def _get_user_preferences(self, user_id: str) -> Dict[str, Any]:
-        """Get user proactive preferences."""
-        try:
-            row = self.db.fetch_one(
-                "SELECT * FROM user_proactive_preferences WHERE user_id = ?",
-                (user_id,)
-            )
-            
-            if row:
-                return dict(row)
-            
-            # Return defaults
-            return {
-                "followup_enabled": True,
-                "max_followups_per_day": 3,
-                "min_hours_between_followups": 4
-            }
-            
-        except Exception:
-            return {}
+        """Get user proactive preferences - legacy method, returns defaults."""
+        return {
+            "followup_enabled": True,
+            "max_followups_per_day": 3,
+            "min_hours_between_followups": 4
+        }
     
-    def _count_todays_followups(self, user_id: str) -> int:
-        """Count follow-ups delivered today."""
+    async def _check_followup_frequency(
+        self,
+        user_id: str,
+        max_per_day: int = 3
+    ) -> bool:
+        """Check if user hasn't exceeded daily follow-up limit."""
         try:
             today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
             
-            row = self.db.fetch_one(
-                """
-                SELECT COUNT(*) as count FROM agency_followups
-                WHERE user_id = ? AND delivered_at >= ?
-                """,
-                (user_id, today_start.isoformat())
-            )
-            
-            return row["count"] if row else 0
+            async with UnitOfWork(self.session_factory) as uow:
+                count = await uow.agency_followups.count_delivered_since(
+                    user_id=user_id,
+                    since=today_start
+                )
+                return count < max_per_day
             
         except Exception:
-            return 0
+            return True
     
-    def _get_last_followup_time(self, user_id: str) -> Optional[datetime]:
-        """Get time of last delivered follow-up."""
+    async def _get_last_followup_time(self, user_id: str) -> Optional[datetime]:
+        """Get timestamp of last delivered follow-up."""
         try:
-            row = self.db.fetch_one(
-                """
-                SELECT delivered_at FROM agency_followups
-                WHERE user_id = ? AND delivered_at IS NOT NULL
-                ORDER BY delivered_at DESC LIMIT 1
-                """,
-                (user_id,)
-            )
-            
-            if row and row["delivered_at"]:
-                return datetime.fromisoformat(row["delivered_at"]).replace(tzinfo=UTC)
-            
-            return None
-            
+            async with UnitOfWork(self.session_factory) as uow:
+                followup = await uow.agency_followups.get_last_delivered(user_id)
+                
+                if followup and followup.delivered_at:
+                    return followup.delivered_at
+                
+                return None
+                
         except Exception:
             return None
     
-    def get_pending_followups(
+    async def get_pending_followups(
         self,
         user_id: str,
         before: Optional[datetime] = None
@@ -326,24 +306,20 @@ class FollowupSystem:
         before = before or datetime.now(UTC)
         
         try:
-            rows = self.db.fetch_all(
-                """
-                SELECT * FROM agency_followups
-                WHERE user_id = ? AND status = ? AND scheduled_at <= ?
-                  AND policy_approved = 1
-                ORDER BY priority DESC, scheduled_at ASC
-                """,
-                (user_id, FollowupStatus.PENDING.value, before.isoformat())
-            )
-            
-            return [self._row_to_followup(row) for row in rows]
-            
+            async with UnitOfWork(self.session_factory) as uow:
+                followups = await uow.agency_followups.get_pending(
+                    user_id=user_id,
+                    before=before,
+                    policy_approved=True
+                )
+                return followups
+                
         except Exception as e:
             if self.logger:
                 self.logger.error(f"[FOLLOWUP] Failed to get pending follow-ups: {e}")
             return []
     
-    def mark_delivered(
+    async def mark_delivered(
         self,
         followup_id: str,
         delivered_at: Optional[datetime] = None
@@ -352,27 +328,20 @@ class FollowupSystem:
         delivered_at = delivered_at or datetime.now(UTC)
         
         try:
-            self.db.execute(
-                """
-                UPDATE agency_followups
-                SET status = ?, delivered_at = ?, updated_at = ?
-                WHERE followup_id = ?
-                """,
-                (
-                    FollowupStatus.DELIVERED.value,
-                    delivered_at.isoformat(),
-                    datetime.now(UTC).isoformat(),
-                    followup_id
+            async with UnitOfWork(self.session_factory) as uow:
+                await uow.agency_followups.update_status(
+                    followup_id=followup_id,
+                    status=FollowupStatus.DELIVERED.value,
+                    delivered_at=delivered_at
                 )
-            )
-            self.db.commit()
+                await uow.commit()
             
         except Exception as e:
             if self.logger:
                 self.logger.error(f"[FOLLOWUP] Failed to mark delivered: {e}")
             raise
     
-    def record_response(
+    async def record_response(
         self,
         followup_id: str,
         response: str,
@@ -380,24 +349,16 @@ class FollowupSystem:
     ) -> None:
         """Record user response to follow-up."""
         try:
-            self.db.execute(
-                """
-                UPDATE agency_followups
-                SET status = ?, user_response = ?, response_sentiment = ?, updated_at = ?
-                WHERE followup_id = ?
-                """,
-                (
-                    FollowupStatus.RESPONDED.value,
-                    response,
-                    sentiment,
-                    datetime.now(UTC).isoformat(),
-                    followup_id
+            async with UnitOfWork(self.session_factory) as uow:
+                await uow.agency_followups.record_response(
+                    followup_id=followup_id,
+                    response=response,
+                    sentiment=sentiment
                 )
-            )
-            self.db.commit()
+                await uow.commit()
             
             # Record analytics
-            self._record_analytics(followup_id, "responded", sentiment)
+            await self._record_analytics(followup_id, "responded", sentiment)
             
         except Exception as e:
             if self.logger:
@@ -421,53 +382,53 @@ class FollowupSystem:
             priority=row["priority"],
             policy_approved=bool(row["policy_approved"]),
             relationship_context=json.loads(row["relationship_context"]) if row["relationship_context"] else {},
-            values_alignment=row["values_alignment"],
+            values_alignment=row.get("values_alignment"),
             created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
             updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
         )
     
-    def _record_analytics(
+    async def _record_analytics(
         self,
         followup_id: str,
         action: str,
         sentiment: Optional[float] = None
     ) -> None:
-        """Record analytics for follow-up interaction."""
+        """Record analytics for follow-up action."""
         try:
-            # Get followup details
-            row = self.db.fetch_one(
-                "SELECT user_id, delivered_at FROM agency_followups WHERE followup_id = ?",
-                (followup_id,)
-            )
-            
-            if not row:
-                return
-            
-            analytics_id = str(uuid.uuid4())
-            
-            self.db.execute(
-                """
-                INSERT INTO proactive_analytics (
-                    analytics_id, user_id, behavior_type, item_id,
-                    delivered_at, user_action, sentiment_score, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    analytics_id,
-                    row["user_id"],
-                    "followup",
-                    followup_id,
-                    row["delivered_at"] or datetime.now(UTC).isoformat(),
-                    action,
-                    sentiment,
-                    datetime.now(UTC).isoformat()
+            async with UnitOfWork(self.session_factory) as uow:
+                # Get followup details
+                followup = await uow.agency_followups.get_by_id(followup_id)
+                
+                if not followup:
+                    return
+                
+                from aico.ai.agency.models import ProactiveAnalytic
+                
+                event_data = {
+                    "followup_id": followup_id,
+                    "action": action,
+                    "delivered_at": followup.delivered_at.isoformat() if followup.delivered_at else datetime.now(UTC).isoformat(),
+                }
+                if sentiment is not None:
+                    event_data["sentiment_score"] = sentiment
+
+                analytic = ProactiveAnalytic(
+                    id=str(uuid.uuid4()),
+                    user_id=followup.user_id,
+                    event_type="followup",
+                    event_data=event_data,
+                    confidence_score=sentiment,
+                    triggered_action=action,
+                    created_at=datetime.now(UTC)
                 )
-            )
-            self.db.commit()
+                
+                await uow.proactive_analytics.create(analytic)
+                await uow.commit()
             
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"[FOLLOWUP] Failed to record analytics: {e}")
+                return
 
 
 # ============================================================================
@@ -486,12 +447,11 @@ class ReminderSystem:
     - Recurrence support
     """
     
-    def __init__(self, db: Any, logger=None):
-        # Agency system being redesigned
-        self.db = db
+    def __init__(self, session_factory: async_sessionmaker, logger=None):
+        self.session_factory = session_factory
         self.logger = logger
     
-    def create_reminder(
+    async def create_reminder(
         self,
         user_id: str,
         title: str,
@@ -522,40 +482,35 @@ class ReminderSystem:
         urgency_score = self._calculate_urgency(scheduled_at, priority)
         
         # Check if should cluster
-        cluster_id = self._find_or_create_cluster(user_id, scheduled_at)
+        cluster_id = await self._find_or_create_cluster(user_id, scheduled_at)
         
         try:
-            self.db.execute(
-                """
-                INSERT INTO agency_reminders (
-                    reminder_id, user_id, goal_id, title, description,
-                    scheduled_at, status, priority, urgency_score,
-                    recurrence_rule, cluster_id, adaptation_data,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    reminder_id,
-                    user_id,
-                    goal_id,
-                    title,
-                    description,
-                    scheduled_at.isoformat(),
-                    ReminderStatus.PENDING.value,
-                    priority.value,
-                    urgency_score,
-                    json.dumps(recurrence_rule) if recurrence_rule else None,
-                    cluster_id,
-                    json.dumps({}),
-                    datetime.now(UTC).isoformat(),
-                    datetime.now(UTC).isoformat()
+            async with UnitOfWork(self.session_factory) as uow:
+                from aico.ai.agency.models import AgencyReminder
+                
+                reminder = AgencyReminder(
+                    reminder_id=reminder_id,
+                    user_id=user_id,
+                    goal_id=goal_id,
+                    title=title,
+                    description=description,
+                    scheduled_at=scheduled_at,
+                    status=ReminderStatus.PENDING.value,
+                    priority=priority.value,
+                    urgency_score=urgency_score,
+                    recurrence_rule=recurrence_rule,
+                    cluster_id=cluster_id,
+                    adaptation_data={},
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC)
                 )
-            )
-            self.db.commit()
+                
+                await uow.agency_reminders.create(reminder)
+                await uow.commit()
             
             # Update cluster count
             if cluster_id:
-                self._update_cluster_count(cluster_id)
+                await self._update_cluster_count(cluster_id)
             
             if self.logger:
                 self.logger.info(
@@ -599,14 +554,14 @@ class ReminderSystem:
         
         return min(1.0, base_score * time_multiplier)
     
-    def _find_or_create_cluster(
+    async def _find_or_create_cluster(
         self,
         user_id: str,
         scheduled_at: datetime
     ) -> Optional[str]:
         """Find existing cluster or create new one for batching."""
         # Get user preferences
-        prefs = self._get_user_preferences(user_id)
+        prefs = await self._get_user_preferences(user_id)
         
         if not prefs.get("cluster_reminders", True):
             return None
@@ -616,76 +571,76 @@ class ReminderSystem:
         window_end = scheduled_at + timedelta(minutes=15)
         
         try:
-            row = self.db.fetch_one(
-                """
-                SELECT cluster_id FROM proactive_reminder_clusters
-                WHERE user_id = ? AND status = 'pending'
-                  AND scheduled_delivery >= ? AND scheduled_delivery <= ?
-                ORDER BY scheduled_delivery ASC LIMIT 1
-                """,
-                (user_id, window_start.isoformat(), window_end.isoformat())
-            )
-            
-            if row:
-                return row["cluster_id"]
-            
-            # Create new cluster
-            cluster_id = str(uuid.uuid4())
-            self.db.execute(
-                """
-                INSERT INTO proactive_reminder_clusters (
-                    cluster_id, user_id, scheduled_delivery, status,
-                    reminder_count, created_at
-                ) VALUES (?, ?, ?, ?, 0, ?)
-                """,
-                (
-                    cluster_id,
-                    user_id,
-                    scheduled_at.isoformat(),
-                    "pending",
-                    datetime.now(UTC).isoformat()
+            async with UnitOfWork(self.session_factory) as uow:
+                # Find existing cluster
+                cluster = await uow.proactive_reminder_clusters.find_in_window(
+                    user_id=user_id,
+                    window_start=window_start,
+                    window_end=window_end
                 )
-            )
-            self.db.commit()
-            
-            return cluster_id
-            
-        except Exception:
-            return None
+
+                if cluster:
+                    return cluster.cluster_id
+
+                # Create new cluster
+                from aico.ai.agency.models import ProactiveReminderCluster
+                
+                cluster_id = str(uuid.uuid4())
+                new_cluster = ProactiveReminderCluster(
+                    cluster_id=cluster_id,
+                    user_id=user_id,
+                    cluster_name="Auto Cluster",
+                    reminder_ids=[],
+                    pattern_description=None,
+                    confidence_score=None,
+                    created_at=datetime.now(UTC)
+                )
+                
+                await uow.proactive_reminder_clusters.create(new_cluster)
+                await uow.commit()
+
+                return cluster_id
+
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"[REMINDER] Failed to find/create cluster: {e}")
+                return None
     
-    def _update_cluster_count(self, cluster_id: str) -> None:
-        """Update reminder count in cluster."""
+    async def _update_cluster_count(self, cluster_id: str) -> None:
+        """Update reminder list in cluster."""
         try:
-            self.db.execute(
-                """
-                UPDATE proactive_reminder_clusters
-                SET reminder_count = (
-                    SELECT COUNT(*) FROM agency_reminders
-                    WHERE cluster_id = ?
+            async with UnitOfWork(self.session_factory) as uow:
+                # Get all reminders in cluster
+                reminders = await uow.agency_reminders.get_by_cluster(cluster_id)
+                reminder_ids = [r.reminder_id for r in reminders]
+
+                # Update cluster
+                await uow.proactive_reminder_clusters.update_reminder_ids(
+                    cluster_id=cluster_id,
+                    reminder_ids=reminder_ids
                 )
-                WHERE cluster_id = ?
-                """,
-                (cluster_id, cluster_id)
-            )
-            self.db.commit()
+                await uow.commit()
             
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"[REMINDER] Failed to update cluster count: {e}")
     
-    def _get_user_preferences(self, user_id: str) -> Dict[str, Any]:
+    async def _get_user_preferences(self, user_id: str) -> Dict[str, Any]:
         """Get user proactive preferences."""
         try:
-            row = self.db.fetch_one(
-                "SELECT * FROM user_proactive_preferences WHERE user_id = ?",
-                (user_id,)
-            )
-            
-            if row:
-                return dict(row)
-            
-            return {
-                "reminder_enabled": True,
+            async with UnitOfWork(self.session_factory) as uow:
+                prefs = await uow.user_proactive_preferences.get_by_user_id(user_id)
+                
+                if prefs:
+                    return {
+                        "reminder_enabled": prefs.reminder_enabled,
+                        "cluster_reminders": prefs.cluster_reminders,
+                        "preferred_times": prefs.preferred_times,
+                        "max_daily_reminders": prefs.max_daily_reminders
+                    }
+                
+                return {
+                    "reminder_enabled": True,
                 "cluster_reminders": True,
                 "max_reminders_per_day": 5,
                 "auto_snooze_duration_minutes": 60
@@ -694,7 +649,7 @@ class ReminderSystem:
         except Exception:
             return {}
     
-    def get_pending_reminders(
+    async def get_pending_reminders(
         self,
         user_id: str,
         before: Optional[datetime] = None
@@ -703,109 +658,78 @@ class ReminderSystem:
         before = before or datetime.now(UTC)
         
         try:
-            rows = self.db.fetch_all(
-                """
-                SELECT * FROM agency_reminders
-                WHERE user_id = ? AND status = ? AND scheduled_at <= ?
-                ORDER BY urgency_score DESC, scheduled_at ASC
-                """,
-                (user_id, ReminderStatus.PENDING.value, before.isoformat())
-            )
-            
-            return [self._row_to_reminder(row) for row in rows]
-            
+            async with UnitOfWork(self.session_factory) as uow:
+                reminders = await uow.agency_reminders.get_pending(
+                    user_id=user_id,
+                    before=before
+                )
+                return reminders
+                
         except Exception as e:
             if self.logger:
                 self.logger.error(f"[REMINDER] Failed to get pending reminders: {e}")
             return []
     
-    def get_clustered_reminders(
+    async def get_clustered_reminders(
         self,
         user_id: str,
         cluster_id: str
     ) -> List[Reminder]:
         """Get all reminders in a cluster."""
         try:
-            rows = self.db.fetch_all(
-                """
-                SELECT * FROM agency_reminders
-                WHERE user_id = ? AND cluster_id = ? AND status = ?
-                ORDER BY urgency_score DESC
-                """,
-                (user_id, cluster_id, ReminderStatus.PENDING.value)
-            )
-            
-            return [self._row_to_reminder(row) for row in rows]
-            
+            async with UnitOfWork(self.session_factory) as uow:
+                reminders = await uow.agency_reminders.get_by_cluster(
+                    cluster_id=cluster_id,
+                    user_id=user_id,
+                    status=ReminderStatus.PENDING.value
+                )
+                return reminders
+                
         except Exception as e:
             if self.logger:
                 self.logger.error(f"[REMINDER] Failed to get clustered reminders: {e}")
             return []
     
-    def snooze_reminder(
+    async def snooze_reminder(
         self,
         reminder_id: str,
-        snooze_minutes: Optional[int] = None
+        snooze_minutes: int = 60
     ) -> None:
-        """Snooze a reminder."""
-        # Get user preferences for default snooze duration
+        """Snooze a reminder for specified duration."""
         try:
-            row = self.db.fetch_one(
-                "SELECT user_id FROM agency_reminders WHERE reminder_id = ?",
-                (reminder_id,)
-            )
-            
-            if not row:
-                return
-            
-            prefs = self._get_user_preferences(row["user_id"])
-            snooze_minutes = snooze_minutes or prefs.get("auto_snooze_duration_minutes", 60)
+            # Validate snooze duration
+            if snooze_minutes < 5 or snooze_minutes > 1440:  # 5 min to 24 hours
+                raise ValueError("Snooze duration must be between 5 and 1440 minutes")
             
             snoozed_until = datetime.now(UTC) + timedelta(minutes=snooze_minutes)
             
-            self.db.execute(
-                """
-                UPDATE agency_reminders
-                SET status = ?, snoozed_until = ?, snooze_count = snooze_count + 1,
-                    updated_at = ?
-                WHERE reminder_id = ?
-                """,
-                (
-                    ReminderStatus.SNOOZED.value,
-                    snoozed_until.isoformat(),
-                    datetime.now(UTC).isoformat(),
-                    reminder_id
+            async with UnitOfWork(self.session_factory) as uow:
+                await uow.agency_reminders.snooze(
+                    reminder_id=reminder_id,
+                    snoozed_until=snoozed_until
                 )
-            )
-            self.db.commit()
+                await uow.commit()
             
             # Record analytics
-            self._record_analytics(reminder_id, "snoozed")
+            await self._record_analytics(reminder_id, "snoozed")
             
         except Exception as e:
             if self.logger:
                 self.logger.error(f"[REMINDER] Failed to snooze reminder: {e}")
             raise
     
-    def complete_reminder(self, reminder_id: str) -> None:
+    async def complete_reminder(self, reminder_id: str) -> None:
         """Mark reminder as completed."""
         try:
-            self.db.execute(
-                """
-                UPDATE agency_reminders
-                SET status = ?, updated_at = ?
-                WHERE reminder_id = ?
-                """,
-                (
-                    ReminderStatus.COMPLETED.value,
-                    datetime.now(UTC).isoformat(),
-                    reminder_id
+            async with UnitOfWork(self.session_factory) as uow:
+                await uow.agency_reminders.update_status(
+                    reminder_id=reminder_id,
+                    status=ReminderStatus.COMPLETED.value
                 )
-            )
-            self.db.commit()
+                await uow.commit()
             
             # Record analytics
-            self._record_analytics(reminder_id, "completed")
+            await self._record_analytics(reminder_id, "completed")
             
         except Exception as e:
             if self.logger:
@@ -834,38 +758,39 @@ class ReminderSystem:
             updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
         )
     
-    def _record_analytics(self, reminder_id: str, action: str) -> None:
+    async def _record_analytics(self, reminder_id: str, action: str) -> None:
         """Record analytics for reminder interaction."""
         try:
-            row = self.db.fetch_one(
-                "SELECT user_id, delivered_at FROM agency_reminders WHERE reminder_id = ?",
-                (reminder_id,)
-            )
-            
-            if not row:
-                return
-            
-            analytics_id = str(uuid.uuid4())
-            
-            self.db.execute(
-                """
-                INSERT INTO proactive_analytics (
-                    analytics_id, user_id, behavior_type, item_id,
-                    delivered_at, user_action, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    analytics_id,
-                    row["user_id"],
-                    "reminder",
-                    reminder_id,
-                    row["delivered_at"] or datetime.now(UTC).isoformat(),
-                    action,
-                    datetime.now(UTC).isoformat()
+            async with UnitOfWork(self.session_factory) as uow:
+                # Get reminder details
+                reminder = await uow.agency_reminders.get_by_id(reminder_id)
+                
+                if not reminder:
+                    return
+                
+                from aico.ai.agency.models import ProactiveAnalytic
+                
+                event_data = {
+                    "reminder_id": reminder_id,
+                    "action": action,
+                    "delivered_at": reminder.delivered_at.isoformat() if reminder.delivered_at else datetime.now(UTC).isoformat(),
+                }
+
+                analytic = ProactiveAnalytic(
+                    id=str(uuid.uuid4()),
+                    user_id=reminder.user_id,
+                    event_type="reminder",
+                    event_data=event_data,
+                    confidence_score=None,
+                    triggered_action=action,
+                    created_at=datetime.now(UTC)
                 )
-            )
-            self.db.commit()
+                
+                await uow.proactive_analytics.create(analytic)
+                await uow.commit()
             
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"[REMINDER] Failed to record analytics: {e}")
+                return
+            raise

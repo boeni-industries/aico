@@ -396,7 +396,7 @@ class ContextAwarePrioritization:
                 """
                 SELECT prerequisite_goal_id
                 FROM agency_goal_dependencies
-                WHERE goal_id = ? AND active = 1
+                WHERE goal_id = ? AND active = TRUE
                 """,
                 (goal_id,)
             )
@@ -406,7 +406,7 @@ class ContextAwarePrioritization:
                 """
                 SELECT goal_id
                 FROM agency_goal_dependencies
-                WHERE prerequisite_goal_id = ? AND active = 1
+                WHERE prerequisite_goal_id = ? AND active = TRUE
                 """,
                 (goal_id,)
             )

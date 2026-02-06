@@ -147,10 +147,11 @@ class GoalArbiter:
         # Load scoring weights from config with validation
         if config:
             try:
-                weights_config = config.get("core.services.agency.arbiter.scoring_weights", {})
+                arbiter_config = config.get("agency.arbiter", {})
+                weights_config = arbiter_config.get("scoring_weights", {})
                 
                 if not weights_config:
-                    raise ValueError("core.services.agency.arbiter.scoring_weights not found in configuration")
+                    raise ValueError("agency.arbiter.scoring_weights not found in configuration")
                 
                 self.weights = {
                     "priority": float(weights_config.get("priority", 0.25)),
@@ -168,7 +169,7 @@ class GoalArbiter:
                 if abs(total_weight - 1.0) > 0.01:
                     raise ValueError(
                         f"Arbiter scoring weights must sum to ~1.0, got {total_weight:.3f}. "
-                        f"Check core.services.agency.arbiter.scoring_weights in configuration."
+                        f"Check agency.arbiter.scoring_weights in configuration."
                     )
                 if logger:
                     logger.debug(f"[ARBITER] Loaded scoring weights from config: {self.weights}")
@@ -459,6 +460,23 @@ class GoalArbiter:
         
         persistence_weight = self._get_adjusted_weight("persistence", self.weights.get("persistence", 0.15), user_id)
         breakdown["persistence"] = persistence_score * persistence_weight
+
+        deadline_boost = 0.0
+        deadline_raw = (goal.metadata or {}).get("deadline")
+        if deadline_raw:
+            try:
+                deadline_dt = datetime.fromisoformat(deadline_raw)
+                if deadline_dt.tzinfo is None:
+                    deadline_dt = deadline_dt.replace(tzinfo=UTC)
+                hours_to_deadline = (deadline_dt - datetime.now(UTC)).total_seconds() / 3600
+                if hours_to_deadline > 0:
+                    if hours_to_deadline <= 24:
+                        deadline_boost = 0.15 * (1.0 - (hours_to_deadline / 24.0))
+                    elif hours_to_deadline <= 168:
+                        deadline_boost = 0.05 * (1.0 - (hours_to_deadline / 168.0))
+            except Exception:
+                deadline_boost = 0.0
+        breakdown["deadline_boost"] = deadline_boost
         
         if self.logger and mention_count > 1:
             self.logger.debug(
@@ -505,6 +523,8 @@ class GoalArbiter:
             reasons.append("high_curiosity")
         if freshness_score > 0.8:
             reasons.append("recently_created")
+        if deadline_boost > 0.0:
+            reasons.append("deadline_approaching")
         
         if self.logger:
             self.logger.debug(
@@ -653,6 +673,18 @@ class GoalArbiter:
                     existing.updated_at = datetime.now(UTC)
                     await self._update_intention(existing)
                     await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                    
+                    # Generate plan if none exists (architectural requirement)
+                    try:
+                        existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                        if not existing_plans:
+                            await self._generate_plan_for_goal(scored_goal.goal)
+                            if self.logger:
+                                self.logger.info(f"[ARBITER] Generated plan for reactivated urgent intention: '{scored_goal.goal.title}'")
+                    except Exception as e:
+                        if self.logger:
+                            self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                    
                     new_intentions.append(existing)
                     if self.logger:
                         self.logger.info(f"[ARBITER] Reactivated urgent intention: '{scored_goal.goal.title}'")
@@ -666,6 +698,18 @@ class GoalArbiter:
                         existing.updated_at = datetime.now(UTC)
                         await self._update_intention(existing)
                         await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                        
+                        # Generate plan if none exists (architectural requirement)
+                        try:
+                            existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                            if not existing_plans:
+                                await self._generate_plan_for_goal(scored_goal.goal)
+                                if self.logger:
+                                    self.logger.info(f"[ARBITER] Generated plan for reactivated intention: '{scored_goal.goal.title}'")
+                        except Exception as e:
+                            if self.logger:
+                                self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                        
                         new_intentions.append(existing)
                         active_count += 1
                         if self.logger:
@@ -685,6 +729,18 @@ class GoalArbiter:
                                 existing.updated_at = datetime.now(UTC)
                                 await self._update_intention(existing)
                                 await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                                
+                                # Generate plan if none exists (architectural requirement)
+                                try:
+                                    existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                                    if not existing_plans:
+                                        await self._generate_plan_for_goal(scored_goal.goal)
+                                        if self.logger:
+                                            self.logger.info(f"[ARBITER] Generated plan for competitively reactivated intention: '{scored_goal.goal.title}'")
+                                except Exception as e:
+                                    if self.logger:
+                                        self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                                
                                 new_intentions.append(existing)
                                 if self.logger:
                                     self.logger.info(
@@ -707,6 +763,8 @@ class GoalArbiter:
             if scored_goal.priority_band == PriorityBand.URGENT:
                 # Urgent goals always get added
                 intention = await self._create_intention(scored_goal, user_id, activate=True)
+                if intention is None:
+                    continue
                 new_intentions.append(intention)
                 if self.logger:
                     self.logger.info(f"[ARBITER] Created urgent intention: '{scored_goal.goal.title}'")
@@ -714,6 +772,8 @@ class GoalArbiter:
                 if active_count < intention_set.max_active:
                     # Add if capacity available
                     intention = await self._create_intention(scored_goal, user_id, activate=True)
+                    if intention is None:
+                        continue
                     new_intentions.append(intention)
                     active_count += 1
                     if self.logger:
@@ -727,6 +787,8 @@ class GoalArbiter:
                             # Replace: deactivate lowest, activate new
                             await self.deactivate_intention(lowest.intention_id, reason="replaced_by_higher_score")
                             intention = await self._create_intention(scored_goal, user_id, activate=True)
+                            if intention is None:
+                                continue
                             new_intentions.append(intention)
                             if self.logger:
                                 self.logger.info(
@@ -736,6 +798,8 @@ class GoalArbiter:
             elif scored_goal.priority_band == PriorityBand.BACKGROUND:
                 # Background goals are proposed but not activated
                 intention = await self._create_intention(scored_goal, user_id, activate=False)
+                if intention is None:
+                    continue
                 new_intentions.append(intention)
         
         # Enforce max_active capacity: deactivate lowest scorers if over limit
@@ -826,8 +890,11 @@ class GoalArbiter:
         scored_goal: ScoredGoal,
         user_id: str,
         activate: bool,
-    ) -> Intention:
-        """Create a new intention in the database using a fresh UoW."""
+    ) -> Optional[Intention]:
+        """Create a new intention in the database using a fresh UoW.
+
+        Returns None if the referenced goal does not exist.
+        """
         if not self._session_factory:
             raise RuntimeError("GoalArbiter requires session_factory for intention creation")
 
@@ -835,6 +902,18 @@ class GoalArbiter:
         from aico.data.uow import UnitOfWork
 
         async with UnitOfWork(self._session_factory) as uow:
+            # Defensive check: never create child rows if the goal row is missing.
+            # This avoids FK violations if goal rows were deleted or if stale IDs
+            # leak into the arbiter candidate set.
+            goal_exists = await uow.goals.get_by_id(scored_goal.goal.goal_id)
+            if not goal_exists:
+                if self.logger:
+                    self.logger.error(
+                        f"[ARBITER] Skipping intention creation: goal_id not found in agency_goals: {scored_goal.goal.goal_id}",
+                        extra={"user_id": user_id, "goal_id": scored_goal.goal.goal_id},
+                    )
+                return None
+
             # Create entity
             entity = AgencyIntentionSet(
                 intention_id=str(uuid.uuid4()),
@@ -856,6 +935,26 @@ class GoalArbiter:
         # Keep goal lifecycle in sync with intention creation
         if activate:
             await self._set_goal_status(scored_goal.goal.goal_id, GoalStatus.ACTIVE)
+            
+            # Generate plan for newly activated intention (architectural requirement)
+            # Per agency-component-planning.md: "Takes a target goal/intention from the Arbiter"
+            try:
+                # Check if plan already exists
+                existing_plans = await self.agency_service.list_plans(goal_id=scored_goal.goal.goal_id)
+                if not existing_plans:
+                    # No plan exists - generate one
+                    plan = await self._generate_plan_for_goal(scored_goal.goal)
+                    if self.logger:
+                        self.logger.info(
+                            f"[ARBITER] Generated plan {plan.plan_id[:8]}... for newly activated intention "
+                            f"(goal: {scored_goal.goal.title})"
+                        )
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(
+                        f"[ARBITER] Failed to generate plan for intention {entity.intention_id}: {e}",
+                        exc_info=True
+                    )
         else:
             # Background / proposed intentions do not change goal status yet
             # (goal remains pending until promoted to active intention)
@@ -982,6 +1081,35 @@ class GoalArbiter:
                         f"[ARBITER] Failed to sync plan for intention {intention.intention_id}: {e}"
                     )
     
+    async def _generate_plan_for_goal(self, goal: Goal) -> Plan:
+        """Generate a plan for a goal using the agency engine's planner.
+        
+        This is called when the arbiter activates an intention, implementing the
+        architectural requirement that plans are created from intentions, not goals.
+        
+        Args:
+            goal: Goal to generate plan for
+            
+        Returns:
+            Generated Plan
+        """
+        # Import here to avoid circular dependency
+        from aico.ai import ai_registry
+        
+        agency_engine = ai_registry.get("agency")
+        if not agency_engine:
+            raise RuntimeError("AgencyEngine not available for plan generation")
+        
+        # Use the engine's plan generation method
+        plan = await agency_engine._generate_and_store_plan(goal)
+        
+        if self.logger:
+            self.logger.debug(
+                f"[ARBITER] Generated plan for goal {goal.goal_id}: {plan.plan_id}"
+            )
+        
+        return plan
+    
     async def _publish_intention_set_update(self, intention_set: IntentionSet) -> None:
         """Publish intention set update to message bus."""
         if not self.message_bus:
@@ -1011,6 +1139,8 @@ class GoalArbiter:
         metadata: Optional[Dict] = None
     ) -> None:
         """Record goal outcome for adaptive learning using an internal UoW."""
+        if not self.enable_adaptive:
+            return
         if not self._session_factory:
             raise RuntimeError("GoalArbiter requires session_factory to record goal outcomes")
 
@@ -1040,15 +1170,15 @@ class GoalArbiter:
             outcome_entity = AgencyGoalOutcome(
                 outcome_id=str(uuid.uuid4()),
                 goal_id=goal_id,
-                user_id=metadata.get("user_id") if metadata else None,
+                user_id=str(metadata.get("user_id")) if metadata and metadata.get("user_id") is not None else "",
                 arm_id=arm_id,
                 outcome=outcome,
                 success=success,
                 reward=reward,
                 completion_time_minutes=completion_time_minutes,
                 user_satisfaction=user_satisfaction,
-                metadata_json=json.dumps(metadata or {}),
-                created_at=datetime.now(UTC)
+                metadata_json=metadata or {},
+                created_at=datetime.now(UTC).isoformat(),
             )
             
             # Store in database

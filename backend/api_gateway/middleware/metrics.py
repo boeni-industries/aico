@@ -187,14 +187,30 @@ class MetricsMiddleware:
             # Increment request counter
             self.request_counter.add(1, attributes)
             
-            # Log high-latency requests
-            if duration > 1.0:  # More than 1 second
+            # Log high-latency requests with category-based thresholds
+            # Different categories have different performance expectations
+            thresholds = {
+                'user_chat': 1.0,      # User-facing chat - keep strict (1s)
+                'security': 1.0,       # Auth/security - keep strict (1s)
+                'system': 1.5,         # Health checks/monitoring - relaxed (1.5s)
+                'agency': 1.5,         # Complex aggregations - relaxed (1.5s)
+                'memory': 1.5,         # Complex queries - relaxed (1.5s)
+                'admin': 2.0,          # Admin operations - very relaxed (2s)
+                'operations': 1.5,     # Operations - relaxed (1.5s)
+                'other': 1.0,          # Default - strict (1s)
+            }
+            
+            threshold = thresholds.get(category, 1.0)
+            
+            if duration > threshold:
                 logger.warning(
-                    f"Slow request: {method} {path} took {duration*1000:.0f}ms",
+                    f"Slow request: {method} {path} took {duration*1000:.0f}ms (threshold: {threshold*1000:.0f}ms for {category})",
                     extra={
                         "method": method,
                         "path": path,
                         "duration_ms": duration * 1000,
-                        "status_code": status_code
+                        "status_code": status_code,
+                        "category": category,
+                        "threshold_ms": threshold * 1000
                     }
                 )

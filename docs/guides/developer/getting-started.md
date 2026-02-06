@@ -130,6 +130,18 @@ You should see `Python 3.13.5`.
 ### 3. UV Workspace Setup (Single Virtual Environment)
 AICO uses UV workspace management with a unified `pyproject.toml` at the root and a single shared virtual environment for all Python components.
 
+**Important (Development): Use `AICO_CONFIG_DIR` to isolate your runtime config**
+ 
+AICO reads and edits configuration from the *runtime config directory* (platform-dependent) by default. In development, you should point `AICO_CONFIG_DIR` to a repo-local path so different checkouts/branches don't share the same config state.
+ 
+ ```sh
+ # Example (recommended): keep runtime config inside the repo
+ export AICO_CONFIG_DIR="$PWD/.aico-dev/config"
+ 
+ # Seed the runtime config directory with schemas/defaults/environments/modelfiles
+ uv run aico config init
+ ```
+
 **Install UV globally (required):**
 
   ```sh
@@ -411,7 +423,7 @@ aico deploy pg --nuke
 
 **Prerequisites**:
 - Docker installed and running
-- Database credentials configured in `core.yaml`
+- Database credentials configured in `config/defaults/postgres.yaml`
 - Password stored in system keyring via `aico security setup`
 
 ### InfluxDB Deployment
@@ -457,7 +469,7 @@ aico deploy influx --nuke
 
 **Prerequisites**:
 - Docker installed and running
-- InfluxDB URL configured in `core.yaml` (http://localhost:8086)
+- InfluxDB URL configured in `config/defaults/influx.yaml` (http://localhost:8086)
 - API token stored in system keyring
 
 ### Verification
@@ -489,23 +501,22 @@ aico logs query --limit 10  # Query recent logs
 
 ### Database Configuration
 
-Edit `config/defaults/core.yaml`:
+Edit `config/defaults/postgres.yaml` and `config/defaults/influx.yaml`:
 
 ```yaml
-database:
-  postgres:
-    db_name: "aico"
-    core_schema: "aico_core"
-    host: "127.0.0.1"
-    port: 5432
-    user: "postgres"
-    # Password stored in keyring
-  
-  influx:
-    url: "http://127.0.0.1:8086"
-    org: "aico"
-    bucket: "aico_telemetry"
-    # Token stored in keyring
+db_name: "aico"
+core_schema: "aico_core"
+host: "127.0.0.1"
+port: 5432
+user: "postgres"
+# Password stored in keyring
+
+# ---
+
+url: "http://127.0.0.1:8086"
+org: "aico"
+bucket: "aico_telemetry"
+# Token stored in keyring
 ```
 
 ### Troubleshooting
@@ -565,6 +576,9 @@ AICO uses encrypted databases for all data storage with security by design. The 
 ### Quick Setup (Recommended)
 
 ```bash
+# Optional (recommended in dev): isolate runtime config per repo/branch
+export AICO_CONFIG_DIR="$PWD/.aico-dev/config"
+
 # 1. Initialize AICO configuration directories
 aico config init
 
@@ -622,10 +636,11 @@ ollama run huihui_ai/qwen3-abliterated:8b-v2 "Hello, who are you?"
 ```
 
 **What this does:**
-- Reads the character definition from `config/modelfiles/Modelfile.eve`
-- Ensures the base model is pulled from Ollama
-- Configures model parameters (temperature, context window, etc.)
-- Sets up the character's personality and behavior via Modelfile
+- Reads the character definition from your *runtime config directory* (`$AICO_CONFIG_DIR/modelfiles/Modelfile.eve`)
+- Seeds/syncs Modelfiles from the repo templates when needed (`aico config init`)
+  - Ensures the base model is pulled from Ollama
+  - Configures model parameters (temperature, context window, etc.)
+  - Sets up the character's personality and behavior via Modelfile
 
 **Character Details:**
 - **Name**: Eve
@@ -655,8 +670,11 @@ aico/
 │   ├── analytics.db         # Analytics database (planned, backend TBD)
 │   └── chroma/              # Vector database directory (ChromaDB)
 ├── config/
+│   ├── schemas/             # Configuration schemas (*.schema.json)
 │   ├── defaults/            # Default configuration files
-│   └── environments/        # Environment-specific overrides
+│   ├── environments/        # Environment-specific overrides
+│   ├── modelfiles/          # Modelfiles (e.g. Modelfile.eve)
+│   └── runtime.yaml         # Persisted runtime overrides
 ├── cache/                   # Application cache
 └── logs/                    # Application logs
 ```
@@ -672,7 +690,7 @@ aico config show
 aico db show
 
 # Get specific configuration values
-aico config get database.PostgreSQL.journal_mode
+aico config get postgres.host
 aico config get system.paths.directory_mode
 ```
 

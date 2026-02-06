@@ -150,7 +150,6 @@ def track_inference(
         }
         
         # Record OpenTelemetry metrics
-        # OTelStorageExporter will automatically persist to SQLite
         inference_duration.record(duration, attributes)
         inference_counter.add(1, attributes)
         
@@ -191,18 +190,19 @@ def track_inference(
 
 def record_inference(
     model_name: str,
-    duration_seconds: float,
-    tokens: Optional[int] = None,
+    duration: float,
+    tokens_generated: int = 0,
     success: bool = True,
-    task_type: str = "completion",
-    **extra_attributes
+    error: str = None,
+    attributes: dict = None
 ):
     """
     Record inference metrics directly (without context manager).
     
     Args:
         model_name: Name of the model
-        duration_seconds: Inference duration in seconds
+        duration: Inference duration in seconds
+        tokens_generated: Number of tokens generated (optional)
         tokens: Number of tokens generated (optional)
         success: Whether inference succeeded
         task_type: Type of task

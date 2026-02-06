@@ -105,8 +105,8 @@ class SpaCyManager:
         self.config_manager = ConfigurationManager()
         self.config_manager.initialize()
         
-        # Get spaCy-specific config from core.modelservice.spacy
-        self.spacy_config = self.config_manager.get("core.modelservice.spacy", {})
+        # Get spaCy-specific config from modelservice.spacy
+        self.spacy_config = self.config_manager.get("modelservice.spacy", {})
         
         # Loaded models cache
         self.nlp_models: Dict[str, any] = {}

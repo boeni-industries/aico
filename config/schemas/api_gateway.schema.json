@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "API Gateway Configuration",
+  "description": "API gateway, CORS, rate limiting, and plugin settings",
+  "type": "object",
+  "required": ["rest"],
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "host": {
+      "type": "string",
+      "description": "API gateway bind host"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "API gateway bind port"
+    },
+    "rest": {
+      "type": "object",
+      "required": ["host", "port"],
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "protocols": {
+      "type": "object"
+    },
+    "cors": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "allow_origins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allow_methods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allow_headers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "rate_limiting": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "requests_per_minute": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "plugins": {
+      "type": "object",
+      "properties": {
+        "agency": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "emotion": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  }
+}

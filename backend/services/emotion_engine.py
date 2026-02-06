@@ -151,7 +151,7 @@ class EmotionEngine(BaseService):
         self.db_connection = self.container.get_service("database")
         
         # Configuration
-        emotion_config = self.container.config.get("core.emotion", {})
+        emotion_config = self.container.config.get("emotion", {})
         self.appraisal_sensitivity = emotion_config.get("appraisal_sensitivity", 0.7)
         self.regulation_strength = emotion_config.get("regulation_strength", 0.8)
         self.threat_arousal_boost = emotion_config.get("threat_arousal_boost", 0.25)
@@ -204,7 +204,7 @@ class EmotionEngine(BaseService):
             self.logger.info("Subscriptions established")
             
             # Publish initial neutral state
-            await self._publish_emotional_state(self.current_state)
+            await self._publish_emotional_state(self.current_state, persist_history=False)
             
             self.logger.info("Emotion processor started successfully")
             
@@ -742,25 +742,20 @@ class EmotionEngine(BaseService):
         
         if appraisal.social_appropriateness == "crisis_protocol":
             # Crisis: High arousal, valence from sentiment but biased toward action
-            target_valence = max(0.2, valence_from_sentiment * 0.8)  # Floor at 0.2 for protective stance
+            target_valence = valence_from_sentiment * 0.8
             target_arousal = 0.8
             motivational_tendency = "approach"
         elif appraisal.social_appropriateness == "empathetic_response":
-            # Empathy: Convert user's negative sentiment to AI's positive concern
-            # (User distress → AI warm concern, not AI distress)
             if valence_from_sentiment < 0:
-                # Convert negative sentiment to positive concern (invert and scale)
-                # More negative user sentiment = higher AI concern valence
-                target_valence = abs(valence_from_sentiment) * 0.5  # Moderate positive concern
+                target_valence = max(-1.0, valence_from_sentiment * 1.3)
             else:
-                # Positive user sentiment in empathetic context: gentle positive response
-                target_valence = valence_from_sentiment * 0.6
+                target_valence = min(1.0, valence_from_sentiment * 0.6)
             # High relevance = higher arousal (deeper concern)
             target_arousal = 0.65 if appraisal.relevance > 0.65 else 0.5
             motivational_tendency = "approach"
         elif appraisal.social_appropriateness == "calm_resolution":
             # Resolution: Slight positive bias (relief), low arousal
-            target_valence = max(0.2, valence_from_sentiment * 0.7)  # Gentle positive bias
+            target_valence = valence_from_sentiment * 0.7
             target_arousal = 0.4
             motivational_tendency = "neutral"
         elif appraisal.social_appropriateness == "warm_engagement":
@@ -836,17 +831,9 @@ class EmotionEngine(BaseService):
             valence = (valence * effective_reactivity) + (self.previous_state.mood_valence * effective_inertia)
             arousal = (arousal * effective_reactivity) + (self.previous_state.mood_arousal * effective_inertia)
             
-            # Apply minimum valence floor to prevent excessive decay in positive contexts
-            # Scientific basis: Fredrickson (2001) - Positive emotions should persist
-            # If previous state was non-negative (v>0.1), maintain minimum positive valence
-            # to avoid drift to zero during neutral inputs or recovery scenarios
-            if self.previous_state.mood_valence > 0.1 and valence < 0.15:
-                valence = 0.15  # Minimum floor for positive emotional contexts
-                self.logger.debug(f"Applied valence floor: {valence:.2f}")
-            
-            # Supportive context bias: DISABLED per Kuppens et al. (2010)
-            # Excessive inertia prevents appropriate emotional responses
-            # Natural inertia (weight=0.4) is sufficient for emotional continuity
+            # Apply inertia decay based on turns since state change
+            # More turns without change = less inertia (more reactive)
+            inertia_decay_factor = max(0.0, 1.0 - (self.turns_since_state_change * self.inertia_decay))
         
         # Assign emotion label based on ACTUAL (post-inertia) valence/arousal
         # Using Russell's (1980) Circumplex Model of Affect
@@ -930,7 +917,7 @@ class EmotionEngine(BaseService):
     # STATE PUBLISHING & HISTORY
     # ============================================================================
     
-    async def _publish_emotional_state(self, state: EmotionalState) -> None:
+    async def _publish_emotional_state(self, state: EmotionalState, *, persist_history: bool = True) -> None:
         """Publish emotional state to message bus for consumers"""
         try:
             # Create protobuf timestamp
@@ -966,7 +953,7 @@ class EmotionEngine(BaseService):
             self.logger.debug(f"Published emotional state: {state.subjective_feeling.value}")
             
             # Persist state to database
-            await self._persist_state(state)
+            await self._persist_state(state, persist_history=persist_history)
             
         except Exception as e:
             self.logger.error(f"Error publishing emotional state: {e}")
@@ -1062,7 +1049,7 @@ class EmotionEngine(BaseService):
             self.current_state = self._create_neutral_state()
             self.state_history = []
     
-    async def _persist_state(self, state: EmotionalState) -> None:
+    async def _persist_state(self, state: EmotionalState, *, persist_history: bool = True) -> None:
         """Persist emotional state to database via UoW"""
         try:
             from aico.data.postgres.connection import get_session_factory
@@ -1095,20 +1082,21 @@ class EmotionEngine(BaseService):
                     await uow.emotion_state.update(state_model)
                 else:
                     await uow.emotion_state.create(state_model)
-                
-                # Add to history
-                compact_state = state.to_compact_dict()
-                history_model = EmotionHistory(
-                    user_id='system',
-                    timestamp=compact_state["timestamp"],
-                    feeling=compact_state["label"]["primary"],
-                    valence=compact_state["mood"]["valence"],
-                    arousal=compact_state["mood"]["arousal"],
-                    intensity=compact_state["label"]["intensity"],
-                    created_at=datetime.now(UTC).isoformat()
-                )
-                
-                await uow.emotion_history.create(history_model)
+
+                if persist_history:
+                    # Add to history
+                    compact_state = state.to_compact_dict()
+                    history_model = EmotionHistory(
+                        user_id='system',
+                        timestamp=compact_state["timestamp"],
+                        feeling=compact_state["label"]["primary"],
+                        valence=compact_state["mood"]["valence"],
+                        arousal=compact_state["mood"]["arousal"],
+                        intensity=compact_state["label"]["intensity"],
+                        created_at=datetime.now(UTC).isoformat()
+                    )
+
+                    await uow.emotion_history.create(history_model)
                 await uow.commit()
                 
                 self.logger.debug(f"🎭 Persisted emotional state: {state.subjective_feeling.value}")

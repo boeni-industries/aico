@@ -50,6 +50,13 @@ class SearchMemorySkill(Skill):
         return "memory"
     
     @property
+    def implementation_tools(self) -> List[str]:
+        return [
+            "tool.memory.semantic.search",
+            "tool.memory.episodic.retrieve",
+        ]
+    
+    @property
     def parameters(self) -> List[SkillParameter]:
         return [
             SkillParameter(
@@ -94,6 +101,9 @@ class SearchMemorySkill(Skill):
             if not self.memory_manager:
                 raise RuntimeError("Memory manager not available")
 
+            if not query:
+                raise ValueError("Query is required")
+
             # Build memory query for semantic search via MemoryManager
             query_obj = MemoryQuery(
                 query_text=query,
@@ -105,9 +115,17 @@ class SearchMemorySkill(Skill):
             # Use MemoryManager to perform unified search
             memory_result = await self.memory_manager.query_memory(query_obj)
 
+            if memory_result is None:
+                raise RuntimeError("Memory query returned no result")
+
+            raw_memories = getattr(memory_result, "memories", None) or []
+            raw_scores = getattr(memory_result, "relevance_scores", None) or []
+
             # Normalize result shape to previous expectations
             memories: List[Dict[str, Any]] = []
-            for mem, score in zip(memory_result.memories, memory_result.relevance_scores):
+            for mem, score in zip(raw_memories, raw_scores):
+                if not isinstance(mem, dict):
+                    continue
                 base = {
                     "type": mem.get("type", "semantic"),
                     "content": mem.get("content", ""),

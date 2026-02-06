@@ -48,16 +48,22 @@ async def get_postgres_pool() -> asyncpg.Pool:
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     
-    pg_config = config.get("core.database.postgres", {})
+    pg_config = config.get("postgres", {})
     if not pg_config:
-        raise RuntimeError("PostgreSQL configuration not found in core.yaml")
+        raise RuntimeError("PostgreSQL configuration not found in postgres.yaml")
     
     # Get password from environment or AICOKeyManager
     import os
     
     host = pg_config.get("host", "localhost")
     port = pg_config.get("port", 5432)
-    database = os.environ.get("AICO_POSTGRES_DATABASE", pg_config.get("database", "aico"))
+    database = (
+        os.environ.get("AICO_TEST_DB_NAME")
+        or os.environ.get("AICO_POSTGRES_DATABASE")
+        or pg_config.get("db_name")
+        or pg_config.get("database")
+        or "aico"
+    )
     user = pg_config.get("user", "postgres")
     
     password = os.environ.get("AICO_PG_PASSWORD")
@@ -178,14 +184,20 @@ async def get_session_factory() -> async_sessionmaker:
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     
-    pg_config = config.get("core.database.postgres", {})
+    pg_config = config.get("postgres", {})
     if not pg_config:
-        raise RuntimeError("PostgreSQL configuration not found in core.yaml")
+        raise RuntimeError("PostgreSQL configuration not found in postgres.yaml")
     
     host = pg_config.get("host", "localhost")
     import os
     port = pg_config.get("port", 5432)
-    database = os.environ.get("AICO_POSTGRES_DATABASE", pg_config.get("database", "aico"))
+    database = (
+        os.environ.get("AICO_TEST_DB_NAME")
+        or os.environ.get("AICO_POSTGRES_DATABASE")
+        or pg_config.get("db_name")
+        or pg_config.get("database")
+        or "aico"
+    )
     user = pg_config.get("user", "postgres")
     
     # Get password from environment or AICOKeyManager
@@ -217,10 +229,21 @@ async def get_session_factory() -> async_sessionmaker:
     try:
         logger.info(f"Creating SQLAlchemy async engine with asyncpg: {user}@{host}:{port}/{database}")
         
+        # Get pool settings from postgres.yaml configuration
+        pool_size = pg_config.get("pool_size", 20)
+        max_overflow = pg_config.get("max_overflow", 10)
+        pool_timeout = pg_config.get("pool_timeout", 30)
+        pool_recycle = pg_config.get("pool_recycle", 3600)
+        pool_pre_ping = pg_config.get("pool_pre_ping", True)
+        
         _engine = create_async_engine(
             database_url,
-            # Use NullPool - we manage pooling via asyncpg directly
-            poolclass=NullPool,
+            # Use default AsyncAdaptedQueuePool for connection pooling
+            pool_size=pool_size,  # From postgres.yaml
+            max_overflow=max_overflow,  # From postgres.yaml
+            pool_timeout=pool_timeout,  # From postgres.yaml
+            pool_recycle=pool_recycle,  # From postgres.yaml
+            pool_pre_ping=pool_pre_ping,  # From postgres.yaml
             # Performance optimizations
             echo=False,  # Set to True for SQL query logging during development
             future=True,  # Use SQLAlchemy 2.0 style
@@ -230,6 +253,7 @@ async def get_session_factory() -> async_sessionmaker:
                 "server_settings": {
                     "jit": "on",
                     "application_name": "aico_backend",
+                    "search_path": "aico_core,public",
                 },
             },
         )

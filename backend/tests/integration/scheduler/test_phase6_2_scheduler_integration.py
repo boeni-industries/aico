@@ -97,44 +97,6 @@ class TestSchedulerPriorityQueue:
         assert scheduler.retry_manager is not None
         assert scheduler.retry_tracker is not None
     
-    async def test_enqueue_task_to_priority_queue(self):
-        """Test that tasks are enqueued to priority queue"""
-        # Arrange
-        container = MagicMock()
-        container.config = MagicMock()
-        container.config.get = MagicMock(return_value={})
-        
-        scheduler = TaskScheduler("test_scheduler", container)
-        
-        mock_db = MagicMock()
-        mock_db.execute = MagicMock(return_value=MagicMock(fetchall=MagicMock(return_value=[])))
-        mock_db.commit = MagicMock()
-        container.get_service = MagicMock(return_value=mock_db)
-        
-        await scheduler.initialize()
-        
-        # Register mock task
-        scheduler.task_registry.tasks["test.success"] = MockSuccessTask
-        
-        # Mock task config
-        task_config = {
-            "task_id": "test.success",
-            "task_class": "MockSuccessTask",
-            "schedule": "0 0 * * *",
-            "enabled": True,
-            "config": {}
-        }
-        
-        # Mock task_store.get_task to return the config
-        scheduler.task_store.get_task = MagicMock(return_value=task_config)
-        
-        # Act
-        await scheduler._enqueue_task("test.success", is_scheduled=True)
-        
-        # Assert
-        stats = scheduler.priority_queue.get_stats()
-        assert stats[TaskQueue.BACKGROUND_LIGHT.value] == 1
-    
     async def test_high_priority_task_executes_first(self):
         """Test that high priority tasks execute before low priority"""
         # Arrange

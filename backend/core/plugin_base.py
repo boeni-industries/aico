@@ -50,7 +50,7 @@ class BasePlugin(BaseService):
         super().__init__(name, container)
         
         # Plugin-specific configuration
-        self.plugin_config = self.get_config(f"core.api_gateway.plugins.{name}", {})
+        self.plugin_config = self.get_config(f"api_gateway.plugins.{name}", {})
         self.enabled = self.plugin_config.get("enabled", False)
         
         # Plugin metadata (must be implemented by subclasses)

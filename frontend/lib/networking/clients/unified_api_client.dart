@@ -270,7 +270,7 @@ class UnifiedApiClient {
                       _encryptionService.resetSession();
                       return;
                     }
-                    throw e; // Re-throw other decryption errors
+                    rethrow; // Re-throw other decryption errors
                   }
                 } else {
                   // SECURITY VIOLATION: Unencrypted streaming response received

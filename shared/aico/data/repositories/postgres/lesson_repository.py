@@ -9,7 +9,7 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.agency.models import Lesson
+from aico.data.agency.lesson_models import Lesson
 from aico.data.tables import agency_lessons
 from aico.data.repositories.base import Repository
 
@@ -19,6 +19,61 @@ class PostgresLessonRepository(Repository[Lesson]):
     
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    def _safe_json_dumps(self, value) -> Optional[str]:
+        import json
+
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        try:
+            return json.dumps(value)
+        except Exception:
+            return None
+
+    def _safe_json_loads(self, value) -> Optional[dict]:
+        import json
+
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return value
+        if not isinstance(value, str):
+            return None
+        try:
+            return json.loads(value)
+        except Exception:
+            return None
+
+    def _safe_json_list_dumps(self, value) -> Optional[str]:
+        import json
+
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        try:
+            return json.dumps(list(value))
+        except Exception:
+            return None
+
+    def _safe_json_list_loads(self, value) -> List[str]:
+        import json
+
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(v) for v in value]
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(v) for v in parsed]
+            except Exception:
+                # Backward-compatible: treat as comma-separated
+                return [v for v in (s.strip() for s in value.split(",")) if v]
+        return []
     
     async def create(self, entity: Lesson) -> Lesson:
         """Create a new lesson."""
@@ -29,9 +84,9 @@ class PostgresLessonRepository(Repository[Lesson]):
             target_kind=entity.target_kind.value if hasattr(entity.target_kind, 'value') else entity.target_kind,
             target_id=entity.target_id,
             summary_text=entity.summary_text,
-            proposed_change=entity.proposed_change.model_dump_json() if hasattr(entity.proposed_change, 'model_dump_json') else str(entity.proposed_change),
+            proposed_change=self._safe_json_dumps(entity.proposed_change) or "{}",
             confidence=entity.confidence,
-            metrics_basis=entity.metrics_basis.model_dump_json() if entity.metrics_basis and hasattr(entity.metrics_basis, 'model_dump_json') else None,
+            metrics_basis=self._safe_json_dumps(entity.metrics_basis),
             scope=entity.scope.value if hasattr(entity.scope, 'value') else entity.scope,
             status=entity.status.value if hasattr(entity.status, 'value') else entity.status,
             superseded_by=entity.superseded_by,
@@ -40,9 +95,9 @@ class PostgresLessonRepository(Repository[Lesson]):
             source_reflection_run_id=entity.source_reflection_run_id,
             evidence_window_start=entity.evidence_window_start,
             evidence_window_end=entity.evidence_window_end,
-            related_goal_ids=','.join(entity.related_goal_ids) if entity.related_goal_ids else None,
-            related_trajectory_ids=','.join(entity.related_trajectory_ids) if entity.related_trajectory_ids else None,
-            related_event_ids=','.join(entity.related_event_ids) if entity.related_event_ids else None,
+            related_goal_ids=self._safe_json_list_dumps(entity.related_goal_ids),
+            related_trajectory_ids=self._safe_json_list_dumps(entity.related_trajectory_ids),
+            related_event_ids=self._safe_json_list_dumps(entity.related_event_ids),
             created_at=entity.created_at or datetime.now(UTC),
             updated_at=entity.updated_at or datetime.now(UTC),
         )
@@ -57,26 +112,28 @@ class PostgresLessonRepository(Repository[Lesson]):
         
         if not row:
             return None
-        
-        import json
-        
+
         return Lesson(
             lesson_id=row.lesson_id,
             user_id=row.user_id,
             lesson_type=row.lesson_type,
             target_kind=row.target_kind,
             target_id=row.target_id,
-            observation=row.observation,
-            proposed_change=json.loads(row.proposed_change) if row.proposed_change else None,
-            rationale=row.rationale,
+            summary_text=row.summary_text,
+            proposed_change=self._safe_json_loads(row.proposed_change),
             confidence=row.confidence,
-            impact_estimate=row.impact_estimate,
+            metrics_basis=self._safe_json_loads(row.metrics_basis),
             scope=row.scope,
             status=row.status,
-            approved_at=row.approved_at,
-            rejected_at=row.rejected_at,
+            superseded_by=row.superseded_by,
             applied_at=row.applied_at,
-            metadata=json.loads(row.metadata_json) if row.metadata_json else None,
+            applied_by=row.applied_by,
+            source_reflection_run_id=row.source_reflection_run_id,
+            evidence_window_start=row.evidence_window_start,
+            evidence_window_end=row.evidence_window_end,
+            related_goal_ids=self._safe_json_list_loads(row.related_goal_ids),
+            related_trajectory_ids=self._safe_json_list_loads(row.related_trajectory_ids),
+            related_event_ids=self._safe_json_list_loads(row.related_event_ids),
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -88,13 +145,20 @@ class PostgresLessonRepository(Repository[Lesson]):
             .where(agency_lessons.c.lesson_id == entity.lesson_id)
             .values(
                 summary_text=entity.summary_text,
-                proposed_change=entity.proposed_change.model_dump_json() if hasattr(entity.proposed_change, 'model_dump_json') else str(entity.proposed_change),
+                proposed_change=self._safe_json_dumps(entity.proposed_change) or "{}",
                 confidence=entity.confidence,
-                metrics_basis=entity.metrics_basis.model_dump_json() if entity.metrics_basis and hasattr(entity.metrics_basis, 'model_dump_json') else None,
+                metrics_basis=self._safe_json_dumps(entity.metrics_basis),
                 status=entity.status.value if hasattr(entity.status, 'value') else entity.status,
                 superseded_by=entity.superseded_by,
                 applied_at=entity.applied_at,
                 applied_by=entity.applied_by,
+                scope=entity.scope.value if hasattr(entity.scope, 'value') else entity.scope,
+                source_reflection_run_id=entity.source_reflection_run_id,
+                evidence_window_start=entity.evidence_window_start,
+                evidence_window_end=entity.evidence_window_end,
+                related_goal_ids=self._safe_json_list_dumps(entity.related_goal_ids),
+                related_trajectory_ids=self._safe_json_list_dumps(entity.related_trajectory_ids),
+                related_event_ids=self._safe_json_list_dumps(entity.related_event_ids),
                 updated_at=datetime.now(UTC),
             )
         )
@@ -125,17 +189,29 @@ class PostgresLessonRepository(Repository[Lesson]):
         
         stmt = stmt.order_by(agency_lessons.c.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
-        
+
         return [
             Lesson(
                 lesson_id=row.lesson_id,
                 user_id=row.user_id,
                 lesson_type=row.lesson_type,
-                content=row.content,
+                target_kind=row.target_kind,
+                target_id=row.target_id,
+                summary_text=row.summary_text,
+                proposed_change=self._safe_json_loads(row.proposed_change),
                 confidence=row.confidence,
+                metrics_basis=self._safe_json_loads(row.metrics_basis),
+                scope=row.scope,
                 status=row.status,
-                source_data=row.source_data,
                 superseded_by=row.superseded_by,
+                applied_at=row.applied_at,
+                applied_by=row.applied_by,
+                source_reflection_run_id=row.source_reflection_run_id,
+                evidence_window_start=row.evidence_window_start,
+                evidence_window_end=row.evidence_window_end,
+                related_goal_ids=self._safe_json_list_loads(row.related_goal_ids),
+                related_trajectory_ids=self._safe_json_list_loads(row.related_trajectory_ids),
+                related_event_ids=self._safe_json_list_loads(row.related_event_ids),
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
@@ -181,11 +257,23 @@ class PostgresLessonRepository(Repository[Lesson]):
                 lesson_id=row.lesson_id,
                 user_id=row.user_id,
                 lesson_type=row.lesson_type,
-                content=row.content,
+                target_kind=row.target_kind,
+                target_id=row.target_id,
+                summary_text=row.summary_text,
+                proposed_change=self._safe_json_loads(row.proposed_change),
                 confidence=row.confidence,
+                metrics_basis=self._safe_json_loads(row.metrics_basis),
+                scope=row.scope,
                 status=row.status,
-                source_data=row.source_data,
                 superseded_by=row.superseded_by,
+                applied_at=row.applied_at,
+                applied_by=row.applied_by,
+                source_reflection_run_id=row.source_reflection_run_id,
+                evidence_window_start=row.evidence_window_start,
+                evidence_window_end=row.evidence_window_end,
+                related_goal_ids=self._safe_json_list_loads(row.related_goal_ids),
+                related_trajectory_ids=self._safe_json_list_loads(row.related_trajectory_ids),
+                related_event_ids=self._safe_json_list_loads(row.related_event_ids),
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
@@ -218,3 +306,7 @@ class PostgresLessonRepository(Repository[Lesson]):
         )
         result = await self.session.execute(stmt)
         return result.rowcount > 0
+    
+    async def get_active_lessons(self, user_id: str, lesson_type: Optional[str] = None) -> List[Lesson]:
+        """Alias for get_active_lessons_for_user to match SelfReflectionEngine interface."""
+        return await self.get_active_lessons_for_user(user_id, lesson_type)

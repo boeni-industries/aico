@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, UTC, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from functools import lru_cache
 
 from aico.core.logging import get_logger
@@ -46,6 +46,10 @@ class HealthService:
         self._skill_invoker = skill_invoker
         self._session_factory = session_factory
         self._start_time = start_time
+        
+        # Cache for health checks (30 second TTL)
+        self._health_cache: Optional[Tuple[SystemHealthResponse, datetime]] = None
+        self._service_health_cache: Optional[Tuple[ServiceHealthResponse, datetime]] = None
     
     @property
     def _uptime_seconds(self) -> int:
@@ -57,14 +61,38 @@ class HealthService:
         
         Cached for 30 seconds to avoid overload.
         """
-        # Run all health check skills
-        connectivity_result = await self._run_skill("maint.connectivity.full_scan", {})
-        resources_result = await self._run_skill("maint.system.scan_resources", {})
-        modelservice_result = await self._run_skill("maint.modelservice.scan_health", {})
-        agency_result = await self._run_skill("maint.agency.re_evaluate_behaviour_health", {})
+        # Check cache first
+        now = datetime.now(UTC)
+        if self._health_cache is not None:
+            cached_response, cached_at = self._health_cache
+            cache_age = (now - cached_at).total_seconds()
+            if cache_age < 30:
+                logger.info(f"[HEALTH_CACHE] Cache HIT - returning cached response (age: {cache_age:.1f}s)")
+                return cached_response
+            else:
+                logger.info(f"[HEALTH_CACHE] Cache EXPIRED - age: {cache_age:.1f}s, refreshing")
+        else:
+            logger.info("[HEALTH_CACHE] Cache MISS - no cached data, running health checks")
         
-        # Count healthy vs total
-        results = [connectivity_result, resources_result, modelservice_result, agency_result]
+        # Run all health check skills in parallel for faster response
+        import asyncio
+        connectivity_result, resources_result, modelservice_result, agency_result = await asyncio.gather(
+            self._run_skill("maint.connectivity.full_scan", {}),
+            self._run_skill("maint.system.scan_resources", {}),
+            self._run_skill("maint.modelservice.scan_health", {}),
+            self._run_skill("maint.agency.re_evaluate_behaviour_health", {}),
+            return_exceptions=True,  # Don't fail entire health check if one skill fails
+        )
+        
+        # Handle any exceptions from parallel execution
+        results = []
+        for result in [connectivity_result, resources_result, modelservice_result, agency_result]:
+            if isinstance(result, Exception):
+                # Log error but continue with degraded status
+                logger.error(f"Health check skill failed: {result}")
+                results.append({"summary_status": "unhealthy"})
+            else:
+                results.append(result)
         healthy_count = sum(1 for r in results if r.get("summary_status") == "healthy")
         total_count = len(results)
         
@@ -84,7 +112,7 @@ class HealthService:
         uptime_seconds = int(time.time() - self._start_time)
         uptime_percentage = 99.8  # Placeholder - would calculate from historical data
         
-        return SystemHealthResponse(
+        response = SystemHealthResponse(
             status=overall_status,
             healthy_services=healthy_count,
             total_services=total_count,
@@ -97,6 +125,10 @@ class HealthService:
                 healthy_components=healthy_count,
             ),
         )
+        
+        # Cache the response
+        self._health_cache = (response, now)
+        return response
 
     async def run_connectivity_check(self) -> HealthCheckResult:
         """Run connectivity health check bundle."""
@@ -246,16 +278,58 @@ class HealthService:
         """Get service health statuses with metrics.
         
         Uses connectivity tools for status and separate health tools for metrics.
+        Cached for 30 seconds to avoid overload.
         """
-        # Run connectivity check for status
-        connectivity = await self._run_skill("maint.connectivity.full_scan", {})
+        # Check cache first
+        now = datetime.now(UTC)
+        if self._service_health_cache is not None:
+            cached_response, cached_at = self._service_health_cache
+            cache_age = (now - cached_at).total_seconds()
+            if cache_age < 30:
+                logger.info(f"[SERVICE_HEALTH_CACHE] Cache HIT - returning cached response (age: {cache_age:.1f}s)")
+                return cached_response
+            else:
+                logger.info(f"[SERVICE_HEALTH_CACHE] Cache EXPIRED - age: {cache_age:.1f}s, refreshing")
+        else:
+            logger.info("[SERVICE_HEALTH_CACHE] Cache MISS - no cached data, running checks")
+        
+        # Run connectivity check and all tool handlers in parallel for faster response
+        import asyncio
+        from aico.ai.agency.tools.registry import get_tool_registry
+        tool_registry = get_tool_registry()
+        
+        # Prepare all async operations
+        connectivity_task = self._run_skill("maint.connectivity.full_scan", {})
+        
+        # Get tool handlers
+        pg_health_tool = tool_registry.get("tool.db.postgres.health")
+        chroma_health_tool = tool_registry.get("tool.db.chroma.health")
+        influx_health_tool = tool_registry.get("tool.db.influx.health")
+        lmdb_health_tool = tool_registry.get("tool.db.lmdb.health")
+        
+        # Run all in parallel
+        results = await asyncio.gather(
+            connectivity_task,
+            pg_health_tool.handler() if pg_health_tool else asyncio.sleep(0),
+            chroma_health_tool.handler() if chroma_health_tool else asyncio.sleep(0),
+            influx_health_tool.handler() if influx_health_tool else asyncio.sleep(0),
+            lmdb_health_tool.handler() if lmdb_health_tool else asyncio.sleep(0),
+            self._run_skill("maint.db.influx.get_measurements", {}),
+            self._run_skill("maint.messagebus.check_health", {}),
+            return_exceptions=True,
+        )
+        
+        # Unpack results
+        connectivity, pg_health, chroma_health, influx_health, lmdb_health, measurements_result, messagebus_result = results
+        
+        # Handle exceptions
+        if isinstance(connectivity, Exception):
+            logger.error(f"Connectivity check failed: {connectivity}")
+            connectivity = {"output": {"checks": {}}}
+        
         # Extract checks from the nested output structure
         connectivity_output = connectivity.get("output", {})
         checks = connectivity_output.get("checks", {})
-        
-        # Get health metrics from separate tools
-        from aico.ai.agency.tools.registry import get_tool_registry
-        tool_registry = get_tool_registry()
         
         services = []
         now = datetime.now(UTC)
@@ -286,9 +360,10 @@ class HealthService:
         pg_check = checks.get("postgres", {})
         pg_status = pg_check.get("status")
         
-        # Get health metrics
-        pg_health_tool = tool_registry.get("tool.db.postgres.health")
-        pg_health = await pg_health_tool.handler() if pg_health_tool else {"data": {"details": {}}}
+        # Use parallel result (already fetched)
+        if isinstance(pg_health, Exception):
+            logger.error(f"PostgreSQL health check failed: {pg_health}")
+            pg_health = {"data": {"details": {}}}
         pg_details = pg_health.get("data", {}).get("details", {})
         db_size = pg_details.get("database_size_mb", 0)
         pg_tables = pg_details.get("tables", [])
@@ -312,9 +387,10 @@ class HealthService:
         chroma_check = checks.get("chroma", {})
         chroma_status = chroma_check.get("status")
         
-        # Get health metrics
-        chroma_health_tool = tool_registry.get("tool.db.chroma.health")
-        chroma_health = await chroma_health_tool.handler() if chroma_health_tool else {"data": {"details": {}}}
+        # Use parallel result (already fetched)
+        if isinstance(chroma_health, Exception):
+            logger.error(f"ChromaDB health check failed: {chroma_health}")
+            chroma_health = {"data": {"details": {}}}
         chroma_details = chroma_health.get("data", {}).get("details", {})
         chroma_collections = chroma_details.get("collections", 0)
         chroma_collection_list = chroma_details.get("collection_list", [])
@@ -337,16 +413,18 @@ class HealthService:
         influx_check = checks.get("influx", {})
         influx_status = influx_check.get("status")
         
-        # Get health metrics and detailed measurements
-        influx_health_tool = tool_registry.get("tool.db.influx.health")
-        influx_health = await influx_health_tool.handler() if influx_health_tool else {"data": {"details": {}}}
+        # Use parallel result (already fetched)
+        if isinstance(influx_health, Exception):
+            logger.error(f"InfluxDB health check failed: {influx_health}")
+            influx_health = {"data": {"details": {}}}
         influx_details = influx_health.get("data", {}).get("details", {})
         measurement_count = influx_details.get("measurements", 0)
         
-        # Get detailed measurement list via get_measurements skill
+        # Get detailed measurement list from parallel result (already fetched)
         influx_measurements = []
         try:
-            measurements_result = await self._run_skill("maint.db.influx.get_measurements", {})
+            if isinstance(measurements_result, Exception):
+                raise measurements_result
             print(f"\n{'='*80}")
             print(f"[SERVICE_HEALTH DEBUG] InfluxDB skill result:")
             print(f"{measurements_result}")
@@ -399,9 +477,10 @@ class HealthService:
         lmdb_check = checks.get("lmdb", {})
         lmdb_status = lmdb_check.get("status")
         
-        # Get health metrics
-        lmdb_health_tool = tool_registry.get("tool.db.lmdb.health")
-        lmdb_health = await lmdb_health_tool.handler() if lmdb_health_tool else {"data": {"details": {}}}
+        # Use parallel result (already fetched)
+        if isinstance(lmdb_health, Exception):
+            logger.error(f"LMDB health check failed: {lmdb_health}")
+            lmdb_health = {"data": {"details": {}}}
         lmdb_details = lmdb_health.get("data", {}).get("details", {})
         lmdb_entries = lmdb_details.get("entries", 0)
         
@@ -418,8 +497,10 @@ class HealthService:
             last_checked=now,
         ))
         
-        # Message Bus (ZeroMQ)
-        messagebus_result = await self._run_skill("maint.messagebus.check_health", {})
+        # Message Bus (ZeroMQ) - use parallel result (already fetched)
+        if isinstance(messagebus_result, Exception):
+            logger.error(f"Message bus health check failed: {messagebus_result}")
+            messagebus_result = {"output": {}}
         messagebus_output = messagebus_result.get("output", {})
         messagebus_status = messagebus_output.get("summary_status", "unknown")
         messagebus_checks = messagebus_output.get("checks", {})
@@ -500,7 +581,11 @@ class HealthService:
             last_checked=now,
         ))
         
-        return ServiceHealthResponse(services=services)
+        response = ServiceHealthResponse(services=services)
+        
+        # Cache the response
+        self._service_health_cache = (response, now)
+        return response
 
     async def _run_skill(self, skill_id: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Run a skill and return its output."""

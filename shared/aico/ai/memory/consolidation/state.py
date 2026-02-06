@@ -340,7 +340,7 @@ class ConsolidationStateManager:
         Persist current state to storage.
         
         Args:
-            storage: Storage backend (e.g., libSQL)
+            storage: Storage backend
         """
         state_dict = self._current_state.to_dict()
         
@@ -366,7 +366,7 @@ class ConsolidationStateManager:
         Load state from storage.
         
         Args:
-            storage: Storage backend (e.g., libSQL)
+            storage: Storage backend
         """
         try:
             result = await storage.execute(

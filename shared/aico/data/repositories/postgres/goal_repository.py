@@ -48,6 +48,11 @@ class PostgresGoalRepository(Repository[Goal]):
         if not row:
             return None
         
+        # Parse metadata_json if it's a string, otherwise use as-is
+        metadata = row.metadata_json if row.metadata_json else {}
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        
         return Goal(
             goal_id=row.goal_id,
             user_id=row.user_id,
@@ -57,7 +62,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=row.metadata_json if row.metadata_json else {},
+            metadata=metadata,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -85,6 +90,23 @@ class PostgresGoalRepository(Repository[Goal]):
         result = await self.session.execute(stmt)
         return result.rowcount > 0
     
+    async def get_distinct_user_ids_with_open_goals(self) -> List[str]:
+        """Get distinct user IDs that have open goals (pending, active, paused).
+        
+        This is optimized for the arbiter - queries only user_ids instead of full goal objects.
+        Scalable to millions of goals.
+        
+        Returns:
+            List of distinct user IDs
+        """
+        stmt = (
+            select(agency_goals.c.user_id)
+            .where(agency_goals.c.status.in_(['pending', 'active', 'paused']))
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+    
     async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[Goal]:
         """List goals with optional filters."""
         stmt = select(agency_goals)
@@ -107,8 +129,14 @@ class PostgresGoalRepository(Repository[Goal]):
         result = await self.session.execute(stmt)
         rows = result.fetchall()
         
-        return [
-            Goal(
+        goals = []
+        for row in rows:
+            # Parse metadata_json if it's a string, otherwise use as-is
+            metadata = row.metadata_json if row.metadata_json else {}
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            
+            goals.append(Goal(
                 goal_id=row.goal_id,
                 user_id=row.user_id,
                 origin=GoalOrigin(row.origin),
@@ -117,12 +145,12 @@ class PostgresGoalRepository(Repository[Goal]):
                 description=row.description,
                 status=GoalStatus(row.status),
                 priority=GoalPriority(row.priority),
-                metadata=row.metadata_json if row.metadata_json else {},
+                metadata=metadata,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
-            )
-            for row in rows
-        ]
+            ))
+        
+        return goals
     
     async def count(self, filters: Optional[dict] = None) -> int:
         """Count goals with optional filters."""
@@ -157,6 +185,11 @@ class PostgresGoalRepository(Repository[Goal]):
         if not row:
             return None
 
+        # Parse metadata_json if it's a string, otherwise use as-is
+        metadata = row.metadata_json if row.metadata_json else {}
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+
         return Goal(
             goal_id=row.goal_id,
             user_id=row.user_id,
@@ -166,7 +199,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=row.metadata_json if row.metadata_json else {},
+            metadata=metadata,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -195,6 +228,11 @@ class PostgresGoalRepository(Repository[Goal]):
         if not row:
             return None
 
+        # Parse metadata_json if it's a string, otherwise use as-is
+        metadata = row.metadata_json if row.metadata_json else {}
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+
         return Goal(
             goal_id=row.goal_id,
             user_id=row.user_id,
@@ -204,7 +242,7 @@ class PostgresGoalRepository(Repository[Goal]):
             description=row.description,
             status=GoalStatus(row.status),
             priority=GoalPriority(row.priority),
-            metadata=row.metadata_json if row.metadata_json else {},
+            metadata=metadata,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -220,8 +258,14 @@ class PostgresGoalRepository(Repository[Goal]):
         
         result = await self.session.execute(stmt)
         
-        return [
-            Goal(
+        goals = []
+        for row in result.fetchall():
+            # Parse metadata_json if it's a string, otherwise use as-is
+            metadata = row.metadata_json if row.metadata_json else {}
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            
+            goals.append(Goal(
                 goal_id=row.goal_id,
                 user_id=row.user_id,
                 origin=GoalOrigin(row.origin),
@@ -230,12 +274,12 @@ class PostgresGoalRepository(Repository[Goal]):
                 description=row.description,
                 status=GoalStatus(row.status),
                 priority=GoalPriority(row.priority),
-                metadata=row.metadata_json if row.metadata_json else {},
+                metadata=metadata,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
-            )
-            for row in result.fetchall()
-        ]
+            ))
+        
+        return goals
     
     async def update_status(self, goal_id: str, new_status: str) -> bool:
         """Update goal status."""
@@ -249,3 +293,41 @@ class PostgresGoalRepository(Repository[Goal]):
         )
         result = await self.session.execute(stmt)
         return result.rowcount > 0
+    
+    async def get_by_ids_bulk(self, goal_ids: List[str]) -> List[Goal]:
+        """Get multiple goals by IDs in a single query (optimized for N+1 prevention).
+        
+        Args:
+            goal_ids: List of goal IDs to fetch
+            
+        Returns:
+            List of Goal objects (may be fewer than requested if some IDs don't exist)
+        """
+        if not goal_ids:
+            return []
+        
+        stmt = select(agency_goals).where(agency_goals.c.goal_id.in_(goal_ids))
+        result = await self.session.execute(stmt)
+        
+        goals = []
+        for row in result.fetchall():
+            # Parse metadata_json if it's a string, otherwise use as-is
+            metadata = row.metadata_json if row.metadata_json else {}
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            
+            goals.append(Goal(
+                goal_id=row.goal_id,
+                user_id=row.user_id,
+                origin=GoalOrigin(row.origin),
+                goal_type=row.goal_type,
+                title=row.title,
+                description=row.description,
+                status=GoalStatus(row.status),
+                priority=GoalPriority(row.priority),
+                metadata=metadata,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            ))
+        
+        return goals

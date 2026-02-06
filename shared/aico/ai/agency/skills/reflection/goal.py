@@ -50,6 +50,14 @@ class ReflectOnGoalSkill(Skill):
         return "reflection"
     
     @property
+    def implementation_tools(self) -> List[str]:
+        return [
+            "tool.agency.get_goal",
+            "tool.agency.list_plans",
+            "tool.agency.get_executions",
+        ]
+    
+    @property
     def parameters(self) -> List[SkillParameter]:
         return [
             SkillParameter(

@@ -3,7 +3,7 @@ Tests for default policy installation.
 """
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 
 from aico.ai.agency.default_policies import install_default_policies, DEFAULT_POLICIES
 from aico.ai.agency.values_ethics import PolicyEffect, PolicyTargetType
@@ -26,48 +26,54 @@ class TestDefaultPoliciesInstall:
             assert policy.effect in [PolicyEffect.ALLOW, PolicyEffect.ALLOW_WITH_WARNING, PolicyEffect.NEEDS_CONSENT, PolicyEffect.BLOCK]
             assert policy.priority > 0
     
-    def test_install_default_policies_new(self):
+    @pytest.mark.asyncio
+    async def test_install_default_policies_new(self):
         """Test installing policies when none exist."""
         # Mock service
         mock_service = Mock()
-        mock_service.get_policy_rule = Mock(return_value=None)  # No existing policies
-        mock_service.add_policy_rule = Mock()
+        mock_service.get_policy_rule = AsyncMock(return_value=None)  # No existing policies
+        mock_service.add_policy_rule = AsyncMock()
+        mock_uow = Mock()
         
         # Install
-        count = install_default_policies(mock_service)
+        count = await install_default_policies(mock_service, mock_uow)
         
         # Should install all policies
         assert count == len(DEFAULT_POLICIES)
         assert mock_service.add_policy_rule.call_count == len(DEFAULT_POLICIES)
     
-    def test_install_default_policies_existing(self):
+    @pytest.mark.asyncio
+    async def test_install_default_policies_existing(self):
         """Test installing policies when some already exist."""
         # Mock service - first policy exists, others don't
-        def mock_get_policy(rule_id):
+        async def mock_get_policy(rule_id, uow):
             if rule_id == DEFAULT_POLICIES[0].rule_id:
                 return DEFAULT_POLICIES[0]
             return None
         
         mock_service = Mock()
-        mock_service.get_policy_rule = Mock(side_effect=mock_get_policy)
-        mock_service.add_policy_rule = Mock()
+        mock_service.get_policy_rule = AsyncMock(side_effect=mock_get_policy)
+        mock_service.add_policy_rule = AsyncMock()
+        mock_uow = Mock()
         
         # Install
-        count = install_default_policies(mock_service)
+        count = await install_default_policies(mock_service, mock_uow)
         
         # Should install all except the first one
         assert count == len(DEFAULT_POLICIES) - 1
         assert mock_service.add_policy_rule.call_count == len(DEFAULT_POLICIES) - 1
     
-    def test_install_default_policies_all_existing(self):
+    @pytest.mark.asyncio
+    async def test_install_default_policies_all_existing(self):
         """Test installing policies when all already exist."""
         # Mock service - all policies exist
         mock_service = Mock()
-        mock_service.get_policy_rule = Mock(return_value=Mock())  # All exist
-        mock_service.add_policy_rule = Mock()
+        mock_service.get_policy_rule = AsyncMock(return_value=Mock())  # All exist
+        mock_service.add_policy_rule = AsyncMock()
+        mock_uow = Mock()
         
         # Install
-        count = install_default_policies(mock_service)
+        count = await install_default_policies(mock_service, mock_uow)
         
         # Should install none
         assert count == 0

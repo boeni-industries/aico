@@ -391,10 +391,26 @@ AICO's CLI provides comprehensive task management capabilities:
 
 The scheduler uses a simplified configuration approach to avoid YAML bloat while maintaining flexibility:
 
-#### 1. Core Scheduler Configuration (core.yaml)
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
+#### 1. Core Scheduler Configuration (scheduler.yaml)
 ```yaml
-# config/defaults/core.yaml - Only scheduler-level settings
+# config/defaults/scheduler.yaml - Only scheduler-level settings
+=======
+#### 1. Scheduler Configuration (scheduler.yaml)
+```yaml
+=======
+#### 1. Scheduler Configuration (scheduler.yaml)
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md
+=======
+#### 1. Scheduler Configuration (scheduler.yaml)
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md
+# config/defaults/scheduler.yaml - Scheduler-level settings
 scheduler:
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md
   enabled: true
   max_concurrent_tasks: 10
   max_cpu_percent: 80
@@ -442,7 +458,19 @@ INSERT INTO scheduled_tasks (task_id, schedule, config) VALUES
 This approach provides:
 - **KISS**: No complex multi-tier hierarchy
 - **DRY**: Configuration defaults co-located with task implementation
-- **Scalable**: Unlimited tasks without bloating core.yaml
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/scheduling/scheduling.md
+- **Scalable**: Unlimited tasks without bloating scheduler.yaml
+=======
+- **Scalable**: Unlimited tasks without bloating the scheduler YAML
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md
+=======
+- **Scalable**: Unlimited tasks without bloating the scheduler YAML
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md
+=======
+- **Scalable**: Unlimited tasks without bloating the scheduler YAML
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/scheduling/scheduling.md
 - **Maintainable**: Task owners control their configuration schema
 
 ## Database Schema

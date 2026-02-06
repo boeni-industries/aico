@@ -957,7 +957,7 @@ This section details all AI models, libraries, and technologies required to impl
 **Purpose**: Multilingual feedback text classification and topic similarity matching.
 
 **Model**: **REUSE EXISTING** - `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`
-- Already configured in `core.yaml` at `modelservice.transformers.models.embeddings`
+- Already configured in `config/defaults/modelservice.yaml` at `modelservice.transformers.models.embeddings`
 - Already managed by `TransformersManager` in modelservice
 - 768 dimensions (used for semantic memory, feedback classification, topic matching)
 
@@ -1249,13 +1249,13 @@ def select_best_skill(user_preference_vector: np.ndarray,
 **Purpose**: Extract trigger context from conversations (intent, entities, topics).
 
 **Model**: **REUSE EXISTING** - `xlm-roberta-base`
-- Already configured in `core.yaml` at `modelservice.transformers.models.intent_classification`
+- Already configured in `config/defaults/modelservice.yaml` at `modelservice.transformers.models.intent_classification`
 - Already managed by `TransformersManager`
 - Multilingual support (matches AICO's multilingual design)
 - Use case: Classify user intent to determine appropriate skill category
 
 **Entity Extraction**: **REUSE EXISTING** - `urchade/gliner_medium-v2.1`
-- Already configured in `core.yaml` at `modelservice.transformers.models.entity_extraction`
+- Already configured in `config/defaults/modelservice.yaml` at `modelservice.transformers.models.entity_extraction`
 - Already managed by `TransformersManager`
 - Generalist entity extraction (can extract any entity type)
 - Use case: Extract topics, subjects, and context from conversations
@@ -1287,7 +1287,7 @@ def extract_context(text: str) -> dict:
 **Purpose**: Detect user sentiment to inform skill selection.
 
 **Model**: **REUSE EXISTING** - `nlptown/bert-base-multilingual-uncased-sentiment`
-- Already configured in `core.yaml` at `modelservice.transformers.models.sentiment_multilingual`
+- Already configured in `config/defaults/modelservice.yaml` at `modelservice.transformers.models.sentiment_multilingual`
 - Already managed by `TransformersManager` (priority 1, required)
 - Multilingual support
 - Use case: Determine if user is frustrated, happy, neutral to select appropriate interaction style
@@ -1326,7 +1326,7 @@ def detect_sentiment(text: str) -> str:
 #### 10. **Logging & Monitoring**
 
 **Infrastructure**: **REUSE EXISTING** - AICO's unified logging system
-- Already configured in `core.yaml` at `logging`
+- Already configured in `config/defaults/logging.yaml` at `logging`
 - ZeroMQ message bus for log transport
 - Use case: Track skill applications, feedback events, learning metrics
 - Subsystem: Add `behavioral_memory` to logging configuration
@@ -1405,7 +1405,7 @@ async def test_feedback_endpoint(test_client, mock_bus_client):
 
 #### 13. **Configuration**
 
-**System**: **REUSE EXISTING** - Add to `config/defaults/core.yaml` under the `memory:` section
+**System**: **REUSE EXISTING** - Add to `config/defaults/memory.yaml` under the `memory:` section
 
 **Location**: After `memory.semantic.knowledge_graph` (around line 342), add:
 

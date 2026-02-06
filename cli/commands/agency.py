@@ -35,7 +35,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
 from aico.security import AICOKeyManager
 from aico.ai.agency import AgencyEngine
-from aico.ai.agency.values_ethics import ValuesEthicsService, PolicyEffect, ProactiveBehaviorLevel
+from aico.ai.agency.values_ethics import ValuesEthicsService, PolicyEffect, AutonomyLevel
 from cli.utils.pg_connection import get_pg_connection
 
 console = Console()
@@ -308,20 +308,41 @@ def status(
             engine = AgencyEngine(config, db)
             values_service = ValuesEthicsService(db)
 
-            # Fetch value profile
-            profile = values_service._get_or_create_profile(user_id)
-
-            # Fetch intention set (reusing existing async pattern)
+            # Fetch value profile and intention set using async pattern
             import asyncio
 
-            intention_set = asyncio.run(engine.get_intention_set(user_id))
+            async def fetch_data():
+                from aico.data.uow import UnitOfWork
+                from aico.data.postgres.connection import get_session_factory
+
+                session_factory = await get_session_factory()
+                # Ensure GoalArbiter/AgencyEngine have session_factory for intention queries
+                try:
+                    engine._session_factory = session_factory
+                except Exception:
+                    pass
+                try:
+                    if getattr(engine, "arbiter", None) is not None:
+                        engine.arbiter._session_factory = session_factory
+                except Exception:
+                    pass
+
+                async with UnitOfWork(session_factory) as uow:
+                    profile = await values_service._get_or_create_profile(user_id, uow)
+                    await uow.commit()
+
+                intention_set = await engine.get_intention_set(user_id)
+                return profile, intention_set
+
+            profile, intention_set = asyncio.run(fetch_data())
 
             # Fetch Goal objects for all intentions
             goal_map = {}
             if intention_set.intentions:
                 goal_ids = [i.goal_id for i in intention_set.intentions]
-                placeholders = ','.join(['?'] * len(goal_ids))
-                cursor = db.execute(
+                placeholders = ','.join(['%s'] * len(goal_ids))
+                cursor = db.cursor()
+                cursor.execute(
                     f"SELECT * FROM aico_core.agency_goals WHERE goal_id IN ({placeholders})",
                     tuple(goal_ids)
                 )
@@ -351,7 +372,8 @@ def status(
             
             try:
                 # Goals by status and origin
-                cursor = db.execute(
+                cursor = db.cursor()
+                cursor.execute(
                     "SELECT status, origin, COUNT(*) FROM aico_core.agency_goals WHERE user_id = %s GROUP BY status, origin",
                     (user_id,),
                 )
@@ -374,7 +396,8 @@ def status(
             
             try:
                 # Plans by status
-                cursor = db.execute(
+                cursor = db.cursor()
+                cursor.execute(
                     "SELECT p.status, COUNT(*) FROM aico_core.agency_plans p JOIN agency_goals g ON p.goal_id = g.goal_id WHERE g.user_id = %s GROUP BY p.status",
                     (user_id,),
                 )
@@ -389,7 +412,8 @@ def status(
             
             try:
                 # Executions by status
-                cursor = db.execute(
+                cursor = db.cursor()
+                cursor.execute(
                     "SELECT pe.status, COUNT(*) FROM aico_core.agency_plan_executions pe JOIN agency_plans p ON pe.plan_id = p.plan_id JOIN agency_goals g ON p.goal_id = g.goal_id WHERE g.user_id = %s GROUP BY pe.status",
                     (user_id,),
                 )
@@ -399,7 +423,8 @@ def status(
                 # Get latest failed execution details
                 failed_exec = None
                 if by_status.get("failed", 0) > 0:
-                    failed_cursor = db.execute(
+                    failed_cursor = db.cursor()
+                    failed_cursor.execute(
                         "SELECT pe.execution_id, pe.error_message, pe.completed_at FROM aico_core.agency_plan_executions pe JOIN agency_plans p ON pe.plan_id = p.plan_id JOIN agency_goals g ON p.goal_id = g.goal_id WHERE g.user_id = %s AND pe.status = 'failed' ORDER BY pe.completed_at DESC LIMIT 1",
                         (user_id,),
                     )
@@ -421,13 +446,15 @@ def status(
             
             try:
                 # Skill gaps - get top 3 by priority
-                cursor = db.execute(
+                cursor = db.cursor()
+                cursor.execute(
                     "SELECT COUNT(*), AVG(frequency_count), AVG(priority_score) FROM aico_core.agency_skill_gaps"
                 )
                 row = cursor.fetchone()
                 
                 # Fetch top 3 gaps by priority
-                top_gaps_cursor = db.execute(
+                top_gaps_cursor = db.cursor()
+                top_gaps_cursor.execute(
                     "SELECT llm_suggested_skills, frequency_count, priority_score FROM aico_core.agency_skill_gaps ORDER BY priority_score DESC, frequency_count DESC LIMIT 3"
                 )
                 top_gaps = []
@@ -457,7 +484,8 @@ def status(
             
             try:
                 # Lessons
-                cursor = db.execute(
+                cursor = db.cursor()
+                cursor.execute(
                     "SELECT status, COUNT(*) FROM aico_core.agency_lessons GROUP BY status"
                 )
                 rows = cursor.fetchall()
@@ -483,7 +511,7 @@ def status(
                 "timestamp": datetime.utcnow().isoformat(),
                 "profile": {
                     "curiosity_intensity": profile.curiosity_intensity,
-                    "proactive_behavior_level": profile.proactive_behavior_level.value,
+                    "autonomy_level": profile.autonomy_level.value,
                     "sensitive_life_areas": profile.sensitive_life_areas,
                 },
                 "goals": goals_summary,
@@ -545,7 +573,7 @@ def status(
         console.print()
         
         # Profile section - inline compact
-        profile_content = f"[dim]Curiosity:[/dim] {profile.curiosity_intensity:.0%}  [dim]Proactive:[/dim] {profile.proactive_behavior_level.value.title()}"
+        profile_content = f"[dim]Curiosity:[/dim] {profile.curiosity_intensity:.0%}  [dim]Proactive:[/dim] {profile.autonomy_level.value.title()}"
         if profile.sensitive_life_areas:
             sensitive = ", ".join(profile.sensitive_life_areas)
             profile_content += f"  [dim]Sensitive:[/dim] {sensitive}"
@@ -814,10 +842,27 @@ def intentions(
             
             # Initialize engine
             engine = AgencyEngine(config, db)
-            
-            # Get intention set
+
+            # Get intention set (requires session_factory)
             import asyncio
-            intention_set = asyncio.run(engine.get_intention_set(user_id))
+
+            async def fetch_intentions():
+                from aico.data.postgres.connection import get_session_factory
+
+                session_factory = await get_session_factory()
+                try:
+                    engine._session_factory = session_factory
+                except Exception:
+                    pass
+                try:
+                    if getattr(engine, "arbiter", None) is not None:
+                        engine.arbiter._session_factory = session_factory
+                except Exception:
+                    pass
+
+                return await engine.get_intention_set(user_id)
+
+            intention_set = asyncio.run(fetch_intentions())
         
         # Limit results if needed
         if len(intention_set.intentions) > limit:
@@ -850,11 +895,13 @@ def intentions(
             
             # Fetch goal details for display
             goal_ids = [i.goal_id for i in intention_set.intentions]
-            placeholders = ','.join('?' * len(goal_ids))
-            goals_data = db.execute(
+            placeholders = ','.join(['%s'] * len(goal_ids))
+            cursor = db.cursor()
+            cursor.execute(
                 f"SELECT goal_id, title, origin, priority, status FROM aico_core.agency_goals WHERE goal_id IN ({placeholders})",
                 tuple(goal_ids)
-            ).fetchall()
+            )
+            goals_data = cursor.fetchall()
             goals_map = {g["goal_id"]: g for g in goals_data}
             
             table = Table(
@@ -922,7 +969,20 @@ def profile(
         db = get_db_connection()
         
         service = ValuesEthicsService(db)
-        profile = service._get_or_create_profile(user_id)
+
+        import asyncio
+
+        async def get_profile():
+            from aico.data.uow import UnitOfWork
+            from aico.data.postgres.connection import get_session_factory
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                profile = await service._get_or_create_profile(user_id, uow)
+                await uow.commit()
+                return profile
+
+        profile = asyncio.run(get_profile())
         
         # Handle updates
         updated = False
@@ -936,11 +996,11 @@ def profile(
         
         if set_proactive:
             try:
-                level = ProactiveBehaviorLevel(set_proactive.lower())
-                profile.proactive_behavior_level = level
+                level = AutonomyLevel(set_proactive.lower())
+                profile.autonomy_level = level
                 updated = True
             except ValueError:
-                console.print(f"[red]✗[/red] Invalid proactive level. Use: quiet, balanced, or proactive")
+                console.print(f"[red]✗[/red] Invalid autonomy level. Use: quiet, balanced, proactive, or autonomous")
                 raise typer.Exit(1)
         
         if add_sensitive:
@@ -955,18 +1015,19 @@ def profile(
         
         # Save updates
         if updated:
-            db.execute(
+            cursor = db.cursor()
+            cursor.execute(
                 """
                 UPDATE ethics_value_profiles 
-                SET curiosity_intensity = ?, 
-                    proactive_behavior_level = ?,
-                    sensitive_life_areas = ?,
+                SET curiosity_intensity = %s, 
+                    autonomy_level = %s,
+                    sensitive_life_areas = %s,
                     updated_at = %s
                 WHERE profile_id = %s
                 """,
                 (
                     profile.curiosity_intensity,
-                    profile.proactive_behavior_level.value,
+                    profile.autonomy_level.value,
                     json.dumps(profile.sensitive_life_areas),
                     datetime.utcnow().isoformat(),
                     profile.profile_id
@@ -981,7 +1042,7 @@ def profile(
                 "profile_id": profile.profile_id,
                 "user_id": profile.user_id,
                 "curiosity_intensity": profile.curiosity_intensity,
-                "proactive_behavior_level": profile.proactive_behavior_level.value,
+                "autonomy_level": profile.autonomy_level.value,
                 "sensitive_life_areas": profile.sensitive_life_areas,
                 "allowed_curiosity_domains": profile.allowed_curiosity_domains,
             }
@@ -992,7 +1053,7 @@ def profile(
 
 [bold cyan]Behavior Settings[/bold cyan]
 [bold]Curiosity Intensity:[/bold] {profile.curiosity_intensity:.2f}
-[bold]Proactive Level:[/bold] {profile.proactive_behavior_level.value}
+[bold]Proactive Level:[/bold] {profile.autonomy_level.value}
 
 [bold cyan]Sensitive Life Areas[/bold cyan]
 {', '.join(profile.sensitive_life_areas) if profile.sensitive_life_areas else '[dim]None configured[/dim]'}
@@ -1036,7 +1097,8 @@ def policies(
         
         query += " ORDER BY priority ASC"
         
-        cursor = db.execute(query, tuple(params))
+        cursor = db.cursor()
+        cursor.execute(query, tuple(params))
         policies = cursor.fetchall()
         
         if not policies:
@@ -1128,7 +1190,8 @@ def consent(
             
             consent_id = f"consent-{user_id}-{datetime.utcnow().timestamp()}"
             
-            db.execute(
+            cursor = db.cursor()
+            cursor.execute(
                 """
                 INSERT INTO consent_records (consent_id, user_id, scope, decision, granted_at)
                 VALUES (%s, %s, %s, %s, %s)
@@ -1141,7 +1204,8 @@ def consent(
         
         if revoke:
             # Revoke consent
-            db.execute(
+            cursor = db.cursor()
+            cursor.execute(
                 "UPDATE consent_records SET decision = %s, updated_at = %s WHERE consent_id = %s AND user_id = %s",
                 ("denied", datetime.utcnow().isoformat(), revoke, user_id)
             )
@@ -1150,7 +1214,8 @@ def consent(
             return
         
         # List consents
-        cursor = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             "SELECT * FROM aico_core.consent_records WHERE user_id = %s ORDER BY granted_at DESC",
             (user_id,)
         )
@@ -1238,7 +1303,9 @@ def plans(
         query += " ORDER BY p.created_at DESC LIMIT %s"
         params.append(limit)
         
-        rows = db.execute(query, tuple(params)).fetchall()
+        cursor = db.cursor()
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
         
         if not rows:
             console.print("[yellow]No plans found[/yellow]")
@@ -1303,7 +1370,9 @@ def executions(
         query += " ORDER BY created_at DESC LIMIT %s"
         params.append(limit)
         
-        rows = db.execute(query, tuple(params)).fetchall()
+        cursor = db.cursor()
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
         
         if not rows:
             console.print("[yellow]No executions found[/yellow]")
@@ -1425,13 +1494,15 @@ def metrics(
         metrics_data = {}
         
         # Goal metrics
-        goal_stats = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             f"""SELECT status, COUNT(*) as count 
                 FROM aico_core.agency_goals 
                 WHERE user_id = %s{time_filter}
                 GROUP BY status""",
             tuple(params)
-        ).fetchall()
+        )
+        goal_stats = cursor.fetchall()
         
         total_goals = sum(row["count"] for row in goal_stats)
         completed_goals = next((row["count"] for row in goal_stats if row["status"] == "completed"), 0)
@@ -1444,14 +1515,16 @@ def metrics(
         }
         
         # Plan metrics (join through goals to get user_id)
-        plan_stats = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             f"""SELECT p.status, COUNT(*) as count
                 FROM aico_core.agency_plans p
                 JOIN agency_goals g ON p.goal_id = g.goal_id
                 WHERE g.user_id = %s{time_filter.replace('created_at', 'p.created_at') if time_filter else ''}
                 GROUP BY p.status""",
             tuple(params)
-        ).fetchall()
+        )
+        plan_stats = cursor.fetchall()
         
         total_plans = sum(row["count"] for row in plan_stats)
         completed_plans = next((row["count"] for row in plan_stats if row["status"] == "completed"), 0)
@@ -1464,13 +1537,15 @@ def metrics(
         }
         
         # Execution metrics
-        exec_stats = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             f"""SELECT status, COUNT(*) as count, AVG(progress_percentage) as avg_progress
                 FROM aico_core.agency_plan_executions
                 WHERE user_id = %s{time_filter}
                 GROUP BY status""",
             tuple(params)
-        ).fetchall()
+        )
+        exec_stats = cursor.fetchall()
         
         metrics_data["executions"] = {
             "total": sum(row["count"] for row in exec_stats),
@@ -1478,23 +1553,29 @@ def metrics(
         }
         
         # Reflection metrics
-        reflection_count = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             f"""SELECT COUNT(*) as count FROM agency_reflection_runs
                 WHERE user_id = %s{time_filter}""",
             tuple(params)
-        ).fetchone()["count"]
+        )
+        reflection_count = cursor.fetchone()["count"]
         
-        lesson_count = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             f"""SELECT COUNT(*) as count FROM aico_core.agency_lessons
                 WHERE user_id = %s{time_filter}""",
             tuple(params)
-        ).fetchone()["count"]
+        )
+        lesson_count = cursor.fetchone()["count"]
         
-        applied_lessons = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             f"""SELECT COUNT(*) as count FROM aico_core.agency_lessons
                 WHERE user_id = %s AND status = 'applied'{time_filter}""",
             tuple(params)
-        ).fetchone()["count"]
+        )
+        applied_lessons = cursor.fetchone()["count"]
         
         metrics_data["reflection"] = {
             "runs": reflection_count,
@@ -1504,11 +1585,13 @@ def metrics(
         }
         
         # Event metrics
-        event_count = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             f"""SELECT COUNT(*) as count FROM agency_events_log
                 WHERE user_id = %s{time_filter}""",
             tuple(params)
-        ).fetchone()["count"]
+        )
+        event_count = cursor.fetchone()["count"]
         
         metrics_data["events"] = {
             "total": event_count
@@ -1605,14 +1688,16 @@ def reflection_history(
                 AVG(l.confidence) as avg_confidence
             FROM agency_reflection_runs r
             LEFT JOIN agency_lessons l ON r.run_id = l.source_reflection_run_id
-            WHERE r.user_id = ?{time_filter}
+            WHERE r.user_id = %s{time_filter}
             GROUP BY r.run_id
             ORDER BY r.started_at DESC
             LIMIT %s
         """
         params.append(limit)
         
-        runs = db.execute(query, tuple(params)).fetchall()
+        cursor = db.cursor()
+        cursor.execute(query, tuple(params))
+        runs = cursor.fetchall()
         
         if not runs:
             console.print("[yellow]No reflection runs found[/yellow]")
@@ -1706,7 +1791,9 @@ def skill_performance(
         query += " ORDER BY sample_size DESC LIMIT %s"
         params.append(limit)
         
-        skills = db.execute(query, tuple(params)).fetchall()
+        cursor = db.cursor()
+        cursor.execute(query, tuple(params))
+        skills = cursor.fetchall()
         
         if not skills:
             console.print("[yellow]No skill performance data found[/yellow]")
@@ -1782,11 +1869,13 @@ def health(
         from datetime import timedelta
         stale_cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
         
-        stale_runs = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """SELECT COUNT(*) as count FROM agency_reflection_runs
                WHERE user_id = %s AND status = 'running' AND started_at < %s""",
             (user_id, stale_cutoff)
-        ).fetchone()["count"]
+        )
+        stale_runs = cursor.fetchone()["count"]
         
         if stale_runs > 0:
             health_issues.append({
@@ -1797,15 +1886,19 @@ def health(
             })
         
         # Check 2: Lesson application rate
-        total_lessons = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             "SELECT COUNT(*) as count FROM aico_core.agency_lessons WHERE user_id = %s",
             (user_id,)
-        ).fetchone()["count"]
+        )
+        total_lessons = cursor.fetchone()["count"]
         
-        applied_lessons = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             "SELECT COUNT(*) as count FROM aico_core.agency_lessons WHERE user_id = %s AND status = 'applied'",
             (user_id,)
-        ).fetchone()["count"]
+        )
+        applied_lessons = cursor.fetchone()["count"]
         
         if total_lessons > 10:
             application_rate = (applied_lessons / total_lessons) * 100
@@ -1818,15 +1911,19 @@ def health(
                 })
         
         # Check 3: Goal abandonment rate
-        total_goals = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             "SELECT COUNT(*) as count FROM aico_core.agency_goals WHERE user_id = %s",
             (user_id,)
-        ).fetchone()["count"]
+        )
+        total_goals = cursor.fetchone()["count"]
         
-        abandoned_goals = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             "SELECT COUNT(*) as count FROM aico_core.agency_goals WHERE user_id = %s AND status = 'abandoned'",
             (user_id,)
-        ).fetchone()["count"]
+        )
+        abandoned_goals = cursor.fetchone()["count"]
         
         if total_goals > 10:
             abandonment_rate = (abandoned_goals / total_goals) * 100
@@ -1839,15 +1936,19 @@ def health(
                 })
         
         # Check 4: Failed plan executions
-        total_executions = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             "SELECT COUNT(*) as count FROM aico_core.agency_plan_executions WHERE user_id = %s",
             (user_id,)
-        ).fetchone()["count"]
+        )
+        total_executions = cursor.fetchone()["count"]
         
-        failed_executions = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             "SELECT COUNT(*) as count FROM aico_core.agency_plan_executions WHERE user_id = %s AND status = 'failed'",
             (user_id,)
-        ).fetchone()["count"]
+        )
+        failed_executions = cursor.fetchone()["count"]
         
         if total_executions > 10:
             failure_rate = (failed_executions / total_executions) * 100
@@ -1861,10 +1962,12 @@ def health(
         
         # Check 5: Recent activity
         recent_cutoff = (datetime.utcnow() - timedelta(days=1)).isoformat()
-        recent_events = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             "SELECT COUNT(*) as count FROM agency_events_log WHERE user_id = %s AND created_at >= %s",
             (user_id, recent_cutoff)
-        ).fetchone()["count"]
+        )
+        recent_events = cursor.fetchone()["count"]
         
         if recent_events == 0:
             info.append({
@@ -2067,7 +2170,9 @@ def ls(
         query += " LIMIT %s"
         params.append(limit)
         
-        lessons = db.execute(query, tuple(params)).fetchall()
+        cursor = db.cursor()
+        cursor.execute(query, tuple(params))
+        lessons = cursor.fetchall()
         
         if not lessons:
             console.print("[yellow]No lessons found matching criteria[/yellow]")
@@ -2153,11 +2258,13 @@ def show(
         db = get_db_connection()
         
         # Get lesson details
-        lesson = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """SELECT * FROM aico_core.agency_lessons 
-               WHERE lesson_id = ? AND user_id = %s""",
+               WHERE lesson_id = %s AND user_id = %s""",
             (lesson_id, user_id)
-        ).fetchone()
+        )
+        lesson = cursor.fetchone()
         
         if not lesson:
             console.print(f"[red]✗[/red] Lesson not found: {lesson_id}")
@@ -2275,11 +2382,13 @@ def approve(
         db = get_db_connection()
         
         # Check if lesson exists
-        lesson = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """SELECT lesson_id, status, summary_text FROM aico_core.agency_lessons 
-               WHERE lesson_id = ? AND user_id = %s""",
+               WHERE lesson_id = %s AND user_id = %s""",
             (lesson_id, user_id)
-        ).fetchone()
+        )
+        lesson = cursor.fetchone()
         
         if not lesson:
             console.print(f"[red]✗[/red] Lesson not found: {lesson_id}")
@@ -2291,9 +2400,10 @@ def approve(
         
         # Update status to active
         now = datetime.now().isoformat()
-        db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """UPDATE agency_lessons 
-               SET status = 'active', updated_at = ?
+               SET status = 'active', updated_at = %s
                WHERE lesson_id = %s""",
             (now, lesson_id)
         )
@@ -2331,11 +2441,13 @@ def reject(
         db = get_db_connection()
         
         # Check if lesson exists
-        lesson = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """SELECT lesson_id, status, summary_text FROM aico_core.agency_lessons 
-               WHERE lesson_id = ? AND user_id = %s""",
+               WHERE lesson_id = %s AND user_id = %s""",
             (lesson_id, user_id)
-        ).fetchone()
+        )
+        lesson = cursor.fetchone()
         
         if not lesson:
             console.print(f"[red]✗[/red] Lesson not found: {lesson_id}")
@@ -2347,9 +2459,10 @@ def reject(
         
         # Update status to rejected
         now = datetime.now().isoformat()
-        db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """UPDATE agency_lessons 
-               SET status = 'rejected', updated_at = ?
+               SET status = 'rejected', updated_at = %s
                WHERE lesson_id = %s""",
             (now, lesson_id)
         )
@@ -2386,25 +2499,30 @@ def stats(
         db = get_db_connection()
         
         # Get status breakdown
-        status_stats = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """SELECT status, COUNT(*) as count
                FROM aico_core.agency_lessons
                WHERE user_id = %s
                GROUP BY status""",
             (user_id,)
-        ).fetchall()
+        )
+        status_stats = cursor.fetchall()
         
         # Get type breakdown
-        type_stats = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """SELECT lesson_type, COUNT(*) as count
                FROM aico_core.agency_lessons
                WHERE user_id = %s
                GROUP BY lesson_type""",
             (user_id,)
-        ).fetchall()
+        )
+        type_stats = cursor.fetchall()
         
         # Get confidence distribution
-        confidence_stats = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """SELECT 
                 COUNT(*) as total,
                 AVG(confidence) as avg_confidence,
@@ -2416,10 +2534,12 @@ def stats(
                FROM aico_core.agency_lessons
                WHERE user_id = %s""",
             (user_id,)
-        ).fetchone()
+        )
+        confidence_stats = cursor.fetchone()
         
         # Get application stats
-        application_stats = db.execute(
+        cursor = db.cursor()
+        cursor.execute(
             """SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN applied_at IS NOT NULL THEN 1 ELSE 0 END) as applied,
@@ -2427,7 +2547,8 @@ def stats(
                FROM aico_core.agency_lessons
                WHERE user_id = %s""",
             (user_id,)
-        ).fetchone()
+        )
+        application_stats = cursor.fetchone()
         
         if json_output:
             output = {

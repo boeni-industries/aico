@@ -32,16 +32,13 @@ class BehavioralRemoteDataSource {
         data: {
           'message_id': messageId,
           'reward': reward,
-          if (reason != null) 'reason': reason,
-          if (freeText != null) 'free_text': freeText,
+          ...?(reason != null ? {'reason': reason} : null),
+          ...?(freeText != null ? {'free_text': freeText} : null),
         },
         fromJson: (json) => json,
       );
       
-      if (response != null) {
-        return response;
-      }
-      throw Exception('Invalid response from server');
+      return response ?? (throw Exception('Invalid response from server'));
     } catch (e) {
       throw Exception('Failed to submit feedback: $e');
     }

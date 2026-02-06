@@ -41,7 +41,7 @@ class RateLimitingPlugin(BasePlugin):
         """Initialize rate limiter"""
         try:
             # Use plugin config for rate limiter
-            rate_limit_config = self.get_config("core.api_gateway.rate_limiting", {})
+            rate_limit_config = self.get_config("api_gateway.rate_limiting", {})
             self.rate_limiter = RateLimiter(rate_limit_config)
             
             self.logger.info("Rate limiting plugin initialized")

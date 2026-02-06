@@ -51,7 +51,7 @@ class TestEthicsValueProfilesRepository:
             profile_id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             curiosity_intensity=0.7,
-            proactive_behavior_level='proactive',
+            autonomy_level='proactive',
         )
         
         created = await uow.ethics_value_profiles.create(profile)
@@ -65,7 +65,7 @@ class TestEthicsValueProfilesRepository:
         profile = EthicsValueProfile(
             profile_id=str(uuid.uuid4()),
             user_id=test_user.uuid,
-            proactive_behavior_level='quiet',
+            autonomy_level='quiet',
         )
         
         await uow.ethics_value_profiles.create(profile)
@@ -73,7 +73,7 @@ class TestEthicsValueProfilesRepository:
         
         found = await uow.ethics_value_profiles.get_by_id(profile.profile_id)
         assert found is not None
-        assert found.proactive_behavior_level == 'quiet'
+        assert found.autonomy_level == 'quiet'
     
     @pytest.mark.asyncio
     async def test_update_profile(self, uow, test_user):
@@ -87,14 +87,14 @@ class TestEthicsValueProfilesRepository:
         await uow.commit()
         
         profile.curiosity_intensity = 0.8
-        profile.proactive_behavior_level = 'proactive'
+        profile.autonomy_level = 'proactive'
         updated = await uow.ethics_value_profiles.update(profile)
         await uow.commit()
         
         assert updated.curiosity_intensity == 0.8
         
         found = await uow.ethics_value_profiles.get_by_id(profile.profile_id)
-        assert found.proactive_behavior_level == 'proactive'
+        assert found.autonomy_level == 'proactive'
     
     @pytest.mark.asyncio
     async def test_delete_profile(self, uow, test_user):

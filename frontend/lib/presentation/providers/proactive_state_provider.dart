@@ -1,8 +1,9 @@
 import 'dart:async';
 
+import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/models/proactive_model.dart';
 import 'package:aico_frontend/domain/providers/proactive_providers.dart';
-import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -71,7 +72,7 @@ class ProactiveStateNotifier extends _$ProactiveStateNotifier {
         isLoading: false,
       );
     } catch (e) {
-      print('🔔 [PROACTIVE] ❌ Error fetching initiations: $e');
+      AICOLog.error('🔔 [PROACTIVE] ❌ Error fetching initiations: $e');
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
@@ -148,7 +149,7 @@ class ProactiveStateNotifier extends _$ProactiveStateNotifier {
         historyInitiations: history,
       );
     } catch (e) {
-      print('🔔 [PROACTIVE] ❌ Error fetching history: $e');
+      AICOLog.error('🔔 [PROACTIVE] ❌ Error fetching history: $e');
       state = state.copyWith(error: e.toString());
     }
   }
@@ -160,7 +161,7 @@ class ProactiveStateNotifier extends _$ProactiveStateNotifier {
       final authState = ref.read(authProvider);
       
       if (authState.user?.id == null) {
-        print('🔔 [PROACTIVE] ⚠️ No user UUID, skipping WebSocket subscription');
+        AICOLog.warn('🔔 [PROACTIVE] ⚠️ No user UUID, skipping WebSocket subscription');
         return;
       }
       
@@ -171,19 +172,19 @@ class ProactiveStateNotifier extends _$ProactiveStateNotifier {
       
       // Listen for broadcast messages
       _wsSubscription = wsClient.broadcasts.listen((message) {
-        print('🔔 [PROACTIVE] 📨 Received WebSocket message: ${message['type']}');
+        AICOLog.info('🔔 [PROACTIVE] 📨 Received WebSocket message: ${message['type']}');
         if (message['type'] == 'broadcast') {
           final data = message['data'] as Map<String, dynamic>?;
-          print('🔔 [PROACTIVE] 📦 Broadcast data type: ${data?['type']}');
+          AICOLog.info('🔔 [PROACTIVE] 📦 Broadcast data type: ${data?['type']}');
           if (data != null && data['type'] == 'new_initiation') {
             _handleNewNotification(data);
           }
         }
       });
       
-      print('🔔 [PROACTIVE] 📡 Subscribed to WebSocket notifications for user ${userUuid.substring(0, 8)}');
+      AICOLog.info('🔔 [PROACTIVE] 📡 Subscribed to WebSocket notifications for user ${userUuid.substring(0, 8)}');
     } catch (e) {
-      print('🔔 [PROACTIVE] ⚠️ Failed to subscribe to WebSocket notifications: $e');
+      AICOLog.warn('🔔 [PROACTIVE] ⚠️ Failed to subscribe to WebSocket notifications: $e');
     }
   }
   
@@ -210,13 +211,13 @@ class ProactiveStateNotifier extends _$ProactiveStateNotifier {
           pendingInitiations: [...state.pendingInitiations, newInitiation],
         );
         
-        print('🔔 [PROACTIVE] ✅ New notification received via WebSocket: ${newInitiation.initiationId.substring(0, 8)}');
-        print('🔔 [PROACTIVE] 📊 Total pending initiations: ${state.pendingInitiations.length}');
+        AICOLog.info('🔔 [PROACTIVE] ✅ New notification received via WebSocket: ${newInitiation.initiationId.substring(0, 8)}');
+        AICOLog.info('🔔 [PROACTIVE] 📊 Total pending initiations: ${state.pendingInitiations.length}');
       } else {
-        print('🔔 [PROACTIVE] ⚠️ Duplicate notification ignored: ${newInitiation.initiationId.substring(0, 8)}');
+        AICOLog.warn('🔔 [PROACTIVE] ⚠️ Duplicate notification ignored: ${newInitiation.initiationId.substring(0, 8)}');
       }
     } catch (e) {
-      print('🔔 [PROACTIVE] ❌ Error handling WebSocket notification: $e');
+      AICOLog.error('🔔 [PROACTIVE] ❌ Error handling WebSocket notification: $e');
     }
   }
 }

@@ -25,8 +25,8 @@ class FeedbackClassificationTask(BaseTask):
     to categorize free-text feedback into predefined categories.
     
     Configuration:
-    - Schedule: core.memory.behavioral.contextual_bandit.update_interval_hours
-    - Min feedback: core.memory.behavioral.contextual_bandit.min_trajectories
+    - Schedule: memory.behavioral.contextual_bandit.update_interval_hours
+    - Min feedback: memory.behavioral.contextual_bandit.min_trajectories
     """
     
     task_id = "ams.feedback_classification"
@@ -64,7 +64,7 @@ class FeedbackClassificationTask(BaseTask):
             logger.info("🧠 [AMS_FEEDBACK] Starting feedback classification task")
             
             # Check if behavioral learning is enabled
-            behavioral_config = context.config_manager.get("core.memory.behavioral", {})
+            behavioral_config = context.config_manager.get("memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
             print(f"🧠 [AMS_FEEDBACK] Behavioral learning enabled: {enabled}")

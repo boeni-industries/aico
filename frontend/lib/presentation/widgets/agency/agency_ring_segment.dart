@@ -1,7 +1,8 @@
 import 'dart:math' as math;
+
+import 'package:aico_frontend/presentation/providers/agency_state_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:aico_frontend/presentation/providers/agency_state_provider.dart';
 
 /// Agency ring segment that displays around the avatar
 /// Uses safe animations (glow/opacity only) to avoid motion sensitivity issues
@@ -179,7 +180,7 @@ class _AgencyRingPainter extends CustomPainter {
     if (glowIntensity > 0) {
       // Outer glow - very soft
       final outerGlowPaint = Paint()
-        ..color = color.withOpacity(0.08 * glowIntensity)
+        ..color = color.withValues(alpha: 0.08 * glowIntensity)
         ..strokeWidth = strokeWidth + 6
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -190,7 +191,7 @@ class _AgencyRingPainter extends CustomPainter {
       
       // Mid glow
       final midGlowPaint = Paint()
-        ..color = color.withOpacity(0.15 * glowIntensity)
+        ..color = color.withValues(alpha: 0.15 * glowIntensity)
         ..strokeWidth = strokeWidth + 3
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -202,7 +203,7 @@ class _AgencyRingPainter extends CustomPainter {
 
     // Draw main ring with uniform opacity (no confusing brightness variation)
     final mainPaint = Paint()
-      ..color = color.withOpacity(0.5)
+      ..color = color.withValues(alpha: 0.5)
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round

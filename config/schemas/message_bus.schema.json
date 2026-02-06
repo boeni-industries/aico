@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Message Bus Configuration",
+  "description": "ZeroMQ message broker settings",
+  "type": "object",
+  "required": ["broker_address", "timeout"],
+  "properties": {
+    "broker_address": {
+      "type": "string",
+      "description": "ZeroMQ broker bind address"
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "Message timeout in seconds"
+    },
+    "max_retries": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum retry attempts"
+    },
+    "retry_delay": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Delay between retries in seconds"
+    },
+    "heartbeat_interval": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "Heartbeat interval in seconds"
+    }
+  }
+}

@@ -5,17 +5,20 @@ Handles the complex logic for processing user messages through the AI pipeline.
 This module centralizes all completion-related processing logic.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
 import httpx
+from dataclasses import dataclass
 from typing import Dict, Any, Optional, Callable, Awaitable
-from aico.core.message_bus import MessageBusClient
+from aico.core.bus import MessageBusClient
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
 from .protobuf_messages import ModelserviceMessageParser
 from .ollama_manager import OllamaManager
-from shared.aico.core.config import ConfigurationManager
+from aico.core.config import ConfigurationManager
 
 
 @dataclass
@@ -37,7 +40,7 @@ class MessageProcessor:
             self.config_manager.initialize()
         
         # Get Ollama configuration
-        self.ollama_config = self.config_manager.get("core.modelservice.ollama", {})
+        self.ollama_config = self.config_manager.get("modelservice.ollama", {})
         
         # Build Ollama URL from config
         ollama_host = self.ollama_config.get("host", "127.0.0.1")
@@ -46,7 +49,6 @@ class MessageProcessor:
         
         # Initialize logger first
         try:
-            from shared.aico.core.logging import get_logger
             self.logger = get_logger("modelservice.core.message_processor")
         except RuntimeError:
             # Logging not initialized yet, use basic Python logger as fallback

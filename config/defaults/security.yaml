@@ -115,7 +115,7 @@ cli:
 audit:
   enabled: true
   retention_days: 90
-  log_level: "standard"
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
 
 # Role-Based Access Control (RBAC) Configuration
 rbac:

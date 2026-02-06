@@ -17,6 +17,45 @@ from aico.ai.agency.proactive import (
 )
 
 
+class _DB:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query, params=None):
+        q = query.replace("?", "%s")
+        cur = self._conn.cursor()
+        try:
+            cur.execute(q, params or ())
+            return cur
+        except Exception:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+            cur.close()
+            raise
+
+    def fetch_one(self, query, params=None):
+        cur = self.execute(query, params)
+        try:
+            return cur.fetchone()
+        finally:
+            cur.close()
+
+    def fetch_all(self, query, params=None):
+        cur = self.execute(query, params)
+        try:
+            return cur.fetchall()
+        finally:
+            cur.close()
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+
 # ============================================================================
 # FOLLOW-UP SYSTEM TESTS
 # ============================================================================
@@ -27,7 +66,7 @@ class TestFollowupSystem:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def followup_system(self, db):
@@ -39,9 +78,10 @@ class TestFollowupSystem:
         """Create a test goal."""
         goal_id = "test-goal-followup-1"
         db.execute(
-            """INSERT OR IGNORE INTO agency_goals 
+            """INSERT INTO agency_goals 
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (goal_id) DO NOTHING""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
@@ -151,13 +191,17 @@ class TestFollowupSystem:
         assert row["user_response"] is not None
         assert row["response_sentiment"] == 0.8
     
-    def test_policy_approval_daily_limit(self, followup_system, test_user, db):
+    def test_policy_approval_daily_limit(self, followup_system, test_user, test_goal_id, db):
         """Test that daily limit is enforced."""
         # Set user preferences with low limit
         db.execute(
-            """INSERT OR REPLACE INTO user_proactive_preferences 
+            """INSERT INTO user_proactive_preferences 
                (user_id, followup_enabled, max_followups_per_day, updated_at)
-               VALUES (?, 1, 2, ?)""",
+               VALUES (?, TRUE, 2, ?)
+               ON CONFLICT (user_id) DO UPDATE SET
+                   followup_enabled = EXCLUDED.followup_enabled,
+                   max_followups_per_day = EXCLUDED.max_followups_per_day,
+                   updated_at = EXCLUDED.updated_at""",
             (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
@@ -200,7 +244,7 @@ class TestReminderSystem:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def reminder_system(self, db):
@@ -212,9 +256,10 @@ class TestReminderSystem:
         """Create a test goal."""
         goal_id = "test-goal-reminder-1"
         db.execute(
-            """INSERT OR IGNORE INTO agency_goals 
+            """INSERT INTO agency_goals 
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (goal_id) DO NOTHING""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
@@ -355,20 +400,49 @@ class TestReminderClustering:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def reminder_system(self, db):
         """Create reminder system."""
         return ReminderSystem(db)
+
+    @pytest.fixture
+    def test_goal_id(self, db, test_user):
+        """Create a test goal."""
+        goal_id = "test-goal-cluster-1"
+        db.execute(
+            """INSERT INTO agency_goals 
+               (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (goal_id) DO NOTHING""",
+            (
+                goal_id,
+                test_user,
+                "user",
+                "work",
+                "Cluster goal",
+                "Test",
+                "normal",
+                "active",
+                datetime.now(UTC).isoformat(),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        db.commit()
+        return goal_id
     
-    def test_automatic_clustering(self, reminder_system, test_user, db):
+    def test_automatic_clustering(self, reminder_system, test_user, test_goal_id, db):
         """Test that reminders are automatically clustered."""
         # Enable clustering
+        db.execute("DELETE FROM user_proactive_preferences WHERE user_id = ?", (test_user,))
         db.execute(
-            """INSERT OR REPLACE INTO user_proactive_preferences 
+            """INSERT INTO user_proactive_preferences 
                (user_id, cluster_reminders, updated_at)
-               VALUES (?, 1, ?)""",
+               VALUES (?, 1, ?)
+               ON CONFLICT (user_id) DO UPDATE SET
+                   cluster_reminders = EXCLUDED.cluster_reminders,
+                   updated_at = EXCLUDED.updated_at""",
             (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
@@ -396,13 +470,17 @@ class TestReminderClustering:
         # At least some should be clustered
         assert len(cluster_ids) > 0
     
-    def test_get_clustered_reminders(self, reminder_system, test_user, db):
+    def test_get_clustered_reminders(self, reminder_system, test_user, test_goal_id, db):
         """Test retrieving reminders from a cluster."""
         # Enable clustering
+        db.execute("DELETE FROM user_proactive_preferences WHERE user_id = ?", (test_user,))
         db.execute(
-            """INSERT OR REPLACE INTO user_proactive_preferences 
+            """INSERT INTO user_proactive_preferences 
                (user_id, cluster_reminders, updated_at)
-               VALUES (?, 1, ?)""",
+               VALUES (?, 1, ?)
+               ON CONFLICT (user_id) DO UPDATE SET
+                   cluster_reminders = EXCLUDED.cluster_reminders,
+                   updated_at = EXCLUDED.updated_at""",
             (test_user, datetime.now(UTC).isoformat())
         )
         db.commit()
@@ -444,7 +522,7 @@ class TestProactiveIntegration:
     @pytest.fixture
     def db(self, test_db):
         """Use test database fixture."""
-        return test_db
+        return _DB(test_db)
     
     @pytest.fixture
     def followup_system(self, db):
@@ -461,9 +539,10 @@ class TestProactiveIntegration:
         """Create a test goal."""
         goal_id = "test-goal-integration-1"
         db.execute(
-            """INSERT OR IGNORE INTO agency_goals 
+            """INSERT INTO agency_goals 
                (goal_id, user_id, origin, goal_type, title, description, priority, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (goal_id) DO NOTHING""",
             (goal_id, test_user, "user", "work", "Test goal", "Test", "normal", "active",
              datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat())
         )
@@ -541,6 +620,6 @@ class TestProactiveIntegration:
         )
         
         assert len(analytics) >= 2
-        behavior_types = [a["behavior_type"] for a in analytics]
-        assert "followup" in behavior_types
-        assert "reminder" in behavior_types
+        event_types = [a["event_type"] for a in analytics]
+        assert "followup" in event_types
+        assert "reminder" in event_types

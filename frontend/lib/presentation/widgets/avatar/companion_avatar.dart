@@ -1,11 +1,9 @@
-import 'dart:ui';
-
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/models/emotion_model.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
+import 'package:aico_frontend/presentation/providers/agency_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
-import 'package:aico_frontend/presentation/providers/agency_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
 import 'package:aico_frontend/presentation/widgets/agency/floating_agency_icon.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/avatar_viewer.dart';
@@ -27,17 +25,12 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late AnimationController _colorTransitionController;
-  late AnimationController _expansionTransitionController;
-  late Animation<double> _pulseAnimation;
   late Animation<Color?> _ringColorAnimation;
-  late Animation<double> _expansionAnimation;
   
   late InternalConnectionStatus _currentStatus;
   late bool _isAuthenticated;
   late AvatarMode _previousAvatarMode;
   late Color _targetRingColor;
-  double _currentExpansion = 1.0;
-  double _targetExpansion = 1.0;
 
   @override
   void initState() {
@@ -61,14 +54,6 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
       vsync: this,
     );
     
-    _pulseAnimation = Tween<double>(
-      begin: 0.7,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
-    
     // Color transition controller for smooth color changes
     _colorTransitionController = AnimationController(
       duration: const Duration(milliseconds: 1200), // Longer transition for smoothness
@@ -81,20 +66,6 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     ).animate(CurvedAnimation(
       parent: _colorTransitionController,
       curve: Curves.easeInOutCubic, // Smoother cubic curve
-    ));
-    
-    // Expansion transition controller for smooth size changes
-    _expansionTransitionController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    );
-    
-    _expansionAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _expansionTransitionController,
-      curve: Curves.easeInOutCubic,
     ));
     
     _startPulsing();
@@ -538,29 +509,10 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     return items;
   }
 
-  double _getPulseMultiplier(AvatarMode mode, double intensity) {
-    // Base multiplier for each mode
-    final baseMultiplier = switch (mode) {
-      AvatarMode.thinking => 1.8, // More dramatic pulse
-      AvatarMode.processing => 2.0,
-      AvatarMode.listening => 1.6, // More visible
-      AvatarMode.speaking => 1.4,
-      AvatarMode.success => 1.6,
-      AvatarMode.attention => 1.2,
-      AvatarMode.connecting => 1.3,
-      AvatarMode.error => 1.0,
-      AvatarMode.idle => 1.0,
-    };
-    
-    // Intensity further modulates the expansion
-    return baseMultiplier * (0.7 + intensity * 0.3);
-  }
-
   @override
   void dispose() {
     _pulseController.dispose();
     _colorTransitionController.dispose();
-    _expansionTransitionController.dispose();
     super.dispose();
   }
 
@@ -601,22 +553,6 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
               
               _targetRingColor = newColor;
               _colorTransitionController.forward(from: 0.0);
-            }
-            
-            // Smooth expansion transition
-            final newExpansion = _getPulseMultiplier(avatarState.mode, avatarState.intensity);
-            if ((newExpansion - _targetExpansion).abs() > 0.01) {
-              _expansionAnimation = Tween<double>(
-                begin: _currentExpansion,
-                end: newExpansion,
-              ).animate(CurvedAnimation(
-                parent: _expansionTransitionController,
-                curve: Curves.easeInOutCubic,
-              ));
-              _targetExpansion = newExpansion;
-              _expansionTransitionController.forward(from: 0.0).then((_) {
-                _currentExpansion = newExpansion;
-              });
             }
             
             setState(() {

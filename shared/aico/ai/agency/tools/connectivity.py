@@ -270,7 +270,7 @@ async def tool_ollama_ping() -> Dict[str, Any]:
     try:
         config = ConfigurationManager()
         config.initialize(lightweight=True)
-        ollama_cfg = config.get("core.modelservice.ollama", {}) or {}
+        ollama_cfg = config.get("modelservice.ollama", {}) or {}
         host = ollama_cfg.get("host", "127.0.0.1")
         port = ollama_cfg.get("port", 11434)
         url = f"http://{host}:{port}/api/version"

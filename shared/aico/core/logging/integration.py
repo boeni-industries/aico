@@ -117,9 +117,9 @@ def setup_influx_logging(
             config = ConfigurationManager()
             config.initialize(lightweight=True)
             
-            influx_url = influx_url or config.get("core.database.influx.url", "http://127.0.0.1:8086")
-            org = org or config.get("core.database.influx.org", "aico")
-            bucket = bucket or config.get("core.database.influx.bucket", "aico_telemetry")
+            influx_url = influx_url or config.get("influx.url", "http://127.0.0.1:8086")
+            org = org or config.get("influx.org", "aico")
+            bucket = bucket or config.get("influx.bucket", "aico_telemetry")
             
             if not token:
                 key_manager = AICOKeyManager(config)

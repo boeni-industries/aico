@@ -1,5 +1,5 @@
-import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 import 'package:aico_frontend/data/models/emotion_model.dart';
+import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 
 /// Repository for emotion API operations
 class EmotionRepository {

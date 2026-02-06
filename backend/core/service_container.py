@@ -54,7 +54,10 @@ class BaseService(ABC):
     def __init__(self, name: str, container: 'ServiceContainer'):
         self.name = name
         self.container = container
-        self.config = container.config.get(f"core.services.{name}", {})
+        # After configuration refactor: each service loads config from its own domain
+        # Services should override self.config in their __init__ to load from correct domain
+        # e.g., AgencyService loads from "agency.*", not "core.services.agency"
+        self.config = {}  # Default empty, services override as needed
         self.logger = get_logger(f"backend.service.{name}")
         self.state = ServiceState.REGISTERED
         self._dependencies_resolved = False

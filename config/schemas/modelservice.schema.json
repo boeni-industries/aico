@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Model Service Configuration",
+  "description": "LLM, embedding, and TTS model service settings",
+  "type": "object",
+  "required": ["host", "port"],
+  "properties": {
+    "host": {
+      "type": "string",
+      "description": "Model service host"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "Model service port"
+    },
+    "ollama": {
+      "type": "object",
+      "properties": {
+        "base_url": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "number",
+          "minimum": 1
+        },
+        "default_models": {
+          "type": "object",
+          "properties": {
+            "conversation": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "temperature": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 2
+                }
+              }
+            },
+            "embedding": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "transformers": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "object",
+          "properties": {
+            "embeddings": {
+              "type": "string"
+            },
+            "ner": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "spacy": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        }
+      }
+    },
+    "tts": {
+      "type": "object",
+      "properties": {
+        "engine": {
+          "type": "string",
+          "enum": ["piper", "xtts", "kokoro"]
+        },
+        "piper": {
+          "type": "object",
+          "properties": {
+            "model_path": {
+              "type": "string"
+            }
+          }
+        },
+        "kokoro": {
+          "type": "object",
+          "properties": {
+            "model_path": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

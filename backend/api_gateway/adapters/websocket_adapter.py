@@ -27,7 +27,6 @@ __version__ = get_backend_version()
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
 from aico.core.topics import AICOTopics
-from aico.security import SessionService
 
 from ..models.core.auth import AuthenticationManager, AuthorizationManager
 from ..models.core.message_router import MessageRouter

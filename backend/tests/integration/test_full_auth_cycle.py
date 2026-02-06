@@ -32,7 +32,7 @@ def check_database_sessions():
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         
-        pg_cfg = config.get("core.database.postgres", {})
+        pg_cfg = config.get("postgres", {})
         if not pg_cfg:
             print("No PostgreSQL configuration found")
             return

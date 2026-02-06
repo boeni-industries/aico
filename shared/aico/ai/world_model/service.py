@@ -253,6 +253,7 @@ class WorldModelService:
         """Identify areas of uncertainty or incomplete knowledge.
         
         Phase 6.4: Uses drift detection and hypothesis tracking.
+        Phase 1 Implementation: Query goals with low completion rates and sparse activity.
         
         Args:
             user_id: User identifier
@@ -260,25 +261,96 @@ class WorldModelService:
         Returns:
             List of uncertain areas
         """
+        from aico.data.postgres import UnitOfWork
+        from sqlalchemy import select, func, and_, case
+        from aico.data.models import Goal, Plan, PlanExecution
+        
         try:
             uncertain_areas = []
             
-            # Get open hypotheses (areas under investigation)
-            open_hypotheses = self.hypothesis_manager.get_open_hypotheses(user_id)
-            
-            for hypothesis in open_hypotheses:
-                # Convert hypothesis to uncertain area
-                area = UncertainArea(
-                    id=hypothesis.hypothesis_id,
-                    topic=hypothesis.description,
-                    description=f"Hypothesis: {hypothesis.description}",
-                    confidence_gap=1.0 - hypothesis.confidence,  # Higher gap = more uncertain
-                    related_entities=hypothesis.affected_entities,
-                    questions=[f"Is this hypothesis correct: {hypothesis.description}?"],
+            async with UnitOfWork(self.kg_storage._session_factory) as uow:
+                # Find goals with low completion rates (many failed/no executions)
+                goal_completion_query = (
+                    select(
+                        Goal.goal_id,
+                        Goal.title,
+                        Goal.description,
+                        Goal.origin,
+                        func.count(PlanExecution.execution_id).label('total_executions'),
+                        func.sum(
+                            case(
+                                (PlanExecution.status == 'completed', 1),
+                                else_=0
+                            )
+                        ).label('completed_executions')
+                    )
+                    .outerjoin(Plan, Plan.goal_id == Goal.goal_id)
+                    .outerjoin(PlanExecution, PlanExecution.plan_id == Plan.plan_id)
+                    .where(
+                        and_(
+                            Goal.user_id == user_id,
+                            Goal.status == 'pending'
+                        )
+                    )
+                    .group_by(Goal.goal_id, Goal.title, Goal.description, Goal.origin)
+                    .having(
+                        func.count(PlanExecution.execution_id) > 0
+                    )
+                    .limit(10)
                 )
-                uncertain_areas.append(area)
+                
+                result = await uow.session.execute(goal_completion_query)
+                goals_with_executions = result.all()
+                
+                for goal_id, title, description, origin, total, completed in goals_with_executions:
+                    completion_rate = (completed or 0) / total if total > 0 else 0
+                    
+                    # Low completion rate indicates uncertainty
+                    if completion_rate < 0.3:
+                        confidence_gap = 1.0 - completion_rate
+                        uncertain_areas.append(UncertainArea(
+                            id=str(goal_id),
+                            topic=title,
+                            description=f"Goal with low completion rate ({completion_rate:.0%}): {description or title}",
+                            confidence_gap=confidence_gap,
+                            related_entities=[str(goal_id)],
+                            questions=[
+                                f"Why is '{title}' difficult to complete?",
+                                f"What obstacles are preventing progress on '{title}'?"
+                            ]
+                        ))
+                
+                # Find goals with no executions at all (completely unexplored)
+                unexplored_goals_query = (
+                    select(Goal)
+                    .outerjoin(Plan, Plan.goal_id == Goal.goal_id)
+                    .where(
+                        and_(
+                            Goal.user_id == user_id,
+                            Goal.status == 'pending',
+                            Plan.plan_id.is_(None)
+                        )
+                    )
+                    .limit(5)
+                )
+                
+                result = await uow.session.execute(unexplored_goals_query)
+                unexplored_goals = result.scalars().all()
+                
+                for goal in unexplored_goals:
+                    uncertain_areas.append(UncertainArea(
+                        id=str(goal.goal_id),
+                        topic=goal.title,
+                        description=f"Unexplored goal: {goal.description or goal.title}",
+                        confidence_gap=1.0,  # Maximum uncertainty
+                        related_entities=[str(goal.goal_id)],
+                        questions=[
+                            f"How should we approach '{goal.title}'?",
+                            f"What's the first step for '{goal.title}'?"
+                        ]
+                    ))
             
-            logger.debug(f"[WORLD_MODEL] Found {len(uncertain_areas)} uncertain areas for user {user_id}")
+            logger.info(f"[WORLD_MODEL] Found {len(uncertain_areas)} uncertain areas for user {user_id}")
             return uncertain_areas
             
         except Exception as e:
@@ -499,6 +571,7 @@ class WorldModelService:
         """Detect anomalies in user data.
         
         Phase 6.4: Returns contradictions and drift reports.
+        Phase 1 Implementation: Query existing goal/plan tables for conflicts.
         
         Args:
             user_id: User ID
@@ -506,13 +579,77 @@ class WorldModelService:
         Returns:
             List of anomaly dictionaries
         """
+        from aico.data.postgres import UnitOfWork
+        from sqlalchemy import select, func, and_
+        from aico.data.models import Goal, Plan, PlanExecution
+        
         anomalies = []
         
-        # Get contradictions (would need to query facts from KG)
-        # For now, return empty list
-        # TODO: Integrate with actual fact storage
+        try:
+            async with UnitOfWork(self.kg_storage._session_factory) as uow:
+                # Detect duplicate open goals with same title
+                duplicate_goals_query = (
+                    select(
+                        Goal.title,
+                        func.count(Goal.goal_id).label('count')
+                    )
+                    .where(
+                        and_(
+                            Goal.user_id == user_id,
+                            Goal.status == 'pending'
+                        )
+                    )
+                    .group_by(Goal.title)
+                    .having(func.count(Goal.goal_id) > 1)
+                )
+                
+                result = await uow.session.execute(duplicate_goals_query)
+                duplicates = result.all()
+                
+                for title, count in duplicates:
+                    anomalies.append({
+                        'type': 'duplicate_goals',
+                        'severity': 'low',
+                        'description': f'Multiple open goals with same title: {title}',
+                        'count': count,
+                        'title': title,
+                        'user_id': user_id
+                    })
+                
+                # Detect goals with failed plan executions (potential stuck goals)
+                stuck_goals_query = (
+                    select(Goal)
+                    .join(Plan, Plan.goal_id == Goal.goal_id)
+                    .join(PlanExecution, PlanExecution.plan_id == Plan.plan_id)
+                    .where(
+                        and_(
+                            Goal.user_id == user_id,
+                            Goal.status == 'pending',
+                            PlanExecution.status == 'failed'
+                        )
+                    )
+                    .distinct()
+                    .limit(10)
+                )
+                
+                result = await uow.session.execute(stuck_goals_query)
+                stuck_goals = result.scalars().all()
+                
+                for goal in stuck_goals:
+                    anomalies.append({
+                        'type': 'stuck_goal',
+                        'severity': 'medium',
+                        'description': f'Goal has failed plan executions: {goal.title}',
+                        'goal_id': str(goal.goal_id),
+                        'title': goal.title,
+                        'user_id': user_id
+                    })
+                
+                logger.info(f"[WORLD_MODEL] Detected {len(anomalies)} anomalies for user {user_id}")
+                
+        except Exception as e:
+            logger.error(f"[WORLD_MODEL] Failed to detect anomalies: {e}")
         
-        logger.debug(f"[WORLD_MODEL] Anomaly detection for user {user_id}")
         return anomalies
     
     async def detect_contradictions(
@@ -540,6 +677,8 @@ class WorldModelService:
         Retrieves self-model entries projected into the World Model,
         enabling planning and reasoning about AICO's own capabilities.
         
+        Phase 1 Implementation: Analyze goal/plan execution history for performance metrics.
+        
         Args:
             entity_type: Type of entity (skill, goal_type, etc.)
             entity_id: Optional specific entity ID
@@ -547,16 +686,112 @@ class WorldModelService:
         Returns:
             List of self-assessment facts
         """
-        # Query KG for self-model facts
-        # These are projected by LessonMemoryProjector.project_self_model_to_kg()
+        from aico.data.postgres import UnitOfWork
+        from sqlalchemy import select, func, and_, case
+        from aico.data.models import Goal, Plan, PlanExecution
         
-        # For now, return placeholder
-        # TODO: Implement actual KG query once PropertyGraphStorage supports it
-        logger.debug(
-            f"[WORLD_MODEL] Querying self-assessment for {entity_type}",
-            extra={"entity_id": entity_id}
-        )
-        return []
+        self_assessment = []
+        
+        try:
+            async with UnitOfWork(self.kg_storage._session_factory) as uow:
+                if entity_type == "goal_type":
+                    # Analyze performance by goal origin (curiosity, hobby, user, maintenance)
+                    goal_type_query = (
+                        select(
+                            Goal.origin,
+                            func.count(Goal.goal_id).label('total_goals'),
+                            func.sum(
+                                case(
+                                    (Goal.status == 'completed', 1),
+                                    else_=0
+                                )
+                            ).label('completed_goals'),
+                            func.count(PlanExecution.execution_id).label('total_executions'),
+                            func.sum(
+                                case(
+                                    (PlanExecution.status == 'completed', 1),
+                                    else_=0
+                                )
+                            ).label('completed_executions')
+                        )
+                        .outerjoin(Plan, Plan.goal_id == Goal.goal_id)
+                        .outerjoin(PlanExecution, PlanExecution.plan_id == Plan.plan_id)
+                        .group_by(Goal.origin)
+                    )
+                    
+                    result = await uow.session.execute(goal_type_query)
+                    goal_types = result.all()
+                    
+                    for origin, total_goals, completed_goals, total_execs, completed_execs in goal_types:
+                        goal_completion_rate = (completed_goals or 0) / total_goals if total_goals > 0 else 0
+                        exec_completion_rate = (completed_execs or 0) / total_execs if total_execs > 0 else 0
+                        
+                        self_assessment.append({
+                            'entity_type': 'goal_type',
+                            'entity_id': origin,
+                            'metric': 'completion_rate',
+                            'value': goal_completion_rate,
+                            'confidence': min(1.0, total_goals / 10.0),  # Higher confidence with more data
+                            'metadata': {
+                                'total_goals': total_goals,
+                                'completed_goals': completed_goals or 0,
+                                'total_executions': total_execs or 0,
+                                'completed_executions': completed_execs or 0,
+                                'execution_completion_rate': exec_completion_rate
+                            }
+                        })
+                
+                elif entity_type == "skill":
+                    # Analyze skill usage from plan executions
+                    # For now, return overall execution success rate as a proxy
+                    execution_stats_query = (
+                        select(
+                            func.count(PlanExecution.execution_id).label('total'),
+                            func.sum(
+                                case(
+                                    (PlanExecution.status == 'completed', 1),
+                                    else_=0
+                                )
+                            ).label('completed'),
+                            func.sum(
+                                case(
+                                    (PlanExecution.status == 'failed', 1),
+                                    else_=0
+                                )
+                            ).label('failed')
+                        )
+                    )
+                    
+                    result = await uow.session.execute(execution_stats_query)
+                    stats = result.one()
+                    
+                    if stats.total > 0:
+                        success_rate = (stats.completed or 0) / stats.total
+                        failure_rate = (stats.failed or 0) / stats.total
+                        
+                        self_assessment.append({
+                            'entity_type': 'skill',
+                            'entity_id': 'overall_execution',
+                            'metric': 'success_rate',
+                            'value': success_rate,
+                            'confidence': min(1.0, stats.total / 50.0),
+                            'metadata': {
+                                'total_executions': stats.total,
+                                'completed': stats.completed or 0,
+                                'failed': stats.failed or 0,
+                                'failure_rate': failure_rate
+                            }
+                        })
+                
+                logger.info(
+                    f"[WORLD_MODEL] Self-assessment for {entity_type}: {len(self_assessment)} facts",
+                    extra={"entity_id": entity_id}
+                )
+                
+        except Exception as e:
+            logger.error(f"[WORLD_MODEL] Failed to query self-assessment: {e}")
+        
+        return self_assessment
     
     async def link_lesson_to_hypothesis(
         self,

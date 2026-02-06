@@ -5,7 +5,7 @@ Router endpoints for advanced database management.
 """
 
 from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, Request, Body
+from fastapi import APIRouter, Depends, Request, Body, UploadFile, File
 
 from backend.api.system.dependencies import get_current_user
 from backend.core.postgres_dependencies import get_uow
@@ -13,7 +13,12 @@ from aico.data.uow import UnitOfWork
 from backend.api.operations.schemas import (
     DatabaseDetailsResponse,
     QueryRequest, QueryResult,
-    BackupResponse, BackupHistoryResponse, RestoreRequest, RestoreResponse,
+    BackupSetCreateRequest, BackupSetCreateResponse,
+    BackupSetListResponse, BackupSetStatusResponse,
+    BackupSetUploadResponse,
+    BackupSetRestoreRequest, BackupSetRestoreResponse,
+    BackupSetDeleteResponse,
+    BackupSetPruneRequest, BackupSetPruneResponse,
     StorageTrendResponse,
     LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyValueResponse,
     LMDBDeleteRequest, LMDBDeleteResponse, OrphanedEntriesResponse,
@@ -22,6 +27,7 @@ from backend.api.operations.schemas import (
     ChromaDBBrowseResponse,
 )
 from backend.api.operations import database_admin
+from backend.api.operations import backup_sets
 
 router = APIRouter()
 
@@ -114,47 +120,80 @@ async def get_database_trends(
 
 
 # ============================================================================
-# Backup Management
+# Backup Sets (coordinated backups)
 # ============================================================================
 
-@router.post("/databases/{database_name}/backup", response_model=BackupResponse)
-async def create_backup(
-    database_name: str,
-    user: Annotated[dict, Depends(get_current_user)]
-) -> BackupResponse:
-    """
-    Create a backup of the specified database.
-    
-    Supports: PostgreSQL, ChromaDB, LMDB
-    """
-    return await database_admin.create_database_backup(database_name)
+
+@router.post("/backup-sets", response_model=BackupSetCreateResponse)
+async def create_backup_set(
+    request: BackupSetCreateRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> BackupSetCreateResponse:
+    """Create a coordinated backup set (PostgreSQL + ChromaDB + LMDB + optional InfluxDB)."""
+    return await backup_sets.create_backup_set(request)
 
 
-@router.get("/databases/backups", response_model=BackupHistoryResponse)
-async def get_backups(
-    database_name: Optional[str] = None,
-    user: Annotated[dict, Depends(get_current_user)] = None
-) -> BackupHistoryResponse:
-    """
-    Get backup history, optionally filtered by database name.
-    
-    Returns list of backups sorted by creation date (newest first).
-    """
-    return await database_admin.get_backup_history(database_name)
+@router.get("/backup-sets", response_model=BackupSetListResponse)
+async def list_backup_sets(
+    user: Annotated[dict, Depends(get_current_user)],
+) -> BackupSetListResponse:
+    """List known backup sets."""
+    return backup_sets.list_backup_sets()
 
 
-@router.post("/databases/backups/restore", response_model=RestoreResponse)
-async def restore_backup(
-    restore_request: RestoreRequest,
-    user: Annotated[dict, Depends(get_current_user)]
-) -> RestoreResponse:
-    """
-    Restore a database from backup.
-    
-    **Warning**: This will replace the current database with the backup.
-    A pre-restore backup of the current database will be created automatically.
-    """
-    return await database_admin.restore_from_backup(restore_request.backup_id)
+@router.get("/backup-sets/{backup_id}/status", response_model=BackupSetStatusResponse)
+async def get_backup_set_status(
+    backup_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> BackupSetStatusResponse:
+    """Return backup set status and parsed manifest."""
+    return backup_sets.get_backup_set_status(backup_id)
+
+
+@router.get("/backup-sets/{backup_id}/download")
+async def download_backup_set(
+    backup_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    """Download a backup set as a tar.gz archive."""
+    return backup_sets.download_backup_set(backup_id)
+
+
+@router.delete("/backup-sets/{backup_id}", response_model=BackupSetDeleteResponse)
+async def delete_backup_set(
+    backup_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> BackupSetDeleteResponse:
+    """Delete a backup set (directory + tar.gz archive) and update the registry."""
+    return backup_sets.delete_backup_set(backup_id)
+
+
+@router.post("/backup-sets/prune", response_model=BackupSetPruneResponse)
+async def prune_backup_sets(
+    request: BackupSetPruneRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> BackupSetPruneResponse:
+    """Prune old backup sets based on retention policy (supports dry-run)."""
+    return backup_sets.prune_backup_sets(request)
+
+
+@router.post("/backup-sets/upload", response_model=BackupSetUploadResponse)
+async def upload_backup_set(
+    file: UploadFile = File(...),
+    output_path: Optional[str] = None,
+    user: Annotated[dict, Depends(get_current_user)] = None,
+) -> BackupSetUploadResponse:
+    """Upload/import a backup set archive."""
+    return await backup_sets.upload_backup_set(file, output_path)
+
+
+@router.post("/backup-sets/restore", response_model=BackupSetRestoreResponse)
+async def restore_backup_set(
+    request: BackupSetRestoreRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> BackupSetRestoreResponse:
+    """Restore a backup set. Restores to postgres-shadow first and verifies before optionally restoring to primary."""
+    return await backup_sets.restore_backup_set(request)
 
 
 # ============================================================================

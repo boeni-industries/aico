@@ -23,7 +23,7 @@ The Plugin System provides a standardized architecture for extending AICO backen
 - Business: 40 (started last)
 
 **Configuration**:
-- Plugin settings in `core.yaml` under `core.api_gateway.plugins.{name}`
+- Plugin settings in `config/defaults/api_gateway.yaml` under `api_gateway.plugins.{name}`
 - Enable/disable via `enabled: true/false`
 - Plugin-specific configuration sections
 
@@ -158,7 +158,19 @@ class MyPlugin(BasePlugin):
 1. **Create Plugin Class**: Inherit from appropriate base class
 2. **Implement Lifecycle**: Define `initialize()`, `start()`, `stop()` methods
 3. **Register Plugin**: Add to plugin registry in lifecycle manager
-4. **Configure**: Add plugin settings to `core.yaml`
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+4. **Configure**: Add plugin settings to `plugins.yaml` and/or `api_gateway.yaml`
+=======
+4. **Configure**: Add plugin settings to `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
+4. **Configure**: Add plugin settings to `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
+4. **Configure**: Add plugin settings to `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
 5. **Test**: Use backend development environment
 6. **Deploy**: Plugin loaded automatically on backend startup
 
@@ -173,15 +185,40 @@ backend/api_gateway/plugins/
 └── validation_plugin.py       # Middleware plugin
 ```
 
-**Configuration in `core.yaml`**:
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+**Configuration in `api_gateway.yaml`**:
 ```yaml
-core:
-  api_gateway:
+server:
     plugins:
       message_bus:
         enabled: true
       encryption:
         enabled: true
+=======
+**Configuration in `config/defaults/api_gateway.yaml`**:
+```yaml
+=======
+**Configuration in `config/defaults/api_gateway.yaml`**:
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
+**Configuration in `config/defaults/api_gateway.yaml`**:
+```yaml
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+plugins:
+  message_bus:
+    enabled: true
+  encryption:
+    enabled: true
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
 ```
 
 ### Plugin Registration
@@ -244,7 +281,19 @@ def metadata(self) -> PluginMetadata:
 - Backend-only plugin system
 
 **Configuration Management**:
-- Plugin settings in `core.yaml`
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/plugin-system.md
+- Plugin settings in `plugins.yaml` and `api_gateway.yaml`
+=======
+- Plugin settings in `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
+- Plugin settings in `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
+=======
+- Plugin settings in `config/defaults/api_gateway.yaml`
+>>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/plugin-system.md
 - Requires backend restart to change plugin state
 - No dynamic plugin loading/unloading
 

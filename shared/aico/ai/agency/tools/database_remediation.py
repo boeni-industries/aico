@@ -1242,17 +1242,17 @@ async def tool_db_influx_get_measurements(
     
     try:
         # Get InfluxDB connection details - FAIL LOUD if missing
-        url = config.get("core.database.influx.url")
+        url = config.get("influx.url")
         if not url:
-            raise ValueError("Missing required config: core.database.influx.url")
+            raise ValueError("Missing required config: influx.url")
         
-        org = config.get("core.database.influx.org")
+        org = config.get("influx.org")
         if not org:
-            raise ValueError("Missing required config: core.database.influx.org")
+            raise ValueError("Missing required config: influx.org")
         
-        bucket = config.get("core.database.influx.bucket")
+        bucket = config.get("influx.bucket")
         if not bucket:
-            raise ValueError("Missing required config: core.database.influx.bucket")
+            raise ValueError("Missing required config: influx.bucket")
         
         key_manager = AICOKeyManager(config)
         token = key_manager.get_database_password("influx", username="admin_token")
@@ -1368,17 +1368,17 @@ async def tool_db_influx_apply_retention(
     
     try:
         # Get InfluxDB connection details - FAIL LOUD if missing
-        url = config.get("core.database.influx.url")
+        url = config.get("influx.url")
         if not url:
-            raise ValueError("Missing required config: core.database.influx.url")
+            raise ValueError("Missing required config: influx.url")
         
-        org = config.get("core.database.influx.org")
+        org = config.get("influx.org")
         if not org:
-            raise ValueError("Missing required config: core.database.influx.org")
+            raise ValueError("Missing required config: influx.org")
         
-        bucket = config.get("core.database.influx.bucket")
+        bucket = config.get("influx.bucket")
         if not bucket:
-            raise ValueError("Missing required config: core.database.influx.bucket")
+            raise ValueError("Missing required config: influx.bucket")
         
         key_manager = AICOKeyManager(config)
         token = key_manager.get_database_password("influx", username="admin_token")
@@ -1388,23 +1388,23 @@ async def tool_db_influx_apply_retention(
             if measurement:
                 # Check for measurement-specific retention
                 retention_days = config.get(
-                    f"core.database.influx.retention.measurements.{measurement}.retention_days"
+                    f"influx.retention.measurements.{measurement}.retention_days"
                 )
                 if retention_days is None:
                     # Fall back to default
-                    retention_days = config.get("core.database.influx.retention.default_days")
+                    retention_days = config.get("influx.retention.default_days")
                     if retention_days is None:
                         raise ValueError(
                             f"Missing retention config for measurement '{measurement}' and no default found. "
-                            f"Expected: core.database.influx.retention.measurements.{measurement}.retention_days "
-                            f"or core.database.influx.retention.default_days"
+                            f"Expected: influx.retention.measurements.{measurement}.retention_days "
+                            f"or influx.retention.default_days"
                         )
             else:
                 # Use default retention - MUST be configured
-                retention_days = config.get("core.database.influx.retention.default_days")
+                retention_days = config.get("influx.retention.default_days")
                 if retention_days is None:
                     raise ValueError(
-                        "Missing required config: core.database.influx.retention.default_days. "
+                        "Missing required config: influx.retention.default_days. "
                         "Cannot apply retention without configured policy."
                     )
         
@@ -1421,16 +1421,16 @@ async def tool_db_influx_apply_retention(
                 measurements_to_process = [measurement]
             else:
                 # Get all measurements with configured retention policies - FAIL LOUD if missing
-                measurements_config = config.get("core.database.influx.retention.measurements")
+                measurements_config = config.get("influx.retention.measurements")
                 if not measurements_config:
                     raise ValueError(
-                        "Missing required config: core.database.influx.retention.measurements. "
+                        "Missing required config: influx.retention.measurements. "
                         "Cannot apply retention policies without configured measurements."
                     )
                 measurements_to_process = list(measurements_config.keys())
                 if not measurements_to_process:
                     raise ValueError(
-                        "No measurements configured in core.database.influx.retention.measurements. "
+                        "No measurements configured in influx.retention.measurements. "
                         "Add at least one measurement with retention_days setting."
                     )
             
@@ -1440,11 +1440,11 @@ async def tool_db_influx_apply_retention(
                 # Get measurement-specific retention if not overridden
                 if retention_days is None or not measurement:
                     meas_retention = config.get(
-                        f"core.database.influx.retention.measurements.{meas}.retention_days"
+                        f"influx.retention.measurements.{meas}.retention_days"
                     )
                     if meas_retention is None:
                         # Fall back to default
-                        meas_retention = config.get("core.database.influx.retention.default_days")
+                        meas_retention = config.get("influx.retention.default_days")
                         if meas_retention is None:
                             logger.warning(
                                 f"[TOOL_DB_REMEDIATION] No retention configured for '{meas}', skipping"
@@ -1554,17 +1554,17 @@ async def tool_db_influx_drop_measurement(
     
     try:
         # Get InfluxDB connection details - FAIL LOUD if missing
-        url = config.get("core.database.influx.url")
+        url = config.get("influx.url")
         if not url:
-            raise ValueError("Missing required config: core.database.influx.url")
+            raise ValueError("Missing required config: influx.url")
         
-        org = config.get("core.database.influx.org")
+        org = config.get("influx.org")
         if not org:
-            raise ValueError("Missing required config: core.database.influx.org")
+            raise ValueError("Missing required config: influx.org")
         
-        bucket = config.get("core.database.influx.bucket")
+        bucket = config.get("influx.bucket")
         if not bucket:
-            raise ValueError("Missing required config: core.database.influx.bucket")
+            raise ValueError("Missing required config: influx.bucket")
         
         key_manager = AICOKeyManager(config)
         token = key_manager.get_database_password("influx", username="admin_token")

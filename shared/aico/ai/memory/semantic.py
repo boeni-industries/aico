@@ -73,7 +73,7 @@ class SemanticMemoryStore:
         self._modelservice = None
         
         # Configuration
-        memory_config = self.config.get("core.memory.semantic", {})
+        memory_config = self.config.get("memory.semantic", {})
         self._db_path = AICOPaths.get_semantic_memory_path()
         self._collection_name = "conversation_segments"
         self._embedding_model = "paraphrase-multilingual"
@@ -89,7 +89,7 @@ class SemanticMemoryStore:
         self._bm25_weight = memory_config.get("bm25_weight", 0.3)
         
         # Temporal configuration (AMS)
-        temporal_config = self.config.get("core.memory.temporal", {})
+        temporal_config = self.config.get("memory.temporal", {})
         self._temporal_enabled = temporal_config.get("enabled", True)
         self._confidence_decay_rate = temporal_config.get("confidence_decay_rate", 0.001)
         
@@ -311,13 +311,17 @@ class SemanticMemoryStore:
                         'metadata': results['metadatas'][0][i],
                         'distance': results['distances'][0][i] if 'distances' in results else 0.0
                     })
+
+                # Defensive: Chroma can return None distances; normalize to 1.0 (worst)
+                for doc in documents:
+                    if doc.get('distance') is None:
+                        doc['distance'] = 1.0
                 
-                # Convert distance to similarity (cosine)
-                similarity = 1.0 - documents[-1]['distance'] if documents[-1]['distance'] is not None else 0.0
-                documents[-1]['similarity'] = similarity
-                
-                # Add BM25 score placeholder (will be populated in hybrid scoring)
-                documents[-1]['bm25_score'] = 0.0
+                # TODO: Investigate scoring changes - BM25 placeholder was removed without proper implementation.
+                # The old code had a bm25_score=0.0 placeholder that was never used. Filtering was changed from
+                # hybrid_score to semantic_score because RRF scores are rank-based (not [0,1] bounded).
+                # Need to decide: (1) properly implement BM25 lexical matching, or (2) document that we're
+                # purely vector-based with RRF ranking. Current behavior may differ from original intent.
                 
                 # Calculate hybrid scores using configured fusion method
                 if self._fusion_method == "rrf":
@@ -349,7 +353,11 @@ class SemanticMemoryStore:
                 segments = []
                 
                 for doc in scored_docs:
-                    if doc['hybrid_score'] >= similarity_threshold:
+                    # IMPORTANT:
+                    # - `min_similarity` is a semantic (cosine-derived) threshold in [0, 1]
+                    # - RRF `hybrid_score` is rank-based and *not* on [0, 1]
+                    # So we filter on `semantic_score`, then sort/rank via `hybrid_score`.
+                    if doc['semantic_score'] >= similarity_threshold:
                         # Apply confidence decay (AMS)
                         metadata = doc['metadata']
                         if self._temporal_enabled and 'confidence' in metadata and 'last_accessed' in metadata:

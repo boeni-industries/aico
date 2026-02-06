@@ -140,7 +140,7 @@ class TransformersManager:
         self.logger = None  # Lazy initialization
         
         # Get transformers configuration
-        self.transformers_config = self.config_manager.get("core.modelservice.transformers", {})
+        self.transformers_config = self.config_manager.get("modelservice.transformers", {})
         
         # Loaded models cache
         self.loaded_models: Dict[str, Any] = {}
@@ -181,9 +181,15 @@ class TransformersManager:
             if model_name in self.model_configs:
                 # Update existing model config
                 existing = self.model_configs[model_name]
-                for key, value in config.items():
-                    if hasattr(existing, key):
-                        setattr(existing, key, value)
+                
+                # Handle both dict and string configs
+                # String config means just override the model_id
+                if isinstance(config, str):
+                    existing.model_id = config
+                elif isinstance(config, dict):
+                    for key, value in config.items():
+                        if hasattr(existing, key):
+                            setattr(existing, key, value)
             else:
                 # Skip models in config that aren't in defaults - they need full definitions
                 self.logger.warning(f"Skipping model '{model_name}' from config - not in default models and missing required fields")

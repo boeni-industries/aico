@@ -222,14 +222,18 @@ class EncryptionMiddleware:
             response_start_sent = False
             cached_start_message = None
             is_streaming_response = False
+            is_binary_encrypted_stream = False
+            binary_seq = 0
+            binary_final_sent = False
             
             async def encrypt_send(message):
-                nonlocal response_start_sent, cached_start_message, is_streaming_response
+                nonlocal response_start_sent, cached_start_message, is_streaming_response, is_binary_encrypted_stream, binary_seq, binary_final_sent
                 
                 if message["type"] == "http.response.start":
                     # Check if this is a streaming response
                     headers = dict(message.get("headers", []))
                     content_type = headers.get(b"content-type", b"").decode().lower()
+                    content_disposition = headers.get(b"content-disposition", b"").decode().lower()
                     
                     # Detect streaming responses
                     is_streaming_response = (
@@ -238,6 +242,37 @@ class EncryptionMiddleware:
                         "application/stream+json" in content_type or
                         headers.get(b"transfer-encoding") == b"chunked"
                     )
+
+                    # Binary/file responses (e.g. FileResponse) often arrive in multiple body chunks.
+                    # If we cache the start message and update Content-Length per chunk, clients
+                    # will truncate the download. To preserve encryption guarantees without
+                    # relying on incorrect Content-Length, we treat binary responses as a
+                    # streaming encrypted NDJSON response.
+                    is_binary_encrypted_stream = (
+                        not is_streaming_response
+                        and (
+                            "application/gzip" in content_type
+                            or "application/octet-stream" in content_type
+                            or "application/x-tar" in content_type
+                            or "attachment" in content_disposition
+                        )
+                    )
+
+                    if is_binary_encrypted_stream:
+                        # Rewrite headers for NDJSON streaming of encrypted chunks.
+                        updated_headers = []
+                        for name, value in message.get("headers", []):
+                            lname = name.lower()
+                            if lname in (b"content-length", b"content-type"):
+                                continue
+                            updated_headers.append((name, value))
+                        updated_headers.append((b"content-type", b"application/x-ndjson"))
+                        updated_headers.append((b"transfer-encoding", b"chunked"))
+                        message["headers"] = updated_headers
+
+                        await send(message)
+                        response_start_sent = True
+                        return
                     
                     if is_streaming_response:
                         # For streaming responses, send start immediately and encrypt each chunk
@@ -249,7 +284,78 @@ class EncryptionMiddleware:
                         
                 elif message["type"] == "http.response.body":
                     body = message.get("body", b"")
+                    more_body = bool(message.get("more_body", False))
                     
+                    if is_binary_encrypted_stream:
+                        encrypted_body = body
+                        if body:
+                            try:
+                                import base64
+                                encoded_body = base64.b64encode(body).decode()
+                                encrypted_payload = channel.encrypt_json_payload(
+                                    {
+                                        "raw_data": encoded_body,
+                                        "seq": binary_seq,
+                                        "final": not more_body,
+                                    }
+                                )
+                                binary_seq += 1
+                                if not more_body:
+                                    binary_final_sent = True
+                                encrypted_chunk = {
+                                    "encrypted": True,
+                                    "payload": encrypted_payload,
+                                    "encryption": "xchacha20poly1305",
+                                    "type": "raw",
+                                }
+                                encrypted_body = (json.dumps(encrypted_chunk) + "\n").encode()
+                            except Exception:
+                                # If encryption fails for some reason, we must not leak raw data.
+                                # Return a hard error chunk.
+                                error_payload = channel.encrypt_json_payload(
+                                    {"error": "binary_chunk_encryption_failed", "seq": binary_seq}
+                                )
+                                encrypted_body = (json.dumps({
+                                    "encrypted": True,
+                                    "payload": error_payload,
+                                    "encryption": "xchacha20poly1305",
+                                    "type": "error",
+                                }) + "\n").encode()
+                                binary_seq += 1
+                        elif not more_body and not binary_final_sent:
+                            # Some servers terminate streaming responses with an empty final chunk.
+                            # Emit an explicit encrypted final frame so clients can reliably
+                            # detect completion.
+                            try:
+                                encrypted_payload = channel.encrypt_json_payload(
+                                    {
+                                        "raw_data": "",
+                                        "seq": binary_seq,
+                                        "final": True,
+                                    }
+                                )
+                                binary_seq += 1
+                                binary_final_sent = True
+                                encrypted_body = (
+                                    json.dumps(
+                                        {
+                                            "encrypted": True,
+                                            "payload": encrypted_payload,
+                                            "encryption": "xchacha20poly1305",
+                                            "type": "raw",
+                                        }
+                                    )
+                                    + "\n"
+                                ).encode()
+                            except Exception:
+                                # If we can't encrypt the final marker, emit nothing (connection
+                                # will close) rather than leak data.
+                                encrypted_body = b""
+
+                        message["body"] = encrypted_body or b""
+                        await send(message)
+                        return
+
                     if is_streaming_response:
                         # Streaming response: encrypt each chunk individually
                         encrypted_body = body

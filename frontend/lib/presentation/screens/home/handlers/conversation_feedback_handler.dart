@@ -1,8 +1,8 @@
+import 'package:aico_frontend/presentation/providers/behavioral_feedback_provider.dart';
+import 'package:aico_frontend/presentation/widgets/chat/feedback_dialog.dart';
+import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/behavioral_feedback_provider.dart';
-import '../../../widgets/chat/feedback_dialog.dart';
-import '../../../widgets/common/glassmorphic_toast.dart';
 
 /// Handler for behavioral feedback submission
 /// 

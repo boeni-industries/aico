@@ -5,7 +5,14 @@ Mocks logging to avoid initialization requirements during testing.
 """
 
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
+
+
+project_root = Path(__file__).resolve().parents[2]
+shared_root = project_root / "shared"
+if str(shared_root) not in sys.path:
+    sys.path.insert(0, str(shared_root))
 
 # Create a mock logger
 mock_logger = MagicMock()
@@ -39,7 +46,7 @@ def pytest_sessionfinish(session, exitstatus):
         from aico.core.paths import AICOPaths
         from aico.core.config import ConfigurationManager
         from aico.security import AICOKeyManager
-                import keyring
+        import keyring
         
         db_path = AICOPaths.resolve_database_path("aico.db", "auto")
         config = ConfigurationManager()

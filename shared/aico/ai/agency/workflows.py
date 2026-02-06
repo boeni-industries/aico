@@ -133,9 +133,85 @@ class EventSystem:
     
     def __init__(self, db: Any, logger=None):
         # Agency system being redesigned
-        self.db = db
+        if hasattr(db, "cursor") and not hasattr(db, "fetch_one"):
+            class _Psycopg2Adapter:
+                def __init__(self, conn: Any):
+                    self._conn = conn
+
+                def cursor(self):
+                    return self._conn.cursor()
+
+                def commit(self):
+                    return self._conn.commit()
+
+                def rollback(self):
+                    return self._conn.rollback()
+
+                def close(self):
+                    return self._conn.close()
+
+                def execute(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                    except Exception:
+                        try:
+                            self._conn.rollback()
+                        except Exception:
+                            pass
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+                        raise
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+                def fetch_one(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                        return cursor.fetchone()
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+                def fetch_all(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                        return cursor.fetchall()
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+            self.db = _Psycopg2Adapter(db)
+        else:
+            self.db = db
         self.logger = logger
         self._triggers: Dict[str, List[Callable]] = {}
+
+    def _execute(self, sql: str, params: tuple[Any, ...]) -> None:
+        if hasattr(self.db, "execute"):
+            self.db.execute(sql, params)
+            return
+
+        sql = sql.replace("?", "%s")
+        cursor = self.db.cursor()
+        try:
+            cursor.execute(sql, params)
+        finally:
+            try:
+                cursor.close()
+            except Exception:
+                pass
     
     def log_event(
         self,
@@ -171,7 +247,7 @@ class EventSystem:
         event_id = str(uuid.uuid4())
         
         try:
-            self.db.execute(
+            self._execute(
                 """
                 INSERT INTO agency_events_log (
                     event_id, user_id, event_type, event_category, source_component,
@@ -299,7 +375,7 @@ class EventSystem:
             bucket_start = now.replace(minute=0, second=0, microsecond=0).isoformat()
             
             # Try to increment existing metric
-            self.db.execute(
+            self._execute(
                 """
                 INSERT INTO system_event_metrics (
                     metric_id, metric_name, metric_type, event_type, event_category,
@@ -320,6 +396,11 @@ class EventSystem:
             self.db.commit()
             
         except Exception as e:
+            if hasattr(self.db, "rollback"):
+                try:
+                    self.db.rollback()
+                except Exception:
+                    pass
             if self.logger:
                 self.logger.warning(f"[EVENT] Failed to update metrics: {e}")
 
@@ -341,7 +422,64 @@ class WorkflowOrchestrator:
     
     def __init__(self, db: Any, event_system: EventSystem, logger=None):
         # Agency system being redesigned
-        self.db = db
+        if hasattr(db, "cursor") and not hasattr(db, "fetch_one"):
+            class _Psycopg2Adapter:
+                def __init__(self, conn: Any):
+                    self._conn = conn
+
+                def cursor(self):
+                    return self._conn.cursor()
+
+                def commit(self):
+                    return self._conn.commit()
+
+                def rollback(self):
+                    return self._conn.rollback()
+
+                def close(self):
+                    return self._conn.close()
+
+                def execute(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                    except Exception:
+                        try:
+                            self._conn.rollback()
+                        except Exception:
+                            pass
+                        raise
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+                def fetch_one(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                        return cursor.fetchone()
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+                def fetch_all(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                        return cursor.fetchall()
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+            self.db = _Psycopg2Adapter(db)
+        else:
+            self.db = db
         self.event_system = event_system
         self.logger = logger
     
@@ -613,9 +751,81 @@ class EventReplaySystem:
     
     def __init__(self, db: Any, event_system: EventSystem, logger=None):
         # Agency system being redesigned
-        self.db = db
+        if hasattr(db, "cursor") and not hasattr(db, "fetch_one"):
+            class _Psycopg2Adapter:
+                def __init__(self, conn: Any):
+                    self._conn = conn
+
+                def cursor(self):
+                    return self._conn.cursor()
+
+                def commit(self):
+                    return self._conn.commit()
+
+                def rollback(self):
+                    return self._conn.rollback()
+
+                def close(self):
+                    return self._conn.close()
+
+                def execute(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                    except Exception:
+                        try:
+                            self._conn.rollback()
+                        except Exception:
+                            pass
+                        raise
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+                def fetch_one(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                        return cursor.fetchone()
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+                def fetch_all(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                        return cursor.fetchall()
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+            self.db = _Psycopg2Adapter(db)
+        else:
+            self.db = db
         self.event_system = event_system
         self.logger = logger
+
+    def _execute(self, sql: str, params: tuple[Any, ...]) -> None:
+        if hasattr(self.db, "execute"):
+            self.db.execute(sql, params)
+            return
+
+        sql = sql.replace("?", "%s")
+        cursor = self.db.cursor()
+        try:
+            cursor.execute(sql, params)
+        finally:
+            try:
+                cursor.close()
+            except Exception:
+                pass
     
     def create_replay_session(
         self,
@@ -715,6 +925,8 @@ class EventReplaySystem:
             
             # Get events to replay
             filters = json.loads(session["event_filters"]) if session["event_filters"] else {}
+
+            limit = 100
             
             query = """
                 SELECT * FROM agency_events_log
@@ -730,26 +942,45 @@ class EventReplaySystem:
                 query += " AND event_category = ?"
                 params.append(filters["event_category"])
             
-            query += " ORDER BY created_at ASC"
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+
+            if hasattr(self.db, "execute"):
+                rows = self.db.fetch_all(query, tuple(params))
+            else:
+                cursor = self.db.cursor()
+                try:
+                    cursor.execute(query.replace("?", "%s"), tuple(params))
+                    rows = cursor.fetchall()
+                finally:
+                    try:
+                        cursor.close()
+                    except Exception:
+                        pass
+        
+            # Parse JSON fields
+            events = []
+            for row in rows:
+                event = dict(row)
+                if "metadata" in event and event["metadata"]:
+                    event["metadata"] = json.loads(event["metadata"])
+                events.append(event)
             
-            events = self.db.fetch_all(query, tuple(params))
-            
-            # Replay events
             events_replayed = 0
             for event in events:
                 if callback:
-                    callback(dict(event))
+                    callback(event)
                 events_replayed += 1
                 
                 # Update progress
-                self.db.execute(
+                self._execute(
                     "UPDATE system_event_replay_sessions SET events_replayed = ? WHERE session_id = ?",
-                    (events_replayed, session_id)
+                    (events_replayed, session_id),
                 )
                 self.db.commit()
             
             # Mark as completed
-            self.db.execute(
+            self._execute(
                 """
                 UPDATE system_event_replay_sessions
                 SET status = 'completed', completed_at = ?
@@ -769,9 +1000,9 @@ class EventReplaySystem:
                 self.logger.error(f"[REPLAY] Failed to replay events: {e}")
             
             # Mark as failed
-            self.db.execute(
+            self._execute(
                 "UPDATE system_event_replay_sessions SET status = 'failed' WHERE session_id = ?",
-                (session_id,)
+                (session_id,),
             )
             self.db.commit()
             
@@ -810,7 +1041,64 @@ class EventMetricsCollector:
     
     def __init__(self, db: Any, logger=None):
         # Agency system being redesigned
-        self.db = db
+        if hasattr(db, "cursor") and not hasattr(db, "fetch_one"):
+            class _Psycopg2Adapter:
+                def __init__(self, conn: Any):
+                    self._conn = conn
+
+                def cursor(self):
+                    return self._conn.cursor()
+
+                def commit(self):
+                    return self._conn.commit()
+
+                def rollback(self):
+                    return self._conn.rollback()
+
+                def close(self):
+                    return self._conn.close()
+
+                def execute(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                    except Exception:
+                        try:
+                            self._conn.rollback()
+                        except Exception:
+                            pass
+                        raise
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+                def fetch_one(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                        return cursor.fetchone()
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+                def fetch_all(self, sql: str, params: tuple[Any, ...] = ()):  # type: ignore[no-untyped-def]
+                    cursor = self._conn.cursor()
+                    try:
+                        cursor.execute(sql.replace("?", "%s"), params)
+                        return cursor.fetchall()
+                    finally:
+                        try:
+                            cursor.close()
+                        except Exception:
+                            pass
+
+            self.db = _Psycopg2Adapter(db)
+        else:
+            self.db = db
         self.logger = logger
     
     def record_metric(
@@ -859,7 +1147,7 @@ class EventMetricsCollector:
                 """
                 SELECT metric_id, value, count, metric_type FROM system_event_metrics
                 WHERE metric_name = ? AND time_bucket = ? AND bucket_start = ?
-                  AND (event_type IS ? OR (event_type IS NULL AND ? IS NULL))
+                  AND ((event_type = ?) OR (event_type IS NULL AND ? IS NULL))
                 """,
                 (metric_name, time_bucket, bucket_start_iso, event_type, event_type)
             )

@@ -13,6 +13,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta, UTC
 from dataclasses import dataclass
 from enum import Enum
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from aico.data.uow import UnitOfWork
 
 
 
@@ -93,16 +96,16 @@ class PolicyManager:
     
     def __init__(
         self,
-        db: Any,  # Agency system being redesigned,
-        logger: Optional[Any] = None  # Added default value and type hint
+        session_factory: async_sessionmaker,
+        logger: Optional[Any] = None
     ):
-        self.db = db
+        self.session_factory = session_factory
         self.logger = logger
         self._policy_cache: Dict[str, List[PolicyRule]] = {}
         self._cache_time: Optional[datetime] = None
         self._cache_ttl_seconds = 300  # 5 minutes
     
-    def load_policies(
+    async def load_policies(
         self,
         user_id: Optional[str] = None,
         target_type: Optional[str] = None,
@@ -127,30 +130,11 @@ class PolicyManager:
                 return self._policy_cache[cache_key]
         
         try:
-            # Build query
-            query = """
-                SELECT * FROM agency_policy_rules
-                WHERE active = 1
-            """
-            params = []
-            
-            # Add user filter (include global + user-specific)
-            if user_id:
-                query += " AND (user_id IS NULL OR user_id = ?)"
-                params.append(user_id)
-            else:
-                query += " AND user_id IS NULL"
-            
-            # Add target type filter
-            if target_type:
-                query += " AND target_type = ?"
-                params.append(target_type)
-            
-            query += " ORDER BY priority DESC, created_at ASC"
-            
-            rows = self.db.fetch_all(query, tuple(params) if params else None)
-            
-            policies = [self._row_to_policy(row) for row in rows]
+            async with UnitOfWork(self.session_factory) as uow:
+                policies = await uow.policy_rules.get_active_policies(
+                    user_id=user_id,
+                    target_type=target_type
+                )
             
             # Update cache
             self._policy_cache[cache_key] = policies
@@ -169,7 +153,7 @@ class PolicyManager:
                 self.logger.error(f"[POLICY] Failed to load policies: {e}")
             return []
     
-    def add_policy(
+    async def add_policy(
         self,
         rule_id: str,
         rule_name: str,
@@ -188,7 +172,7 @@ class PolicyManager:
             rule_id: Unique rule identifier
             rule_name: Human-readable name
             target_type: Type of target (goal, curiosity_signal, etc.)
-            conditions: Conditions to match (JSON)
+            conditions: Conditions to match (dict)
             effect: Policy effect (allow, block, needs_consent, etc.)
             user_id: Optional user ID for user-specific policy
             user_message_template: Optional message template
@@ -199,31 +183,19 @@ class PolicyManager:
             rule_id
         """
         try:
-            now = datetime.now(UTC).isoformat()
-            
-            self.db.execute(
-                """
-                INSERT INTO agency_policy_rules (
-                    rule_id, rule_name, user_id, target_type, conditions,
-                    effect, user_message_template, priority, scope, version,
-                    active, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
-                """,
-                (
-                    rule_id,
-                    rule_name,
-                    user_id,
-                    target_type,
-                    json.dumps(conditions),
-                    effect,
-                    user_message_template,
-                    priority,
-                    scope,
-                    now,
-                    now
+            async with UnitOfWork(self.session_factory) as uow:
+                await uow.policy_rules.create_policy(
+                    rule_id=rule_id,
+                    rule_name=rule_name,
+                    target_type=target_type,
+                    conditions=conditions,
+                    effect=effect,
+                    user_id=user_id,
+                    user_message_template=user_message_template,
+                    priority=priority,
+                    scope=scope
                 )
-            )
-            self.db.commit()
+                await uow.commit()
             
             # Invalidate cache
             self._policy_cache.clear()
@@ -238,79 +210,37 @@ class PolicyManager:
                 self.logger.error(f"[POLICY] Failed to add policy: {e}")
             raise
     
-    def update_policy(
+    async def update_policy(
         self,
         rule_id: str,
         conditions: Optional[Dict[str, Any]] = None,
         effect: Optional[str] = None,
         priority: Optional[int] = None,
         active: Optional[bool] = None
-    ) -> None:
+    ) -> bool:
         """Update an existing policy rule."""
         try:
-            # Get current version
-            row = self.db.fetch_one(
-                "SELECT version, conditions, effect, priority FROM agency_policy_rules WHERE rule_id = ?",
-                (rule_id,)
-            )
-            
-            if not row:
-                raise ValueError(f"Policy rule {rule_id} not found")
-            
-            # Create version snapshot
-            # TODO: policy_versions table doesn't exist in production DB - feature not implemented
-            # version_id = str(uuid.uuid4())
-            # self.db.execute(
-            #     """
-            #     INSERT INTO policy_versions (
-            #         version_id, rule_id, version_number, conditions, effect,
-            #         priority, created_at
-            #     ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            #     """,
-            #     (
-            #         version_id,
-            #         rule_id,
-            #         row["version"],
-            #         row["conditions"],
-            #         row["effect"],
-            #         row["priority"],
-            #         datetime.now(UTC).isoformat()
-            #     )
-            # )
-            
-            # Update policy
-            updates = []
-            params = []
-            
-            if conditions is not None:
-                updates.append("conditions = ?")
-                params.append(json.dumps(conditions))
-            
-            if effect is not None:
-                updates.append("effect = ?")
-                params.append(effect)
-            
-            if priority is not None:
-                updates.append("priority = ?")
-                params.append(priority)
-            
-            if active is not None:
-                updates.append("active = ?")
-                params.append(1 if active else 0)
-            
-            updates.append("version = version + 1")
-            updates.append("updated_at = ?")
-            params.append(datetime.now(UTC).isoformat())
-            params.append(rule_id)
-            
-            self.db.execute(
-                f"UPDATE agency_policy_rules SET {', '.join(updates)} WHERE rule_id = ?",
-                tuple(params)
-            )
-            self.db.commit()
+            async with UnitOfWork(self.session_factory) as uow:
+                success = await uow.policy_rules.update_policy(
+                    rule_id=rule_id,
+                    conditions=conditions,
+                    effect=effect,
+                    priority=priority,
+                    active=active
+                )
+                
+                if not success:
+                    raise ValueError(f"Policy rule {rule_id} not found")
+                
+                await uow.commit()
             
             # Invalidate cache
             self._policy_cache.clear()
+            
+            if self.logger:
+                self.logger.info(f"[POLICY] Updated policy rule: {rule_id}")
+            
+            return True
             
         except Exception as e:
             if self.logger:
@@ -372,35 +302,19 @@ class PolicyManager:
         target_type: str,
         resolution: str
     ) -> str:
-        """Log a policy conflict."""
-        try:
-            conflict_id = str(uuid.uuid4())
-            
-            self.db.execute(
-                """
-                INSERT INTO policy_conflicts (
-                    conflict_id, user_id, rule_id_a, rule_id_b,
-                    target_type, resolution, resolved_by, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'system', ?)
-                """,
-                (
-                    conflict_id,
-                    user_id,
-                    rule_id_a,
-                    rule_id_b,
-                    target_type,
-                    resolution,
-                    datetime.now(UTC).isoformat()
-                )
+        """
+        Log a policy conflict.
+        
+        Note: policy_conflicts table doesn't exist in production DB.
+        This feature is not yet implemented. Logging to application logger only.
+        """
+        if self.logger:
+            self.logger.warning(
+                f"[POLICY] Conflict detected: user={user_id}, "
+                f"rules={rule_id_a} vs {rule_id_b}, "
+                f"target={target_type}, resolution={resolution}"
             )
-            self.db.commit()
-            
-            return conflict_id
-            
-        except Exception as e:
-            if self.logger:
-                self.logger.warning(f"[POLICY] Failed to log conflict: {e}")
-            return None
+        return None
     
     def _is_cache_valid(self) -> bool:
         """Check if policy cache is still valid."""
@@ -409,24 +323,6 @@ class PolicyManager:
         
         age = (datetime.now(UTC) - self._cache_time).total_seconds()
         return age < self._cache_ttl_seconds
-    
-    def _row_to_policy(self, row: Dict[str, Any]) -> PolicyRule:
-        """Convert database row to PolicyRule object."""
-        return PolicyRule(
-            rule_id=row["rule_id"],
-            rule_name=row["rule_name"],
-            user_id=row["user_id"],
-            target_type=row["target_type"],
-            conditions=json.loads(row["conditions"]),
-            effect=row["effect"],
-            user_message_template=row["user_message_template"],
-            priority=row["priority"],
-            scope=row["scope"],
-            version=row["version"],
-            active=bool(row["active"]),
-            created_at=datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC),
-            updated_at=datetime.fromisoformat(row["updated_at"]).replace(tzinfo=UTC)
-        )
 
 
 # ============================================================================
@@ -848,10 +744,19 @@ class EnhancedEthicsGate:
             
             self.db.execute(
                 """
-                INSERT OR REPLACE INTO ethics_decisions_cache (
+                INSERT INTO ethics_decisions_cache (
                     cache_id, user_id, target_type, target_id, decision,
                     reasoning, policy_rules_applied, cached_at, expires_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (cache_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    target_type = EXCLUDED.target_type,
+                    target_id = EXCLUDED.target_id,
+                    decision = EXCLUDED.decision,
+                    reasoning = EXCLUDED.reasoning,
+                    policy_rules_applied = EXCLUDED.policy_rules_applied,
+                    cached_at = EXCLUDED.cached_at,
+                    expires_at = EXCLUDED.expires_at
                 """,
                 (
                     cache_id,

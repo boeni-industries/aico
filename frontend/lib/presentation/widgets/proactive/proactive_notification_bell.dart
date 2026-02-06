@@ -1,9 +1,10 @@
 import 'dart:ui';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:aico_frontend/data/models/proactive_model.dart';
 import 'package:aico_frontend/presentation/providers/proactive_state_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
-import 'package:aico_frontend/data/models/proactive_model.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Notification bell icon that appears in the top-right toolbar area.
 /// Opens a slide-out drawer with full notification history.
@@ -142,7 +143,7 @@ class _ProactiveNotificationDrawerState extends ConsumerState<ProactiveNotificat
 
     return Align(
       alignment: Alignment.centerRight,
-      child: Container(
+      child: SizedBox(
         width: 420,
         height: MediaQuery.of(context).size.height,
         child: ClipRRect(

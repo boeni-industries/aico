@@ -76,7 +76,7 @@ class MemoryIntelligenceEvaluator:
     V2 Architecture Testing:
     - Fact extraction pipeline (GLiNER → LLM → UserFact)
     - 2-tier storage (Working LMDB + Semantic ChromaDB)
-    - Schema V5 libSQL metadata integration
+    - Schema V5 metadata integration
     - Direct modelservice integration via ZMQ
     - Conversation strength calculation (not thread strength)
     - Simplified conversation engine integration

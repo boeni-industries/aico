@@ -16,7 +16,7 @@ class ProactiveRemoteDataSource {
       );
       
       if (response != null && response is List) {
-        return (response as List)
+        return response
             .map((item) => InitiationModel.fromJson(item as Map<String, dynamic>))
             .toList();
       }
@@ -36,7 +36,7 @@ class ProactiveRemoteDataSource {
       );
       
       if (response != null && response is List) {
-        return (response as List)
+        return response
             .map((item) => InitiationModel.fromJson(item as Map<String, dynamic>))
             .toList();
       }

@@ -11,7 +11,7 @@ import jwt
 from aico.core.logging import get_logger
 from aico.data.uow import UnitOfWork
 from aico.data.user.models import UserProfile
-from aico.data.user import UserService
+from aico.data.system.models import SystemEvent
 from .schemas import (
     CreateUserRequest, UpdateUserRequest, AuthenticateRequest, SetPinRequest,
     UserResponse, AuthenticationResponse, UserStatsResponse, UserListResponse
@@ -31,7 +31,7 @@ def _user_to_response(user) -> UserResponse:
     )
 from .dependencies import validate_uuid, validate_user_type, validate_pin, security
 from backend.core.postgres_dependencies import get_uow
-from backend.core.lifecycle_manager import get_auth_manager, get_user_service
+from backend.core.lifecycle_manager import get_auth_manager
 from .exceptions import (
     UserNotFoundError, UserServiceError, InvalidCredentialsError,
     handle_user_service_exceptions
@@ -41,7 +41,6 @@ router = APIRouter()
 logger = get_logger("backend.api.users_router")
 
 # Router now uses proper FastAPI dependency injection - no global state needed
-# Dependencies are injected via get_user_service, get_auth_manager from dependencies.py
 
 
 async def get_admin_dependency(
@@ -263,15 +262,48 @@ async def authenticate_user(
     try:
         from datetime import datetime, UTC
         from passlib.context import CryptContext
+        import uuid
         
         # Initialize bcrypt context (must match CLI UserService)
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+        async def _emit_auth_event(*, topic: str, user_uuid: str, user_name: str | None, reason: str | None) -> None:
+            now = datetime.now(UTC)
+            ip_address = getattr(request_obj.client, "host", None)
+            device_type = request_obj.headers.get("user-agent", None)
+            await uow.system_events.create(
+                SystemEvent(
+                    timestamp=now.isoformat().replace("+00:00", "Z"),
+                    topic=topic,
+                    source="backend.api.users",
+                    message_type="auth",
+                    message_id=str(uuid.uuid4()),
+                    priority=1,
+                    correlation_id=None,
+                    payload=None,
+                    metadata={
+                        "user_uuid": user_uuid,
+                        "user_name": user_name,
+                        "ip_address": ip_address,
+                        "device_type": device_type,
+                        "reason": reason,
+                    },
+                    created_at=now,
+                )
+            )
         
         logger.info(f"Starting authentication for user: {request.user_uuid}")
         
         # Get user via repository
         user = await uow.users.get_by_id(request.user_uuid)
         if not user:
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=None,
+                reason="user_not_found",
+            )
+            await uow.commit()
             return AuthenticationResponse(
                 success=False,
                 error="User not found"
@@ -280,6 +312,13 @@ async def authenticate_user(
         # Get credentials via repository
         credentials = await uow.credentials.get_by_user_uuid(request.user_uuid)
         if not credentials:
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="no_credentials",
+            )
+            await uow.commit()
             return AuthenticationResponse(
                 success=False,
                 error="No credentials found for user"
@@ -287,6 +326,13 @@ async def authenticate_user(
         
         # Check if account is locked
         if credentials.locked_until and credentials.locked_until > datetime.now(UTC):
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="account_locked",
+            )
+            await uow.commit()
             return AuthenticationResponse(
                 success=False,
                 error=f"Account locked until {credentials.locked_until.isoformat()}"
@@ -296,6 +342,13 @@ async def authenticate_user(
         if not pwd_context.verify(request.pin, credentials.pin_hash):
             # Increment failed attempts
             await uow.credentials.increment_failed_attempts(request.user_uuid)
+
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="invalid_pin",
+            )
             await uow.commit()
             
             return AuthenticationResponse(
@@ -306,6 +359,13 @@ async def authenticate_user(
         # Reset failed attempts on successful login
         await uow.credentials.reset_failed_attempts(request.user_uuid)
         await uow.credentials.update_last_login(request.user_uuid)
+
+        await _emit_auth_event(
+            topic="auth.login.success",
+            user_uuid=request.user_uuid,
+            user_name=user.full_name,
+            reason=None,
+        )
         await uow.commit()
         
         logger.info(f"Authentication successful for user: {user.uuid}")
@@ -399,6 +459,37 @@ async def authenticate_user(
         logger.error(f"Authentication failed: {e}")
         import traceback
         logger.error(traceback.format_exc())
+        try:
+            from datetime import datetime, UTC
+            import uuid
+
+            now = datetime.now(UTC)
+            ip_address = getattr(request_obj.client, "host", None)
+            device_type = request_obj.headers.get("user-agent", None)
+            await uow.system_events.create(
+                SystemEvent(
+                    timestamp=now.isoformat().replace("+00:00", "Z"),
+                    topic="auth.login.failed",
+                    source="backend.api.users",
+                    message_type="auth",
+                    message_id=str(uuid.uuid4()),
+                    priority=1,
+                    correlation_id=None,
+                    payload=None,
+                    metadata={
+                        "user_uuid": request.user_uuid,
+                        "user_name": None,
+                        "ip_address": ip_address,
+                        "device_type": device_type,
+                        "reason": "system_error",
+                    },
+                    created_at=now,
+                )
+            )
+            await uow.commit()
+        except Exception:
+            # Avoid masking the original auth failure.
+            pass
         return AuthenticationResponse(
             success=False,
             error="Authentication system error"
@@ -563,7 +654,7 @@ async def logout_user(request: Request):
 async def refresh_token(
     request: Request,
     auth_manager = Depends(get_auth_manager),
-    user_service: UserService = Depends(get_user_service)
+    uow: UnitOfWork = Depends(get_uow),
 ):
     """Refresh JWT token for authenticated user with session rotation"""
     # Extract current token from Authorization header
@@ -597,10 +688,7 @@ async def refresh_token(
         raise HTTPException(status_code=500, detail="Failed to decode new token")
     
     # Get user data for response
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
-    
-    user = await user_service.get_user(user_uuid)
+    user = await uow.users.get_by_id(user_uuid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -619,11 +707,28 @@ async def refresh_token(
 
 @router.get("/stats", response_model=UserStatsResponse)
 async def get_user_stats(
-    user_service: UserService = Depends(get_user_service)
+    uow: UnitOfWork = Depends(get_uow),
 ) -> UserStatsResponse:
     """Get user statistics"""
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
-    
-    stats = await user_service.get_user_stats()
-    return UserStatsResponse(**stats)
+    try:
+        users = await uow.users.list(filters={}, limit=100000)
+        total_users = len(users)
+        active_users = sum(1 for u in users if bool(getattr(u, "is_active", False)))
+        users_by_type: dict[str, int] = {}
+        for u in users:
+            user_type = getattr(u, "user_type", None) or "unknown"
+            users_by_type[user_type] = users_by_type.get(user_type, 0) + 1
+
+        # Placeholder until we have a proper "last_login" field in a repository.
+        # Keep schema contract stable.
+        recent_logins = 0
+
+        return UserStatsResponse(
+            total_users=total_users,
+            active_users=active_users,
+            users_by_type=users_by_type,
+            recent_logins=recent_logins,
+        )
+    except Exception as e:
+        logger.error(f"Failed to compute user stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to compute user stats")

@@ -181,12 +181,12 @@ class _FloatingAgencyIconState extends ConsumerState<FloatingAgencyIcon>
                       boxShadow: [
                         // Animated soft glow effect
                         BoxShadow(
-                          color: color.withOpacity(0.4 * glowIntensity),
+                          color: color.withValues(alpha: 0.4 * glowIntensity),
                           blurRadius: 8,
                           spreadRadius: 2,
                         ),
                         BoxShadow(
-                          color: color.withOpacity(0.2 * glowIntensity),
+                          color: color.withValues(alpha: 0.2 * glowIntensity),
                           blurRadius: 16,
                           spreadRadius: 4,
                         ),
@@ -207,7 +207,7 @@ class _FloatingAgencyIconState extends ConsumerState<FloatingAgencyIcon>
                               color: color,
                               shadows: [
                                 Shadow(
-                                  color: color.withOpacity(0.5),
+                                  color: color.withValues(alpha: 0.5),
                                   blurRadius: 4,
                                 ),
                               ],
@@ -352,12 +352,12 @@ class _ThreeDotsAnimatedPainter extends CustomPainter {
         opacity = 0.3; // Dim after animation
       }
 
-      paint.color = color.withOpacity(opacity);
+      paint.color = color.withValues(alpha: opacity);
       canvas.drawCircle(dots[i], dotRadius, paint);
       
       // Add glow for active dot
       if (opacity > 0.5) {
-        paint.color = color.withOpacity(opacity * 0.3);
+        paint.color = color.withValues(alpha: opacity * 0.3);
         canvas.drawCircle(dots[i], dotRadius * 1.8, paint);
       }
     }

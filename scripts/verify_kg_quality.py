@@ -5,7 +5,7 @@ Comprehensive KG Data Quality Verification Script
 Checks:
 1. Duplicate nodes (current only)
 2. Duplicate edges (current only)
-3. ChromaDB sync with libSQL
+3. ChromaDB sync with PostgreSQL
 4. Orphaned edges
 """
 
@@ -26,7 +26,7 @@ def main():
     config.initialize(lightweight=True)
     key_manager = AICOKeyManager(config)
     
-    pg_cfg = config.get("core.database.postgres", {})
+    pg_cfg = config.get("postgres", {})
     password = key_manager.get_database_password("postgres", username=pg_cfg.get("user", "postgres"))
     
     db = psycopg2.connect(
@@ -83,12 +83,12 @@ def main():
     # 3. Check ChromaDB sync
     print("\n📊 Checking ChromaDB sync...")
     
-    # Get libSQL counts
+    # Get PostgreSQL counts
     cursor = db.execute("SELECT COUNT(*) FROM kg_nodes WHERE is_current = 1")
-    libsql_nodes = cursor.fetchone()[0]
+    pg_nodes = cursor.fetchone()[0]
     
     cursor = db.execute("SELECT COUNT(*) FROM kg_edges WHERE is_current = 1")
-    libsql_edges = cursor.fetchone()[0]
+    pg_edges = cursor.fetchone()[0]
     
     # Get ChromaDB counts
     try:
@@ -116,21 +116,21 @@ def main():
             chromadb_edges = 0
         
         # Compare
-        nodes_match = libsql_nodes == chromadb_nodes
-        edges_match = libsql_edges == chromadb_edges
+        nodes_match = pg_nodes == chromadb_nodes
+        edges_match = pg_edges == chromadb_edges
         
-        print(f"   Nodes: libSQL={libsql_nodes}, ChromaDB={chromadb_nodes} {'✅' if nodes_match else '❌'}")
-        print(f"   Edges: libSQL={libsql_edges}, ChromaDB={chromadb_edges} {'✅' if edges_match else '❌'}")
+        print(f"   Nodes: Postgres={pg_nodes}, ChromaDB={chromadb_nodes} {'✅' if nodes_match else '❌'}")
+        print(f"   Edges: Postgres={pg_edges}, ChromaDB={chromadb_edges} {'✅' if edges_match else '❌'}")
         
         if not nodes_match:
-            diff = chromadb_nodes - libsql_nodes
+            diff = chromadb_nodes - pg_nodes
             if diff > 0:
                 print(f"   ⚠️  ChromaDB has {diff} stale node embeddings")
             else:
                 print(f"   ⚠️  ChromaDB is missing {abs(diff)} node embeddings")
         
         if not edges_match:
-            diff = chromadb_edges - libsql_edges
+            diff = chromadb_edges - pg_edges
             if diff > 0:
                 print(f"   ⚠️  ChromaDB has {diff} stale edge embeddings")
             else:

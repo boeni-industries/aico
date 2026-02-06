@@ -37,10 +37,10 @@ async def tool_agency_metrics_snapshot(session_factory: Any) -> Dict[str, Any]:
             
             # Count recent reflections (last 24 hours)
             recent_reflections = 0
-            if hasattr(uow, "agency_lessons"):
+            if hasattr(uow, "lessons"):
                 cutoff = datetime.now(UTC) - timedelta(hours=24)
-                lessons = await uow.agency_lessons.list_recent(since=cutoff, limit=1000)
-                recent_reflections = len(lessons)
+                lessons = await uow.lessons.list(filters={"status": "active"}, limit=1000)
+                recent_reflections = len([l for l in lessons if getattr(l, "created_at", None) and l.created_at >= cutoff])
         
         latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
         

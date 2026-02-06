@@ -81,8 +81,7 @@ class GatewayCore:
         self.start_time = 0.0
         
         # Gateway configuration - use proper config path
-        core_config = config.get("core", {})
-        gateway_config = core_config.get("api_gateway", {})
+        gateway_config = config.get("api_gateway", {})
         self.enabled_protocols = gateway_config.get("protocols", {})
         self.enabled_plugins = gateway_config.get("plugins", {})
         
@@ -214,9 +213,8 @@ class GatewayCore:
         """Register built-in plugins based on configuration"""
         self.logger.debug("Starting plugin registration process")
         
-        # Get plugins configuration from core.api_gateway.plugins
-        core_config = self.config.get('core', {})
-        api_gateway_config = core_config.get('api_gateway', {})
+        # Get plugins configuration from api_gateway.plugins
+        api_gateway_config = self.config.get('api_gateway', {})
         plugins_config = api_gateway_config.get('plugins', {})
         
         self.logger.debug(f"Plugin config lookup result: {plugins_config}")
@@ -319,12 +317,7 @@ class GatewayCore:
             }
             
             # Initialize REST adapter for FastAPI integration (no separate server)
-            self.logger.debug(f"Full config structure: {list(self.config.config_cache.keys())}")
-            self.logger.debug(f"Core config: {self.config.config_cache.get('core', {}).keys()}")
-            
-            # Use proper configuration access pattern
-            core_config = self.config.config_cache.get('core', {})
-            api_gateway_config = core_config.get('api_gateway', {})
+            api_gateway_config = self.config.get("api_gateway", {})
             rest_config = api_gateway_config.get('rest', {})
             
             self.logger.debug(f"API Gateway config: {api_gateway_config.keys()}")

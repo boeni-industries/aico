@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 import asyncio
 import json
+import copy
 from datetime import datetime, UTC
 from typing import Dict, Any, Optional
 
@@ -77,6 +78,14 @@ class SkillInvoker:
         start_time = datetime.now(UTC)
         timeout = timeout or self.default_timeout
         context = context or {}
+
+        # Backward/forward compatibility: many skills are goal-scoped, but older
+        # plan steps may not explicitly pass goal_id. If the execution context
+        # has a goal_id, inject it before validation.
+        if isinstance(input_data, dict) and "goal_id" not in input_data:
+            goal_id = context.get("goal_id")
+            if goal_id:
+                input_data = {**input_data, "goal_id": goal_id}
         
         # Check if skill exists
         skill = self.skill_registry.get(skill_id)
@@ -90,6 +99,21 @@ class SkillInvoker:
                 "error": error_msg,
                 "duration_ms": 0,
             }
+
+        # Normalize inputs: if an optional parameter is missing or explicitly set
+        # to None, inject its default before validation. Planners sometimes emit
+        # keys with null values; validation treats None as missing.
+        if isinstance(input_data, dict):
+            normalized_input = dict(input_data)
+            for param in skill.parameters:
+                if param.required:
+                    continue
+
+                if param.name not in normalized_input or normalized_input.get(param.name) is None:
+                    if param.default is None:
+                        continue
+                    normalized_input[param.name] = copy.deepcopy(param.default)
+            input_data = normalized_input
         
         # Validate inputs
         is_valid, validation_error = skill.validate_inputs(input_data)

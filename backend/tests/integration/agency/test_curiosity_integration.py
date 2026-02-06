@@ -14,11 +14,31 @@ from aico.ai.curiosity import IntrinsicSignal, CuriosityType
 @pytest.mark.asyncio
 class TestPhase3CuriosityIntegration:
     """Test suite for Phase 3 curiosity integration."""
+
+    @pytest.fixture
+    async def session_factory(self):
+        from aico.data.postgres.connection import get_session_factory
+
+        return await get_session_factory()
+
+    @pytest.fixture
+    async def uow(self, session_factory):
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(session_factory) as uow:
+            yield uow
+            await uow.rollback()
+
+    @pytest.fixture
+    def agency_service(self, uow):
+        from aico.services.agency_service import AgencyService
+
+        return AgencyService(uow)
     
-    async def test_create_goal_from_hobby_signal(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_create_goal_from_hobby_signal(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test creating a hobby goal from a hobby_play signal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="hobby-signal-1",
@@ -63,10 +83,10 @@ class TestPhase3CuriosityIntegration:
         # Check signal status updated
         assert signal.status == "converted"
     
-    async def test_create_goal_from_knowledge_gap_signal(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_create_goal_from_knowledge_gap_signal(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test creating a curiosity goal from a knowledge_gap signal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="gap-signal-1",
@@ -100,10 +120,10 @@ class TestPhase3CuriosityIntegration:
         assert goal.metadata["novelty_score"] == 0.6
         assert goal.metadata["user_relevance_score"] == 0.8
     
-    async def test_create_goal_from_novelty_signal(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_create_goal_from_novelty_signal(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test creating a curiosity goal from a novelty signal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="novelty-signal-1",
@@ -132,10 +152,10 @@ class TestPhase3CuriosityIntegration:
         assert goal.priority == GoalPriority.NORMAL
         assert plan is None  # No plan requested
     
-    async def test_create_goal_from_self_performance_signal(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_create_goal_from_self_performance_signal(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test creating a curiosity goal from a self_performance signal."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="performance-signal-1",
@@ -163,10 +183,10 @@ class TestPhase3CuriosityIntegration:
         assert goal.origin == GoalOrigin.CURIOSITY
         assert goal.metadata["curiosity_type"] == "self_performance"
     
-    async def test_priority_mapping_from_signal(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_priority_mapping_from_signal(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test that signal priority correctly maps to GoalPriority."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Test all priority levels
         priorities = [
@@ -200,10 +220,10 @@ class TestPhase3CuriosityIntegration:
             # Assert
             assert goal.priority == expected_goal_priority, f"Expected {expected_goal_priority} but got {goal.priority} for signal priority '{signal_priority}'"
     
-    async def test_goal_metadata_preserves_all_signal_info(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_goal_metadata_preserves_all_signal_info(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test that all relevant signal information is preserved in goal metadata."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="metadata-signal",
@@ -237,10 +257,10 @@ class TestPhase3CuriosityIntegration:
         assert goal.metadata["source_component"] == "gap_detector"
         assert goal.metadata["topic_tags"] == ["learning", "user_understanding"]
     
-    async def test_multiple_goals_from_signals(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_multiple_goals_from_signals(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test creating multiple goals from different signals."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signals = [
             IntrinsicSignal(
@@ -274,10 +294,10 @@ class TestPhase3CuriosityIntegration:
         signal_ids = [g.metadata["curiosity_signal_id"] for g in goals]
         assert len(set(signal_ids)) == 3  # All unique
     
-    async def test_goal_creation_with_existing_hobby_goal(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_goal_creation_with_existing_hobby_goal(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test creating curiosity goals alongside existing hobby goals."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         # Create a regular hobby goal first
         hobby_goal, _ = await engine.create_hobby_goal_with_optional_plan(
@@ -312,10 +332,10 @@ class TestPhase3CuriosityIntegration:
         assert "curiosity_signal_id" in curiosity_goal.metadata
         assert "curiosity_signal_id" not in hobby_goal.metadata
     
-    async def test_signal_status_updated_after_conversion(self, test_config, test_db, test_user, permissive_value_profile):
+    async def test_signal_status_updated_after_conversion(self, test_config, test_db, test_user, permissive_value_profile, agency_service, session_factory):
         """Test that signal status is updated to 'converted' after goal creation."""
         # Arrange
-        engine = AgencyEngine(test_config, test_db)
+        engine = AgencyEngine(test_config, agency_service, session_factory=session_factory)
         
         signal = IntrinsicSignal(
             signal_id="status-test-signal",
