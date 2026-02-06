@@ -1015,6 +1015,14 @@ class MemoryManager(BaseAIProcessor):
             entity_context = []
             for node in existing_nodes:
                 props = node.properties or {}
+                # Defensive: properties can be persisted as JSON strings depending on storage layer.
+                if isinstance(props, str):
+                    try:
+                        props = json.loads(props)
+                    except Exception:
+                        props = {"name": props}
+                if not isinstance(props, dict):
+                    props = {}
                 entity_context.append({
                     "id": node.id,
                     "label": node.label,

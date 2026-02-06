@@ -256,6 +256,12 @@ class AgencyService:
     async def create_plan(self, plan: Plan) -> Plan:
         """Create a new plan."""
         try:
+            # Defensive FK safety: never create a plan if its goal row is missing.
+            # Scheduler/arbiter flows can sometimes operate on stale goal IDs.
+            goal = await self.uow.goals.get_by_id(plan.goal_id)
+            if goal is None:
+                raise ValueError(f"Goal not found for plan creation: goal_id={plan.goal_id}")
+
             now = datetime.now(UTC)
             plan.created_at = now
             plan.updated_at = now

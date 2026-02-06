@@ -185,6 +185,21 @@ class AgencyEngine(BaseAIProcessor):
             AskUserSkill,
             InitiateConversationSkill,
         )
+        from .skills.remediation import (
+            RemediationPostgresVacuumSkill,
+            RemediationPostgresArchiveSkill,
+            RemediationDatabaseDiskPressureSkill,
+            RemediationChromaCompactSkill,
+            RemediationLmdbCompactSkill,
+            RemediationLmdbCleanupSkill,
+            RemediationInfluxGetMeasurementsSkill,
+            RemediationInfluxApplyRetentionSkill,
+            RemediationInfluxDropMeasurementSkill,
+            RemediationModelserviceStabiliseSkill,
+            RemediationAgencyRecoverPlansSkill,
+            RemediationAgencyRebalanceLoadSkill,
+        )
+        from aico.core.config import ConfigurationManager
         
         # Initialize skill registry - DISABLED (skills require migration to PostgreSQL)
         # TODO: Migrate all skills to use AgencyService/UoW instead of db_connection
@@ -245,6 +260,22 @@ class AgencyEngine(BaseAIProcessor):
                 self.skill_registry.register(
                     ReflectOnGoalSkill(agency_service=self.agency_service)
                 )
+
+            # Remediation skills (used by both manual Health UI triggers and autonomous self-healing plans)
+            # IMPORTANT: These must be registered here so the Planner/Executor can invoke them end-to-end.
+            config_manager = ConfigurationManager()
+            self.skill_registry.register(RemediationPostgresVacuumSkill(session_factory))
+            self.skill_registry.register(RemediationPostgresArchiveSkill(session_factory))
+            self.skill_registry.register(RemediationDatabaseDiskPressureSkill(session_factory))
+            self.skill_registry.register(RemediationChromaCompactSkill())
+            self.skill_registry.register(RemediationLmdbCompactSkill())
+            self.skill_registry.register(RemediationLmdbCleanupSkill())
+            self.skill_registry.register(RemediationInfluxGetMeasurementsSkill(config_manager))
+            self.skill_registry.register(RemediationInfluxApplyRetentionSkill(config_manager))
+            self.skill_registry.register(RemediationInfluxDropMeasurementSkill(config_manager))
+            self.skill_registry.register(RemediationModelserviceStabiliseSkill())
+            self.skill_registry.register(RemediationAgencyRecoverPlansSkill(session_factory))
+            self.skill_registry.register(RemediationAgencyRebalanceLoadSkill(session_factory))
         
         # Initialize PlanStore with skill_registry for auto-fixing old plans
         # PlanStore replaced by AgencyService

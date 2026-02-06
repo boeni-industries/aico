@@ -92,6 +92,7 @@ class IssueDetectionTask(BaseTask):
                     "resolved_count": resolved,
                     "detected_issues": result.get("detected_issues", []),
                     "resolved_issues": result.get("resolved_issues", []),
+                    "self_healing": result.get("self_healing"),
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
             )

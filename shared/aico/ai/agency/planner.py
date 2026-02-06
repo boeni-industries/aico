@@ -107,6 +107,21 @@ class Planner:
             Plan with strategy and quality metadata
         """
         context = context or {}
+
+        # ------------------------------------------------------------------
+        # Deterministic maintenance/self-healing planning
+        # ------------------------------------------------------------------
+        # Maintenance/self-healing goals should not rely on keyword matching
+        # or generic templates. If the Goal metadata already specifies concrete
+        # remediation + verification skills, we build an explicit plan.
+        if goal.goal_type in ("maintenance", "cleanup") or getattr(goal.origin, "value", None) == "system_maintenance":
+            maintenance_plan = self._generate_deterministic_maintenance_plan(goal)
+            if maintenance_plan is not None:
+                logger.info(
+                    "[PLANNER] Generated deterministic maintenance plan for goal %s",
+                    goal.goal_id,
+                )
+                return maintenance_plan
         
         # Check cache first
         if self.enable_caching:
@@ -163,6 +178,93 @@ class Planner:
             plan.steps = await self._assign_skills_to_steps(plan.steps)
             logger.debug(f"[PLANNER] Assigned skills to {len(plan.steps)} fallback plan steps")
         return plan
+
+    def _generate_deterministic_maintenance_plan(self, goal: Goal) -> Optional[Plan]:
+        """Generate a deterministic scan→remediate→verify plan for maintenance goals.
+
+        This is used for self-healing goals created by IssueDetectionService and
+        for any other maintenance goal that encodes concrete skills in metadata.
+
+        Expected metadata keys (all optional):
+        - remediation_skill_id: str
+        - remediation_params: dict
+        - verify_skill_id: str
+        - verify_params: dict
+        - scan_skill_id: str
+        - scan_params: dict
+        """
+
+        metadata = goal.metadata or {}
+        remediation_skill_id = metadata.get("remediation_skill_id")
+        verify_skill_id = metadata.get("verify_skill_id")
+
+        # If we don't have enough info to deterministically build a plan, return None
+        # and let the regular planning system handle it.
+        if not remediation_skill_id or not verify_skill_id:
+            return None
+
+        scan_skill_id = metadata.get("scan_skill_id") or "maint.connectivity.full_scan"
+        scan_params = metadata.get("scan_params") or {}
+        remediation_params = metadata.get("remediation_params") or {}
+        verify_params = metadata.get("verify_params") or {}
+
+        plan_id = str(uuid.uuid4())
+        now = datetime.now(UTC).isoformat()
+
+        steps: List[PlanStep] = [
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=1,
+                description="Run system health scan relevant to the maintenance goal.",
+                status=StepStatus.PENDING,
+                skill_id=scan_skill_id,
+                metadata={
+                    **scan_params,
+                    "shape_role": "scan",
+                    "maintenance_phase": "scan",
+                },
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=2,
+                description="Apply the remediation action to resolve the detected issue.",
+                status=StepStatus.PENDING,
+                skill_id=remediation_skill_id,
+                metadata={
+                    **remediation_params,
+                    "shape_role": "act",
+                    "maintenance_phase": "remediate",
+                },
+            ),
+            PlanStep(
+                step_id=str(uuid.uuid4()),
+                order=3,
+                description="Re-run verification checks to confirm the issue is resolved.",
+                status=StepStatus.PENDING,
+                skill_id=verify_skill_id,
+                metadata={
+                    **verify_params,
+                    "shape_role": "review",
+                    "maintenance_phase": "verify",
+                },
+            ),
+        ]
+
+        return Plan(
+            plan_id=plan_id,
+            goal_id=goal.goal_id,
+            status=PlanStatus.DRAFT,
+            steps=steps,
+            metadata={
+                "generated_at": now,
+                "strategy": PlanStrategy.TEMPLATE_BASED.value,
+                "template_id": "maintenance_self_heal",
+                "maintenance_deterministic": True,
+                "scan_skill_id": scan_skill_id,
+                "remediation_skill_id": remediation_skill_id,
+                "verify_skill_id": verify_skill_id,
+            },
+        )
     
     async def _generate_llm_plan(
         self,

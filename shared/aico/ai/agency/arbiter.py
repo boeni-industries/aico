@@ -763,6 +763,8 @@ class GoalArbiter:
             if scored_goal.priority_band == PriorityBand.URGENT:
                 # Urgent goals always get added
                 intention = await self._create_intention(scored_goal, user_id, activate=True)
+                if intention is None:
+                    continue
                 new_intentions.append(intention)
                 if self.logger:
                     self.logger.info(f"[ARBITER] Created urgent intention: '{scored_goal.goal.title}'")
@@ -770,6 +772,8 @@ class GoalArbiter:
                 if active_count < intention_set.max_active:
                     # Add if capacity available
                     intention = await self._create_intention(scored_goal, user_id, activate=True)
+                    if intention is None:
+                        continue
                     new_intentions.append(intention)
                     active_count += 1
                     if self.logger:
@@ -783,6 +787,8 @@ class GoalArbiter:
                             # Replace: deactivate lowest, activate new
                             await self.deactivate_intention(lowest.intention_id, reason="replaced_by_higher_score")
                             intention = await self._create_intention(scored_goal, user_id, activate=True)
+                            if intention is None:
+                                continue
                             new_intentions.append(intention)
                             if self.logger:
                                 self.logger.info(
@@ -792,6 +798,8 @@ class GoalArbiter:
             elif scored_goal.priority_band == PriorityBand.BACKGROUND:
                 # Background goals are proposed but not activated
                 intention = await self._create_intention(scored_goal, user_id, activate=False)
+                if intention is None:
+                    continue
                 new_intentions.append(intention)
         
         # Enforce max_active capacity: deactivate lowest scorers if over limit
@@ -882,8 +890,11 @@ class GoalArbiter:
         scored_goal: ScoredGoal,
         user_id: str,
         activate: bool,
-    ) -> Intention:
-        """Create a new intention in the database using a fresh UoW."""
+    ) -> Optional[Intention]:
+        """Create a new intention in the database using a fresh UoW.
+
+        Returns None if the referenced goal does not exist.
+        """
         if not self._session_factory:
             raise RuntimeError("GoalArbiter requires session_factory for intention creation")
 
@@ -891,6 +902,18 @@ class GoalArbiter:
         from aico.data.uow import UnitOfWork
 
         async with UnitOfWork(self._session_factory) as uow:
+            # Defensive check: never create child rows if the goal row is missing.
+            # This avoids FK violations if goal rows were deleted or if stale IDs
+            # leak into the arbiter candidate set.
+            goal_exists = await uow.goals.get_by_id(scored_goal.goal.goal_id)
+            if not goal_exists:
+                if self.logger:
+                    self.logger.error(
+                        f"[ARBITER] Skipping intention creation: goal_id not found in agency_goals: {scored_goal.goal.goal_id}",
+                        extra={"user_id": user_id, "goal_id": scored_goal.goal.goal_id},
+                    )
+                return None
+
             # Create entity
             entity = AgencyIntentionSet(
                 intention_id=str(uuid.uuid4()),
