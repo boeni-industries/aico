@@ -244,5 +244,10 @@ This ensures a **single implementation path** for troubleshooting actions: wheth
 clicks a button in the Health tab or the agent acts autonomously, both go through the same
 Skill & Tool Layer, Values & Ethics checks, and Scheduler, keeping behaviour auditable and DRY.
 
+For verification and end-to-end testing, the backend may also provide an explicitly-configured
+simulated issue mode that triggers a deterministic scan → remediate → verify plan using
+explicit `skill_id`s (no fuzzy matching). This mode must be clearly marked as test-only and
+disabled by default. See `agency-self-healing.md`.
+
 All of these should be defined as `Skill`s with clear schemas and mapped to a small, well-audited
 set of Tool implementations, so that adding more later follows the same pattern.

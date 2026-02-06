@@ -28,6 +28,19 @@ class SkillParameterType(Enum):
     ARRAY = "array"
 
 
+class SkillExecutionPolicy(Enum):
+    """Policy for when/how a skill may be executed.
+
+    This is primarily used for autonomous/self-healing execution where some
+    remediations should run automatically, while others require explicit user
+    approval or an off-hours window.
+    """
+
+    AUTO = "auto"
+    NEEDS_USER_CONSENT = "needs_user_consent"
+    OFF_HOURS_ONLY = "off_hours_only"
+
+
 @dataclass
 class SkillParameter:
     """Definition of a skill parameter."""
@@ -128,6 +141,20 @@ class Skill(ABC):
         """
 
         return []
+
+    @property
+    def execution_policy(self) -> SkillExecutionPolicy:
+        """Execution policy hint for autonomous execution.
+
+        Default behavior is conservative:
+        - low safety skills can run automatically
+        - anything else requires explicit user consent
+        """
+
+        safety = (getattr(self, "safety_level", "low") or "low").lower()
+        if safety == "low":
+            return SkillExecutionPolicy.AUTO
+        return SkillExecutionPolicy.NEEDS_USER_CONSENT
 
     @property
     def side_effect_tags(self) -> List[str]:
@@ -272,6 +299,7 @@ class SkillRegistry:
             "capability_tags": getattr(skill, "capability_tags", []),
             "side_effect_tags": getattr(skill, "side_effect_tags", []),
             "safety_level": getattr(skill, "safety_level", "low"),
+            "execution_policy": getattr(skill, "execution_policy", SkillExecutionPolicy.AUTO).value,
             "implementation_tools": getattr(skill, "implementation_tools", []),
             "parameters": [
                 {

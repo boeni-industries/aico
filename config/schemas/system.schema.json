@@ -48,6 +48,51 @@
               "type": "number",
               "minimum": 0,
               "maximum": 100
+            },
+            "stalled_plan_hours": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "self_healing": {
+      "type": "object",
+      "description": "Autonomous remediation options triggered by IssueDetectionService.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable autonomous self-healing flow. Disabled by default."
+        },
+        "run_immediately": {
+          "type": "boolean",
+          "description": "If true, execute generated plans immediately after intention set update."
+        },
+        "allow_side_effects": {
+          "type": "boolean",
+          "description": "If false, self-healing runs remediation skills in dry-run mode."
+        },
+        "max_steps_per_goal": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Safety bound for how many steps may be executed per goal in a single cycle."
+        },
+        "simulation": {
+          "type": "object",
+          "description": "Deterministic simulated issues for end-to-end testing of self-healing. Must be explicitly enabled.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "If true, inject a clearly-marked simulated issue into the detection cycle."
+            },
+            "issue_id": {
+              "type": "string",
+              "description": "Stable simulated issue_id used for deterministic end-to-end tests."
+            },
+            "persist_issue": {
+              "type": "boolean",
+              "description": "If true, persist the simulated issue as a SystemIssue record in the database."
             }
           }
         }

@@ -208,20 +208,18 @@ maintenance plan** with a single step, executed immediately.
 1. A health signal (infra or agency-level) is detected:
    - e.g. disk usage > threshold, repeated modelservice failures, stalled
      execution plans, missing active goals during recent activity.
-2. A PerceptualEvent is emitted (`SystemMaintenanceEvent`, `RiskOrOpportunityEvent`).
-3. Goal & Intention System consumes the event via `ProposeGoalFromPercept` and
-   creates/updates a **maintenance goal** with `origin = system_maintenance`.
+2. A maintenance goal is created/updated.
+   - Conceptually this can be driven by a `PerceptualEvent` (`SystemMaintenanceEvent`, `RiskOrOpportunityEvent`).
+   - Current backend wiring also supports direct creation of maintenance goals by system services (e.g. Issue Detection) as an implementation shortcut.
 4. Goal Arbiter may activate the goal as an intention, subject to:
    - Values & Ethics policies (some actions require consent).  
    - Lifecycle state (heavy actions deferred to SLEEP_LIKE / MAINTENANCE).  
    - Caps on concurrent maintenance goals.
 5. Planner attaches a **remediation plan** using the same skills as the Health
-   tab playbook, e.g.:
-   - Step 1: `run_connectivity_diagnostics` (skill).  
-   - Step 2: `stabilise_modelservice` (skill) if connectivity failures
-     persist.  
-   - Step 3: `re-evaluate_ai_behaviour_health` (skill) after fixes.
-6. Scheduler executes these steps over time, honouring:
+   tab playbook.
+   - For Issue Detection–driven self-healing, the plan is intentionally deterministic:
+     - scan → remediate → verify, where each step has an explicit `maint.*` `skill_id`.
+6. Scheduler executes these steps over time (or immediately for bounded E2E testing), honouring:
    - Lifecycle & resource budgets (see `agency-component-lifecycle.md`).  
    - Values & Ethics decisions for each skill invocation.
 7. Results are fed back as:
@@ -245,6 +243,27 @@ Self-healing is intentionally **mixed-initiative**:
   already tried**.
 - Some skills are **user-trigger-only**, enforced via Values & Ethics and
   skill metadata.
+
+
+### 5.4 Manual and test triggers (for verification)
+
+Self-healing must work for real issues, but it is useful to have a deterministic
+end-to-end trigger for testing and demos.
+
+The backend uses the Scheduler task:
+
+- `system.health.issue_detection`
+
+to run detection and (optionally) create maintenance goals and run the agency
+loop.
+
+Manual trigger via CLI:
+
+```bash
+uv run aico scheduler trigger system.health.issue_detection
+```
+
+Inspect outcomes via Scheduler history and agency inspection commands.
 
 
 ## 6. Guardrails & Safety
@@ -296,6 +315,25 @@ propose lessons, e.g.:
 - adjust when to auto-run vs suggest to the user.
 
 
+## 7.1 Configuration (backend)
+
+Self-healing is controlled by `system.self_healing.*` configuration keys.
+
+Key flags:
+
+- `system.self_healing.enabled`
+- `system.self_healing.run_immediately`
+- `system.self_healing.allow_side_effects`
+- `system.self_healing.max_steps_per_goal`
+
+Deterministic simulated issue injection for end-to-end tests (explicitly
+disabled by default):
+
+- `system.self_healing.simulation.enabled`
+- `system.self_healing.simulation.issue_id`
+- `system.self_healing.simulation.persist_issue`
+
+
 ## 8. Implementation Notes & Checklist
 
 This section provides a concrete checklist for implementing self-healing.
@@ -317,6 +355,9 @@ This section provides a concrete checklist for implementing self-healing.
       `origin = system_maintenance` and appropriate tags.  
 - [ ] Ensure health signals emit PerceptualEvents that map cleanly into these
       goal types via `ProposeGoalFromPercept`.
+- [ ] For deterministic E2E tests, support an explicitly-configured simulated
+      issue injection that exercises the full loop: goal → intention → plan →
+      execution → verify.
 - [ ] Define **plan templates** that use the maintenance skills for each
       maintenance goal.
 - [ ] Integrate with Scheduler and Lifecycle so heavy plans run in safe

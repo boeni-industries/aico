@@ -17,3 +17,14 @@ health:
     memory_percent: 85
     disk_percent: 90
     stalled_plan_hours: 1
+
+self_healing:
+  enabled: true
+  run_immediately: true
+  allow_side_effects: false
+  max_steps_per_goal: 10
+
+  simulation:
+    enabled: false
+    issue_id: "simulated_self_heal_noop"
+    persist_issue: false

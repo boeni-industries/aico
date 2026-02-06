@@ -720,6 +720,7 @@ class SkillInfoResponse(BaseModel):
     capability_tags: List[str]
     side_effect_tags: List[str]
     safety_level: str
+    execution_policy: str
     implementation_tools: List[str]
     parameters: List[Dict[str, Any]]
 

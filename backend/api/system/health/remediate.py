@@ -70,6 +70,7 @@ class AvailableSkill(BaseModel):
     description: str
     category: str
     safety_level: str
+    execution_policy: str
     capability_tags: List[str]
     side_effect_tags: List[str]
     parameters: List[Dict[str, Any]]
@@ -174,6 +175,9 @@ async def list_available_remediations(
             description=skill_obj.description,
             category=skill_obj.category,
             safety_level=skill_obj.safety_level,
+            execution_policy=getattr(skill_obj, "execution_policy", None).value
+            if getattr(skill_obj, "execution_policy", None) is not None
+            else "auto",
             capability_tags=skill_obj.capability_tags,
             side_effect_tags=skill_obj.side_effect_tags,
             parameters=[
@@ -566,6 +570,9 @@ async def get_skill_info(
         description=skill.description,
         category=skill.category,
         safety_level=skill.safety_level,
+        execution_policy=getattr(skill, "execution_policy", None).value
+        if getattr(skill, "execution_policy", None) is not None
+        else "auto",
         capability_tags=skill.capability_tags,
         side_effect_tags=skill.side_effect_tags,
         parameters=[

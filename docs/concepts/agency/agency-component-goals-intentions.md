@@ -37,6 +37,11 @@ At this level we distinguish three main constructs and how they relate:
 - **PerceptualEvent**  
   A structured representation of “something AICO noticed” from the Perception / Sensors layer. Raw signals from any channel (conversation text, AMS patterns, device sensors such as camera/microphone, external services like calendar or web APIs, OS/system events) are first **interpreted upstream** (Conversation Engine, AMS/World Model, sensor/adaptor components) and then packaged as PerceptualEvents. Conceptually, each event includes at least: a natural‑language `summary_text`, a set of structured `slots` (JSON‑like key/value attributes such as entities, time windows, topics, scores), a `percept_type` drawn from a shared taxonomy, a `source_component`, timestamp, and salience/urgency signals. The **canonical event schema and taxonomy** (including fields like `actors`, `risk_score`, `opportunity_score`, and top‑level types such as `UserIntentEvent`, `PatternEvent`, `RiskOrOpportunityEvent`) are defined in `agency-ontology-schemas.md` and used consistently across all components.
 
+  Implementation note: some backend system services may create maintenance goals
+  directly (e.g. from issue detection cycles) as a pragmatic wiring shortcut.
+  Conceptually, these should still be explainable as if they were derived from
+  a maintenance PerceptualEvent.
+
 - **Goal**  
   A temporally extended, semantically coherent state of the world that AICO aims to bring about or maintain (e.g., “help the user prepare for an exam”, “understand the user’s current life phase”). Goals are relatively stable over time compared to single conversations.
 
@@ -55,6 +60,9 @@ Goals are organised along two orthogonal axes:
   - *Agent‑self* – AICO’s own hobbies and self‑development projects.  
   - *Curiosity / intrinsic* – goals arising from curiosity or intrinsic motivation (e.g., resolving a pattern the Curiosity Engine flagged).  
   - *System‑maintenance* – internal housekeeping goals (e.g., reorganising memory structures).
+
+For the self-healing maintenance loop (including deterministic end-to-end test
+triggers), see `agency-self-healing.md`.
 
 PerceptualEvents are the primary *triggers* that create or modify goals. Different event types tend to map to different horizons and origins, for example:
 

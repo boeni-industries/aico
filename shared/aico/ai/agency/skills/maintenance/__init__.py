@@ -14,6 +14,7 @@ from .modelservice import MaintenanceModelserviceScanHealthSkill
 from .agency_behaviour import MaintenanceAgencyReEvaluateBehaviourHealthSkill
 from .message_bus import MaintenanceMessageBusCheckHealthSkill
 from .scheduler import MaintenanceSchedulerCheckHealthSkill
+from .test_noop import MaintenanceTestNoopRemediationSkill
 
 __all__ = [
     "MaintenanceConnectivityFullScanSkill",
@@ -24,4 +25,5 @@ __all__ = [
     "MaintenanceAgencyReEvaluateBehaviourHealthSkill",
     "MaintenanceMessageBusCheckHealthSkill",
     "MaintenanceSchedulerCheckHealthSkill",
+    "MaintenanceTestNoopRemediationSkill",
 ]

@@ -179,11 +179,14 @@ class AgencyEngine(BaseAIProcessor):
             SearchMemorySkill,
             UpdateKnowledgeGraphSkill,
             ReflectOnGoalSkill,
+            AskUserSkill,
+            InitiateConversationSkill,
+        )
+        from .skills.maintenance import (
             MaintenanceConnectivityFullScanSkill,
             MaintenanceConnectivityVerifyComponentSkill,
             MaintenanceAgencyCleanupExecutionsSkill,
-            AskUserSkill,
-            InitiateConversationSkill,
+            MaintenanceTestNoopRemediationSkill,
         )
         from .skills.remediation import (
             RemediationPostgresVacuumSkill,
@@ -219,6 +222,7 @@ class AgencyEngine(BaseAIProcessor):
             self.skill_registry.register(
                 MaintenanceAgencyCleanupExecutionsSkill(session_factory=session_factory)
             )
+            self.skill_registry.register(MaintenanceTestNoopRemediationSkill())
 
             # Communication skills (PostgreSQL/UoW + message bus aware)
             self.skill_registry.register(

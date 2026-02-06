@@ -66,6 +66,19 @@ class IssueDetectionService:
         }
         
         try:
+            # Optional deterministic simulated issue injection for end-to-end tests.
+            # This is explicitly config-guarded and must never be enabled unintentionally.
+            simulation_enabled = bool(
+                self._config.get("system.self_healing.simulation.enabled", False)
+            )
+            simulation_issue_id = self._config.get(
+                "system.self_healing.simulation.issue_id",
+                "simulated_self_heal_noop",
+            )
+            simulation_persist_issue = bool(
+                self._config.get("system.self_healing.simulation.persist_issue", False)
+            )
+
             # Run all health checks
             connectivity_issues = await self._check_connectivity()
             resource_issues = await self._check_resources()
@@ -76,10 +89,41 @@ class IssueDetectionService:
             detected_issues.extend(resource_issues)
             detected_issues.extend(modelservice_issues)
             detected_issues.extend(agency_issues)
+
+            if simulation_enabled:
+                detected_issues.append(
+                    {
+                        "issue_id": simulation_issue_id,
+                        "severity": "info",
+                        "service": "SelfHealingSimulation",
+                        "title": "SIMULATED: End-to-end self-healing test issue",
+                        "detected_at": datetime.now(UTC),
+                        "metrics": {"simulated": True},
+                        "impact": {
+                            "description": "Simulated issue for deterministic testing",
+                            "affected_features": [],
+                        },
+                        "remediation": [
+                            {
+                                "action_id": "test_noop_remediation",
+                                "label": "SIMULATED: No-op remediation",
+                                "impact": "No-op (deterministic test)",
+                            }
+                        ],
+                        "simulated": True,
+                    }
+                )
+                logger.warning(
+                    "[ISSUE_DETECTION] Injected SIMULATED issue issue_id=%s (persist=%s)",
+                    simulation_issue_id,
+                    simulation_persist_issue,
+                )
             
             # Create issues in database
             async with UnitOfWork(self._session_factory) as uow:
                 for issue_data in detected_issues:
+                    if issue_data.get("simulated") and not simulation_persist_issue:
+                        continue
                     await self._create_or_update_issue(uow, issue_data)
                 
                 # Check for resolved issues
@@ -162,6 +206,14 @@ class IssueDetectionService:
             if not remediation_skill_id:
                 continue
 
+            remediation_skill = self._skill_registry.get(remediation_skill_id)
+            remediation_policy_value = None
+            if remediation_skill is not None:
+                remediation_policy = getattr(remediation_skill, "execution_policy", None)
+                remediation_policy_value = (
+                    getattr(remediation_policy, "value", None) if remediation_policy is not None else None
+                )
+
             goal_title = f"Self-heal: {issue.get('title') or issue.get('issue_id')}"
             goal_description = (
                 f"Autonomously remediate detected system issue '{issue.get('issue_id')}'. "
@@ -186,6 +238,7 @@ class IssueDetectionService:
                     "service": issue.get("service"),
                     "remediation_action_id": action_id,
                     "remediation_skill_id": remediation_skill_id,
+                    "remediation_execution_policy": remediation_policy_value,
                     "remediation_params": remediation_params,
                     "verify_skill_id": verify_skill_id,
                     "verify_params": verify_params,
@@ -212,6 +265,7 @@ class IssueDetectionService:
         )
 
         # Optionally execute immediately to prove end-to-end behavior.
+        # IMPORTANT: only AUTO policy skills may be executed without explicit user consent.
         if run_immediately:
             # For any active intention, start plan execution if not already running.
             for intention in intention_set.active_intentions:
@@ -219,6 +273,23 @@ class IssueDetectionService:
                 if not plans:
                     continue
                 plan = plans[0]
+
+                goal = await agency_engine.agency_service.get_goal(intention.goal_id)
+                remediation_skill_id = None
+                remediation_policy_value = None
+                if goal is not None:
+                    remediation_skill_id = (goal.metadata or {}).get("remediation_skill_id")
+                    remediation_policy_value = (goal.metadata or {}).get("remediation_execution_policy")
+
+                # Default to "needs_user_consent" if unknown.
+                if remediation_policy_value != "auto":
+                    logger.info(
+                        "[ISSUE_DETECTION] Deferring self-healing execution for goal %s: remediation_skill_id=%s policy=%s",
+                        intention.goal_id,
+                        remediation_skill_id,
+                        remediation_policy_value,
+                    )
+                    continue
 
                 # Skip if an execution is already pending/running.
                 existing = await agency_engine.agency_service.get_plan_executions(plan.plan_id)
@@ -268,6 +339,7 @@ class IssueDetectionService:
             "archive_conversations": "maint.db.reduce_disk_pressure",
             "reduce_disk_pressure": "maint.db.reduce_disk_pressure",
             "rebalance_agency_load": "maint.agency.rebalance_load",
+            "test_noop_remediation": "maint.test.noop_remediation",
         }
         return mapping.get(action_id)
 
