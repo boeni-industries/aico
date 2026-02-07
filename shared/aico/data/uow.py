@@ -82,8 +82,6 @@ class UnitOfWork:
         self._scheduler_tasks_repository = None
         self._scheduler_task_executions_repository = None
         self._task_execution_repository = None
-        self._conversation_initiations_repository = None
-        self._conversation_initiation_repository = None
         self._workflow_executions_repository = None
         self._workflow_stages_repository = None
         self._system_event_metrics_repository = None
@@ -92,6 +90,8 @@ class UnitOfWork:
         self._system_event_repository = None
         self._emotion_state_repository = None
         self._emotion_history_repository = None
+        self._interaction_requests_repository = None
+        self._interaction_events_repository = None
         self._user_feedback_requests_repository = None
         self._ethics_decisions_cache_repository = None
         self._ethics_gate_audit_repository = None
@@ -479,11 +479,23 @@ class UnitOfWork:
     
     @property
     def conversation_initiations(self):
-        """Get ConversationInitiationsRepository instance."""
-        if self._conversation_initiations_repository is None:
-            from .repositories.postgres.conversation_initiations_repository import PostgresConversationInitiationsRepository
-            self._conversation_initiations_repository = PostgresConversationInitiationsRepository(self._session)
-        return self._conversation_initiations_repository
+        raise RuntimeError("conversation_initiations repository has been removed; use interaction_requests instead")
+
+    @property
+    def interaction_requests(self):
+        """Get InteractionRequestsRepository instance."""
+        if self._interaction_requests_repository is None:
+            from .repositories.postgres.interaction_requests_repository import PostgresInteractionRequestsRepository
+            self._interaction_requests_repository = PostgresInteractionRequestsRepository(self._session)
+        return self._interaction_requests_repository
+
+    @property
+    def interaction_events(self):
+        """Get InteractionEventsRepository instance."""
+        if self._interaction_events_repository is None:
+            from .repositories.postgres.interaction_events_repository import PostgresInteractionEventsRepository
+            self._interaction_events_repository = PostgresInteractionEventsRepository(self._session)
+        return self._interaction_events_repository
     
     @property
     def workflow_executions(self):

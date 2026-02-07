@@ -11,6 +11,7 @@ import uuid
 
 from .base import BaseTask, TaskContext, TaskResult, TaskPriority, TaskQueue
 from aico.core.logging import get_logger
+from google.protobuf.struct_pb2 import Struct
 
 logger = get_logger("backend.scheduler.tasks.proactive_conversation")
 
@@ -118,14 +119,15 @@ class ProactiveConversationTask(BaseTask):
             # LAYER 1: Batch pre-filter users with recent pending initiations via UoW
             async with UnitOfWork(session_factory) as uow:
                 yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-                
-                pending_initiations = await uow.conversation_initiations.list(
-                    filters={'status': 'pending'},
-                    limit=100000
+
+                pending_interactions = await uow.interaction_requests.list(
+                    filters={"status": "pending"},
+                    limit=100000,
                 )
                 users_with_pending = {
-                    init.user_id for init in pending_initiations
-                    if init.user_id in all_user_ids and init.created_at >= yesterday
+                    req.user_id
+                    for req in pending_interactions
+                    if req.user_id in all_user_ids and req.created_at and req.created_at >= yesterday
                 }
             user_ids = [uid for uid in all_user_ids if uid not in users_with_pending]
             
@@ -236,16 +238,22 @@ class ProactiveConversationTask(BaseTask):
                         # LAYER 2: Check database for duplicate strategy AND question content via UoW
                         async with UnitOfWork(session_factory) as uow:
                             week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-                            user_initiations = await uow.conversation_initiations.list(
+                            user_interactions = await uow.interaction_requests.list(
                                 filters={
-                                    'user_id': user_id,
-                                    'trigger_source': strategy_id,
-                                    'status': 'pending'
+                                    "user_id": user_id,
+                                    "status": "pending",
                                 },
                                 limit=1000
                             )
-                            duplicate = sum(1 for init in user_initiations
-                                          if init.question == message and init.created_at >= week_ago)
+                            duplicate = sum(
+                                1
+                                for req in user_interactions
+                                if req.prompt == message
+                                and req.context_json
+                                and req.context_json.get("strategy_id") == strategy_id
+                                and req.created_at
+                                and req.created_at >= week_ago
+                            )
                         
                         if duplicate > 0:
                             logger.debug(
@@ -259,29 +267,96 @@ class ProactiveConversationTask(BaseTask):
                             })
                             continue
                         
-                        # Create initiation record
-                        initiation_id = str(uuid.uuid4())
-                        conversation_id = f"{user_id}_{int(datetime.now(timezone.utc).timestamp())}"
-                        
+                        # Create interaction request
+                        interaction_id = str(uuid.uuid4())
+                        correlation_id = str(uuid.uuid4())
+
+                        idempotency_key = f"proactive:{strategy_id}:{question_prefix}"
+
                         # Insert via UoW
                         async with UnitOfWork(session_factory) as uow:
-                            from aico.data.conversation.models import ConversationInitiation
+                            from aico.data.interaction.models import InteractionRequest, InteractionEvent
+                            from google.protobuf.struct_pb2 import Struct
+                            from aico.core.bus import MessageBusClient
                             
                             now = datetime.now(timezone.utc)
-                            initiation = ConversationInitiation(
-                                initiation_id=initiation_id,
+
+                            interaction = InteractionRequest(
+                                interaction_id=interaction_id,
                                 user_id=user_id,
-                                conversation_id=conversation_id,
-                                trigger_source=strategy_id,
-                                trigger_reason=f"proactive_check_strategy_{strategy_id}",
-                                question=message,
-                                initiated_at=now,
-                                resolution_status='pending',
-                                created_at=now
+                                correlation_id=correlation_id,
+                                interaction_type="question",
+                                requirement="required",
+                                status="pending",
+                                category="proactive",
+                                severity="medium",
+                                title=None,
+                                prompt=message,
+                                context_json={
+                                    "topic": topic,
+                                    "strategy_id": strategy_id,
+                                    "trigger_reason": f"proactive_check_strategy_{strategy_id}",
+                                    "scores": {
+                                        "adaptivity": round(adaptivity, 4),
+                                        "civility": round(civility, 4),
+                                        "overall": round(overall_score, 4),
+                                        "expected_reward": round(expected_reward, 4),
+                                    },
+                                },
+                                allowed_options=None,
+                                expected_answer_type="text",
+                                answer_text=None,
+                                answer_json=None,
+                                answered_at=None,
+                                expires_at=None,
+                                idempotency_key=idempotency_key,
+                                created_at=now,
+                                updated_at=now,
                             )
-                            
-                            await uow.conversation_initiations.create(initiation)
+
+                            await uow.interaction_requests.create(interaction)
+
+                            event = InteractionEvent(
+                                event_id=str(uuid.uuid4()),
+                                interaction_id=interaction_id,
+                                user_id=user_id,
+                                correlation_id=correlation_id,
+                                actor="system:scheduler",
+                                event_type="created",
+                                from_status=None,
+                                to_status="pending",
+                                payload_json={
+                                    "source": "proactive_scheduler",
+                                    "strategy_id": strategy_id,
+                                },
+                                created_at=now,
+                            )
+                            await uow.interaction_events.create(event)
+
                             await uow.commit()
+
+                            # Publish notification (best-effort)
+                            try:
+                                bus_client = MessageBusClient("proactive_scheduler_interactions")
+                                await bus_client.connect()
+
+                                payload = {
+                                    "interaction": interaction.model_dump(),
+                                    "event": event.model_dump(),
+                                }
+                                payload_struct = Struct()
+                                payload_struct.update(payload)
+
+                                await bus_client.publish(
+                                    f"interaction.notifications.{user_id}",
+                                    payload_struct,
+                                    correlation_id=correlation_id,
+                                )
+                            finally:
+                                try:
+                                    await bus_client.disconnect()
+                                except Exception:
+                                    pass
                         
                         # Update in-memory cache
                         if user_id not in self._recent_initiations_cache:
@@ -291,71 +366,12 @@ class ProactiveConversationTask(BaseTask):
                         )
                         
                         initiations_created += 1
-                        
-                        print(f"🗣️ [PROACTIVE] ✅ Created initiation {initiation_id[:8]} for user {user_id[:8]}")
+
+                        print(f"🗣️ [PROACTIVE] ✅ Created interaction {interaction_id[:8]} for user {user_id[:8]}")
                         logger.info(
-                            f"🗣️ [PROACTIVE] Created initiation {initiation_id[:8]} "
+                            f"🗣️ [PROACTIVE] Created interaction {interaction_id[:8]} "
                             f"for user {user_id[:8]} with strategy {strategy_id}"
                         )
-                        
-                        # Broadcast to WebSocket clients for real-time notification
-                        try:
-                            await self._broadcast_new_initiation(
-                                user_id=user_id,
-                                initiation_id=initiation_id,
-                                question=message,
-                                initiated_at=datetime.now(timezone.utc).isoformat(),
-                                trigger_reason=f"proactive_check_strategy_{strategy_id}"
-                            )
-                        except Exception as ws_error:
-                            logger.warning(f"🗣️ [PROACTIVE] Failed to broadcast WebSocket notification: {ws_error}")
-                        
-                        # Publish to message bus for ConversationEngine
-                        try:
-                            from aico.core.bus import MessageBusClient
-                            
-                            bus_client = MessageBusClient(client_id=f"proactive_scheduler_{initiation_id[:8]}")
-                            
-                            # Create initiation message matching ConversationInitiation model
-                            initiation_message = {
-                                'initiation_id': initiation_id,
-                                'user_id': user_id,
-                                'conversation_id': conversation_id,
-                                'trigger_source': strategy_id,
-                                'trigger_reason': f"proactive_check_strategy_{strategy_id}",
-                                'question': message,
-                                'context': f"Adaptivity: {adaptivity:.2f}, Civility: {civility:.2f}, Strategy: {strategy_id}",
-                                'urgency': 'medium',
-                                'expected_answer_type': 'text',
-                                'initiated_at': datetime.now(timezone.utc).isoformat(),
-                                'resolution_status': 'pending',
-                                'strategy_id': strategy_id,
-                                'scores': {
-                                    'adaptivity': adaptivity,
-                                    'civility': civility,
-                                    'overall': overall_score,
-                                    'expected_reward': expected_reward
-                                }
-                            }
-                            
-                            # Publish to conversation initiation topic
-                            bus_client.publish(
-                                topic='conversation/aico/initiate/v1',
-                                message=initiation_message
-                            )
-                            
-                            print(f"🗣️ [PROACTIVE] 📤 Published initiation to message bus")
-                            logger.info(
-                                f"🗣️ [PROACTIVE] Published initiation {initiation_id[:8]} "
-                                f"to message bus topic 'conversation/aico/initiate/v1'"
-                            )
-                            
-                        except Exception as bus_error:
-                            # Don't fail the task if message bus publish fails
-                            print(f"🗣️ [PROACTIVE] ⚠️ Failed to publish to message bus: {bus_error}")
-                            logger.warning(
-                                f"🗣️ [PROACTIVE] Failed to publish initiation to message bus: {bus_error}"
-                            )
                     
                 except Exception as e:
                     logger.error(f"🗣️ [PROACTIVE] Error checking user {user_id[:8]}: {e}")
@@ -443,44 +459,4 @@ class ProactiveConversationTask(BaseTask):
         
         return "general", "I wanted to reach out. How are you doing?"
     
-    async def _broadcast_new_initiation(
-        self,
-        user_id: str,
-        initiation_id: str,
-        question: str,
-        initiated_at: str,
-        trigger_reason: str
-    ) -> None:
-        """Broadcast new proactive initiation via WebSocket to user.
-        
-        Args:
-            user_id: User UUID
-            initiation_id: Initiation UUID
-            question: Question text
-            initiated_at: ISO timestamp
-            trigger_reason: Trigger reason
-        """
-        from aico.core.bus import MessageBusClient
-        
-        bus_client = MessageBusClient("proactive_scheduler_ws")
-        await bus_client.connect()
-        
-        try:
-            # Publish to user-specific WebSocket topic
-            await bus_client.publish(
-                f"proactive.notifications.{user_id}",
-                {
-                    "type": "new_initiation",
-                    "initiation_id": initiation_id,
-                    "question": question,
-                    "initiated_at": initiated_at,
-                    "trigger_reason": trigger_reason,
-                    "resolution_status": "pending"
-                }
-            )
-            
-            logger.info(
-                f"🗣️ [PROACTIVE] 📡 Broadcasted WebSocket notification for initiation {initiation_id[:8]}"
-            )
-        finally:
-            await bus_client.disconnect()
+    

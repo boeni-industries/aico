@@ -16,6 +16,7 @@ from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass
 import sys
 from pathlib import Path
+from google.protobuf.struct_pb2 import Struct
 
 # Shared modules now installed via UV editable install
 
@@ -92,7 +93,7 @@ class WebSocketAdapter:
         # Heartbeat task
         self.heartbeat_task = None
         
-        # Message bus client for proactive notifications
+        # Message bus client for interaction notifications
         self.bus_client = None
         self.bus_subscription_task = None
         
@@ -120,8 +121,8 @@ class WebSocketAdapter:
             # Start heartbeat task
             self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             
-            # Start message bus subscription for proactive notifications
-            self.bus_subscription_task = asyncio.create_task(self._subscribe_to_proactive_notifications())
+            # Start message bus subscription for interaction notifications
+            self.bus_subscription_task = asyncio.create_task(self._subscribe_to_interaction_notifications())
             
             self.logger.info(f"WebSocket server running on ws://{host}:{self.port}{self.path} (Press CTRL+C to quit)")
             
@@ -564,7 +565,7 @@ class WebSocketAdapter:
             
             self.logger.debug(f"Broadcasted to {len(subscribers)} subscribers on topic: {topic}")
     
-    async def broadcast_to_user(self, user_uuid: str, message: Dict[str, Any]):
+    async def broadcast_to_user(self, user_uuid: str, topic: str, message: Dict[str, Any]):
         """Broadcast message to all authenticated connections for a specific user"""
         user_connections = [
             conn for conn in self.connections.values()
@@ -574,7 +575,7 @@ class WebSocketAdapter:
         if user_connections:
             broadcast_message = {
                 "type": "broadcast",
-                "topic": f"proactive.notifications.{user_uuid}",
+                "topic": topic,
                 "data": message
             }
             
@@ -584,44 +585,59 @@ class WebSocketAdapter:
             
             self.logger.debug(f"Broadcasted to {len(user_connections)} connections for user {user_uuid[:8]}")
     
-    async def _subscribe_to_proactive_notifications(self):
-        """Subscribe to message bus for proactive notification events"""
+    def _struct_to_dict(self, s: Struct) -> Dict[str, Any]:
+        return json.loads(json.dumps(s))
+
+    async def _subscribe_to_interaction_notifications(self):
+        """Subscribe to message bus for interaction notification events"""
         try:
-            self.bus_client = MessageBusClient("websocket_gateway_proactive")
+            self.bus_client = MessageBusClient("websocket_gateway_interactions")
             await self.bus_client.connect()
             
-            async def handle_proactive_notification(topic: str, message: dict):
-                """Handle incoming proactive notification from message bus"""
+            async def handle_interaction_notification(bus_message):
+                """Handle incoming interaction notification from message bus"""
                 try:
-                    # Extract user_uuid from topic: proactive.notifications.{user_uuid}
+                    topic = bus_message.metadata.message_type
                     parts = topic.split(".")
-                    if len(parts) >= 3:
+                    if len(parts) < 3:
+                        return
+
+                    # Payload is a protobuf Struct that contains JSON-ish dict
+                    payload_struct = Struct()
+                    bus_message.any_payload.Unpack(payload_struct)
+                    payload = self._struct_to_dict(payload_struct)
+
+                    # interaction.notifications.{user_uuid}
+                    if parts[0] == "interaction" and parts[1] == "notifications" and parts[2] != "admin":
                         user_uuid = parts[2]
-                        
-                        # Broadcast to all authenticated connections for this user
-                        await self.broadcast_to_user(user_uuid, message)
-                        
-                        self.logger.info(
-                            f"Forwarded proactive notification to user {user_uuid[:8]}",
-                            extra={"initiation_id": message.get("initiation_id", "unknown")[:8]}
+                        await self.broadcast_to_user(user_uuid, topic, payload)
+                        self.logger.debug(
+                            "Forwarded interaction notification to user",
+                            extra={"user_uuid": user_uuid, "topic": topic},
+                        )
+                        return
+
+                    # interaction.notifications.admin (admin-only; forward to subscribers)
+                    if parts[0] == "interaction" and parts[1] == "notifications" and parts[2] == "admin":
+                        await self.broadcast_to_subscribers(topic, payload)
+                        self.logger.debug(
+                            "Forwarded interaction admin notification",
+                            extra={"topic": topic},
                         )
                 except Exception as e:
-                    self.logger.error(f"Error handling proactive notification: {e}")
+                    self.logger.error(f"Error handling interaction notification: {e}")
             
-            # Subscribe to all proactive notification topics
-            await self.bus_client.subscribe(
-                "proactive.notifications.*",
-                handle_proactive_notification
-            )
+            # Subscribe to all interaction notification topics (user-scoped + admin)
+            await self.bus_client.subscribe("interaction.notifications.", handle_interaction_notification)
             
-            self.logger.info("Subscribed to proactive notification events on message bus")
+            self.logger.info("Subscribed to interaction notification events on message bus")
             
             # Keep subscription alive
             while True:
                 await asyncio.sleep(60)  # Keep alive
                 
         except asyncio.CancelledError:
-            self.logger.info("Proactive notification subscription cancelled")
+            self.logger.info("Interaction notification subscription cancelled")
             raise
         except Exception as e:
-            self.logger.error(f"Error in proactive notification subscription: {e}")
+            self.logger.error(f"Error in interaction notification subscription: {e}")

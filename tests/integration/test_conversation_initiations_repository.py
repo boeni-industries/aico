@@ -6,7 +6,7 @@ import pytest
 import uuid
 from datetime import datetime, UTC
 
-from aico.data.conversation.models import ConversationInitiation
+from aico.data.interaction.models import InteractionRequest
 from aico.data.user.models import UserProfile
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
@@ -45,139 +45,134 @@ async def test_user(uow):
     return await uow.users.get_by_id(user_id)
 
 
-class TestConversationInitiationsRepository:
+class TestInteractionRequestsRepository:
     
     @pytest.mark.asyncio
-    async def test_create_initiation(self, uow, test_user):
-        initiation = ConversationInitiation(
-            initiation_id=str(uuid.uuid4()),
+    async def test_create_interaction(self, uow, test_user):
+        interaction = InteractionRequest(
+            interaction_id=str(uuid.uuid4()),
             user_id=test_user.uuid,
-            conversation_id="conv_123",
-            trigger_source="proactive",
-            initiated_at=datetime.now(UTC),
+            correlation_id=str(uuid.uuid4()),
+            interaction_type="question",
+            requirement="required",
+            status="pending",
+            category="test",
+            severity="low",
+            title=None,
+            prompt="test",
+            context_json=None,
+            allowed_options=None,
+            expected_answer_type="text",
+            answer_text=None,
+            answer_json=None,
+            answered_at=None,
+            expires_at=None,
+            idempotency_key=f"test:{uuid.uuid4().hex}",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
-        
-        created = await uow.conversation_initiations.create(initiation)
+
+        created = await uow.interaction_requests.create(interaction)
         await uow.commit()
-        
-        assert created.initiation_id == initiation.initiation_id
-        assert created.trigger_source == "proactive"
+
+        assert created.interaction_id == interaction.interaction_id
+        assert created.status == "pending"
     
     @pytest.mark.asyncio
-    async def test_get_initiation_by_id(self, uow, test_user):
-        initiation = ConversationInitiation(
-            initiation_id=str(uuid.uuid4()),
+    async def test_get_interaction_by_id(self, uow, test_user):
+        interaction = InteractionRequest(
+            interaction_id=str(uuid.uuid4()),
             user_id=test_user.uuid,
-            conversation_id="conv_456",
-            trigger_source="reminder",
-            initiated_at=datetime.now(UTC),
+            correlation_id=str(uuid.uuid4()),
+            interaction_type="question",
+            requirement="required",
+            status="pending",
+            category="test",
+            severity="low",
+            title=None,
+            prompt="test",
+            context_json=None,
+            allowed_options=None,
+            expected_answer_type="text",
+            answer_text=None,
+            answer_json=None,
+            answered_at=None,
+            expires_at=None,
+            idempotency_key=f"test:{uuid.uuid4().hex}",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
-        
-        await uow.conversation_initiations.create(initiation)
+
+        await uow.interaction_requests.create(interaction)
         await uow.commit()
-        
-        found = await uow.conversation_initiations.get_by_id(initiation.initiation_id)
+
+        found = await uow.interaction_requests.get_by_id(interaction.interaction_id)
         assert found is not None
-        assert found.conversation_id == "conv_456"
-    
+        assert found.interaction_id == interaction.interaction_id
+
     @pytest.mark.asyncio
-    async def test_update_initiation(self, uow, test_user):
-        initiation = ConversationInitiation(
-            initiation_id=str(uuid.uuid4()),
-            user_id=test_user.uuid,
-            conversation_id="conv_789",
-            trigger_source="followup",
-            initiated_at=datetime.now(UTC),
-        )
-        
-        await uow.conversation_initiations.create(initiation)
-        await uow.commit()
-        
-        initiation.resolution_status = "resolved"
-        initiation.resolved_at = datetime.now(UTC)
-        updated = await uow.conversation_initiations.update(initiation)
-        await uow.commit()
-        
-        assert updated.resolution_status == "resolved"
-        
-        found = await uow.conversation_initiations.get_by_id(initiation.initiation_id)
-        assert found.resolved_at is not None
-    
-    @pytest.mark.asyncio
-    async def test_delete_initiation(self, uow, test_user):
-        initiation = ConversationInitiation(
-            initiation_id=str(uuid.uuid4()),
-            user_id=test_user.uuid,
-            conversation_id="conv_del",
-            trigger_source="test",
-            initiated_at=datetime.now(UTC),
-        )
-        
-        await uow.conversation_initiations.create(initiation)
-        await uow.commit()
-        
-        success = await uow.conversation_initiations.delete(initiation.initiation_id)
-        await uow.commit()
-        
-        assert success is True
-        
-        found = await uow.conversation_initiations.get_by_id(initiation.initiation_id)
-        assert found is None
-    
-    @pytest.mark.asyncio
-    async def test_list_initiations(self, uow, test_user):
+    async def test_list_interactions(self, uow, test_user):
         for i in range(3):
-            initiation = ConversationInitiation(
-                initiation_id=str(uuid.uuid4()),
+            interaction = InteractionRequest(
+                interaction_id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
-                conversation_id=f"conv_list_{i}",
-                trigger_source="list_test",
-                initiated_at=datetime.now(UTC),
-                resolution_status="pending" if i < 2 else "resolved",
+                correlation_id=str(uuid.uuid4()),
+                interaction_type="question",
+                requirement="required",
+                status="pending" if i < 2 else "answered",
+                category="test",
+                severity="low",
+                title=None,
+                prompt=f"test {i}",
+                context_json=None,
+                allowed_options=None,
+                expected_answer_type="text",
+                answer_text=None,
+                answer_json=None,
+                answered_at=None,
+                expires_at=None,
+                idempotency_key=f"test_list:{uuid.uuid4().hex}",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
-            await uow.conversation_initiations.create(initiation)
-        
+            await uow.interaction_requests.create(interaction)
+
         await uow.commit()
-        
-        all_initiations = await uow.conversation_initiations.list(filters={"user_id": test_user.uuid})
-        assert len(all_initiations) >= 3
-        
-        pending = await uow.conversation_initiations.list(filters={"resolution_status": "pending"})
+
+        all_items = await uow.interaction_requests.list(filters={"user_id": test_user.uuid}, limit=1000)
+        assert len(all_items) >= 3
+
+        pending = await uow.interaction_requests.list(filters={"user_id": test_user.uuid, "status": "pending"}, limit=1000)
         assert len(pending) >= 2
-    
+
     @pytest.mark.asyncio
-    async def test_count_initiations(self, uow, test_user):
+    async def test_count_interactions(self, uow, test_user):
         for i in range(3):
-            initiation = ConversationInitiation(
-                initiation_id=str(uuid.uuid4()),
+            interaction = InteractionRequest(
+                interaction_id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
-                conversation_id=f"conv_count_{i}",
-                trigger_source="count_test",
-                initiated_at=datetime.now(UTC),
+                correlation_id=str(uuid.uuid4()),
+                interaction_type="question",
+                requirement="required",
+                status="pending",
+                category="test",
+                severity="low",
+                title=None,
+                prompt=f"count {i}",
+                context_json=None,
+                allowed_options=None,
+                expected_answer_type="text",
+                answer_text=None,
+                answer_json=None,
+                answered_at=None,
+                expires_at=None,
+                idempotency_key=f"test_count:{uuid.uuid4().hex}",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
-            await uow.conversation_initiations.create(initiation)
-        
+            await uow.interaction_requests.create(interaction)
+
         await uow.commit()
-        
-        count = await uow.conversation_initiations.count(filters={"user_id": test_user.uuid})
+
+        count = await uow.interaction_requests.count(filters={"user_id": test_user.uuid})
         assert count >= 3
-    
-    @pytest.mark.asyncio
-    async def test_get_pending_initiations(self, uow, test_user):
-        for i in range(3):
-            initiation = ConversationInitiation(
-                initiation_id=str(uuid.uuid4()),
-                user_id=test_user.uuid,
-                conversation_id=f"conv_pending_{i}",
-                trigger_source="pending_test",
-                initiated_at=datetime.now(UTC),
-                resolution_status="pending" if i < 2 else "resolved",
-            )
-            await uow.conversation_initiations.create(initiation)
-        
-        await uow.commit()
-        
-        pending = await uow.conversation_initiations.get_pending_initiations(test_user.uuid)
-        assert len(pending) >= 2
-        for init in pending:
-            assert init.resolution_status == "pending"

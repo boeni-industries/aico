@@ -498,37 +498,159 @@ Admin actions must always create an `interaction_event` with actor `admin:<id>`.
 
 # Realtime delivery
 
-## WebSocket (Client)
-`GET /api/v1/interactions/ws`
+## WebSocket transport (authoritative)
+The current codebase already uses a dedicated WebSocket transport implemented by the API Gateway (`backend/api_gateway/adapters/websocket_adapter.py`) running on a separate port.
 
-Server pushes:
+Canonical connection URL:
 
-- `interaction.created`
-- `interaction.updated`
-- `interaction.resolved`
+- `ws://<host>:8772/ws`
 
-Payload includes:
+Client protocol:
 
-- `interaction_id`
-- `status`
-- `interaction_type`
-- `severity`
-- `category`
-- `created_at` / `updated_at`
-
-WebSocket message envelope:
+- Client sends `{ "type": "auth", ... }` to authenticate.
+- Client subscribes via `{ "type": "subscribe", "topic": "interaction.notifications.<user_uuid>" }`.
+- Server pushes broadcasts in the form:
 ```json
 {
-  "event": "interaction.updated",
-  "timestamp": "2026-02-06T22:00:00Z",
-  "data": {"interaction_id": "uuid", "status": "answered", "updated_at": "2026-02-06T22:01:30Z"}
+  "type": "broadcast",
+  "topic": "interaction.notifications.<user_uuid>",
+  "data": {
+    "type": "interaction.updated",
+    "interaction_id": "uuid",
+    "status": "pending",
+    "interaction_type": "question",
+    "timestamp": "2026-02-06T22:00:00Z"
+  }
 }
 ```
 
-## WebSocket (Studio)
-`GET /api/v1/admin/interactions/ws`
+This transport must be reused for the interaction system. The FastAPI in-process WebSocket endpoints are not the canonical delivery mechanism and must not be used for interaction notifications.
 
-Same event types; cross-user events filtered by admin scopes.
+## Interaction notification topics
+The system must publish message-bus events that the WebSocket adapter forwards.
+
+Message bus topics:
+
+- `interaction.notifications.<user_uuid>`
+
+The WebSocket adapter must subscribe to `interaction.notifications.*` and forward events to authenticated user connections.
+
+## WebSocket (Studio)
+Studio uses the same WebSocket transport and subscribes to admin topics.
+
+Canonical admin subscription:
+
+- `{ "type": "subscribe", "topic": "interaction.notifications.admin" }`
+
+Admin events must include `correlation_id` and `user_id` so Studio can route and render cross-user timelines.
+
+Broadcast payload schema (`data`):
+```json
+{
+  "type": "interaction.updated",
+  "interaction_id": "uuid",
+  "user_id": "uuid",
+  "status": "pending",
+  "interaction_type": "question",
+  "category": "knowledge",
+  "severity": "info",
+  "correlation_id": "uuid",
+  "timestamp": "2026-02-06T22:00:00Z"
+}
+```
+
+Admin subscriptions must be authorized by scopes. If unauthorized, the server must close the connection with an explicit error message.
+
+---
+
+# Legacy reuse and cleanup (mandatory)
+
+The current codebase contains a legacy proactive initiation subsystem based on `ConversationInitiation` / `conversation_initiations` and `/conversation/proactive/*` endpoints. This must be replaced by the interaction request system.
+
+## What must be reused
+
+- The API Gateway WebSocket transport and subscription model:
+  - client subscribes to `interaction.notifications.<user_uuid>`
+  - server forwards from message bus topic `interaction.notifications.<user_uuid>`
+
+## What must be replaced
+
+### Skill implementations
+
+- `AskUserSkill` (`shared/aico/ai/agency/skills/communication/ask_user.py`)
+  - must stop writing `ConversationInitiation`
+  - must create `interaction_request` with:
+    - `interaction_type='question'`
+    - `requirement='required'`
+    - `expected_answer_type` from inputs
+    - stable `idempotency_key`
+    - `correlation_id` from execution context
+  - must publish to message bus:
+    - `interaction.notifications.<user_uuid>` (for inbox + gating)
+    - `conversation/aico/initiate/v1` (for chat/voice rendering), embedding `interaction_id`
+
+- `InitiateConversationSkill` (`shared/aico/ai/agency/skills/communication/initiate.py`)
+  - must stop writing `ConversationInitiation`
+  - must create `interaction_request` with `interaction_type='dialogue'` (typically `requirement='optional'`)
+
+### Backend HTTP endpoints
+
+Remove the legacy proactive endpoints and replace with interaction endpoints:
+
+- Delete:
+  - `backend/api/conversation/proactive.py`
+  - any router inclusion that exposes:
+    - `GET /api/v1/conversation/proactive/pending`
+    - `POST /api/v1/conversation/proactive/respond`
+    - `GET /api/v1/conversation/proactive/history`
+
+- Implement:
+  - `GET /api/v1/interactions`
+  - `GET /api/v1/interactions/{interaction_id}`
+  - `POST /api/v1/interactions/{interaction_id}/answer`
+  - `POST /api/v1/interactions/{interaction_id}/approve|reject|cancel`
+  - `GET /api/v1/admin/interactions` and admin detail/resolve/cancel endpoints
+
+### Backend persistence / repositories
+
+- Delete the `conversation_initiations` persistence layer and schema entries:
+  - repositories under `shared/aico/data/repositories/postgres/*conversation_initiation*`
+  - corresponding table definitions in `shared/aico/data/postgres/schema.sql`
+  - UoW accessors for `conversation_initiations`
+  - integration tests for the old repository
+
+- Introduce new repositories and UoW accessors:
+  - `interaction_requests`
+  - `interaction_events`
+
+### Scheduler tasks
+
+- Replace `backend/scheduler/tasks/proactive_conversation.py` to create `interaction_request` records instead of `conversation_initiations`.
+- Replace message bus publication:
+  - publish `interaction.notifications.<user_uuid>` (not `proactive.notifications.<user_uuid>`)
+
+### API Gateway WebSocket forwarding
+
+- Extend `backend/api_gateway/adapters/websocket_adapter.py`:
+  - subscribe to `interaction.notifications.*`
+  - forward to:
+    - per-user `interaction.notifications.<user_uuid>` subscriptions
+    - admin `interaction.notifications.admin` subscriptions (authorized)
+
+## Frontend changes (Flutter)
+
+The Flutter app currently calls `/conversation/proactive/*` and subscribes to `proactive.notifications.<user_uuid>`.
+
+It must be changed to:
+
+- Use the interaction HTTP endpoints (`/interactions`) for inbox + resolution.
+- Subscribe to `interaction.notifications.<user_uuid>`.
+- Handle broadcast `data.type` values:
+  - `interaction.created`
+  - `interaction.updated`
+  - `interaction.resolved`
+
+The proactive UI components can remain, but their data model must be replaced from `InitiationModel` to an `InteractionModel` backed by the new API.
 
 ---
 

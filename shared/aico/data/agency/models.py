@@ -9,7 +9,6 @@ from aico.data.agency.followup_models import AgencyFollowup
 from aico.data.agency.goal_models import AgencyGoalSkillExecution
 from aico.data.agency.skill_models import AgencySkillExecution
 from aico.data.user.feedback_models import UserFeedbackRequest
-from aico.data.conversation.models import ConversationInitiation
 from aico.data.arbiter.models import ArbiterABTest, ArbiterBanditArm
 
 

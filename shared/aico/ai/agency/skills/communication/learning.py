@@ -416,18 +416,17 @@ async def extract_contextual_features(
     week_ago = now - timedelta(days=7)
     
     async with UnitOfWork(session_factory) as uow:
-        all_initiations = await uow.conversation_initiations.list(
-            filters={'user_id': user_id},
-            limit=1000
+        all_requests = await uow.interaction_requests.list(
+            filters={"user_id": user_id},
+            limit=1000,
         )
-        
-        # Filter to last 7 days
-        recent_initiations = [
-            init for init in all_initiations
-            if init.created_at and init.created_at >= week_ago
+
+        recent_requests = [
+            req for req in all_requests
+            if req.created_at and req.created_at >= week_ago
         ]
     
-    if not recent_initiations:
+    if not recent_requests:
         # Default features for new users
         return ContextualFeatures(
             hour_of_day=hour_of_day,
@@ -444,25 +443,20 @@ async def extract_contextual_features(
         )
     
     # Calculate metrics - use object attributes instead of dict access
-    answered = [i for i in recent_initiations if getattr(i, 'resolution_status', None) == 'answered']
-    dismissed = [i for i in recent_initiations if getattr(i, 'resolution_status', None) == 'dismissed']
-    pending = [i for i in recent_initiations if getattr(i, 'resolution_status', None) == 'pending']
+    answered = [r for r in recent_requests if getattr(r, 'status', None) in {'answered', 'approved'}]
+    dismissed = [r for r in recent_requests if getattr(r, 'status', None) in {'cancelled', 'rejected', 'expired'}]
+    pending = [r for r in recent_requests if getattr(r, 'status', None) == 'pending']
     
-    recent_response_rate = len(answered) / len(recent_initiations) if recent_initiations else 0.5
+    recent_response_rate = len(answered) / len(recent_requests) if recent_requests else 0.5
     
-    response_times = [
-        getattr(i, 'user_response_time', None) 
-        for i in answered 
-        if getattr(i, 'user_response_time', None) is not None
-    ]
-    avg_response_time = np.mean(response_times) if response_times else 1800.0
+    avg_response_time = 1800.0
     
-    conversation_frequency = len(recent_initiations) / 7.0  # Per day over last week
+    conversation_frequency = len(recent_requests) / 7.0  # Per day over last week
     
     # Time since last interaction
-    if recent_initiations:
-        last_init = recent_initiations[0]
-        last_time = last_init.created_at if hasattr(last_init, 'created_at') else now
+    if recent_requests:
+        last_req = recent_requests[0]
+        last_time = last_req.created_at if hasattr(last_req, 'created_at') else now
         if not last_time.tzinfo:
             last_time = last_time.replace(tzinfo=UTC)
         time_since_last = (now - last_time).total_seconds() / 3600.0  # hours
@@ -472,8 +466,8 @@ async def extract_contextual_features(
     # Recent dismissals (last 3 days)
     three_days_ago = now - timedelta(days=3)
     recent_dismissals_count = len([
-        i for i in dismissed
-        if getattr(i, 'created_at', None) and i.created_at >= three_days_ago
+        r for r in dismissed
+        if getattr(r, 'created_at', None) and r.created_at >= three_days_ago
     ])
     
     # Engagement score (based on response rate and speed)

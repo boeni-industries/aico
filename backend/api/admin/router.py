@@ -76,6 +76,9 @@ logger = get_logger("backend.api.admin")
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+from backend.api.admin.interactions import router as interactions_router
+router.include_router(interactions_router, prefix="/interactions", tags=["interactions"])
+
 
 def _iso_utc(dt: datetime) -> str:
     if dt.tzinfo is None:

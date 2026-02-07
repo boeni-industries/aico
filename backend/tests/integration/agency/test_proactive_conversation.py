@@ -49,7 +49,7 @@ class TestContextualFeatureExtraction:
     @pytest.mark.asyncio
     async def test_extract_features_with_history(self, test_db, test_user):
         """Test feature extraction with conversation history."""
-        from aico.data.conversation.models import ConversationInitiation
+        from aico.data.interaction.models import InteractionRequest
         from aico.data.postgres.connection import get_session_factory
         from aico.data.uow import UnitOfWork
 
@@ -59,16 +59,26 @@ class TestContextualFeatureExtraction:
         now = datetime.now(UTC)
         async with UnitOfWork(session_factory) as uow:
             for i in range(5):
-                await uow.conversation_initiations.create(
-                    ConversationInitiation(
-                        initiation_id=str(uuid.uuid4()),
+                await uow.interaction_requests.create(
+                    InteractionRequest(
+                        interaction_id=str(uuid.uuid4()),
                         user_id=test_user,
-                        conversation_id=f"{test_user}_test_{i}",
-                        trigger_source="test",
-                        trigger_reason="test",
-                        question="Test question",
-                        initiated_at=now - timedelta(hours=i),
-                        resolution_status="answered" if i % 2 == 0 else "pending",
+                        correlation_id=str(uuid.uuid4()),
+                        interaction_type="question",
+                        requirement="required",
+                        status="answered" if i % 2 == 0 else "pending",
+                        category="test",
+                        severity="low",
+                        title=None,
+                        prompt="Test question",
+                        context_json={"trigger_reason": "test"},
+                        allowed_options=None,
+                        expected_answer_type="text",
+                        answer_text=None,
+                        answer_json=None,
+                        answered_at=None,
+                        expires_at=None,
+                        idempotency_key=f"test:{i}",
                         created_at=now - timedelta(hours=i),
                         updated_at=now - timedelta(hours=i),
                     )
@@ -442,30 +452,38 @@ class TestProactiveInitiationFlow:
     @pytest.mark.asyncio
     async def test_create_initiation(self, test_db, test_user):
         """Test creating a proactive initiation."""
-        from aico.data.conversation.models import ConversationInitiation
+        from aico.data.interaction.models import InteractionRequest
         from aico.data.postgres.connection import get_session_factory
         from aico.data.uow import UnitOfWork
 
         session_factory = await get_session_factory()
 
-        initiation_id = str(uuid.uuid4())
-        conversation_id = f"{test_user}_{int(datetime.now(UTC).timestamp())}"
-
+        interaction_id = str(uuid.uuid4())
         now = datetime.now(UTC)
         async with UnitOfWork(session_factory) as uow:
-            await uow.conversation_initiations.create(
-                ConversationInitiation(
-                    initiation_id=initiation_id,
+            await uow.interaction_requests.create(
+                InteractionRequest(
+                    interaction_id=interaction_id,
                     user_id=test_user,
-                    conversation_id=conversation_id,
-                    trigger_source="scheduler",
-                    trigger_reason="strategy_time_morning",
-                    question="How are you doing today?",
-                    context="Adaptivity: 0.75, Civility: 0.82",
-                    urgency="low",
+                    correlation_id=str(uuid.uuid4()),
+                    interaction_type="question",
+                    requirement="required",
+                    status="pending",
+                    category="proactive",
+                    severity="low",
+                    title=None,
+                    prompt="How are you doing today?",
+                    context_json={
+                        "trigger_reason": "strategy_time_morning",
+                        "scores": {"adaptivity": 0.75, "civility": 0.82},
+                    },
+                    allowed_options=None,
                     expected_answer_type="text",
-                    initiated_at=now,
-                    resolution_status="pending",
+                    answer_text=None,
+                    answer_json=None,
+                    answered_at=None,
+                    expires_at=None,
+                    idempotency_key=f"test_create:{interaction_id}",
                     created_at=now,
                     updated_at=now,
                 )
@@ -474,87 +492,104 @@ class TestProactiveInitiationFlow:
         
         # Verify creation
         async with UnitOfWork(session_factory) as uow:
-            row = await uow.conversation_initiations.get_by_id(initiation_id)
+            row = await uow.interaction_requests.get_by_id(interaction_id)
         assert row is not None
         assert row.user_id == test_user
-        assert row.resolution_status == 'pending'
+        assert row.status == 'pending'
     
     @pytest.mark.asyncio
     async def test_respond_to_initiation(self, test_db, test_user):
         """Test responding to an initiation."""
-        from aico.data.conversation.models import ConversationInitiation
+        from aico.data.interaction.models import InteractionRequest
         from aico.data.postgres.connection import get_session_factory
         from aico.data.uow import UnitOfWork
 
         session_factory = await get_session_factory()
 
         # Create initiation
-        initiation_id = str(uuid.uuid4())
-        conversation_id = f"{test_user}_{int(datetime.now(UTC).timestamp())}"
-        initiated_at = datetime.now(UTC)
+        interaction_id = str(uuid.uuid4())
+        created_at = datetime.now(UTC)
 
         async with UnitOfWork(session_factory) as uow:
-            await uow.conversation_initiations.create(
-                ConversationInitiation(
-                    initiation_id=initiation_id,
+            await uow.interaction_requests.create(
+                InteractionRequest(
+                    interaction_id=interaction_id,
                     user_id=test_user,
-                    conversation_id=conversation_id,
-                    trigger_source="scheduler",
-                    trigger_reason="strategy_time_morning",
-                    question="How are you?",
-                    initiated_at=initiated_at,
-                    resolution_status="pending",
-                    created_at=initiated_at,
-                    updated_at=initiated_at,
+                    correlation_id=str(uuid.uuid4()),
+                    interaction_type="question",
+                    requirement="required",
+                    status="pending",
+                    category="proactive",
+                    severity="low",
+                    title=None,
+                    prompt="How are you?",
+                    context_json={"trigger_reason": "strategy_time_morning"},
+                    allowed_options=None,
+                    expected_answer_type="text",
+                    answer_text=None,
+                    answer_json=None,
+                    answered_at=None,
+                    expires_at=None,
+                    idempotency_key=f"test_respond:{interaction_id}",
+                    created_at=created_at,
+                    updated_at=created_at,
                 )
             )
             await uow.commit()
         
         # Respond to initiation
         resolved_at = datetime.now(UTC)
-        response_time = int((resolved_at - initiated_at).total_seconds())
+        response_time = int((resolved_at - created_at).total_seconds())
 
         async with UnitOfWork(session_factory) as uow:
-            entity = await uow.conversation_initiations.get_by_id(initiation_id)
+            entity = await uow.interaction_requests.get_by_id(interaction_id)
             assert entity is not None
-            entity.resolution_status = "answered"
-            entity.resolved_at = resolved_at
-            entity.user_response_time = response_time
-            entity.engagement_score = 0.85
+            entity.status = "answered"
+            entity.answer_text = "ok"
+            entity.answered_at = resolved_at
             entity.updated_at = resolved_at
-            await uow.conversation_initiations.update(entity)
+            await uow.interaction_requests.update(entity)
             await uow.commit()
         
         # Verify update
         async with UnitOfWork(session_factory) as uow:
-            row = await uow.conversation_initiations.get_by_id(initiation_id)
-        assert row.resolution_status == 'answered'
-        assert row.user_response_time == response_time
-        assert row.engagement_score == 0.85
+            row = await uow.interaction_requests.get_by_id(interaction_id)
+        assert row.status == 'answered'
+        assert row.answered_at is not None
     
     @pytest.mark.asyncio
     async def test_check_pending_initiations(self, test_db, test_user):
         """Test checking for pending initiations."""
-        from aico.data.conversation.models import ConversationInitiation
+        from aico.data.interaction.models import InteractionRequest
         from aico.data.postgres.connection import get_session_factory
         from aico.data.uow import UnitOfWork
 
         session_factory = await get_session_factory()
 
         # Create pending initiation
-        initiation_id = str(uuid.uuid4())
+        interaction_id = str(uuid.uuid4())
         now = datetime.now(UTC)
         async with UnitOfWork(session_factory) as uow:
-            await uow.conversation_initiations.create(
-                ConversationInitiation(
-                    initiation_id=initiation_id,
+            await uow.interaction_requests.create(
+                InteractionRequest(
+                    interaction_id=interaction_id,
                     user_id=test_user,
-                    conversation_id=f"{test_user}_test",
-                    trigger_source="scheduler",
-                    trigger_reason="test",
-                    question="Test question",
-                    initiated_at=now,
-                    resolution_status="pending",
+                    correlation_id=str(uuid.uuid4()),
+                    interaction_type="question",
+                    requirement="required",
+                    status="pending",
+                    category="proactive",
+                    severity="low",
+                    title=None,
+                    prompt="Test question",
+                    context_json={"trigger_reason": "test"},
+                    allowed_options=None,
+                    expected_answer_type="text",
+                    answer_text=None,
+                    answer_json=None,
+                    answered_at=None,
+                    expires_at=None,
+                    idempotency_key=f"test_pending:{interaction_id}",
                     created_at=now,
                     updated_at=now,
                 )
@@ -563,8 +598,8 @@ class TestProactiveInitiationFlow:
 
         # Check for pending
         async with UnitOfWork(session_factory) as uow:
-            pending = await uow.conversation_initiations.list(
-                filters={"user_id": test_user, "resolution_status": "pending"},
+            pending = await uow.interaction_requests.list(
+                filters={"user_id": test_user, "status": "pending"},
                 limit=100,
             )
         assert len(pending) >= 1

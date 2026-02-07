@@ -2051,11 +2051,6 @@ def _parse_duration(duration_str: str) -> "timedelta":
         raise ValueError(f"Unknown duration unit: {unit}")
 
 
-# Register proactive conversation subcommand
-from .agency_proactive import app as proactive_app
-app.add_typer(proactive_app, name="proactive")
-
-
 # ============================================================================
 # LESSON MANAGEMENT COMMANDS
 # ============================================================================

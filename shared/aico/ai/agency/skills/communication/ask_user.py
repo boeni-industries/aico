@@ -11,6 +11,8 @@ import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime, UTC
 
+from google.protobuf.struct_pb2 import Struct
+
 from ..registry import (
     Skill,
     SkillParameter,
@@ -95,7 +97,7 @@ class AskUserSkill(Skill):
         input_data: Dict[str, Any],
         context: Dict[str, Any],
     ) -> SkillResult:
-        """Execute ask user skill - creates conversation initiation."""
+        """Execute ask user skill - creates interaction request."""
         question = input_data.get("question")
         question_context = input_data.get("context", "")
         urgency = input_data.get("urgency", "medium")
@@ -110,84 +112,38 @@ class AskUserSkill(Skill):
             if not question:
                 raise ValueError("Question is required")
 
-            initiation_id = str(uuid.uuid4())
-            conversation_id = f"{user_id}_{int(datetime.now(UTC).timestamp())}"
+            if self._session_factory is None:
+                raise RuntimeError("session_factory is required for AskUserSkill")
+
+            from aico.data.uow import UnitOfWork
+            from aico.data.interaction.models import InteractionEvent, InteractionRequest
+            from aico.core.bus import MessageBusClient
+
+            interaction_id = str(uuid.uuid4())
+            correlation_id = str(uuid.uuid4())
             now_dt = datetime.now(UTC)
-            now_iso = now_dt.isoformat()
 
-            # Prefer PostgreSQL UnitOfWork/session_factory path when available
-            if self._session_factory is not None:
-                from aico.data.uow import UnitOfWork
-                from aico.data.conversation.models import ConversationInitiation
+            idempotency_key = f"ask_user:information_gap:{uuid.uuid5(uuid.NAMESPACE_URL, question).hex}"
 
-                async with UnitOfWork(self._session_factory) as uow:
-                    recent_initiations = await uow.conversation_initiations.list(
-                        filters={"user_id": user_id},
-                        limit=1000,
-                    )
+            async with UnitOfWork(self._session_factory) as uow:
+                recent_requests = await uow.interaction_requests.list(
+                    filters={"user_id": user_id},
+                    limit=1000,
+                )
 
-                    duplicate_found = False
-                    twenty_four_hours_ago = now_dt.replace(microsecond=0) - (datetime.now(UTC) - datetime.now(UTC))
-                    for init in recent_initiations:
-                        if (
-                            init.question == question
-                            and init.trigger_reason == "information_gap"
-                            and init.initiated_at
-                            and (now_dt - init.initiated_at).total_seconds() < 86400
-                        ):
-                            duplicate_found = True
-                            break
+                duplicate_found = False
+                for req in recent_requests:
+                    if (
+                        req.prompt == question
+                        and req.context_json
+                        and req.context_json.get("trigger_reason") == "information_gap"
+                        and req.created_at
+                        and (now_dt - req.created_at).total_seconds() < 86400
+                    ):
+                        duplicate_found = True
+                        break
 
-                    if duplicate_found:
-                        logger.debug(
-                            f"💬 [ASK_USER] Duplicate question detected for user {user_id[:8]}, "
-                            f"skipping creation"
-                        )
-                        return SkillResult(
-                            success=True,
-                            output={
-                                "status": "skipped",
-                                "reason": "duplicate_question",
-                                "message": "Question already asked recently",
-                            },
-                            metadata={"skill_id": self.skill_id},
-                        )
-
-                    initiation = ConversationInitiation(
-                        initiation_id=initiation_id,
-                        user_id=user_id,
-                        conversation_id=conversation_id,
-                        trigger_source="skill",
-                        trigger_reason="information_gap",
-                        question=question,
-                        context=question_context,
-                        urgency=urgency,
-                        expected_answer_type=expected_answer_type,
-                        initiated_at=now_dt,
-                        resolution_status="pending",
-                        resolved_at=None,
-                        user_response_time=None,
-                        engagement_score=None,
-                    )
-
-                    await uow.conversation_initiations.create(initiation)
-                    await uow.commit()
-
-            else:
-                if not self.db:
-                    raise RuntimeError("Database connection not available")
-
-                duplicate = self.db.execute(
-                    """SELECT COUNT(*) as count
-                       FROM conversation_initiations
-                       WHERE user_id = ?
-                       AND question = ?
-                       AND trigger_reason = 'information_gap'
-                       AND initiated_at > NOW() - INTERVAL '24 hours'""",
-                    (user_id, question),
-                ).fetchone()
-
-                if duplicate and duplicate["count"] > 0:
+                if duplicate_found:
                     logger.debug(
                         f"💬 [ASK_USER] Duplicate question detected for user {user_id[:8]}, "
                         f"skipping creation"
@@ -202,82 +158,77 @@ class AskUserSkill(Skill):
                         metadata={"skill_id": self.skill_id},
                     )
 
-                self.db.execute(
-                    """INSERT INTO conversation_initiations 
-                       (initiation_id, user_id, conversation_id, trigger_source, 
-                        trigger_reason, question, context, urgency, expected_answer_type,
-                        initiated_at, resolution_status)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        initiation_id,
-                        user_id,
-                        conversation_id,
-                        "skill",
-                        "information_gap",
-                        question,
-                        question_context,
-                        urgency,
-                        expected_answer_type,
-                        now_iso,
-                        "pending",
-                    ),
-                )
-                self.db.commit()
-            
-            try:
-                from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
-                from google.protobuf.timestamp_pb2 import Timestamp
-
-                proto_timestamp = Timestamp()
-                proto_timestamp.FromDatetime(datetime.now(UTC))
-
-                conv_message = ConversationMessage(
-                    timestamp=proto_timestamp,
-                    source="agency_skill",
-                    message_id=initiation_id,
+                interaction = InteractionRequest(
+                    interaction_id=interaction_id,
                     user_id=user_id,
+                    correlation_id=correlation_id,
+                    interaction_type="question",
+                    requirement="required",
+                    status="pending",
+                    category="skill",
+                    severity=urgency,
+                    title=None,
+                    prompt=question,
+                    context_json={
+                        "trigger_reason": "information_gap",
+                        "context": question_context,
+                    },
+                    allowed_options=None,
+                    expected_answer_type=expected_answer_type,
+                    answer_text=None,
+                    answer_json=None,
+                    answered_at=None,
+                    expires_at=None,
+                    idempotency_key=idempotency_key,
+                    created_at=now_dt,
+                    updated_at=now_dt,
                 )
+                await uow.interaction_requests.create(interaction)
 
-                full_message = question
-                if question_context:
-                    full_message = f"{question_context}\n\n{question}"
+                event = InteractionEvent(
+                    event_id=str(uuid.uuid4()),
+                    interaction_id=interaction_id,
+                    user_id=user_id,
+                    correlation_id=correlation_id,
+                    actor="system:agency_skill",
+                    event_type="created",
+                    from_status=None,
+                    to_status="pending",
+                    payload_json={"skill_id": self.skill_id},
+                    created_at=now_dt,
+                )
+                await uow.interaction_events.create(event)
+                await uow.commit()
 
-                conv_message.message.text = full_message
-                conv_message.message.type = Message.MessageType.AICO_INITIATED
-                conv_message.message.conversation_id = conversation_id
-                conv_message.message.turn_number = 1
-
-                if self.message_bus and getattr(self.message_bus, "running", False):
-                    await self.message_bus.publish(
-                        topic="conversation/aico/initiate/v1",
-                        payload=conv_message,
-                    )
-                else:
-                    from aico.core.bus import MessageBusClient
-
-                    bus_client = MessageBusClient(client_id=f"ask_user_skill_{initiation_id[:8]}")
-                    await bus_client.connect()
-                    await bus_client.publish("conversation/aico/initiate/v1", conv_message)
+            try:
+                bus_client = MessageBusClient(client_id=f"ask_user_skill_{interaction_id[:8]}")
+                await bus_client.connect()
+                payload_struct = Struct()
+                payload_struct.update({"interaction": interaction.model_dump(), "event": event.model_dump()})
+                await bus_client.publish(
+                    f"interaction.notifications.{user_id}",
+                    payload_struct,
+                    correlation_id=correlation_id,
+                )
+            finally:
+                try:
                     await bus_client.disconnect()
-
-                logger.info(f"💬 [ASK_USER] Published to message bus: {initiation_id[:8]}...")
-
-            except Exception as e:
-                logger.warning(f"💬 [ASK_USER] Failed to publish to message bus: {e}")
+                except Exception:
+                    pass
             
             result = {
-                "initiation_id": initiation_id,
-                "conversation_id": conversation_id,
                 "question": question,
                 "context": question_context,
                 "urgency": urgency,
                 "expected_answer_type": expected_answer_type,
                 "status": "pending",
-                "initiated_at": now_iso,
+                "interaction_id": interaction_id,
+                "correlation_id": correlation_id,
+                "created_at": now_dt.isoformat(),
             }
             
             logger.info(
-                f"💬 [ASK_USER] Question created: {initiation_id[:8]}... "
+                f"💬 [ASK_USER] Question created: {interaction_id[:8]}... "
                 f"waiting for user response"
             )
             
@@ -287,7 +238,7 @@ class AskUserSkill(Skill):
                 metadata={
                     "skill_id": self.skill_id,
                     "execution_time": datetime.now(UTC).isoformat(),
-                    "initiation_id": initiation_id,
+                    "interaction_id": interaction_id,
                 },
             )
             

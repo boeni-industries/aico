@@ -759,32 +759,67 @@ CREATE INDEX IF NOT EXISTS idx_consents_type ON "consent_user_consents"(consent_
 
 CREATE INDEX IF NOT EXISTS idx_consents_user ON "consent_user_consents"(user_id);
 
-CREATE TABLE IF NOT EXISTS "conversation_initiations" (
-                initiation_id TEXT PRIMARY KEY,
+-- ==========================================================================
+-- Unified Interaction Request System
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS interaction_requests (
+                interaction_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
-                conversation_id TEXT NOT NULL,
-                trigger_source TEXT NOT NULL,
-                trigger_reason TEXT,
-                question TEXT,
-                context TEXT,
-                urgency TEXT DEFAULT 'medium',
-                expected_answer_type TEXT DEFAULT 'text',
-                initiated_at TIMESTAMPTZ NOT NULL,
-                resolved_at TIMESTAMPTZ,
-                resolution_status TEXT DEFAULT 'pending',
-                user_response_time INTEGER,
-                engagement_score DOUBLE PRECISION,
+                correlation_id TEXT NOT NULL,
+                interaction_type TEXT NOT NULL,
+                requirement TEXT NOT NULL,
+                status TEXT NOT NULL,
+                category TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                title TEXT,
+                prompt TEXT,
+                context_json JSONB,
+                allowed_options JSONB,
+                expected_answer_type TEXT,
+                answer_text TEXT,
+                answer_json JSONB,
+                answered_at TIMESTAMPTZ,
+                expires_at TIMESTAMPTZ,
+                idempotency_key TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
 
-CREATE INDEX IF NOT EXISTS idx_initiations_conversation_id ON "conversation_initiations"(conversation_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_interaction_requests_idempotency_key
+    ON interaction_requests (user_id, idempotency_key);
 
-CREATE INDEX IF NOT EXISTS idx_initiations_initiated_at ON "conversation_initiations"(initiated_at);
+CREATE INDEX IF NOT EXISTS idx_interaction_requests_user_status
+    ON interaction_requests (user_id, status, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_initiations_status ON "conversation_initiations"(resolution_status);
+CREATE INDEX IF NOT EXISTS idx_interaction_requests_correlation
+    ON interaction_requests (correlation_id);
 
-CREATE INDEX IF NOT EXISTS idx_initiations_user_id ON "conversation_initiations"(user_id);
+CREATE INDEX IF NOT EXISTS idx_interaction_requests_expires
+    ON interaction_requests (expires_at)
+    WHERE expires_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS interaction_events (
+                event_id TEXT PRIMARY KEY,
+                interaction_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                correlation_id TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT,
+                payload_json JSONB,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+
+CREATE INDEX IF NOT EXISTS idx_interaction_events_interaction
+    ON interaction_events (interaction_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_interaction_events_user_time
+    ON interaction_events (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_interaction_events_correlation
+    ON interaction_events (correlation_id, created_at ASC);
 
 CREATE TABLE IF NOT EXISTS emotion_history (
                 id BIGSERIAL PRIMARY KEY,
@@ -1276,7 +1311,9 @@ ALTER TABLE consent_audit_log ADD CONSTRAINT fk_consent_audit_log_user_id_user_p
 ALTER TABLE consent_records ADD CONSTRAINT fk_consent_records_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE consent_user_consents ADD CONSTRAINT fk_consent_user_consents_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE consent_user_consents ADD CONSTRAINT fk_consent_user_consents_inherited_from_consent_user_consents FOREIGN KEY (inherited_from) REFERENCES consent_user_consents(consent_id) ON DELETE SET NULL;
-ALTER TABLE conversation_initiations ADD CONSTRAINT fk_conversation_initiations_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+ALTER TABLE interaction_requests ADD CONSTRAINT fk_interaction_requests_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+ALTER TABLE interaction_events ADD CONSTRAINT fk_interaction_events_interaction_id_interaction_requests FOREIGN KEY (interaction_id) REFERENCES interaction_requests(interaction_id) ON DELETE CASCADE;
+ALTER TABLE interaction_events ADD CONSTRAINT fk_interaction_events_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE ethics_decisions_cache ADD CONSTRAINT fk_ethics_decisions_cache_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE ethics_gate_audit ADD CONSTRAINT fk_ethics_gate_audit_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE ethics_value_profiles ADD CONSTRAINT fk_ethics_value_profiles_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;

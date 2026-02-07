@@ -11,6 +11,8 @@ import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime, UTC
 
+from google.protobuf.struct_pb2 import Struct
+
 from ..registry import (
     Skill,
     SkillParameter,
@@ -111,134 +113,126 @@ class InitiateConversationSkill(Skill):
 
             trigger_reason = reason or "proactive_dialogue"
 
-            initiation_id = str(uuid.uuid4())
-            conversation_id = f"{user_id}_{int(datetime.now(UTC).timestamp())}"
             now_dt = datetime.now(UTC)
-            now_iso = now_dt.isoformat()
 
-            # Use UnitOfWork pattern for database operations
             if self._session_factory is None:
                 raise RuntimeError("session_factory is required for InitiateConversationSkill")
-            
+
             from aico.data.uow import UnitOfWork
-            from aico.data.conversation.models import ConversationInitiation
+            from aico.data.interaction.models import InteractionEvent, InteractionRequest
+            from aico.core.bus import MessageBusClient
+
+            interaction_id = str(uuid.uuid4())
+            correlation_id = str(uuid.uuid4())
+
+            idempotency_key = f"initiate_conversation:{uuid.uuid5(uuid.NAMESPACE_URL, message).hex}"
 
             async with UnitOfWork(self._session_factory) as uow:
-                recent_initiations = await uow.conversation_initiations.list(
+                recent_requests = await uow.interaction_requests.list(
                     filters={"user_id": user_id},
                     limit=1000,
                 )
 
                 duplicate_found = False
-                for init in recent_initiations:
+                for req in recent_requests:
                     if (
-                        init.question == message
-                        and init.trigger_reason == trigger_reason
-                        and init.initiated_at
-                        and (now_dt - init.initiated_at).total_seconds() < 86400
+                        req.prompt == message
+                        and req.context_json
+                        and req.context_json.get("trigger_reason") == trigger_reason
+                        and req.created_at
+                        and (now_dt - req.created_at).total_seconds() < 86400
                     ):
                         duplicate_found = True
                         break
 
                 if duplicate_found:
                     logger.debug(
-                        f"💭 [INITIATE_CONVERSATION] Duplicate conversation detected for user {user_id[:8]}, "
+                        f"💭 [INITIATE_CONVERSATION] Duplicate interaction detected for user {user_id[:8]}, "
                         f"skipping creation"
                     )
                     return SkillResult(
                         success=True,
                         output={
                             "status": "skipped",
-                            "reason": "duplicate_conversation",
-                            "message": "Conversation already initiated recently",
+                            "reason": "duplicate_interaction",
+                            "message": "Interaction already initiated recently",
                         },
                         metadata={"skill_id": self.skill_id},
                     )
 
-                initiation = ConversationInitiation(
-                    initiation_id=initiation_id,
+                interaction = InteractionRequest(
+                    interaction_id=interaction_id,
                     user_id=user_id,
-                    conversation_id=conversation_id,
-                    trigger_source="skill",
-                    trigger_reason=trigger_reason,
-                    question=message,
-                    context=json.dumps({"topic": topic, "emotional_context": emotional_context}),
-                    urgency="low",
+                    correlation_id=correlation_id,
+                    interaction_type="dialogue",
+                    requirement="optional",
+                    status="pending",
+                    category="skill",
+                    severity="low",
+                    title=topic,
+                    prompt=message,
+                    context_json={
+                        "trigger_reason": trigger_reason,
+                        "topic": topic,
+                        "reason": reason,
+                        "emotional_context": emotional_context,
+                    },
+                    allowed_options=None,
                     expected_answer_type="dialogue",
-                    initiated_at=now_dt,
-                    resolution_status="pending",
-                    resolved_at=None,
-                    user_response_time=None,
-                    engagement_score=None,
+                    answer_text=None,
+                    answer_json=None,
+                    answered_at=None,
+                    expires_at=None,
+                    idempotency_key=idempotency_key,
+                    created_at=now_dt,
+                    updated_at=now_dt,
                 )
+                await uow.interaction_requests.create(interaction)
 
-                await uow.conversation_initiations.create(initiation)
+                event = InteractionEvent(
+                    event_id=str(uuid.uuid4()),
+                    interaction_id=interaction_id,
+                    user_id=user_id,
+                    correlation_id=correlation_id,
+                    actor="system:agency_skill",
+                    event_type="created",
+                    from_status=None,
+                    to_status="pending",
+                    payload_json={"skill_id": self.skill_id},
+                    created_at=now_dt,
+                )
+                await uow.interaction_events.create(event)
                 await uow.commit()
-            
-            # Publish to conversation initiation topic
-            message_published = False
 
             try:
-                from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
-                from google.protobuf.timestamp_pb2 import Timestamp
-
-                proto_timestamp = Timestamp()
-                proto_timestamp.FromDatetime(datetime.now(UTC))
-
-                conv_message = ConversationMessage(
-                    timestamp=proto_timestamp,
-                    source="agency_skill",
-                    message_id=initiation_id,
-                    user_id=user_id,
+                bus_client = MessageBusClient(client_id=f"initiate_conversation_skill_{interaction_id[:8]}")
+                await bus_client.connect()
+                payload_struct = Struct()
+                payload_struct.update({"interaction": interaction.model_dump(), "event": event.model_dump()})
+                await bus_client.publish(
+                    f"interaction.notifications.{user_id}",
+                    payload_struct,
+                    correlation_id=correlation_id,
                 )
-
-                conv_message.message.text = message
-                conv_message.message.type = Message.MessageType.AICO_INITIATED
-                conv_message.message.conversation_id = conversation_id
-                conv_message.message.turn_number = 1
-
-                # Add metadata as JSON in message metadata
-                conv_message.message.metadata = json.dumps({
-                    'topic': topic,
-                    'reason': reason,
-                    'emotional_context': emotional_context,
-                    'urgency': 'low',
-                    'expected_answer_type': 'dialogue',
-                    'initiated_at': now_iso,
-                })
-
-                if self.message_bus and getattr(self.message_bus, "running", False):
-                    await self.message_bus.publish(
-                        topic='conversation/aico/initiate/v1',
-                        payload=conv_message,
-                    )
-                else:
-                    from aico.core.bus import MessageBusClient
-
-                    bus_client = MessageBusClient(client_id=f"initiate_conversation_skill_{initiation_id[:8]}")
-                    await bus_client.connect()
-                    await bus_client.publish('conversation/aico/initiate/v1', conv_message)
+            finally:
+                try:
                     await bus_client.disconnect()
-
-                message_published = True
-                logger.info(f"💭 [INITIATE_CONVERSATION] Published to message bus: {initiation_id[:8]}...")
-
-            except Exception as e:
-                logger.warning(f"💭 [INITIATE_CONVERSATION] Failed to publish to message bus: {e}")
+                except Exception:
+                    pass
             
             result = {
-                "initiation_id": initiation_id,
-                "conversation_id": conversation_id,
                 "topic": topic,
                 "message": message,
                 "reason": reason,
                 "emotional_context": emotional_context,
                 "status": "pending",
-                "initiated_at": now_iso,
+                "interaction_id": interaction_id,
+                "correlation_id": correlation_id,
+                "created_at": now_dt.isoformat(),
             }
             
             logger.info(
-                f"💭 [INITIATE_CONVERSATION] Conversation initiated: {initiation_id[:8]}... "
+                f"💭 [INITIATE_CONVERSATION] Interaction initiated: {interaction_id[:8]}... "
                 f"topic='{topic}'"
             )
             
@@ -248,7 +242,7 @@ class InitiateConversationSkill(Skill):
                 metadata={
                     "skill_id": self.skill_id,
                     "execution_time": datetime.now(UTC).isoformat(),
-                    "initiation_id": initiation_id,
+                    "interaction_id": interaction_id,
                 },
             )
             

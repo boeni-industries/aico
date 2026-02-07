@@ -40,10 +40,6 @@ router = APIRouter()
 logger = get_logger("backend.api.conversation")
 security = HTTPBearer()
 
-# Include proactive conversation endpoints
-from .proactive import router as proactive_router
-router.include_router(proactive_router)
-
 # Active WebSocket connections for real-time updates
 active_connections: Dict[str, WebSocket] = {}
 
