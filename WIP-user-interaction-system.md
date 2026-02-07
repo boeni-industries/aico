@@ -283,9 +283,8 @@ Bus topics:
 - `interaction/created/v1`
 - `interaction/updated/v1`
 - `interaction/resolved/v1`
-- `conversation/aico/initiate/v1` (rendering to chat/voice)
 
-The `conversation/aico/initiate/v1` payload must include `interaction_id` in metadata.
+The `interaction/resolved/v1` payload must include `interaction_id` in metadata.
 
 ---
 
@@ -565,7 +564,7 @@ Admin subscriptions must be authorized by scopes. If unauthorized, the server mu
 
 # Legacy reuse and cleanup (mandatory)
 
-The current codebase contains a legacy proactive initiation subsystem based on `ConversationInitiation` / `conversation_initiations` and `/conversation/proactive/*` endpoints. This must be replaced by the interaction request system.
+The codebase must not contain or expose any legacy proactive initiation subsystem. The only supported mechanism is the interaction request system.
 
 ## What must be reused
 
@@ -578,7 +577,7 @@ The current codebase contains a legacy proactive initiation subsystem based on `
 ### Skill implementations
 
 - `AskUserSkill` (`shared/aico/ai/agency/skills/communication/ask_user.py`)
-  - must stop writing `ConversationInitiation`
+  - must stop writing legacy proactive initiation records
   - must create `interaction_request` with:
     - `interaction_type='question'`
     - `requirement='required'`
@@ -587,10 +586,9 @@ The current codebase contains a legacy proactive initiation subsystem based on `
     - `correlation_id` from execution context
   - must publish to message bus:
     - `interaction.notifications.<user_uuid>` (for inbox + gating)
-    - `conversation/aico/initiate/v1` (for chat/voice rendering), embedding `interaction_id`
 
 - `InitiateConversationSkill` (`shared/aico/ai/agency/skills/communication/initiate.py`)
-  - must stop writing `ConversationInitiation`
+  - must stop writing legacy proactive initiation records
   - must create `interaction_request` with `interaction_type='dialogue'` (typically `requirement='optional'`)
 
 ### Backend HTTP endpoints
@@ -613,11 +611,7 @@ Remove the legacy proactive endpoints and replace with interaction endpoints:
 
 ### Backend persistence / repositories
 
-- Delete the `conversation_initiations` persistence layer and schema entries:
-  - repositories under `shared/aico/data/repositories/postgres/*conversation_initiation*`
-  - corresponding table definitions in `shared/aico/data/postgres/schema.sql`
-  - UoW accessors for `conversation_initiations`
-  - integration tests for the old repository
+- Delete any legacy persistence layers and schema entries related to proactive initiation tracking.
 
 - Introduce new repositories and UoW accessors:
   - `interaction_requests`
@@ -625,9 +619,9 @@ Remove the legacy proactive endpoints and replace with interaction endpoints:
 
 ### Scheduler tasks
 
-- Replace `backend/scheduler/tasks/proactive_conversation.py` to create `interaction_request` records instead of `conversation_initiations`.
+- Replace `backend/scheduler/tasks/proactive_conversation.py` to create `interaction_request` records instead of any legacy initiation records.
 - Replace message bus publication:
-  - publish `interaction.notifications.<user_uuid>` (not `proactive.notifications.<user_uuid>`)
+  - publish `interaction.notifications.<user_uuid>`
 
 ### API Gateway WebSocket forwarding
 
@@ -639,9 +633,7 @@ Remove the legacy proactive endpoints and replace with interaction endpoints:
 
 ## Frontend changes (Flutter)
 
-The Flutter app currently calls `/conversation/proactive/*` and subscribes to `proactive.notifications.<user_uuid>`.
-
-It must be changed to:
+The Flutter app must:
 
 - Use the interaction HTTP endpoints (`/interactions`) for inbox + resolution.
 - Subscribe to `interaction.notifications.<user_uuid>`.
