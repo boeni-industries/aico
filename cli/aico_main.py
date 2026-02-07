@@ -118,6 +118,14 @@ except ImportError as e:
     # Agency commands not available
     pass
 
+# Import and register interactions commands
+try:
+    from cli.commands import interactions
+    app.add_typer(interactions.app, name="interactions", help="💬 Interaction request testing and simulation")
+except ImportError as e:
+    # Interactions commands not available
+    pass
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
     """AICO CLI - Modular system management and versioning.
@@ -165,6 +173,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             ("🤖", "modelservice", "Model service management and control"),
             ("🦙", "ollama", "Ollama model management and operations"),
             ("🎯", "agency", "Agency system control (intentions, values, policies, lessons)"),
+            ("💬", "interactions", "Interaction request testing and simulation"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")
         ]
         

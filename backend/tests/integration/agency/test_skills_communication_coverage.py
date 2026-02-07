@@ -12,54 +12,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from aico.ai.agency.skills.communication.ask_user import AskUserSkill
 from aico.ai.agency.skills.communication.initiate import InitiateConversationSkill
+from aico.data.postgres.connection import get_session_factory
+from aico.data.uow import UnitOfWork
 
-
-class _DB:
-    def __init__(self, conn):
-        self._conn = conn
-
-    def execute(self, query, params=None):
-        q = query.replace("?", "%s")
-        cur = self._conn.cursor()
-        try:
-            cur.execute(q, params or ())
-            return cur
-        except Exception:
-            try:
-                self._conn.rollback()
-            except Exception:
-                pass
-            cur.close()
-            raise
-
-    def fetch_one(self, query, params=None):
-        cur = self.execute(query, params)
-        try:
-            return cur.fetchone()
-        finally:
-            cur.close()
-
-    def fetch_all(self, query, params=None):
-        cur = self.execute(query, params)
-        try:
-            return cur.fetchall()
-        finally:
-            cur.close()
-
-    def commit(self):
-        self._conn.commit()
-
-    def rollback(self):
-        self._conn.rollback()
+@pytest.fixture
+async def session_factory():
+    return await get_session_factory()
 
 
 @pytest.mark.asyncio
 class TestAskUserSkill:
     """Test suite for AskUserSkill."""
     
-    async def test_skill_properties(self, test_db):
+    async def test_skill_properties(self, session_factory):
         """Test skill has correct properties."""
-        skill = AskUserSkill(db=_DB(test_db))
+        skill = AskUserSkill(session_factory=session_factory)
         
         assert skill.skill_id == "ask_user"
         assert skill.name == "Ask User"
@@ -73,9 +40,9 @@ class TestAskUserSkill:
         assert "urgency" in param_names
         assert "expected_answer_type" in param_names
     
-    async def test_ask_user_basic_question(self, test_db, test_user):
+    async def test_ask_user_basic_question(self, session_factory, test_user):
         """Test asking user a basic question."""
-        skill = AskUserSkill(db=_DB(test_db))
+        skill = AskUserSkill(session_factory=session_factory)
         
         with patch('aico.core.bus.MessageBusClient') as mock_bus:
             mock_instance = AsyncMock()
@@ -90,12 +57,12 @@ class TestAskUserSkill:
             assert result.success is True
             assert result.output["question"] == "What is your favorite color?"
             assert result.output["status"] == "pending"
-            assert "initiation_id" in result.output
-            assert "conversation_id" in result.output
+            assert "interaction_id" in result.output
+            assert "correlation_id" in result.output
     
-    async def test_ask_user_with_context(self, test_db, test_user):
+    async def test_ask_user_with_context(self, session_factory, test_user):
         """Test asking user with context."""
-        skill = AskUserSkill(db=_DB(test_db))
+        skill = AskUserSkill(session_factory=session_factory)
         
         with patch('aico.core.bus.MessageBusClient') as mock_bus:
             mock_instance = AsyncMock()
@@ -113,9 +80,9 @@ class TestAskUserSkill:
             assert result.success is True
             assert result.output["context"] == "I need to schedule a reminder for you"
     
-    async def test_ask_user_with_urgency(self, test_db, test_user):
+    async def test_ask_user_with_urgency(self, session_factory, test_user):
         """Test asking user with urgency level."""
-        skill = AskUserSkill(db=_DB(test_db))
+        skill = AskUserSkill(session_factory=session_factory)
         
         with patch('aico.core.bus.MessageBusClient') as mock_bus:
             mock_instance = AsyncMock()
@@ -133,9 +100,9 @@ class TestAskUserSkill:
             assert result.success is True
             assert result.output["urgency"] == "high"
     
-    async def test_ask_user_with_answer_type(self, test_db, test_user):
+    async def test_ask_user_with_answer_type(self, session_factory, test_user):
         """Test asking user with expected answer type."""
-        skill = AskUserSkill(db=_DB(test_db))
+        skill = AskUserSkill(session_factory=session_factory)
         
         with patch('aico.core.bus.MessageBusClient') as mock_bus:
             mock_instance = AsyncMock()
@@ -153,9 +120,9 @@ class TestAskUserSkill:
             assert result.success is True
             assert result.output["expected_answer_type"] == "yes_no"
     
-    async def test_ask_user_without_question(self, test_db, test_user):
+    async def test_ask_user_without_question(self, session_factory, test_user):
         """Test asking user without question fails."""
-        skill = AskUserSkill(db=_DB(test_db))
+        skill = AskUserSkill(session_factory=session_factory)
         
         result = await skill.execute(
             user_id=test_user,
@@ -168,7 +135,7 @@ class TestAskUserSkill:
     
     async def test_ask_user_without_database(self, test_user):
         """Test asking user without database fails."""
-        skill = AskUserSkill(db=None)
+        skill = AskUserSkill(session_factory=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -177,11 +144,11 @@ class TestAskUserSkill:
         )
         
         assert result.success is False
-        assert "database" in result.error.lower()
+        assert "session_factory" in result.error.lower()
     
-    async def test_ask_user_stores_in_database(self, test_db, test_user):
+    async def test_ask_user_stores_in_database(self, session_factory, test_user):
         """Test that question is stored in database."""
-        skill = AskUserSkill(db=_DB(test_db))
+        skill = AskUserSkill(session_factory=session_factory)
         
         with patch('aico.core.bus.MessageBusClient') as mock_bus:
             mock_instance = AsyncMock()
@@ -196,19 +163,16 @@ class TestAskUserSkill:
             assert result.success is True
             
             # Verify stored in database
-            db_wrapper = _DB(test_db)
-            row = db_wrapper.fetch_one(
-                "SELECT * FROM conversation_initiations WHERE initiation_id = ?",
-                (result.output["initiation_id"],)
-            )
+            async with UnitOfWork(session_factory) as uow:
+                row = await uow.interaction_requests.get_by_id(result.output["interaction_id"])
             
             assert row is not None
-            assert row["question"] == "Test question?"
-            assert row["resolution_status"] == "pending"
+            assert row.prompt == "Test question?"
+            assert row.status == "pending"
     
-    async def test_ask_user_defaults(self, test_db, test_user):
+    async def test_ask_user_defaults(self, session_factory, test_user):
         """Test that default values are used."""
-        skill = AskUserSkill(db=_DB(test_db))
+        skill = AskUserSkill(session_factory=session_factory)
         
         with patch('aico.core.bus.MessageBusClient') as mock_bus:
             mock_instance = AsyncMock()
@@ -230,9 +194,9 @@ class TestAskUserSkill:
 class TestInitiateConversationSkill:
     """Test suite for InitiateConversationSkill."""
     
-    async def test_skill_properties(self, test_db):
+    async def test_skill_properties(self, session_factory):
         """Test skill has correct properties."""
-        skill = InitiateConversationSkill(db=_DB(test_db))
+        skill = InitiateConversationSkill(session_factory=session_factory)
         
         assert skill.skill_id == "initiate_conversation"
         assert skill.name == "Initiate Conversation"
@@ -244,9 +208,9 @@ class TestInitiateConversationSkill:
         assert "topic" in param_names
         assert "message" in param_names
     
-    async def test_initiate_basic_conversation(self, test_db, test_user):
+    async def test_initiate_basic_conversation(self, session_factory, test_user):
         """Test initiating a basic conversation."""
-        skill = InitiateConversationSkill(db=_DB(test_db))
+        skill = InitiateConversationSkill(session_factory=session_factory)
         
         with patch('aico.core.bus.MessageBusClient') as mock_bus:
             mock_instance = AsyncMock()
@@ -262,11 +226,11 @@ class TestInitiateConversationSkill:
             )
             
             assert result.success is True
-            assert "initiation_id" in result.output
+            assert "interaction_id" in result.output
     
-    async def test_initiate_without_topic(self, test_db, test_user):
+    async def test_initiate_without_topic(self, session_factory, test_user):
         """Test initiating conversation without topic fails."""
-        skill = InitiateConversationSkill(db=_DB(test_db))
+        skill = InitiateConversationSkill(session_factory=session_factory)
         
         result = await skill.execute(
             user_id=test_user,
@@ -278,7 +242,7 @@ class TestInitiateConversationSkill:
     
     async def test_initiate_without_database(self, test_user):
         """Test initiating conversation without database fails."""
-        skill = InitiateConversationSkill(db=None)
+        skill = InitiateConversationSkill(session_factory=None)
         
         result = await skill.execute(
             user_id=test_user,
@@ -287,4 +251,4 @@ class TestInitiateConversationSkill:
         )
         
         assert result.success is False
-        assert "database" in result.error.lower()
+        assert "session_factory" in result.error.lower()

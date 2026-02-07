@@ -130,7 +130,6 @@ __all__ = [
     "AgencyGoalSkillExecution",
     "AgencySkillExecution",
     "UserFeedbackRequest",
-    "ConversationInitiation",
     "ArbiterBanditArm",
     "ArbiterABTest",
 ]

@@ -127,44 +127,19 @@ See [COMMUNICATION_SKILLS_LEARNING.md](../../../../docs/concepts/agency/COMMUNIC
 
 ## Database Schema
 
-### aico_conversation_initiations
+### interaction_requests
 
-Tracks all AICO-initiated conversations for learning:
-
-```sql
-CREATE TABLE aico_conversation_initiations (
-    initiation_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
-    trigger_source TEXT NOT NULL,        -- 'skill', 'agency', 'scheduler'
-    trigger_reason TEXT,                 -- Why initiated
-    question TEXT,                       -- Question/message
-    context TEXT,                        -- Additional context
-    urgency TEXT DEFAULT 'medium',       -- low/medium/high
-    expected_answer_type TEXT,           -- text/yes_no/choice/number
-    initiated_at TIMESTAMP NOT NULL,
-    resolved_at TIMESTAMP,               -- When user responded
-    resolution_status TEXT,              -- pending/answered/dismissed
-    user_response_time INTEGER,          -- Seconds to respond
-    engagement_score REAL,               -- Quality of engagement
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP
-);
-```
-
-**Indexes**:
-- `user_id` - Fast user lookups
-- `conversation_id` - Link to conversations
-- `resolution_status` - Filter by status
-- `initiated_at` - Time-based queries
+Tracks all user interactions that require a user response (or optional dialogue), with a full audit trail via `interaction_events`.
 
 ## Integration
 
 ### Message Bus
 
-Skills publish to: `conversation/aico/initiate/v1`
+Skills publish notifications to:
 
-ConversationEngine subscribes and handles AICO-initiated messages.
+- `interaction.notifications.<user_uuid>`
+
+The API Gateway WebSocket adapter forwards these to clients that subscribe to the same topic.
 
 ### Memory System
 
