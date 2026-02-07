@@ -108,6 +108,9 @@ class AuthenticationManager:
         self.api_key_header = config.get("api_gateway.auth.api_key.header", "X-API-Key")
         self.session_cookie = config.get("api_gateway.auth.session.cookie_name", "aico_session")
         
+        # Session service is not initialized in __init__ - it's set externally by the gateway
+        self.session_service = None
+        
         # In-memory stores for API keys and fallback token revocation
         self.api_keys: Dict[str, User] = {}
         self.revoked_tokens: Set[str] = set()  # Fallback when session service unavailable

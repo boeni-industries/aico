@@ -341,8 +341,8 @@ class ProactiveConversationTask(BaseTask):
                                 await bus_client.connect()
 
                                 payload = {
-                                    "interaction": interaction.model_dump(),
-                                    "event": event.model_dump(),
+                                    "interaction": interaction.model_dump(mode="json"),
+                                    "event": event.model_dump(mode="json"),
                                 }
                                 payload_struct = Struct()
                                 payload_struct.update(payload)

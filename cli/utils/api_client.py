@@ -134,9 +134,9 @@ class CLIBackendClient:
                 if method.upper() == "POST":
                     response = await client.post(url, headers=headers, json=request_data)
                 elif method.upper() == "GET":
-                    response = await client.post(url, headers=headers, json=request_data)
+                    response = await client.get(url, headers=headers)
                 elif method.upper() == "DELETE":
-                    response = await client.post(url, headers=headers, json=request_data)
+                    response = await client.delete(url, headers=headers, json=request_data)
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
                 

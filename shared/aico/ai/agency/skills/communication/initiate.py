@@ -208,7 +208,7 @@ class InitiateConversationSkill(Skill):
                 bus_client = MessageBusClient(client_id=f"initiate_conversation_skill_{interaction_id[:8]}")
                 await bus_client.connect()
                 payload_struct = Struct()
-                payload_struct.update({"interaction": interaction.model_dump(), "event": event.model_dump()})
+                payload_struct.update({"interaction": interaction.model_dump(mode="json"), "event": event.model_dump(mode="json")})
                 await bus_client.publish(
                     f"interaction.notifications.{user_id}",
                     payload_struct,

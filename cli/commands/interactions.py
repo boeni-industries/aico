@@ -33,13 +33,15 @@ def interactions_callback(ctx: typer.Context, help: bool = typer.Option(False, "
         
         subcommands = [
             ("simulate", "Simulate an interaction request for testing"),
+            ("reply", "Reply to an interaction (answer/approve/reject/cancel)"),
             ("list", "List interaction requests"),
             ("get", "Get interaction request details"),
         ]
         
         examples = [
             "aico interactions simulate question --user <uuid> --prompt 'Test question?'",
-            "aico interactions simulate question --user <uuid> --prompt 'Test?' --listen-ws",
+            "aico interactions reply <id> --answer 'My answer'",
+            "aico interactions reply <id> --approve",
             "aico interactions list --user <uuid>",
         ]
         
@@ -86,7 +88,15 @@ async def _listen_websocket(user_id: str, admin: bool = False, timeout: int = 10
     
     try:
         async with websockets.connect(ws_url) as websocket:
-            # Authenticate
+            # First, receive welcome message
+            welcome_response = await asyncio.wait_for(websocket.recv(), timeout=5)
+            welcome_data = json.loads(welcome_response)
+            
+            if welcome_data.get("type") != "welcome":
+                console.print(f"[red]✗ Unexpected initial message: {welcome_data}[/red]")
+                return None
+            
+            # Now authenticate
             auth_message = {
                 "type": "auth",
                 "token": jwt_token
@@ -114,17 +124,22 @@ async def _listen_websocket(user_id: str, admin: bool = False, timeout: int = 10
             console.print(f"[dim]Subscribed to: {topic}[/dim]")
             console.print(f"[yellow]Waiting for notification (timeout: {timeout}s)...[/yellow]")
             
-            # Wait for broadcast
+            # Wait for broadcast (loop through messages until we get a broadcast or timeout)
+            start_time = asyncio.get_event_loop().time()
             try:
-                message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
-                data = json.loads(message)
-                
-                if data.get("type") == "broadcast":
-                    console.print("[green]✓ Received notification![/green]")
-                    return data
-                else:
-                    console.print(f"[yellow]Received non-broadcast message: {data.get('type')}[/yellow]")
-                    return None
+                while True:
+                    remaining = timeout - (asyncio.get_event_loop().time() - start_time)
+                    if remaining <= 0:
+                        console.print(f"[yellow]⚠ No notification received within {timeout}s[/yellow]")
+                        return None
+                    
+                    message = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+                    data = json.loads(message)
+                    
+                    if data.get("type") == "broadcast":
+                        console.print("[green]✓ Received notification![/green]")
+                        return data
+                    # Ignore non-broadcast messages (subscribed, heartbeat, etc.) and keep waiting
             
             except asyncio.TimeoutError:
                 console.print(f"[yellow]⚠ No notification received within {timeout}s[/yellow]")
@@ -188,19 +203,26 @@ def simulate_interaction(
         payload["answer_text"] = answer_text
     
     # Start WebSocket listener if requested
-    ws_task = None
+    ws_future = None
     if listen_ws:
-        async def listen_task():
-            return await _listen_websocket(user_id, admin=broadcast_admin, timeout=ws_timeout)
+        import concurrent.futures
+        import threading
         
-        # Start listener in background
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        ws_task = loop.create_task(listen_task())
+        # Run WebSocket listener in a separate thread with its own event loop
+        def run_listener():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(_listen_websocket(user_id, admin=broadcast_admin, timeout=ws_timeout))
+            finally:
+                loop.close()
         
-        # Give WebSocket time to connect
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        ws_future = executor.submit(run_listener)
+        
+        # Give WebSocket time to connect and authenticate
         import time
-        time.sleep(1)
+        time.sleep(2)  # Allow connection to establish before triggering simulator
     
     # Call backend API
     try:
@@ -245,9 +267,9 @@ def simulate_interaction(
                     console.print(f"[dim]Additional events: {len(response['additional_events'])}[/dim]")
         
         # Wait for WebSocket notification if listener is active
-        if ws_task:
+        if ws_future:
             console.print("\n[bold cyan]WebSocket Listener[/bold cyan]")
-            ws_result = loop.run_until_complete(ws_task)
+            ws_result = ws_future.result(timeout=ws_timeout + 5)
             
             if ws_result:
                 broadcast_data = ws_result.get("data", {})
@@ -261,8 +283,6 @@ def simulate_interaction(
             else:
                 console.print("[yellow]⚠ Interaction created but WebSocket notification not received[/yellow]")
                 console.print("[dim]Check that API Gateway WebSocket adapter is running[/dim]")
-            
-            loop.close()
     
     except Exception as e:
         console.print(f"[red]✗ Failed to simulate interaction: {e}[/red]")
@@ -335,6 +355,142 @@ def list_interactions(
     
     except Exception as e:
         console.print(f"[red]✗ Failed to list interactions: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("reply")
+@sensitive
+def reply_interaction(
+    interaction_id: str = typer.Argument(..., help="Interaction ID"),
+    answer: Optional[str] = typer.Option(None, "--answer", "-a", help="Answer text (for question/choice types)"),
+    answer_json: Optional[str] = typer.Option(None, "--answer-json", help="Answer JSON (for structured answers)"),
+    approve: bool = typer.Option(False, "--approve", help="Approve the interaction (approval type only)"),
+    reject: bool = typer.Option(False, "--reject", help="Reject the interaction (approval type only)"),
+    cancel: bool = typer.Option(False, "--cancel", help="Cancel the interaction"),
+    reason: Optional[str] = typer.Option(None, "--reason", "-r", help="Reason for reject/cancel"),
+    listen_ws: bool = typer.Option(False, "--listen-ws", "-w", help="Listen for WebSocket notification"),
+    ws_timeout: int = typer.Option(10, "--ws-timeout", help="WebSocket listen timeout in seconds"),
+    format_output: str = typer.Option("table", "--format", "-f", help="Output format: table | json"),
+):
+    """
+    Reply to an interaction request (answer/approve/reject/cancel).
+    
+    This simulates a user responding to an interaction, allowing you to test
+    the full state transition flow including WebSocket notifications.
+    """
+    
+    # Validate mutually exclusive actions
+    actions = sum([bool(answer or answer_json), approve, reject, cancel])
+    if actions == 0:
+        console.print("[red]✗ Must specify one action: --answer, --approve, --reject, or --cancel[/red]")
+        raise typer.Exit(1)
+    if actions > 1:
+        console.print("[red]✗ Only one action allowed at a time[/red]")
+        raise typer.Exit(1)
+    
+    # First, get the interaction to determine user_id for WebSocket
+    user_id = None
+    if listen_ws:
+        try:
+            with get_backend_client() as client:
+                detail_response = client.get(f"/api/v1/interactions/{interaction_id}")
+                user_id = detail_response.get("interaction", {}).get("user_id")
+        except Exception as e:
+            console.print(f"[yellow]⚠ Could not fetch interaction for WebSocket listener: {e}[/yellow]")
+    
+    # Start WebSocket listener if requested
+    ws_task = None
+    loop = None
+    if listen_ws and user_id:
+        async def listen_task():
+            return await _listen_websocket(user_id, admin=False, timeout=ws_timeout)
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        ws_task = loop.create_task(listen_task())
+        
+        # Give WebSocket time to connect
+        import time
+        time.sleep(1)
+    
+    # Determine endpoint and payload
+    endpoint = None
+    payload = {}
+    
+    if answer or answer_json:
+        endpoint = f"/api/v1/interactions/{interaction_id}/answer"
+        if answer:
+            payload["answer_text"] = answer
+        if answer_json:
+            try:
+                payload["answer_json"] = json.loads(answer_json)
+            except json.JSONDecodeError:
+                console.print("[red]✗ Invalid JSON in --answer-json[/red]")
+                raise typer.Exit(1)
+    
+    elif approve:
+        endpoint = f"/api/v1/interactions/{interaction_id}/approve"
+    
+    elif reject:
+        endpoint = f"/api/v1/interactions/{interaction_id}/reject"
+        if reason:
+            endpoint += f"?reason={reason}"
+    
+    elif cancel:
+        endpoint = f"/api/v1/interactions/{interaction_id}/cancel"
+        if reason:
+            endpoint += f"?reason={reason}"
+    
+    # Call backend API
+    try:
+        with get_backend_client() as client:
+            response = client.post(endpoint, json=payload if payload else None)
+        
+        if format_output == "json":
+            console.print(json.dumps(response, indent=2))
+        else:
+            interaction = response.get("interaction", {})
+            event = response.get("event", {})
+            
+            console.print("\n[bold green]✓ Reply recorded successfully[/bold green]\n")
+            
+            table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+            table.add_column("Field", style="cyan")
+            table.add_column("Value", style="white")
+            
+            table.add_row("Interaction ID", interaction.get("interaction_id", ""))
+            table.add_row("Status", interaction.get("status", ""))
+            table.add_row("Event Type", event.get("event_type", ""))
+            table.add_row("Actor", event.get("actor", ""))
+            
+            if interaction.get("answer_text"):
+                table.add_row("Answer", interaction["answer_text"])
+            
+            console.print(table)
+        
+        # Wait for WebSocket notification if listener is active
+        if ws_task and loop:
+            console.print("\n[bold cyan]WebSocket Listener[/bold cyan]")
+            ws_result = loop.run_until_complete(ws_task)
+            
+            if ws_result:
+                broadcast_data = ws_result.get("data", {})
+                console.print("\n[green]✓ End-to-end reply test successful![/green]")
+                console.print(f"[dim]Topic: {ws_result.get('topic')}[/dim]")
+                console.print(f"[dim]Event type: {broadcast_data.get('event', {}).get('event_type')}[/dim]")
+                
+                if format_output == "json":
+                    console.print("\n[bold]WebSocket Payload:[/bold]")
+                    console.print(json.dumps(ws_result, indent=2))
+            else:
+                console.print("[yellow]⚠ Reply recorded but WebSocket notification not received[/yellow]")
+            
+            loop.close()
+    
+    except Exception as e:
+        console.print(f"[red]✗ Failed to reply to interaction: {e}[/red]")
+        if loop:
+            loop.close()
         raise typer.Exit(1)
 
 

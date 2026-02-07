@@ -178,6 +178,11 @@ async def simulate_interaction(
         bus_client = MessageBusClient(client_id=f"simulator_{interaction_id[:8]}")
         await bus_client.connect()
         
+        logger.info(
+            f"Simulator connected to message bus",
+            extra={"interaction_id": interaction_id, "client_id": f"simulator_{interaction_id[:8]}"},
+        )
+        
         payload_struct = Struct()
         payload_struct.update({
             "interaction": interaction.model_dump(mode="json"),
@@ -185,10 +190,21 @@ async def simulate_interaction(
         })
         
         # Publish to user topic
+        topic = f"interaction.notifications.{request.user_id}"
         await bus_client.publish(
-            f"interaction.notifications.{request.user_id}",
+            topic,
             payload_struct,
             correlation_id=correlation_id,
+        )
+        
+        logger.info(
+            f"Published interaction notification to user topic",
+            extra={
+                "interaction_id": interaction_id,
+                "topic": topic,
+                "user_id": request.user_id,
+                "correlation_id": correlation_id,
+            },
         )
         
         # Optionally publish to admin topic
@@ -198,15 +214,10 @@ async def simulate_interaction(
                 payload_struct,
                 correlation_id=correlation_id,
             )
-        
-        logger.debug(
-            f"Published interaction notification",
-            extra={
-                "interaction_id": interaction_id,
-                "topics": [f"interaction.notifications.{request.user_id}"]
-                + (["interaction.notifications.admin"] if request.broadcast_admin else []),
-            },
-        )
+            logger.info(
+                f"Published interaction notification to admin topic",
+                extra={"interaction_id": interaction_id},
+            )
     
     finally:
         if bus_client:

@@ -152,6 +152,10 @@ class ProtocolAdapterManager:
                 # ZeroMQ adapter - keep message task alive
                 self.adapter_tasks[name] = adapter.message_task
             
+            # Store additional background tasks (e.g., WebSocket bus subscription)
+            if hasattr(adapter, 'bus_subscription_task') and adapter.bus_subscription_task:
+                self.adapter_tasks[f"{name}_bus_subscription"] = adapter.bus_subscription_task
+            
             self.logger.info(f"Started protocol adapter: {name}")
             return True
             

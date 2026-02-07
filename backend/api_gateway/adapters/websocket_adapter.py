@@ -312,7 +312,7 @@ class WebSocketAdapter:
                     "session_id": connection.session_id
                 })
                 
-                self.logger.info("WebSocket authentication successful", extra={
+                self.logger.info(f"WebSocket authentication successful - user_uuid: {connection.user_uuid}, authenticated: {connection.authenticated}", extra={
                     "client_id": connection.client_id,
                     "user_uuid": connection.user_uuid,
                     "session_id": connection.session_id
@@ -499,8 +499,10 @@ class WebSocketAdapter:
             if connection.client_id in self.connections:
                 del self.connections[connection.client_id]
             
-            if not connection.websocket.closed:
+            try:
                 await connection.websocket.close(code=1000, reason=reason)
+            except Exception:
+                pass  # Connection already closed
             
             self.logger.debug(f"WebSocket connection closed: {connection.client_id} - {reason}")
             
@@ -572,6 +574,8 @@ class WebSocketAdapter:
             if conn.authenticated and conn.user_uuid == user_uuid
         ]
         
+        self.logger.info(f"Broadcasting to user {user_uuid[:8]}: found {len(user_connections)} connections")
+        
         if user_connections:
             broadcast_message = {
                 "type": "broadcast",
@@ -581,12 +585,17 @@ class WebSocketAdapter:
             
             # Send to all user's connections
             for connection in user_connections:
+                self.logger.info(f"Sending to connection {connection.client_id}")
                 await self._send_message(connection, broadcast_message)
             
-            self.logger.debug(f"Broadcasted to {len(user_connections)} connections for user {user_uuid[:8]}")
+            self.logger.info(f"Broadcasted to {len(user_connections)} connections for user {user_uuid[:8]}")
+        else:
+            self.logger.warning(f"No authenticated connections found for user {user_uuid[:8]}")
     
     def _struct_to_dict(self, s: Struct) -> Dict[str, Any]:
-        return json.loads(json.dumps(s))
+        """Convert protobuf Struct to Python dict"""
+        from google.protobuf.json_format import MessageToDict
+        return MessageToDict(s)
 
     async def _subscribe_to_interaction_notifications(self):
         """Subscribe to message bus for interaction notification events"""
@@ -598,21 +607,26 @@ class WebSocketAdapter:
                 """Handle incoming interaction notification from message bus"""
                 try:
                     topic = bus_message.metadata.message_type
+                    self.logger.info(f"WebSocket adapter received message on topic: {topic}")
+                    
                     parts = topic.split(".")
                     if len(parts) < 3:
+                        self.logger.warning(f"Topic has insufficient parts: {topic}")
                         return
 
                     # Payload is a protobuf Struct that contains JSON-ish dict
                     payload_struct = Struct()
                     bus_message.any_payload.Unpack(payload_struct)
                     payload = self._struct_to_dict(payload_struct)
+                    
+                    self.logger.info(f"Unpacked payload, broadcasting to connections")
 
                     # interaction.notifications.{user_uuid}
                     if parts[0] == "interaction" and parts[1] == "notifications" and parts[2] != "admin":
                         user_uuid = parts[2]
                         await self.broadcast_to_user(user_uuid, topic, payload)
-                        self.logger.debug(
-                            "Forwarded interaction notification to user",
+                        self.logger.info(
+                            f"Forwarded interaction notification to user {user_uuid[:8]}",
                             extra={"user_uuid": user_uuid, "topic": topic},
                         )
                         return
@@ -620,12 +634,12 @@ class WebSocketAdapter:
                     # interaction.notifications.admin (admin-only; forward to subscribers)
                     if parts[0] == "interaction" and parts[1] == "notifications" and parts[2] == "admin":
                         await self.broadcast_to_subscribers(topic, payload)
-                        self.logger.debug(
+                        self.logger.info(
                             "Forwarded interaction admin notification",
                             extra={"topic": topic},
                         )
                 except Exception as e:
-                    self.logger.error(f"Error handling interaction notification: {e}")
+                    self.logger.error(f"Error handling interaction notification: {e}", exc_info=True)
             
             # Subscribe to all interaction notification topics (user-scoped + admin)
             await self.bus_client.subscribe("interaction.notifications.", handle_interaction_notification)
