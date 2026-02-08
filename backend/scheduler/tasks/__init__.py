@@ -9,7 +9,6 @@ from .curiosity_scan import CuriosityScanTask
 from .agency_reflection import AgencyReflectionTask
 from .agency_arbiter import AgencyArbiterTask
 from .agency_plan_executor import AgencyPlanExecutorTask
-from .proactive_conversation import ProactiveConversationTask
 from .goal_expiration import GoalExpirationTask
 
 __all__ = [
@@ -21,6 +20,5 @@ __all__ = [
     "AgencyReflectionTask",
     "AgencyArbiterTask",
     "AgencyPlanExecutorTask",
-    "ProactiveConversationTask",
     "GoalExpirationTask",
 ]

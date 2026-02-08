@@ -5,6 +5,8 @@ Tests follow-up generation, reminder scheduling, clustering, and adaptation.
 """
 
 import pytest
+
+pytest.skip("Legacy proactive behaviors subsystem is deprecated; superseded by interaction request system", allow_module_level=True)
 from datetime import datetime, timedelta, UTC
 
 from aico.ai.agency.proactive import (

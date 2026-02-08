@@ -11,6 +11,9 @@ Tests the complete proactive conversation flow:
 """
 
 import pytest
+
+pytest.skip("Legacy proactive conversation initiation is deprecated; superseded by interaction request system", allow_module_level=True)
+
 from datetime import datetime, timedelta, UTC
 from unittest.mock import Mock, patch
 import uuid
