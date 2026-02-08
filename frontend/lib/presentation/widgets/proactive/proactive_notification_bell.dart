@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:aico_frontend/data/models/proactive_model.dart';
 import 'package:aico_frontend/presentation/providers/proactive_state_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:aico_frontend/core/utils/date_time_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -362,7 +363,7 @@ class _ProactiveNotificationDrawerState extends ConsumerState<ProactiveNotificat
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _getTimeAgo(initiation.initiatedAt),
+                      DateTimeUtils.formatTimestampAgo(initiation.initiatedAt),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                         fontSize: 12,
@@ -496,21 +497,6 @@ class _ProactiveNotificationDrawerState extends ConsumerState<ProactiveNotificat
     );
   }
 
-  String _getTimeAgo(String timestamp) {
-    final dateTime = DateTime.parse(timestamp);
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'Just now';
-    }
-  }
 
   void _showNotificationDetail(InitiationModel initiation) {
     Navigator.of(context).pop();

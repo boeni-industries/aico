@@ -1,9 +1,10 @@
 import 'package:aico_frontend/presentation/providers/proactive_state_provider.dart';
+import 'package:aico_frontend/presentation/providers/interaction_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Ambient indicator for collapsed right drawer
-/// Vertical pill showing thinking count and notification count
+/// Vertical pill showing thinking count, notification count, and interaction count
 class AmbientDrawerIndicator extends ConsumerStatefulWidget {
   final bool isStreaming;
   final int thoughtCount;
@@ -74,7 +75,10 @@ class _AmbientDrawerIndicatorState extends ConsumerState<AmbientDrawerIndicator>
     final isDark = theme.brightness == Brightness.dark;
     final purpleAccent = isDark ? const Color(0xFFB9A7E6) : const Color(0xFFB8A1EA);
     final proactiveState = ref.watch(proactiveStateProvider);
+    final interactionState = ref.watch(interactionProvider);
     final notificationCount = proactiveState.pendingInitiations.length;
+    final interactionCount = interactionState.pending.length;
+    final totalCount = notificationCount + interactionCount;
 
     return MouseRegion(
       onEnter: (_) => widget.onHoverStart?.call(),
@@ -85,7 +89,7 @@ class _AmbientDrawerIndicatorState extends ConsumerState<AmbientDrawerIndicator>
           label: 'Right drawer',
           hint: widget.isStreaming
               ? 'AICO is actively thinking. Press to view.'
-              : 'Press to view thinking, emotions, and notifications.',
+              : 'Press to view thinking, emotions, and interactions.',
           button: true,
           child: SizedBox(
             width: 72,
@@ -98,9 +102,9 @@ class _AmbientDrawerIndicatorState extends ConsumerState<AmbientDrawerIndicator>
                   child: _buildCenteredGradientLine(purpleAccent, isDark),
                 ),
 
-                // Vertical pill with both counts
+                // Vertical pill with all counts
                 Center(
-                  child: _buildVerticalPill(purpleAccent, isDark, notificationCount),
+                  child: _buildVerticalPill(purpleAccent, isDark, totalCount),
                 ),
               ],
             ),

@@ -17,10 +17,26 @@ class UnifiedApiClient {
   
   Dio? _dio;
   String? _baseUrl;
+  Object? _lastInitError;
+  StackTrace? _lastInitStackTrace;
   
   static const Duration _defaultTimeout = Duration(seconds: 120);
   static const String _defaultBaseUrl = 'http://localhost:8771/api/v1';
   bool _isInitialized = false;
+
+  Future<String> _getBaseUrl() async {
+    return _defaultBaseUrl;
+  }
+
+  String _normalizeEndpoint(String endpoint) {
+    // Dio treats a path starting with '/' as an absolute path and will drop
+    // the path segment from baseUrl. Our baseUrl already contains '/api/v1',
+    // so endpoints must be relative.
+    if (endpoint.startsWith('/')) {
+      return endpoint.substring(1);
+    }
+    return endpoint;
+  }
 
   UnifiedApiClient({
     required EncryptionService encryptionService,
@@ -35,22 +51,30 @@ class UnifiedApiClient {
     if (_isInitialized) return;
     
     try {
+      // Get base URL from configuration
+      _baseUrl = await _getBaseUrl();
+      if (_baseUrl != null && _baseUrl!.isNotEmpty && !_baseUrl!.endsWith('/')) {
+        _baseUrl = '${_baseUrl!}/';
+      }
+      
       // Initialize encryption service first
       await _encryptionService.initialize();
       
       // Initialize Dio
-      _dio = Dio(BaseOptions(
-        baseUrl: _baseUrl ?? _defaultBaseUrl,
-        connectTimeout: _defaultTimeout,
-        receiveTimeout: _defaultTimeout,
-        sendTimeout: _defaultTimeout,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        // Configure validateStatus to not throw exceptions for expected error codes
-        validateStatus: (status) => status != null && status < 500,
-      ));
+      _dio = Dio(
+        BaseOptions(
+          baseUrl: _baseUrl!,
+          connectTimeout: _defaultTimeout,
+          receiveTimeout: _defaultTimeout,
+          sendTimeout: _defaultTimeout,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          // Configure validateStatus to not throw exceptions for expected error codes
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
 
       // Add logging interceptor
       _dio!.interceptors.add(LogInterceptor(
@@ -64,14 +88,20 @@ class UnifiedApiClient {
       ));
 
       _isInitialized = true;
+      _lastInitError = null;
+      _lastInitStackTrace = null;
       AICOLog.info('UnifiedApiClient initialized', 
         topic: 'network/client/init', 
         extra: {'base_url': _baseUrl});
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _lastInitError = e;
+      _lastInitStackTrace = stackTrace;
       // Handle initialization errors gracefully - don't let them crash the app
       AICOLog.warn('UnifiedApiClient initialization failed, will retry on first request', 
         topic: 'network/client/init_error', 
-        extra: {'error': e.toString()});
+        error: e,
+        stackTrace: stackTrace,
+        extra: {'error_type': e.runtimeType.toString(), 'error': e.toString()});
       // Don't set _isInitialized to true, so it will retry on first request
     }
   }
@@ -86,25 +116,50 @@ class UnifiedApiClient {
     bool skipTokenRefresh = false,
     bool skipTokenEntirely = false,
   }) async {
+    final normalizedEndpoint = _normalizeEndpoint(endpoint);
+
     // Auto-initialize if not done yet
     if (!_isInitialized) {
       await initialize();
+    }
+
+    if (_dio == null) {
+      AICOLog.error(
+        'UnifiedApiClient not initialized - cannot perform request',
+        topic: 'network/client/not_initialized',
+        error: _lastInitError,
+        stackTrace: _lastInitStackTrace,
+        extra: {
+          'method': method,
+          'endpoint': endpoint,
+          'normalized_endpoint': normalizedEndpoint,
+          'base_url': _baseUrl,
+        },
+      );
+      return null;
     }
 
     // All requests are encrypted - backend only supports encrypted connections
     try {
       return await _makeEncryptedRequest<T>(
         method,
-        endpoint,
+        normalizedEndpoint,
         data: data,
         fromJson: fromJson,
         skipTokenRefresh: skipTokenRefresh,
         skipTokenEntirely: skipTokenEntirely,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
       AICOLog.error('API request failed', 
         topic: 'network/client/request/error',
-        extra: {'method': method, 'endpoint': endpoint, 'error': e.toString()});
+        error: e,
+        stackTrace: stackTrace,
+        extra: {
+          'method': method, 
+          'endpoint': endpoint, 
+          'error_type': e.runtimeType.toString(),
+          'error': e.toString()
+        });
       rethrow;
     }
   }
@@ -153,6 +208,7 @@ class UnifiedApiClient {
     bool skipTokenRefresh = false,
     bool skipSessionValidation = false,
   }) async {
+    final normalizedEndpoint = _normalizeEndpoint(endpoint);
     
     // Auto-initialize if not done yet
     if (!_isInitialized) {
@@ -182,7 +238,7 @@ class UnifiedApiClient {
       // Make streaming request using Dio
       // CRITICAL: Disable receiveTimeout for streaming to prevent timeout during long LLM generation
       final response = await _dio!.request<ResponseBody>(
-        endpoint,
+        normalizedEndpoint,
         data: requestData,
         queryParameters: queryParameters,
         options: Options(
@@ -202,7 +258,7 @@ class UnifiedApiClient {
       if (response.statusCode == 401 && !skipTokenRefresh) {
         AICOLog.warn('401 Unauthorized in streaming - resetting encryption session and retrying',
           topic: 'network/streaming/unauthorized',
-          extra: {'endpoint': endpoint, 'method': method});
+          extra: {'endpoint': endpoint, 'normalized_endpoint': normalizedEndpoint, 'method': method});
         
         // Reset encryption session and retry once
         _encryptionService.resetSession();
@@ -342,8 +398,25 @@ class UnifiedApiClient {
     bool skipTokenRefresh = false,
     bool skipTokenEntirely = false,
   }) async {
+    final normalizedEndpoint = _normalizeEndpoint(endpoint);
     if (!_isInitialized) {
       await initialize();
+    }
+
+    if (_dio == null) {
+      AICOLog.error(
+        'UnifiedApiClient not initialized - cannot perform encrypted request',
+        topic: 'network/client/not_initialized',
+        error: _lastInitError,
+        stackTrace: _lastInitStackTrace,
+        extra: {
+          'method': method,
+          'endpoint': endpoint,
+          'normalized_endpoint': normalizedEndpoint,
+          'base_url': _baseUrl,
+        },
+      );
+      return null;
     }
 
     // Check if device is offline
@@ -369,7 +442,7 @@ class UnifiedApiClient {
 
       // Make the request
       final response = await _dio!.request(
-        endpoint,
+        normalizedEndpoint,
         data: requestData,
         options: Options(
           method: method,
@@ -386,13 +459,13 @@ class UnifiedApiClient {
         debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized - resetting encryption session');
         AICOLog.warn('401 Unauthorized - will reset encryption session and retry',
           topic: 'network/request/unauthorized',
-          extra: {'endpoint': endpoint, 'method': method});
+          extra: {'endpoint': endpoint, 'normalized_endpoint': normalizedEndpoint, 'method': method});
         
         // Reset encryption session and retry once
         _encryptionService.resetSession();
         return await _makeEncryptedRequest<T>(
           method, 
-          endpoint, 
+          normalizedEndpoint, 
           data: data, 
           fromJson: fromJson, 
           skipTokenRefresh: true
@@ -406,6 +479,7 @@ class UnifiedApiClient {
           extra: {
             'status_code': response.statusCode,
             'endpoint': endpoint,
+            'normalized_endpoint': normalizedEndpoint,
             'method': method,
             'response_data': response.data?.toString()
           });
@@ -417,14 +491,17 @@ class UnifiedApiClient {
 
     } on DioException catch (e) {
       return _handleDioException<T>(e, method, endpoint);
-    } catch (e) {
-      debugPrint('💥 [UnifiedApiClient] Unexpected error: $e');
+    } catch (e, stackTrace) {
+      debugPrint('💥 [UnifiedApiClient] Unexpected error: $e\n$stackTrace');
       AICOLog.error('Unexpected error in API request',
         topic: 'network/request/unexpected_error',
+        error: e,
+        stackTrace: stackTrace,
         extra: {
           'method': method,
           'endpoint': endpoint,
-          'error': e.toString()
+          'normalized_endpoint': normalizedEndpoint,
+          'error_type': e.runtimeType.toString(),
         });
       return null;
     }
@@ -509,10 +586,14 @@ class UnifiedApiClient {
 
     dynamic data;
     
-    // Handle encrypted responses
-    if (responseData is Map<String, dynamic> && 
-        responseData.containsKey('encrypted') && 
-        responseData['encrypted'] == true) {
+    // Handle encrypted responses (backend returns encrypted_payload)
+    if (responseData is Map<String, dynamic> && responseData.containsKey('encrypted_payload')) {
+      data = _encryptionService.decryptPayload(responseData['encrypted_payload']);
+    } else if (responseData is Map<String, dynamic> &&
+        responseData.containsKey('encrypted') &&
+        responseData['encrypted'] == true &&
+        responseData.containsKey('payload')) {
+      // Legacy format
       data = _encryptionService.decryptPayload(responseData['payload']);
     } else {
       data = responseData;
@@ -560,12 +641,45 @@ class UnifiedApiClient {
   Future<void> _performHandshake() async {
     final handshakeRequest = await _encryptionService.createHandshakeRequest();
     
+    final endpoint = 'handshake';  // Relative to baseUrl which already includes /api/v1/
     final response = await _dio!.post(
-      '/handshake',
+      endpoint,
       data: handshakeRequest,
+      options: Options(
+        responseType: ResponseType.json,
+      ),
     );
 
-    await _encryptionService.processHandshakeResponse(response.data);
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      AICOLog.error(
+        'Handshake failed: invalid response type',
+        topic: 'security/encryption/handshake/invalid_response',
+        extra: {
+          'endpoint': endpoint,
+          'status_code': response.statusCode,
+          'response_type': data.runtimeType.toString(),
+          'response_preview': data?.toString(),
+        },
+      );
+      throw EncryptionException('Invalid handshake response format');
+    }
+
+    if (!data.containsKey('handshake_response')) {
+      AICOLog.error(
+        'Handshake failed: missing handshake_response',
+        topic: 'security/encryption/handshake/invalid_response',
+        extra: {
+          'endpoint': endpoint,
+          'status_code': response.statusCode,
+          'response_keys': data.keys.toList(),
+          'response_preview': data.toString(),
+        },
+      );
+      throw EncryptionException('Invalid handshake response format');
+    }
+
+    await _encryptionService.processHandshakeResponse(data);
   }
 
   /// Special method for token refresh that bypasses token validation
@@ -643,6 +757,7 @@ class UnifiedApiClient {
     Map<String, String>? queryParameters,
     bool skipTokenRefresh = false,
   }) async* {
+    final normalizedEndpoint = _normalizeEndpoint(endpoint);
     // Auto-initialize if not done yet
     if (!_isInitialized) {
       await initialize();
@@ -667,7 +782,7 @@ class UnifiedApiClient {
 
       // Make streaming request
       final response = await _dio!.request<ResponseBody>(
-        endpoint,
+        normalizedEndpoint,
         data: requestData,
         queryParameters: queryParameters,
         options: Options(

@@ -188,8 +188,7 @@ class EncryptionService {
   Map<String, dynamic> createEncryptedRequest(Map<String, dynamic> payload) {
     final encryptedPayload = encryptPayload(payload);
     return {
-      'encrypted': true,
-      'payload': encryptedPayload,
+      'encrypted_payload': encryptedPayload,
       'client_id': _clientId,
     };
   }

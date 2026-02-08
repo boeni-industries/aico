@@ -92,6 +92,9 @@ class AICOLog {
         if (error != null) {
           debugPrint('[AICO] Error: $error');
         }
+        if (stackTrace != null) {
+          debugPrint('[AICO] Stack: $stackTrace');
+        }
       }
       return;
     }
@@ -108,7 +111,7 @@ class AICOLog {
         AICOLogger.warn(message, topic: topic, extra: extra);
         break;
       case LogLevel.error:
-        AICOLogger.error(message, topic: topic, extra: extra);
+        AICOLogger.error(message, topic: topic, extra: extra, error: error, stackTrace: stackTrace);
         break;
     }
   }

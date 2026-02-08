@@ -1,6 +1,8 @@
 import 'package:aico_frontend/data/models/proactive_model.dart';
 import 'package:aico_frontend/presentation/providers/proactive_state_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:aico_frontend/presentation/widgets/common/status_badge.dart';
+import 'package:aico_frontend/core/utils/date_time_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -270,14 +272,14 @@ class _ProactiveTimelineState extends ConsumerState<ProactiveTimeline> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    _getTimeAgo(initiation.initiatedAt),
+                    DateTimeUtils.formatTimestampAgo(initiation.initiatedAt),
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontSize: 10,
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
-                _buildStatusBadge(theme, initiation.resolutionStatus),
+                _buildStatusBadge(initiation.resolutionStatus),
               ],
             ),
             const SizedBox(height: 8),
@@ -321,47 +323,10 @@ class _ProactiveTimelineState extends ConsumerState<ProactiveTimeline> {
     );
   }
 
-  Widget _buildStatusBadge(ThemeData theme, String status) {
-    Color color;
-    String label;
-
-    switch (status) {
-      case 'pending':
-        color = theme.colorScheme.primary;
-        label = 'Pending';
-        break;
-      case 'answered':
-        color = const Color(0xFF8DD686);
-        label = 'Answered';
-        break;
-      case 'dismissed':
-        color = Colors.grey;
-        label = 'Dismissed';
-        break;
-      case 'later':
-        color = const Color(0xFFED7867);
-        label = 'Later';
-        break;
-      default:
-        color = Colors.grey;
-        label = status;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+  Widget _buildStatusBadge(String status) {
+    // Map 'later' to 'deferred' for consistency
+    final mappedStatus = status == 'later' ? 'deferred' : status;
+    return StatusBadge.interactionStatus(mappedStatus);
   }
 
   Widget _buildQuickAction(ThemeData theme, String label, IconData icon, VoidCallback onTap) {
@@ -395,21 +360,6 @@ class _ProactiveTimelineState extends ConsumerState<ProactiveTimeline> {
     );
   }
 
-  String _getTimeAgo(String timestamp) {
-    final dateTime = DateTime.parse(timestamp);
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'Just now';
-    }
-  }
 
   void _showDetailDialog(InitiationModel initiation) {
     showDialog(

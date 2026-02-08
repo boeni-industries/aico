@@ -7,7 +7,7 @@ import 'package:aico_frontend/presentation/providers/settings_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/drawer/drawer_tab_switcher.dart';
 import 'package:aico_frontend/presentation/widgets/emotion/emotional_timeline.dart';
-import 'package:aico_frontend/presentation/widgets/proactive/proactive_timeline.dart';
+import 'package:aico_frontend/presentation/widgets/interactions/interaction_timeline.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/ambient_drawer_indicator.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/thinking_preview_card.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
@@ -197,8 +197,8 @@ class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
               )
             : _selectedTab == DrawerTab.emotions
                 ? _buildEmotionalTimeline()
-                : ProactiveTimeline(
-                    key: const ValueKey('notifications'),
+                : InteractionTimeline(
+                    key: const ValueKey('interactions'),
                     onCollapse: widget.onToggle,
                   ),
       );

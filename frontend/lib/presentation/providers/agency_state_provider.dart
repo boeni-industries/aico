@@ -1,8 +1,8 @@
 import 'dart:async';
 
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/data/models/agency_model.dart';
 import 'package:aico_frontend/domain/providers/agency_providers.dart';
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'agency_state_provider.g.dart';
@@ -101,10 +101,16 @@ class AgencyBadgeStateNotifier extends _$AgencyBadgeStateNotifier {
       
       // Map backend state to UI badge state
       _mapAgencyStateToUI(agencyState);
-    } catch (e) {
-      if (kDebugMode) {
-        print('Failed to fetch agency state: $e');
-      }
+    } catch (e, stackTrace) {
+      AICOLog.error('Failed to fetch agency state',
+        topic: 'agency/state/fetch_error',
+        error: e,
+        stackTrace: stackTrace,
+        extra: {
+          'error_type': e.runtimeType.toString(),
+          'error_message': e.toString(),
+        });
+      
       // On error, hide badge
       hide();
     }

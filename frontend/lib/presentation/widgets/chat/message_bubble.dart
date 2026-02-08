@@ -14,6 +14,7 @@ class MessageBubble extends StatefulWidget {
   final bool isThinking;
   final DateTime timestamp;
   final Color accentColor;
+  final Widget? customChild;
 
   const MessageBubble({
     super.key,
@@ -22,6 +23,7 @@ class MessageBubble extends StatefulWidget {
     required this.isThinking,
     required this.timestamp,
     required this.accentColor,
+    this.customChild,
   });
 
   @override
@@ -296,7 +298,7 @@ class _MessageBubbleState extends State<MessageBubble>
               ),
             ],
           ),
-          child: Column(
+          child: widget.customChild ?? Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
