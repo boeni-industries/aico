@@ -275,8 +275,12 @@ async def _publish_interaction_notification_safely(
 
 @router.get("", response_model=InteractionListResponse)
 async def list_interactions(
-    status_filter: Optional[str] = Query(None, alias="status"),
-    limit: int = Query(50, ge=1, le=500),
+    status_filter: Optional[list[str]] = Query(None, alias="status"),
+    interaction_type: Optional[list[str]] = Query(None, alias="interaction_type"),
+    category: Optional[list[str]] = Query(None, alias="category"),
+    created_after: Optional[datetime] = Query(None, alias="created_after"),
+    created_before: Optional[datetime] = Query(None, alias="created_before"),
+    limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     current_user=Depends(get_current_user),
     uow: UnitOfWork = Depends(get_uow),
@@ -286,6 +290,14 @@ async def list_interactions(
     filters: dict[str, Any] = {"user_id": user_id}
     if status_filter is not None:
         filters["status"] = status_filter
+    if interaction_type is not None:
+        filters["interaction_type"] = interaction_type
+    if category is not None:
+        filters["category"] = category
+    if created_after is not None:
+        filters["created_after"] = created_after
+    if created_before is not None:
+        filters["created_before"] = created_before
 
     items = await uow.interaction_requests.list(filters=filters, limit=limit, offset=offset)
     total = await uow.interaction_requests.count(filters=filters)

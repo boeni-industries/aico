@@ -293,20 +293,26 @@ def simulate_interaction(
 @sensitive
 def list_interactions(
     user_id: Optional[str] = typer.Option(None, "--user", "-u", help="Filter by user UUID"),
-    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status"),
-    interaction_type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by type"),
+    status: Optional[list[str]] = typer.Option(None, "--status", "-s", help="Filter by status", show_default=False),
+    interaction_type: Optional[list[str]] = typer.Option(None, "--type", "-t", help="Filter by type", show_default=False),
+    category: Optional[list[str]] = typer.Option(None, "--category", "-c", help="Filter by category", show_default=False),
     limit: int = typer.Option(50, "--limit", "-l", help="Maximum number of results"),
     format_output: str = typer.Option("table", "--format", "-f", help="Output format: table | json"),
 ):
     """List interaction requests."""
     
-    params = {"limit": limit}
+    params: list[tuple[str, str]] = [("limit", str(limit))]
     if user_id:
-        params["user_id"] = user_id
+        params.append(("user_id", user_id))
     if status:
-        params["status"] = status
+        for s in status:
+            params.append(("status", s))
     if interaction_type:
-        params["interaction_type"] = interaction_type
+        for t in interaction_type:
+            params.append(("interaction_type", t))
+    if category:
+        for c in category:
+            params.append(("category", c))
     
     try:
         with get_backend_client() as client:

@@ -8,7 +8,7 @@ Uses the same transport security patterns as backend-modelservice communication.
 import httpx
 import asyncio
 from contextlib import asynccontextmanager, contextmanager
-from typing import Dict, Any, Optional, Generator
+from typing import Dict, Any, Optional, Generator, Union, Sequence, Tuple
 
 from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
@@ -87,7 +87,13 @@ class CLIBackendClient:
         except httpx.RequestError as e:
             raise EncryptionError(f"Network error during backend handshake: {e}") from e
     
-    async def request(self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def request(
+        self,
+        method: str,
+        endpoint: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Union[Dict[str, Any], Sequence[Tuple[str, Any]]]] = None,
+    ) -> Dict[str, Any]:
         """Make encrypted HTTP request to backend."""
         await self._ensure_session()
         
@@ -95,8 +101,6 @@ class CLIBackendClient:
             raise EncryptionError("No secure channel available for backend communication")
         
         url = f"{self.base_url}{endpoint}"
-        if params:
-            url += "?" + "&".join(f"{k}={v}" for k, v in params.items())
         
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -132,11 +136,11 @@ class CLIBackendClient:
                 
                 # Use appropriate HTTP method
                 if method.upper() == "POST":
-                    response = await client.post(url, headers=headers, json=request_data)
+                    response = await client.post(url, headers=headers, json=request_data, params=params)
                 elif method.upper() == "GET":
-                    response = await client.get(url, headers=headers)
+                    response = await client.get(url, headers=headers, params=params)
                 elif method.upper() == "DELETE":
-                    response = await client.delete(url, headers=headers, json=request_data)
+                    response = await client.delete(url, headers=headers, json=request_data, params=params)
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
                 
@@ -163,11 +167,20 @@ class CLIBackendClient:
         except httpx.RequestError as e:
             raise EncryptionError(f"Network error during {method} {endpoint}: {e}") from e
     
-    def post(self, endpoint: str, json: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None):
+    def post(
+        self,
+        endpoint: str,
+        json: Optional[Dict[str, Any]] = None,
+        params: Optional[Union[Dict[str, Any], Sequence[Tuple[str, Any]]]] = None,
+    ):
         """Synchronous POST request."""
         return asyncio.run(self.request("POST", endpoint, json, params))
     
-    def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None):
+    def get(
+        self,
+        endpoint: str,
+        params: Optional[Union[Dict[str, Any], Sequence[Tuple[str, Any]]]] = None,
+    ):
         """Synchronous GET request."""
         return asyncio.run(self.request("GET", endpoint, None, params))
 

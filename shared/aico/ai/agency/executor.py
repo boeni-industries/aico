@@ -258,6 +258,14 @@ class PlanExecutor:
             raise ValueError(f"Execution {execution_id} not found")
         
         # Check if execution is in valid state
+        if execution.status == ExecutionStatus.PAUSED:
+            resumed = await self._try_resume_blocked_execution(execution)
+            if not resumed:
+                self.logger.info(
+                    f"[EXECUTOR] Execution {execution_id} is paused (blocked), skipping step execution"
+                )
+                return False, None
+
         if execution.status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
             self.logger.warning(
                 f"[EXECUTOR] Cannot execute step: execution {execution_id} "
@@ -507,6 +515,9 @@ class PlanExecutor:
                     input_data=skill_input,
                     context={
                         **execution.execution_context,
+                        "correlation_id": execution.execution_context.get("correlation_id")
+                        or execution.execution_context.get("correlationId")
+                        or execution.execution_id,
                         "execution_id": execution.execution_id,
                         "plan_id": execution.plan_id,
                         "goal_id": execution.goal_id,
@@ -530,6 +541,33 @@ class PlanExecutor:
                 
                 step_exec.output_data = result.get("output", {})
                 step_exec.skill_invocation_id = result.get("invocation_id")
+                output = result.get("output") or {}
+                interaction_id = output.get("interaction_id") or output.get("interactionId")
+                interaction_status = output.get("status")
+                if (
+                    result.get("success")
+                    and interaction_id
+                    and interaction_status == "pending"
+                    and step_exec.skill_id in {"ask_user", "initiate_conversation"}
+                ):
+                    step_exec.status = StepExecutionStatus.BLOCKED
+                    step_exec.blocked_reason = "awaiting_user_answer"
+                    step_exec.output_data = {
+                        **(step_exec.output_data or {}),
+                        "interaction_id": interaction_id,
+                        "correlation_id": execution.execution_context.get("correlation_id")
+                        or execution.execution_context.get("correlationId"),
+                    }
+                    await self._save_step_execution(step_exec)
+
+                    execution.status = ExecutionStatus.PAUSED
+                    execution.paused_at = datetime.now(UTC)
+                    await self._save_execution(execution)
+
+                    self.logger.info(
+                        f"[EXECUTOR] Execution {execution.execution_id[:8]}... blocked on interaction {str(interaction_id)[:8]}..."
+                    )
+                    return step_exec
             else:
                 # No skill - mark as completed (placeholder step)
                 error_msg = (
@@ -579,6 +617,58 @@ class PlanExecutor:
             )
             
             raise
+
+    async def _try_resume_blocked_execution(self, execution: PlanExecution) -> bool:
+        """Attempt to resume a paused execution if its blocking interaction has resolved."""
+        try:
+            step_execs = await self._get_step_executions(execution.execution_id)
+            blocked_steps = [s for s in step_execs if s.status == StepExecutionStatus.BLOCKED]
+            if not blocked_steps:
+                return False
+
+            # We block on the earliest blocked step.
+            blocked_step = sorted(blocked_steps, key=lambda s: s.step_order)[0]
+            interaction_id = None
+            if isinstance(blocked_step.output_data, dict):
+                interaction_id = blocked_step.output_data.get("interaction_id")
+            if not interaction_id:
+                return False
+
+            interaction = await self.agency_service.uow.interaction_requests.get_by_id(str(interaction_id))
+            if interaction is None:
+                return False
+
+            if interaction.status == "pending":
+                return False
+
+            # Interaction is terminal: store resolution payload and complete the step.
+            blocked_step.output_data = {
+                **(blocked_step.output_data or {}),
+                "interaction_status": interaction.status,
+                "answer_text": getattr(interaction, "answer_text", None),
+                "answer_json": getattr(interaction, "answer_json", None),
+                "answered_at": getattr(interaction, "answered_at", None).isoformat() if getattr(interaction, "answered_at", None) else None,
+            }
+            blocked_step.status = StepExecutionStatus.COMPLETED
+            blocked_step.blocked_reason = None
+            blocked_step.completed_at = datetime.now(UTC)
+            blocked_step.duration_ms = blocked_step.duration_ms or 0
+            await self._save_step_execution(blocked_step)
+
+            execution.status = ExecutionStatus.RUNNING
+            execution.paused_at = None
+            execution.steps_completed += 1
+            if execution.steps_total:
+                execution.progress_percentage = execution.steps_completed / execution.steps_total * 100.0
+            await self._save_execution(execution)
+
+            self.logger.info(
+                f"[EXECUTOR] Resumed execution {execution.execution_id[:8]}... after interaction {str(interaction_id)[:8]}... resolved ({interaction.status})"
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"[EXECUTOR] Failed to resume blocked execution {execution.execution_id}: {e}")
+            return False
     
     async def _complete_execution(self, execution_id: str) -> None:
         """Mark execution as completed."""

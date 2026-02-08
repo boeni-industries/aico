@@ -11,6 +11,8 @@ import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime, UTC
 
+from sqlalchemy.exc import IntegrityError
+
 from google.protobuf.struct_pb2 import Struct
 
 from ..registry import (
@@ -120,40 +122,25 @@ class AskUserSkill(Skill):
             from aico.core.bus import MessageBusClient
 
             interaction_id = str(uuid.uuid4())
-            correlation_id = str(uuid.uuid4())
+            correlation_id = str(
+                context.get("correlation_id")
+                or context.get("correlationId")
+                or uuid.uuid4()
+            )
             now_dt = datetime.now(UTC)
 
             idempotency_key = f"ask_user:information_gap:{uuid.uuid5(uuid.NAMESPACE_URL, question).hex}"
 
             async with UnitOfWork(self._session_factory) as uow:
-                recent_requests = await uow.interaction_requests.list(
-                    filters={"user_id": user_id},
-                    limit=1000,
-                )
-
-                duplicate_found = False
-                for req in recent_requests:
-                    if (
-                        req.prompt == question
-                        and req.context_json
-                        and req.context_json.get("trigger_reason") == "information_gap"
-                        and req.created_at
-                        and (now_dt - req.created_at).total_seconds() < 86400
-                    ):
-                        duplicate_found = True
-                        break
-
-                if duplicate_found:
-                    logger.debug(
-                        f"💬 [ASK_USER] Duplicate question detected for user {user_id[:8]}, "
-                        f"skipping creation"
-                    )
+                existing = await uow.interaction_requests.get_by_idempotency_key(user_id, idempotency_key)
+                if existing is not None:
                     return SkillResult(
                         success=True,
                         output={
-                            "status": "skipped",
-                            "reason": "duplicate_question",
-                            "message": "Question already asked recently",
+                            "status": existing.status,
+                            "interaction_id": existing.interaction_id,
+                            "correlation_id": existing.correlation_id,
+                            "created_at": existing.created_at.isoformat() if existing.created_at else None,
                         },
                         metadata={"skill_id": self.skill_id},
                     )
@@ -183,25 +170,47 @@ class AskUserSkill(Skill):
                     created_at=now_dt,
                     updated_at=now_dt,
                 )
-                await uow.interaction_requests.create(interaction)
 
-                event = InteractionEvent(
-                    event_id=str(uuid.uuid4()),
-                    interaction_id=interaction_id,
-                    user_id=user_id,
-                    correlation_id=correlation_id,
-                    actor="system:agency_skill",
-                    event_type="created",
-                    from_status=None,
-                    to_status="pending",
-                    payload_json={"skill_id": self.skill_id},
-                    created_at=now_dt,
-                )
-                await uow.interaction_events.create(event)
-                await uow.commit()
+                try:
+                    await uow.interaction_requests.create(interaction)
+
+                    event = InteractionEvent(
+                        event_id=str(uuid.uuid4()),
+                        interaction_id=interaction_id,
+                        user_id=user_id,
+                        correlation_id=correlation_id,
+                        actor="system:agency_skill",
+                        event_type="created",
+                        from_status=None,
+                        to_status="pending",
+                        payload_json={"skill_id": self.skill_id},
+                        created_at=now_dt,
+                    )
+                    await uow.interaction_events.create(event)
+                    await uow.commit()
+                except IntegrityError:
+                    await uow.rollback()
+                    existing = await uow.interaction_requests.get_by_idempotency_key(user_id, idempotency_key)
+                    if existing is None:
+                        raise
+                    interaction = existing
+                    interaction_id = existing.interaction_id
+                    correlation_id = existing.correlation_id
+                    event = InteractionEvent(
+                        event_id=str(uuid.uuid4()),
+                        interaction_id=existing.interaction_id,
+                        user_id=existing.user_id,
+                        correlation_id=existing.correlation_id,
+                        actor="system:agency_skill",
+                        event_type="created",
+                        from_status=None,
+                        to_status=existing.status,
+                        payload_json={"skill_id": self.skill_id, "idempotent": True},
+                        created_at=now_dt,
+                    )
 
             try:
-                bus_client = MessageBusClient(client_id=f"ask_user_skill_{interaction_id[:8]}")
+                bus_client = MessageBusClient(client_id=f"ask_user_skill_{interaction.interaction_id[:8]}")
                 await bus_client.connect()
                 payload_struct = Struct()
                 payload_struct.update({"interaction": interaction.model_dump(mode="json"), "event": event.model_dump(mode="json")})

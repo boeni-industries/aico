@@ -65,7 +65,7 @@ def classify_category(path: str) -> str:
     path_lower = path.lower()
     
     # User-facing chat/conversation endpoints
-    if any(p in path_lower for p in ['/conversation/send', '/conversation/stream', '/conversation/chat', '/conversation/messages', '/conversation/proactive/']):
+    if any(p in path_lower for p in ['/conversation/send', '/conversation/stream', '/conversation/chat', '/conversation/messages']):
         return 'user_chat'
     
     # Admin/operations endpoints

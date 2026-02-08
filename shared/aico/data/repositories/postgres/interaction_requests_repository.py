@@ -90,9 +90,29 @@ class PostgresInteractionRequestsRepository(Repository[InteractionRequest]):
             if 'user_id' in filters:
                 conditions.append(interaction_requests.c.user_id == filters['user_id'])
             if 'status' in filters:
-                conditions.append(interaction_requests.c.status == filters['status'])
+                status_value = filters['status']
+                if isinstance(status_value, list):
+                    conditions.append(interaction_requests.c.status.in_(status_value))
+                else:
+                    conditions.append(interaction_requests.c.status == status_value)
+            if 'interaction_type' in filters:
+                interaction_type_value = filters['interaction_type']
+                if isinstance(interaction_type_value, list):
+                    conditions.append(interaction_requests.c.interaction_type.in_(interaction_type_value))
+                else:
+                    conditions.append(interaction_requests.c.interaction_type == interaction_type_value)
+            if 'category' in filters:
+                category_value = filters['category']
+                if isinstance(category_value, list):
+                    conditions.append(interaction_requests.c.category.in_(category_value))
+                else:
+                    conditions.append(interaction_requests.c.category == category_value)
             if 'correlation_id' in filters:
                 conditions.append(interaction_requests.c.correlation_id == filters['correlation_id'])
+            if 'created_after' in filters and filters['created_after'] is not None:
+                conditions.append(interaction_requests.c.created_at >= filters['created_after'])
+            if 'created_before' in filters and filters['created_before'] is not None:
+                conditions.append(interaction_requests.c.created_at <= filters['created_before'])
             if conditions:
                 stmt = stmt.where(and_(*conditions))
 
@@ -108,7 +128,27 @@ class PostgresInteractionRequestsRepository(Repository[InteractionRequest]):
             if 'user_id' in filters:
                 conditions.append(interaction_requests.c.user_id == filters['user_id'])
             if 'status' in filters:
-                conditions.append(interaction_requests.c.status == filters['status'])
+                status_value = filters['status']
+                if isinstance(status_value, list):
+                    conditions.append(interaction_requests.c.status.in_(status_value))
+                else:
+                    conditions.append(interaction_requests.c.status == status_value)
+            if 'interaction_type' in filters:
+                interaction_type_value = filters['interaction_type']
+                if isinstance(interaction_type_value, list):
+                    conditions.append(interaction_requests.c.interaction_type.in_(interaction_type_value))
+                else:
+                    conditions.append(interaction_requests.c.interaction_type == interaction_type_value)
+            if 'category' in filters:
+                category_value = filters['category']
+                if isinstance(category_value, list):
+                    conditions.append(interaction_requests.c.category.in_(category_value))
+                else:
+                    conditions.append(interaction_requests.c.category == category_value)
+            if 'created_after' in filters and filters['created_after'] is not None:
+                conditions.append(interaction_requests.c.created_at >= filters['created_after'])
+            if 'created_before' in filters and filters['created_before'] is not None:
+                conditions.append(interaction_requests.c.created_at <= filters['created_before'])
             if conditions:
                 stmt = stmt.where(and_(*conditions))
 
