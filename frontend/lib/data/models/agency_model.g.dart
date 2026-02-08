@@ -136,7 +136,7 @@ ValueProfileModel _$ValueProfileModelFromJson(Map<String, dynamic> json) =>
       profileId: json['profile_id'] as String,
       userId: json['user_id'] as String,
       curiosityIntensity: (json['curiosity_intensity'] as num).toDouble(),
-      proactiveBehaviorLevel: json['proactive_behavior_level'] as String,
+      proactiveBehaviorLevel: _stringFromJson(json['proactive_behavior_level']),
       sensitiveLifeAreas: (json['sensitive_life_areas'] as List<dynamic>)
           .map((e) => e as String)
           .toList(),

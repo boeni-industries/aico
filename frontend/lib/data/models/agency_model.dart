@@ -2,6 +2,11 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'agency_model.g.dart';
 
+String _stringFromJson(dynamic value) {
+  if (value is String) return value;
+  return '';
+}
+
 /// Agency state model matching backend API response
 @JsonSerializable()
 class AgencyStateModel {
@@ -178,7 +183,7 @@ class ValueProfileModel {
   @JsonKey(name: 'curiosity_intensity')
   final double curiosityIntensity;
   
-  @JsonKey(name: 'proactive_behavior_level')
+  @JsonKey(name: 'proactive_behavior_level', fromJson: _stringFromJson)
   final String proactiveBehaviorLevel;
   
   @JsonKey(name: 'sensitive_life_areas')

@@ -8,7 +8,9 @@ while maintaining JSON API compatibility.
 import json
 import os
 import asyncio
-from typing import Dict, Any, Optional, Callable
+import secrets
+import time as time_module
+from typing import Dict, Any, Optional, Callable, Tuple
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Send, Scope
@@ -89,6 +91,20 @@ class EncryptionMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+
+        path = scope.get("path", "")
+        trace_interactions = path.startswith("/api/v1/interactions/")
+        trace_start = time_module.perf_counter() if trace_interactions else 0.0
+        scope["_aico_trace_interactions"] = trace_interactions
+        scope["_aico_trace_start"] = trace_start
+        if trace_interactions:
+            self.logger.info(
+                "[ENCRYPTION_TRACE] request_start",
+                extra={
+                    "method": scope.get("method"),
+                    "path": path,
+                },
+            )
         
         # Skip encryption if disabled
         if not self.enabled:
@@ -114,7 +130,7 @@ class EncryptionMiddleware:
             return
 
         # Handle handshake endpoint directly for non-preflight requests
-        if path == self.handshake_path:
+        if request.url.path == "/api/v1/handshake":
             response = await self._handle_handshake(request)
             await response(scope, receive, send)
             return
@@ -129,10 +145,29 @@ class EncryptionMiddleware:
     
     async def _handle_encrypted_request(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Handle encrypted request by decrypting and forwarding"""
+        path = scope.get("path", "")
+        trace_interactions = bool(scope.get("_aico_trace_interactions", False))
+        trace_start = float(scope.get("_aico_trace_start", 0.0))
         try:
             # Read request body to check for encryption and client_id
             request = Request(scope, receive)
             body = await request.body()
+            # IMPORTANT:
+            # We consumed the ASGI receive stream by reading request.body(). If we later
+            # forward the request without replacing receive, downstream handlers may see
+            # an empty body. Always forward using a receive wrapper that replays `body`.
+            message_sent = False
+
+            async def replay_receive():
+                nonlocal message_sent
+                if not message_sent:
+                    message_sent = True
+                    return {
+                        "type": "http.request",
+                        "body": body,
+                        "more_body": False,
+                    }
+                return await receive()
             
             # Try to get client_id from request body first (for encrypted requests)
             client_id = None
@@ -168,6 +203,18 @@ class EncryptionMiddleware:
                 client_id = self._get_client_id(request)
                 channel = self.channels.get(client_id)
                 self.logger.debug(f"Using generated client_id: {client_id}")
+
+            if trace_interactions:
+                self.logger.info(
+                    "[ENCRYPTION_TRACE] body_read",
+                    extra={
+                        "method": scope.get("method"),
+                        "path": path,
+                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                        "has_channel": channel is not None,
+                        "body_len": len(body) if body else 0,
+                    },
+                )
             
             self.logger.debug(f"Available channels: {list(self.channels.keys())}")
             self.logger.debug(f"Client ID: {client_id}")
@@ -439,9 +486,13 @@ class EncryptionMiddleware:
             if body:
                 try:
                     request_data = json.loads(body)
-                    if request_data.get("encrypted") and "payload" in request_data:
+                    is_legacy_encrypted = request_data.get("encrypted") and "payload" in request_data
+                    is_encrypted_payload = "encrypted_payload" in request_data
+                    if is_legacy_encrypted or is_encrypted_payload:
                         # Decrypt the payload
-                        encrypted_payload = request_data["payload"]
+                        encrypted_payload = (
+                            request_data["payload"] if is_legacy_encrypted else request_data["encrypted_payload"]
+                        )
                         
                         try:
                             # Validate session before attempting decryption
@@ -500,8 +551,27 @@ class EncryptionMiddleware:
                                     # delegate to original receive
                                     return await receive()
                             
+                            if trace_interactions:
+                                self.logger.info(
+                                    "[ENCRYPTION_TRACE] decrypted_forward",
+                                    extra={
+                                        "method": scope.get("method"),
+                                        "path": path,
+                                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                                    },
+                                )
+
                             # Forward the request with decrypted body and encrypted response
                             await self.app(new_scope, new_receive, encrypt_send)
+                            if trace_interactions:
+                                self.logger.info(
+                                    "[ENCRYPTION_TRACE] downstream_returned",
+                                    extra={
+                                        "method": scope.get("method"),
+                                        "path": path,
+                                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                                    },
+                                )
                             return
                             
                         except DecryptionError as e:
@@ -527,23 +597,70 @@ class EncryptionMiddleware:
                     # Not JSON, pass through
                     pass
             
+            if trace_interactions:
+                self.logger.info(
+                    "[ENCRYPTION_TRACE] passthrough_forward",
+                    extra={
+                        "method": scope.get("method"),
+                        "path": path,
+                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                        "has_channel": channel is not None,
+                    },
+                )
+
             # Pass through unencrypted requests but encrypt responses for valid sessions
-            await self.app(scope, receive, encrypt_send)
+            await self.app(scope, replay_receive, encrypt_send)
+
+            if trace_interactions:
+                self.logger.info(
+                    "[ENCRYPTION_TRACE] downstream_returned",
+                    extra={
+                        "method": scope.get("method"),
+                        "path": path,
+                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                    },
+                )
             
         except (EncryptionError, DecryptionError) as e:
-            self.logger.error(f"Encryption middleware error: {e}")
+            self.logger.error(
+                f"Encryption middleware error: {e}",
+                extra={
+                    "method": scope.get("method"),
+                    "path": path,
+                    "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000) if trace_interactions else None,
+                },
+            )
             response = JSONResponse(
                 status_code=400,
                 content={"error": "Encryption error", "detail": str(e)}
             )
             await response(scope, receive, send)
         except Exception as e:
-            self.logger.error(f"Middleware error: {e}")
+            # Full trace is required here: this is the main source of "silent" failures
+            # that prevent requests from reaching the router.
+            self.logger.exception(
+                "Encryption middleware unhandled exception",
+                extra={
+                    "method": scope.get("method"),
+                    "path": path,
+                    "elapsed_ms": int((time.perf_counter() - trace_start) * 1000) if trace_interactions else None,
+                },
+            )
             response = JSONResponse(
                 status_code=500,
                 content={"error": "Internal server error"}
             )
             await response(scope, receive, send)
+        finally:
+            if trace_interactions:
+                self.logger.info(
+                    "[ENCRYPTION_TRACE] request_end",
+                    extra={
+                        "method": scope.get("method"),
+                        "path": path,
+                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                    },
+                )
     
     def _should_skip_encryption(self, request: Request) -> bool:
         """Check if request should skip encryption"""

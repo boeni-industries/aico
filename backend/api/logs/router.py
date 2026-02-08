@@ -115,7 +115,10 @@ async def submit_log_batch(
                 raise LogValidationError(f"Invalid compressed log data: {e}")
         else:
             # Use regular logs field
-            log_entries = log_batch.logs
+            log_entries = log_batch.logs or []
+
+        if not log_entries:
+            raise LogValidationError("No log entries provided")
         
         if len(log_entries) > 1000:
             raise LogBatchTooLargeError()
@@ -160,7 +163,7 @@ async def submit_log_batch(
             errors=errors if errors else None
         )
         
-    except LogBatchTooLargeError:
+    except LogSubmissionError:
         raise
     except Exception as e:
         logger.error(f"Failed to process log batch: {e}")

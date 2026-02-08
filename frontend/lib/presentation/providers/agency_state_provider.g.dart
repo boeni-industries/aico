@@ -45,7 +45,7 @@ final class AgencyBadgeStateNotifierProvider
 }
 
 String _$agencyBadgeStateNotifierHash() =>
-    r'2ea5596b01ac157f4e6825dfc8947239f8f3cb9b';
+    r'9574176163d8b4374da419d89f2da20907ae6768';
 
 /// Provider for agency badge state
 

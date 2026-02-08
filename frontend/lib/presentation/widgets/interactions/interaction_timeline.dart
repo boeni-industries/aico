@@ -355,10 +355,14 @@ class _InteractionTimelineState extends ConsumerState<InteractionTimeline> {
     );
     
     if (result != null && result.isNotEmpty) {
-      await ref.read(interactionProvider.notifier).answer(
-        interaction.interactionId,
-        text: result,
-      );
+      try {
+        await ref.read(interactionProvider.notifier).answer(
+          interaction.interactionId,
+          text: result,
+        );
+      } catch (e) {
+        debugPrint('[InteractionTimeline] Error answering: $e');
+      }
     }
   }
 

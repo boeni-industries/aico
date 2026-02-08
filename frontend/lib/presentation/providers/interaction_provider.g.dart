@@ -44,7 +44,7 @@ final class InteractionProvider
   }
 }
 
-String _$interactionHash() => r'782622d48cbb0621393fdf5b3c8d23f263854671';
+String _$interactionHash() => r'e90aadb0b29d1ef28a7ce698352cd59284d54088';
 
 /// Main interaction state provider
 
