@@ -68,7 +68,7 @@ dependencies:
   package_info_plus: ^9.0.0
   
   # JSON serialization
-  json_annotation: ^4.8.1
+  json_annotation: ^4.9.0
   
   # Protocol Buffers (Dart max 5.0.0, backend 6.32.0 - wire format compatible)
   protobuf: ^6.0.0
