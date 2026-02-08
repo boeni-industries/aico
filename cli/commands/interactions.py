@@ -11,6 +11,7 @@ import websockets
 from rich.console import Console
 from rich.table import Table
 from rich import box
+from rich.text import Text
 from typing import Optional, Any
 from datetime import datetime
 
@@ -35,6 +36,7 @@ def interactions_callback(ctx: typer.Context, help: bool = typer.Option(False, "
             ("simulate", "Simulate an interaction request for testing"),
             ("reply", "Reply to an interaction (answer/approve/reject/cancel)"),
             ("list", "List interaction requests"),
+            ("ls", "Alias for list (bash-style)"),
             ("get", "Get interaction request details"),
         ]
         
@@ -43,6 +45,7 @@ def interactions_callback(ctx: typer.Context, help: bool = typer.Option(False, "
             "aico interactions reply <id> --answer 'My answer'",
             "aico interactions reply <id> --approve",
             "aico interactions list --user <uuid>",
+            "aico interactions ls --user <uuid>",
         ]
         
         format_subcommand_help(
@@ -290,6 +293,7 @@ def simulate_interaction(
 
 
 @app.command("list")
+@app.command("ls")
 @sensitive
 def list_interactions(
     user_id: Optional[str] = typer.Option(None, "--user", "-u", help="Filter by user UUID"),
@@ -327,38 +331,39 @@ def list_interactions(
         if format_output == "json":
             console.print(json.dumps(response, indent=2))
         else:
-            table = Table(
-                title=f"Interaction Requests ({len(items)} found)",
-                box=box.SIMPLE_HEAD,
-                title_justify="left",
-                header_style="bold yellow",
-            )
-            
-            table.add_column("ID", style="cyan", no_wrap=True, max_width=12)
-            table.add_column("User", style="magenta", no_wrap=True, max_width=12)
-            table.add_column("Type", style="green")
-            table.add_column("Status", style="bright_blue")
-            table.add_column("Requirement", style="yellow")
-            table.add_column("Severity", style="red")
-            table.add_column("Prompt", style="white", max_width=40)
-            table.add_column("Created", style="dim")
-            
-            for item in items:
-                table.add_row(
-                    item.get("interaction_id", "")[:12],
-                    item.get("user_id", "")[:12],
-                    item.get("interaction_type", ""),
-                    item.get("status", ""),
-                    item.get("requirement", ""),
-                    item.get("severity", ""),
-                    item.get("prompt", "")[:40],
-                    item.get("created_at", "")[:19] if item.get("created_at") else "",
-                )
-            
             console.print()
-            console.print(table)
+            console.print(f"[bold yellow]Interaction Requests ({len(items)} found)[/bold yellow]")
             console.print()
-    
+
+            for idx, item in enumerate(items, start=1):
+                interaction_id = item.get("interaction_id", "")
+                user_id_value = item.get("user_id", "")
+                created_at = item.get("created_at", "") if item.get("created_at") else ""
+
+                header = f"[bold]{idx}.[/bold] [cyan]{interaction_id}[/cyan]"
+                console.print(header)
+
+                def _kv(label: str, value: str) -> Text:
+                    t = Text("  ")
+                    t.append(f"{label}: ", style="dim")
+                    t.append(value or "")
+                    return t
+
+                lines = [
+                    _kv("User", user_id_value),
+                    _kv("Type", item.get("interaction_type", "")),
+                    _kv("Status", item.get("status", "")),
+                    _kv("Requirement", item.get("requirement", "")),
+                    _kv("Severity", item.get("severity", "")),
+                    _kv("Category", item.get("category", "")),
+                    _kv("Prompt", item.get("prompt", "")),
+                    _kv("Created", created_at),
+                ]
+
+                for line in lines:
+                    console.print(line, soft_wrap=True)
+                console.print()
+
     except Exception as e:
         console.print(f"[red]✗ Failed to list interactions: {e}[/red]")
         raise typer.Exit(1)
