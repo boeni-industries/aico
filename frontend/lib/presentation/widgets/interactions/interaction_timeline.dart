@@ -183,25 +183,25 @@ class _InteractionTimelineState extends ConsumerState<InteractionTimeline> {
       ),
       child: Row(
         children: [
-          Expanded(child: _buildFilterTab('pending', 'P', 'Pending', state.pending.length, isDark)),
+          Expanded(child: _buildFilterTab('pending', Icons.schedule, 'Pending', state.pending.length, isDark)),
           const SizedBox(width: 4),
-          Expanded(child: _buildFilterTab('deferred', 'D', 'Deferred', state.deferred.length, isDark)),
+          Expanded(child: _buildFilterTab('deferred', Icons.snooze, 'Deferred', state.deferred.length, isDark)),
           const SizedBox(width: 4),
-          Expanded(child: _buildFilterTab('all', 'All', 'All', state.interactions.length, isDark)),
+          Expanded(child: _buildFilterTab('all', Icons.grid_view_rounded, 'All', state.interactions.length, isDark)),
           const SizedBox(width: 4),
-          Expanded(child: _buildFilterTab('answered', 'A', 'Answered', state.answered.length, isDark)),
+          Expanded(child: _buildFilterTab('answered', Icons.check_circle_outline, 'Answered', state.answered.length, isDark)),
         ],
       ),
     );
   }
 
-  Widget _buildFilterTab(String value, String shortLabel, String fullLabel, int count, bool isDark) {
+  Widget _buildFilterTab(String value, IconData icon, String label, int count, bool isDark) {
     final theme = Theme.of(context);
     final isSelected = _filter == value;
     final purpleAccent = isDark ? const Color(0xFFB9A7E6) : const Color(0xFFB8A1EA);
 
     return Tooltip(
-      message: fullLabel,
+      message: label,
       child: GestureDetector(
         onTap: () => setState(() => _filter = value),
         child: Container(
@@ -219,15 +219,12 @@ class _InteractionTimelineState extends ConsumerState<InteractionTimeline> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                shortLabel,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  color: isSelected
-                      ? purpleAccent
-                      : theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
+              Icon(
+                icon,
+                size: 20,
+                color: isSelected
+                    ? purpleAccent
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 4),
               Container(
