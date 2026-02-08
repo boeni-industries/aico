@@ -64,7 +64,7 @@ class SchedulerService:
     async def get_active_tasks(self) -> List[Any]:
         """Get all active tasks."""
         try:
-            return await self.uow.scheduler_tasks.list(filters={"is_active": True})
+            return await self.uow.scheduler_tasks.list(filters={"enabled": True})
         except Exception as e:
             logger.error(f"[SCHEDULER_SERVICE] Failed to get active tasks: {e}")
             raise

@@ -1010,7 +1010,9 @@ class TaskScheduler(BaseService):
             
             task_class = self.task_registry.get_task_class(task_id)
             if not task_class:
-                self.logger.error(f"Task class not found for {task_id}")
+                if is_scheduled and task_config.get('enabled', True):
+                    await self._disable_unknown_task(task_id)
+                self.logger.warning(f"Task class not found for {task_id}")
                 return
 
             # For scheduled tasks, advance next_run immediately to prevent re-enqueueing on every tick
@@ -1069,6 +1071,22 @@ class TaskScheduler(BaseService):
                 
         except Exception as e:
             self.logger.error(f"Error enqueuing task {task_id}: {e}")
+
+    async def _disable_unknown_task(self, task_id: str) -> None:
+        try:
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                await scheduler_service.disable_task(task_id)
+
+            if task_id in self.next_run_times:
+                del self.next_run_times[task_id]
+        except Exception as e:
+            self.logger.error(f"Failed to disable unknown task {task_id}: {e}")
     
     async def _execute_from_priority_queue(self):
         """Execute tasks from priority queue based on fair scheduling"""
@@ -1090,7 +1108,8 @@ class TaskScheduler(BaseService):
             # Get task class
             task_class = self.task_registry.get_task_class(prioritized_task.task_id)
             if not task_class:
-                self.logger.error(f"Task class not found for {prioritized_task.task_id}")
+                await self._disable_unknown_task(prioritized_task.task_id)
+                self.logger.warning(f"Task class not found for {prioritized_task.task_id}")
                 continue
             
             # Execute task asynchronously with retry support
