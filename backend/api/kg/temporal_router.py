@@ -109,7 +109,7 @@ async def get_node_history(
                     updated_at=node_ver.updated_at,
                     valid_from=node_ver.valid_from,
                     valid_until=node_ver.valid_until,
-                    is_current=node_ver.is_current,
+                    is_current=bool(node_ver.is_current),
                     canonical_id=node_ver.canonical_id,
                     aliases=json.loads(node_ver.aliases_json) if node_ver.aliases_json else [],
                     reason=node_ver.reason
@@ -374,7 +374,7 @@ async def get_temporal_graph_state(
                 updated_at=node.updated_at,
                 valid_from=node.valid_from,
                 valid_until=node.valid_until,
-                is_current=node.is_current,
+                is_current=bool(node.is_current),
                 canonical_id=node.canonical_id,
                 aliases=json.loads(node.aliases_json) if node.aliases_json else [],
                 reason=node.reason
@@ -410,7 +410,7 @@ async def get_temporal_graph_state(
                     "updated_at": edge.updated_at,
                     "valid_from": edge.valid_from,
                     "valid_until": edge.valid_until,
-                    "is_current": edge.is_current
+                    "is_current": bool(edge.is_current)
                 }
                 edges.append(edge_data)
             

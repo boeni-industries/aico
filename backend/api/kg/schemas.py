@@ -115,7 +115,7 @@ class NodeVersion(BaseModel):
     updated_at: str = Field(..., description="Last update timestamp")
     valid_from: Optional[str] = Field(None, description="Start of validity period")
     valid_until: Optional[str] = Field(None, description="End of validity period (null if current)")
-    is_current: int = Field(..., description="1 if current version, 0 if historical")
+    is_current: bool = Field(..., description="True if current version, False if historical")
     canonical_id: Optional[str] = Field(None, description="Canonical ID linking versions")
     aliases: List[str] = Field(default_factory=list, description="Alternative names")
     reason: Optional[str] = Field(None, description="Reason for this version change")

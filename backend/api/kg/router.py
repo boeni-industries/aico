@@ -421,7 +421,7 @@ async def list_nodes(
                 "updated_at": node.updated_at.isoformat() if hasattr(node.updated_at, 'isoformat') else node.updated_at,
                 "valid_from": node.valid_from.isoformat() if hasattr(node.valid_from, 'isoformat') else node.valid_from,
                 "valid_until": node.valid_until.isoformat() if hasattr(node.valid_until, 'isoformat') else node.valid_until,
-                "is_current": node.is_current,
+                "is_current": bool(node.is_current),
                 "canonical_id": node.canonical_id,
                 "aliases": json.loads(node.aliases_json) if isinstance(node.aliases_json, str) else (node.aliases_json or [])
             })
@@ -489,7 +489,7 @@ async def list_edges(
                 "updated_at": edge.updated_at.isoformat() if hasattr(edge.updated_at, 'isoformat') else edge.updated_at,
                 "valid_from": edge.valid_from.isoformat() if hasattr(edge.valid_from, 'isoformat') else edge.valid_from,
                 "valid_until": edge.valid_until.isoformat() if hasattr(edge.valid_until, 'isoformat') else edge.valid_until,
-                "is_current": edge.is_current
+                "is_current": bool(edge.is_current)
             })
         
         # Edges fetched
