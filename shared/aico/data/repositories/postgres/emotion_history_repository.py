@@ -29,7 +29,7 @@ class PostgresEmotionHistoryRepository(Repository[EmotionHistory]):
             valence=entity.valence,
             arousal=entity.arousal,
             intensity=entity.intensity,
-            created_at=entity.created_at or datetime.now(UTC).isoformat(),
+            created_at=entity.created_at or datetime.now(UTC),
         ).returning(emotion_history.c.id)
         
         result = await self.session.execute(stmt)

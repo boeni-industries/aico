@@ -83,7 +83,7 @@ class PostgresAgencyFollowupsRepository(Repository[AgencyFollowup]):
                 delivered_at=entity.delivered_at,
                 user_response=entity.user_response,
                 response_sentiment=entity.response_sentiment,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)
@@ -197,8 +197,8 @@ class PostgresAgencyFollowupsRepository(Repository[AgencyFollowup]):
             .where(agency_followups.c.followup_id == followup_id)
             .values(
                 status='delivered',
-                delivered_at=datetime.now(UTC).isoformat(),
-                updated_at=datetime.now(UTC).isoformat(),
+                delivered_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
         )
         result = await self.session.execute(stmt)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -17,8 +18,8 @@ class AgencySkillGap(BaseModel):
     priority_score: float = 0.0
     suggested_skill_spec: Optional[str] = None
     notes: Optional[str] = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class AgencySkillExecution(BaseModel):
@@ -31,11 +32,11 @@ class AgencySkillExecution(BaseModel):
     outcome: str
     error_message: Optional[str] = None
     context_json: Optional[dict] = None
-    created_at: str
+    created_at: datetime
 
 
 class AgencySkillLearningData(BaseModel):
     skill_id: str
     dimension_vector: str
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

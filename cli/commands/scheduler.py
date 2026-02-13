@@ -367,13 +367,12 @@ def create_task(
                 raise typer.Exit(1)
             
             # Create task
-            now = datetime.now().isoformat()
             config_json = json.dumps(config) if config else None
             
             cursor.execute("""
                 INSERT INTO aico_core.scheduler_tasks (task_id, task_class, schedule, config, enabled, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (task_id, task_class, schedule, config_json, enabled, now, now))
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """, (task_id, task_class, schedule, config_json, enabled))
             
             db.commit()
             
@@ -441,8 +440,7 @@ def update_task(
                 params.append(enabled)
             
             # Add updated timestamp
-            updates.append("updated_at = %s")
-            params.append(datetime.now().isoformat())
+            updates.append("updated_at = CURRENT_TIMESTAMP")
             params.append(task_id)
             
             # Execute update
@@ -465,8 +463,8 @@ def enable_task(task_id: str = typer.Argument(..., help="Task ID to enable")):
         with _get_database_connection() as db:
             cursor = db.cursor()
             cursor.execute(
-                "UPDATE aico_core.scheduler_tasks SET enabled = TRUE, updated_at = %s WHERE task_id = %s",
-                (datetime.now().isoformat(), task_id)
+                "UPDATE aico_core.scheduler_tasks SET enabled = TRUE, updated_at = CURRENT_TIMESTAMP WHERE task_id = %s",
+                (task_id,)
             )
             
             if cursor.rowcount == 0:
@@ -489,8 +487,8 @@ def disable_task(task_id: str = typer.Argument(..., help="Task ID to disable")):
         with _get_database_connection() as db:
             cursor = db.cursor()
             cursor.execute(
-                "UPDATE aico_core.scheduler_tasks SET enabled = FALSE, updated_at = %s WHERE task_id = %s",
-                (datetime.now().isoformat(), task_id)
+                "UPDATE aico_core.scheduler_tasks SET enabled = FALSE, updated_at = CURRENT_TIMESTAMP WHERE task_id = %s",
+                (task_id,)
             )
             
             if cursor.rowcount == 0:

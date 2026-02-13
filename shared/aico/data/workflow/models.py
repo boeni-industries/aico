@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -14,14 +15,14 @@ class WorkflowExecution(BaseModel):
     current_stage: Optional[str] = None
     total_stages: int = 0
 
-    started_at: str
-    completed_at: Optional[str] = None
+    started_at: datetime
+    completed_at: Optional[datetime] = None
 
     metadata: Optional[str] = None
     error_message: Optional[str] = None
 
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class WorkflowStage(BaseModel):
@@ -32,8 +33,8 @@ class WorkflowStage(BaseModel):
 
     status: str
 
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
     input_data: Optional[str] = None
     output_data: Optional[str] = None
@@ -41,4 +42,4 @@ class WorkflowStage(BaseModel):
 
     retry_count: int = 0
 
-    created_at: str
+    created_at: datetime

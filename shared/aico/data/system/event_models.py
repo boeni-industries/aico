@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 class SystemEvent(BaseModel):
     id: int = 0
-    timestamp: str
+    timestamp: datetime
     topic: str
     source: str
     message_type: str

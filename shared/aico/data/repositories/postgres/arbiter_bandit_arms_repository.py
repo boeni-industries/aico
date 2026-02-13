@@ -72,7 +72,7 @@ class PostgresArbiterBanditArmsRepository(Repository[ArbiterBanditArm]):
                 failure_count=entity.failure_count,
                 last_pulled=entity.last_pulled,
                 active=entity.active,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)

@@ -65,9 +65,9 @@ async def get_node_history(
         
         # First, get the canonical_id for this node
         logger.debug(f"[TEMPORAL] Querying canonical_id for node {node_id}")
-        node = await uow.kg_nodes.get(filters={'id': node_id, 'user_id': user_id})
+        node = await uow.kg_nodes.get_by_id(node_id)
         
-        if not node:
+        if not node or node.user_id != user_id:
             logger.warning(f"[TEMPORAL] Node {node_id} not found for user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

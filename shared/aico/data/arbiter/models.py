@@ -14,10 +14,10 @@ class ArbiterBanditArm(BaseModel):
     total_reward: float = 0.0
     success_count: int = 0
     failure_count: int = 0
-    last_pulled: Optional[str] = None
+    last_pulled: Optional[datetime] = None
     active: bool = True
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
     @field_validator("last_pulled", "created_at", "updated_at", mode="before")
     @classmethod
@@ -42,8 +42,8 @@ class ArbiterABTest(BaseModel):
     confidence_score: Optional[float] = None
     notes: Optional[str] = None
 
-    created_at: str
-    updated_at: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
     @field_validator("start_date", "end_date", "created_at", "updated_at", mode="before")
     @classmethod

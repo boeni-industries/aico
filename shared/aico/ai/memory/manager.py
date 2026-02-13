@@ -283,15 +283,6 @@ class MemoryManager(BaseAIProcessor):
         try:
             logger.info("🕸️ [KG] Initializing knowledge graph components...")
             
-            # Get database connection from working store (reuse existing connection)
-            if not self._working_store:
-                logger.warning("🕸️ [KG] Working store not available, skipping KG initialization")
-                return
-            
-            # Get encrypted database connection
-            from aico.core.paths import AICOPaths
-            from aico.security import AICOKeyManager
-            
             # Use UoW factory for PostgreSQL access
             if not self._uow_factory:
                 logger.warning("🕸️ [KG] UoW factory not available, KG initialization skipped")

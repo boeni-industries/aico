@@ -73,7 +73,7 @@ class PostgresArbiterABTestsRepository(Repository[ArbiterABTest]):
                 winner_arm_id=entity.winner_arm_id,
                 confidence_score=entity.confidence_score,
                 notes=entity.notes,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)

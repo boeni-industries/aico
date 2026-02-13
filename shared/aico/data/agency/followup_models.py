@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -14,9 +15,9 @@ class AgencyFollowup(BaseModel):
 
     followup_type: str
     content: str
-    scheduled_at: str
+    scheduled_at: datetime
 
-    delivered_at: Optional[str] = None
+    delivered_at: Optional[datetime] = None
     user_response: Optional[str] = None
     response_sentiment: Optional[float] = None
 
@@ -27,5 +28,5 @@ class AgencyFollowup(BaseModel):
     relationship_context: Optional[str] = None
     values_alignment: Optional[float] = None
 
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

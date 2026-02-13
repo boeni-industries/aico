@@ -17,11 +17,11 @@ class ConsentUserConsent(BaseModel):
     expires_at: Optional[str] = None
     inherited_from: Optional[str] = None
 
-    granted_at: str
-    revoked_at: Optional[str] = None
+    granted_at: datetime
+    revoked_at: Optional[datetime] = None
 
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class ConsentRecord(BaseModel):
@@ -42,4 +42,4 @@ class ConsentAuditLog(BaseModel):
     action: str
     reason: Optional[str] = None
     metadata: Optional[str] = None
-    created_at: str
+    created_at: datetime

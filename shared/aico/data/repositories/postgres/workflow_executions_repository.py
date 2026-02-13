@@ -73,7 +73,7 @@ class PostgresWorkflowExecutionsRepository(Repository[WorkflowExecution]):
                 completed_at=entity.completed_at,
                 current_stage=entity.current_stage,
                 error_message=entity.error_message,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)

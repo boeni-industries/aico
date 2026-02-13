@@ -168,7 +168,7 @@ class PostgresUserFeedbackRequestsRepository(Repository[UserFeedbackRequest]):
             .values(
                 response=response,
                 rating=rating,
-                responded_at=datetime.now(UTC).isoformat(),
+                responded_at=datetime.now(UTC),
             )
         )
         result = await self.session.execute(stmt)

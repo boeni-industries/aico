@@ -54,7 +54,6 @@ class GoalExpirationTask(BaseTask):
             
             # Calculate expiration threshold
             threshold = datetime.now(UTC) - timedelta(days=expiration_days)
-            threshold_str = threshold.isoformat()
             
             # Find expired goals via UoW - filter by ORIGIN not goal_type to ensure we never expire user goals
             from aico.data.postgres.connection import get_session_factory

@@ -119,8 +119,8 @@ class PostgresPolicyRuleRepository:
             scope=scope,
             version=1,
             active=True,
-            created_at=now.isoformat(),
-            updated_at=now.isoformat()
+            created_at=now,
+            updated_at=now
         )
         
         await self.session.execute(stmt)
@@ -165,7 +165,7 @@ class PostgresPolicyRuleRepository:
         Returns:
             True if updated, False if not found
         """
-        values = {"updated_at": datetime.now(UTC).isoformat()}
+        values = {"updated_at": datetime.now(UTC)}
         
         if conditions is not None:
             values["conditions"] = json.dumps(conditions)

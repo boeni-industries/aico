@@ -12,7 +12,7 @@ class AgencyGoalDependency(BaseModel):
     prerequisite_goal_id: str
     dependency_type: str = "hard"
     active: bool = True
-    created_at: str
+    created_at: datetime
 
 
 class AgencyGoalOutcome(BaseModel):
@@ -26,7 +26,7 @@ class AgencyGoalOutcome(BaseModel):
     completion_time_minutes: Optional[int] = None
     user_satisfaction: Optional[float] = None
     metadata_json: Optional[Dict[str, Any]] = None
-    created_at: str
+    created_at: datetime
 
 
 class AgencyGoalSkillExecution(BaseModel):
@@ -35,7 +35,7 @@ class AgencyGoalSkillExecution(BaseModel):
     skill_id: str
     execution_id: str
     execution_order: Optional[int] = None
-    created_at: str
+    created_at: datetime
 
 
 class AgencyIntentionSet(BaseModel):

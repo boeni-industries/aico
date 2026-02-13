@@ -71,7 +71,7 @@ class PostgresConsentUserConsentsRepository(Repository[ConsentUserConsent]):
             .values(
                 granted=entity.granted,
                 revoked_at=entity.revoked_at,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)

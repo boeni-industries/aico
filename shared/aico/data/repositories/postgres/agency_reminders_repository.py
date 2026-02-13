@@ -83,7 +83,7 @@ class PostgresAgencyRemindersRepository(Repository[AgencyReminder]):
                 delivered_at=entity.delivered_at,
                 snoozed_until=entity.snoozed_until,
                 snooze_count=entity.snooze_count,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)
@@ -201,7 +201,7 @@ class PostgresAgencyRemindersRepository(Repository[AgencyReminder]):
                 status='snoozed',
                 snoozed_until=snoozed_until,
                 snooze_count=agency_reminders.c.snooze_count + 1,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         result = await self.session.execute(stmt)
@@ -214,8 +214,8 @@ class PostgresAgencyRemindersRepository(Repository[AgencyReminder]):
             .where(agency_reminders.c.reminder_id == reminder_id)
             .values(
                 status='delivered',
-                delivered_at=datetime.now(UTC).isoformat(),
-                updated_at=datetime.now(UTC).isoformat(),
+                delivered_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
         )
         result = await self.session.execute(stmt)

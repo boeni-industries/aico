@@ -91,7 +91,7 @@ class TrajectoryCleanupTask(BaseTask):
                 # Get trajectories to archive
                 old_trajectories = await uow.ams_trajectories.list(
                     filters={
-                        'timestamp__lt': archive_cutoff.isoformat(),
+                        'timestamp__lt': archive_cutoff,
                         'archived': False
                     },
                     limit=100000
@@ -123,7 +123,7 @@ class TrajectoryCleanupTask(BaseTask):
             async with UnitOfWork(session_factory) as uow:
                 old_archived = await uow.ams_trajectories.list(
                     filters={
-                        'timestamp__lt': delete_cutoff.isoformat(),
+                        'timestamp__lt': delete_cutoff,
                         'archived': True
                     },
                     limit=100000

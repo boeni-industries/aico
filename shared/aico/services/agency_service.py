@@ -683,7 +683,7 @@ class AgencyService:
             if request:
                 request.response = response
                 request.rating = rating
-                request.responded_at = datetime.now(UTC).isoformat()
+                request.responded_at = datetime.now(UTC)
                 await self.uow.user_feedback_requests.update(request)
                 await self.uow.commit()
                 logger.info(f"[AGENCY_SERVICE] Recorded feedback response: {request_id}")
@@ -726,7 +726,7 @@ class AgencyService:
     async def get_user_satisfaction_trend(self, user_id: str, days: int = 30) -> List[Dict[str, Any]]:
         """Get user satisfaction trend over time."""
         try:
-            from_iso = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            from_iso = datetime.now(UTC) - timedelta(days=days)
             return await self.uow.user_feedback_requests.get_satisfaction_trend(user_id, from_iso)
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get user satisfaction trend: {e}")

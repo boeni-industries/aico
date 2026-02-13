@@ -11,7 +11,7 @@ class AgencyExecutionSnapshot(BaseModel):
     execution_id: str
     snapshot_type: str
     state_data: str
-    created_at: str
+    created_at: datetime
 
 
 class AgencyPlanExecution(BaseModel):
@@ -21,10 +21,10 @@ class AgencyPlanExecution(BaseModel):
     user_id: str
     status: str
 
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    paused_at: Optional[str] = None
-    cancelled_at: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    paused_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
 
     current_step_id: Optional[str] = None
 
@@ -37,8 +37,8 @@ class AgencyPlanExecution(BaseModel):
     cancellation_reason: Optional[str] = None
     retry_count: int = 0
 
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class AgencyStepExecution(BaseModel):
@@ -48,8 +48,8 @@ class AgencyStepExecution(BaseModel):
     step_order: int
     status: str
 
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     duration_ms: Optional[int] = None
 
     skill_id: Optional[str] = None
@@ -62,5 +62,5 @@ class AgencyStepExecution(BaseModel):
     retry_count: int = 0
     blocked_reason: Optional[str] = None
 
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

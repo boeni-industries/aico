@@ -215,7 +215,7 @@ class AgencyReflectionTask(BaseTask):
             async with UnitOfWork(session_factory) as uow:
                 # Get recent goals
                 recent_goals = await uow.goals.list(
-                    filters={"created_at__gte": cutoff_date.isoformat()},
+                    filters={"created_at__gte": cutoff_date},
                     limit=1000,
                 )
                 # Get unique user IDs from recent goals

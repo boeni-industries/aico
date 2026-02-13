@@ -81,7 +81,7 @@ class PostgresUserProactivePreferencesRepository(Repository[UserProactivePrefere
                 min_hours_between_reminders=entity.min_hours_between_reminders,
                 cluster_reminders=entity.cluster_reminders,
                 auto_snooze_duration_minutes=entity.auto_snooze_duration_minutes,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -23,4 +24,4 @@ class UserProactivePreferences(BaseModel):
     cluster_reminders: int = 1
     auto_snooze_duration_minutes: int = 60
 
-    updated_at: str
+    updated_at: datetime

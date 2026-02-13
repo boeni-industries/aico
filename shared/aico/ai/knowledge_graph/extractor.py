@@ -1141,7 +1141,7 @@ class MultiPassExtractor:
         self.max_gleanings = max_gleanings
         
         # Initialize extraction strategies
-        self.entity_extractor = GLiNEREntityExtractor(modelservice_client, config)
+        self.entity_extractor = GLiNEREntityExtractor(modelservice_client)
         self.relation_extractor = LLMRelationExtractor(
             modelservice_client, 
             config,

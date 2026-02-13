@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -18,6 +19,6 @@ class UserFeedbackRequest(BaseModel):
 
     response: Optional[str] = None
     rating: Optional[float] = None
-    responded_at: Optional[str] = None
+    responded_at: Optional[datetime] = None
 
-    created_at: str
+    created_at: datetime

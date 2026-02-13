@@ -36,7 +36,7 @@ class PostgresEmotionStateRepository(Repository[EmotionState]):
             engagement=entity.engagement,
             closeness=entity.closeness,
             care_focus=entity.care_focus,
-            updated_at=entity.updated_at or datetime.now(UTC).isoformat(),
+            updated_at=entity.updated_at or datetime.now(UTC),
         )
         await self.session.execute(stmt)
         return entity
@@ -84,7 +84,7 @@ class PostgresEmotionStateRepository(Repository[EmotionState]):
                 engagement=entity.engagement,
                 closeness=entity.closeness,
                 care_focus=entity.care_focus,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -19,7 +20,7 @@ class SystemEventMetric(BaseModel):
     value: float
     count: int = 1
     metadata: Optional[str] = None
-    created_at: str
+    created_at: datetime
 
 
 class SystemEventReplaySession(BaseModel):
@@ -35,9 +36,9 @@ class SystemEventReplaySession(BaseModel):
     replay_speed: float = 1.0
 
     status: str
-    started_at: str
+    started_at: datetime
 
     events_replayed: int = 0
-    completed_at: Optional[str] = None
+    completed_at: Optional[datetime] = None
 
-    created_at: str
+    created_at: datetime

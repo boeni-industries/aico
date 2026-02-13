@@ -180,7 +180,8 @@ class GraphFusion:
             
             # Update node
             existing_node.properties = merged_properties
-            existing_node.updated_at = datetime.now(timezone.utc).isoformat()
+            existing_node.confidence = max(existing_node.confidence, new_node.confidence)
+            existing_node.updated_at = datetime.now(timezone.utc)
             existing_node.confidence = max(existing_node.confidence, new_node.confidence)
             
             return existing_node
@@ -204,7 +205,7 @@ class GraphFusion:
         if is_temporal_update:
             # Mark existing node as historical
             existing_node.is_current = 0
-            existing_node.valid_until = datetime.now(timezone.utc).isoformat()
+            existing_node.valid_until = datetime.now(timezone.utc)
             
             # Create new node with updated properties
             updated_node = Node.create(
@@ -223,7 +224,7 @@ class GraphFusion:
         else:
             # Not temporal - just update properties
             existing_node.properties = resolved_properties
-            existing_node.updated_at = datetime.now(timezone.utc).isoformat()
+            existing_node.updated_at = datetime.now(timezone.utc)
             existing_node.confidence = max(existing_node.confidence, new_node.confidence)
             
             return existing_node
@@ -254,7 +255,7 @@ class GraphFusion:
             merged_properties = {**existing_edge.properties, **new_edge.properties}
             
             existing_edge.properties = merged_properties
-            existing_edge.updated_at = datetime.now(timezone.utc).isoformat()
+            existing_edge.updated_at = datetime.now(timezone.utc)
             existing_edge.confidence = max(existing_edge.confidence, new_edge.confidence)
             
             return existing_edge
@@ -276,7 +277,7 @@ class GraphFusion:
         if is_temporal_update:
             # Mark existing edge as historical
             existing_edge.is_current = 0
-            existing_edge.valid_until = datetime.now(timezone.utc).isoformat()
+            existing_edge.valid_until = datetime.now(timezone.utc)
             
             # Create new edge
             updated_edge = Edge.create(
@@ -292,7 +293,7 @@ class GraphFusion:
             return updated_edge
         else:
             existing_edge.properties = resolved_properties
-            existing_edge.updated_at = datetime.now(timezone.utc).isoformat()
+            existing_edge.updated_at = datetime.now(timezone.utc)
             existing_edge.confidence = max(existing_edge.confidence, new_edge.confidence)
             
             return existing_edge

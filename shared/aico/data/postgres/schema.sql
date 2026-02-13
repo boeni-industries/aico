@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS agency_events_log (
                 workflow_trace_id TEXT,  -- For tracking related events
                 parent_event_id TEXT,  -- For event hierarchies
                 severity TEXT DEFAULT 'info',  -- debug, info, warning, error, critical
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_events_log_category ON agency_events_log(event_category);
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS "agency_execution_snapshots" (
                 execution_id TEXT NOT NULL,
                 snapshot_type TEXT NOT NULL,  -- pause, checkpoint, error
                 state_data TEXT NOT NULL,  -- JSON: complete execution state
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_execution_snapshots_execution ON "agency_execution_snapshots"(execution_id, created_at);
@@ -88,8 +88,8 @@ CREATE TABLE IF NOT EXISTS agency_followups (
                 related_message_id TEXT,
                 followup_type TEXT NOT NULL,  -- check_in, progress_update, completion_prompt, clarification
                 content TEXT NOT NULL,
-                scheduled_at TEXT NOT NULL,
-                delivered_at TEXT,
+                scheduled_at TIMESTAMPTZ NOT NULL,
+                delivered_at TIMESTAMPTZ,
                 user_response TEXT,
                 response_sentiment DOUBLE PRECISION,
                 status TEXT NOT NULL DEFAULT 'pending',  -- pending, delivered, responded, dismissed, expired
@@ -97,8 +97,8 @@ CREATE TABLE IF NOT EXISTS agency_followups (
                 policy_approved INTEGER DEFAULT 1,
                 relationship_context TEXT,  -- JSON: relationship strength, interaction history
                 values_alignment DOUBLE PRECISION,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_followups_goal ON agency_followups(goal_id);
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS "agency_goal_dependencies" (
                 prerequisite_goal_id TEXT NOT NULL,  -- Goal that must be completed first
                 dependency_type TEXT DEFAULT 'hard', -- hard, soft, suggested
                 active BOOLEAN DEFAULT TRUE,
-                created_at TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
                 UNIQUE(goal_id, prerequisite_goal_id)
             );
 
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS "agency_goal_outcomes" (
                 completion_time_minutes INTEGER,
                 user_satisfaction DOUBLE PRECISION,              -- Optional user feedback (0.0-1.0)
                 metadata_json JSONB,
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_goal_outcomes_arm ON "agency_goal_outcomes"(arm_id);
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS "agency_goal_skill_executions" (
             skill_id TEXT NOT NULL,
             execution_id TEXT NOT NULL,
             execution_order INTEGER,
-            created_at TEXT NOT NULL
+            created_at TIMESTAMPTZ NOT NULL
         );
 
 CREATE INDEX IF NOT EXISTS idx_agency_goal_skill_executions_execution ON agency_goal_skill_executions(execution_id);
@@ -263,10 +263,10 @@ CREATE TABLE IF NOT EXISTS "agency_plan_executions" (
                 goal_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
-                started_at TEXT,
-                completed_at TEXT,
-                paused_at TEXT,
-                cancelled_at TEXT,
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                paused_at TIMESTAMPTZ,
+                cancelled_at TIMESTAMPTZ,
                 current_step_id TEXT,
                 steps_completed INTEGER DEFAULT 0,
                 steps_total INTEGER NOT NULL,
@@ -275,8 +275,8 @@ CREATE TABLE IF NOT EXISTS "agency_plan_executions" (
                 error_message TEXT,
                 cancellation_reason TEXT,
                 retry_count INTEGER DEFAULT 0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_plan_executions_goal ON "agency_plan_executions"(goal_id);
@@ -313,8 +313,8 @@ CREATE TABLE IF NOT EXISTS agency_policy_rules (
                 scope TEXT NOT NULL,  -- global, user, deployment
                 version INTEGER DEFAULT 1,
                 active BOOLEAN DEFAULT TRUE,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_policy_rules_user ON agency_policy_rules(user_id);
@@ -368,9 +368,9 @@ CREATE TABLE IF NOT EXISTS agency_reminders (
                 goal_id TEXT,
                 title TEXT NOT NULL,
                 description TEXT,
-                scheduled_at TEXT NOT NULL,
-                delivered_at TEXT,
-                snoozed_until TEXT,
+                scheduled_at TIMESTAMPTZ NOT NULL,
+                delivered_at TIMESTAMPTZ,
+                snoozed_until TIMESTAMPTZ,
                 snooze_count INTEGER DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'pending',  -- pending, delivered, snoozed, completed, dismissed
                 priority TEXT NOT NULL DEFAULT 'normal',  -- low, normal, high, urgent
@@ -378,8 +378,8 @@ CREATE TABLE IF NOT EXISTS agency_reminders (
                 recurrence_rule TEXT,  -- JSON: frequency, interval, end_date
                 cluster_id TEXT,  -- For grouping related reminders
                 adaptation_data TEXT,  -- JSON: user response patterns, optimal timing
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_reminders_cluster ON agency_reminders(cluster_id);
@@ -427,13 +427,13 @@ CREATE TABLE IF NOT EXISTS agency_skill_gaps (
                 step_metadata TEXT,                  -- JSON: full step context (goal_id, plan_id, etc.)
                 pattern_embedding TEXT,              -- JSON: 768-dim embedding for similarity matching
                 frequency_count INTEGER DEFAULT 1,
-                first_seen_at TEXT NOT NULL,
-                last_seen_at TEXT NOT NULL,
+                first_seen_at TIMESTAMPTZ NOT NULL,
+                last_seen_at TIMESTAMPTZ NOT NULL,
                 priority_score DOUBLE PRECISION DEFAULT 0.0,     -- frequency * goal_importance
                 suggested_skill_spec TEXT,           -- Auto-generated skill requirements
                 notes TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_skill_gaps_priority ON agency_skill_gaps(priority_score DESC);
@@ -452,14 +452,14 @@ CREATE TABLE IF NOT EXISTS "agency_skill_executions" (
                 outcome TEXT NOT NULL,
                 error_message TEXT,
                 context_json JSONB,
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE TABLE IF NOT EXISTS "agency_skill_learning_data" (
                 skill_id TEXT PRIMARY KEY,
                 dimension_vector TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_skill_learning_updated ON "agency_skill_learning_data"(updated_at);
@@ -470,8 +470,8 @@ CREATE TABLE IF NOT EXISTS "agency_step_executions" (
                 step_id TEXT NOT NULL,
                 step_order INTEGER NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
-                started_at TEXT,
-                completed_at TEXT,
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
                 duration_ms INTEGER,
                 skill_id TEXT,
                 skill_invocation_id TEXT,
@@ -480,8 +480,8 @@ CREATE TABLE IF NOT EXISTS "agency_step_executions" (
                 error_message TEXT,
                 retry_count INTEGER DEFAULT 0,
                 blocked_reason TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_step_executions_execution ON "agency_step_executions"(execution_id, step_order);
@@ -619,14 +619,14 @@ CREATE TABLE IF NOT EXISTS arbiter_ab_tests (
                 test_name TEXT NOT NULL,
                 arm_a_id TEXT NOT NULL,
                 arm_b_id TEXT NOT NULL,
-                start_date TEXT NOT NULL,
-                end_date TEXT NOT NULL,
+                start_date TIMESTAMPTZ NOT NULL,
+                end_date TIMESTAMPTZ NOT NULL,
                 status TEXT DEFAULT 'active',        -- active, completed, cancelled
                 winner_arm_id TEXT,
                 confidence_score DOUBLE PRECISION,
                 notes TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ
             );
 
 CREATE INDEX IF NOT EXISTS idx_ab_tests_dates ON arbiter_ab_tests(start_date, end_date);
@@ -640,10 +640,10 @@ CREATE TABLE IF NOT EXISTS arbiter_bandit_arms (
     total_reward DOUBLE PRECISION DEFAULT 0.0,
     success_count INTEGER DEFAULT 0,
     failure_count INTEGER DEFAULT 0,
-    last_pulled TEXT,
+    last_pulled TIMESTAMPTZ,
     active BOOLEAN DEFAULT TRUE,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_bandit_arms_active ON arbiter_bandit_arms(active);
@@ -715,7 +715,7 @@ CREATE TABLE IF NOT EXISTS consent_audit_log (
                 action TEXT NOT NULL,  -- granted, revoked, expired, inherited
                 reason TEXT,
                 metadata TEXT,  -- JSON: additional context
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_consent_audit_consent ON consent_audit_log(consent_id);
@@ -745,12 +745,12 @@ CREATE TABLE IF NOT EXISTS "consent_user_consents" (
                 scope TEXT NOT NULL,  -- specific_goal, life_area, feature, global
                 scope_identifier TEXT,  -- goal_id, life_area name, feature name, etc.
                 granted INTEGER NOT NULL,  -- 1 = granted, 0 = denied
-                expires_at TEXT,  -- NULL for permanent consent
+                expires_at TIMESTAMPTZ,  -- NULL for permanent consent
                 inherited_from TEXT,  -- consent_id if inherited
-                granted_at TEXT NOT NULL,
-                revoked_at TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                granted_at TIMESTAMPTZ NOT NULL,
+                revoked_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_consents_scope ON "consent_user_consents"(scope, scope_identifier);
@@ -824,12 +824,12 @@ CREATE INDEX IF NOT EXISTS idx_interaction_events_correlation
 CREATE TABLE IF NOT EXISTS emotion_history (
                 id BIGSERIAL PRIMARY KEY,
                 user_id TEXT NOT NULL DEFAULT 'system',
-                timestamp TEXT NOT NULL,
+                timestamp TIMESTAMPTZ NOT NULL,
                 feeling TEXT NOT NULL,
                 valence DOUBLE PRECISION NOT NULL,
                 arousal DOUBLE PRECISION NOT NULL,
                 intensity DOUBLE PRECISION NOT NULL,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
 
 CREATE INDEX IF NOT EXISTS idx_emotion_history_feeling ON emotion_history(feeling);
@@ -839,7 +839,7 @@ CREATE INDEX IF NOT EXISTS idx_emotion_history_user_time ON emotion_history(user
 CREATE TABLE IF NOT EXISTS emotion_state (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 user_id TEXT NOT NULL DEFAULT 'system',
-                timestamp TEXT NOT NULL,
+                timestamp TIMESTAMPTZ NOT NULL,
                 subjective_feeling TEXT NOT NULL,
                 mood_valence DOUBLE PRECISION NOT NULL,
                 mood_arousal DOUBLE PRECISION NOT NULL,
@@ -850,7 +850,7 @@ CREATE TABLE IF NOT EXISTS emotion_state (
                 engagement DOUBLE PRECISION NOT NULL,
                 closeness DOUBLE PRECISION NOT NULL,
                 care_focus DOUBLE PRECISION NOT NULL,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
 
 CREATE TABLE IF NOT EXISTS ethics_decisions_cache (
@@ -862,10 +862,10 @@ CREATE TABLE IF NOT EXISTS ethics_decisions_cache (
                 reasoning TEXT,
                 policy_rules_applied TEXT,  -- JSON: list of rule_ids applied
                 confidence DOUBLE PRECISION DEFAULT 1.0,
-                cached_at TEXT NOT NULL,
-                expires_at TEXT,
+                cached_at TIMESTAMPTZ NOT NULL,
+                expires_at TIMESTAMPTZ,
                 hit_count INTEGER DEFAULT 0,
-                last_hit_at TEXT
+                last_hit_at TIMESTAMPTZ
             );
 
 CREATE INDEX IF NOT EXISTS idx_ethics_cache_expires ON ethics_decisions_cache(expires_at);
@@ -885,7 +885,7 @@ CREATE TABLE IF NOT EXISTS ethics_gate_audit (
                 check_level INTEGER DEFAULT 1,  -- 1 = basic, 2 = detailed, 3 = comprehensive
                 cached INTEGER DEFAULT 0,
                 processing_time_ms INTEGER,
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_ethics_audit_created ON ethics_gate_audit(created_at);
@@ -938,10 +938,10 @@ CREATE TABLE IF NOT EXISTS kg_edges (
                 properties JSONB,
                 confidence DOUBLE PRECISION,
                 source_text TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT,
-                valid_from TEXT,
-                valid_until TEXT,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ,
+                valid_from TIMESTAMPTZ,
+                valid_until TIMESTAMPTZ,
                 is_current BOOLEAN DEFAULT TRUE,
                 reason TEXT,
                 UNIQUE(user_id, source_id, target_id, relation_type, is_current)
@@ -966,10 +966,10 @@ CREATE TABLE IF NOT EXISTS kg_nodes (
                 properties JSONB NOT NULL,
                 confidence DOUBLE PRECISION NOT NULL,
                 source_text TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                valid_from TEXT,
-                valid_until TEXT,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL,
+                valid_from TIMESTAMPTZ,
+                valid_until TIMESTAMPTZ,
                 is_current BOOLEAN DEFAULT TRUE,
                 canonical_id TEXT,
                 aliases_json JSONB,
@@ -1052,11 +1052,11 @@ CREATE TABLE IF NOT EXISTS "system_event_metrics" (
                 event_type TEXT,
                 event_category TEXT,
                 time_bucket TEXT NOT NULL,  -- hourly, daily, weekly
-                bucket_start TEXT NOT NULL,
+                bucket_start TIMESTAMPTZ NOT NULL,
                 value DOUBLE PRECISION NOT NULL,
                 count INTEGER DEFAULT 1,
                 metadata TEXT,  -- JSONB
-                created_at TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
                 UNIQUE(metric_name, event_type, time_bucket, bucket_start)
             );
 
@@ -1070,15 +1070,15 @@ CREATE TABLE IF NOT EXISTS "system_event_replay_sessions" (
                 session_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 replay_name TEXT,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
+                start_time TIMESTAMPTZ NOT NULL,
+                end_time TIMESTAMPTZ NOT NULL,
                 event_filters TEXT,  -- JSON: filters applied
                 replay_speed DOUBLE PRECISION DEFAULT 1.0,
                 status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed
                 events_replayed INTEGER DEFAULT 0,
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                created_at TEXT NOT NULL
+                started_at TIMESTAMPTZ NOT NULL,
+                completed_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_replay_sessions_status ON "system_event_replay_sessions"(status);
@@ -1087,7 +1087,7 @@ CREATE INDEX IF NOT EXISTS idx_replay_sessions_user ON "system_event_replay_sess
 
 CREATE TABLE IF NOT EXISTS "system_events" (
                 id BIGSERIAL PRIMARY KEY,
-                timestamp TEXT NOT NULL,
+                timestamp TIMESTAMPTZ NOT NULL,
                 topic TEXT NOT NULL,
                 source TEXT NOT NULL,
                 message_type TEXT NOT NULL,
@@ -1117,8 +1117,8 @@ CREATE TABLE IF NOT EXISTS "user_feedback_requests" (
             question TEXT NOT NULL,
             response TEXT,
             rating DOUBLE PRECISION,
-            responded_at TEXT,
-            created_at TEXT NOT NULL
+            responded_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL
         );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_requests_responded ON user_feedback_requests(responded_at);
@@ -1137,7 +1137,7 @@ CREATE TABLE IF NOT EXISTS user_proactive_preferences (
                 min_hours_between_reminders INTEGER DEFAULT 2,
                 cluster_reminders INTEGER DEFAULT 1,
                 auto_snooze_duration_minutes INTEGER DEFAULT 60,
-                updated_at TEXT NOT NULL
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE TABLE IF NOT EXISTS "user_profiles" (
@@ -1189,14 +1189,14 @@ CREATE TABLE IF NOT EXISTS workflow_executions (
                 workflow_type TEXT NOT NULL,  -- goal_lifecycle, curiosity_to_goal, reflection_cycle, world_model_update
                 user_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'running',  -- running, completed, failed, paused
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
+                started_at TIMESTAMPTZ NOT NULL,
+                completed_at TIMESTAMPTZ,
                 current_stage TEXT,
                 total_stages INTEGER,
                 metadata TEXT,  -- JSON: workflow-specific data
                 error_message TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_workflow_executions_status ON workflow_executions(status);
@@ -1211,13 +1211,13 @@ CREATE TABLE IF NOT EXISTS workflow_stages (
                 stage_name TEXT NOT NULL,
                 stage_order INTEGER NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed, skipped
-                started_at TEXT,
-                completed_at TEXT,
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
                 input_data TEXT,  -- JSONB
                 output_data TEXT,  -- JSONB
                 error_message TEXT,
                 retry_count INTEGER DEFAULT 0,
-                created_at TEXT NOT NULL
+                created_at TIMESTAMPTZ NOT NULL
             );
 
 CREATE INDEX IF NOT EXISTS idx_workflow_stages_execution ON workflow_stages(execution_id, stage_order);
@@ -1230,8 +1230,8 @@ CREATE TABLE IF NOT EXISTS user_time_preferences (
                 time_period TEXT NOT NULL,  -- early_morning, morning, afternoon, evening, night
                 productivity_score DOUBLE PRECISION NOT NULL DEFAULT 1.0,  -- 0.0-2.0, relative productivity
                 active BOOLEAN DEFAULT TRUE,  -- 1=active, 0=disabled
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL,
                 UNIQUE(user_id, time_period)
             );
 

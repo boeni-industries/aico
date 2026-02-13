@@ -63,7 +63,7 @@ class AgencyEventLog(BaseModel):
     workflow_trace_id: Optional[str] = None
     parent_event_id: Optional[str] = None
     severity: str = "info"
-    created_at: str
+    created_at: datetime
 
 
 class AgencyReflectionNote(BaseModel):
@@ -86,8 +86,8 @@ class AgencyReminder(BaseModel):
     title: str
     description: Optional[str] = None
 
-    scheduled_at: str
-    delivered_at: Optional[str] = None
+    scheduled_at: datetime
+    delivered_at: Optional[datetime] = None
     snoozed_until: Optional[str] = None
     snooze_count: int = 0
 
@@ -98,8 +98,8 @@ class AgencyReminder(BaseModel):
     cluster_id: Optional[str] = None
     adaptation_data: Optional[str] = None
 
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class Policy(BaseModel):
@@ -114,8 +114,8 @@ class Policy(BaseModel):
     scope: str
     version: int = 1
     active: bool = True
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 __all__ = [

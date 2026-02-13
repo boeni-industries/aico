@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -16,8 +17,8 @@ class ConsentUserConsent(BaseModel):
     expires_at: Optional[str] = None
     inherited_from: Optional[str] = None
 
-    granted_at: str
-    revoked_at: Optional[str] = None
+    granted_at: datetime
+    revoked_at: Optional[datetime] = None
 
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

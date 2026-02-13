@@ -67,7 +67,7 @@ class Node:
         aliases: Optional[List[str]] = None
     ) -> 'Node':
         """Create new node with auto-generated ID and timestamps."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         node_id = str(uuid.uuid4())
         
         return cls(
@@ -179,7 +179,7 @@ class Edge:
         valid_from: Optional[str] = None
     ) -> 'Edge':
         """Create new edge with auto-generated ID and timestamps."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         edge_id = str(uuid.uuid4())
         
         return cls(

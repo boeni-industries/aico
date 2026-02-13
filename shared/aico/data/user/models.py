@@ -37,8 +37,8 @@ class UserFeedbackRequest(BaseModel):
     question: str
     response: Optional[str] = None
     rating: Optional[float] = None
-    responded_at: Optional[str] = None
-    created_at: str
+    responded_at: Optional[datetime] = None
+    created_at: datetime
 
 
 class UserProactivePreferences(BaseModel):
@@ -53,7 +53,7 @@ class UserProactivePreferences(BaseModel):
     min_hours_between_reminders: int = 2
     cluster_reminders: int = 1
     auto_snooze_duration_minutes: int = 60
-    updated_at: str
+    updated_at: datetime
 
 
 class UserRelationship(BaseModel):
@@ -72,8 +72,8 @@ class UserTimePreference(BaseModel):
     time_period: str
     productivity_score: float = 1.0
     active: bool = True
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class AuthenticationData(BaseModel):

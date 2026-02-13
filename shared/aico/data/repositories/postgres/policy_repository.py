@@ -23,7 +23,7 @@ class PostgresPolicyRepository(Repository[Policy]):
     async def create(self, entity: Policy) -> Policy:
         """Create a new policy rule."""
         from datetime import datetime, UTC
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(UTC)
         
         stmt = agency_policy_rules.insert().values(
             rule_id=entity.rule_id,
@@ -82,7 +82,7 @@ class PostgresPolicyRepository(Repository[Policy]):
                 user_message_template=entity.user_message_template,
                 priority=entity.priority,
                 active=entity.active,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)

@@ -61,7 +61,7 @@ class PostgresUserTimePreferencesRepository(Repository[UserTimePreference]):
             .values(
                 productivity_score=entity.productivity_score,
                 active=entity.active,
-                updated_at=datetime.now(UTC).isoformat(),
+                updated_at=datetime.now(UTC),
             )
         )
         await self.session.execute(stmt)

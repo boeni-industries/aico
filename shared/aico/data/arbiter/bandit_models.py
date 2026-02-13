@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
@@ -14,8 +15,8 @@ class ArbiterBanditArm(BaseModel):
     success_count: int = 0
     failure_count: int = 0
 
-    last_pulled: Optional[str] = None
+    last_pulled: Optional[datetime] = None
     active: bool = True
 
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

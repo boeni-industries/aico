@@ -151,7 +151,7 @@ class AMSService:
                 skill_id=skill_id,
                 confidence_level=confidence,
                 usage_count=usage_count,
-                last_used=datetime.now(UTC).isoformat(),
+                last_used=datetime.now(UTC),
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC)
             )

@@ -54,7 +54,7 @@ class AgencyFollowUpTask(BaseTask):
             from aico.data.uow import UnitOfWork
             from aico.services.agency_service import AgencyService
 
-            cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=min_hours)).isoformat()
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=min_hours)
             session_factory = await get_session_factory()
             
             candidates: List[Dict[str, Any]] = []

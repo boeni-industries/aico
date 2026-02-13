@@ -150,13 +150,13 @@ class PropertyGraphStorage:
                     edges = await uow.kg_edges.list(filters={'source_id': node_id, 'is_current': True})
                     for edge in edges:
                         edge.is_current = False
-                        edge.updated_at = datetime.now(UTC).isoformat()
+                        edge.updated_at = datetime.now(UTC)
                         await uow.kg_edges.update(edge)
                     
                     edges = await uow.kg_edges.list(filters={'target_id': node_id, 'is_current': True})
                     for edge in edges:
                         edge.is_current = False
-                        edge.updated_at = datetime.now(UTC).isoformat()
+                        edge.updated_at = datetime.now(UTC)
                         await uow.kg_edges.update(edge)
                 
                 await uow.commit()
