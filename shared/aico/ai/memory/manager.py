@@ -1047,7 +1047,22 @@ class MemoryManager(BaseAIProcessor):
                 logger.info("🕸️ [KG] No entities extracted, skipping")
                 return
             
-            # 3. Skip per-message resolution (context-aware extraction prevents most duplicates)
+            # 3. Resolve pronoun coreferences to canonical user/AI entities
+            coref_start = time.time()
+            from aico.ai.knowledge_graph import resolve_coreferences
+            
+            # Get user's name from existing entities if available
+            user_name = None
+            for node in existing_nodes:
+                if node.label == "PERSON" and node.properties.get("is_user", False):
+                    user_name = node.properties.get("name")
+                    break
+            
+            new_graph = await resolve_coreferences(new_graph, user_id, user_name, self._uow_factory)
+            coref_time = time.time() - coref_start
+            logger.info(f"🕸️ [KG] Coreference resolution complete in {coref_time:.2f}s")
+            
+            # 4. Skip per-message resolution (context-aware extraction prevents most duplicates)
             # Resolution now only runs in batch post-processing for final cleanup
             superseded_ids = set()
             

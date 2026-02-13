@@ -54,6 +54,7 @@ from .fusion import GraphFusion
 from .graph_traversal import GraphQueryEngine
 from .analytics import GraphAnalytics
 from .query import GQLQueryExecutor
+from .coreference import resolve_coreferences
 
 __all__ = [
     # Data models

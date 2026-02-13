@@ -97,6 +97,14 @@ def normalize_entity_label(label: str) -> str:
     if label_lower in ["deadline"]:
         return "PRIORITY"
     
+    # Organization variants (consolidate)
+    if label_lower in ["org", "organisation"]:
+        return "ORGANIZATION"
+    
+    # Location variants (consolidate)
+    if label_lower in ["gpe", "loc", "place"]:
+        return "LOCATION"
+    
     # Default: uppercase the label
     return label.upper()
 
