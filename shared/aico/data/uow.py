@@ -603,16 +603,16 @@ class UnitOfWork:
     def kg_nodes(self):
         """Get KGNodesRepository instance."""
         if self._kg_nodes_repository is None:
-            from .repositories.postgres.kg_nodes_repository import PostgresNodesRepository
-            self._kg_nodes_repository = PostgresNodesRepository(self._session)
+            from .repositories.postgres.kg_node_repository import PostgresKGNodeRepository
+            self._kg_nodes_repository = PostgresKGNodeRepository(self._session)
         return self._kg_nodes_repository
     
     @property
     def kg_edges(self):
         """Get KGEdgesRepository instance."""
         if self._kg_edges_repository is None:
-            from .repositories.postgres.kg_edges_repository import PostgresEdgesRepository
-            self._kg_edges_repository = PostgresEdgesRepository(self._session)
+            from .repositories.postgres.kg_edge_repository import PostgresKGEdgeRepository
+            self._kg_edges_repository = PostgresKGEdgeRepository(self._session)
         return self._kg_edges_repository
     
     @property
