@@ -320,8 +320,13 @@ class MemoryManager(BaseAIProcessor):
             # Initialize storage (pass UoW factory for PostgreSQL and modelservice for embedding generation)
             self._kg_storage = PropertyGraphStorage(self._uow_factory, chromadb_client, self._kg_modelservice)
             
-            # Initialize extraction pipeline (modelservice will connect on first use)
-            self._kg_extractor = MultiPassExtractor(self._kg_modelservice, self.config)
+            # Initialize extraction pipeline with ChromaDB for semantic ranking
+            # Pass chromadb_client to enable state-of-the-art semantic entity ranking
+            self._kg_extractor = MultiPassExtractor(
+                self._kg_modelservice, 
+                self.config,
+                chromadb_client=chromadb_client  # Enable semantic ranking
+            )
             
             # Initialize entity resolver
             self._kg_resolver = EntityResolver(self._kg_modelservice, self.config)

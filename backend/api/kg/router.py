@@ -469,8 +469,8 @@ async def list_edges(
         # Clamp limit
         limit = min(limit, 1000)
         
-        # Fetch edges using repository (all edges, not just current versions)
-        edges_list = await uow.kg_edges.list(filters={"user_id": user_id}, limit=limit, offset=offset)
+        # Fetch edges using repository (only current versions)
+        edges_list = await uow.kg_edges.list(filters={"user_id": user_id, "is_current": True}, limit=limit, offset=offset)
         
         # Convert to dict format
         import json

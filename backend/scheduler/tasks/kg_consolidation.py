@@ -329,6 +329,20 @@ class KGConsolidationTask(BaseTask):
                     else:
                         print(f"🕸️ [KG_TASK]    No historical embeddings to clean")
                     
+                    # Quality validation and enhancement
+                    print(f"\n🕸️ [KG_TASK] 🔍 Running quality validation and enhancement...")
+                    quality_start = time.time()
+                    from .kg_quality import KGQualityValidator
+                    quality_validator = KGQualityValidator(memory_manager, memory_manager._kg_modelservice)
+                    quality_stats = await quality_validator.validate_and_enhance(user_id, batch_window_minutes=30)
+                    quality_time = time.time() - quality_start
+                    print(f"🕸️ [KG_TASK] ✅ Quality validation completed in {quality_time:.2f}s")
+                    print(f"🕸️ [KG_TASK]    Quality score: {quality_stats['quality_score']:.1f}%")
+                    print(f"🕸️ [KG_TASK]    Temporal updates: {quality_stats['temporal_updates']}")
+                    print(f"🕸️ [KG_TASK]    Relationships added: {quality_stats['relationships_added']}")
+                    print(f"🕸️ [KG_TASK]    Connectivity: {quality_stats['metrics']['connectivity_rate']:.1f}%")
+                    print(f"🕸️ [KG_TASK]    Isolated nodes: {quality_stats['metrics']['isolated_nodes']}/{quality_stats['metrics']['total_nodes']}")
+                    
                     # Mark messages as consolidated (get message timestamps)
                     message_timestamps = [msg.get("timestamp") for msg in messages if msg.get("timestamp")]
                     print(f"🕸️ [KG_TASK] 🏷️  Marking {len(message_timestamps)} messages as consolidated")
