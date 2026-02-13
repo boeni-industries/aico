@@ -531,7 +531,7 @@ Return valid JSON only."""
             )
             
             # Parse results
-            results = self._parse_json_response(response.get("text", ""))
+            results = self._parse_json_array_response(response.get("text", ""))
             
             # Return confirmed duplicates
             duplicates = []
@@ -863,3 +863,17 @@ Return valid JSON only."""
         else:
             logger.warning(f"Failed to parse JSON response after all repair strategies: {result.error}")
             return {}
+
+    def _parse_json_array_response(self, text: str) -> List[Dict[str, Any]]:
+        """Parse JSON array response from LLM using robust sanitizer with automatic repair."""
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=list,
+            return_objects=True,
+        )
+
+        if result.success:
+            return result.data
+
+        logger.warning(f"Failed to parse JSON response after all repair strategies: {result.error}")
+        return []

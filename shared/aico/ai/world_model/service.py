@@ -263,7 +263,7 @@ class WorldModelService:
         """
         from aico.data.postgres import UnitOfWork
         from sqlalchemy import select, func, and_, case
-        from aico.data.models import Goal, Plan, PlanExecution
+        from aico.data.tables import agency_goals, agency_plans, agency_plan_executions
         
         try:
             uncertain_areas = []
@@ -272,30 +272,33 @@ class WorldModelService:
                 # Find goals with low completion rates (many failed/no executions)
                 goal_completion_query = (
                     select(
-                        Goal.goal_id,
-                        Goal.title,
-                        Goal.description,
-                        Goal.origin,
-                        func.count(PlanExecution.execution_id).label('total_executions'),
+                        agency_goals.c.goal_id,
+                        agency_goals.c.title,
+                        agency_goals.c.description,
+                        agency_goals.c.origin,
+                        func.count(agency_plan_executions.c.execution_id).label('total_executions'),
                         func.sum(
                             case(
-                                (PlanExecution.status == 'completed', 1),
-                                else_=0
+                                (agency_plan_executions.c.status == 'completed', 1),
+                                else_=0,
                             )
-                        ).label('completed_executions')
+                        ).label('completed_executions'),
                     )
-                    .outerjoin(Plan, Plan.goal_id == Goal.goal_id)
-                    .outerjoin(PlanExecution, PlanExecution.plan_id == Plan.plan_id)
+                    .outerjoin(agency_plans, agency_plans.c.goal_id == agency_goals.c.goal_id)
+                    .outerjoin(agency_plan_executions, agency_plan_executions.c.plan_id == agency_plans.c.plan_id)
                     .where(
                         and_(
-                            Goal.user_id == user_id,
-                            Goal.status == 'pending'
+                            agency_goals.c.user_id == user_id,
+                            agency_goals.c.status == 'pending',
                         )
                     )
-                    .group_by(Goal.goal_id, Goal.title, Goal.description, Goal.origin)
-                    .having(
-                        func.count(PlanExecution.execution_id) > 0
+                    .group_by(
+                        agency_goals.c.goal_id,
+                        agency_goals.c.title,
+                        agency_goals.c.description,
+                        agency_goals.c.origin,
                     )
+                    .having(func.count(agency_plan_executions.c.execution_id) > 0)
                     .limit(10)
                 )
                 
@@ -322,31 +325,35 @@ class WorldModelService:
                 
                 # Find goals with no executions at all (completely unexplored)
                 unexplored_goals_query = (
-                    select(Goal)
-                    .outerjoin(Plan, Plan.goal_id == Goal.goal_id)
+                    select(
+                        agency_goals.c.goal_id,
+                        agency_goals.c.title,
+                        agency_goals.c.description,
+                    )
+                    .outerjoin(agency_plans, agency_plans.c.goal_id == agency_goals.c.goal_id)
                     .where(
                         and_(
-                            Goal.user_id == user_id,
-                            Goal.status == 'pending',
-                            Plan.plan_id.is_(None)
+                            agency_goals.c.user_id == user_id,
+                            agency_goals.c.status == 'pending',
+                            agency_plans.c.plan_id.is_(None),
                         )
                     )
                     .limit(5)
                 )
                 
                 result = await uow.session.execute(unexplored_goals_query)
-                unexplored_goals = result.scalars().all()
-                
-                for goal in unexplored_goals:
+                unexplored_goals = result.all()
+
+                for goal_id, title, description in unexplored_goals:
                     uncertain_areas.append(UncertainArea(
-                        id=str(goal.goal_id),
-                        topic=goal.title,
-                        description=f"Unexplored goal: {goal.description or goal.title}",
+                        id=str(goal_id),
+                        topic=title,
+                        description=f"Unexplored goal: {description or title}",
                         confidence_gap=1.0,  # Maximum uncertainty
-                        related_entities=[str(goal.goal_id)],
+                        related_entities=[str(goal_id)],
                         questions=[
-                            f"How should we approach '{goal.title}'?",
-                            f"What's the first step for '{goal.title}'?"
+                            f"How should we approach '{title}'?",
+                            f"What's the first step for '{title}'?",
                         ]
                     ))
             
@@ -581,7 +588,7 @@ class WorldModelService:
         """
         from aico.data.postgres import UnitOfWork
         from sqlalchemy import select, func, and_
-        from aico.data.models import Goal, Plan, PlanExecution
+        from aico.data.tables import agency_goals, agency_plans, agency_plan_executions
         
         anomalies = []
         
@@ -590,17 +597,17 @@ class WorldModelService:
                 # Detect duplicate open goals with same title
                 duplicate_goals_query = (
                     select(
-                        Goal.title,
-                        func.count(Goal.goal_id).label('count')
+                        agency_goals.c.title,
+                        func.count(agency_goals.c.goal_id).label('count'),
                     )
                     .where(
                         and_(
-                            Goal.user_id == user_id,
-                            Goal.status == 'pending'
+                            agency_goals.c.user_id == user_id,
+                            agency_goals.c.status == 'pending',
                         )
                     )
-                    .group_by(Goal.title)
-                    .having(func.count(Goal.goal_id) > 1)
+                    .group_by(agency_goals.c.title)
+                    .having(func.count(agency_goals.c.goal_id) > 1)
                 )
                 
                 result = await uow.session.execute(duplicate_goals_query)
@@ -618,14 +625,18 @@ class WorldModelService:
                 
                 # Detect goals with failed plan executions (potential stuck goals)
                 stuck_goals_query = (
-                    select(Goal)
-                    .join(Plan, Plan.goal_id == Goal.goal_id)
-                    .join(PlanExecution, PlanExecution.plan_id == Plan.plan_id)
+                    select(
+                        agency_goals.c.goal_id,
+                        agency_goals.c.title,
+                    )
+                    .select_from(agency_goals)
+                    .join(agency_plans, agency_plans.c.goal_id == agency_goals.c.goal_id)
+                    .join(agency_plan_executions, agency_plan_executions.c.plan_id == agency_plans.c.plan_id)
                     .where(
                         and_(
-                            Goal.user_id == user_id,
-                            Goal.status == 'pending',
-                            PlanExecution.status == 'failed'
+                            agency_goals.c.user_id == user_id,
+                            agency_goals.c.status == 'pending',
+                            agency_plan_executions.c.status == 'failed',
                         )
                     )
                     .distinct()
@@ -633,15 +644,15 @@ class WorldModelService:
                 )
                 
                 result = await uow.session.execute(stuck_goals_query)
-                stuck_goals = result.scalars().all()
-                
-                for goal in stuck_goals:
+                stuck_goals = result.all()
+
+                for goal_id, title in stuck_goals:
                     anomalies.append({
                         'type': 'stuck_goal',
                         'severity': 'medium',
-                        'description': f'Goal has failed plan executions: {goal.title}',
-                        'goal_id': str(goal.goal_id),
-                        'title': goal.title,
+                        'description': f'Goal has failed plan executions: {title}',
+                        'goal_id': str(goal_id),
+                        'title': title,
                         'user_id': user_id
                     })
                 
@@ -688,7 +699,7 @@ class WorldModelService:
         """
         from aico.data.postgres import UnitOfWork
         from sqlalchemy import select, func, and_, case
-        from aico.data.models import Goal, Plan, PlanExecution
+        from aico.data.tables import agency_goals, agency_plans, agency_plan_executions
         
         self_assessment = []
         
@@ -698,25 +709,25 @@ class WorldModelService:
                     # Analyze performance by goal origin (curiosity, hobby, user, maintenance)
                     goal_type_query = (
                         select(
-                            Goal.origin,
-                            func.count(Goal.goal_id).label('total_goals'),
+                            agency_goals.c.origin,
+                            func.count(agency_goals.c.goal_id).label('total_goals'),
                             func.sum(
                                 case(
-                                    (Goal.status == 'completed', 1),
-                                    else_=0
+                                    (agency_goals.c.status == 'completed', 1),
+                                    else_=0,
                                 )
                             ).label('completed_goals'),
-                            func.count(PlanExecution.execution_id).label('total_executions'),
+                            func.count(agency_plan_executions.c.execution_id).label('total_executions'),
                             func.sum(
                                 case(
-                                    (PlanExecution.status == 'completed', 1),
-                                    else_=0
+                                    (agency_plan_executions.c.status == 'completed', 1),
+                                    else_=0,
                                 )
-                            ).label('completed_executions')
+                            ).label('completed_executions'),
                         )
-                        .outerjoin(Plan, Plan.goal_id == Goal.goal_id)
-                        .outerjoin(PlanExecution, PlanExecution.plan_id == Plan.plan_id)
-                        .group_by(Goal.origin)
+                        .outerjoin(agency_plans, agency_plans.c.goal_id == agency_goals.c.goal_id)
+                        .outerjoin(agency_plan_executions, agency_plan_executions.c.plan_id == agency_plans.c.plan_id)
+                        .group_by(agency_goals.c.origin)
                     )
                     
                     result = await uow.session.execute(goal_type_query)
@@ -746,19 +757,19 @@ class WorldModelService:
                     # For now, return overall execution success rate as a proxy
                     execution_stats_query = (
                         select(
-                            func.count(PlanExecution.execution_id).label('total'),
+                            func.count(agency_plan_executions.c.execution_id).label('total'),
                             func.sum(
                                 case(
-                                    (PlanExecution.status == 'completed', 1),
-                                    else_=0
+                                    (agency_plan_executions.c.status == 'completed', 1),
+                                    else_=0,
                                 )
                             ).label('completed'),
                             func.sum(
                                 case(
-                                    (PlanExecution.status == 'failed', 1),
-                                    else_=0
+                                    (agency_plan_executions.c.status == 'failed', 1),
+                                    else_=0,
                                 )
-                            ).label('failed')
+                            ).label('failed'),
                         )
                     )
                     

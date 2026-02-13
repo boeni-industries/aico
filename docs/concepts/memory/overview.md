@@ -15,7 +15,7 @@ AICO's memory system goes beyond simple conversation history to create a compreh
 
 The memory system consists of three tiers (two implemented, one planned):
 
-### 1. Working Memory (LMDB) ✅ IMPLEMENTED
+### 1. Working Memory (LMDB) 
 Conversation history and immediate context management.
 - All conversation messages scoped by `conversation_id`
 - Configurable TTL with automatic expiration
@@ -25,7 +25,7 @@ Conversation history and immediate context management.
 
 **Current default:** `ttl_seconds: 2592000` (30 days) in `config/defaults/memory.yaml`.
 
-### 2. Semantic Memory + Knowledge Graph ✅ IMPLEMENTED
+### 2. Semantic Memory + Knowledge Graph 
 Long-term knowledge storage with semantic search and graph relationships.
 
 **Conversation Segments (ChromaDB):**
@@ -41,7 +41,7 @@ Long-term knowledge storage with semantic search and graph relationships.
 - **Structured Storage**: Nodes (entities) and edges (relationships) with properties
 - **Production Data**: 204 nodes, 27 edges, 552 indexed properties
 
-### 3. Behavioral Learning (PostgreSQL) 🔄 PLANNED
+### 3. Behavioral Learning (PostgreSQL) 
 User interaction patterns and behavioral adaptation.
 - **Pattern Learning**: Track response preferences, topic interests, engagement signals
 - **Adaptive Personalization**: Adjust response style based on learned patterns
@@ -49,6 +49,17 @@ User interaction patterns and behavioral adaptation.
 - **Time-Aware**: Context-aware behavior based on time of day, conversation history
 
 ## Key Features
+
+### 2026 State-of-the-Art Context Practices (Same Architecture)
+
+Modern memory-centric assistants increasingly treat “context” as a **budgeted set of blocks** rather than an ever-growing chat transcript. AICO’s existing tiers map cleanly to this approach.
+
+**Key best practices AICO follows / targets:**
+- **Deterministic context budgets**: Allocate token/character budgets per context block and enforce them.
+- **Compression over truncation**: Prefer rolling summaries and thread summaries to raw old turns.
+- **Consolidation loops**: Flush older working-memory spans into long-term representations (summaries, stable facts, graph updates).
+- **Conflict-aware memory updates**: Treat long-term memory as updatable (corrections override prior facts; keep provenance).
+- **Evaluation and observability**: Measure drift, retrieval hit rate, correction retention, and cost/latency.
 
 ### Local-First Architecture
 - **No External Dependencies**: All memory processing happens locally
@@ -61,6 +72,18 @@ User interaction patterns and behavioral adaptation.
 - **Isolated Contexts**: Each conversation has independent memory scope
 - **Cross-Conversation Knowledge**: Knowledge graph accumulates facts across all conversations
 - **Context Preservation**: Working memory maintains session state per conversation
+
+### Context Assembly as Memory Blocks
+
+In practice, the LLM prompt should be assembled from a small set of blocks:
+- **System identity & policies** (personality + safety)
+- **Recent turn buffer** (last 1–2 user/assistant turns from Working Memory)
+- **Thread summary** (compressed “what’s going on” for the active thread)
+- **Relevant episodic snippets** (retrieved segments from Semantic Memory)
+- **Stable facts & preferences** (Knowledge Graph / semantic facts)
+- **Behavioral constraints** (response style preferences and learned guardrails)
+
+This reduces topic attractor loops and improves “answer-the-latest-message” reliability.
 
 ### Performance Optimized
 - **Hardware Efficient**: Designed for consumer-grade hardware
@@ -79,27 +102,27 @@ The memory system is implemented as a shared AI module at `shared/aico/ai/memory
 
 ## Implementation Status
 
-### ✅ Phase 1: Session Context Management (COMPLETE)
+### Phase 1: Session Context Management (COMPLETE)
 - Working memory with LMDB storage
 - Conversation-scoped context retrieval
 - Context assembly with relevance scoring
 - Message history with automatic expiration
 
-### ✅ Phase 2: Semantic Memory & Knowledge Graph (COMPLETE)
+### Phase 2: Semantic Memory & Knowledge Graph (COMPLETE)
 - Hybrid search (semantic + BM25 with IDF filtering)
 - Multi-pass entity extraction (GLiNER + LLM)
 - Entity resolution with deduplication
 - Graph fusion with conflict resolution
 - Production deployment: 204 nodes, 27 edges
 
-### ✅ Phase 3: Behavioral Learning (IMPLEMENTED, CONFIGURABLE)
+### Phase 3: Behavioral Learning (IMPLEMENTED, CONFIGURABLE)
 - Skill library management
 - Contextual bandit learning (Thompson Sampling)
 - User preference vectors
 
 Behavioral learning is enabled by default in `config/defaults/memory.yaml` under `behavioral.enabled`.
 
-### ❌ Phase 4: Proactive Engagement (NOT IMPLEMENTED)
+### Phase 4: Proactive Engagement (NOT IMPLEMENTED)
 - Predictive triggers
 - Initiative generation
 - Advanced relationship modeling

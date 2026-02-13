@@ -71,12 +71,19 @@ class MessageProcessingException(ConversationException):
 class ConversationTimeoutException(ConversationException):
     """Raised when conversation processing times out"""
     
-    def __init__(self, conversation_id: str, timeout_seconds: int, user_id: Optional[str] = None):
+    def __init__(
+        self,
+        conversation_id: str,
+        timeout_seconds: int,
+        user_id: Optional[str] = None,
+        headers: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(
             status_code=status.HTTP_408_REQUEST_TIMEOUT,
             detail=f"Conversation processing timed out after {timeout_seconds} seconds",
             conversation_id=conversation_id,
-            user_id=user_id
+            user_id=user_id,
+            headers=headers,
         )
         self.timeout_seconds = timeout_seconds
 

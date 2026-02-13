@@ -464,26 +464,9 @@ The consolidation process transfers experiences from working memory to long-term
 ### Model Configuration Strategy
 
 ```yaml
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/architecture.md
-# Unified configuration in modelservice.yaml
-modelservice:
-=======
 # Model configuration lives in the modelservice domain
 modelservice:
   ollama:
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/architecture.md
-=======
-# Model configuration lives in the modelservice domain
-modelservice:
-  ollama:
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/architecture.md
-=======
-# Model configuration lives in the modelservice domain
-modelservice:
-  ollama:
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/architecture.md
     default_models:
       conversation: "hermes3:8b"
       embedding: "paraphrase-multilingual"  # Primary multilingual model
@@ -513,6 +496,46 @@ memory:
     semantic_weight: 0.7  # Weight for semantic similarity
     bm25_weight: 0.3      # Weight for BM25 score
 ```
+
+## 2026 State-of-the-Art Memory Mechanics (No Architecture Change)
+
+AICO’s multi-tier memory stack is already compatible with state-of-the-art 2026 systems. The primary improvements are in *mechanics and governance*:
+
+### 1) Budgeted “Memory Blocks” for Prompt Assembly
+
+Rather than pushing “more history” into the LLM, modern systems assemble context as a set of budgeted blocks with explicit priorities:
+- Identity/policies
+- Recent turn buffer (working)
+- Thread summary (working → compressed)
+- Retrieved episodic snippets (semantic segments)
+- Stable facts & preferences (knowledge graph / semantic)
+- Behavioral constraints (style, preferences, safety)
+
+This makes token usage predictable and reduces drift caused by long, high-entropy history.
+
+### 2) Consolidation Loops (Flush Working → Long-Term)
+
+State-of-the-art memory systems run periodic consolidation:
+- Summarize older spans into a rolling summary per thread
+- Extract stable facts/preferences into the graph with confidence
+- Attach provenance (where it came from) and timestamps
+
+The result is less raw “chat dump” and more structured, retrievable memory.
+
+### 3) Conflict-Aware Updates
+
+Long-term memory must support updates:
+- Latest user correction overrides older facts
+- Confidence decay for unconfirmed facts
+- Optional versioning/audit trail for debugging and trust
+
+### 4) Evaluation & Observability as First-Class Concerns
+
+Mature memory systems ship with evaluation harnesses and runtime diagnostics:
+- Retrieval hit-rate and false positive rate
+- “Answers latest user turn” rate (drift detection)
+- Correction retention / override correctness
+- Latency and token cost breakdown per block
 
 ### Deployment Considerations
 

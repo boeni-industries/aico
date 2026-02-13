@@ -265,6 +265,12 @@ class ConfigurationManager:
                             k,
                             available,
                         )
+                        import traceback
+                        logger.error(
+                            "[CONFIG_ERROR] Stack trace for missing key '%s':\n%s",
+                            key,
+                            "".join(traceback.format_stack(limit=40)),
+                        )
                     return default
 
                 available = []

@@ -8,8 +8,6 @@ entity extraction accuracy, and conversation quality.
 
 import re
 import json
-import httpx
-import chromadb
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
@@ -38,6 +36,7 @@ class EvaluationResult:
     overall_score: MetricScore
     
     # Core memory metrics
+    character_stability: MetricScore
     context_adherence: MetricScore
     knowledge_retention: MetricScore
     entity_extraction: MetricScore
@@ -60,65 +59,20 @@ class MemoryMetrics:
     """Comprehensive memory benchmark metrics calculator for V2 fact-centric architecture"""
     
     def __init__(self):
-        """Initialize with real AICO memory system connections"""
-        # ChromaDB client for querying stored facts (V2 architecture)
-        self.chroma_client = None
-        self.user_facts_collection = None
-        # ModelService client for direct NER calls
-        self.modelservice_client = None
+        """Initialize metrics calculator.
+
+        This benchmark runs end-to-end through the backend API gateway.
+        Metrics should be computed from observed responses and scenario expectations,
+        not by reading internal storage directly.
+        """
         
         
     async def initialize_memory_connections(self):
-        """Initialize connections to AICO's memory systems"""
-        try:
-            # Import AICO's configuration and paths
-            from aico.core.config import ConfigurationManager
-            from aico.core.paths import AICOPaths
-            from chromadb.config import Settings
-            
-            # Get AICO's semantic memory path (same as CLI uses)
-            semantic_memory_dir = AICOPaths.get_semantic_memory_path()
-            
-            if not semantic_memory_dir.exists():
-                print(f"⚠️ ChromaDB directory doesn't exist: {semantic_memory_dir}")
-                print("   Run a conversation first to initialize the memory system")
-                return
-            
-            # Connect to ChromaDB using AICO's file-based approach
-            self.chroma_client = chromadb.PersistentClient(
-                path=str(semantic_memory_dir),
-                settings=Settings(allow_reset=True, anonymized_telemetry=False)
-            )
-            
-            # Get the collections AICO uses for memory storage
-            try:
-                self.user_facts_collection = self.chroma_client.get_collection("user_facts")
-                # Add timeout to prevent hanging
-                count_task = asyncio.create_task(asyncio.to_thread(self.user_facts_collection.count))
-                count = await asyncio.wait_for(count_task, timeout=5.0)
-                print(f"✅ Connected to user_facts collection ({count} documents)")
-            except asyncio.TimeoutError:
-                print("⚠️ user_facts collection count timed out - continuing anyway")
-                self.user_facts_collection = self.chroma_client.get_collection("user_facts")
-            except Exception:
-                print("⚠️ user_facts collection not found - may not be created yet")
-                
-            # V2: No conversation_segments collection - facts are stored directly
-                
-            print("✅ Connected to AICO's file-based ChromaDB instance")
-            
-            # Initialize ModelService client for direct NER calls
-            # NOTE: Skipping ModelService client - evaluation uses content-based filtering instead
-            # This avoids complex logging initialization requirements
-            self.modelservice_client = None
-            print("ℹ️  Using content-based entity filtering for evaluation")
-            
-        except Exception as e:
-            print(f"❌ Failed to connect to AICO memory systems: {e}")
+        return
             
     async def cleanup(self):
         """Cleanup connections"""
-        pass  # No HTTP connections to clean up
+        return
         
     async def calculate_context_adherence(self, session) -> MetricScore:
         """
@@ -129,12 +83,29 @@ class MemoryMetrics:
             return MetricScore(0.0, explanation="No conversation data available")
             
         adherence_scores = []
-        details = {"turn_scores": [], "total_elements_tested": 0, "elements_found": 0}
+        details = {"turn_scores": [], "total_elements_tested": 0, "elements_found": 0, "timeouts": 0}
         element_keywords = self._get_context_element_keywords()
         
         for i, turn in enumerate(session.conversation_log):
             expected_context_elements = turn.get("expected_context_elements", [])
             ai_response = turn.get("ai_response", "")
+
+            response_lower = (ai_response or "").lower()
+            if "[timeout]" in response_lower or "request timed out" in response_lower:
+                details["timeouts"] += 1
+                if not expected_context_elements:
+                    adherence_scores.append(0.0)
+                    continue
+                details["total_elements_tested"] += len(expected_context_elements)
+                adherence_scores.append(0.0)
+                details["turn_scores"].append({
+                    "turn": i + 1,
+                    "expected_elements": len(expected_context_elements),
+                    "found_elements": 0,
+                    "score": 0.0,
+                    "timeout": True,
+                })
+                continue
             
             if not expected_context_elements:
                 # No context elements expected for this turn - perfect score
@@ -179,6 +150,8 @@ class MemoryMetrics:
         overall_score = statistics.mean(adherence_scores) if adherence_scores else 0.0
         
         explanation = f"Context adherence: {details['elements_found']}/{details['total_elements_tested']} elements found across {len(adherence_scores)} turns"
+        if details.get("timeouts"):
+            explanation += f" ({details['timeouts']} timeout-like responses)"
         
         return MetricScore(overall_score, explanation=explanation, details=details)
         
@@ -253,29 +226,21 @@ class MemoryMetrics:
         
     async def calculate_entity_extraction_accuracy(self, session) -> MetricScore:
         """
-        Test AICO's actual entity extraction by querying real GLiNER and ChromaDB storage.
-        This tests the REAL memory system, not fake regex patterns.
+        Entity extraction proxy.
+
+        The benchmark runs end-to-end via the backend API gateway and intentionally
+        does not read internal storage. As a proxy, we score whether the assistant
+        response acknowledges the key named entities introduced in the user turn.
         """
         if not session.conversation_log:
             return MetricScore(0.0, explanation="No conversation data for entity evaluation")
-        
-        if not self.chroma_client:
-            await self.initialize_memory_connections()
             
         extraction_scores = []
         details = {
-            "gliner_tests": [],
-            "chromadb_stored_entities": [],
+            "turn_scores": [],
             "total_messages_tested": 0,
             "successful_extractions": 0
         }
-        
-        user_id = getattr(session, 'user_id', None)
-        conversation_id = getattr(session, 'conversation_id', None)
-        all_conversation_ids = getattr(session, 'all_conversation_ids', [conversation_id] if conversation_id else [])
-        
-        # Give a moment for async memory processing to complete
-        await asyncio.sleep(2.0)
         
         for i, turn in enumerate(session.conversation_log):
             user_message = turn.get("user_message", "")
@@ -285,95 +250,76 @@ class MemoryMetrics:
             details["total_messages_tested"] += 1
             turn_score = 0.0
             
-            # FIXED: Test actual entity extraction quality vs expected entities
             expected_entities = turn.get("expected_entities", {})
             
             if not expected_entities:
                 # No entities expected for this turn
                 extraction_scores.append(1.0)
                 continue
-            
-            # CONTEXT ISOLATION FIX: Query entities but filter by turn-specific content
-            # Get entities that were actually extracted from this specific message
-            turn_conversation_id = turn.get("conversation_id", conversation_id)
-            all_stored_entities = await self._query_stored_entities(user_id, turn_conversation_id, "")
-            
-            # Filter entities to only those that could have come from this specific message
-            stored_entities = self._filter_entities_by_message_content(all_stored_entities, user_message)
-            
-            # Calculate precision and recall for entity extraction
-            total_expected = sum(len(entities) for entities in expected_entities.values())
-            total_found = 0
-            correct_entities = 0
-            
-            for entity_type, expected_list in expected_entities.items():
-                stored_list = stored_entities.get(entity_type, []) if stored_entities else []
-                
-                # Count how many expected entities were actually found
-                for expected_entity in expected_list:
-                    if any(expected_entity.lower() in stored.lower() for stored in stored_list):
-                        correct_entities += 1
-                
-                total_found += len(stored_list)
-            
-            # Calculate precision (correct/found) and recall (correct/expected)
-            precision = correct_entities / total_found if total_found > 0 else 0.0
-            recall = correct_entities / total_expected if total_expected > 0 else 0.0
-            f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-            
-            extraction_scores.append(f1_score)
-            details["successful_extractions"] += 1 if f1_score > 0.5 else 0
-            
-            details["gliner_tests"].append({
-                "turn": i + 1,
-                "message": user_message[:100] + "..." if len(user_message) > 100 else user_message,
-                "expected_entities": expected_entities,
-                "stored_entities": stored_entities,
-                "precision": precision,
-                "recall": recall,
-                "f1_score": f1_score,
-                "correct_entities": correct_entities,
-                "total_expected": total_expected,
-                "total_found": total_found,
-                "score": f1_score
-            })
+
+            ai_response = (turn.get("ai_response") or "").lower()
+            total_expected = sum(len(v) for v in expected_entities.values())
+            correct = 0
+            for entities in expected_entities.values():
+                for ent in entities:
+                    if ent and ent.lower() in ai_response:
+                        correct += 1
+
+            score = correct / total_expected if total_expected > 0 else 1.0
+            extraction_scores.append(score)
+            details["successful_extractions"] += 1 if score >= 0.5 else 0
+            details["turn_scores"].append(
+                {
+                    "turn": i + 1,
+                    "correct": correct,
+                    "total_expected": total_expected,
+                    "score": score,
+                }
+            )
             
         overall_score = statistics.mean(extraction_scores) if extraction_scores else 0.0
         
         return MetricScore(
             score=overall_score,
             details=details,
-            explanation=f"Turn-specific entity extraction testing across {len(extraction_scores)} messages using direct GLiNER calls"
+            explanation=f"Entity acknowledgement proxy across {len(extraction_scores)} turns"
         )
-    
-    def _filter_entities_by_message_content(self, all_entities: Dict[str, List[str]], message_text: str) -> Dict[str, List[str]]:
+
+    async def calculate_character_stability(self, session) -> MetricScore:
+        """Evaluate whether the assistant stays in character.
+
+        The evaluator attaches a `character_spec` (loaded from the active conversation
+        Modelfile) onto the session.
         """
-        CONTEXT ISOLATION FIX: Filter entities to only those that appear in the specific message.
-        This provides turn-specific entity isolation without requiring separate NER calls.
-        """
-        if not all_entities or not message_text:
-            return {}
-        
-        message_lower = message_text.lower()
-        filtered_entities = {}
-        
-        for entity_type, entity_list in all_entities.items():
-            filtered_list = []
-            
-            for entity in entity_list:
-                entity_lower = entity.lower()
-                
-                # Check if this entity actually appears in the message text
-                if entity_lower in message_lower:
-                    filtered_list.append(entity)
-                # Also check for partial matches for compound entities
-                elif any(word in message_lower for word in entity_lower.split() if len(word) > 2):
-                    filtered_list.append(entity)
-            
-            if filtered_list:
-                filtered_entities[entity_type] = filtered_list
-        
-        return filtered_entities
+
+        spec = getattr(session, "character_spec", None)
+        if not spec:
+            return MetricScore(0.0, explanation="No character spec available (could not load active Modelfile)")
+
+        from .character import character_violation_checks
+
+        turn_scores: List[float] = []
+        violations_by_turn: List[Dict[str, Any]] = []
+
+        for i, turn in enumerate(session.conversation_log or []):
+            response_text = turn.get("ai_response", "")
+            violations = character_violation_checks(spec=spec, response_text=response_text)
+            score = 1.0 if not violations else 0.0
+            turn_scores.append(score)
+            if violations:
+                violations_by_turn.append({"turn": i + 1, "violations": violations})
+
+        overall = statistics.mean(turn_scores) if turn_scores else 0.0
+        return MetricScore(
+            score=overall,
+            details={
+                "model_name": spec.model_name,
+                "modelfile_path": str(spec.modelfile_path) if spec.modelfile_path else None,
+                "character_name": spec.character_name,
+                "violations": violations_by_turn,
+            },
+            explanation=f"Character stability across {len(turn_scores)} turns"
+        )
         
     async def calculate_conversation_relevancy(self, session) -> MetricScore:
         """
@@ -571,13 +517,14 @@ class MemoryMetrics:
             
         # Weights for different metrics (should sum to 1.0)
         weights = {
-            0: 0.20,  # context_adherence
-            1: 0.20,  # knowledge_retention  
-            2: 0.15,  # entity_extraction
-            3: 0.15,  # conversation_relevancy
-            4: 0.15,  # semantic_memory_quality
-            5: 0.10,  # response_quality
-            6: 0.05   # memory_consistency
+            0: 0.20,  # character_stability
+            1: 0.15,  # context_adherence
+            2: 0.15,  # knowledge_retention
+            3: 0.10,  # entity_extraction
+            4: 0.15,  # conversation_relevancy
+            5: 0.10,  # semantic_memory_quality
+            6: 0.10,  # response_quality
+            7: 0.05,  # memory_consistency
         }
         
         weighted_sum = 0.0
@@ -597,113 +544,6 @@ class MemoryMetrics:
             details=details,
             explanation=f"Weighted average of {len(metric_scores)} metrics"
         )
-        
-    # Helper methods for NEW reliable scoring algorithm
-    
-    async def _get_real_context_retrieval(self, turn: dict, expected_entities: dict, session) -> list:
-        """Get REAL context items from the actual memory system - NO SIMULATION"""
-        if not self.chroma_client:
-            await self.initialize_memory_connections()
-            
-        user_id = getattr(session, 'user_id', None)
-        if not user_id:
-            return []
-            
-        user_message = turn.get("user_message", "")
-        if not user_message:
-            return []
-            
-        try:
-            # Query the REAL user_facts collection
-            collection = self.chroma_client.get_collection("user_facts")
-            
-            # Get all facts for this user
-            results = collection.get(
-                where={"user_id": user_id},
-                include=["documents", "metadatas"]
-            )
-            
-            context_items = []
-            if results["documents"]:
-                for i, doc in enumerate(results["documents"]):
-                    metadata = results["metadatas"][i] if results["metadatas"] else {}
-                    
-                    # Calculate relevance based on entity matching (like your entity boost)
-                    relevance_score = self._calculate_real_relevance(user_message, metadata, expected_entities)
-                    
-                    context_items.append({
-                        "content": doc,
-                        "relevance_score": relevance_score,
-                        "metadata": metadata
-                    })
-            
-            return context_items
-            
-        except Exception as e:
-            print(f"❌ Failed to get real context: {e}")
-            return []
-    
-    def _calculate_real_relevance(self, user_message: str, metadata: dict, expected_entities: dict) -> float:
-        """Calculate REAL relevance score using entity matching logic"""
-        base_score = 0.3  # Default relevance
-        
-        # Get entities from metadata (same as your entity boost logic)
-        entities_json = metadata.get('entities', '{}')
-        try:
-            entities = json.loads(entities_json)
-            
-            # Check if any entity VALUE appears in query (your exact logic)
-            message_lower = user_message.lower()
-            for entity_type, entity_list in entities.items():
-                for entity_value in entity_list:
-                    if entity_value.lower() in message_lower:
-                        # Apply the same 2.5x boost as your system
-                        return min(1.0, base_score * 2.5)
-                        
-        except (json.JSONDecodeError, AttributeError):
-            pass
-            
-        return base_score
-    
-    def _calculate_entity_coverage(self, expected_entities: dict, context_items: list) -> float:
-        """Score based on how many expected entities have relevant context retrieved"""
-        if not expected_entities:
-            return 1.0
-            
-        covered_entities = 0
-        total_entities = sum(len(entities) for entities in expected_entities.values())
-        
-        for item in context_items:
-            try:
-                item_entities = json.loads(item.get('metadata', {}).get('entities', '{}'))
-                
-                # Check overlap with expected entities
-                for exp_type, exp_values in expected_entities.items():
-                    if exp_type in item_entities:
-                        for exp_value in exp_values:
-                            if exp_value.lower() in [v.lower() for v in item_entities[exp_type]]:
-                                covered_entities += 1
-            except (json.JSONDecodeError, AttributeError):
-                continue
-        
-        return min(1.0, covered_entities / total_entities) if total_entities > 0 else 1.0
-    
-    def _calculate_relevance_quality(self, context_items: list) -> float:
-        """Score based on relevance scores of retrieved items"""
-        if not context_items:
-            return 0.0
-            
-        scores = [item.get('relevance_score', 0.0) for item in context_items]
-        return statistics.mean(scores)
-    
-    def _calculate_context_utilization(self, turn: dict, context_items: list) -> float:
-        """Score based on whether high-relevance context influenced the response"""
-        if not context_items:
-            return 0.0
-        
-        # Simple heuristic: if we have high-relevance items (>0.5), assume good utilization
-        high_relevance_items = [item for item in context_items if item.get('relevance_score', 0) > 0.5]
-        return min(1.0, len(high_relevance_items) / max(1, len(context_items)))
     
     # DEPRECATED: Old keyword-based scoring (kept for reference)
     def _check_context_element_present(self, response: str, context_element: str) -> bool:
@@ -719,6 +559,7 @@ class MemoryMetrics:
             "coworker_sharing": ["coworker", "colleague", "tell", "share"], 
             "pet_introduction": ["pet", "cat", "introduce", "about him"],
             "user_name_michael": ["michael", "name", "hi", "hello"],
+            "user_name_daniel": ["daniel", "name"],
             "location_san_francisco": ["san francisco", "sf", "city", "francisco"],
             "new_job_techcorp": ["techcorp", "job", "work", "company"],
             "recent_move": ["moved", "move", "new", "recently"],
@@ -778,6 +619,20 @@ class MemoryMetrics:
             "communication_success": ["talked", "discussed", "decided"],
             "compromise_solution": ["schedule", "chore", "solution"],
             "birthday_planning": ["birthday", "plan", "celebration"]
+
+            ,
+            # Working-memory / context quality scenarios
+            "poetic_cosmic_flame": ["flame", "cosmic", "void", "dark"],
+            "practical_checklist": ["checklist", "first day", "morning", "job", "work", "engineer"],
+            "topic_change": ["switch", "new topic", "different"],
+            "weather_inquiry": ["weather", "forecast", "temperature"],
+            "python_project": ["python", "project"],
+            "async_functions": ["async", "await"],
+            "programming_help": ["debug", "help", "code", "program"],
+            "weather": ["weather", "forecast"],
+            "cooking": ["cooking", "cook"],
+            "italian_cuisine": ["italian"],
+            "pasta": ["pasta"],
         }
         
     def _check_previous_turn_references(self, conversation_log: List[Dict], current_turn: int, should_remember_turns: List[int]) -> float:
@@ -844,96 +699,7 @@ class MemoryMetrics:
         
         check_func = rule_checks.get(rule)
         return check_func() if check_func else False
-    
-    async def _test_gliner_extraction(self, text: str) -> Dict[str, List[str]]:
-        """
-        Test GLiNER entity extraction by checking if entities were stored in ChromaDB.
-        Since modelservice only uses ZeroMQ (not REST), we verify extraction by 
-        checking what entities were actually stored during conversation processing.
-        """
-        # For now, we'll return empty dict and rely on ChromaDB storage verification
-        # This tests the end-to-end pipeline: GLiNER -> semantic memory -> ChromaDB
-        # If entities are stored in ChromaDB, we know GLiNER worked
-        return {}
-    
-    async def _query_stored_entities(self, user_id: str, conversation_id: str, message_text: str) -> Dict[str, Any]:
-        """Query ChromaDB for facts stored from this conversation (V2)"""
-        try:
-            if not self.user_facts_collection:
-                return {}
-                
-            # Query user facts by user_id (V2 architecture) - reduced noise
-            if user_id:
-                results = self.user_facts_collection.get(
-                    where={"user_id": user_id},
-                    include=["metadatas", "documents"],
-                    limit=50  # Reasonable limit for user facts
-                )
-            else:
-                # Fallback: get recent facts
-                results = self.user_facts_collection.get(
-                    include=["metadatas", "documents"],
-                    limit=10
-                )
-            
-            stored_entities = {}
-            if results and "metadatas" in results:
-                for i, metadata in enumerate(results["metadatas"]):
-                    if "entities_json" in metadata:
-                        try:
-                            entities = json.loads(metadata["entities_json"])
-                            stored_entities.update(entities)
-                        except json.JSONDecodeError:
-                            continue
-                            
-            return stored_entities
-            
-        except Exception as e:
-            print(f"⚠️ Failed to query stored entities: {e}")
-            return {}
-    
-    async def _query_user_facts(self, user_id: str, conversation_id: str = None) -> List[Dict[str, Any]]:
-        """Query ChromaDB for user facts stored during conversation"""
-        try:
-            if not self.user_facts_collection:
-                return []
-                
-            # Get all facts for this user (no embedding queries to avoid dimension mismatch)
-            results = self.user_facts_collection.get(
-                where={"user_id": user_id},
-                include=["metadatas", "documents"]
-            )
-            
-            # If no user-specific facts, get recent facts as fallback
-            if not results.get("metadatas"):
-                recent_results = self.user_facts_collection.get(
-                    include=["metadatas", "documents"],
-                    limit=10
-                )
-                # Use recent results if no user-specific ones
-                if recent_results.get("metadatas"):
-                    results = recent_results
-            
-            facts = []
-            if results and "metadatas" in results:
-                for i, metadata in enumerate(results["metadatas"]):
-                    content = results["documents"][i] if "documents" in results and i < len(results["documents"]) else ""
-                    
-                    fact = {
-                        "category": metadata.get("category", "unknown"),
-                        "content": content,
-                        "confidence": metadata.get("confidence", 0.0),
-                        "created_at": metadata.get("created_at", "")
-                    }
-                    facts.append(fact)
-                    
-            return facts
-            
-        except Exception as e:
-            print(f"⚠️ Failed to query user facts: {e}")
-            return []
-        
-        
+
     def _check_response_coherence(self, response: str) -> bool:
         """Basic coherence check for AI response"""
         if not response or len(response.strip()) < 10:

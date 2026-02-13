@@ -182,6 +182,17 @@ def tail_logs(
                 service_name = record.values.get("service", "unknown")
                 logger_name = record.values.get("logger", "unknown")
                 message = record.get_value()
+
+                display_logger_name = logger_name
+                try:
+                    if (
+                        isinstance(service_name, str)
+                        and isinstance(logger_name, str)
+                        and logger_name.startswith(f"{service_name}.")
+                    ):
+                        display_logger_name = logger_name[len(service_name) + 1 :]
+                except Exception:
+                    display_logger_name = logger_name
                 
                 # Color by level
                 level_colors = {
@@ -193,7 +204,7 @@ def tail_logs(
                 }
                 color = level_colors.get(level, "white")
                 
-                console.print(f"[dim]{timestamp}[/dim] [{color}]{level:8}[/{color}] [cyan]{service_name}[/cyan].[dim]{logger_name}[/dim] - {message}")
+                console.print(f"[dim]{timestamp}[/dim] [{color}]{level:8}[/{color}] [cyan]{service_name}[/cyan].[dim]{display_logger_name}[/dim] - {message}")
         
     except Exception as e:
         console.print(f"[red]✗ Query failed: {e}[/red]")
@@ -284,12 +295,23 @@ def list_logs(
                 service_name = record.values.get("service", "unknown")
                 logger_name = record.values.get("logger", "unknown")
                 message = record.get_value()
+
+                display_logger_name = logger_name
+                try:
+                    if (
+                        isinstance(service_name, str)
+                        and isinstance(logger_name, str)
+                        and logger_name.startswith(f"{service_name}.")
+                    ):
+                        display_logger_name = logger_name[len(service_name) + 1 :]
+                except Exception:
+                    display_logger_name = logger_name
                 
                 # Truncate message if too long
                 if len(message) > 80:
                     message = message[:77] + "..."
                 
-                table.add_row(timestamp, level, service_name, logger_name, message)
+                table.add_row(timestamp, level, service_name, display_logger_name, message)
                 all_records.append(record)
         
         console.print(table)

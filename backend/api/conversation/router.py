@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer
 import json
 
+from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from backend.api.conversation.dependencies import get_message_bus_client
 from backend.api.conversation.dependencies import get_current_user
@@ -32,8 +33,24 @@ from backend.api.conversation.schemas import (
 )
 from backend.api.conversation.exceptions import (
     ConversationNotFoundException, InvalidConversationException,
-    MessageProcessingException, WebSocketAuthenticationException, MessageBusConnectionException
+    MessageProcessingException, WebSocketAuthenticationException, MessageBusConnectionException,
+    ConversationTimeoutException
 )
+
+
+_conversation_config = None
+
+
+def _get_conversation_timeout_seconds() -> float:
+    global _conversation_config
+    if _conversation_config is None:
+        _conversation_config = ConfigurationManager()
+        _conversation_config.initialize(lightweight=True)
+    value = _conversation_config.get("conversation.response_timeout_seconds", 15.0)
+    try:
+        return float(value)
+    except Exception:
+        return 15.0
 
 # Initialize router and logger
 router = APIRouter()
@@ -280,12 +297,18 @@ async def send_message_with_auto_thread(
             
             # Wait for response with timeout (allow for unoptimized LLM processing)
             try:
-                logger.debug(f"🔍 [CONVERSATION_TIMEOUT] Waiting for response with 15s timeout for request: {message_id}")
-                await asyncio.wait_for(response_received.wait(), timeout=15.0)
+                timeout_seconds = _get_conversation_timeout_seconds()
+                logger.debug(f"🔍 [CONVERSATION_TIMEOUT] Waiting for response with {timeout_seconds}s timeout for request: {message_id}")
+                await asyncio.wait_for(response_received.wait(), timeout=timeout_seconds)
                 logger.debug(f"🔍 [CONVERSATION_TIMEOUT] ✅ Response received within timeout for request: {message_id}")
             except asyncio.TimeoutError:
-                logger.error(f"🔍 [CONVERSATION_TIMEOUT] ❌ 15-SECOND TIMEOUT for request: {message_id}")
-                ai_response = "Request timed out - please try again"
+                timeout_seconds = _get_conversation_timeout_seconds()
+                logger.error(f"🔍 [CONVERSATION_TIMEOUT] ❌ TIMEOUT after {timeout_seconds}s for request: {message_id}")
+                raise ConversationTimeoutException(
+                    conversation_id=conversation_id,
+                    timeout_seconds=int(timeout_seconds),
+                    user_id=user_id,
+                )
             finally:
                 # Unsubscribe from the topic
                 try:
@@ -306,6 +329,10 @@ async def send_message_with_auto_thread(
             )
             
             return response_data
+    except ConversationException:
+        # Let custom conversation exceptions map to their intended HTTP status codes
+        # (e.g. ConversationTimeoutException -> 408) instead of being converted into 500s.
+        raise
     except Exception as e:
         logger.error(f"Failed to send message with auto-thread: {e}")
         raise HTTPException(status_code=500, detail="Failed to process message")

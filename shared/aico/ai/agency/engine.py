@@ -1522,8 +1522,11 @@ class AgencyEngine(BaseAIProcessor):
         from .perceptual_events import PerceptType, GoalOriginType
         
         try:
+            def _enum_value(value):
+                return value.value if hasattr(value, "value") else value
+
             logger.info(
-                f"[AGENCY_ENGINE] Processing {event.percept_type.value} event: {event.summary_text[:100]}"
+                f"[AGENCY_ENGINE] Processing {_enum_value(event.percept_type)} event: {event.summary_text[:100]}"
             )
             
             # Only process events with goal candidates
@@ -1542,7 +1545,15 @@ class AgencyEngine(BaseAIProcessor):
                 GoalOriginType.AGENT_SELF: GoalOrigin.HOBBY,
                 GoalOriginType.SYSTEM_MAINTENANCE: GoalOrigin.MAINTENANCE,
             }
-            origin = origin_map.get(event.candidate_origin, GoalOrigin.USER)
+
+            candidate_origin = event.candidate_origin
+            if isinstance(candidate_origin, str):
+                try:
+                    candidate_origin = GoalOriginType(candidate_origin)
+                except ValueError:
+                    candidate_origin = None
+
+            origin = origin_map.get(candidate_origin, GoalOrigin.USER)
             
             # Map horizon to goal type
             horizon_to_type = {
@@ -1550,8 +1561,9 @@ class AgencyEngine(BaseAIProcessor):
                 "project": "project",
                 "task": "task"
             }
+            horizon_key = _enum_value(event.candidate_goal_horizon) if event.candidate_goal_horizon else "project"
             goal_type = horizon_to_type.get(
-                event.candidate_goal_horizon.value if event.candidate_goal_horizon else "project",
+                horizon_key,
                 "project"
             )
             
@@ -1623,8 +1635,8 @@ class AgencyEngine(BaseAIProcessor):
             )
             
             logger.info(
-                f"[AGENCY_ENGINE] Created goal from {event.percept_type.value}: "
-                f"'{goal_title}' (id={goal.goal_id}, origin={origin.value})"
+                f"[AGENCY_ENGINE] Created goal from {_enum_value(event.percept_type)}: "
+                f"'{goal_title}' (id={goal.goal_id}, origin={_enum_value(origin)})"
             )
             
             # Log event
@@ -1637,7 +1649,7 @@ class AgencyEngine(BaseAIProcessor):
                         event_type="goal_created_from_percept",
                         source="perceptual_event_processor",
                         payload={
-                            "percept_type": event.percept_type.value,
+                            "percept_type": _enum_value(event.percept_type),
                             "percept_id": event.percept_id,
                             "confidence": event.confidence_score,
                         }

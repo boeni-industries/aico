@@ -197,19 +197,7 @@ class ThreadResolver:
 ### Semantic Analysis Components
 
 **Vector Similarity Matching**:
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/context-management.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/context-management.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/context-management.md
-- Generate embeddings using the configured embedding model (see `transformers.models.embeddings` in `config/defaults/modelservice.yaml`)
-=======
 - Generate embeddings using the configured embedding model (see `modelservice.transformers.models.embeddings` in `config/defaults/modelservice.yaml`)
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/context-management.md
-=======
-- Generate embeddings using the configured embedding model (see `modelservice.transformers.models.embeddings` in `config/defaults/modelservice.yaml`)
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/context-management.md
-=======
-- Generate embeddings using the configured embedding model (see `modelservice.transformers.models.embeddings` in `config/defaults/modelservice.yaml`)
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/context-management.md
 - Calculate cosine similarity with thread context
 - Apply dynamic thresholds based on conversation patterns
 
@@ -327,5 +315,52 @@ class ContextOptimizer:
 - Use sliding window for recent messages
 - Preserve conversation objectives and emotional state
 - Maintain thread coherence markers
+
+## 2026 State-of-the-Art Additions (Within the Same Architecture)
+
+AICO’s existing multi-tier architecture (Working Memory, Semantic + Knowledge Graph, Behavioral Learning) is compatible with modern 2026 best practices. The key evolution is *how context is selected, compressed, and validated*, not adding new tiers.
+
+### Context as “Memory Blocks” (Budgeted Prompt Assembly)
+
+Instead of treating context as a single stream of messages, state-of-the-art systems assemble the LLM prompt from a small set of **budgeted blocks** with explicit priorities.
+
+**Typical blocks** (mapped to AICO tiers):
+- **Identity & policies** (system prompt)
+- **Conversation turn buffer** (very recent user/assistant turns from Working Memory)
+- **Thread summary** (compressed working context for the active thread)
+- **Relevant episodic snippets** (retrieved segments from Semantic Memory)
+- **Stable facts & preferences** (KG / semantic facts, optionally behavior-derived)
+- **Safety & tone constraints** (style guardrails and user preference constraints)
+
+The assembler should allocate token/character budgets per block and enforce those budgets deterministically.
+
+### Compression (Not Just Truncation)
+
+Modern systems increasingly prefer:
+- **Rolling summaries** of older conversation spans
+- **Thread-scoped summaries** (one per active thread)
+- **Fact extraction** (stable, conflict-aware updates to preferences/relationships)
+
+This reduces “topic attractor loops” and prevents irrelevant older prose from overpowering the current user turn.
+
+### Conflict-Aware Memory Updates
+
+When new information contradicts older stored facts/preferences, the memory system should support:
+- **Update semantics** (latest truth wins, with provenance)
+- **Confidence decay** (older unconfirmed facts become weaker)
+- **Optional versioning** (audit trail for debugging and user trust)
+
+### Evaluation and Observability
+
+State-of-the-art memory systems are shipped with explicit evaluation loops:
+- **Retrieval quality**: hit-rate for “needles”, false-positive rate
+- **Coherence**: correct answering of the latest user input vs. drift
+- **Update correctness**: corrections persist and override older facts
+- **Cost/latency**: context assembly overhead and LLM token usage
+
+For runtime observability, log per-request:
+- Selected blocks and their sizes
+- Top retrieved items with scores and sources
+- Truncation/compression actions taken
 
 This context management system enables AICO to maintain sophisticated conversation awareness while operating efficiently on local hardware, providing the foundation for natural, relationship-aware interactions.

@@ -165,7 +165,7 @@ def validate_pin(pin: str) -> str:
     Validate PIN format and requirements using configuration.
     """
     config_manager = ConfigurationManager()
-    pin_policy = config_manager.get('pin_policy', {})
+    pin_policy = config_manager.get('security.pin_policy', {})
     min_length = pin_policy.get('min_length', 4)
     max_length = pin_policy.get('max_length', 8)
     require_numeric = pin_policy.get('require_numeric', True)

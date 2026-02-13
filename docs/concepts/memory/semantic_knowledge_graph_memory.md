@@ -979,29 +979,10 @@ This ensures clean entity resolution while preserving the relationship semantics
 
 ## Configuration
 
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/semantic_knowledge_graph_memory.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/semantic_knowledge_graph_memory.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/semantic_knowledge_graph_memory.md
-**Note:** Knowledge graph uses existing model configuration from `modelservice.yaml`. Models are managed centrally:
-- **Entity extraction:** Uses `transformers.models.entity_extraction` (GLiNER)
-- **Embeddings:** Uses `default_models.embedding` (paraphrase-multilingual)
-- **LLM operations:** Uses `default_models.conversation` (qwen3-abliterated:8b-v2)
-=======
-=======
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/semantic_knowledge_graph_memory.md
-=======
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/semantic_knowledge_graph_memory.md
 **Note:** Knowledge graph uses the existing model configuration from `config/defaults/modelservice.yaml`. Models are managed centrally:
 - **Entity extraction:** Uses `modelservice.transformers.models.entity_extraction` (GLiNER)
 - **Embeddings:** Uses `modelservice.transformers.models.embeddings` (sentence-transformers)
 - **LLM operations:** Uses `modelservice.ollama.default_models.conversation.name`
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/semantic_knowledge_graph_memory.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/memory/semantic_knowledge_graph_memory.md
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/semantic_knowledge_graph_memory.md
-=======
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/semantic_knowledge_graph_memory.md
-=======
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/memory/semantic_knowledge_graph_memory.md
 
 ```yaml
 memory:

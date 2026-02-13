@@ -96,6 +96,9 @@ class ConversationEngine(BaseService):
         # AI processing coordination
         self.pending_responses: Dict[str, Dict[str, Any]] = {}  # request_id -> response data
 
+        # Streaming chunk routing (subscribe once; route by request_id)
+        self._modelservice_stream_subscribed = False
+
         # Configuration - access via core.conversation path (like other services)
         # NOTE: These configs are validated at startup - if missing, startup fails
         engine_config = self.container.config.get("conversation", {})
@@ -134,6 +137,12 @@ class ConversationEngine(BaseService):
         self.model_name = conversation_model_config.get("name")
         if not self.model_name:
             raise ValueError("CRITICAL: Missing modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
+
+        self.character_name = conversation_model_config.get("character_name")
+        if not self.character_name and self.model_name:
+            model_base = self.model_name.split(":", 1)[0]
+            model_base = model_base.rsplit("/", 1)[-1]
+            self.character_name = model_base.strip().capitalize() if model_base else None
         
         self.logger.debug(f"Conversation engine using model: {self.model_name}")
 
@@ -620,31 +629,50 @@ class ConversationEngine(BaseService):
                 self.logger.debug(f"System prompt: {len(system_prompt)} chars")
             
             # Build messages for LLM
-            # IMPORTANT: Only add system message if we have contextual information to provide
-            # The Modelfile's SYSTEM instruction should be the primary character definition
             messages = []
             if system_prompt and system_prompt.strip():
                 messages.append(ModelConversationMessage(role="system", content=system_prompt))
             
             # Add conversation history as actual messages (not just in system prompt)
             history_message_count = 0
+            history_truncated_count = 0
             if memory_context:
                 memory_data = memory_context.get("memory_context", {})
                 recent_context = memory_data.get("recent_context", [])
+                max_history_messages = 4
+                max_history_chars_per_message = 600
+                max_history_chars_total = 2400
                 
                 # CRITICAL: recent_context is in REVERSE chronological order (newest first)
                 # We need to reverse it to get chronological order (oldest first) for LLM
                 # Take last 5 messages and reverse them
-                history_messages = list(reversed(recent_context[-5:]))
+                history_messages = list(reversed(recent_context[:max_history_messages]))
                 
                 self.logger.debug(f"🧠 [CONTEXT_TRACE] Processing {len(history_messages)} history messages for LLM")
+                history_chars_total = 0
                 for msg in history_messages:
                     role = msg.get('role', 'user')
                     content = msg.get('content', '').strip()
-                    if content:
-                        messages.append(ModelConversationMessage(role=role, content=content))
-                        history_message_count += 1
-                        self.logger.debug(f"🧠 [CONTEXT_TRACE] ✅ Added {role} message to LLM: {content[:80]}...")
+                    if not content:
+                        continue
+
+                    remaining_budget = max_history_chars_total - history_chars_total
+                    if remaining_budget <= 0:
+                        break
+
+                    truncated = False
+                    content_limit = min(max_history_chars_per_message, remaining_budget)
+                    if len(content) > content_limit:
+                        content = content[: max(0, content_limit - 1)] + "…"
+                        truncated = True
+
+                    messages.append(ModelConversationMessage(role=role, content=content))
+                    history_message_count += 1
+                    history_chars_total += len(content)
+                    self.logger.debug(f"🧠 [CONTEXT_TRACE] ✅ Added {role} message to LLM: {content[:80]}...")
+                    if truncated:
+                        history_truncated_count += 1
+                        self.logger.debug(f"🧠 [CONTEXT_TRACE] ⚠️  Truncated {role} history message to {len(content)} chars")
                 
                 # CRITICAL VALIDATION: Warn if no conversation history was added
                 if history_message_count == 0 and len(recent_context) > 0:
@@ -657,8 +685,23 @@ class ConversationEngine(BaseService):
             
             # Add current user message
             current_content = user_message.message.text.strip()
+            current_user_chars = len(current_content) if current_content else 0
             if current_content:
                 messages.append(ModelConversationMessage(role="user", content=current_content))
+
+            system_chars = len(system_prompt) if system_prompt else 0
+            history_chars = history_chars_total if memory_context else 0
+            self.logger.info(
+                "🧠 [LLM_CONTEXT] request_id=%s model=%s messages=%s system_chars=%s history_msgs=%s history_chars=%s history_trunc=%s user_chars=%s",
+                request_id,
+                self.model_name,
+                len(messages),
+                system_chars,
+                history_message_count,
+                history_chars,
+                history_truncated_count,
+                current_user_chars,
+            )
             
             # Create and publish LLM request
             # CRITICAL: Do NOT override Modelfile parameters (temperature, max_tokens, etc.)
@@ -668,6 +711,12 @@ class ConversationEngine(BaseService):
                 messages=messages,
                 stream=True
             )
+
+            try:
+                conversation_id = getattr(user_message.message, "conversation_id", "")
+                _ = conversation_id
+            except Exception:
+                pass
             
             # Build request-specific response topic for targeted delivery
             response_topic = AICOTopics.build_response_topic(
@@ -678,6 +727,13 @@ class ConversationEngine(BaseService):
             
             # Subscribe to our specific response topic before sending request
             await self.bus_client.subscribe(response_topic, self._handle_llm_response)
+
+            # Subscribe once to the global streaming topic and route chunks by request_id.
+            # Subscribing per-request creates an ever-growing list of callbacks and can
+            # degrade performance until requests time out.
+            if not self._modelservice_stream_subscribed:
+                await self.bus_client.subscribe(AICOTopics.MODELSERVICE_COMPLETIONS_STREAM, self._handle_modelservice_stream_chunk)
+                self._modelservice_stream_subscribed = True
             
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_CHAT_REQUEST,
@@ -689,79 +745,73 @@ class ConversationEngine(BaseService):
             # Mark request sent and start streaming handler
             self.pending_responses[request_id]["llm_request_sent"] = True
             self.pending_responses[request_id]["response_topic"] = response_topic  # Track for cleanup
-            asyncio.create_task(self._handle_streaming_response(request_id, AICOTopics.MODELSERVICE_COMPLETIONS_STREAM))
+            # Streaming chunks are handled by the shared subscription handler
+            # (_handle_modelservice_stream_chunk)
             
         except Exception as e:
             self.logger.error(f"Error generating LLM response: {e}")
             await self._cleanup_request(request_id)
+
+    async def _handle_modelservice_stream_chunk(self, envelope) -> None:
+        """Route modelservice streaming chunks to the correct pending request."""
+        try:
+            from aico.proto.aico_modelservice_pb2 import StreamingChunk
+            streaming_chunk = StreamingChunk()
+            envelope.any_payload.Unpack(streaming_chunk)
+
+            request_id = streaming_chunk.request_id
+            if not request_id or request_id not in self.pending_responses:
+                return
+
+            chunk_content = streaming_chunk.content
+            accumulated_content = streaming_chunk.accumulated_content
+            content_type = streaming_chunk.content_type
+            is_done = streaming_chunk.done
+
+            # Publish streaming chunk to API layer
+            from aico.proto.aico_conversation_pb2 import StreamingResponse
+            import time
+
+            streaming_response = StreamingResponse()
+            streaming_response.request_id = request_id
+            streaming_response.content = chunk_content
+            streaming_response.accumulated_content = accumulated_content
+            streaming_response.done = is_done
+            streaming_response.timestamp = int(time.time() * 1000)
+            streaming_response.content_type = content_type
+
+            await self.bus_client.publish(
+                AICOTopics.CONVERSATION_STREAM,
+                streaming_response,
+                correlation_id=request_id,
+            )
+
+            if is_done:
+                await self._finalize_streaming_response(request_id, accumulated_content)
+
+        except Exception as e:
+            self.logger.error(f"Error routing streaming chunk: {e}")
     
     async def _handle_streaming_response(self, request_id: str, stream_topic: str) -> None:
-        """Handle streaming chunks from modelservice and forward to API layer"""
-        try:
-            self.logger.debug(f"Starting streaming handler for {request_id}")
-            accumulated_content = ""
-            accumulated_thinking = ""
-            
-            # Subscribe to streaming chunks with callback
-            async def handle_chunk(envelope):
-                nonlocal accumulated_content, accumulated_thinking
-                try:
-                    # Extract StreamingChunk from protobuf envelope
-                    from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                    streaming_chunk = StreamingChunk()
-                    envelope.any_payload.Unpack(streaming_chunk)
-                    
-                    # Only process chunks for our specific request
-                    if streaming_chunk.request_id != request_id:
-                        return False  # Not for us, continue listening
-                    
-                    # Extract chunk content and type from protobuf
-                    chunk_content = streaming_chunk.content
-                    accumulated_content = streaming_chunk.accumulated_content
-                    content_type = streaming_chunk.content_type  # "thinking" or "response"
-                    is_done = streaming_chunk.done
-                    
-                    # Track thinking separately
-                    if content_type == "thinking":
-                        accumulated_thinking += chunk_content
-                    
-                    # Publish streaming chunk directly to API layer via message bus
-                    if request_id in self.pending_responses:
-                        from aico.proto.aico_conversation_pb2 import StreamingResponse
-                        import time
-                        
-                        # Create proper protobuf streaming response with content_type
-                        streaming_response = StreamingResponse()
-                        streaming_response.request_id = request_id
-                        streaming_response.content = chunk_content
-                        streaming_response.accumulated_content = accumulated_content
-                        streaming_response.done = is_done
-                        streaming_response.timestamp = int(time.time() * 1000)  # milliseconds
-                        streaming_response.content_type = content_type  # Forward content_type to frontend
-                        
-                        # Publish directly to API streaming topic
-                        await self.bus_client.publish(
-                            AICOTopics.CONVERSATION_STREAM,
-                            streaming_response,
-                            correlation_id=request_id
-                        )
-                    
-                    # If this is the final chunk, handle completion
-                    if is_done:
-                        self.logger.debug(f"Streaming complete: {len(accumulated_content)} chars, thinking: {len(accumulated_thinking)} chars")
-                        await self._finalize_streaming_response(request_id, accumulated_content, accumulated_thinking)
-                        return True  # Signal to stop subscription
-                    return False
-                    
-                except Exception as e:
-                    self.logger.error(f"Error processing streaming chunk: {e}")
-                    return False
-            
-            # Subscribe with proper callback
-            await self.bus_client.subscribe(stream_topic, handle_chunk)
-                    
-        except Exception as e:
-            self.logger.error(f"Streaming handler error for {request_id}: {e}")
+        """LEGACY: Per-request streaming handler.
+
+        This method is intentionally disabled.
+
+        Rationale:
+        - Subscribing to the global stream topic per-request caused an ever-growing
+          callback list and degraded performance until requests timed out.
+        - Streaming is now handled by a single shared subscription:
+          `self._handle_modelservice_stream_chunk()`.
+
+        Kept temporarily for reference while the new routing logic bakes.
+        """
+        self.logger.warning(
+            "DEPRECATED: _handle_streaming_response() was called (request_id=%s, stream_topic=%s). "
+            "This method is intentionally disabled; streaming is routed via _handle_modelservice_stream_chunk().",
+            request_id,
+            stream_topic,
+        )
+        return
     
     async def _finalize_streaming_response(self, request_id: str, final_content: str, thinking_content: str = "") -> None:
         """Finalize streaming response and deliver to user (semantic memory approach)"""
@@ -909,10 +959,19 @@ class ConversationEngine(BaseService):
         
         # CRITICAL: Tell the LLM its character name (e.g., "Eve" from model "eve:latest")
         # This prevents the LLM from defaulting to its base model name (e.g., "Qwen")
-        if self.model_name:
-            # Extract character name from model (e.g., "eve" from "eve:latest")
-            character_name = self.model_name.split(':')[0].capitalize()
-            identity_parts.append(f"Your name is {character_name}.")
+        if getattr(self, "character_name", None):
+            identity_parts.append(f"Your name is {self.character_name}.")
+        elif self.model_name:
+            # Extract character name from model.
+            # Examples:
+            # - "eve:latest" -> "Eve"
+            # - "boeni/eve:latest" -> "Eve"
+            # - "huihui_ai/qwen3-abliterated:latest" -> "Qwen3-abliterated" (still better than full path)
+            model_base = self.model_name.split(":", 1)[0]
+            model_base = model_base.rsplit("/", 1)[-1]
+            character_name = model_base.strip().capitalize() if model_base else ""
+            if character_name:
+                identity_parts.append(f"Your name is {character_name}.")
         
         # Get user's first name from database
         if user_context and hasattr(user_context, 'full_name') and user_context.full_name:
@@ -1022,6 +1081,11 @@ class ConversationEngine(BaseService):
                         source = r.get('source', '')
                         target = r.get('target', '')
                         relation = r.get('relation', '')
+                        # Filter out placeholders / incomplete relations that add noise to the prompt
+                        if not source or not target or not relation:
+                            continue
+                        if source.strip() == "?" or target.strip() == "?" or relation.strip() == "?":
+                            continue
                         rel_lines.append(f"- {source} {relation} {target}")
                     
                     if rel_lines:

@@ -217,7 +217,11 @@ class PropertyGraphStorage:
             # Save nodes with deduplication handling
             for node in graph.nodes:
                 try:
-                    await uow.kg_nodes.create(node)
+                    # Use a savepoint so a single failed insert doesn't abort the
+                    # entire transaction (which would break the deduplication query
+                    # below with InFailedSQLTransactionError).
+                    async with uow._session.begin_nested():
+                        await uow.kg_nodes.create(node)
                     node_id_mapping[node.id] = node.id
                 except Exception as e:
                     # Check if node already exists (deduplication)
@@ -294,7 +298,8 @@ class PropertyGraphStorage:
                 else:
                     # New edge - insert
                     try:
-                        await uow.kg_edges.create(edge)
+                        async with uow._session.begin_nested():
+                            await uow.kg_edges.create(edge)
                     except Exception as e:
                         logger.error(f"Failed to save edge {edge.id}: {e}")
                         raise

@@ -83,6 +83,27 @@ class PerceptualEvent:
     
     # Additional context (flexible)
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Be resilient to enum fields being passed as raw strings from upstream.
+        # This prevents runtime failures like: "'str' object has no attribute 'value'".
+        if isinstance(self.percept_type, str):
+            try:
+                self.percept_type = PerceptType(self.percept_type)
+            except ValueError:
+                pass
+
+        if isinstance(self.candidate_goal_horizon, str):
+            try:
+                self.candidate_goal_horizon = GoalHorizon(self.candidate_goal_horizon)
+            except ValueError:
+                pass
+
+        if isinstance(self.candidate_origin, str):
+            try:
+                self.candidate_origin = GoalOriginType(self.candidate_origin)
+            except ValueError:
+                pass
     
     @classmethod
     def create_user_intent_event(
@@ -140,11 +161,14 @@ class PerceptualEvent:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
+        def _enum_value(value: Any) -> Any:
+            return value.value if hasattr(value, "value") else value
+
         return {
             "percept_id": self.percept_id,
             "timestamp": self.timestamp.isoformat(),
             "source_component": self.source_component,
-            "percept_type": self.percept_type.value,
+            "percept_type": _enum_value(self.percept_type),
             "summary_text": self.summary_text,
             "actors": self.actors,
             "topic_tags": self.topic_tags,
@@ -158,7 +182,7 @@ class PerceptualEvent:
             "raw_observation_ids": self.raw_observation_ids,
             "interpretation_chain": self.interpretation_chain,
             "candidate_goal_summaries": self.candidate_goal_summaries,
-            "candidate_goal_horizon": self.candidate_goal_horizon.value if self.candidate_goal_horizon else None,
-            "candidate_origin": self.candidate_origin.value if self.candidate_origin else None,
+            "candidate_goal_horizon": _enum_value(self.candidate_goal_horizon) if self.candidate_goal_horizon else None,
+            "candidate_origin": _enum_value(self.candidate_origin) if self.candidate_origin else None,
             "metadata": self.metadata
         }

@@ -1,12 +1,10 @@
-"""
-AICO Memory Benchmark Suite (V2)
+"""AICO memory benchmark suite.
 
-Performance benchmarking framework for AICO's fact-centric memory system that measures
-GLiNER + LLM fact extraction performance, 2-tier storage efficiency (LMDB + ChromaDB), 
-context adherence accuracy, entity extraction precision, and conversation continuity.
+This package provides an end-to-end benchmark runner that drives the live backend via
+the API gateway using transport encryption and JWT authentication.
 
-This framework provides comprehensive memory system performance analysis with stunning
-visual output using Rich for tracking memory improvements over time.
+The benchmark focuses on context/working-memory quality by scoring the assistant's
+responses against scenario expectations, without reading internal storage directly.
 """
 
 import sys

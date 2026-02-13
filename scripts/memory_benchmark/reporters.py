@@ -175,7 +175,7 @@ class RichReporter:
         """Get list of V2 test areas for scenario"""
         areas = []
         if scenario.tests_working_memory: areas.append("Working Memory (LMDB)")
-        if scenario.tests_semantic_memory: areas.append("Semantic Memory (ChromaDB)")
+        if scenario.tests_semantic_memory: areas.append("Semantic Memory (Semantic Search + KG)")
         if scenario.tests_fact_extraction: areas.append("Fact Extraction (GLiNER + LLM)")
         if scenario.tests_entity_extraction: areas.append("Entity Extraction")
         if scenario.tests_conversation_strength: areas.append("Conversation Strength")
@@ -225,6 +225,7 @@ class JSONReporter:
             },
             "scores": {
                 "overall": self._metric_to_dict(result.overall_score),
+                "character_stability": self._metric_to_dict(result.character_stability),
                 "context_adherence": self._metric_to_dict(result.context_adherence),
                 "knowledge_retention": self._metric_to_dict(result.knowledge_retention),
                 "entity_extraction": self._metric_to_dict(result.entity_extraction),
@@ -272,6 +273,7 @@ class JSONReporter:
         strengths = []
         
         metrics = [
+            ("Character Stability", result.character_stability.percentage),
             ("Context Adherence", result.context_adherence.percentage),
             ("Knowledge Retention", result.knowledge_retention.percentage),
             ("Entity Extraction", result.entity_extraction.percentage),
@@ -292,6 +294,7 @@ class JSONReporter:
         weaknesses = []
         
         metrics = [
+            ("Character Stability", result.character_stability.percentage),
             ("Context Adherence", result.context_adherence.percentage),
             ("Knowledge Retention", result.knowledge_retention.percentage),
             ("Entity Extraction", result.entity_extraction.percentage),
