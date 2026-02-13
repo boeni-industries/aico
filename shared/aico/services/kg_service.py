@@ -179,68 +179,6 @@ class KGService:
             await self.uow.rollback()
             raise
 
-    # ==================== Property Operations ====================
-
-    async def set_node_property(self, node_id: str, key: str, value: Any) -> bool:
-        """Set a property on a node."""
-        try:
-            # Node properties are stored in the properties dict of Node
-            
-            prop = KGNodeProperty(
-                node_id=node_id,
-                property_key=key,
-                property_value=json.dumps(value) if not isinstance(value, str) else value,
-                created_at=datetime.now(UTC)
-            )
-            await self.uow.kg_node_properties.create(prop)
-            await self.uow.commit()
-            
-            logger.info("[KG_SERVICE] Set node property", extra={"node_id": node_id, "key": key})
-            return True
-        except Exception as e:
-            logger.error(f"[KG_SERVICE] Failed to set node property: {e}", extra={"node_id": node_id})
-            await self.uow.rollback()
-            raise
-
-    async def get_node_properties(self, node_id: str) -> Dict[str, Any]:
-        """Get all properties for a node."""
-        try:
-            props = await self.uow.kg_node_properties.list(filters={"node_id": node_id})
-            return {p.property_key: p.property_value for p in props}
-        except Exception as e:
-            logger.error(f"[KG_SERVICE] Failed to get node properties: {e}", extra={"node_id": node_id})
-            raise
-
-    async def set_edge_property(self, edge_id: str, key: str, value: Any) -> bool:
-        """Set a property on an edge."""
-        try:
-            # Edge properties are stored in the properties dict of Edge
-            
-            prop = KGEdgeProperty(
-                edge_id=edge_id,
-                property_key=key,
-                property_value=json.dumps(value) if not isinstance(value, str) else value,
-                created_at=datetime.now(UTC)
-            )
-            await self.uow.kg_edge_properties.create(prop)
-            await self.uow.commit()
-            
-            logger.info("[KG_SERVICE] Set edge property", extra={"edge_id": edge_id, "key": key})
-            return True
-        except Exception as e:
-            logger.error(f"[KG_SERVICE] Failed to set edge property: {e}", extra={"edge_id": edge_id})
-            await self.uow.rollback()
-            raise
-
-    async def get_edge_properties(self, edge_id: str) -> Dict[str, Any]:
-        """Get all properties for an edge."""
-        try:
-            props = await self.uow.kg_edge_properties.list(filters={"edge_id": edge_id})
-            return {p.property_key: p.property_value for p in props}
-        except Exception as e:
-            logger.error(f"[KG_SERVICE] Failed to get edge properties: {e}", extra={"edge_id": edge_id})
-            raise
-
     # ==================== Query Operations ====================
 
     async def find_nodes_by_label(self, user_id: str, label: str) -> List[Any]:

@@ -6,10 +6,9 @@ Tests the KGNodeRepository and KGEdgeRepository with real PostgreSQL database.
 
 import pytest
 import uuid
-import json
 from datetime import datetime, UTC
 
-from aico.data.kg.models import KGNode, KGEdge
+from aico.ai.knowledge_graph.models import Node, Edge
 from aico.data.user.models import UserProfile
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
@@ -54,7 +53,7 @@ class TestKGNodeRepository:
     @pytest.mark.asyncio
     async def test_create_node(self, uow, test_user):
         """Test creating a new KG node."""
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="PERSON",
@@ -63,6 +62,8 @@ class TestKGNodeRepository:
             source_text="John Doe is 30 years old",
             language="en",
             is_current=True,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         
         created = await uow.kg_nodes.create(node)
@@ -70,12 +71,12 @@ class TestKGNodeRepository:
         
         assert created.id == node.id
         assert created.label == "PERSON"
-        assert json.loads(created.properties)["name"] == "John Doe"
+        assert created.properties.get("name") == "John Doe"
     
     @pytest.mark.asyncio
     async def test_get_node_by_id(self, uow, test_user):
         """Test retrieving node by ID."""
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="LOCATION",
@@ -83,6 +84,8 @@ class TestKGNodeRepository:
             confidence=0.9,
             source_text="Paris is in France",
             is_current=True,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         
         await uow.kg_nodes.create(node)
@@ -91,12 +94,12 @@ class TestKGNodeRepository:
         found = await uow.kg_nodes.get_by_id(node.id)
         assert found is not None
         assert found.label == "LOCATION"
-        assert json.loads(found.properties)["name"] == "Paris"
+        assert found.properties.get("name") == "Paris"
     
     @pytest.mark.asyncio
     async def test_update_node(self, uow, test_user):
         """Test updating a node."""
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="ORGANIZATION",
@@ -104,20 +107,20 @@ class TestKGNodeRepository:
             confidence=0.8,
             source_text="ACME Corp is an organization",
             is_current=True,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         
         await uow.kg_nodes.create(node)
         await uow.commit()
         
         # Update the node
-        props = json.loads(node.properties)
-        props["name"] = "ACME Corporation"
-        node.properties = json.dumps(props)
+        node.properties["name"] = "ACME Corporation"
         node.confidence = 0.95
         updated = await uow.kg_nodes.update(node)
         await uow.commit()
         
-        assert json.loads(updated.properties)["name"] == "ACME Corporation"
+        assert updated.properties.get("name") == "ACME Corporation"
         
         # Verify update persisted
         found = await uow.kg_nodes.get_by_id(node.id)
@@ -126,7 +129,7 @@ class TestKGNodeRepository:
     @pytest.mark.asyncio
     async def test_delete_node(self, uow, test_user):
         """Test deleting a node."""
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="EVENT",
@@ -134,6 +137,8 @@ class TestKGNodeRepository:
             confidence=0.7,
             source_text="Test Event occurred",
             is_current=True,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         
         await uow.kg_nodes.create(node)
@@ -153,7 +158,7 @@ class TestKGNodeRepository:
     async def test_list_nodes(self, uow, test_user):
         """Test listing nodes with filters."""
         for i in range(3):
-            node = KGNode(
+            node = Node(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 label="PERSON" if i < 2 else "LOCATION",
@@ -161,6 +166,8 @@ class TestKGNodeRepository:
                 confidence=0.8,
                 source_text=f"Entity {i} exists",
                 is_current=True,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             await uow.kg_nodes.create(node)
         
@@ -178,7 +185,7 @@ class TestKGNodeRepository:
     async def test_count_nodes(self, uow, test_user):
         """Test counting nodes."""
         for i in range(3):
-            node = KGNode(
+            node = Node(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 label="CONCEPT",
@@ -186,6 +193,8 @@ class TestKGNodeRepository:
                 confidence=0.85,
                 source_text=f"Concept {i} is important",
                 is_current=True,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             await uow.kg_nodes.create(node)
         
@@ -198,7 +207,7 @@ class TestKGNodeRepository:
     async def test_get_by_label_for_user(self, uow, test_user):
         """Test getting nodes by label for a user."""
         for i in range(3):
-            node = KGNode(
+            node = Node(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 label="HOBBY",
@@ -206,6 +215,8 @@ class TestKGNodeRepository:
                 confidence=0.9 - (i * 0.1),  # Decreasing confidence
                 source_text=f"Hobby {i} is enjoyable",
                 is_current=True,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             await uow.kg_nodes.create(node)
         

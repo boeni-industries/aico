@@ -6,7 +6,7 @@ import pytest
 import uuid
 from datetime import datetime, UTC
 
-from aico.data.kg.models import KGNode
+from aico.ai.knowledge_graph.models import Node
 from aico.data.user.models import UserProfile
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
@@ -49,7 +49,7 @@ class TestKGNodesRepository:
     
     @pytest.mark.asyncio
     async def test_create_node(self, uow, test_user):
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="PERSON",
@@ -68,7 +68,7 @@ class TestKGNodesRepository:
     
     @pytest.mark.asyncio
     async def test_get_node_by_id(self, uow, test_user):
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="LOCATION",
@@ -88,7 +88,7 @@ class TestKGNodesRepository:
     
     @pytest.mark.asyncio
     async def test_update_node(self, uow, test_user):
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="PERSON",
@@ -114,7 +114,7 @@ class TestKGNodesRepository:
     
     @pytest.mark.asyncio
     async def test_delete_node(self, uow, test_user):
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="ORGANIZATION",
@@ -139,7 +139,7 @@ class TestKGNodesRepository:
     @pytest.mark.asyncio
     async def test_list_nodes(self, uow, test_user):
         for i in range(3):
-            node = KGNode(
+            node = Node(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 label="PERSON",
@@ -163,7 +163,7 @@ class TestKGNodesRepository:
     @pytest.mark.asyncio
     async def test_count_nodes(self, uow, test_user):
         for i in range(3):
-            node = KGNode(
+            node = Node(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 label="LOCATION",
@@ -183,7 +183,7 @@ class TestKGNodesRepository:
     @pytest.mark.asyncio
     async def test_get_user_nodes(self, uow, test_user):
         for i in range(3):
-            node = KGNode(
+            node = Node(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 label="PERSON",

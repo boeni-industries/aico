@@ -6,7 +6,7 @@ import pytest
 import uuid
 from datetime import datetime, UTC
 
-from aico.data.kg.models import KGEdge, KGNode
+from aico.ai.knowledge_graph.models import Edge, Node
 from aico.data.user.models import UserProfile
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
@@ -50,7 +50,7 @@ async def test_nodes(uow, test_user):
     """Create test nodes for edge tests."""
     nodes = []
     for i in range(2):
-        node = KGNode(
+        node = Node(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             label="PERSON",
@@ -70,12 +70,13 @@ class TestKGEdgesRepository:
     
     @pytest.mark.asyncio
     async def test_create_edge(self, uow, test_user, test_nodes):
-        edge = KGEdge(
+        edge = Edge(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             source_id=test_nodes[0].id,
             target_id=test_nodes[1].id,
             relation_type="KNOWS",
+            properties={},
             confidence=0.9,
             source_text="Person0 knows Person1",
             created_at=datetime.now(UTC),
@@ -89,12 +90,13 @@ class TestKGEdgesRepository:
     
     @pytest.mark.asyncio
     async def test_get_edge_by_id(self, uow, test_user, test_nodes):
-        edge = KGEdge(
+        edge = Edge(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             source_id=test_nodes[0].id,
             target_id=test_nodes[1].id,
             relation_type="WORKS_WITH",
+            properties={},
             confidence=0.95,
             source_text="Person0 works with Person1",
             created_at=datetime.now(UTC),
@@ -109,12 +111,13 @@ class TestKGEdgesRepository:
     
     @pytest.mark.asyncio
     async def test_update_edge(self, uow, test_user, test_nodes):
-        edge = KGEdge(
+        edge = Edge(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             source_id=test_nodes[0].id,
             target_id=test_nodes[1].id,
             relation_type="KNOWS",
+            properties={},
             confidence=0.8,
             source_text="Person0 knows Person1",
             created_at=datetime.now(UTC),
@@ -135,12 +138,13 @@ class TestKGEdgesRepository:
     
     @pytest.mark.asyncio
     async def test_delete_edge(self, uow, test_user, test_nodes):
-        edge = KGEdge(
+        edge = Edge(
             id=str(uuid.uuid4()),
             user_id=test_user.uuid,
             source_id=test_nodes[0].id,
             target_id=test_nodes[1].id,
             relation_type="KNOWS_3",
+            properties={},
             confidence=0.9,
             source_text="Person0 knows Person1",
             created_at=datetime.now(UTC),
@@ -161,12 +165,13 @@ class TestKGEdgesRepository:
     async def test_list_edges(self, uow, test_user, test_nodes):
         # Create multiple edges with unique relation types
         for i in range(3):
-            edge = KGEdge(
+            edge = Edge(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 source_id=test_nodes[0].id,
                 target_id=test_nodes[1].id,
                 relation_type=f"KNOWS_{i}" if i < 2 else "WORKS_WITH_4",
+                properties={},
                 confidence=0.9,
                 source_text=f"Edge{i}",
                 created_at=datetime.now(UTC),
@@ -186,12 +191,13 @@ class TestKGEdgesRepository:
     async def test_count_edges(self, uow, test_user, test_nodes):
         # Create multiple edges with unique relation types
         for i in range(3):
-            edge = KGEdge(
+            edge = Edge(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 source_id=test_nodes[0].id,
                 target_id=test_nodes[1].id,
                 relation_type=f"KNOWS_{i}",
+                properties={},
                 confidence=0.9,
                 source_text=f"Edge{i}",
                 created_at=datetime.now(UTC),
@@ -206,12 +212,13 @@ class TestKGEdgesRepository:
     @pytest.mark.asyncio
     async def test_get_node_edges(self, uow, test_user, test_nodes):
         for i in range(2):
-            edge = KGEdge(
+            edge = Edge(
                 id=str(uuid.uuid4()),
                 user_id=test_user.uuid,
                 source_id=test_nodes[0].id,
                 target_id=test_nodes[1].id,
                 relation_type=f"KNOWS_NODE_{i}",
+                properties={},
                 confidence=0.9,
                 source_text=f"Edge{i}",
                 created_at=datetime.now(UTC),

@@ -99,8 +99,6 @@ class UnitOfWork:
         self._ethics_value_profiles_repository = None
         self._kg_nodes_repository = None
         self._kg_edges_repository = None
-        self._kg_node_properties_repository = None
-        self._kg_edge_properties_repository = None
         self._proactive_analytics_repository = None
         self._proactive_reminder_clusters_repository = None
         self._auth_access_policies_repository = None
@@ -616,22 +614,6 @@ class UnitOfWork:
             from .repositories.postgres.kg_edges_repository import PostgresEdgesRepository
             self._kg_edges_repository = PostgresEdgesRepository(self._session)
         return self._kg_edges_repository
-    
-    @property
-    def kg_node_properties(self):
-        """Get KGNodePropertiesRepository instance."""
-        if self._kg_node_properties_repository is None:
-            from .repositories.postgres.kg_node_properties_repository import PostgresKGNodePropertiesRepository
-            self._kg_node_properties_repository = PostgresKGNodePropertiesRepository(self._session)
-        return self._kg_node_properties_repository
-    
-    @property
-    def kg_edge_properties(self):
-        """Get KGEdgePropertiesRepository instance."""
-        if self._kg_edge_properties_repository is None:
-            from .repositories.postgres.kg_edge_properties_repository import PostgresKGEdgePropertiesRepository
-            self._kg_edge_properties_repository = PostgresKGEdgePropertiesRepository(self._session)
-        return self._kg_edge_properties_repository
     
     @property
     def proactive_analytics(self):

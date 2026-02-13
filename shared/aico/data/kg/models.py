@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, field_validator
 
@@ -12,7 +12,9 @@ class KGNode(BaseModel):
     id: str
     user_id: str
     label: str
-    properties: Union[str, Dict[str, Any]]
+    # IMPORTANT: Persist as a structured JSON object in Postgres (jsonb), not as a JSON-encoded string.
+    # We still accept legacy string inputs (from older rows / callers) and parse them.
+    properties: Dict[str, Any]
     confidence: float = 1.0
     source_text: Optional[str] = None
 
@@ -25,16 +27,41 @@ class KGNode(BaseModel):
 
     is_current: bool = True
     canonical_id: Optional[str] = None
-    aliases_json: Optional[str] = None
+    # Stored as jsonb in Postgres; keep structured type in Python.
+    aliases_json: Optional[Union[List[str], Dict[str, Any]]] = None
     reason: Optional[str] = None
     embedding: Optional[list] = None  # Cached embedding for entity resolution
 
-    @field_validator('properties', 'aliases_json', mode='before')
+    @field_validator('properties', mode='before')
     @classmethod
-    def serialize_dict(cls, v):
+    def parse_properties(cls, v):
+        if v is None:
+            return {}
         if isinstance(v, dict):
-            return json.dumps(v)
-        return v
+            return v
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                return {}
+        return {}
+
+    @field_validator('aliases_json', mode='before')
+    @classmethod
+    def parse_aliases_json(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, (list, dict)):
+            return v
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, (list, dict)):
+                    return parsed
+            except Exception:
+                return None
+        return None
 
     @field_validator('created_at', 'updated_at', 'valid_from', 'valid_until', mode='before')
     @classmethod
@@ -53,7 +80,8 @@ class KGEdge(BaseModel):
     target_id: str
     relation_type: str
 
-    properties: Optional[Union[str, Dict[str, Any]]] = None
+    # Same rule as nodes: keep structured JSON in Python and Postgres.
+    properties: Optional[Dict[str, Any]] = None
     confidence: float = 1.0
     source_text: Optional[str] = None
 
@@ -69,10 +97,18 @@ class KGEdge(BaseModel):
 
     @field_validator('properties', mode='before')
     @classmethod
-    def serialize_dict(cls, v):
+    def parse_properties(cls, v):
+        if v is None:
+            return None
         if isinstance(v, dict):
-            return json.dumps(v)
-        return v
+            return v
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, dict) else None
+            except Exception:
+                return None
+        return None
 
     @field_validator('created_at', 'updated_at', 'valid_from', 'valid_until', mode='before')
     @classmethod

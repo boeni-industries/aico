@@ -929,22 +929,13 @@ CREATE TABLE IF NOT EXISTS "ethics_value_profiles" (
 
 CREATE INDEX IF NOT EXISTS idx_value_profiles_user ON "ethics_value_profiles"(user_id);
 
-CREATE TABLE IF NOT EXISTS kg_edge_properties (
-                edge_id TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT NOT NULL,
-                PRIMARY KEY (edge_id, key, value)
-            );
-
-CREATE INDEX IF NOT EXISTS idx_kg_edge_properties_kv ON kg_edge_properties(key, value);
-
 CREATE TABLE IF NOT EXISTS kg_edges (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 source_id TEXT NOT NULL,
                 target_id TEXT NOT NULL,
                 relation_type TEXT NOT NULL,
-                properties TEXT,
+                properties JSONB,
                 confidence DOUBLE PRECISION,
                 source_text TEXT NOT NULL,
                 created_at TEXT NOT NULL,
@@ -967,15 +958,6 @@ CREATE INDEX IF NOT EXISTS idx_kg_edges_temporal ON kg_edges(user_id, is_current
 CREATE INDEX IF NOT EXISTS idx_kg_edges_user_relation ON kg_edges(user_id, relation_type);
 
 CREATE INDEX IF NOT EXISTS idx_kg_edges_reason ON kg_edges(reason) WHERE reason IS NOT NULL;
-
-CREATE TABLE IF NOT EXISTS kg_node_properties (
-                node_id TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT NOT NULL,
-                PRIMARY KEY (node_id, key, value)
-            );
-
-CREATE INDEX IF NOT EXISTS idx_kg_node_properties_kv ON kg_node_properties(key, value);
 
 CREATE TABLE IF NOT EXISTS kg_nodes (
                 id TEXT PRIMARY KEY,
@@ -1317,11 +1299,9 @@ ALTER TABLE interaction_events ADD CONSTRAINT fk_interaction_events_user_id_user
 ALTER TABLE ethics_decisions_cache ADD CONSTRAINT fk_ethics_decisions_cache_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE ethics_gate_audit ADD CONSTRAINT fk_ethics_gate_audit_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE ethics_value_profiles ADD CONSTRAINT fk_ethics_value_profiles_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE kg_edge_properties ADD CONSTRAINT fk_kg_edge_properties_edge_id_kg_edges FOREIGN KEY (edge_id) REFERENCES kg_edges(id) ON DELETE CASCADE;
 ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_source_id_kg_nodes FOREIGN KEY (source_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
 ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_target_id_kg_nodes FOREIGN KEY (target_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
-ALTER TABLE kg_node_properties ADD CONSTRAINT fk_kg_node_properties_node_id_kg_nodes FOREIGN KEY (node_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
 ALTER TABLE kg_nodes ADD CONSTRAINT fk_kg_nodes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE proactive_analytics ADD CONSTRAINT fk_proactive_analytics_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
 ALTER TABLE proactive_reminder_clusters ADD CONSTRAINT fk_proactive_reminder_clusters_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;

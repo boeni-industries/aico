@@ -9,19 +9,39 @@ from datetime import datetime, UTC
 from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aico.data.kg.models import KGEdge
+from aico.ai.knowledge_graph.models import Edge
 from aico.data.tables import kg_edges
 from aico.data.repositories.base import Repository
 
 
-class PostgresKGEdgeRepository(Repository[KGEdge]):
+class PostgresKGEdgeRepository(Repository[Edge]):
     """PostgreSQL implementation of KG edge repository."""
     
     def __init__(self, session: AsyncSession):
         self.session = session
     
-    async def create(self, entity: KGEdge) -> KGEdge:
+    async def create(self, entity: Edge) -> Edge:
         """Create a new KG edge."""
+        created_at = entity.created_at
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        elif not created_at:
+            created_at = datetime.now(UTC)
+
+        updated_at = entity.updated_at
+        if isinstance(updated_at, str):
+            updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+        elif not updated_at:
+            updated_at = datetime.now(UTC)
+
+        valid_from = entity.valid_from
+        if isinstance(valid_from, str):
+            valid_from = datetime.fromisoformat(valid_from.replace('Z', '+00:00'))
+
+        valid_until = entity.valid_until
+        if isinstance(valid_until, str):
+            valid_until = datetime.fromisoformat(valid_until.replace('Z', '+00:00'))
+
         stmt = kg_edges.insert().values(
             id=entity.id,
             user_id=entity.user_id,
@@ -31,16 +51,17 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
             properties=entity.properties,
             confidence=entity.confidence,
             source_text=entity.source_text,
-            created_at=entity.created_at or datetime.now(UTC),
-            updated_at=entity.updated_at or datetime.now(UTC),
-            valid_from=entity.valid_from,
-            valid_until=entity.valid_until,
-            is_current=entity.is_current,
+            created_at=created_at,
+            updated_at=updated_at,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            is_current=bool(entity.is_current),
+            reason=entity.reason,
         )
         await self.session.execute(stmt)
         return entity
     
-    async def get_by_id(self, entity_id: str) -> Optional[KGEdge]:
+    async def get_by_id(self, entity_id: str) -> Optional[Edge]:
         """Get KG edge by ID."""
         stmt = select(kg_edges).where(kg_edges.c.id == entity_id)
         result = await self.session.execute(stmt)
@@ -49,33 +70,45 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
         if not row:
             return None
         
-        return KGEdge(
+        return Edge(
             id=row.id,
             user_id=row.user_id,
             source_id=row.source_id,
             target_id=row.target_id,
             relation_type=row.relation_type,
-            properties=row.properties,
+            properties=row.properties or {},
             confidence=row.confidence,
             source_text=row.source_text,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            valid_from=row.valid_from,
-            valid_until=row.valid_until,
-            is_current=row.is_current,
+            created_at=row.created_at.isoformat() if row.created_at else None,
+            updated_at=row.updated_at.isoformat() if row.updated_at else None,
+            valid_from=row.valid_from.isoformat() if row.valid_from else None,
+            valid_until=row.valid_until.isoformat() if row.valid_until else None,
+            is_current=1 if row.is_current else 0,
+            reason=getattr(row, "reason", None),
         )
     
-    async def update(self, entity: KGEdge) -> KGEdge:
+    async def update(self, entity: Edge) -> Edge:
         """Update an existing KG edge."""
+        valid_from = entity.valid_from
+        if isinstance(valid_from, str):
+            valid_from = datetime.fromisoformat(valid_from.replace('Z', '+00:00'))
+
+        valid_until = entity.valid_until
+        if isinstance(valid_until, str):
+            valid_until = datetime.fromisoformat(valid_until.replace('Z', '+00:00'))
+
         stmt = (
             update(kg_edges)
             .where(kg_edges.c.id == entity.id)
             .values(
                 properties=entity.properties,
                 confidence=entity.confidence,
-                updated_at=entity.updated_at or datetime.now(UTC),
-                valid_until=entity.valid_until,
-                is_current=entity.is_current,
+                source_text=entity.source_text,
+                updated_at=datetime.now(UTC),
+                valid_from=valid_from,
+                valid_until=valid_until,
+                is_current=bool(entity.is_current),
+                reason=entity.reason,
             )
         )
         await self.session.execute(stmt)
@@ -87,7 +120,7 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
         result = await self.session.execute(stmt)
         return result.rowcount > 0
     
-    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[KGEdge]:
+    async def list(self, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> List[Edge]:
         """List KG edges with optional filters."""
         stmt = select(kg_edges)
         
@@ -110,23 +143,25 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
         stmt = stmt.order_by(kg_edges.c.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         
+        rows = result.fetchall()
         return [
-            KGEdge(
+            Edge(
                 id=row.id,
                 user_id=row.user_id,
                 source_id=row.source_id,
                 target_id=row.target_id,
                 relation_type=row.relation_type,
-                properties=row.properties,
+                properties=row.properties or {},
                 confidence=row.confidence,
                 source_text=row.source_text,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-                valid_from=row.valid_from,
-                valid_until=row.valid_until,
-                is_current=row.is_current,
+                created_at=row.created_at.isoformat() if row.created_at else None,
+                updated_at=row.updated_at.isoformat() if row.updated_at else None,
+                valid_from=row.valid_from.isoformat() if row.valid_from else None,
+                valid_until=row.valid_until.isoformat() if row.valid_until else None,
+                is_current=1 if row.is_current else 0,
+                reason=getattr(row, "reason", None),
             )
-            for row in result.fetchall()
+            for row in rows
         ]
     
     async def count(self, filters: Optional[dict] = None) -> int:
@@ -150,7 +185,7 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
         result = await self.session.execute(stmt)
         return result.scalar() or 0
     
-    async def get_edges_for_node(self, node_id: str, direction: str = 'both') -> List[KGEdge]:
+    async def get_edges_for_node(self, node_id: str, direction: str = 'both') -> List[Edge]:
         """Get all edges connected to a node.
         
         Args:
@@ -174,26 +209,28 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
         stmt = select(kg_edges).where(and_(*conditions)).order_by(kg_edges.c.confidence.desc())
         result = await self.session.execute(stmt)
         
+        rows = result.fetchall()
         return [
-            KGEdge(
+            Edge(
                 id=row.id,
                 user_id=row.user_id,
                 source_id=row.source_id,
                 target_id=row.target_id,
                 relation_type=row.relation_type,
-                properties=row.properties,
+                properties=row.properties or {},
                 confidence=row.confidence,
                 source_text=row.source_text,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-                valid_from=row.valid_from,
-                valid_until=row.valid_until,
-                is_current=row.is_current,
+                created_at=row.created_at.isoformat() if row.created_at else None,
+                updated_at=row.updated_at.isoformat() if row.updated_at else None,
+                valid_from=row.valid_from.isoformat() if row.valid_from else None,
+                valid_until=row.valid_until.isoformat() if row.valid_until else None,
+                is_current=1 if row.is_current else 0,
+                reason=getattr(row, "reason", None),
             )
-            for row in result.fetchall()
+            for row in rows
         ]
     
-    async def get_edges_by_relation_type(self, user_id: str, relation_type: str) -> List[KGEdge]:
+    async def get_edges_by_relation_type(self, user_id: str, relation_type: str) -> List[Edge]:
         """Get all edges of a specific relation type for a user."""
         stmt = select(kg_edges).where(
             and_(
@@ -204,24 +241,26 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
         ).order_by(kg_edges.c.confidence.desc())
         
         result = await self.session.execute(stmt)
-        
+
+        rows = result.fetchall()
         return [
-            KGEdge(
+            Edge(
                 id=row.id,
                 user_id=row.user_id,
                 source_id=row.source_id,
                 target_id=row.target_id,
                 relation_type=row.relation_type,
-                properties=row.properties,
+                properties=row.properties or {},
                 confidence=row.confidence,
                 source_text=row.source_text,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
-                valid_from=row.valid_from,
-                valid_until=row.valid_until,
-                is_current=row.is_current,
+                created_at=row.created_at.isoformat() if row.created_at else None,
+                updated_at=row.updated_at.isoformat() if row.updated_at else None,
+                valid_from=row.valid_from.isoformat() if row.valid_from else None,
+                valid_until=row.valid_until.isoformat() if row.valid_until else None,
+                is_current=1 if row.is_current else 0,
+                reason=getattr(row, "reason", None),
             )
-            for row in result.fetchall()
+            for row in rows
         ]
     
     async def mark_as_superseded(self, edge_id: str) -> bool:
@@ -231,7 +270,7 @@ class PostgresKGEdgeRepository(Repository[KGEdge]):
             .where(kg_edges.c.id == edge_id)
             .values(
                 is_current=False,
-                updated_at=datetime.now(UTC)
+                updated_at=datetime.now(UTC),
             )
         )
         result = await self.session.execute(stmt)

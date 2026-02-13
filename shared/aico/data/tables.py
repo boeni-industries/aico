@@ -580,26 +580,6 @@ agency_lessons = Table(
 # Knowledge Graph Tables
 # ============================================================================
 
-kg_node_properties = Table(
-    'kg_node_properties',
-    metadata,
-    Column('node_id', String, nullable=False),
-    Column('key', String, nullable=False),
-    Column('value', String, nullable=False),
-    PrimaryKeyConstraint('node_id', 'key', 'value'),
-    Index('idx_kg_node_properties_kv', 'key', 'value'),
-)
-
-kg_edge_properties = Table(
-    'kg_edge_properties',
-    metadata,
-    Column('edge_id', String, nullable=False),
-    Column('key', String, nullable=False),
-    Column('value', String, nullable=False),
-    PrimaryKeyConstraint('edge_id', 'key', 'value'),
-    Index('idx_kg_edge_properties_kv', 'key', 'value'),
-)
-
 kg_nodes = Table(
     'kg_nodes',
     metadata,
