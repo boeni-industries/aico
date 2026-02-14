@@ -47,31 +47,38 @@ async def get_gateway_metrics():
             with MetricsInfluxClient() as client:
                 filters = {"service": "aico-backend"}
 
-                recent_count = client.count_points("api_request", "-1m", filters)
-                requests_per_second = recent_count / 60.0
+                # Use downsampled data for better performance - sum pre-aggregated counts
+                recent_count = client.sum_field("api_request_counts_1m", "status_code_i", "-5m", filters)
+                logger.info(f"[GATEWAY_METRICS] recent_count (5m): {recent_count}")
+                requests_per_second = recent_count / 300.0  # 5 minutes = 300 seconds
 
-                total_requests_24h = client.count_points("api_request", "-24h", filters)
+                total_requests_24h = client.sum_field("api_request_counts_1m", "status_code_i", "-1h", filters)  # Reduced from 24h to 1h
+                logger.info(f"[GATEWAY_METRICS] total_requests_24h (1h): {total_requests_24h}")
 
                 avg_response_time = client.mean_field(
-                    "api_request",
+                    "api_request_1m",
                     "latency_ms_f",
-                    "-1m",
+                    "-5m",
                     filters,
+                    bucket="aico_telemetry_downsampled"
                 )
+                logger.info(f"[GATEWAY_METRICS] avg_response_time (5m): {avg_response_time}")
 
                 p95_response_time = client.percentile_field(
-                    "api_request",
+                    "api_request_1m",
                     "latency_ms_f",
                     0.95,
-                    "-24h",
+                    "-1h",  # Reduced from 24h to 1h
                     filters,
+                    bucket="aico_telemetry_downsampled"
                 )
                 p99_response_time = client.percentile_field(
-                    "api_request",
+                    "api_request_1m",
                     "latency_ms_f",
                     0.99,
-                    "-24h",
+                    "-1h",  # Reduced from 24h to 1h
                     filters,
+                    bucket="aico_telemetry_downsampled"
                 )
 
                 error_count_4xx = client.count_points(
@@ -135,7 +142,7 @@ async def get_gateway_metrics():
                     |> range(start: -5m)
                     |> filter(fn: (r) => r._measurement == "api_request_1m")
                     |> filter(fn: (r) => r.service == "{filters['service']}")
-                    |> filter(fn: (r) => r._field == "duration_ms_i")
+                    |> filter(fn: (r) => r._field == "latency_ms_f")
                     |> keep(columns: ["_time", "_value"])
                 '''
                 latency_sparkline_results = client.query(latency_sparkline_query)
@@ -218,8 +225,16 @@ async def get_gateway_metrics():
                         status=get_metric_status(avg_response_time, {"warning": 500, "critical": 2000}),
                         sparkline_data=[round(v, 2) for v in latency_sparkline],
                     ),
-                    p95_response_time=round(p95_response_time, 2) if p95_response_time else 0,
-                    p99_response_time=round(p99_response_time, 2) if p99_response_time else 0,
+                    p95_response_time=MetricValue(
+                        value=round(p95_response_time, 2) if p95_response_time else 0,
+                        unit="ms",
+                        status=get_metric_status(p95_response_time, {"warning": 1000, "critical": 3000}),
+                    ),
+                    p99_response_time=MetricValue(
+                        value=round(p99_response_time, 2) if p99_response_time else 0,
+                        unit="ms",
+                        status=get_metric_status(p99_response_time, {"warning": 2000, "critical": 5000}),
+                    ),
                     error_rate=MetricValue(
                         value=round(error_rate, 2),
                         unit="%",
@@ -231,7 +246,7 @@ async def get_gateway_metrics():
                         unit="%",
                         status=get_metric_status(success_rate, {"warning": 95, "critical": 90}),
                     ),
-                    status_distribution=status_distribution,
+                    status_code_distribution=status_distribution,
                     top_endpoints=top_endpoints,
                     protocol_distribution=protocol_distribution,
                 )
@@ -240,7 +255,7 @@ async def get_gateway_metrics():
     
     except Exception as e:
         # If InfluxDB is empty or has no data, return zero metrics instead of failing
-        logger.debug(f"InfluxDB query failed (likely no data yet), returning zero metrics: {e}")
+        logger.error(f"[GATEWAY_METRICS] Exception occurred, returning zero metrics: {e}", exc_info=True)
         
         # Return empty/zero metrics
         return GatewayMetrics(

@@ -140,21 +140,36 @@ def _setup_influx_downsampling(admin_token: str) -> None:
                 else:
                     console.print(f"  ✓ Main bucket retention already configured")
             
-            # 3. Create downsampling tasks
+            # 3. Create downsampling tasks (delete existing ones first to update field names)
             existing_tasks = tasks_api.find_tasks()
             # Handle both list and Tasks object response types
             if hasattr(existing_tasks, 'tasks'):
-                existing_task_names = {task.name for task in existing_tasks.tasks}
+                existing_tasks_list = existing_tasks.tasks
             else:
-                existing_task_names = {task.name for task in existing_tasks} if existing_tasks else set()
+                existing_tasks_list = existing_tasks if existing_tasks else []
+            
+            # Delete existing downsampling tasks to recreate with correct field names
+            task_names_to_recreate = {
+                "downsample_api_requests", "downsample_api_counts", "downsample_messagebus",
+                "downsample_scheduler", "downsample_memory_queries", "downsample_model_inference"
+            }
+            for task in existing_tasks_list:
+                if task.name in task_names_to_recreate:
+                    try:
+                        tasks_api.delete_task(task.id)
+                        console.print(f"  ✓ Deleted old task '{task.name}' for recreation")
+                    except Exception as e:
+                        console.print(f"  ⚠ Could not delete task '{task.name}': {e}")
+            
+            existing_task_names = set()  # All tasks deleted, recreate all
             
             tasks_to_create = [
-                ("downsample_api_requests", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "api_request") |> filter(fn: (r) => r._field == "duration_ms_i" or r._field == "status_code_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "api_request_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_api_requests", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "api_request") |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "status_code_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "api_request_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
                 ("downsample_api_counts", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "api_request") |> filter(fn: (r) => r._field == "status_code_i") |> aggregateWindow(every: 1m, fn: count, createEmpty: false) |> set(key: "_measurement", value: "api_request_counts_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_messagebus", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "messagebus_event") |> filter(fn: (r) => r._field == "message_count_i" or r._field == "latency_ms_i") |> aggregateWindow(every: 1m, fn: sum, createEmpty: false) |> set(key: "_measurement", value: "messagebus_event_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_scheduler", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "scheduler_job") |> filter(fn: (r) => r._field == "duration_ms_i" or r._field == "success_b") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "scheduler_job_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_memory_queries", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "memory_query") |> filter(fn: (r) => r._field == "duration_ms_i" or r._field == "result_count_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "memory_query_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_model_inference", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "model_inference") |> filter(fn: (r) => r._field == "duration_ms_i" or r._field == "token_count_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "model_inference_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_messagebus", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "messagebus_event") |> filter(fn: (r) => r._field == "message_count_i" or r._field == "latency_ms_f") |> aggregateWindow(every: 1m, fn: sum, createEmpty: false) |> set(key: "_measurement", value: "messagebus_event_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_scheduler", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "scheduler_job") |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "success_b") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "scheduler_job_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_memory_queries", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "memory_query") |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "result_count_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "memory_query_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_model_inference", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "model_inference") |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "token_count_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "model_inference_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
             ]
             
             created_count = 0

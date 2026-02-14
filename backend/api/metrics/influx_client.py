@@ -86,6 +86,41 @@ class MetricsInfluxClient:
         results = self.query(query)
         return sum(r.get('value', 0) for r in results)
     
+    def sum_field(
+        self,
+        measurement: str,
+        field: str,
+        time_range: str,
+        filters: Optional[Dict[str, str]] = None,
+        bucket: str = "aico_telemetry_downsampled"
+    ) -> int:
+        """
+        Sum values of a field in a measurement (for pre-aggregated count data).
+        
+        Args:
+            measurement: Measurement name (e.g., "api_request_counts_1m")
+            field: Field name (e.g., "status_code_i")
+            time_range: Time range (e.g., "-1h", "-24h")
+            filters: Optional tag filters
+            bucket: Bucket name (default: downsampled bucket)
+            
+        Returns:
+            Sum of field values
+        """
+        filter_clauses = self._build_filter_clauses(filters)
+        
+        query = f'''
+            from(bucket: "{bucket}")
+            |> range(start: {time_range})
+            |> filter(fn: (r) => r._measurement == "{measurement}")
+            |> filter(fn: (r) => r._field == "{field}")
+            {filter_clauses}
+            |> sum()
+        '''
+        
+        results = self.query(query)
+        return int(sum(r.get('value', 0) for r in results))
+    
     def count_points_by_field(
         self,
         measurement: str,
@@ -171,7 +206,8 @@ class MetricsInfluxClient:
         measurement: str,
         field: str,
         time_range: str,
-        filters: Optional[Dict[str, str]] = None
+        filters: Optional[Dict[str, str]] = None,
+        bucket: str = "aico_telemetry"
     ) -> float:
         """
         Calculate mean of a field.
@@ -181,6 +217,7 @@ class MetricsInfluxClient:
             field: Field name
             time_range: Time range
             filters: Optional tag filters
+            bucket: Bucket name (default: raw telemetry bucket)
             
         Returns:
             Mean value
@@ -188,7 +225,7 @@ class MetricsInfluxClient:
         filter_clauses = self._build_filter_clauses(filters)
         
         query = f'''
-            from(bucket: "aico_telemetry")
+            from(bucket: "{bucket}")
             |> range(start: {time_range})
             |> filter(fn: (r) => r._measurement == "{measurement}")
             |> filter(fn: (r) => r._field == "{field}")
@@ -205,7 +242,8 @@ class MetricsInfluxClient:
         field: str,
         percentile: float,
         time_range: str,
-        filters: Optional[Dict[str, str]] = None
+        filters: Optional[Dict[str, str]] = None,
+        bucket: str = "aico_telemetry"
     ) -> float:
         """
         Calculate percentile of a field.
@@ -223,7 +261,7 @@ class MetricsInfluxClient:
         filter_clauses = self._build_filter_clauses(filters)
         
         query = f'''
-            from(bucket: "aico_telemetry")
+            from(bucket: "{bucket}")
             |> range(start: {time_range})
             |> filter(fn: (r) => r._measurement == "{measurement}")
             |> filter(fn: (r) => r._field == "{field}")
