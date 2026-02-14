@@ -1,14 +1,15 @@
 """
-InfluxDB Logging Integration
+Logging Integration
 
-Simple integration layer to add InfluxDB handler to existing logging system.
-Works alongside existing handlers without disrupting current architecture.
+Integration layer to add InfluxDB and Loki handlers to existing logging system.
+Supports parallel logging to both systems during migration.
 """
 
 import logging
 import os
 from typing import Optional
 from .influx_handler import InfluxDBLogHandler
+from .loki_handler import LokiLogHandler
 
 
 def _resolve_log_level(service_name: str, log_level: Optional[int]) -> int:
@@ -149,14 +150,103 @@ def setup_influx_logging(
         return None
 
 
+def add_loki_handler_to_logger(
+    logger: logging.Logger,
+    loki_url: str,
+    service_name: str,
+    level: Optional[int] = None,
+    **handler_kwargs
+) -> LokiLogHandler:
+    """
+    Add Loki handler to an existing logger.
+    
+    Args:
+        logger: Python logger instance
+        loki_url: Loki URL
+        service_name: Service identifier
+        level: Minimum log level for this handler
+        **handler_kwargs: Additional LokiLogHandler arguments
+        
+    Returns:
+        The created LokiLogHandler instance
+    """
+    resolved_level = _resolve_log_level(service_name=service_name, log_level=level)
+    handler = LokiLogHandler(
+        loki_url=loki_url,
+        service_name=service_name,
+        **handler_kwargs
+    )
+    handler.setLevel(resolved_level)
+    logger.addHandler(handler)
+    return handler
+
+
+def setup_loki_logging(
+    service_name: str,
+    loki_url: Optional[str] = None,
+    enabled: bool = True,
+    level: Optional[int] = None
+) -> Optional[LokiLogHandler]:
+    """
+    Set up Loki logging for a service.
+    
+    Adds Loki handler to the root logger, making it available
+    to all loggers in the application.
+    
+    Args:
+        service_name: Service identifier (backend, modelservice, cli, etc)
+        loki_url: Loki URL (defaults to config or localhost)
+        enabled: Whether to enable Loki logging
+        level: Minimum log level
+        
+    Returns:
+        LokiLogHandler instance or None if disabled/failed
+    """
+    if not enabled:
+        return None
+    
+    try:
+        # Get config if not provided
+        if not loki_url:
+            from aico.core.config import ConfigurationManager
+            
+            config = ConfigurationManager()
+            config.initialize(lightweight=True)
+            
+            loki_url = loki_url or config.get("loki.url", "http://127.0.0.1:3100")
+        
+        # Add handler to root logger
+        root_logger = logging.getLogger()
+        handler = add_loki_handler_to_logger(
+            logger=root_logger,
+            loki_url=loki_url,
+            service_name=service_name,
+            level=level
+        )
+        
+        print(f"[Loki Logging] Enabled for service '{service_name}'", flush=True)
+        return handler
+    
+    except Exception as e:
+        print(f"[Loki Logging] Setup failed: {e}", flush=True)
+        return None
+
+
 # Global handler registry for cleanup
 _influx_handlers = []
+_loki_handlers = []
 
 
 def register_influx_handler(handler: InfluxDBLogHandler):
     """Register handler for cleanup on shutdown."""
     global _influx_handlers
     _influx_handlers.append(handler)
+
+
+def register_loki_handler(handler: LokiLogHandler):
+    """Register handler for cleanup on shutdown."""
+    global _loki_handlers
+    _loki_handlers.append(handler)
 
 
 def shutdown_influx_logging():
@@ -168,3 +258,20 @@ def shutdown_influx_logging():
         except Exception as e:
             print(f"[InfluxDB Logging] Shutdown error: {e}", flush=True)
     _influx_handlers.clear()
+
+
+def shutdown_loki_logging():
+    """Shutdown all Loki handlers gracefully."""
+    global _loki_handlers
+    for handler in _loki_handlers:
+        try:
+            handler.close()
+        except Exception as e:
+            print(f"[Loki Logging] Shutdown error: {e}", flush=True)
+    _loki_handlers.clear()
+
+
+def shutdown_all_logging():
+    """Shutdown all logging handlers gracefully."""
+    shutdown_influx_logging()
+    shutdown_loki_logging()

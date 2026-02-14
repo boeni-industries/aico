@@ -100,10 +100,34 @@ services:
       com.aico.project: "aico"
       com.aico.component: "influxdb"
       com.aico.service.type: "database"
-      com.aico.service.role: "telemetry-timeseries"
+      com.aico.service.role: "metrics-timeseries"
       # Standard Docker labels
       org.opencontainers.image.title: "AICO InfluxDB Time-Series Database"
-      org.opencontainers.image.description: "Time-series database for AICO telemetry and metrics"
+      org.opencontainers.image.description: "Time-series database for AICO metrics and telemetry"
+      org.opencontainers.image.vendor: "AICO"
+      # Management metadata
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: aico-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - aico-lokidata:/loki
+    command: -config.file=/etc/loki/loki-config.yaml
+    labels:
+      # Project identification
+      com.aico.project: "aico"
+      com.aico.component: "loki"
+      com.aico.service.type: "database"
+      com.aico.service.role: "log-aggregation"
+      # Standard Docker labels
+      org.opencontainers.image.title: "AICO Loki Log Aggregation"
+      org.opencontainers.image.description: "Log aggregation system for AICO application logs"
       org.opencontainers.image.vendor: "AICO"
       # Management metadata
       com.aico.managed-by: "aico-cli"
@@ -140,4 +164,12 @@ volumes:
       com.aico.project: "aico"
       com.aico.component: "influxdb"
       com.aico.volume.type: "config"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-lokidata:
+    name: aico-lokidata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "loki"
+      com.aico.volume.type: "data"
       com.aico.managed-by: "aico-cli"

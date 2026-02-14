@@ -68,7 +68,7 @@ async def initialize_modelservice():
     
     # Initialize service-specific logging first to capture all subsequent logs
     from aico.core.logging import initialize_logging
-    initialize_logging(service_name="modelservice", enable_influx=True, enable_console=True)
+    initialize_logging(service_name="modelservice", enable_influx=False, enable_loki=True, enable_console=True)
     
     # Now we can get a logger
     logger = get_logger("modelservice.main")

@@ -1,11 +1,10 @@
 """
-AICO Logs Command - Query logs from InfluxDB
+AICO Logs Command - Query logs from Loki
 
-Provides commands to view and filter logs stored in InfluxDB.
+Provides commands to view and filter logs stored in Loki.
 """
 
 import sys
-import warnings
 import typer
 from pathlib import Path
 from rich.console import Console
@@ -13,20 +12,16 @@ from rich.table import Table
 from datetime import datetime, timedelta
 from typing import Optional
 
-# Suppress InfluxDB client cleanup warnings
-warnings.filterwarnings("ignore", message=".*ApiClient.__del__.*")
-warnings.filterwarnings("ignore", category=ResourceWarning)
-
 # Add shared path for imports
 shared_path = Path(__file__).parent.parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
 # Lazy imports - don't load heavy modules at import time
-# ConfigurationManager, AICOKeyManager, InfluxDBClient imported in functions
+# ConfigurationManager imported in functions
 
 app = typer.Typer(
     help=(
-        "📋 Log management and analysis (InfluxDB)\n\n"
+        "📋 Log management and analysis (Loki)\n\n"
         "Level filtering:\n"
         "- --level: minimum severity and above (e.g. --level=info shows INFO+WARNING+ERROR+CRITICAL)\n"
         "- --exact-level: exact match only (e.g. --exact-level=info shows INFO only)"
@@ -42,49 +37,59 @@ def _logs_main(ctx: typer.Context):
         raise typer.Exit(0)
 
 
-def _get_influx_client():
-    """Get InfluxDB client with credentials (lazy imports for fast startup)."""
+def _get_loki_url():
+    """Get Loki URL from config (lazy imports for fast startup)."""
     try:
-        # Lazy imports - only load when actually needed
-        from influxdb_client import InfluxDBClient
-        from influxdb_client._sync.api_client import ApiClient
         from aico.core.config import ConfigurationManager
-        from aico.security import AICOKeyManager
-        
-        # Monkey patch InfluxDB ApiClient to suppress __del__ errors
-        try:
-            _original_del = ApiClient.__del__
-            def _patched_del(self):
-                try:
-                    _original_del(self)
-                except:
-                    pass  # Suppress all cleanup errors
-            ApiClient.__del__ = _patched_del
-        except (AttributeError, ImportError):
-            pass
         
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         
-        influx_url = config.get("influx.url", "http://127.0.0.1:8086")
-        org = config.get("influx.org", "aico")
-        bucket = config.get("influx.bucket", "aico_telemetry")
+        loki_url = config.get("loki.url", "http://127.0.0.1:3100")
+        return loki_url
         
-        key_manager = AICOKeyManager(config)
-        token = key_manager.get_database_password("influx", username="admin_token")
-        
-        if not token:
-            console.print("[red]✗ InfluxDB token not found. Run 'aico security influx-set' first.[/red]")
-            raise typer.Exit(1)
-        
-        client = InfluxDBClient(url=influx_url, token=token, org=org)
-        return client, org, bucket
-        
-    except ImportError:
-        console.print("[red]✗ influxdb-client not installed. Run: pip install influxdb-client[/red]")
-        raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]✗ Failed to connect to InfluxDB: {e}[/red]")
+        console.print(f"[red]✗ Failed to get Loki config: {e}[/red]")
+        raise typer.Exit(1)
+
+
+def _query_loki(loki_url: str, query: str, limit: int, start: str):
+    """Query Loki API with LogQL."""
+    import requests
+    import json
+    from datetime import datetime, timedelta
+    
+    # Query Loki using instant query for recent logs
+    # Loki expects time in RFC3339 format or Unix timestamp in seconds
+    url = f"{loki_url}/loki/api/v1/query_range"
+    
+    # Calculate start and end times
+    time_units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    unit = start[-1]
+    value = int(start[:-1])
+    
+    if unit not in time_units:
+        raise ValueError(f"Invalid time unit: {unit}")
+    
+    seconds_ago = value * time_units[unit]
+    start_time = datetime.now() - timedelta(seconds=seconds_ago)
+    end_time = datetime.now()
+    
+    # Loki expects Unix timestamps in seconds (not nanoseconds)
+    params = {
+        "query": query,
+        "limit": limit,
+        "start": int(start_time.timestamp()),
+        "end": int(end_time.timestamp()),
+        "direction": "backward"  # Most recent first
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        console.print(f"[red]✗ Loki query failed: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -108,103 +113,128 @@ def tail_logs(
         console.print("[yellow]⚠ Use either --level or --exact-level (not both)[/yellow]")
         return
     
-    client, org, bucket = _get_influx_client()
+    loki_url = _get_loki_url()
     
     # Log level hierarchy (lower index = lower severity)
     level_hierarchy = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     
-    # Build optimized Flux query - uses tags for filtering, queries only message field
-    # This eliminates the expensive pivot operation for fast sub-second performance
-    filters = [
-        f'r._measurement == "logs"',
-        f'r._field == "message"'  # Only query message field
-    ]
+    # Build LogQL query - uses labels for filtering
+    label_filters = []
     
     if service:
-        filters.append(f'r.service == "{service}"')
+        label_filters.append(f'service="{service}"')
+    
     if level:
         level_upper = level.upper()
         if level_upper in level_hierarchy:
             min_index = level_hierarchy.index(level_upper)
             allowed_levels = level_hierarchy[min_index:]
-            level_filter = " or ".join([f'r.level == "{lvl}"' for lvl in allowed_levels])
-            filters.append(f'({level_filter})')
+            level_filter = "|".join(allowed_levels)
+            label_filters.append(f'level=~"{level_filter}"')
         else:
             console.print(f"[yellow]⚠ Invalid level '{level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
             return
+    
     if exact_level:
         exact_level_upper = exact_level.upper()
         if exact_level_upper in level_hierarchy:
-            filters.append(f'r.level == "{exact_level_upper}"')
+            label_filters.append(f'level="{exact_level_upper}"')
         else:
             console.print(f"[yellow]⚠ Invalid exact level '{exact_level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
             return
+    
     if logger:
-        # Use logger_prefix tag for fast filtering
-        filters.append(f'r.logger_prefix =~ /{logger}/')
+        # Use logger_prefix label for filtering
+        label_filters.append(f'logger_prefix=~".*{logger}.*"')
     
-    filter_str = " and ".join(filters)
-    
-    # Optimized query: filter by tags, query only message field, no pivot needed
-    # This achieves sub-second performance even with large log volumes
-    query = f'''
-    from(bucket: "{bucket}")
-      |> range(start: -{last})
-      |> filter(fn: (r) => {filter_str})
-      |> sort(columns: ["_time"], desc: true)
-      |> limit(n: {lines})
-    '''
+    # Build LogQL query
+    # Loki requires at least one label matcher, so if no filters, match all services
+    if label_filters:
+        query = "{" + ", ".join(label_filters) + "}"
+    else:
+        query = '{job=~".+"}'  # Match all jobs (all logs)
     
     try:
-        query_api = client.query_api()
-        tables = query_api.query(query, org=org)
+        result = _query_loki(loki_url, query, lines, last)
         
-        if not tables:
+        if result.get("status") != "success":
             console.print("[yellow]No logs found matching criteria[/yellow]")
             return
         
-        # Collect all records from all tables
-        all_records = []
-        for table in tables:
-            all_records.extend(table.records)
-
-        if not all_records:
+        data = result.get("data", {})
+        result_type = data.get("resultType")
+        streams = data.get("result", [])
+        
+        if not streams:
             console.print("[yellow]No logs found matching criteria[/yellow]")
             return
-
-        # Re-sort for display (oldest to newest)
-        all_records.sort(key=lambda r: r.get_time())
         
-        # Display logs (optimized - using tags, no pivot needed)
-        for record in all_records:
-                # Convert UTC timestamp to local time for display
-                utc_time = record.get_time()
-                local_time = utc_time.replace(tzinfo=None) if utc_time.tzinfo is None else utc_time.astimezone()
-                timestamp = local_time.strftime("%Y-%m-%d %H:%M:%S")
-                level = record.values.get("level", "INFO")
-                service_name = record.values.get("service", "unknown")
-                logger_prefix = record.values.get("logger_prefix", "unknown")
-                message = record.get_value() or ""  # message is the field value
+        # Collect all log entries
+        all_logs = []
+        for stream in streams:
+            labels = stream.get("stream", {})
+            values = stream.get("values", [])
+            
+            for value in values:
+                timestamp_ns = int(value[0])
+                log_line = value[1]
                 
-                # Color by level
-                level_colors = {
-                    "DEBUG": "dim",
-                    "INFO": "blue",
-                    "WARNING": "yellow",
-                    "ERROR": "red",
-                    "CRITICAL": "bold red"
-                }
-                color = level_colors.get(level, "white")
+                # Parse metadata from log line (format: message | {json_metadata})
+                message = log_line
+                metadata = {}
+                if " | " in log_line:
+                    parts = log_line.split(" | ", 1)
+                    message = parts[0]
+                    if len(parts) > 1:
+                        try:
+                            import json
+                            metadata = json.loads(parts[1])
+                        except:
+                            pass
                 
-                console.print(
-                    f"[dim]{timestamp}[/dim] [{color}]{level:8}[/{color}] [cyan]{service_name}[/cyan].[dim]{logger_prefix}[/dim] - {message}"
-                )
+                all_logs.append({
+                    "timestamp": timestamp_ns,
+                    "level": labels.get("level", "INFO"),
+                    "service": labels.get("service", "unknown"),
+                    "logger_prefix": labels.get("logger_prefix", "unknown"),
+                    "message": message,
+                    "metadata": metadata
+                })
+        
+        # Sort by timestamp (oldest to newest for display)
+        all_logs.sort(key=lambda x: x["timestamp"])
+        
+        # Display logs
+        for log in all_logs:
+            # Convert nanosecond timestamp to datetime
+            timestamp_s = log["timestamp"] / 1_000_000_000
+            dt = datetime.fromtimestamp(timestamp_s)
+            timestamp = dt.strftime("%Y-%m-%d %H:%M:%S")
+            
+            level = log["level"]
+            service_name = log["service"]
+            logger_prefix = log["logger_prefix"]
+            message = log["message"]
+            
+            # Color by level
+            level_colors = {
+                "DEBUG": "dim",
+                "INFO": "blue",
+                "WARNING": "yellow",
+                "ERROR": "red",
+                "CRITICAL": "bold red"
+            }
+            color = level_colors.get(level, "white")
+            
+            console.print(
+                f"[dim]{timestamp}[/dim] [{color}]{level:8}[/{color}] [cyan]{service_name}[/cyan].[dim]{logger_prefix}[/dim] - {message}"
+            )
         
     except Exception as e:
         console.print(f"[red]✗ Query failed: {e}[/red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
         raise typer.Exit(1)
-    finally:
-        client.close()
 
 
 @app.command("ls")
@@ -217,31 +247,28 @@ def list_logs(
 ):
     """List logs with filtering options."""
     
-    client, org, bucket = _get_influx_client()
+    loki_url = _get_loki_url()
     
     # Log level hierarchy (lower index = lower severity)
     level_hierarchy = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-    
-    # Build Flux query
-    filters = [
-        f'r._measurement == "logs"',
-        f'r._field == "message"'
-    ]
 
     if level and exact_level:
         console.print("[yellow]⚠ Use either --level or --exact-level (not both)[/yellow]")
         return
     
+    # Build LogQL query
+    label_filters = []
+    
     if service:
-        filters.append(f'r.service == "{service}"')
+        label_filters.append(f'service="{service}"')
 
     if level:
         level_upper = level.upper()
         if level_upper in level_hierarchy:
             min_index = level_hierarchy.index(level_upper)
             allowed_levels = level_hierarchy[min_index:]
-            level_filter = " or ".join([f'r.level == "{lvl}"' for lvl in allowed_levels])
-            filters.append(f'({level_filter})')
+            level_filter = "|".join(allowed_levels)
+            label_filters.append(f'level=~"{level_filter}"')
         else:
             console.print(f"[yellow]⚠ Invalid level '{level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
             return
@@ -249,26 +276,29 @@ def list_logs(
     if exact_level:
         exact_level_upper = exact_level.upper()
         if exact_level_upper in level_hierarchy:
-            filters.append(f'r.level == "{exact_level_upper}"')
+            label_filters.append(f'level="{exact_level_upper}"')
         else:
             console.print(f"[yellow]⚠ Invalid exact level '{exact_level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
             return
     
-    filter_str = " and ".join(filters)
-    
-    query = f'''
-    from(bucket: "{bucket}")
-      |> range(start: -{last})
-      |> filter(fn: (r) => {filter_str})
-      |> sort(columns: ["_time"], desc: true)
-      |> limit(n: {limit})
-    '''
+    # Build LogQL query
+    # Loki requires at least one label matcher
+    if label_filters:
+        query = "{" + ", ".join(label_filters) + "}"
+    else:
+        query = '{job=~".+"}'  # Match all jobs (all logs)
     
     try:
-        query_api = client.query_api()
-        tables = query_api.query(query, org=org)
+        result = _query_loki(loki_url, query, limit, last)
         
-        if not tables or not tables[0].records:
+        if result.get("status") != "success":
+            console.print("[yellow]No logs found[/yellow]")
+            return
+        
+        data = result.get("data", {})
+        streams = data.get("result", [])
+        
+        if not streams:
             console.print("[yellow]No logs found[/yellow]")
             return
         
@@ -280,90 +310,74 @@ def list_logs(
         table.add_column("Logger", style="dim")
         table.add_column("Message")
 
-        all_records = []
+        # Collect all log entries
+        all_logs = []
+        for stream in streams:
+            labels = stream.get("stream", {})
+            values = stream.get("values", [])
+            
+            for value in values:
+                timestamp_ns = int(value[0])
+                log_line = value[1]
+                
+                # Parse metadata from log line
+                message = log_line
+                metadata = {}
+                if " | " in log_line:
+                    parts = log_line.split(" | ", 1)
+                    message = parts[0]
+                    if len(parts) > 1:
+                        try:
+                            import json
+                            metadata = json.loads(parts[1])
+                        except:
+                            pass
+                
+                all_logs.append({
+                    "timestamp": timestamp_ns,
+                    "level": labels.get("level", "INFO"),
+                    "service": labels.get("service", "unknown"),
+                    "logger_prefix": labels.get("logger_prefix", "unknown"),
+                    "logger": metadata.get("logger", labels.get("logger_prefix", "unknown")),
+                    "message": message
+                })
         
-        for flux_table in tables:
-            for record in reversed(flux_table.records):
-                timestamp = record.get_time().strftime("%H:%M:%S")
-                level = record.values.get("level", "INFO")
-                service_name = record.values.get("service", "unknown")
-                logger_name = record.values.get("logger", "unknown")
-                message = record.get_value()
-
-                display_logger_name = logger_name
-                try:
-                    if (
-                        isinstance(service_name, str)
-                        and isinstance(logger_name, str)
-                        and logger_name.startswith(f"{service_name}.")
-                    ):
-                        display_logger_name = logger_name[len(service_name) + 1 :]
-                except Exception:
-                    display_logger_name = logger_name
-                
-                # Truncate message if too long
-                if len(message) > 80:
-                    message = message[:77] + "..."
-                
-                table.add_row(timestamp, level, service_name, display_logger_name, message)
-                all_records.append(record)
+        # Sort by timestamp (oldest first)
+        all_logs.sort(key=lambda x: x["timestamp"])
+        
+        # Display in table
+        for log in all_logs:
+            timestamp_s = log["timestamp"] / 1_000_000_000
+            dt = datetime.fromtimestamp(timestamp_s)
+            timestamp = dt.strftime("%H:%M:%S")
+            
+            level = log["level"]
+            service_name = log["service"]
+            logger_name = log["logger"]
+            message = log["message"]
+            
+            # Simplify logger name
+            display_logger_name = logger_name
+            try:
+                if isinstance(service_name, str) and isinstance(logger_name, str) and logger_name.startswith(f"{service_name}."):
+                    display_logger_name = logger_name[len(service_name) + 1:]
+            except:
+                pass
+            
+            # Truncate message if too long
+            if len(message) > 80:
+                message = message[:77] + "..."
+            
+            table.add_row(timestamp, level, service_name, display_logger_name, message)
         
         console.print(table)
-        console.print(f"\n[dim]Showing {len(all_records)} logs from last {last}[/dim]")
+        console.print(f"\n[dim]Showing {len(all_logs)} logs from last {last}[/dim]")
         
     except Exception as e:
         console.print(f"[red]✗ Query failed: {e}[/red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
         raise typer.Exit(1)
-    finally:
-        client.close()
-
-
-@app.command("stats")
-def log_stats(
-    last: str = typer.Option("1h", "--last", help="Time range (e.g., 1h, 30m, 1d)")
-):
-    """Show log statistics."""
-    
-    client, org, bucket = _get_influx_client()
-    
-    query = f'''
-    from(bucket: "{bucket}")
-      |> range(start: -{last})
-      |> filter(fn: (r) => r._measurement == "logs" and r._field == "count")
-      |> group(columns: ["service", "level"])
-      |> count()
-    '''
-    
-    try:
-        query_api = client.query_api()
-        tables = query_api.query(query, org=org)
-        
-        if not tables:
-            console.print("[yellow]No logs found[/yellow]")
-            return
-        
-        # Create stats table
-        stats_table = Table(show_header=True, header_style="bold magenta")
-        stats_table.add_column("Service", style="cyan")
-        stats_table.add_column("Level", style="bold")
-        stats_table.add_column("Count", justify="right")
-        
-        for table in tables:
-            for record in table.records:
-                service = record.values.get("service", "unknown")
-                level = record.values.get("level", "unknown")
-                count = record.get_value()
-                
-                stats_table.add_row(service, level, str(count))
-        
-        console.print(stats_table)
-        console.print(f"\n[dim]Statistics for last {last}[/dim]")
-        
-    except Exception as e:
-        console.print(f"[red]✗ Query failed: {e}[/red]")
-        raise typer.Exit(1)
-    finally:
-        client.close()
 
 
 if __name__ == "__main__":

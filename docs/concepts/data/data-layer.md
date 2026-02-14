@@ -10,7 +10,8 @@ AICO's data layer implements **Clean Architecture** principles with a multi-data
 
 **Production Databases:**
 - ✅ **PostgreSQL 18.1** (Docker): Core application data (users, conversations, knowledge graph, agency)
-- ✅ **InfluxDB 2.x** (Docker): Time-series telemetry (metrics, logs, performance data)
+- ✅ **Loki 2.9** (Docker): Log aggregation with LogQL queries
+- ✅ **InfluxDB 2.x** (Docker): Time-series metrics (performance data, telemetry)
 - ✅ **ChromaDB**: Vector embeddings for semantic search
 - ✅ **LMDB**: Working memory with 30-day TTL
 
@@ -28,7 +29,8 @@ AICO's data layer implements **Clean Architecture** principles with a multi-data
 ### Database Specialization
 Each database serves a specific purpose optimized for its workload:
 - **PostgreSQL**: ACID transactions, referential integrity, relational data
-- **InfluxDB**: High-performance time-series data, automatic downsampling
+- **Loki**: Purpose-built log aggregation, LogQL queries, label-based indexing
+- **InfluxDB**: High-performance time-series metrics, automatic downsampling
 - **ChromaDB**: Vector similarity search, semantic retrieval
 - **LMDB**: Fast key-value working memory, sub-millisecond access
 
@@ -87,9 +89,74 @@ def list_users():
 
 ---
 
-## InfluxDB - Time-Series Telemetry
+## Loki - Log Aggregation
 
-**Purpose**: High-performance metrics, logs, and observability data
+**Purpose**: Purpose-built log storage and querying
+
+**Deployment**: Docker container (`grafana/loki:2.9.0`) with persistent volume
+
+**Data Organization**:
+```
+Storage: Filesystem (BoltDB + filesystem chunks)
+Retention: 30 days (configurable)
+Index: Label-based (service, level, logger_prefix)
+```
+
+**Data Stored**:
+- **Application Logs**: Structured log events from all services
+- **Labels**: service, level, logger_prefix for fast filtering
+- **Metadata**: JSON-encoded metadata in log lines
+
+**Technology Stack**:
+- Loki 2.9 in Docker container
+- requests library for HTTP push API
+- LogQL query language
+- Label-based indexing (not full-text)
+
+**Access Pattern**:
+```python
+import requests
+import json
+
+# Push logs to Loki
+loki_url = "http://localhost:3100/loki/api/v1/push"
+payload = {
+    "streams": [{
+        "stream": {
+            "service": "backend",
+            "level": "INFO",
+            "logger_prefix": "backend.api"
+        },
+        "values": [
+            [str(int(time.time() * 1e9)), "Log message | {\"metadata\": \"json\"}"]
+        ]
+    }]
+}
+requests.post(loki_url, json=payload)
+
+# Query logs with LogQL
+query_url = "http://localhost:3100/loki/api/v1/query_range"
+params = {
+    "query": '{service="backend", level="ERROR"}',
+    "limit": 100
+}
+response = requests.get(query_url, params=params)
+```
+
+**CLI Access**:
+```bash
+# Tail logs
+aico logs tail --service backend --level ERROR --lines 50
+
+# List logs
+aico logs ls --service modelservice --limit 100
+```
+
+---
+
+## InfluxDB - Time-Series Metrics
+
+**Purpose**: High-performance metrics and telemetry data
 
 **Deployment**: Docker container (`influxdb:2-alpine`) with persistent volume
 
@@ -104,7 +171,7 @@ Retention: 30 days (configurable)
 - **System Metrics**: CPU, memory, disk usage
 - **API Metrics**: Request/response times, error rates  
 - **Model Metrics**: Inference latency, token counts
-- **Application Logs**: Structured log events with timestamps
+- **Performance Data**: Time-series telemetry
 
 **Technology Stack**:
 - InfluxDB 2.x in Docker container
@@ -267,7 +334,8 @@ async with UnitOfWork() as uow:
 
 **Why This Architecture**:
 - **PostgreSQL**: ACID guarantees for metadata, referential integrity for relationships
-- **InfluxDB**: Optimized for time-series data, automatic retention policies
+- **Loki**: Purpose-built for logs, label-based indexing, efficient storage
+- **InfluxDB**: Optimized for time-series metrics, automatic retention policies
 - **ChromaDB**: Optimized for vector similarity search (cosine distance)
 - **LMDB**: Ultra-fast access for active conversations
 - **Separation**: Each database handles what it does best
@@ -281,12 +349,14 @@ async with UnitOfWork() as uow:
 | Database | Read/Write | Use Case | Latency |
 |----------|-----------|----------|---------|
 | **PostgreSQL** | High | Structured queries | ~1-10ms |
-| **InfluxDB** | Very High | Time-series writes | ~1-5ms |
+| **Loki** | Very High | Log writes | ~1-5ms |
+| **InfluxDB** | Very High | Metrics writes | ~1-5ms |
 | **ChromaDB** | High | Semantic search | ~10-50ms |
 | **LMDB** | Very High | Working memory | <1ms |
 
 **Characteristics**:
 - **PostgreSQL**: ACID transactions, connection pooling
+- **Loki**: Label-based indexing, LogQL queries, 70% storage reduction vs InfluxDB
 - **InfluxDB**: High-throughput writes, automatic downsampling
 - **ChromaDB**: Cosine similarity, hybrid search (BM25 + semantic)
 - **LMDB**: Memory-mapped, multi-reader/single-writer
@@ -299,7 +369,8 @@ async with UnitOfWork() as uow:
 
 Choose the right database for your use case:
 - **PostgreSQL**: User data, conversations, knowledge graph, agency data
-- **InfluxDB**: Metrics, logs, performance data, time-series events
+- **Loki**: Application logs, structured logging, log queries
+- **InfluxDB**: Metrics, performance data, time-series telemetry
 - **ChromaDB**: Embeddings, semantic search, similarity matching
 - **LMDB**: Active session data, conversation context, temporary cache
 
@@ -335,23 +406,28 @@ async with UnitOfWork() as uow:
 
 ## Docker Deployment
 
-PostgreSQL and InfluxDB run in Docker containers for consistent deployment.
+PostgreSQL, Loki, and InfluxDB run in Docker containers for consistent deployment.
 
 **Deployment Commands**:
 ```bash
 # Deploy PostgreSQL
 aico deploy pg
 
-# Deploy InfluxDB
+# Deploy Loki (log aggregation)
+aico deploy loki
+
+# Deploy InfluxDB (metrics)
 aico deploy influx
 
 # Reset databases (⚠️ DANGEROUS - deletes all data)
 aico deploy pg --nuke
+aico deploy loki --nuke
 aico deploy influx --nuke
 ```
 
 **Container Details**:
 - PostgreSQL: `postgres:18.1` on port 5432
+- Loki: `grafana/loki:2.9.0` on port 3100
 - InfluxDB: `influxdb:2-alpine` on port 8086
 - Persistent volumes for data storage
 - Docker bridge network for inter-container communication

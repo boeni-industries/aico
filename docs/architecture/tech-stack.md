@@ -89,7 +89,8 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
 | **PostgreSQL 18.1** | Core application data | ACID transactions, referential integrity, JSON support. Stores users, conversations, knowledge graph, agency data |
-| **InfluxDB 2.x** | Time-series telemetry | High-performance metrics and logs. Stores system metrics, API latency, model performance, structured logs |
+| **Loki 2.9** | Log aggregation | Purpose-built log storage with LogQL queries. Stores structured application logs with 30-day retention |
+| **InfluxDB 2.x** | Time-series metrics | High-performance metrics storage. Stores system metrics, API latency, model performance data |
 | **ChromaDB 1.0.16+** | Vector embeddings | Semantic search with cosine similarity. Stores conversation embeddings, KG entity embeddings |
 | **LMDB** | Working memory (30-day TTL) | Memory-mapped key-value store for active session data, sub-millisecond access |
 | **DuckDB** | Analytics (planned) | OLAP queries for conversation analysis and reporting |
@@ -109,7 +110,8 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 |--------|----------|---------------|
 | **asyncpg** | Backend API (async) | High-performance async PostgreSQL driver |
 | **psycopg2-binary** | CLI tools (sync) | Synchronous PostgreSQL driver for admin tools |
-| **influxdb-client** | Telemetry writes | InfluxDB 2.x Python client |
+| **requests** | Loki log writes | HTTP client for Loki push API and LogQL queries |
+| **influxdb-client** | Metrics writes | InfluxDB 2.x Python client for time-series metrics |
 | **chromadb** | Vector operations | Persistent vector storage with metadata filtering |
 
 ### Encryption & Security
@@ -161,7 +163,8 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 |------------|---------|--------|
 | **Docker** | Container runtime | ✅ Required for database services |
 | **PostgreSQL 18.1 (Docker)** | Core database container | ✅ Production deployment |
-| **InfluxDB 2.x (Docker)** | Telemetry database container | ✅ Production deployment |
+| **Loki 2.9 (Docker)** | Log aggregation container | ✅ Production deployment |
+| **InfluxDB 2.x (Docker)** | Metrics database container | ✅ Production deployment |
 | **ChromaDB (planned)** | Vector database container | 🚧 Future containerization |
 | **Docker Compose** | Multi-container orchestration | 🚧 Planned for full stack deployment |
 
@@ -218,11 +221,12 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
 | **Custom Logging System** | Unified logging | AICO-specific logging with subsystem/module hierarchy |
-| **InfluxDB** | Log storage | Time-series database for structured logs with 30-day retention |
+| **Loki 2.9** | Log aggregation | Purpose-built log storage with LogQL queries and 30-day retention |
+| **InfluxDB 2.x** | Metrics storage | Time-series database for performance metrics and telemetry |
 | **OpenTelemetry** | Instrumentation | Standardized metrics and tracing instrumentation |
 | **Prometheus (optional)** | Metrics export | Optional Prometheus-compatible metrics endpoint |
 | **Pydantic 2.11+** | Schema validation | Type-safe validation of API requests and responses |
-| **Fallback Logging** | Reliability | Direct database writes during broker startup |
+| **LogQL** | Log querying | Loki's query language for filtering and aggregating logs |
 
 ## Module-Specific Technologies
 

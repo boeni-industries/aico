@@ -1394,140 +1394,145 @@ async def list_logs(
     search: Optional[str] = None,
     utc: Optional[bool] = False
 ):
-    """List logs with filtering and pagination - queries InfluxDB"""
+    """List logs with filtering and pagination - queries Loki"""
     
-    from influxdb_client import InfluxDBClient
+    import requests
     from aico.core.config import ConfigurationManager
-    from aico.security.key_manager import AICOKeyManager
-    from datetime import timezone
+    from datetime import timezone, timedelta
     import json
-    import asyncio
     
-    # Get InfluxDB credentials
+    # Get Loki URL from config
     config = ConfigurationManager()
-    key_manager = AICOKeyManager(config)
+    loki_url = config.get('loki.url', 'http://127.0.0.1:3100')
     
-    influx_config = config.get('influx', {})
-    url = influx_config.get('url', 'http://127.0.0.1:8086')
-    org = influx_config.get('org', 'aico')
-    bucket = influx_config.get('bucket', 'aico_telemetry')
-    token = key_manager.get_database_password('influx', username='admin_token')
-    
-    client = InfluxDBClient(url=url, token=token, org=org)
-    
-    # Build Flux query filters
-    filters = [
-        'r._measurement == "logs"',
-        'r._field == "message"'
-    ]
+    # Build LogQL query with label filters
+    label_filters = []
     
     if level:
         # Handle comma-separated levels
         level_parts = [l.strip().upper() for l in level.split(',')]
-        level_filter = " or ".join([f'r.level == "{lvl}"' for lvl in level_parts])
-        filters.append(f'({level_filter})')
+        level_filter = "|".join(level_parts)
+        label_filters.append(f'level=~"{level_filter}"')
     
     if subsystem:
-        filters.append(f'r.service == "{subsystem}"')
+        label_filters.append(f'service="{subsystem}"')
     
     if module:
-        filters.append(f'r.module =~ /{module}/')
+        label_filters.append(f'logger_prefix=~".*{module}.*"')
     
+    # Build LogQL query
+    if label_filters:
+        logql_query = "{" + ", ".join(label_filters) + "}"
+    else:
+        logql_query = '{job=~".+"}'  # Match all logs
+    
+    # Add line filter for search
     if search:
-        filters.append(f'r._value =~ /{search}/')
+        logql_query += f' |= "{search}"'
     
-    filter_str = " and ".join(filters)
-
-    def _to_flux_time_literal(dt: datetime) -> str:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-    range_start = "-24h"
-    range_stop = "now()"
-
-    if since:
-        range_start = _to_flux_time_literal(since)
-    if until:
-        range_stop = _to_flux_time_literal(until)
+    # Calculate time range
+    if not since:
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+    if not until:
+        until = datetime.now(timezone.utc)
     
-    # Query InfluxDB - fetch more than needed and slice in Python for performance
-    query = f'''
-    from(bucket: "{bucket}")
-      |> range(start: {range_start}, stop: {range_stop})
-      |> filter(fn: (r) => {filter_str})
-      |> sort(columns: ["_time"], desc: true)
-      |> limit(n: {limit + offset})
-    '''
-
-    count_query = f'''
-    from(bucket: "{bucket}")
-      |> range(start: {range_start}, stop: {range_stop})
-      |> filter(fn: (r) => {filter_str})
-      |> group()
-      |> count(column: "_value")
-    '''
+    # Ensure timezone aware
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=timezone.utc)
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    
+    # Query Loki - fetch more than needed for offset
+    url = f"{loki_url}/loki/api/v1/query_range"
+    params = {
+        "query": logql_query,
+        "limit": limit + offset + 100,  # Fetch extra for accurate count
+        "start": int(since.timestamp()),
+        "end": int(until.timestamp()),
+        "direction": "backward"
+    }
     
     try:
-        total_tables = await asyncio.to_thread(client.query_api().query, count_query, org=org)
-        total = 0
-        for table in total_tables:
-            for record in table.records:
-                try:
-                    total = int(record.get_value())
-                except Exception:
-                    total = 0
-
-        tables = await asyncio.to_thread(client.query_api().query, query, org=org)
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        result = response.json()
         
-        # Collect all records from all tables
-        all_records = []
-        for table in tables:
-            all_records.extend(table.records)
-        
-        if not all_records:
+        if result.get("status") != "success":
             return LogsListResponse(logs=[], total=0, has_more=False)
         
-        # CRITICAL: Sort all records by timestamp DESC after combining tables
-        # InfluxDB returns separate tables per tag combination, so we must re-sort
-        all_records.sort(key=lambda r: r.get_time(), reverse=True)
+        data = result.get("data", {})
+        streams = data.get("result", [])
         
-        # Apply offset in Python
-        records_to_show = all_records[offset:offset + limit]
+        # Collect all log entries
+        all_logs = []
+        for stream in streams:
+            labels = stream.get("stream", {})
+            values = stream.get("values", [])
+            
+            for value in values:
+                timestamp_ns = int(value[0])
+                log_line = value[1]
+                
+                # Parse metadata from log line (format: message | {json_metadata})
+                message = log_line
+                metadata = {}
+                if " | " in log_line:
+                    parts = log_line.split(" | ", 1)
+                    message = parts[0]
+                    if len(parts) > 1:
+                        try:
+                            metadata = json.loads(parts[1])
+                        except:
+                            pass
+                
+                # Convert nanosecond timestamp to datetime
+                timestamp_s = timestamp_ns / 1_000_000_000
+                dt = datetime.fromtimestamp(timestamp_s, tz=timezone.utc)
+                
+                all_logs.append({
+                    "timestamp": dt,
+                    "timestamp_ns": timestamp_ns,
+                    "level": labels.get("level", "INFO"),
+                    "service": labels.get("service", "unknown"),
+                    "logger_prefix": labels.get("logger_prefix", "unknown"),
+                    "message": message,
+                    "metadata": metadata
+                })
+        
+        # Sort by timestamp descending (most recent first)
+        all_logs.sort(key=lambda x: x["timestamp_ns"], reverse=True)
+        
+        # Calculate total and apply pagination
+        total = len(all_logs)
+        logs_to_show = all_logs[offset:offset + limit]
         
         # Convert to log entries
         log_entries = []
-        
-        for record in records_to_show:
-            # Generate unique ID from timestamp + message hash to prevent React key collisions
-            timestamp = record.get_time()
-            message = record.get_value()
-            unique_id = f"{timestamp.timestamp()}_{hash(message) & 0xFFFFFFFF}"
+        for log in logs_to_show:
+            # Generate unique ID from timestamp + message hash
+            unique_id = f"{log['timestamp_ns']}_{hash(log['message']) & 0xFFFFFFFF}"
             
             log_entries.append(LogEntryResponse(
                 id=unique_id,
-                timestamp=timestamp.isoformat(),
-                level=record.values.get("level", "INFO"),
-                subsystem=record.values.get("service", "unknown"),
-                module=record.values.get("module", "unknown"),
-                function=record.values.get("function", ""),
-                message=message,
+                timestamp=log["timestamp"].isoformat(),
+                level=log["level"],
+                subsystem=log["service"],
+                module=log["metadata"].get("module", log["logger_prefix"]),
+                function=log["metadata"].get("function", ""),
+                message=log["message"],
                 topic="",
                 extra_data=None
             ))
         
-    finally:
-        try:
-            client.close()
-        except:
-            pass
-    
-    return LogsListResponse(
-        logs=log_entries,
-        total=total,
-        has_more=(offset + len(log_entries)) < total,
-        timezone=None if utc else "local"
-    )
+        return LogsListResponse(
+            logs=log_entries,
+            total=total,
+            has_more=(offset + len(log_entries)) < total,
+            timezone=None if utc else "local"
+        )
+    except Exception as e:
+        logger.error(f"Failed to query Loki logs: {e}")
+        raise LogsServiceError(f"Failed to retrieve logs: {str(e)}")
 
 
 @router.get("/logs/count")
@@ -1542,89 +1547,84 @@ async def count_logs(
     until: Optional[datetime] = None,
     search: Optional[str] = None,
 ):
-    """Return exact log-entry count for a time window.
+    """Return exact log-entry count for a time window - queries Loki"""
 
-    Uses logs._field == "count" and sum(), which corresponds to 1 per logical log entry.
-    """
-
-    from influxdb_client import InfluxDBClient
+    import requests
     from aico.core.config import ConfigurationManager
-    from aico.security.key_manager import AICOKeyManager
-    from datetime import datetime, timezone
-    import asyncio
+    from datetime import timezone, timedelta
 
     config = ConfigurationManager()
-    key_manager = AICOKeyManager(config)
+    loki_url = config.get('loki.url', 'http://127.0.0.1:3100')
 
-    influx_config = config.get("influx", {})
-    url = influx_config.get("url", "http://127.0.0.1:8086")
-    org = influx_config.get("org", "aico")
-    bucket = influx_config.get("bucket", "aico_telemetry")
-    token = key_manager.get_database_password("influx", username="admin_token")
-
-    client = InfluxDBClient(url=url, token=token, org=org)
-
-    # Build Flux query filters
-    filters = [
-        'r._measurement == "logs"',
-        'r._field == "count"',
-    ]
+    # Build LogQL query with label filters
+    label_filters = []
 
     if level:
         level_parts = [l.strip().upper() for l in level.split(",")]
-        level_filter = " or ".join([f'r.level == "{lvl}"' for lvl in level_parts])
-        filters.append(f"({level_filter})")
+        level_filter = "|".join(level_parts)
+        label_filters.append(f'level=~"{level_filter}"')
 
     if subsystem:
-        filters.append(f'r.service == "{subsystem}"')
+        label_filters.append(f'service="{subsystem}"')
 
     if module:
-        filters.append(f'r.module =~ /{module}/')
+        label_filters.append(f'logger_prefix=~".*{module}.*"')
 
-    # Note: search is applied to message field in /logs. For count(), we support the same
-    # parameter by switching to a message filter in the query.
-    search_filter = ""
+    # Build LogQL query
+    if label_filters:
+        logql_query = "{" + ", ".join(label_filters) + "}"
+    else:
+        logql_query = '{job=~".+"}'
+
+    # Add line filter for search
     if search:
-        search_filter = f'|> filter(fn: (r) => r._field == "message") |> filter(fn: (r) => r._value =~ /{search}/)'
+        logql_query += f' |= "{search}"'
 
-    filter_str = " and ".join(filters)
+    # Calculate time range
+    if not since:
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+    if not until:
+        until = datetime.now(timezone.utc)
 
-    def _to_flux_time_literal(dt: datetime) -> str:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    # Ensure timezone aware
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=timezone.utc)
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
 
-    range_start = "-24h"
-    range_stop = "now()"
-    if since:
-        range_start = _to_flux_time_literal(since)
-    if until:
-        range_stop = _to_flux_time_literal(until)
+    # Use Loki's count_over_time aggregation
+    count_query = f'sum(count_over_time({logql_query}[{int((until - since).total_seconds())}s]))'
 
-    query = f'''
-    from(bucket: "{bucket}")
-      |> range(start: {range_start}, stop: {range_stop})
-      |> filter(fn: (r) => {filter_str})
-      {search_filter}
-      |> group()
-      |> sum(column: "_value")
-    '''
+    url = f"{loki_url}/loki/api/v1/query"
+    params = {
+        "query": count_query,
+        "time": int(until.timestamp())
+    }
 
     try:
-        tables = await asyncio.to_thread(client.query_api().query, query, org=org)
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("status") != "success":
+            return {"total": 0}
+
+        data = result.get("data", {})
+        result_data = data.get("result", [])
+
         total = 0
-        for table in tables:
-            for record in table.records:
+        if result_data and len(result_data) > 0:
+            value = result_data[0].get("value", [])
+            if len(value) > 1:
                 try:
-                    total += int(record.get_value())
-                except Exception:
-                    pass
+                    total = int(float(value[1]))
+                except:
+                    total = 0
+
         return {"total": total}
-    finally:
-        try:
-            client.close()
-        except Exception:
-            pass
+    except Exception as e:
+        logger.error(f"Failed to count Loki logs: {e}")
+        return {"total": 0}
 
 
 # Cache for stats to avoid repeated slow queries
@@ -1637,114 +1637,99 @@ async def get_logs_stats(
     request: Request,
     user: dict = Depends(verify_admin_token)
 ):
-    """Get log statistics and metrics - queries InfluxDB, cached for performance"""
+    """Get log statistics and metrics - queries Loki, cached for performance"""
     
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     import time
-    from influxdb_client import InfluxDBClient
+    import requests
     from aico.core.config import ConfigurationManager
-    from aico.security.key_manager import AICOKeyManager
+    from collections import defaultdict
     
     # Check cache first
     now = time.time()
     if _stats_cache["data"] and (now - _stats_cache["timestamp"]) < _STATS_CACHE_TTL:
         return _stats_cache["data"]
     
-    # Get InfluxDB credentials
     config = ConfigurationManager()
-    key_manager = AICOKeyManager(config)
-    
-    influx_config = config.get("influx", {})
-    url = influx_config.get("url", "http://127.0.0.1:8086")
-    org = influx_config.get("org", "aico")
-    bucket = influx_config.get("bucket", "aico_telemetry")
-    token = key_manager.get_database_password("influx", username="admin_token")
-    
-    client = InfluxDBClient(url=url, token=token, org=org)
+    loki_url = config.get('loki.url', 'http://127.0.0.1:3100')
     
     try:
-        # Get total count and level distribution
-        query = f'''
-        from(bucket: "{bucket}")
-          |> range(start: -24h)
-          |> filter(fn: (r) => r._measurement == "logs")
-          |> filter(fn: (r) => r._field == "count")
-          |> group(columns: ["level"])
-          |> sum()
-        '''
-        tables = client.query_api().query(query, org=org)
+        # Get logs for last 24h to calculate all stats
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(hours=24)
         
-        by_level = {}
+        # Query all logs from last 24h
+        # Match all known AICO services (backend, modelservice, cli, shared)
+        url = f"{loki_url}/loki/api/v1/query_range"
+        params = {
+            "query": '{service=~"backend|modelservice|cli|shared"}',
+            "limit": 5000,  # Loki's max_entries_limit
+            "start": int(start_time.timestamp()),
+            "end": int(end_time.timestamp()),
+            "direction": "backward"
+        }
+        
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        
+        if result.get("status") != "success":
+            # Return empty stats
+            return LogsStatsResponse(
+                total_logs=0,
+                by_level={},
+                by_subsystem={},
+                recent_activity={},
+                error_rate_trend=0.0,
+                log_volume_trend=0.0
+            )
+        
+        # Process all logs
+        by_level = defaultdict(int)
+        by_subsystem = defaultdict(int)
+        hourly_counts = defaultdict(int)
+        last_hour_by_level = defaultdict(int)
+        prev_hour_by_level = defaultdict(int)
+        
+        last_hour_start = end_time - timedelta(hours=1)
+        prev_hour_start = end_time - timedelta(hours=2)
+        
+        streams = result.get("data", {}).get("result", [])
         total_logs = 0
-        for table in tables:
-            for record in table.records:
-                level = record.values.get("level", "INFO")
-                count = int(record.get_value())
-                by_level[level] = count
-                total_logs += count
         
-        # Get service distribution (top 10)
-        query = f'''
-        from(bucket: "{bucket}")
-          |> range(start: -24h)
-          |> filter(fn: (r) => r._measurement == "logs")
-          |> filter(fn: (r) => r._field == "count")
-          |> group(columns: ["service"])
-          |> sum()
-          |> sort(desc: true)
-          |> limit(n: 10)
-        '''
-        tables = client.query_api().query(query, org=org)
+        for stream in streams:
+            labels = stream.get("stream", {})
+            level = labels.get("level", "INFO")
+            service = labels.get("service", "unknown")
+            values = stream.get("values", [])
+            
+            for value in values:
+                timestamp_ns = int(value[0])
+                timestamp_s = timestamp_ns / 1_000_000_000
+                dt = datetime.fromtimestamp(timestamp_s, tz=timezone.utc)
+                
+                # Count by level
+                by_level[level] += 1
+                
+                # Count by subsystem
+                by_subsystem[service] += 1
+                
+                # Count by hour for timeline
+                hour_str = str(dt.hour)
+                hourly_counts[hour_str] += 1
+                
+                # Count for trend analysis
+                if dt >= last_hour_start:
+                    last_hour_by_level[level] += 1
+                elif dt >= prev_hour_start:
+                    prev_hour_by_level[level] += 1
+                
+                total_logs += 1
         
-        by_subsystem = {}
-        for table in tables:
-            for record in table.records:
-                service = record.values.get("service", "unknown")
-                count = int(record.get_value())
-                by_subsystem[service] = count
+        # Calculate trends
+        last_hour_total = sum(last_hour_by_level.values())
+        prev_hour_total = sum(prev_hour_by_level.values())
         
-        # Calculate trends by comparing last hour vs previous hour
-        # Query for last hour
-        query_last_hour = f'''
-        from(bucket: "{bucket}")
-          |> range(start: -1h)
-          |> filter(fn: (r) => r._measurement == "logs")
-          |> filter(fn: (r) => r._field == "message")
-          |> group(columns: ["level"])
-          |> count()
-        '''
-        tables_last = client.query_api().query(query_last_hour, org=org)
-        
-        last_hour_by_level = {}
-        last_hour_total = 0
-        for table in tables_last:
-            for record in table.records:
-                level = record.values.get("level", "INFO")
-                count = int(record.get_value())
-                last_hour_by_level[level] = count
-                last_hour_total += count
-        
-        # Query for previous hour (1h-2h ago)
-        query_prev_hour = f'''
-        from(bucket: "{bucket}")
-          |> range(start: -2h, stop: -1h)
-          |> filter(fn: (r) => r._measurement == "logs")
-          |> filter(fn: (r) => r._field == "message")
-          |> group(columns: ["level"])
-          |> count()
-        '''
-        tables_prev = client.query_api().query(query_prev_hour, org=org)
-        
-        prev_hour_by_level = {}
-        prev_hour_total = 0
-        for table in tables_prev:
-            for record in table.records:
-                level = record.values.get("level", "INFO")
-                count = int(record.get_value())
-                prev_hour_by_level[level] = count
-                prev_hour_total += count
-        
-        # Calculate error rate trend
         last_hour_errors = last_hour_by_level.get('ERROR', 0)
         prev_hour_errors = prev_hour_by_level.get('ERROR', 0)
         
@@ -1756,56 +1741,38 @@ async def get_logs_stats(
         else:
             error_rate_trend = 0.0
         
-        # Calculate log volume trend
         if prev_hour_total > 0:
             log_volume_trend = ((last_hour_total - prev_hour_total) / prev_hour_total) * 100
         else:
             log_volume_trend = 0.0
         
-        # Recent activity by hour (last 24h) - for timeline visualization
-        query = f'''
-        from(bucket: "{bucket}")
-          |> range(start: -24h)
-          |> filter(fn: (r) => r._measurement == "logs")
-          |> filter(fn: (r) => r._field == "count")
-          |> window(every: 1h)
-          |> group(columns: ["level", "_start"])
-          |> sum()
-          |> duplicate(column: "_start", as: "_time")
-        '''
-        tables = client.query_api().query(query, org=org)
+        # Convert defaultdicts to regular dicts and limit subsystems to top 10
+        by_subsystem_sorted = dict(sorted(by_subsystem.items(), key=lambda x: x[1], reverse=True)[:10])
         
-        recent_activity = {}
-        for table in tables:
-            for record in table.records:
-                # Get hour from timestamp
-                timestamp = record.get_time()
-                hour_str = str(timestamp.hour)  # Convert to string for Pydantic validation
-                count = int(record.get_value())
-                
-                # Sum all levels per hour (Pydantic expects Dict[str, int])
-                if hour_str not in recent_activity:
-                    recent_activity[hour_str] = 0
-                recent_activity[hour_str] += count
+        response = LogsStatsResponse(
+            total_logs=total_logs,
+            by_level=dict(by_level),
+            by_subsystem=by_subsystem_sorted,
+            recent_activity=dict(hourly_counts),
+            error_rate_trend=error_rate_trend,
+            log_volume_trend=log_volume_trend
+        )
         
-    finally:
-        try:
-            client.close()
-        except:
-            pass
-    
-    response = LogsStatsResponse(
-        total_logs=total_logs,
-        by_level=by_level,
-        by_subsystem=by_subsystem,
-        recent_activity=recent_activity,
-        error_rate_trend=error_rate_trend,
-        log_volume_trend=log_volume_trend
-    )
-    
-    # Cache the result
-    _stats_cache["data"] = response
-    _stats_cache["timestamp"] = now
+        # Cache the result
+        _stats_cache["data"] = response
+        _stats_cache["timestamp"] = now
+        
+    except Exception as e:
+        logger.error(f"Failed to get Loki stats: {e}")
+        # Return empty stats on error
+        return LogsStatsResponse(
+            total_logs=0,
+            by_level={},
+            by_subsystem={},
+            recent_activity={},
+            error_rate_trend=0.0,
+            log_volume_trend=0.0
+        )
     
     return response
 

@@ -1,13 +1,13 @@
 """
 AICO Simple Logging System
 
-Clean, minimal logging with InfluxDB backend.
-Replaces the old 934-line complexity with ~100 lines of clarity.
+Clean, minimal logging with InfluxDB and Loki backends.
+Supports parallel logging to both systems during migration.
 
 Usage:
     # Initialize once at service startup
     from aico.core.logging import initialize_logging
-    initialize_logging("backend", enable_influx=True)
+    initialize_logging("backend", enable_influx=True, enable_loki=True)
     
     # Get loggers anywhere
     from aico.core.logging import get_logger
@@ -21,22 +21,26 @@ import sys
 from typing import Optional
 
 from .influx_handler import InfluxDBLogHandler
+from .loki_handler import LokiLogHandler
 
 # Global state
 _initialized = False
 _service_name = None
 _influx_handler = None
+_loki_handler = None
 
 
 def initialize_logging(
     service_name: str,
     enable_influx: bool = True,
+    enable_loki: bool = True,
     enable_console: bool = True,
     log_level: Optional[int] = None,
     influx_url: Optional[str] = None,
     influx_org: Optional[str] = None,
     influx_bucket: Optional[str] = None,
-    influx_token: Optional[str] = None
+    influx_token: Optional[str] = None,
+    loki_url: Optional[str] = None
 ):
     """
     Initialize logging for a service.
@@ -156,6 +160,35 @@ def initialize_logging(
         except Exception as e:
             print(f"[Logging] Failed to setup InfluxDB: {e}", flush=True)
     
+    # Add Loki handler
+    if enable_loki:
+        try:
+            # Auto-detect config if not provided
+            if not loki_url:
+                import importlib
+                
+                config_module = importlib.import_module('aico.core.config')
+                ConfigurationManager = config_module.ConfigurationManager
+                
+                config = ConfigurationManager()
+                config.initialize(lightweight=True)
+                
+                loki_url = loki_url or config.get("loki.url", "http://127.0.0.1:3100")
+            
+            _loki_handler = LokiLogHandler(
+                loki_url=loki_url,
+                service_name=service_name,
+                buffer_size=20000,
+                flush_interval=2.0,
+                batch_size=1000
+            )
+            _loki_handler.setLevel(resolved_log_level)
+            root_logger.addHandler(_loki_handler)
+            print(f"[Logging] Loki enabled for service '{service_name}'", flush=True)
+        
+        except Exception as e:
+            print(f"[Logging] Failed to setup Loki: {e}", flush=True)
+    
     _initialized = True
     print(f"[Logging] Initialized for service '{service_name}'", flush=True)
 
@@ -187,7 +220,7 @@ def shutdown_logging():
     Flushes all buffered logs and closes handlers.
     Call this on service shutdown.
     """
-    global _influx_handler, _initialized
+    global _influx_handler, _loki_handler, _initialized
     
     if _influx_handler:
         try:
@@ -196,6 +229,14 @@ def shutdown_logging():
         except Exception as e:
             print(f"[Logging] Error closing InfluxDB handler: {e}", flush=True)
         _influx_handler = None
+    
+    if _loki_handler:
+        try:
+            _loki_handler.close()
+            print(f"[Logging] Loki handler closed", flush=True)
+        except Exception as e:
+            print(f"[Logging] Error closing Loki handler: {e}", flush=True)
+        _loki_handler = None
     
     # Shutdown Python logging
     logging.shutdown()
@@ -213,6 +254,18 @@ def get_influx_stats() -> dict:
     """
     if _influx_handler:
         return _influx_handler.get_stats()
+    return {}
+
+
+def get_loki_stats() -> dict:
+    """
+    Get Loki handler statistics.
+    
+    Returns:
+        Dictionary with stats or empty dict if handler not available
+    """
+    if _loki_handler:
+        return _loki_handler.get_stats()
     return {}
 
 

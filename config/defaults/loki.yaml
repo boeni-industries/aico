@@ -1,0 +1,19 @@
+# Log aggregation backend (Loki)
+
+# Base URL for the Loki HTTP API
+url: "http://127.0.0.1:3100"
+
+# Retention policy for logs
+retention:
+  # Keep logs for 30 days (720h)
+  retention_days: 30
+  description: "Application logs from all subsystems"
+
+# Push configuration
+push:
+  # Batch size for log entries
+  batch_size: 1000
+  # Flush interval in seconds
+  flush_interval: 2.0
+  # Buffer size for in-memory queue
+  buffer_size: 20000

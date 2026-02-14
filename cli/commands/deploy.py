@@ -1,7 +1,7 @@
 """AICO CLI Deploy Commands
 
 High-level orchestration for deploying and bootstrapping infrastructure
-backends (Postgres and InfluxDB). These commands are intended to be used
+backends (Postgres, InfluxDB, and Loki). These commands are intended to be used
 in CI/CD pipelines or for one-shot local provisioning.
 
 Fully automated credential management:
@@ -537,6 +537,179 @@ def _nuke_postgres() -> int:
     return 0
 
 
+def _nuke_loki() -> int:
+    """COMPLETE reset: force kill containers, unmount volumes, remove images, networks, cache."""
+
+    console.print("💣 [bold yellow]NUKING Loki - COMPLETE cleanup of ALL artifacts...[/bold yellow]")
+
+    # 1. Force kill and remove container (multiple attempts with different methods)
+    console.print("  [dim]→ Force killing and removing containers...[/dim]")
+    
+    # Try docker-compose first
+    _run_compose(["kill", "loki"])
+    _run_compose(["rm", "-f", "-v", "loki"])  # -v removes anonymous volumes too
+    
+    # Force kill by container name (in case compose doesn't find it)
+    try:
+        subprocess.run(
+            ["docker", "kill", "aico-loki"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["docker", "rm", "-f", "-v", "aico-loki"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+    
+    # Remove any containers with loki label (catch-all)
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", "label=com.aico.component=loki"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout.strip():
+            container_ids = result.stdout.strip().split('\n')
+            for cid in container_ids:
+                subprocess.run(
+                    ["docker", "rm", "-f", "-v", cid],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+    except FileNotFoundError:
+        pass
+
+    # 2. Remove ALL possible volume naming patterns
+    console.print("  [dim]→ Removing volumes (all naming patterns)...[/dim]")
+    volume_patterns = [
+        "aico-lokidata",           # Direct name
+        "docker_aico-lokidata",    # Old compose (directory prefix)
+        "aico_aico-lokidata",      # New compose with name: aico
+    ]
+    
+    for volume_name in volume_patterns:
+        try:
+            subprocess.run(
+                ["docker", "volume", "rm", "-f", volume_name],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            pass
+
+    # 3. Remove any volumes with loki label (catch-all)
+    try:
+        subprocess.run(
+            ["docker", "volume", "prune", "-f", "--filter", "label=com.aico.component=loki"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+    
+    # 3b. Prune ALL dangling/unused volumes (catches anonymous volumes)
+    try:
+        subprocess.run(
+            ["docker", "volume", "prune", "-af"],  # -a removes all unused, -f force
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+
+    # 4. Remove Docker images (grafana/loki and any dangling images)
+    console.print("  [dim]→ Removing Docker images...[/dim]")
+    try:
+        # Remove specific loki image
+        subprocess.run(
+            ["docker", "rmi", "-f", "grafana/loki:2.9.0"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # Remove any dangling images
+        subprocess.run(
+            ["docker", "image", "prune", "-f"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+
+    # 5. Remove networks created by docker-compose
+    console.print("  [dim]→ Cleaning up networks...[/dim]")
+    try:
+        # Remove aico project networks
+        subprocess.run(
+            ["docker", "network", "prune", "-f", "--filter", "label=com.docker.compose.project=aico"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+
+    # 6. Clear build cache
+    console.print("  [dim]→ Pruning build cache...[/dim]")
+    try:
+        subprocess.run(
+            ["docker", "builder", "prune", "-f"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+
+    # 7. System-wide Docker cleanup
+    console.print("  [dim]→ Running system-wide Docker cleanup...[/dim]")
+    try:
+        # Prune all stopped containers
+        subprocess.run(
+            ["docker", "container", "prune", "-f"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # Prune all unused images (not just dangling)
+        subprocess.run(
+            ["docker", "image", "prune", "-af"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # Prune all unused volumes (already done above, but ensure complete)
+        subprocess.run(
+            ["docker", "volume", "prune", "-af"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # Prune all build cache
+        subprocess.run(
+            ["docker", "builder", "prune", "-af"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+
+    console.print(format_success("✅ Loki completely nuked - fresh slate ready"))
+    return 0
+
+
 def _nuke_influx() -> int:
     """COMPLETE reset: force kill containers, unmount volumes, remove images, networks, credentials, cache."""
 
@@ -727,7 +900,7 @@ def _nuke_influx() -> int:
 
 
 app = typer.Typer(
-    help="Deployment orchestration for AICO backends (Postgres, InfluxDB).",
+    help="Deployment orchestration for AICO backends (Postgres, InfluxDB, Loki).",
     invoke_without_command=False,
 )
 
@@ -907,4 +1080,144 @@ def deploy_influx(
     console.print(format_info("💡 Credentials stored in system keyring (derived from master key)"))
     console.print(format_info("💡 Downsampling tasks configured for optimal dashboard performance"))
     console.print(format_info("💡 Backend components will auto-retrieve credentials from keyring at runtime"))
+    console.print("")
+
+
+@app.command("loki", help="Provision Loki (container + config), optionally with --nuke for full reset")
+def deploy_loki(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Loki container + volume before provisioning (DANGEROUS).",
+    )
+):
+    """Deploy or refresh the Loki log aggregation backend.
+
+    This command is FULLY AUTOMATED:
+    - No credentials needed (Loki is unauthenticated by default)
+    - Starts Loki container with configuration
+    - Creates data volume for log storage
+    - Configures 30-day retention policy
+    
+    Safe to run multiple times without --nuke. With --nuke it
+    will wipe the Loki volume and start from a clean slate.
+    """
+
+    console.print("\n" + "="*60)
+    console.print("📝 [bold cyan]AICO Loki Deployment[/bold cyan]")
+    console.print("="*60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
+        _nuke_loki()
+
+    # Verify Loki config file exists
+    loki_config = Path(__file__).parent.parent.parent / "docker" / "loki" / "loki-config.yaml"
+    if not loki_config.exists():
+        console.print(format_error(f"Loki config file not found: {loki_config}"))
+        console.print(format_info("Creating default Loki configuration..."))
+        
+        # Create config directory if needed
+        loki_config.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write default config
+        default_config = """auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+# Retention configuration - keep logs for 30 days
+limits_config:
+  retention_period: 720h  # 30 days
+  max_query_length: 721h
+  max_query_lookback: 720h
+
+# Compactor for retention enforcement
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+"""
+        loki_config.write_text(default_config)
+        console.print(format_success("Created Loki configuration file"))
+
+    console.print("🚀 [cyan]Starting Loki container...[/cyan]")
+    code = _run_compose(["up", "-d", "loki"])
+    if code != 0:
+        console.print(format_error("Failed to start Loki container"))
+        raise typer.Exit(code)
+
+    console.print("⏳ [cyan]Waiting for Loki to be ready...[/cyan]")
+    import time
+    import requests
+    
+    # Wait for Loki to accept connections (up to 30 seconds)
+    max_wait = 30
+    wait_interval = 1
+    elapsed = 0
+    
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    loki_url = config.get("loki.url", "http://127.0.0.1:3100")
+    
+    while elapsed < max_wait:
+        try:
+            response = requests.get(f"{loki_url}/ready", timeout=1.0)
+            if response.status_code == 200:
+                console.print(format_success(f"Loki ready after {elapsed} seconds"))
+                break
+        except (requests.RequestException, requests.Timeout):
+            pass
+        
+        time.sleep(wait_interval)
+        elapsed += wait_interval
+    else:
+        console.print(format_warning(f"Loki did not become ready within {max_wait} seconds, continuing anyway..."))
+
+    # Verify Loki is working by querying labels
+    console.print("🩺 [cyan]Verifying deployment health...[/cyan]")
+    try:
+        response = requests.get(f"{loki_url}/loki/api/v1/labels", timeout=5.0)
+        if response.status_code == 200:
+            console.print(format_success("✓ Loki API responding correctly"))
+        else:
+            console.print(format_warning(f"⚠ Loki API returned status {response.status_code}"))
+    except Exception as e:
+        console.print(format_warning(f"⚠ Could not verify Loki API: {e}"))
+
+    console.print("")
+    console.print(format_success("✅ Loki deployment completed successfully!"))
+    console.print(format_info("💡 Loki is unauthenticated by default (suitable for local development)"))
+    console.print(format_info("💡 Logs will be retained for 30 days (configurable in loki-config.yaml)"))
+    console.print(format_info("💡 Backend components will automatically send logs to Loki at runtime"))
+    console.print(format_info("💡 Query logs with: curl -G http://localhost:3100/loki/api/v1/query_range --data-urlencode 'query={service=\"backend\"}'"))
     console.print("")

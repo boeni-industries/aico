@@ -361,13 +361,13 @@ The project follows a monorepo structure with shared libraries and unified tooli
 
 ## Database Setup
 
-AICO uses a multi-database architecture. PostgreSQL and InfluxDB run in **Docker containers** for consistent deployment across platforms.
+AICO uses a multi-database architecture. PostgreSQL, Loki, and InfluxDB run in **Docker containers** for consistent deployment across platforms.
 
 > **🐳 Docker Deployment**
 > 
-> PostgreSQL and InfluxDB are containerized using Docker for:
+> PostgreSQL, Loki, and InfluxDB are containerized using Docker for:
 > - **Consistent environments** across development, testing, and production
-> - **Easy version management** (PostgreSQL 18.1, InfluxDB 2.x)
+> - **Easy version management** (PostgreSQL 18.1, Loki 2.9, InfluxDB 2.x)
 > - **Isolated dependencies** without system-wide installation
 > - **Simple cleanup** with container removal
 > 
@@ -426,9 +426,51 @@ aico deploy pg --nuke
 - Database credentials configured in `config/defaults/postgres.yaml`
 - Password stored in system keyring via `aico security setup`
 
+### Loki Deployment
+
+Loki stores application logs with LogQL query support.
+
+**Initial Deployment**:
+```bash
+aico deploy loki
+```
+
+This command:
+1. **Pulls Loki 2.9 Docker image** (if not present)
+2. **Starts Loki container** with persistent volume
+3. Configures log retention (default: 30 days)
+4. Sets up label-based indexing
+5. No authentication required for local development
+
+**Container Details**:
+- Image: `grafana/loki:2.9.0`
+- Port: `3100` (mapped to host)
+- Volume: Persistent storage for logs
+- Network: Docker bridge network
+
+**⚠️ DANGEROUS: Reset Logs**:
+```bash
+aico deploy loki --nuke
+```
+
+**WARNING**: The `--nuke` flag will:
+- **STOP and REMOVE the Loki container**
+- **DELETE the persistent volume**
+- **ERASE ALL logs permanently**
+- Pull fresh image and recreate container
+
+**Use cases for --nuke**:
+- ✅ Development: Clear old logs
+- ✅ Testing: Fresh log baseline
+- ❌ **Use with caution** - historical logs are lost
+
+**Prerequisites**:
+- Docker installed and running
+- Loki URL configured in `config/defaults/loki.yaml` (http://localhost:3100)
+
 ### InfluxDB Deployment
 
-InfluxDB stores time-series telemetry data (metrics, logs, performance).
+InfluxDB stores time-series metrics and performance telemetry.
 
 **Initial Deployment**:
 ```bash
@@ -450,7 +492,7 @@ This command:
 - Volume: Persistent storage for time-series data
 - Network: Docker bridge network
 
-**⚠️ DANGEROUS: Reset Telemetry Database**:
+**⚠️ DANGEROUS: Reset Metrics Database**:
 ```bash
 aico deploy influx --nuke
 ```
@@ -458,14 +500,14 @@ aico deploy influx --nuke
 **WARNING**: The `--nuke` flag will:
 - **STOP and REMOVE the InfluxDB container**
 - **DELETE the persistent volume**
-- **ERASE ALL metrics and logs permanently**
+- **ERASE ALL metrics permanently**
 - Pull fresh image and recreate container
-- Recreate bucket and retention policies
+- Reconfigure organization and bucket
 
 **Use cases for --nuke**:
-- ✅ Development: Clear old test metrics
-- ✅ Testing: Fresh telemetry environment
-- ⚠️ Production: Only if you want to clear historical metrics
+- ✅ Development: Clear old telemetry data
+- ✅ Testing: Fresh metrics baseline
+- ❌ **Use with caution** - historical data is lost
 
 **Prerequisites**:
 - Docker installed and running
@@ -494,14 +536,20 @@ This will:
 3. Store user in PostgreSQL
 4. Set up authentication credentials
 
+**Check Loki**:
+```bash
+aico logs tail --lines 10  # Query recent logs from Loki
+```
+
 **Check InfluxDB**:
 ```bash
-aico logs query --limit 10  # Query recent logs
+# InfluxDB now stores metrics only (not logs)
+curl http://localhost:8086/health  # Check InfluxDB health
 ```
 
 ### Database Configuration
 
-Edit `config/defaults/postgres.yaml` and `config/defaults/influx.yaml`:
+Edit `config/defaults/postgres.yaml`, `config/defaults/loki.yaml`, and `config/defaults/influx.yaml`:
 
 ```yaml
 db_name: "aico"
@@ -554,6 +602,21 @@ curl http://localhost:8086/health
 aico security keyring list
 ```
 
+**Loki connection failed**:
+```bash
+# Check if Loki container is running
+docker ps | grep loki
+
+# View Loki container logs
+docker logs aico-loki
+
+# Check Loki health endpoint
+curl http://localhost:3100/ready
+
+# Test log query
+curl -G "http://localhost:3100/loki/api/v1/labels" | jq
+```
+
 **Docker issues**:
 ```bash
 # Check Docker daemon status
@@ -563,10 +626,10 @@ docker info
 docker ps -a | grep aico
 
 # Remove stopped containers
-docker rm aico-postgres aico-influx
+docker rm aico-postgres aico-loki aico-influx
 
 # Remove volumes (⚠️ deletes data)
-docker volume rm aico-postgres-data aico-influx-data
+docker volume rm aico-postgres-data aico-lokidata aico-influx-data
 ```
 
 ## Database Setup (Legacy)
