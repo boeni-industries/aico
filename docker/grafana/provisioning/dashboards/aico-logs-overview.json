@@ -413,6 +413,8 @@
         "y": 10
       },
       "id": 6,
+      "interval": "1m",
+      "intervalFactor": 1,
       "options": {
         "legend": {
           "calcs": [
@@ -435,8 +437,11 @@
             "uid": "P8E80F9AEF21F6940"
           },
           "editorMode": "code",
-          "expr": "sum by(level) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__auto]))",
+          "expr": "sum by(level) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [1m]))",
           "legendFormat": "{{level}}",
+          "interval": "1m",
+          "intervalMs": 60000,
+          "maxDataPoints": 60,
           "queryType": "range",
           "refId": "A"
         }
@@ -811,6 +816,8 @@
         "y": 18
       },
       "id": 10,
+      "interval": "1m",
+      "intervalFactor": 1,
       "options": {
         "legend": {
           "calcs": [
@@ -833,8 +840,11 @@
             "uid": "P8E80F9AEF21F6940"
           },
           "editorMode": "code",
-          "expr": "sum by(service) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__auto]))",
+          "expr": "sum by(service) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [1m]))",
           "legendFormat": "{{service}}",
+          "interval": "1m",
+          "intervalMs": 60000,
+          "maxDataPoints": 60,
           "queryType": "range",
           "refId": "A"
         }
@@ -908,6 +918,8 @@
         "y": 26
       },
       "id": 11,
+      "interval": "1m",
+      "intervalFactor": 1,
       "options": {
         "legend": {
           "calcs": [
@@ -931,8 +943,11 @@
             "uid": "P8E80F9AEF21F6940"
           },
           "editorMode": "code",
-          "expr": "sum by(service) (count_over_time({service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\" [$__auto]))",
+          "expr": "sum by(service) (count_over_time({service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\" [1m]))",
           "legendFormat": "{{service}}",
+          "interval": "1m",
+          "intervalMs": 60000,
+          "maxDataPoints": 60,
           "queryType": "range",
           "refId": "A"
         }
@@ -970,6 +985,7 @@
           },
           "editorMode": "code",
           "expr": "{service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\"",
+          "maxLines": 200,
           "queryType": "range",
           "refId": "A"
         }
@@ -1071,7 +1087,7 @@
             "uid": "P8E80F9AEF21F6940"
           },
           "editorMode": "code",
-          "expr": "topk(20, sum by(service, level, logger_prefix) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" | json | __error__=\"\" [$__range])))",
+          "expr": "topk(20, sum by(service, level, logger_prefix) (count_over_time({service=~\".+\", level=~\"$level\"} |~ \"$search\" [$__range])))",
           "legendFormat": "{{service}} - {{level}} - {{logger_prefix}}",
           "queryType": "instant",
           "refId": "A"
@@ -1127,6 +1143,7 @@
           },
           "editorMode": "code",
           "expr": "{service=~\"$service\", level=~\"$level\"} |~ \"$search\"",
+          "maxLines": 500,
           "queryType": "range",
           "refId": "A"
         }
@@ -1265,6 +1282,6 @@
   "timezone": "browser",
   "title": "AICO Log Analysis Dashboard",
   "uid": "aico-logs-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
