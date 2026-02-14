@@ -28,7 +28,7 @@ class CLIZMQClient:
     def __init__(self):
         self.config_manager = ConfigurationManager()
         self.config_manager.initialize(lightweight=True)
-        initialize_logging(service_name="cli", enable_influx=False, enable_loki=True, enable_console=True)
+        initialize_logging(service_name="cli", enable_loki=True, enable_console=True)
         self.logger = get_logger("cli.zmq_client")
         
     async def send_request(self, request_topic: str, response_topic: str, 

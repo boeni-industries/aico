@@ -1,7 +1,7 @@
 """AICO CLI Deploy Commands
 
 High-level orchestration for deploying and bootstrapping infrastructure
-backends (Postgres, InfluxDB, and Loki). These commands are intended to be used
+backends (Postgres, InfluxDB, Loki, and Grafana). These commands are intended to be used
 in CI/CD pipelines or for one-shot local provisioning.
 
 Fully automated credential management:
@@ -1220,4 +1220,183 @@ compactor:
     console.print(format_info("💡 Logs will be retained for 30 days (configurable in loki-config.yaml)"))
     console.print(format_info("💡 Backend components will automatically send logs to Loki at runtime"))
     console.print(format_info("💡 Query logs with: curl -G http://localhost:3100/loki/api/v1/query_range --data-urlencode 'query={service=\"backend\"}'"))
+    console.print("")
+
+
+@app.command("grafana", help="Provision Grafana (container + Loki datasource), optionally with --nuke for full reset")
+def deploy_grafana(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Grafana container + volume before provisioning (DANGEROUS).",
+    )
+):
+    """Deploy or refresh the Grafana visualization backend.
+
+    This command is FULLY AUTOMATED:
+    - Auto-generates admin password from master key
+    - Starts Grafana container with Loki datasource
+    - Creates data volume for dashboards/settings
+    - Pre-configures Loki connection
+    
+    Safe to run multiple times without --nuke. With --nuke it
+    will wipe the Grafana volume and start from a clean slate.
+    """
+
+    console.print("\n" + "="*60)
+    console.print("📊 [bold cyan]AICO Grafana Deployment[/bold cyan]")
+    console.print("="*60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
+        _nuke_grafana()
+
+    # Get or create Grafana admin password
+    console.print("🔐 [cyan]Managing Grafana credentials...[/cyan]")
+    grafana_password = _get_or_create_grafana_password()
+    
+    # Set environment variables for docker-compose
+    env = os.environ.copy()
+    env["AICO_GRAFANA_USER"] = "admin"
+    env["AICO_GRAFANA_PASSWORD"] = grafana_password
+
+    # Verify provisioning configs exist
+    grafana_provisioning = Path(__file__).parent.parent.parent / "docker" / "grafana" / "provisioning"
+    if not grafana_provisioning.exists():
+        console.print(format_error(f"Grafana provisioning directory not found: {grafana_provisioning}"))
+        raise typer.Exit(1)
+
+    console.print("🚀 [cyan]Starting Grafana container...[/cyan]")
+    code = _run_compose(["up", "-d", "grafana"], env=env)
+    if code != 0:
+        console.print(format_error("Failed to start Grafana container"))
+        raise typer.Exit(code)
+
+    console.print("⏳ [cyan]Waiting for Grafana to be ready...[/cyan]")
+    import time
+    import requests
+    
+    # Wait for Grafana to accept connections (up to 60 seconds)
+    max_wait = 60
+    wait_interval = 2
+    elapsed = 0
+    
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    grafana_url = config.get("grafana.url", "http://127.0.0.1:3000")
+    
+    while elapsed < max_wait:
+        try:
+            response = requests.get(f"{grafana_url}/api/health", timeout=2.0)
+            if response.status_code == 200:
+                console.print(format_success(f"Grafana ready after {elapsed} seconds"))
+                break
+        except (requests.RequestException, requests.Timeout):
+            pass
+        
+        time.sleep(wait_interval)
+        elapsed += wait_interval
+    else:
+        console.print(format_warning(f"Grafana did not become ready within {max_wait} seconds, continuing anyway..."))
+
+    # Verify Grafana is working and Loki datasource is configured
+    console.print("🩺 [cyan]Verifying deployment health...[/cyan]")
+    try:
+        # Check Grafana API
+        response = requests.get(
+            f"{grafana_url}/api/datasources",
+            auth=("admin", grafana_password),
+            timeout=5.0
+        )
+        if response.status_code == 200:
+            datasources = response.json()
+            loki_ds = [ds for ds in datasources if ds.get("type") == "loki"]
+            if loki_ds:
+                console.print(format_success(f"✓ Grafana API responding correctly"))
+                console.print(format_success(f"✓ Loki datasource configured: {loki_ds[0]['name']}"))
+            else:
+                console.print(format_warning("⚠ Loki datasource not found (may need manual configuration)"))
+        else:
+            console.print(format_warning(f"⚠ Grafana API returned status {response.status_code}"))
+    except Exception as e:
+        console.print(format_warning(f"⚠ Could not verify Grafana API: {e}"))
+
+    console.print("")
+    console.print(format_success("✅ Grafana deployment completed successfully!"))
+    console.print(format_info(f"💡 Access Grafana at: {grafana_url}"))
+    console.print(format_info(f"💡 Username: admin"))
+    console.print(format_info(f"💡 Password: (stored in keyring - retrieve with: aico security keyring get grafana_admin_password)"))
+    console.print(format_info("💡 Loki datasource is pre-configured and ready to use"))
+    console.print(format_info("💡 Navigate to Explore → Loki to query logs"))
+    console.print("")
+
+
+def _get_or_create_grafana_password() -> str:
+    """
+    Get or create Grafana admin password using AICOKeyManager.
+    
+    Returns:
+        Grafana admin password
+    """
+    config = ConfigurationManager()
+    key_manager = AICOKeyManager(config)
+    
+    # Check if password already exists
+    existing_password = key_manager.get_database_password("grafana", username="admin_password")
+    if existing_password:
+        console.print(format_info("Using existing Grafana password from keyring"))
+        return existing_password
+    
+    # Generate new password
+    console.print("🔐 [cyan]Generating new Grafana password from master key...[/cyan]")
+    
+    # Authenticate to get master key (prompts if needed)
+    try:
+        master_key = key_manager.authenticate(interactive=True)
+    except Exception as e:
+        console.print(format_error(f"Failed to authenticate: {e}"))
+        raise typer.Exit(1)
+    
+    # Generate deterministic password from master key
+    derived_key = key_manager.derive_purpose_key(master_key, "grafana-password")
+    
+    # Convert derived key to base64 URL-safe string for use as password
+    import base64
+    password = base64.urlsafe_b64encode(derived_key[:32]).decode('utf-8').rstrip('=')
+    
+    # Store in keyring
+    key_manager.store_database_password(password, "grafana", username="admin_password")
+    console.print(format_success("Generated and stored new Grafana password"))
+    
+    return password
+
+
+def _nuke_grafana():
+    """Completely destroy Grafana container and volume."""
+    console.print("")
+    console.print("💥 [bold red]NUKING GRAFANA[/bold red]")
+    console.print("="*60)
+    console.print("")
+    
+    # 1. Stop and remove container
+    console.print("  [dim]→ Stopping Grafana container...[/dim]")
+    _run_compose(["stop", "grafana"])
+    
+    console.print("  [dim]→ Removing Grafana container...[/dim]")
+    _run_compose(["rm", "-f", "grafana"])
+    
+    # 2. Remove volume
+    console.print("  [dim]→ Removing Grafana volume...[/dim]")
+    try:
+        subprocess.run(
+            ["docker", "volume", "rm", "-f", "aico-grafanadata"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+    
+    console.print("")
+    console.print(format_success("✓ Grafana nuked successfully"))
     console.print("")

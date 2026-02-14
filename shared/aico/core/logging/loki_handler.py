@@ -137,10 +137,14 @@ class LokiLogHandler(logging.Handler):
                 inferred_service = "shared"
 
         # Extract logger prefix (first 2 segments) for low-cardinality label
+        # Skip service name prefix to avoid duplication (e.g., backend.backend.main -> backend.main)
         logger_prefix = "unknown"
         if isinstance(record.name, str) and "." in record.name:
             parts = record.name.split(".")
-            logger_prefix = ".".join(parts[:2]) if len(parts) >= 2 else parts[0]
+            # If first part matches service name, skip it
+            if parts[0] == inferred_service:
+                parts = parts[1:]
+            logger_prefix = ".".join(parts[:2]) if len(parts) >= 2 else parts[0] if parts else "unknown"
         
         # Labels (indexed, low cardinality only)
         labels = {

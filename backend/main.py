@@ -31,7 +31,7 @@ from aico.core.logging import initialize_logging, get_logger, shutdown_logging
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
-initialize_logging(service_name="backend", enable_influx=False, enable_loki=True, enable_console=True)
+initialize_logging(service_name="backend", enable_loki=True, enable_console=True)
 
 # Explicitly initialize configuration before validation to avoid implicit initialization
 # (and file watcher startup) during validate_startup_config().

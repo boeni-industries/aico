@@ -1,13 +1,12 @@
 """
 AICO Simple Logging System
 
-Clean, minimal logging with InfluxDB and Loki backends.
-Supports parallel logging to both systems during migration.
+Clean, minimal logging with Loki backend for centralized log aggregation.
 
 Usage:
     # Initialize once at service startup
     from aico.core.logging import initialize_logging
-    initialize_logging("backend", enable_influx=True, enable_loki=True)
+    initialize_logging("backend", enable_loki=True)
     
     # Get loggers anywhere
     from aico.core.logging import get_logger
@@ -20,26 +19,19 @@ import os
 import sys
 from typing import Optional
 
-from .influx_handler import InfluxDBLogHandler
 from .loki_handler import LokiLogHandler
 
 # Global state
 _initialized = False
 _service_name = None
-_influx_handler = None
 _loki_handler = None
 
 
 def initialize_logging(
     service_name: str,
-    enable_influx: bool = True,
     enable_loki: bool = True,
     enable_console: bool = True,
     log_level: Optional[int] = None,
-    influx_url: Optional[str] = None,
-    influx_org: Optional[str] = None,
-    influx_bucket: Optional[str] = None,
-    influx_token: Optional[str] = None,
     loki_url: Optional[str] = None
 ):
     """
@@ -49,15 +41,12 @@ def initialize_logging(
     
     Args:
         service_name: Service identifier (backend, modelservice, cli, etc)
-        enable_influx: Enable InfluxDB logging
+        enable_loki: Enable Loki logging
         enable_console: Enable console logging
         log_level: Minimum log level
-        influx_url: InfluxDB URL (auto-detected if None)
-        influx_org: InfluxDB org (auto-detected if None)
-        influx_bucket: InfluxDB bucket (auto-detected if None)
-        influx_token: InfluxDB token (from keyring if None)
+        loki_url: Loki URL (auto-detected if None)
     """
-    global _initialized, _service_name, _influx_handler
+    global _initialized, _service_name, _loki_handler
     
     if _initialized:
         print(f"[Logging] Already initialized for service '{_service_name}'", flush=True)
@@ -113,52 +102,6 @@ def initialize_logging(
         )
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
-    
-    # Add InfluxDB handler
-    if enable_influx:
-        try:
-            # Auto-detect config if not provided (lazy import to avoid circular deps)
-            if not all([influx_url, influx_org, influx_bucket, influx_token]):
-                # Use lazy imports to avoid triggering logging during config initialization
-                import importlib
-                
-                # Import config without triggering its logging
-                config_module = importlib.import_module('aico.core.config')
-                ConfigurationManager = config_module.ConfigurationManager
-                
-                config = ConfigurationManager()
-                config.initialize(lightweight=True)
-                
-                influx_url = influx_url or config.get("influx.url", "http://127.0.0.1:8086")
-                influx_org = influx_org or config.get("influx.org", "aico")
-                influx_bucket = influx_bucket or config.get("influx.bucket", "aico_telemetry")
-
-                
-                if not influx_token:
-                    security_module = importlib.import_module('aico.security')
-                    AICOKeyManager = security_module.AICOKeyManager
-                    key_manager = AICOKeyManager(config)
-                    influx_token = key_manager.get_database_password("influx", username="admin_token")
-            
-            if influx_token:
-                _influx_handler = InfluxDBLogHandler(
-                    influx_url=influx_url,
-                    org=influx_org,
-                    bucket=influx_bucket,
-                    token=influx_token,
-                    service_name=service_name,
-                    buffer_size=20000,
-                    flush_interval=2.0,
-                    batch_size=1000
-                )
-                _influx_handler.setLevel(resolved_log_level)
-                root_logger.addHandler(_influx_handler)
-                print(f"[Logging] InfluxDB enabled for service '{service_name}'", flush=True)
-            else:
-                print(f"[Logging] InfluxDB token not available, skipping", flush=True)
-        
-        except Exception as e:
-            print(f"[Logging] Failed to setup InfluxDB: {e}", flush=True)
     
     # Add Loki handler
     if enable_loki:
@@ -220,15 +163,7 @@ def shutdown_logging():
     Flushes all buffered logs and closes handlers.
     Call this on service shutdown.
     """
-    global _influx_handler, _loki_handler, _initialized
-    
-    if _influx_handler:
-        try:
-            _influx_handler.close()
-            print(f"[Logging] InfluxDB handler closed", flush=True)
-        except Exception as e:
-            print(f"[Logging] Error closing InfluxDB handler: {e}", flush=True)
-        _influx_handler = None
+    global _loki_handler, _initialized
     
     if _loki_handler:
         try:
@@ -243,18 +178,6 @@ def shutdown_logging():
     
     _initialized = False
     print(f"[Logging] Shutdown complete", flush=True)
-
-
-def get_influx_stats() -> dict:
-    """
-    Get InfluxDB handler statistics.
-    
-    Returns:
-        Dictionary with stats or empty dict if handler not available
-    """
-    if _influx_handler:
-        return _influx_handler.get_stats()
-    return {}
 
 
 def get_loki_stats() -> dict:

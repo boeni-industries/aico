@@ -116,20 +116,56 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
       - aico-lokidata:/loki
-    command: -config.file=/etc/loki/loki-config.yaml
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    command: -config.file=/etc/loki/local-config.yaml
     labels:
       # Project identification
       com.aico.project: "aico"
       com.aico.component: "loki"
-      com.aico.service.type: "database"
+      com.aico.service.type: "logging"
       com.aico.service.role: "log-aggregation"
       # Standard Docker labels
-      org.opencontainers.image.title: "AICO Loki Log Aggregation"
-      org.opencontainers.image.description: "Log aggregation system for AICO application logs"
+      org.opencontainers.image.title: "AICO Loki"
+      org.opencontainers.image.description: "Log aggregation system for AICO"
       org.opencontainers.image.vendor: "AICO"
       # Management metadata
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: aico-grafana
+    restart: unless-stopped
+    environment:
+      # Admin credentials provided via environment
+      GF_SECURITY_ADMIN_USER: ${AICO_GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${AICO_GRAFANA_PASSWORD:-}
+      # Disable analytics and update checks
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Server settings
+      GF_SERVER_ROOT_URL: "http://localhost:3001"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      # Default dashboard settings
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/etc/grafana/provisioning/dashboards/aico-logs-overview.json"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_HOME_PAGE: "/d/aico-logs-overview"
+    ports:
+      - "3001:3000"
+    volumes:
+      - aico-grafanadata:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - loki
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "grafana"
+      com.aico.service.type: "visualization"
+      com.aico.service.role: "log-visualization"
+      org.opencontainers.image.title: "AICO Grafana"
+      org.opencontainers.image.description: "Log visualization and dashboards for AICO"
+      org.opencontainers.image.vendor: "AICO"
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
@@ -171,5 +207,13 @@ volumes:
     labels:
       com.aico.project: "aico"
       com.aico.component: "loki"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-grafanadata:
+    name: aico-grafanadata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "grafana"
       com.aico.volume.type: "data"
       com.aico.managed-by: "aico-cli"
