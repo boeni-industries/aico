@@ -19,6 +19,7 @@ class UnifiedApiClient {
   String? _baseUrl;
   Object? _lastInitError;
   StackTrace? _lastInitStackTrace;
+  Future<void>? _handshakeInFlight;
   
   static const Duration _defaultTimeout = Duration(seconds: 120);
   static const String _defaultBaseUrl = 'http://localhost:8771/api/v1';
@@ -222,7 +223,7 @@ class UnifiedApiClient {
       // Check encryption session - always perform fresh handshake for streaming unless explicitly skipped
       // This prevents stale session issues after backend restart
       if (!skipSessionValidation && !_encryptionService.isSessionActive) {
-        await _performHandshake();
+        await _ensureHandshake();
       } else if (!skipSessionValidation && _encryptionService.isSessionActive) {
         // Validate session is still valid with backend by testing encryption
         // If backend restarted, it won't recognize our session keys
@@ -426,7 +427,7 @@ class UnifiedApiClient {
     }
 
     if (!_encryptionService.isSessionActive) {
-      await _performHandshake();
+      await _ensureHandshake();
     }
 
     // Silent - only log errors
@@ -682,6 +683,27 @@ class UnifiedApiClient {
     await _encryptionService.processHandshakeResponse(data);
   }
 
+  Future<void> _ensureHandshake() async {
+    if (_encryptionService.isSessionActive) {
+      return;
+    }
+    final inFlight = _handshakeInFlight;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final future = _performHandshake();
+    _handshakeInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_handshakeInFlight, future)) {
+        _handshakeInFlight = null;
+      }
+    }
+  }
+
   /// Special method for token refresh that bypasses token validation
   Future<Map<String, dynamic>?> postForTokenRefresh(String endpoint, {Map<String, dynamic>? data}) async {
     debugPrint('🔄 [UnifiedApiClient] Token refresh request to: $endpoint');
@@ -693,7 +715,7 @@ class UnifiedApiClient {
     }
 
     if (!_encryptionService.isSessionActive) {
-      await _performHandshake();
+      await _ensureHandshake();
     }
 
     // Build headers WITHOUT any token operations (skipTokenEntirely: true)
@@ -769,7 +791,7 @@ class UnifiedApiClient {
 
       // Ensure encryption session is active
       if (!_encryptionService.isSessionActive) {
-        await _performHandshake();
+        await _ensureHandshake();
       }
 
       // Encrypt request data (required for all AICO API requests)

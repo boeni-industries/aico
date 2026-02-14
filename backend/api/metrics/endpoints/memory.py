@@ -58,12 +58,12 @@ async def get_memory_metrics(
         except Exception as e:
             logger.debug(f"Failed to read LMDB working memory: {e}")
         
-        # Semantic Queries - rate from InfluxDB
+        # Semantic Queries - rate from InfluxDB downsampled data
         semantic_qps = 0.0
         try:
             with MetricsInfluxClient() as client:
-                # Query semantic memory operations from last hour
-                query_count_1h = client.count_points("memory_query", "-1h", {"query_type": "semantic_search"})
+                # Query semantic memory operations from last hour using downsampled data
+                query_count_1h = client.count_points("memory_query_1m", "-1h", {"query_type": "semantic_search"})
                 semantic_qps = round(query_count_1h / 3600, 6) if query_count_1h > 0 else 0.0
         except Exception as e:
             logger.debug(f"Failed to query semantic metrics from InfluxDB: {e}")
@@ -132,10 +132,18 @@ async def get_memory_metrics(
                 limit=1
             )
             if executions:
-                last_consolidation = executions[0].started_at.isoformat() if hasattr(executions[0].started_at, 'isoformat') else str(executions[0].started_at)
-                # Health is good if consolidation ran in last 24h
                 from datetime import datetime, timezone
-                last_run = datetime.fromisoformat(result[0].replace('Z', '+00:00'))
+                started_at = executions[0].started_at
+                
+                # Convert to datetime if it's a string
+                if isinstance(started_at, str):
+                    last_run = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+                    last_consolidation = started_at
+                else:
+                    last_run = started_at
+                    last_consolidation = started_at.isoformat() if started_at else "N/A"
+                
+                # Health is good if consolidation ran in last 24h
                 hours_since = (datetime.now(timezone.utc) - last_run).total_seconds() / 3600
                 if hours_since > 48:
                     consolidation_health = 50.0

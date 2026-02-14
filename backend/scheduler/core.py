@@ -112,7 +112,6 @@ class TaskRegistry:
                         
                         self.tasks[obj.task_id] = obj
                         task_count += 1
-                        print(f"📋 [SCHEDULER] Registered built-in task: {obj.task_id}")
                         self.logger.debug(f"Registered built-in task: {obj.task_id}")
                 
                 self.logger.info(f"Loaded {task_count} tasks from {module_name}")
@@ -678,7 +677,7 @@ class TaskExecutor:
                 self.logger.debug(f"Looking up execution {execution_id} for task {task_id}")
                 executions = await uow.scheduler_task_executions.list(
                     filters={"task_id": task_id},
-                    limit=100
+                    limit=500  # Increased from 100 to handle high-frequency tasks
                 )
                 
                 self.logger.debug(f"Found {len(executions)} executions for task {task_id}")
@@ -742,7 +741,7 @@ class TaskExecutor:
                 )
 
         except Exception as e:
-            # Log with full context but DON'T crash the system
+            # Log with full context
             error_msg = (
                 f"❌ CRITICAL FAILURE in _record_completion: "
                 f"task_id={task_id}, execution_id={execution_id}, status={status}. "
@@ -764,8 +763,9 @@ class TaskExecutor:
             traceback.print_exc()
             print(f"{'='*80}\n")
             
-            # DO NOT re-raise - allow scheduler to continue running
-            # The job will remain in 'running' state which is visible in the UI
+            # RE-RAISE to prevent jobs from staying stuck in 'running' state
+            # This will cause the task to fail visibly rather than silently
+            raise RuntimeError(f"Failed to record completion for {task_id}: {e}") from e
     
     async def cancel_task(self, task_id: str) -> bool:
         """Cancel a running task (Phase 6.2)

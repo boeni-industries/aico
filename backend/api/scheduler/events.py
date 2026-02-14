@@ -8,7 +8,7 @@ Follows the same pattern as conversation WebSocket endpoint.
 import uuid
 from typing import Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
 from backend.api.scheduler.schemas import (
@@ -52,7 +52,7 @@ async def scheduler_events_websocket(websocket: WebSocket):
                 if data.get("type") == "heartbeat":
                     await websocket.send_json({
                         "type": "heartbeat_ack",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(UTC).isoformat()
                     })
                     
             except WebSocketDisconnect:
@@ -93,7 +93,7 @@ async def broadcast_scheduler_event(event: Dict[str, Any]):
         "type": event.get("type", "unknown"),
         "task_id": event.get("task_id"),
         "severity": event.get("severity", "info"),
-        "timestamp": event.get("timestamp", datetime.utcnow().isoformat()),
+        "timestamp": event.get("timestamp", datetime.now(UTC).isoformat()),
         "details": event.get("details", {})
     }
     

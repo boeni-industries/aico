@@ -183,12 +183,6 @@ class MaintenanceAgencyReEvaluateBehaviourHealthSkill(Skill):
             "executed_at": datetime.now(UTC).isoformat(),
         }
         
-        logger.info(
-            "[MAINT_AGENCY_BEHAVIOUR] Behaviour health check completed: %s (issues: %s)",
-            summary_status,
-            issues,
-        )
-        
         return SkillResult(
             success=True,
             output=output,

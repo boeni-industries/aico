@@ -38,7 +38,7 @@ class SchedulerService:
             created = await self.uow.scheduler_tasks.create(task)
             await self.uow.commit()
             
-            logger.info("[SCHEDULER_SERVICE] Created task", extra={"task_id": created.task_id})
+            logger.debug("[SCHEDULER_SERVICE] Created task", extra={"task_id": created.task_id})
             return created
         except Exception as e:
             logger.error(f"[SCHEDULER_SERVICE] Failed to create task: {e}")
@@ -89,7 +89,7 @@ class SchedulerService:
             updated = await self.uow.scheduler_tasks.update(task)
             await self.uow.commit()
             
-            logger.info("[SCHEDULER_SERVICE] Updated task", extra={"task_id": task.task_id})
+            logger.debug("[SCHEDULER_SERVICE] Updated task", extra={"task_id": task.task_id})
             return updated
         except Exception as e:
             logger.error(f"[SCHEDULER_SERVICE] Failed to update task: {e}")

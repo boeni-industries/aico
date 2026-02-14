@@ -161,11 +161,6 @@ class MaintenanceModelserviceScanHealthSkill(Skill):
             "executed_at": datetime.now(UTC).isoformat(),
         }
         
-        logger.info(
-            "[MAINT_MODELSERVICE] Health scan completed: %s",
-            summary_status,
-        )
-        
         return SkillResult(
             success=True,
             output=output,

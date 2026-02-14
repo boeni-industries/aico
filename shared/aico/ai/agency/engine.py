@@ -292,7 +292,7 @@ class AgencyEngine(BaseAIProcessor):
                 skill_registry=self.skill_registry,
                 session_factory=session_factory
             )
-            logger.info("[AGENCY_ENGINE] SkillMatcher initialized with PostgreSQL session factory")
+            # SkillMatcher initialized - no logging
         else:
             self.planner.skill_matcher = None
             logger.warning("[AGENCY_ENGINE] SkillMatcher not initialized - missing skill_registry or session_factory")
@@ -370,12 +370,12 @@ class AgencyEngine(BaseAIProcessor):
         """
         if self.modelservice_client and self.planner.skill_matcher:
             self.planner.skill_matcher.embedding_client = self.modelservice_client
-            logger.info("[AGENCY_ENGINE] Injected embedding client into SkillMatcher for semantic similarity matching")
+            # Embedding client injected - no logging
         else:
             if not self.planner.skill_matcher:
                 logger.warning("[AGENCY_ENGINE] SkillMatcher not initialized - plan execution will fail (skills cannot be assigned to steps)")
             elif not self.modelservice_client:
-                logger.info("[AGENCY_ENGINE] Embedding client not available - SkillMatcher will use keyword/category matching only (degraded performance)")
+                pass  # Embedding client not available (expected in some configs)
 
     # ------------------------------------------------------------------
     # Goal & plan API (Phase 1 core)

@@ -189,9 +189,7 @@ class MessageBusClient:
             
             # Configure CurveZMQ encryption if enabled
             if self.encryption_enabled:
-                self.logger.info(f"[SECURITY] Client {self.client_id} configuring CurveZMQ authentication")
                 self._configure_curve_sockets()
-                self.logger.info(f"[SECURITY] Client {self.client_id} CurveZMQ configuration complete")
             else:
                 self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} connecting WITHOUT encryption")
             
@@ -202,12 +200,9 @@ class MessageBusClient:
             self.connected = True  # Add connected property for compatibility
             # Update broker_address to reflect actual connection
             self.broker_address = f"tcp://{host}:{pub_port}"
-            self.logger.info(f"Connected to message bus at {self.broker_address}")
             
             # Test connection with a small delay to catch immediate auth failures
             await asyncio.sleep(0.1)
-            if self.encryption_enabled:
-                self.logger.info(f"[SECURITY] Client {self.client_id} CurveZMQ authentication appears successful")
             
             # Start message processing loop
             asyncio.create_task(self._message_loop())
@@ -250,10 +245,6 @@ class MessageBusClient:
             self.public_key = client_public.decode('ascii')
             self.secret_key = client_secret.decode('ascii')
             
-            # Security logging: Key generation success
-            self.logger.info(f"[SECURITY] CurveZMQ encryption enabled for client: {self.client_id}")
-            self.logger.debug(f"[SECURITY] Client public key fingerprint: {self.public_key[:8]}...")
-            
         except Exception as e:
             # Security logging: Encryption setup failure
             self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption for {self.client_id}: {e}")
@@ -282,10 +273,6 @@ class MessageBusClient:
             self.subscriber.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
             self.subscriber.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
             self.subscriber.setsockopt_string(zmq.CURVE_SERVERKEY, broker_public_key)
-            
-            # Security logging: Socket configuration success
-            self.logger.info(f"[SECURITY] CurveZMQ socket encryption configured for client {self.client_id}")
-            self.logger.debug(f"[SECURITY] Publisher and subscriber sockets secured with CurveZMQ")
             
         except Exception as e:
             # Security logging: Socket configuration failure
@@ -548,8 +535,6 @@ class MessageBusBroker:
             self.backend.bind(f"tcp://*:{self.sub_port}")
             
             self.running = True
-            self.logger.debug(f"[BROKER] Sockets bound successfully, starting proxy...")
-            self.logger.info(f"Message bus broker started on {self.bind_address}")
             
             # Start proxy loop
             await self._start_proxy_task()
@@ -628,19 +613,12 @@ class MessageBusBroker:
     async def _setup_curve_authentication(self):
         """Setup CurveZMQ encryption for the broker using minimal in-memory approach"""
         try:
-            # Security logging: Authentication setup start
-            self.logger.info("[SECURITY] Setting up CurveZMQ encryption for message bus broker")
-            
             # Use shared static broker keys (same approach as working test)
             self.server_public_key = _get_shared_broker_public_key()
             self.server_secret_key = _get_shared_broker_secret_key()
             
-            # Get authorized client keys and log them for debugging
+            # Get authorized client keys
             authorized_clients = self._get_authorized_client_keys()
-            self.logger.info(f"[SECURITY] Broker CurveZMQ keypair loaded successfully")
-            self.logger.debug(f"[SECURITY] Broker public key fingerprint: {self.server_public_key[:8]}...")
-            self.logger.info(f"[SECURITY] Authorized clients: {list(authorized_clients.keys())}")
-            self.logger.info(f"[SECURITY] CurveZMQ encryption setup complete - all connections will be encrypted")
             
         except Exception as e:
             self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption: {e}")
@@ -664,9 +642,6 @@ class MessageBusBroker:
             self.backend.setsockopt_string(zmq.CURVE_PUBLICKEY, self.server_public_key)
             self.backend.setsockopt(zmq.CURVE_SERVER, 1)
             
-            self.logger.info("[SECURITY] CurveZMQ broker socket configuration completed")
-            self.logger.debug("[SECURITY] Frontend and backend sockets configured as CURVE servers")
-            
         except Exception as e:
             self.logger.error(f"[SECURITY] CRITICAL: Failed to configure CurveZMQ broker sockets: {e}")
             # NO PLAINTEXT FALLBACK - Fail securely
@@ -680,7 +655,6 @@ class MessageBusBroker:
         """Main proxy loop for forwarding messages"""
         try:
             #print(f"[BROKER PROXY] Starting async proxy: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
-            self.logger.info(f"Broker Proxy started: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
             
             # Brief delay to ensure sockets are ready
             await asyncio.sleep(0.1)

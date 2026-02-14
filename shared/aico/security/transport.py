@@ -194,7 +194,7 @@ class SecureTransportChannel:
             # Establish session keys using the generated keypair
             self._establish_session_keys()
             
-            self.logger.info("Handshake request processed", extra={
+            self.logger.debug("Handshake request processed", extra={
                 "peer_component": request.component,
                 "session_established": self.session_established
             })
@@ -401,6 +401,6 @@ class TransportIdentityManager:
         identity_key_bytes = base64.b64decode(identity_key_b64)
         client_id = identity_key_bytes.hex()[:16]
 
-        self.logger.info(f"Processed handshake for client_id: {client_id}")
+        self.logger.debug(f"Processed handshake for client_id: {client_id}")
 
         return client_id, response_data, channel

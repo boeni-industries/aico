@@ -70,7 +70,6 @@ class MaintenanceSchedulerCheckHealthSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute scheduler health check."""
-        logger.info("[MAINT_SCHEDULER] Checking scheduler health")
         
         try:
             from aico.ai.agency.tools.registry import get_tool_registry
@@ -109,8 +108,6 @@ class MaintenanceSchedulerCheckHealthSkill(Skill):
                 summary_status = "healthy"
             else:
                 summary_status = "unknown"
-            
-            logger.info("[MAINT_SCHEDULER] Health check complete: %s", summary_status)
             
             return SkillResult(
                 success=True,

@@ -62,7 +62,6 @@ class MaintenanceMessageBusCheckHealthSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute message bus health check."""
-        logger.info("[MAINT_MESSAGEBUS] Checking message bus health")
         
         try:
             from aico.ai.agency.tools.registry import get_tool_registry
@@ -90,8 +89,6 @@ class MaintenanceMessageBusCheckHealthSkill(Skill):
                 summary_status = "degraded"
             else:
                 summary_status = "unhealthy"
-            
-            logger.info("[MAINT_MESSAGEBUS] Health check complete: %s", summary_status)
             
             return SkillResult(
                 success=True,

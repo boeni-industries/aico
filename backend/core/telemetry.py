@@ -146,10 +146,11 @@ class TelemetryManager:
             resource_attributes=dict(resource.attributes),
         )
         
-        # Wrap exporter in periodic reader (exports every 10 seconds for faster feedback)
+        # Wrap exporter in periodic reader (exports every 60 seconds to reduce InfluxDB load)
+        # Longer intervals = less frequent writes = less CPU spikes = less blocking
         influx_reader = PeriodicExportingMetricReader(
             exporter=influx_exporter,
-            export_interval_millis=10000,  # 10 seconds (faster for development)
+            export_interval_millis=60000,  # 60 seconds (reduce InfluxDB write frequency)
         )
         
         self.meter_provider = MeterProvider(

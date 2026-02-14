@@ -7,7 +7,7 @@ Provides aggregated system metrics for the Studio overview page.
 from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, UTC
 import time
 
 from aico.core.logging import get_logger
@@ -109,8 +109,8 @@ async def get_system_overview(
                 working_store = memory_manager._working_store
                 
                 # Count unique conversation_ids from LMDB keys in last 24 hours
-                from datetime import datetime, timedelta
-                cutoff_time = datetime.utcnow() - timedelta(days=1)
+                from datetime import datetime, timedelta, UTC
+                cutoff_time = datetime.now(UTC) - timedelta(days=1)
                 
                 conversation_ids = set()
                 db = working_store.dbs.get("session_memory")

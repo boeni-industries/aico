@@ -182,8 +182,9 @@ async def get_semantic_stats(
                 detail="Semantic memory not initialized"
             )
         
-        # Get stats from semantic store (synchronous method)
-        stats = semantic_store.get_stats()
+        # Get stats from semantic store (synchronous method - offload to thread)
+        import asyncio
+        stats = await asyncio.to_thread(semantic_store.get_stats)
         
         # Convert collections to proper Pydantic models
         collections = [

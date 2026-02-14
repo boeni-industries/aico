@@ -7,7 +7,7 @@ Provides REST endpoints for querying and managing the knowledge graph.
 import json
 from pathlib import Path
 from typing import Annotated, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from aico.core.logging import get_logger
@@ -222,7 +222,7 @@ async def get_graph_stats(
             )
         
         # Check cache first (30 second TTL)
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if user_id in _stats_cache:
             cached_response, cached_at = _stats_cache[user_id]
             if now - cached_at < timedelta(seconds=30):
@@ -230,58 +230,86 @@ async def get_graph_stats(
         
         # Fetching graph stats using repositories
         import json
+        import asyncio
         
         # Get all nodes and edges for this user
         all_nodes = await uow.kg_nodes.list(filters={"user_id": user_id}, limit=100000)
         all_edges = await uow.kg_edges.list(filters={"user_id": user_id}, limit=100000)
         
-        # Basic counts with current/historical breakdown
-        node_count = len(all_nodes)
-        current_nodes = [n for n in all_nodes if n.is_current]
-        current_node_count = len(current_nodes)
-        historical_node_count = node_count - current_node_count
+        # Offload heavy Python aggregation to background thread to avoid blocking event loop
+        def _compute_stats():
+            # Basic counts with current/historical breakdown
+            node_count = len(all_nodes)
+            current_nodes = [n for n in all_nodes if n.is_current]
+            current_node_count = len(current_nodes)
+            historical_node_count = node_count - current_node_count
+            
+            edge_count = len(all_edges)
+            current_edges = [e for e in all_edges if e.is_current]
+            current_edge_count = len(current_edges)
+            historical_edge_count = edge_count - current_edge_count
+            
+            # Node/edge type distributions
+            node_types = {}
+            for node in all_nodes:
+                label = node.label or "unknown"
+                node_types[label] = node_types.get(label, 0) + 1
+            
+            edge_types = {}
+            for edge in all_edges:
+                rel_type = edge.relation_type or "unknown"
+                edge_types[rel_type] = edge_types.get(rel_type, 0) + 1
+            
+            # Total properties
+            total_node_properties = 0
+            for node in all_nodes:
+                if node.properties:
+                    if isinstance(node.properties, str):
+                        try:
+                            props = json.loads(node.properties)
+                            total_node_properties += len(props)
+                        except:
+                            pass
+                    elif isinstance(node.properties, dict):
+                        total_node_properties += len(node.properties)
+            
+            # Storage size estimation
+            node_data_size = sum(
+                len(str(node.id or "")) + len(str(node.label or "")) + 
+                len(str(node.properties or "")) + len(str(node.source_text or ""))
+                for node in all_nodes
+            )
+            edge_data_size = sum(
+                len(str(edge.id or "")) + len(str(edge.relation_type or "")) + 
+                len(str(edge.properties or "")) + len(str(edge.source_text or ""))
+                for edge in all_edges
+            )
+            storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.3
+            
+            # Calculate health metrics
+            avg_degree = current_edge_count / max(current_node_count, 1)
+            isolated_nodes = sum(1 for node in current_nodes if not any(
+                e.source_id == node.id or e.target_id == node.id for e in current_edges
+            ))
+            
+            return {
+                'node_count': node_count,
+                'current_nodes': current_nodes,
+                'current_node_count': current_node_count,
+                'historical_node_count': historical_node_count,
+                'edge_count': edge_count,
+                'current_edges': current_edges,
+                'current_edge_count': current_edge_count,
+                'historical_edge_count': historical_edge_count,
+                'node_types': node_types,
+                'edge_types': edge_types,
+                'total_node_properties': total_node_properties,
+                'storage_size_mb': storage_size_mb,
+                'avg_degree': avg_degree,
+                'isolated_nodes': isolated_nodes
+            }
         
-        edge_count = len(all_edges)
-        current_edges = [e for e in all_edges if e.is_current]
-        current_edge_count = len(current_edges)
-        historical_edge_count = edge_count - current_edge_count
-        
-        # Node/edge type distributions
-        node_types = {}
-        for node in all_nodes:
-            label = node.label or "unknown"
-            node_types[label] = node_types.get(label, 0) + 1
-        
-        edge_types = {}
-        for edge in all_edges:
-            rel_type = edge.relation_type or "unknown"
-            edge_types[rel_type] = edge_types.get(rel_type, 0) + 1
-        
-        # Total properties
-        total_node_properties = 0
-        for node in all_nodes:
-            if node.properties:
-                if isinstance(node.properties, str):
-                    try:
-                        props = json.loads(node.properties)
-                        total_node_properties += len(props)
-                    except:
-                        pass
-                elif isinstance(node.properties, dict):
-                    total_node_properties += len(node.properties)
-        
-        # Storage size estimation
-        node_data_size = sum(
-            len(str(node.id or "")) + len(str(node.label or "")) + 
-            len(str(node.properties or "")) + len(str(node.source_text or ""))
-            for node in all_nodes
-        )
-        edge_data_size = sum(
-            len(str(edge.id or "")) + len(str(edge.relation_type or "")) + 
-            len(str(edge.properties or "")) + len(str(edge.source_text or ""))
-            for edge in all_edges
-        )
-        storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.3
+        stats = await asyncio.to_thread(_compute_stats)
         
         # Import metric schemas
         from backend.api.kg.schemas import (
@@ -289,30 +317,24 @@ async def get_graph_stats(
             CentralityMetrics, ClusteringMetrics, DuplicateNodePair
         )
         
-        # Calculate health metrics
-        avg_degree = current_edge_count / max(current_node_count, 1)
-        isolated_nodes = sum(1 for node in current_nodes if not any(
-            e.source_id == node.id or e.target_id == node.id for e in current_edges
-        ))
-        
         health_metrics = HealthMetrics(
             orphaned_edges=0,  # Would need edge validation
             duplicate_nodes=0,  # Would need similarity analysis
             stale_nodes_count=0,  # Would need timestamp analysis
             stale_nodes_percent=0.0,
-            property_completeness=total_node_properties / max(current_node_count, 1),
+            property_completeness=stats['total_node_properties'] / max(stats['current_node_count'], 1),
             nodes_added_24h=0,  # Would need timestamp filtering
             edges_added_24h=0
         )
         
         structure_metrics = StructureMetrics(
-            graph_density=current_edge_count / max((current_node_count * (current_node_count - 1)) / 2, 1) if current_node_count > 1 else 0.0,
-            average_degree=avg_degree,
+            graph_density=stats['current_edge_count'] / max((stats['current_node_count'] * (stats['current_node_count'] - 1)) / 2, 1) if stats['current_node_count'] > 1 else 0.0,
+            average_degree=stats['avg_degree'],
             max_degree=0,  # Would need degree calculation
             min_degree=0,
-            isolated_nodes=isolated_nodes,
+            isolated_nodes=stats['isolated_nodes'],
             connected_components=1,  # Would need graph traversal
-            largest_component_size=current_node_count
+            largest_component_size=stats['current_node_count']
         )
         
         temporal_metrics = TemporalMetrics(
@@ -336,16 +358,16 @@ async def get_graph_stats(
         )
         
         response = GraphStatsResponse(
-            total_nodes=node_count,
-            current_nodes=current_node_count,
-            historical_nodes=historical_node_count,
-            total_edges=edge_count,
-            current_edges=current_edge_count,
-            historical_edges=historical_edge_count,
-            total_node_properties=total_node_properties,
-            node_types=node_types,
-            edge_types=edge_types,
-            storage_size_mb=round(storage_size_mb, 2),
+            total_nodes=stats['node_count'],
+            current_nodes=stats['current_node_count'],
+            historical_nodes=stats['historical_node_count'],
+            total_edges=stats['edge_count'],
+            current_edges=stats['current_edge_count'],
+            historical_edges=stats['historical_edge_count'],
+            total_node_properties=stats['total_node_properties'],
+            node_types=stats['node_types'],
+            edge_types=stats['edge_types'],
+            storage_size_mb=round(stats['storage_size_mb'], 2),
             user_id=user_id,
             health=health_metrics,
             duplicate_pairs=None,
@@ -417,10 +439,10 @@ async def list_nodes(
                 "properties": json.loads(node.properties) if isinstance(node.properties, str) else (node.properties or {}),
                 "confidence": node.confidence,
                 "source_text": node.source_text,
-                "created_at": node.created_at.isoformat() if hasattr(node.created_at, 'isoformat') else node.created_at,
-                "updated_at": node.updated_at.isoformat() if hasattr(node.updated_at, 'isoformat') else node.updated_at,
-                "valid_from": node.valid_from.isoformat() if hasattr(node.valid_from, 'isoformat') else node.valid_from,
-                "valid_until": node.valid_until.isoformat() if hasattr(node.valid_until, 'isoformat') else node.valid_until,
+                "created_at": node.created_at.isoformat() if node.created_at else None,
+                "updated_at": node.updated_at.isoformat() if node.updated_at else None,
+                "valid_from": node.valid_from.isoformat() if node.valid_from else None,
+                "valid_until": node.valid_until.isoformat() if node.valid_until else None,
                 "is_current": bool(node.is_current),
                 "canonical_id": node.canonical_id,
                 "aliases": json.loads(node.aliases_json) if isinstance(node.aliases_json, str) else (node.aliases_json or [])
@@ -485,10 +507,10 @@ async def list_edges(
                 "properties": json.loads(edge.properties) if isinstance(edge.properties, str) else (edge.properties or {}),
                 "confidence": edge.confidence,
                 "source_text": edge.source_text,
-                "created_at": edge.created_at.isoformat() if hasattr(edge.created_at, 'isoformat') else edge.created_at,
-                "updated_at": edge.updated_at.isoformat() if hasattr(edge.updated_at, 'isoformat') else edge.updated_at,
-                "valid_from": edge.valid_from.isoformat() if hasattr(edge.valid_from, 'isoformat') else edge.valid_from,
-                "valid_until": edge.valid_until.isoformat() if hasattr(edge.valid_until, 'isoformat') else edge.valid_until,
+                "created_at": edge.created_at.isoformat() if edge.created_at else None,
+                "updated_at": edge.updated_at.isoformat() if edge.updated_at else None,
+                "valid_from": edge.valid_from.isoformat() if edge.valid_from else None,
+                "valid_until": edge.valid_until.isoformat() if edge.valid_until else None,
                 "is_current": bool(edge.is_current)
             })
         

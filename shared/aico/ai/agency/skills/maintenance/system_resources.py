@@ -171,12 +171,6 @@ class MaintenanceSystemScanResourcesSkill(Skill):
             "executed_at": datetime.now(UTC).isoformat(),
         }
         
-        logger.info(
-            "[MAINT_SYSTEM_RESOURCES] Resource scan completed: %s (violations: %s)",
-            summary_status,
-            threshold_violations,
-        )
-        
         return SkillResult(
             success=True,
             output=output,

@@ -11,7 +11,7 @@ import uuid
 import asyncio
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aico.core.logging import get_logger
 from aico.core.version import get_backend_version, get_modelservice_version
@@ -443,7 +443,7 @@ async def get_active_sessions(
         # Query auth_sessions and user_profiles tables for active sessions
         try:
             # Get active sessions (last activity within 1 hour)
-            cutoff_time = datetime.utcnow() - timedelta(hours=1)
+            cutoff_time = datetime.now(UTC) - timedelta(hours=1)
             
             # Get all active sessions from last hour
             recent_sessions = await uow.sessions.list(
@@ -475,7 +475,7 @@ async def get_active_sessions(
                 # Format last activity
                 try:
                     activity_time = datetime.fromisoformat(last_activity.replace('Z', '+00:00'))
-                    time_diff = datetime.utcnow() - activity_time
+                    time_diff = datetime.now(UTC) - activity_time
                     
                     if time_diff.total_seconds() < 60:
                         activity_str = "Active now"
@@ -595,7 +595,7 @@ async def get_system_topology(
                                 timeout=2
                             )
                             if result.returncode == 0:
-                                from datetime import datetime
+                                from datetime import datetime, UTC
                                 started_at = datetime.fromisoformat(result.stdout.strip().replace('Z', '+00:00'))
                                 uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
                                 return format_uptime(uptime_seconds)
@@ -608,7 +608,7 @@ async def get_system_topology(
         async def get_postgres_uptime():
             try:
                 import subprocess
-                from datetime import datetime
+                from datetime import datetime, UTC
                 
                 result = await asyncio.to_thread(
                     subprocess.run,
@@ -632,7 +632,7 @@ async def get_system_topology(
         async def get_influxdb_uptime():
             try:
                 import subprocess
-                from datetime import datetime
+                from datetime import datetime, UTC
                 
                 result = await asyncio.to_thread(
                     subprocess.run,

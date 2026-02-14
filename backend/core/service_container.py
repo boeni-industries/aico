@@ -117,7 +117,7 @@ class ServiceContainer:
         self._shutdown_order: List[str] = []
         self._initializing: Set[str] = set()
         
-        self.logger.info("Service container initialized")
+        # Service container initialized - no logging needed
     
     def register_service(
         self, 
@@ -146,7 +146,7 @@ class ServiceContainer:
         self._definitions[name] = definition
         self._states[name] = ServiceState.REGISTERED
         
-        self.logger.info(f"Service registered: {name} (deps: {dependencies}, priority: {priority})")
+        # Service registered - no logging needed
     
     def register_instance(self, name: str, instance: Any) -> None:
         """Register existing service instance"""
@@ -156,7 +156,7 @@ class ServiceContainer:
         self._instances[name] = instance
         self._states[name] = ServiceState.RUNNING
         
-        self.logger.info(f"Service instance registered: {name}")
+        # Service instance registered - no logging needed
     
     def get_service(self, name: str) -> Any:
         """Get service instance with lazy initialization"""
@@ -202,7 +202,7 @@ class ServiceContainer:
                 self._instances[name] = instance
             
             self._states[name] = ServiceState.INITIALIZED
-            self.logger.info(f"Service instance created: {name}")
+            # Service instance created - no logging needed
             
             return instance
             
@@ -215,7 +215,7 @@ class ServiceContainer:
     
     async def start_all(self) -> None:
         """Start all auto-start services in dependency order"""
-        self.logger.info("Starting all services...")
+        # Starting all services - no logging needed
         
         # Calculate startup order
         self._calculate_startup_order()
@@ -230,9 +230,9 @@ class ServiceContainer:
             
             try:
                 # Get or create service instance
-                self.logger.info(f"🚀 [SERVICE_CONTAINER] Creating service instance: {service_name}")
+                self.logger.debug(f"Creating service instance: {service_name}")
                 service = self.get_service(service_name)
-                self.logger.info(f"✅ [SERVICE_CONTAINER] Service instance created: {service_name}")
+                self.logger.debug(f"Service instance created: {service_name}")
                 
                 # Check if service has BaseService methods (duck typing approach)
                 has_lifecycle_methods = (
@@ -245,27 +245,23 @@ class ServiceContainer:
                 # Removed debug print
                 
                 if has_lifecycle_methods:
-                    self.logger.info(f"🔧 [SERVICE_CONTAINER] Initializing service: {service_name}")
+                    self.logger.debug(f"Initializing service: {service_name}")
                     # Initialize service
                     if service.state == ServiceState.INITIALIZED:
                         service.state = ServiceState.STARTING
-                        self.logger.info(f"🚀 [SERVICE_CONTAINER] Starting service: {service_name}")
                         await service.start()
-                        self.logger.info(f"✅ [SERVICE_CONTAINER] Service started: {service_name}")
                     else:
                         # Service needs initialization first
                         await service.initialize()
                         service.state = ServiceState.STARTING
-                        self.logger.info(f"🚀 [SERVICE_CONTAINER] Starting service: {service_name}")
                         await service.start()
-                        self.logger.info(f"✅ [SERVICE_CONTAINER] Service started: {service_name}")
                 else:
                     # Service has no start() method
-                    self.logger.info(f"⚠️ [SERVICE_CONTAINER] Service {service_name} has no lifecycle methods")
+                    self.logger.debug(f"Service {service_name} has no lifecycle methods")
                     pass
                 
                 self._states[service_name] = ServiceState.RUNNING
-                self.logger.info(f"Service started: {service_name}")
+                # Service started - no logging needed
                 
             except Exception as e:
                 self._states[service_name] = ServiceState.ERROR
@@ -276,7 +272,7 @@ class ServiceContainer:
     
     async def stop_all(self) -> None:
         """Stop all services in reverse dependency order"""
-        self.logger.info("Stopping all services...")
+        # Stopping all services - no logging needed
         
         # Stop in reverse order
         for service_name in reversed(self._shutdown_order):
@@ -294,13 +290,13 @@ class ServiceContainer:
                         service.state = ServiceState.STOPPED
                 
                 self._states[service_name] = ServiceState.STOPPED
-                self.logger.info(f"Service stopped: {service_name}")
+                # Service stopped - no logging needed
                 
             except Exception as e:
                 self.logger.error(f"Error stopping service '{service_name}': {e}")
                 # Continue stopping other services
         
-        self.logger.info("All services stopped")
+        # All services stopped - no logging needed
     
     def _calculate_startup_order(self) -> None:
         """Calculate service startup order based on dependencies and priorities"""

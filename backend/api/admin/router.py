@@ -172,7 +172,7 @@ async def admin_health(credentials: HTTPAuthorizationCredentials = Depends(HTTPB
     return AdminHealthResponse(
         status="healthy",
         service="aico-api-gateway-admin",
-        timestamp=datetime.utcnow().isoformat()
+        timestamp=datetime.now(UTC).isoformat()
     )
 
 
@@ -1401,6 +1401,7 @@ async def list_logs(
     from aico.security.key_manager import AICOKeyManager
     from datetime import timezone
     import json
+    import asyncio
     
     # Get InfluxDB credentials
     config = ConfigurationManager()
@@ -1468,7 +1469,7 @@ async def list_logs(
     '''
     
     try:
-        total_tables = client.query_api().query(count_query, org=org)
+        total_tables = await asyncio.to_thread(client.query_api().query, count_query, org=org)
         total = 0
         for table in total_tables:
             for record in table.records:
@@ -1477,7 +1478,7 @@ async def list_logs(
                 except Exception:
                     total = 0
 
-        tables = client.query_api().query(query, org=org)
+        tables = await asyncio.to_thread(client.query_api().query, query, org=org)
         
         # Collect all records from all tables
         all_records = []
@@ -1550,6 +1551,7 @@ async def count_logs(
     from aico.core.config import ConfigurationManager
     from aico.security.key_manager import AICOKeyManager
     from datetime import datetime, timezone
+    import asyncio
 
     config = ConfigurationManager()
     key_manager = AICOKeyManager(config)
@@ -1609,7 +1611,7 @@ async def count_logs(
     '''
 
     try:
-        tables = client.query_api().query(query, org=org)
+        tables = await asyncio.to_thread(client.query_api().query, query, org=org)
         total = 0
         for table in tables:
             for record in table.records:

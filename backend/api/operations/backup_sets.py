@@ -6,7 +6,7 @@ import subprocess
 import tarfile
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Optional
 
@@ -54,7 +54,7 @@ def _safe_extract_tar(tf: tarfile.TarFile, dest_dir: Path) -> None:
 
 
 def _utc_now_iso() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _backup_root() -> Path:
@@ -540,7 +540,7 @@ def prune_backup_sets(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
     if request.older_than_days is not None:
         if request.older_than_days < 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="older_than_days must be >= 0")
-        cutoff = datetime.utcnow().timestamp() - (request.older_than_days * 86400)
+        cutoff = datetime.now(UTC).timestamp() - (request.older_than_days * 86400)
         for entry in sorted_sets:
             created = _parse_created_at(entry)
             if created is datetime.min:

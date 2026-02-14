@@ -1222,6 +1222,10 @@ async def tool_db_lmdb_delete_keys_by_prefix(
 # InfluxDB Remediation Tools
 # ============================================================================
 
+# Cache for measurement results (30 second TTL)
+_measurements_cache = {"data": None, "timestamp": 0}
+_MEASUREMENTS_CACHE_TTL = 30
+
 async def tool_db_influx_get_measurements(
     config: Any,
     measurement_filter: Optional[str] = None,
@@ -1237,6 +1241,13 @@ async def tool_db_influx_get_measurements(
     """
     from influxdb_client import InfluxDBClient
     from aico.security import AICOKeyManager
+    import asyncio
+    import time
+    
+    # Check cache first
+    now = time.time()
+    if _measurements_cache["data"] is not None and (now - _measurements_cache["timestamp"]) < _MEASUREMENTS_CACHE_TTL:
+        return _measurements_cache["data"]
     
     start = datetime.now(UTC)
     
@@ -1257,32 +1268,45 @@ async def tool_db_influx_get_measurements(
         key_manager = AICOKeyManager(config)
         token = key_manager.get_database_password("influx", username="admin_token")
         
-        # Connect to InfluxDB
-        with InfluxDBClient(url=url, token=token, org=org) as client:
-            query_api = client.query_api()
-            
-            # Query to get measurements with cardinality estimates
-            filter_clause = f'|> filter(fn: (r) => r._measurement =~ /{measurement_filter}/)' if measurement_filter else ''
-            
-            query = f'''
-                import "influxdata/influxdb/schema"
-                schema.measurements(bucket: "{bucket}")
-                {filter_clause}
-            '''
-            
-            tables = query_api.query(query)
-            
-            measurements = []
-            for table in tables:
-                for record in table.records:
-                    measurement_name = record.get_value()
-                    
-                    # Get approximate point count for this measurement
+        # Offload synchronous InfluxDB queries to background thread
+        def _query_measurements():
+            with InfluxDBClient(url=url, token=token, org=org) as client:
+                query_api = client.query_api()
+                
+                # Query to get measurements with cardinality estimates
+                filter_clause = f'|> filter(fn: (r) => r._measurement =~ /{measurement_filter}/)' if measurement_filter else ''
+                
+                query = f'''
+                    import "influxdata/influxdb/schema"
+                    schema.measurements(bucket: "{bucket}")
+                    {filter_clause}
+                '''
+                
+                tables = query_api.query(query)
+                
+                measurement_names = []
+                for table in tables:
+                    for record in table.records:
+                        measurement_names.append(record.get_value())
+                
+                return measurement_names, query_api
+        
+        # Get measurement names in background thread
+        measurement_names, query_api = await asyncio.to_thread(_query_measurements)
+        
+        # Query counts for each measurement in parallel
+        async def _get_count(measurement_name: str) -> dict:
+            def _query_count():
+                with InfluxDBClient(url=url, token=token, org=org) as client:
+                    query_api = client.query_api()
+                    # Optimized: 7 days instead of 30, sample instead of full count for large datasets
                     count_query = f'''
                         from(bucket: "{bucket}")
-                        |> range(start: -30d)
+                        |> range(start: -7d)
                         |> filter(fn: (r) => r._measurement == "{measurement_name}")
+                        |> group()
                         |> count()
+                        |> limit(n: 100)
                     '''
                     
                     try:
@@ -1295,14 +1319,19 @@ async def tool_db_influx_get_measurements(
                     except Exception:
                         total_points = 0
                     
-                    measurements.append({
+                    return {
                         "name": measurement_name,
                         "estimated_points": total_points,
-                    })
+                    }
+            
+            return await asyncio.to_thread(_query_count)
+        
+        # Run all count queries in parallel
+        measurements = await asyncio.gather(*[_get_count(name) for name in measurement_names])
         
         latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
         
-        return {
+        result = {
             "ok": True,
             "data": {
                 "status": "ok",
@@ -1316,6 +1345,12 @@ async def tool_db_influx_get_measurements(
             },
             "error": None,
         }
+        
+        # Cache the result
+        _measurements_cache["data"] = result
+        _measurements_cache["timestamp"] = now
+        
+        return result
     
     except Exception as exc:
         logger.error("[TOOL_DB_REMEDIATION] InfluxDB get measurements failed: %s", exc)

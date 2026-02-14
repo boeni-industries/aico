@@ -1,7 +1,7 @@
 # Development environment overrides
 system:
   environment: "development"
-  log_level: "DEBUG"
+  log_level: "INFO"
 
 api_gateway:
   protocols:
@@ -14,4 +14,4 @@ api_gateway:
           - "http://127.0.0.1:8771"
 
 audit:
-  log_level: "DEBUG"  # Detailed audit logging for development
+  log_level: "INFO"

@@ -7,7 +7,7 @@ the message bus for real-time conversation processing.
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Query, Request
 from fastapi.responses import StreamingResponse
@@ -94,7 +94,7 @@ async def send_message_with_auto_thread(
             logger.debug(f"🔍 [CONVERSATION_ID] ✅ Generated new conversation_id: '{conversation_id}'")
         
         message_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(UTC)
         
         # Memory processing now handled by conversation engine - no duplicate background processing needed
         logger.debug(f"Memory processing will be handled by conversation engine for {conversation_id}")
@@ -584,7 +584,7 @@ async def health_check():
     """Health check endpoint for conversation service"""
     return HealthResponse(
         status="healthy",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(UTC),
         version="1.0.0"
     )
 

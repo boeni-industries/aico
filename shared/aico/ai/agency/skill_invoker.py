@@ -132,14 +132,7 @@ class SkillInvoker:
         # Use skill's timeout if available
         timeout = skill.timeout_seconds
         
-        self.logger.info(
-            f"[SKILL_INVOKER] Starting invocation {invocation_id[:8]}... "
-            f"skill='{skill_id}' ({skill.name}) user={user_id[:8]}... "
-            f"timeout={timeout}s"
-        )
-        self.logger.debug(
-            f"[SKILL_INVOKER] Input data: {json.dumps(input_data, indent=2)}"
-        )
+        # Skill invocation start - no logging (executes frequently)
         
         # Record invocation start
         await self._record_invocation_start(
@@ -177,13 +170,7 @@ class SkillInvoker:
                     duration_ms=duration_ms,
                 )
                 
-                self.logger.info(
-                    f"[SKILL_INVOKER] Skill '{skill_id}' completed successfully in {duration_ms}ms "
-                    f"(invocation: {invocation_id[:8]}...)"
-                )
-                self.logger.debug(
-                    f"[SKILL_INVOKER] Output: {json.dumps(result.to_dict() if hasattr(result, 'to_dict') else result, indent=2)}"
-                )
+                # Success - no logging needed (skills execute frequently in loops)
                 
                 return {
                     "invocation_id": invocation_id,
@@ -254,10 +241,7 @@ class SkillInvoker:
         if not skill:
             raise ValueError(f"Skill '{skill_id}' not found in registry")
         
-        self.logger.debug(
-            f"[SKILL_INVOKER] Executing skill '{skill_id}' ({skill.name}) "
-            f"for user {user_id[:8]}..."
-        )
+        # Skill execution - no logging
         
         # Execute the skill
         result = await skill.execute(
@@ -291,10 +275,7 @@ class SkillInvoker:
             return
 
         now = datetime.now(UTC).isoformat()
-        self.logger.debug(
-            f"[SKILL_INVOKER] Recording invocation start: {invocation_id[:8]}... "
-            f"skill='{skill_id}' user={user_id[:8]}..."
-        )
+        # Recording invocation - no logging
 
         # Extract goal_id from context if available
         goal_id = context.get("goal_id") if context else None
@@ -340,10 +321,7 @@ class SkillInvoker:
 
         now = datetime.now(UTC).isoformat()
         status = "completed" if success else "failed"
-        self.logger.debug(
-            f"[SKILL_INVOKER] Recording invocation complete: {invocation_id[:8]}... "
-            f"status={status} duration={duration_ms}ms"
-        )
+        # Recording completion - no logging
 
         try:
             async with UnitOfWork(self._session_factory) as uow:

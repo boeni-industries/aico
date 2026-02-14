@@ -27,28 +27,30 @@ async def get_messagebus_metrics():
     """Get message bus metrics from InfluxDB."""
     try:
         with MetricsInfluxClient() as client:
-            # Message throughput (last hour) - sum of message_count_i field
+            # Message throughput (last hour) - use downsampled data
             throughput_query = '''
-                from(bucket: "aico_telemetry")
+                from(bucket: "aico_telemetry_downsampled")
                 |> range(start: -1h)
-                |> filter(fn: (r) => r._measurement == "messagebus_event")
+                |> filter(fn: (r) => r._measurement == "messagebus_event_1m")
                 |> filter(fn: (r) => r._field == "message_count_i")
-                |> group()
                 |> sum()
             '''
+            
             throughput_results = client.query(throughput_query)
-            message_count_1h = throughput_results[0].get('value', 0) if throughput_results else 0
-            messages_per_second = round(message_count_1h / 3600, 4)
+            throughput = 0
+            for table in throughput_results:
+                for record in table.records:
+                    throughput += int(record.get_value())
             
             # Backlog depth - get latest backlog_depth_i value
             backlog = client.mean_field("messagebus_event", "backlog_depth_i", "-5m")
             backlog_value = int(backlog) if backlog else 0
             
-            # Topic distribution (all topics by message count in last 24h)
+            # Topic distribution (all topics by message count in last 1h - reduced from 24h)
             topic_query = '''
-                from(bucket: "aico_telemetry")
-                |> range(start: -24h)
-                |> filter(fn: (r) => r._measurement == "messagebus_event")
+                from(bucket: "aico_telemetry_downsampled")
+                |> range(start: -1h)
+                |> filter(fn: (r) => r._measurement == "messagebus_event_1m")
                 |> filter(fn: (r) => r._field == "message_count_i")
                 |> group(columns: ["topic"])
                 |> sum()

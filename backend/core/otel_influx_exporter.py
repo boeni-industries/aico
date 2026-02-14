@@ -15,6 +15,7 @@ Design Principles:
 
 import time
 import logging
+import re
 import socket
 from typing import Optional, Sequence, Dict, Any, List
 from threading import Lock
@@ -36,6 +37,28 @@ from opentelemetry.sdk.metrics import (
 )
 
 logger = logging.getLogger("backend.otel_influx")
+
+
+_UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
+_LONG_HEX_RE = re.compile(r"\b[0-9a-fA-F]{16,}\b")
+_INT_RE = re.compile(r"\b\d+\b")
+
+
+def _normalize_path_for_metrics(path: str) -> str:
+    # Keep semantics but cap cardinality.
+    # - UUIDs -> :uuid
+    # - long hex -> :hex
+    # - integers -> :int
+    # - strip querystring
+    if not path:
+        return "/"
+    path = path.split("?", 1)[0]
+    path = _UUID_RE.sub(":uuid", path)
+    path = _LONG_HEX_RE.sub(":hex", path)
+    path = _INT_RE.sub(":int", path)
+    return path
 
 
 class OTelInfluxExporter(MetricExporter):
@@ -201,7 +224,8 @@ class OTelInfluxExporter(MetricExporter):
                     
                     # Metric-specific tags (rename from OTel conventions)
                     method = attributes.get('http.method', 'GET')
-                    path = attributes.get('http.target', '/')
+                    raw_path = attributes.get('http.target', '/')
+                    path = _normalize_path_for_metrics(raw_path)
                     protocol = attributes.get('http.scheme', 'HTTP').upper()
                     category = attributes.get('category', 'other')
                     status_code = attributes.get('http.status_code', 200)
@@ -220,6 +244,11 @@ class OTelInfluxExporter(MetricExporter):
                         'status_code_i': f"{status_code}i",
                         'latency_ms_f': f"{latency_ms:.2f}",
                     }
+
+                    # Preserve the raw path for debugging without indexing it (high-cardinality)
+                    if raw_path and raw_path != path:
+                        raw_path_escaped = str(raw_path).replace('"', '\\"')
+                        fields['path_raw_s'] = f'"{raw_path_escaped}"'
                     
                     # Optional fields
                     if 'request.body' in attributes:
@@ -482,13 +511,18 @@ class OTelInfluxExporter(MetricExporter):
         
         try:
             import requests
+            import gzip
             
             # Join lines with newline
             payload = "\n".join(lines)
             
+            # Compress payload with gzip (InfluxDB best practice - up to 5x speed improvement)
+            compressed_payload = gzip.compress(payload.encode('utf-8'))
+            
             # Build headers
             headers = {
                 "Content-Type": "text/plain; charset=utf-8",
+                "Content-Encoding": "gzip",  # Enable gzip compression
             }
             
             if self.token:
@@ -497,13 +531,17 @@ class OTelInfluxExporter(MetricExporter):
             # Write to InfluxDB
             response = requests.post(
                 self.write_url,
-                data=payload.encode('utf-8'),
+                data=compressed_payload,
                 headers=headers,
                 timeout=5.0
             )
             
             if response.status_code == 204:
-                logger.debug(f"Successfully wrote {len(lines)} points to InfluxDB")
+                # Log compression ratio for monitoring
+                original_size = len(payload.encode('utf-8'))
+                compressed_size = len(compressed_payload)
+                ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+                logger.debug(f"Successfully wrote {len(lines)} points to InfluxDB (compressed {ratio:.1f}%: {original_size}B → {compressed_size}B)")
                 return True
             else:
                 logger.error(f"InfluxDB write failed: HTTP {response.status_code} - {response.text}")

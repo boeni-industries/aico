@@ -7,7 +7,7 @@ Following AICO domain-based API organization patterns.
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from datetime import datetime
+from datetime import datetime, UTC
 import gzip
 import base64
 import json
@@ -61,7 +61,7 @@ async def submit_log(
         log_data = sanitize_log_entry(log_data)
         
         # Add server-side metadata
-        log_data['received_at'] = datetime.utcnow().isoformat()
+        log_data['received_at'] = datetime.now(UTC).isoformat()
         log_data['source'] = 'frontend_api'
         
         # Add subsystem field for AICO logging
@@ -139,7 +139,7 @@ async def submit_log_batch(
                 log_data = sanitize_log_entry(log_data)
                 
                 # Add server-side metadata
-                log_data['received_at'] = datetime.utcnow().isoformat()
+                log_data['received_at'] = datetime.now(UTC).isoformat()
                 log_data['source'] = 'frontend_api'
                 log_data['batch_index'] = i
                 

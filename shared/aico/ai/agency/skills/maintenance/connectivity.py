@@ -186,11 +186,6 @@ class MaintenanceConnectivityFullScanSkill(Skill):
             "executed_at": datetime.now(UTC).isoformat(),
         }
 
-        logger.info(
-            "[MAINT_CONNECTIVITY] Full scan completed: %s",
-            summary_status,
-        )
-
         return SkillResult(
             # The scan itself is a diagnostic read-only operation; even if the
             # system is unhealthy, the skill execution is considered
@@ -323,12 +318,6 @@ class MaintenanceConnectivityVerifyComponentSkill(Skill):
             "observables": {"metrics": [], "events": [], "logs": []},
             "executed_at": datetime.now(UTC).isoformat(),
         }
-
-        logger.info(
-            "[MAINT_CONNECTIVITY] Verify component '%s' completed: %s",
-            component,
-            summary_status,
-        )
 
         return SkillResult(
             success=summary_status == "healthy",

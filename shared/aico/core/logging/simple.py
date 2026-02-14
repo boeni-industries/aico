@@ -143,9 +143,9 @@ def initialize_logging(
                     bucket=influx_bucket,
                     token=influx_token,
                     service_name=service_name,
-                    buffer_size=1000,
-                    flush_interval=5.0,
-                    batch_size=100
+                    buffer_size=20000,
+                    flush_interval=2.0,
+                    batch_size=1000
                 )
                 _influx_handler.setLevel(resolved_log_level)
                 root_logger.addHandler(_influx_handler)

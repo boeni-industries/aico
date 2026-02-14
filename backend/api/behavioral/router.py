@@ -5,7 +5,7 @@ REST endpoints for feedback submission and skill management.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict, Any
 
@@ -89,7 +89,7 @@ async def submit_feedback(
             reward=request.reward,
             reason=request.reason,
             free_text=request.free_text,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             processed=False
         )
         

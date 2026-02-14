@@ -4,7 +4,7 @@ AMS Router Extensions
 Additional helper functions for skill overview and memory evolution tracking.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import List, Dict, Any
 from aico.core.logging import get_logger
 from aico.data.postgres.connection import get_session_factory
@@ -93,7 +93,7 @@ async def get_memory_evolution(user_id: str) -> MemoryEvolutionResponse:
     and consolidation activity across different time periods.
     """
     try:
-        current_time = datetime.utcnow()
+        current_time = datetime.now(UTC)
         
         session_factory = await get_session_factory()
         async with UnitOfWork(session_factory) as uow:
@@ -235,7 +235,7 @@ async def get_memory_evolution(user_id: str) -> MemoryEvolutionResponse:
         logger.warning(f"Memory evolution query failed: {e}")
         
         # Return default values
-        current_time = datetime.utcnow()
+        current_time = datetime.now(UTC)
         return MemoryEvolutionResponse(
             current_metrics=MemoryMetricsSnapshot(
                 timestamp=current_time.isoformat(),

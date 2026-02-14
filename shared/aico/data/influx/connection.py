@@ -15,6 +15,9 @@ Design principles:
 import logging
 import sys
 import os
+import time
+import threading
+import hashlib
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 from urllib.parse import urlparse
@@ -28,6 +31,11 @@ from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
 
 logger = logging.getLogger(__name__)
+
+_query_cache_lock = threading.Lock()
+_query_cache: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
+_query_cache_ttl_s = 15.0
+_query_cache_max_entries = 512
 
 # Monkey-patch InfluxDB client to suppress __del__ exception
 # This is a known bug in influxdb-client-python where ApiClient.__del__ fails during shutdown
@@ -296,7 +304,17 @@ class InfluxDBConnection:
             ''')
         """
         target_org = org or self.org
-        
+
+        cache_key = hashlib.md5(f"{target_org}\n{self.bucket}\n{flux_query}".encode("utf-8")).hexdigest()
+        now = time.time()
+        with _query_cache_lock:
+            cached = _query_cache.get(cache_key)
+            if cached is not None:
+                cached_at, cached_value = cached
+                if (now - cached_at) <= _query_cache_ttl_s:
+                    return cached_value
+                _query_cache.pop(cache_key, None)
+
         try:
             tables = self.query_api.query(flux_query, org=target_org)
             
@@ -333,6 +351,12 @@ class InfluxDBConnection:
                     results.append(result)
             
             logger.debug(f"Query returned {len(results)} results")
+
+            with _query_cache_lock:
+                if len(_query_cache) >= _query_cache_max_entries:
+                    _query_cache.clear()
+                _query_cache[cache_key] = (now, results)
+
             return results
             
         except InfluxDBError as e:

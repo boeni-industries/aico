@@ -84,7 +84,6 @@ class RemediationModelserviceStabiliseSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute modelservice stabilization."""
-        logger.info("[REMEDIATION_MODELSERVICE] Running stabilization")
         
         try:
             from aico.ai.agency.tools.service_remediation import (
@@ -199,7 +198,6 @@ class RemediationAgencyRecoverPlansSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute plan recovery."""
-        logger.info("[REMEDIATION_AGENCY] Running plan recovery")
         
         try:
             from aico.ai.agency.tools.service_remediation import tool_agency_retire_stalled_plans
@@ -306,7 +304,6 @@ class RemediationAgencyRebalanceLoadSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute load rebalancing."""
-        logger.info("[REMEDIATION_AGENCY] Running load rebalancing")
         
         try:
             from aico.ai.agency.tools.service_remediation import tool_agency_update_scheduler_config

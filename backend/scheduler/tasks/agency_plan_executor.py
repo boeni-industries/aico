@@ -51,7 +51,7 @@ class AgencyPlanExecutorTask(BaseTask):
         start_time = datetime.now(timezone.utc)
         
         try:
-            logger.info("🎬 [PLAN_EXECUTOR_TASK] Starting plan execution cycle")
+            logger.debug("Starting plan execution cycle")
             
             # Get configuration
             max_executions = context.get_config("max_executions_per_run", 10)
@@ -62,7 +62,7 @@ class AgencyPlanExecutorTask(BaseTask):
             agency_engine = ai_registry.get("agency")
             
             if not agency_engine:
-                logger.error("🎬 [PLAN_EXECUTOR_TASK] Agency engine not found in AI registry")
+                logger.error("Agency engine not found in AI registry")
                 return TaskResult(
                     success=False,
                     message="Agency engine not available",
@@ -72,7 +72,7 @@ class AgencyPlanExecutorTask(BaseTask):
             # Get executor
             executor = agency_engine.executor
             if not executor:
-                logger.error("🎬 [PLAN_EXECUTOR_TASK] Plan executor not initialized")
+                logger.error("Plan executor not initialized")
                 return TaskResult(
                     success=False,
                     message="Plan executor not initialized",
@@ -93,7 +93,7 @@ class AgencyPlanExecutorTask(BaseTask):
                 )
                 
                 if not pending_plans:
-                    logger.info("🎬 [PLAN_EXECUTOR_TASK] No plans to execute")
+                    logger.debug("No plans to execute")
                     return TaskResult(
                         success=True,
                         message="No plans to execute",
@@ -101,14 +101,12 @@ class AgencyPlanExecutorTask(BaseTask):
                     )
                 
                 # Start executions for pending plans
-                logger.info(
-                    f"🎬 [PLAN_EXECUTOR_TASK] Starting {len(pending_plans)} new executions"
-                )
+                logger.debug(f"Starting {len(pending_plans)} new executions")
                 for plan_info in pending_plans:
                     try:
-                        logger.info(
-                            f"🎬 [PLAN_EXECUTOR_TASK] Starting execution for plan {plan_info['plan_id'][:8]}... "
-                            f"goal={plan_info['goal_id'][:8]}... user={plan_info['user_id'][:8]}..."
+                        logger.debug(
+                            f"Starting execution for plan {plan_info['plan_id'][:8]}... "
+                            f"goal={plan_info['goal_id'][:8]}..."
                         )
                         
                         execution = await executor.start_execution(
@@ -127,20 +125,19 @@ class AgencyPlanExecutorTask(BaseTask):
                             "user_id": execution.user_id,
                         })
                         
-                        logger.info(
-                            f"✅ [PLAN_EXECUTOR_TASK] Started execution {execution.execution_id[:8]}... "
+                        logger.debug(
+                            f"Started execution {execution.execution_id[:8]}... "
                             f"for plan {plan_info['plan_id'][:8]}... ({execution.steps_total} steps)"
                         )
                     except Exception as e:
                         logger.error(
-                            f"❌ [PLAN_EXECUTOR_TASK] Failed to start execution "
-                            f"for plan {plan_info['plan_id'][:8]}...: {e}",
+                            f"Failed to start execution for plan {plan_info['plan_id'][:8]}...: {e}",
                             exc_info=True
                         )
             
             # Execute steps for active executions
-            logger.info(
-                f"🎬 [PLAN_EXECUTOR_TASK] Processing {len(active_executions)} active executions "
+            logger.debug(
+                f"Processing {len(active_executions)} active executions "
                 f"(up to {steps_per_execution} steps each)"
             )
             
@@ -150,9 +147,8 @@ class AgencyPlanExecutorTask(BaseTask):
                     steps_executed = 0
                     exec_id_short = exec_info["execution_id"][:8]
                     
-                    logger.info(
-                        f"🎬 [PLAN_EXECUTOR_TASK] Processing execution {exec_id_short}... "
-                        f"plan={exec_info['plan_id'][:8]}..."
+                    logger.debug(
+                        f"Processing execution {exec_id_short}... plan={exec_info['plan_id'][:8]}..."
                     )
                     
                     # Execute up to N steps per execution
@@ -165,16 +161,14 @@ class AgencyPlanExecutorTask(BaseTask):
                             steps_executed += 1
                             status_emoji = "✅" if step_exec.status.value == "completed" else "❌"
                             
-                            logger.info(
-                                f"{status_emoji} [PLAN_EXECUTOR_TASK] Step {step_exec.step_order} "
-                                f"for execution {exec_id_short}...: {step_exec.status.value} "
-                                f"(duration: {step_exec.duration_ms}ms)"
+                            logger.debug(
+                                f"Step {step_exec.step_order} for execution {exec_id_short}...: "
+                                f"{step_exec.status.value} (duration: {step_exec.duration_ms}ms)"
                             )
                         
                         if not has_more:
-                            logger.info(
-                                f"🏁 [PLAN_EXECUTOR_TASK] Execution {exec_id_short}... completed "
-                                f"({steps_executed} steps executed)"
+                            logger.debug(
+                                f"Execution {exec_id_short}... completed ({steps_executed} steps executed)"
                             )
                             break
                     
@@ -187,8 +181,7 @@ class AgencyPlanExecutorTask(BaseTask):
                     
                 except Exception as e:
                     logger.exception(
-                        f"❌ [PLAN_EXECUTOR_TASK] Failed to execute steps "
-                        f"for execution {exec_info['execution_id'][:8]}...: {e}"
+                        f"Failed to execute steps for execution {exec_info['execution_id'][:8]}...: {e}"
                     )
                     results.append({
                         "execution_id": exec_info["execution_id"],
@@ -204,8 +197,8 @@ class AgencyPlanExecutorTask(BaseTask):
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             
             logger.info(
-                f"🎬 [PLAN_EXECUTOR_TASK] Completed: {successful} successful, "
-                f"{failed} failed, {total_steps} steps executed ({duration:.1f}s)"
+                f"Plan executor completed: {successful} successful, {failed} failed, "
+                f"{total_steps} steps executed ({duration:.1f}s)"
             )
             
             return TaskResult(
@@ -223,7 +216,7 @@ class AgencyPlanExecutorTask(BaseTask):
             
         except Exception as e:
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
-            logger.exception(f"🎬 [PLAN_EXECUTOR_TASK] Task failed: {e}")
+            logger.exception(f"Plan executor task failed: {e}")
             
             return TaskResult(
                 success=False,

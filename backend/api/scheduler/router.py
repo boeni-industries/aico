@@ -8,6 +8,7 @@ from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, WebSocket
 from datetime import datetime, UTC
 import json
+import time
 
 from aico.core.logging import get_logger
 from aico.data.uow import UnitOfWork
@@ -50,6 +51,10 @@ from .exceptions import (
 router = APIRouter()
 logger = get_logger("api.scheduler_router")
 
+# Cache for tasks list to prevent expensive queries on every poll
+_tasks_cache = {"data": None, "timestamp": 0}
+_CACHE_TTL = 15  # 15 seconds cache
+
 
 @router.get("/status", response_model=SchedulerStatusResponse)
 @handle_scheduler_exceptions
@@ -74,6 +79,11 @@ async def list_tasks(
     _auth = Depends(require_admin_access)
 ) -> TaskListResponse:
     """List all scheduled tasks"""
+    # Check cache first (only for unfiltered requests)
+    current_time = time.time()
+    if not enabled_only and _tasks_cache["data"] is not None and (current_time - _tasks_cache["timestamp"]) < _CACHE_TTL:
+        return _tasks_cache["data"]
+    
     try:
         scheduler_service = SchedulerService(uow)
         filters = {"enabled": True} if enabled_only else {}
@@ -92,10 +102,17 @@ async def list_tasks(
             for task in tasks
         ]
         
-        return TaskListResponse(
+        response = TaskListResponse(
             tasks=task_responses,
             total_count=len(task_responses)
         )
+        
+        # Cache the response if no filters applied
+        if not enabled_only:
+            _tasks_cache["data"] = response
+            _tasks_cache["timestamp"] = current_time
+        
+        return response
     except Exception as e:
         logger.error(f"Failed to list tasks: {e}")
         raise SchedulerNotAvailableError()

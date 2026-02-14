@@ -113,7 +113,17 @@ def tail_logs(
     # Build Flux query
     filters = [
         f'r._measurement == "logs"',
-        f'r._field == "message"'
+        # We store message/logger/module/function as FIELDS (not tags).
+        # Influx returns one row per field, so we must pivot to reconstruct
+        # the full log entry for display.
+        (
+            '('
+            'r._field == "message" or '
+            'r._field == "logger" or '
+            'r._field == "module" or '
+            'r._field == "function"'
+            ')'
+        )
     ]
     
     if service:
@@ -143,10 +153,13 @@ def tail_logs(
     # Tail shows the most recent N lines.
     # Keep this query efficient: apply a global limit server-side.
     # In Flux, limit() applies per-table, so we group() first to get a single table.
+    # Then we pivot fields into columns so we can display logger/module/function.
     query = f'''
     from(bucket: "{bucket}")
       |> range(start: -{last})
       |> filter(fn: (r) => {filter_str})
+      |> group(columns: ["_time", "service", "level"])
+      |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
       |> group()
       |> sort(columns: ["_time"], desc: true)
       |> limit(n: {lines})
@@ -180,8 +193,10 @@ def tail_logs(
                 timestamp = local_time.strftime("%Y-%m-%d %H:%M:%S")
                 level = record.values.get("level", "INFO")
                 service_name = record.values.get("service", "unknown")
-                logger_name = record.values.get("logger", "unknown")
-                message = record.get_value()
+                logger_name = record.values.get("logger") or "unknown"
+                message = record.values.get("message") or ""
+                module = record.values.get("module")
+                function = record.values.get("function")
 
                 display_logger_name = logger_name
                 try:
@@ -204,7 +219,12 @@ def tail_logs(
                 }
                 color = level_colors.get(level, "white")
                 
-                console.print(f"[dim]{timestamp}[/dim] [{color}]{level:8}[/{color}] [cyan]{service_name}[/cyan].[dim]{display_logger_name}[/dim] - {message}")
+                suffix = ""
+                if module and function:
+                    suffix = f" ({module}.{function})"
+                console.print(
+                    f"[dim]{timestamp}[/dim] [{color}]{level:8}[/{color}] [cyan]{service_name}[/cyan].[dim]{display_logger_name}[/dim] - {message}{suffix}"
+                )
         
     except Exception as e:
         console.print(f"[red]✗ Query failed: {e}[/red]")

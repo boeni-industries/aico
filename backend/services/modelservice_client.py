@@ -10,6 +10,7 @@ import json
 import uuid
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+import time
 
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
@@ -54,6 +55,11 @@ class ModelServiceClient:
         
         # Track which topics we've already subscribed to (subscribe once per topic)
         self.subscribed_topics: set = set()
+
+        # Cache health probe results to avoid frequent 2s timeouts during Studio polling
+        self._health_cache: Optional[Dict[str, Any]] = None
+        self._health_cache_at: float = 0.0
+        self._health_cache_ttl_s: float = 5.0
     
     async def check_modelservice_health(self) -> bool:
         """Check if the modelservice is running and responding.
@@ -62,6 +68,10 @@ class ModelServiceClient:
             bool: True if modelservice is healthy, False otherwise
         """
         try:
+            now = time.time()
+            if self._health_cache is not None and (now - self._health_cache_at) <= self._health_cache_ttl_s:
+                return bool(self._health_cache.get('success', False))
+
             # Use a very short timeout for health check.
             # IMPORTANT: do not mutate self.config.timeout (shared state) because health probes
             # can run concurrently with chat/completions requests.
@@ -71,12 +81,17 @@ class ModelServiceClient:
                 {"check": "ping"},
                 timeout_override=2.0,
             )
+
+            # Cache result for a short time to prevent repeated timeouts
+            self._health_cache = result
+            self._health_cache_at = time.time()
             return result.get('success', False)
         except TimeoutError:
-            self.logger.warning("Modelservice health check timed out - service may be offline")
+            # Health check timeout - no logging (happens frequently during startup)
             return False
         except Exception as e:
-            self.logger.warning(f"Modelservice health check failed: {e}")
+            # Health check failed - only log errors, not warnings
+            self.logger.error(f"Modelservice health check failed: {e}")
             return False
     
     async def _ensure_connection(self):
@@ -100,7 +115,6 @@ class ModelServiceClient:
         timeout_override: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Send a request via ZMQ and wait for response."""
-        import time
         start_time = time.time()
 
         timeout_seconds = timeout_override if timeout_override is not None else self.config.timeout
@@ -498,7 +512,8 @@ class ModelServiceClient:
                 self.logger.error(f"💬 [CHAT_DEBUG] Model requested: {data.get('model', 'unknown')}. Check if this model is available in Ollama.")
             
             if is_health_request:
-                self.logger.warning(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
+                # Health probes are expected to fail when modelservice is offline; avoid warning spam
+                self.logger.debug(f"⚠️ {error_msg}")
             else:
                 self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
             return {"success": False, "error": error_msg}

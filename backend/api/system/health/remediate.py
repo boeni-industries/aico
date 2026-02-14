@@ -216,7 +216,7 @@ async def trigger_remediation(
     Raises:
         HTTPException: If skill not found or execution fails
     """
-    logger.info(f"[REMEDIATION] Triggering skill '{skill_id}' with dry_run={request.dry_run}")
+    # Skill trigger - no logging (executes frequently)
     registry, invoker = service
     
     # Verify skill exists
@@ -254,7 +254,7 @@ async def trigger_remediation(
     
     # Execute skill
     start_time = datetime.now(UTC)
-    logger.info(f"[REMEDIATION] Executing skill '{skill_id}' with parameters: {input_data}")
+    # Skill execution - no logging
     
     try:
         result = await invoker.invoke_skill(
@@ -270,7 +270,7 @@ async def trigger_remediation(
         output = result.get("output", {})
         error = result.get("error")
         
-        logger.info(f"[REMEDIATION] Skill '{skill_id}' completed: success={success}, time={execution_time_ms}ms")
+        # Skill completion - no logging
         
         # Persist execution to database
         try:
@@ -299,12 +299,7 @@ async def trigger_remediation(
             logger.error("[REMEDIATION] Failed to persist execution history: %s", db_exc)
             # Don't fail the request if history persistence fails
         
-        logger.info(
-            "[REMEDIATION] Executed skill '%s' (dry_run=%s): success=%s",
-            skill_id,
-            input_data.get("dry_run", request.dry_run),
-            success,
-        )
+        # Skill executed - no logging
         
         response = RemediationResponse(
             skill_id=skill_id,
@@ -314,7 +309,7 @@ async def trigger_remediation(
             executed_at=start_time.isoformat(),
             execution_time_ms=execution_time_ms,
         )
-        logger.info(f"[REMEDIATION] Returning response: success={success}")
+        # Response - no logging
         return response
     
     except Exception as exc:
@@ -440,7 +435,7 @@ async def get_remediation_history(
                 execution_time_ms=row.execution_time_ms,
             ))
         
-        logger.info("[REMEDIATION] Retrieved %d history entries", len(history))
+        # History retrieved - no logging
         return history
         
     except Exception as exc:
@@ -479,7 +474,7 @@ async def delete_history_entry(
                 detail=f"Execution '{execution_id}' not found"
             )
         
-        logger.info(f"[REMEDIATION] Deleted history entry: {execution_id}")
+        # History deleted - no logging
         return {"message": "History entry deleted successfully"}
         
     except HTTPException:
@@ -522,8 +517,7 @@ async def clear_history(
         await uow.commit()
         
         deleted_count = result.rowcount
-        logger.info(f"[REMEDIATION] Cleared {deleted_count} history entries" + 
-                   (f" for skill '{skill_id}'" if skill_id else ""))
+        # History cleared - no logging
         
         return {
             "message": f"Deleted {deleted_count} history entries",

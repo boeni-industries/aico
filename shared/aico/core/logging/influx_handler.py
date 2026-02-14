@@ -15,6 +15,8 @@ Features:
 import logging
 import threading
 import time
+import random
+import gzip
 from collections import deque
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -79,6 +81,12 @@ class InfluxDBLogHandler(logging.Handler):
         self.running = False
         self.flush_thread = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="influx-log")
+
+        # HTTP session is created lazily in the flush thread (single-writer) to enable keep-alive
+        self._http_session = None
+
+        # Prevent queuing many pending writes (causes periodic CPU spikes)
+        self._write_in_flight = threading.Event()
         
         # Statistics
         self.stats = {
@@ -135,7 +143,9 @@ class InfluxDBLogHandler(logging.Handler):
         # Timestamp in nanoseconds
         timestamp_ns = int(record.created * 1_000_000_000)
         
-        # Tags (indexed, for filtering)
+        # Tags (indexed): KEEP LOW CARDINALITY ONLY.
+        # High-cardinality tags (logger/module/function/thread/process/exception types)
+        # explode series cardinality and can drive InfluxDB CPU extremely high.
         inferred_service = self.service_name
         if isinstance(record.name, str):
             if record.name.startswith("backend."):
@@ -150,20 +160,7 @@ class InfluxDBLogHandler(logging.Handler):
         tags = {
             "service": inferred_service,
             "level": record.levelname,
-            "logger": record.name,
         }
-        
-        # Add module/function info if available
-        if record.module:
-            tags["module"] = record.module
-        if record.funcName and record.funcName != "<module>":
-            tags["function"] = record.funcName
-        
-        # Add thread/process info as tags for filtering
-        if record.threadName and record.threadName != "MainThread":
-            tags["thread"] = record.threadName
-        if record.processName and record.processName != "MainProcess":
-            tags["process"] = record.processName
         
         # Fields (not indexed, for data)
         fields = []
@@ -173,6 +170,15 @@ class InfluxDBLogHandler(logging.Handler):
         
         # Add string fields
         fields.append(f"message={self._escape_string_field(record.getMessage())}")
+        fields.append(f"logger={self._escape_string_field(record.name)}")
+        if record.module:
+            fields.append(f"module={self._escape_string_field(record.module)}")
+        if record.funcName and record.funcName != "<module>":
+            fields.append(f"function={self._escape_string_field(record.funcName)}")
+        if record.threadName and record.threadName != "MainThread":
+            fields.append(f"thread={self._escape_string_field(record.threadName)}")
+        if record.processName and record.processName != "MainProcess":
+            fields.append(f"process={self._escape_string_field(record.processName)}")
         
         # Add source location info (useful for debugging)
         fields.append(f"pathname={self._escape_string_field(record.pathname)}")
@@ -198,9 +204,8 @@ class InfluxDBLogHandler(logging.Handler):
         if record.exc_info:
             exc_text = self.formatter.formatException(record.exc_info) if self.formatter else str(record.exc_info)
             fields.append(f"exception={self._escape_string_field(exc_text)}")
-            # Add exception type for easier filtering
             if record.exc_info[0]:
-                tags["exc_type"] = record.exc_info[0].__name__
+                fields.append(f"exc_type={self._escape_string_field(record.exc_info[0].__name__)}")
         
         # Build line protocol string
         tag_string = ",".join(f"{k}={self._escape_tag_value(v)}" for k, v in tags.items())
@@ -233,7 +238,9 @@ class InfluxDBLogHandler(logging.Handler):
         try:
             while self.running:
                 try:
-                    time.sleep(self.flush_interval)
+                    # Add jitter so multiple processes don't flush in lockstep (reduces CPU spikes)
+                    sleep_s = self.flush_interval + random.uniform(0.0, max(0.05, self.flush_interval * 0.2))
+                    time.sleep(sleep_s)
                     self._flush_buffer()
                 except Exception as e:
                     # Log to stderr but don't crash
@@ -245,26 +252,38 @@ class InfluxDBLogHandler(logging.Handler):
         """Flush buffered logs to InfluxDB."""
         if not self.buffer:
             return
+
+        if self._write_in_flight.is_set():
+            return
         
-        # Get batch from buffer
+        # Get a larger batch from buffer (reduce number of HTTP writes)
         with self.buffer_lock:
-            batch_size = min(len(self.buffer), self.batch_size)
+            batch_size = min(len(self.buffer), max(self.batch_size, 1000))
             if batch_size == 0:
                 return
             
             batch = [self.buffer.popleft() for _ in range(batch_size)]
         
-        # Write to InfluxDB (in executor to avoid blocking flush thread)
+        # Write to InfluxDB (single worker; avoid queuing multiple pending writes)
         try:
+            self._write_in_flight.set()
             self.executor.submit(self._write_batch, batch)
         except RuntimeError:
             # Executor shutdown during interpreter exit - write synchronously
-            self._write_batch(batch)
+            try:
+                self._write_in_flight.set()
+                self._write_batch(batch)
+            finally:
+                self._write_in_flight.clear()
     
     def _write_batch(self, batch: list):
         """Write batch of log lines to InfluxDB."""
         try:
             import requests
+
+            # Create a persistent HTTP session in the single flush worker thread
+            if self._http_session is None:
+                self._http_session = requests.Session()
             
             # Prepare request
             url = f"{self.influx_url}/api/v2/write"
@@ -275,17 +294,21 @@ class InfluxDBLogHandler(logging.Handler):
             }
             headers = {
                 "Authorization": f"Token {self.token}",
-                "Content-Type": "text/plain; charset=utf-8"
+                "Content-Type": "text/plain; charset=utf-8",
+                "Content-Encoding": "gzip",
             }
             data = "\n".join(batch)
+
+            # Compress payload (significantly reduces CPU and network overhead on large log volumes)
+            payload = gzip.compress(data.encode("utf-8"), compresslevel=6)
             
             # Write to InfluxDB
-            response = requests.post(
+            response = self._http_session.post(
                 url,
                 params=params,
                 headers=headers,
-                data=data,
-                timeout=5.0
+                data=payload,
+                timeout=5.0,
             )
             
             if response.status_code == 204:
@@ -302,6 +325,8 @@ class InfluxDBLogHandler(logging.Handler):
         except Exception as e:
             with self.stats_lock:
                 self.stats["write_errors"] += 1
+        finally:
+            self._write_in_flight.clear()
     
     def flush(self):
         """Flush all buffered logs immediately."""
@@ -318,6 +343,13 @@ class InfluxDBLogHandler(logging.Handler):
         
         # Shutdown executor
         self.executor.shutdown(wait=True)
+
+        if self._http_session is not None:
+            try:
+                self._http_session.close()
+            except Exception:
+                pass
+            self._http_session = None
         
         if self.flush_thread:
             self.flush_thread.join(timeout=2.0)

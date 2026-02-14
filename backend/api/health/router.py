@@ -5,7 +5,7 @@ REST API endpoints for system health monitoring, readiness checks, and diagnosti
 """
 
 from fastapi import APIRouter, HTTPException
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, Any, List
 
 import psutil
@@ -54,7 +54,7 @@ async def health_check():
         status="healthy",
         version=BACKEND_VERSION,
         service="aico-backend",
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
         components={
             "api": "healthy",
             "gateway": "healthy" if gateway and gateway.running else "unavailable",
@@ -66,7 +66,7 @@ async def health_check():
 @router.get("/detailed", response_model=DetailedHealthResponse)
 async def detailed_health():
     """Detailed health check with system metrics"""
-    current_time = datetime.utcnow()
+    current_time = datetime.now(UTC)
     uptime = time.time() - start_time
     
     # Get system metrics

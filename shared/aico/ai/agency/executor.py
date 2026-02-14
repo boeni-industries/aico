@@ -177,13 +177,13 @@ class PlanExecutor:
         if not plan:
             raise ValueError(f"Plan {plan_id} not found")
         
-        self.logger.info(
+        self.logger.debug(
             f"[EXECUTOR DEBUG] Retrieved plan {plan_id[:8]}... with {len(plan.steps)} steps"
         )
         
         # CRITICAL DEBUG: Log plan details
         if plan.steps:
-            self.logger.info(
+            self.logger.debug(
                 f"[EXECUTOR DEBUG] Plan steps: {[{'order': s.order, 'skill_id': s.skill_id, 'desc': s.description[:50]} for s in plan.steps[:3]]}"
             )
         
@@ -208,7 +208,7 @@ class PlanExecutor:
         # Persist execution
         await self._save_execution(execution)
         
-        self.logger.info(
+        self.logger.debug(
             f"[EXECUTOR DEBUG] Creating step executions for {len(plan.steps)} steps..."
         )
         
@@ -223,7 +223,7 @@ class PlanExecutor:
             )
             await self._save_step_execution(step_exec)
             
-            self.logger.info(
+            self.logger.debug(
                 f"[EXECUTOR DEBUG] Created step execution: order={step.order}, "
                 f"skill_id={step.skill_id}, step_exec_id={step_exec.step_execution_id[:8]}..."
             )
@@ -231,7 +231,7 @@ class PlanExecutor:
         # Verify step executions were created
         total_steps = await self.agency_service.count_step_executions(execution.execution_id)
         
-        self.logger.info(
+        self.logger.debug(
             f"[EXECUTOR] Started execution {execution.execution_id[:8]}... "
             f"for plan {plan_id[:8]}... ({len(plan.steps)} steps) "
             f"- Verified {total_steps} step_executions in DB"
@@ -261,7 +261,7 @@ class PlanExecutor:
         if execution.status == ExecutionStatus.PAUSED:
             resumed = await self._try_resume_blocked_execution(execution)
             if not resumed:
-                self.logger.info(
+                self.logger.debug(
                     f"[EXECUTOR] Execution {execution_id} is paused (blocked), skipping step execution"
                 )
                 return False, None
@@ -344,7 +344,7 @@ class PlanExecutor:
         execution.paused_at = datetime.now(UTC)
         await self._save_execution(execution)
         
-        self.logger.info(f"[EXECUTOR] Paused execution {execution_id}")
+        self.logger.debug(f"[EXECUTOR] Paused execution {execution_id}")
         
         return execution
     
@@ -366,7 +366,7 @@ class PlanExecutor:
         execution.paused_at = None
         await self._save_execution(execution)
         
-        self.logger.info(f"[EXECUTOR] Resumed execution {execution_id}")
+        self.logger.debug(f"[EXECUTOR] Resumed execution {execution_id}")
         
         return execution
     
@@ -473,11 +473,10 @@ class PlanExecutor:
         step_exec.started_at = start_time
         await self._save_step_execution(step_exec)
         
-        self.logger.info(
-            f"🎬 [EXECUTOR] Starting step {step_exec.step_order} "
+        self.logger.debug(
+            f"Starting step {step_exec.step_order} "
             f"execution={execution.execution_id[:8]}... "
-            f"plan={execution.plan_id[:8]}... "
-            f"goal={execution.goal_id[:8]}..."
+            f"plan={execution.plan_id[:8]}..."
         )
         
         try:
@@ -492,13 +491,13 @@ class PlanExecutor:
             if not step:
                 raise ValueError(f"Step {step_exec.step_id} not found in plan")
             
-            self.logger.info(
+            self.logger.debug(
                 f"🎬 [EXECUTOR] Step {step_exec.step_order}: {step.description[:80]}..."
             )
             
             # Invoke skill if specified
             if self.skill_invoker and step_exec.skill_id:
-                self.logger.info(
+                self.logger.debug(
                     f"🎬 [EXECUTOR] Invoking skill '{step_exec.skill_id}' for step {step_exec.step_order}"
                 )
                 
@@ -526,7 +525,7 @@ class PlanExecutor:
                 )
                 
                 if result.get("success"):
-                    self.logger.info(
+                    self.logger.debug(
                         f"✅ [EXECUTOR] Skill '{step_exec.skill_id}' completed successfully "
                         f"for step {step_exec.step_order} (duration: {result.get('duration_ms')}ms)"
                     )
@@ -564,7 +563,7 @@ class PlanExecutor:
                     execution.paused_at = datetime.now(UTC)
                     await self._save_execution(execution)
 
-                    self.logger.info(
+                    self.logger.debug(
                         f"[EXECUTOR] Execution {execution.execution_id[:8]}... blocked on interaction {str(interaction_id)[:8]}..."
                     )
                     return step_exec
@@ -593,7 +592,7 @@ class PlanExecutor:
             
             await self._save_step_execution(step_exec)
             
-            self.logger.info(
+            self.logger.debug(
                 f"✅ [EXECUTOR] Completed step {step_exec.step_order}/{execution.steps_total} "
                 f"in {step_exec.duration_ms}ms "
                 f"(progress: {(step_exec.step_order / execution.steps_total * 100):.1f}%)"
@@ -662,7 +661,7 @@ class PlanExecutor:
                 execution.progress_percentage = execution.steps_completed / execution.steps_total * 100.0
             await self._save_execution(execution)
 
-            self.logger.info(
+            self.logger.debug(
                 f"[EXECUTOR] Resumed execution {execution.execution_id[:8]}... after interaction {str(interaction_id)[:8]}... resolved ({interaction.status})"
             )
             return True
@@ -682,7 +681,7 @@ class PlanExecutor:
         
         await self._save_execution(execution)
         
-        self.logger.info(
+        self.logger.debug(
             f"[EXECUTOR] Completed execution {execution_id} "
             f"({execution.steps_completed}/{execution.steps_total} steps)"
         )

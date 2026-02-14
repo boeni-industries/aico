@@ -80,14 +80,11 @@ class RemediationInfluxGetMeasurementsSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute InfluxDB measurement listing."""
-        logger.info("[REMEDIATION_INFLUX] Listing measurements")
         
         try:
             from aico.ai.agency.tools.database_remediation import tool_db_influx_get_measurements
             
             measurement_filter = input_data.get("measurement_filter")
-            
-            logger.info(f"[REMEDIATION_INFLUX] measurement_filter={measurement_filter}")
             
             result = await tool_db_influx_get_measurements(
                 config=self._config,
@@ -195,7 +192,6 @@ class RemediationInfluxApplyRetentionSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute InfluxDB retention policy."""
-        logger.info("[REMEDIATION_INFLUX] Applying retention policy")
         
         try:
             from aico.ai.agency.tools.database_remediation import tool_db_influx_apply_retention
@@ -213,9 +209,6 @@ class RemediationInfluxApplyRetentionSkill(Skill):
             print(f"Extracted dry_run: {dry_run} (type: {type(dry_run).__name__})")
             print(f"Calling tool with dry_run={dry_run}")
             print(f"{'='*80}\n")
-            
-            logger.info(f"[REMEDIATION_INFLUX] input_data={input_data}")
-            logger.info(f"[REMEDIATION_INFLUX] measurement={measurement}, retention_days={retention_days}, dry_run={dry_run}, type={type(dry_run)}")
             
             result = await tool_db_influx_apply_retention(
                 config=self._config,
@@ -329,15 +322,12 @@ class RemediationInfluxDropMeasurementSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute InfluxDB measurement drop."""
-        logger.info("[REMEDIATION_INFLUX] Dropping measurement")
         
         try:
             from aico.ai.agency.tools.database_remediation import tool_db_influx_drop_measurement
             
             measurement = input_data["measurement"]
             dry_run = input_data.get("dry_run", True)
-            
-            logger.info(f"[REMEDIATION_INFLUX] measurement={measurement}, dry_run={dry_run}")
             
             result = await tool_db_influx_drop_measurement(
                 config=self._config,

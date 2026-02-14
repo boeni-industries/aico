@@ -91,6 +91,94 @@ def _get_or_create_postgres_password() -> str:
     return password
 
 
+def _setup_influx_downsampling(admin_token: str) -> None:
+    """
+    Configure InfluxDB downsampling tasks and retention policies.
+    This is idempotent - safe to run multiple times.
+    """
+    from influxdb_client import InfluxDBClient, BucketRetentionRules
+    
+    config = ConfigurationManager()
+    url = config.get("influx.url")
+    org = config.get("influx.org")
+    
+    try:
+        with InfluxDBClient(url=url, token=admin_token, org=org) as client:
+            buckets_api = client.buckets_api()
+            tasks_api = client.tasks_api()
+            orgs_api = client.organizations_api()
+            
+            # Get org object (needed for task creation)
+            orgs = orgs_api.find_organizations(org=org)
+            org_obj = orgs[0] if orgs else None
+            if not org_obj:
+                raise ValueError(f"Organization '{org}' not found")
+            
+            # 1. Create downsampled bucket with 30-day retention
+            existing_buckets = buckets_api.find_buckets().buckets
+            downsampled_bucket_name = "aico_telemetry_downsampled"
+            
+            bucket_exists = any(b.name == downsampled_bucket_name for b in existing_buckets)
+            if not bucket_exists:
+                retention_rules = BucketRetentionRules(type="expire", every_seconds=2592000)  # 30 days
+                buckets_api.create_bucket(
+                    bucket_name=downsampled_bucket_name,
+                    org=org,
+                    retention_rules=retention_rules
+                )
+                console.print(f"  ✓ Created downsampled bucket (30-day retention)")
+            else:
+                console.print(f"  ✓ Downsampled bucket already exists")
+            
+            # 2. Update main bucket to 7-day retention
+            main_bucket = next((b for b in existing_buckets if b.name == "aico_telemetry"), None)
+            if main_bucket:
+                if not main_bucket.retention_rules or main_bucket.retention_rules[0].every_seconds != 604800:
+                    main_bucket.retention_rules = [BucketRetentionRules(type="expire", every_seconds=604800)]
+                    buckets_api.update_bucket(bucket=main_bucket)
+                    console.print(f"  ✓ Updated main bucket to 7-day retention")
+                else:
+                    console.print(f"  ✓ Main bucket retention already configured")
+            
+            # 3. Create downsampling tasks
+            existing_tasks = tasks_api.find_tasks()
+            # Handle both list and Tasks object response types
+            if hasattr(existing_tasks, 'tasks'):
+                existing_task_names = {task.name for task in existing_tasks.tasks}
+            else:
+                existing_task_names = {task.name for task in existing_tasks} if existing_tasks else set()
+            
+            tasks_to_create = [
+                ("downsample_api_requests", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "api_request") |> filter(fn: (r) => r._field == "duration_ms_i" or r._field == "status_code_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "api_request_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_api_counts", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "api_request") |> filter(fn: (r) => r._field == "status_code_i") |> aggregateWindow(every: 1m, fn: count, createEmpty: false) |> set(key: "_measurement", value: "api_request_counts_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_messagebus", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "messagebus_event") |> filter(fn: (r) => r._field == "message_count_i" or r._field == "latency_ms_i") |> aggregateWindow(every: 1m, fn: sum, createEmpty: false) |> set(key: "_measurement", value: "messagebus_event_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_scheduler", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "scheduler_job") |> filter(fn: (r) => r._field == "duration_ms_i" or r._field == "success_b") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "scheduler_job_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_memory_queries", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "memory_query") |> filter(fn: (r) => r._field == "duration_ms_i" or r._field == "result_count_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "memory_query_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                ("downsample_model_inference", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "model_inference") |> filter(fn: (r) => r._field == "duration_ms_i" or r._field == "token_count_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "model_inference_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+            ]
+            
+            created_count = 0
+            for task_name, flux_script in tasks_to_create:
+                if task_name not in existing_task_names:
+                    tasks_api.create_task_every(
+                        name=task_name,
+                        flux=flux_script,
+                        every="1m",
+                        organization=org_obj
+                    )
+                    created_count += 1
+            
+            if created_count > 0:
+                console.print(f"  ✓ Created {created_count} downsampling tasks")
+            else:
+                console.print(f"  ✓ All downsampling tasks already exist")
+                
+    except Exception as e:
+        import traceback
+        console.print(format_warning(f"⚠️  Failed to configure downsampling (non-fatal): {e}"))
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
+
 def _get_or_create_influx_credentials() -> Tuple[str, str]:
     """
     Get or create InfluxDB admin password and token using AICOKeyManager.
@@ -796,8 +884,12 @@ def deploy_influx(
     console.print("🩺 [cyan]Verifying deployment health...[/cyan]")
     influx_cli.doctor()
 
+    console.print("⚙️  [cyan]Configuring downsampling tasks and retention policies...[/cyan]")
+    _setup_influx_downsampling(admin_token)
+
     console.print("")
     console.print(format_success("✅ InfluxDB deployment completed successfully!"))
     console.print(format_info("💡 Credentials stored in system keyring (derived from master key)"))
+    console.print(format_info("💡 Downsampling tasks configured for optimal dashboard performance"))
     console.print(format_info("💡 Backend components will auto-retrieve credentials from keyring at runtime"))
     console.print("")

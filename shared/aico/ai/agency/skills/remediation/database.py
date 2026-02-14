@@ -93,7 +93,6 @@ class RemediationPostgresVacuumSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute PostgreSQL vacuum."""
-        logger.info("[REMEDIATION_POSTGRES] Running vacuum")
         
         try:
             from aico.ai.agency.tools.database_remediation import tool_db_postgres_vacuum_analyze
@@ -102,9 +101,6 @@ class RemediationPostgresVacuumSkill(Skill):
             full = input_data.get("full", False)
             analyze = input_data.get("analyze", True)
             dry_run = input_data.get("dry_run", True)
-            
-            logger.info(f"[REMEDIATION_POSTGRES] Skill received input_data: {input_data}")
-            logger.info(f"[REMEDIATION_POSTGRES] Extracted dry_run={dry_run}")
             
             result = await tool_db_postgres_vacuum_analyze(
                 self._session_factory,
@@ -227,7 +223,6 @@ class RemediationPostgresArchiveSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute PostgreSQL archival."""
-        logger.info("[REMEDIATION_POSTGRES] Running archive")
         
         try:
             from aico.ai.agency.tools.database_remediation import tool_db_postgres_archive_rows
@@ -342,7 +337,6 @@ class RemediationDatabaseDiskPressureSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute comprehensive disk pressure remediation."""
-        logger.info("[REMEDIATION_DB] Running disk pressure remediation")
         
         try:
             from aico.ai.agency.tools.database_remediation import (
@@ -444,7 +438,6 @@ class RemediationChromaCompactSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute ChromaDB compaction."""
-        logger.info("[REMEDIATION_CHROMA] Running compaction")
         
         try:
             from aico.ai.agency.tools.database_remediation import tool_db_chroma_compact_store
@@ -531,7 +524,6 @@ class RemediationLmdbCompactSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute LMDB compaction."""
-        logger.info("[REMEDIATION_LMDB] Running compaction")
         
         try:
             from aico.ai.agency.tools.database_remediation import tool_db_lmdb_compact
@@ -639,7 +631,6 @@ class RemediationLmdbCleanupSkill(Skill):
         context: Dict[str, Any],
     ) -> SkillResult:
         """Execute LMDB cleanup."""
-        logger.info("[REMEDIATION_LMDB] Running cleanup")
         
         try:
             from aico.ai.agency.tools.database_remediation import tool_db_lmdb_delete_keys_by_prefix

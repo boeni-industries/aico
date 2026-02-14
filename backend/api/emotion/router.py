@@ -6,7 +6,7 @@ Provides access to current emotional state and history.
 """
 
 from typing import Annotated, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from fastapi import APIRouter, HTTPException, Depends, Query
 import os
 from aico.core.logging import get_logger
@@ -114,10 +114,10 @@ async def get_emotion_history(
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid 'since' timestamp format. Use ISO 8601 format.")
         elif hours:
-            cutoff = datetime.utcnow() - timedelta(hours=hours)
+            cutoff = datetime.now(UTC) - timedelta(hours=hours)
             filters["timestamp_gte"] = cutoff
         elif days:
-            cutoff = datetime.utcnow() - timedelta(days=days)
+            cutoff = datetime.now(UTC) - timedelta(days=days)
             filters["timestamp_gte"] = cutoff
         
         # Emotion filter
@@ -145,26 +145,7 @@ async def get_emotion_history(
             for record in emotion_records
         ]
 
-        if os.getenv("AICO_ENV", "development") == "development":
-            try:
-                valences = [item.valence for item in history_items]
-                arousals = [item.arousal for item in history_items]
-                intensities = [item.intensity for item in history_items]
-                logger.info(
-                    "Emotion history ranges: valence=[%.3f..%.3f] arousal=[%.3f..%.3f] intensity=[%.3f..%.3f] count=%d",
-                    min(valences),
-                    max(valences),
-                    min(arousals),
-                    max(arousals),
-                    min(intensities),
-                    max(intensities),
-                    len(history_items),
-                )
-            except Exception as e:
-                logger.debug("Failed to compute emotion history ranges: %s", e)
-        
-        logger.info(f"Retrieved {len(history_items)} emotion history records with filters: "
-                   f"limit={limit}, hours={hours}, days={days}, since={since}, feeling={feeling}")
+        # Emotion history ranges removed to reduce log noise
         
         return EmotionHistoryResponse(
             count=len(history_items),

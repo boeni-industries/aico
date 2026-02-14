@@ -6,7 +6,7 @@ REST API endpoints for user and session management.
 
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 import logging
 from aico.core.logging import get_logger
 from backend.api.users_sessions.schemas import (
@@ -36,7 +36,7 @@ def format_time_remaining(expires_at: str) -> str:
     """Format time remaining until expiration"""
     try:
         expiry_time = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
-        time_diff = expiry_time - datetime.utcnow()
+        time_diff = expiry_time - datetime.now(UTC)
         
         if time_diff.total_seconds() < 0:
             return "Expired"
@@ -59,7 +59,7 @@ def format_last_activity(timestamp: str) -> str:
     """Format last activity timestamp"""
     try:
         activity_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-        time_diff = datetime.utcnow() - activity_time
+        time_diff = datetime.now(UTC) - activity_time
         
         if time_diff.total_seconds() < 60:
             return "Active now"
@@ -740,10 +740,10 @@ async def lock_unlock_user(
             
             if request.duration_hours:
                 # Lock for specific duration
-                cred.locked_until = datetime.utcnow() + timedelta(hours=request.duration_hours)
+                cred.locked_until = datetime.now(UTC) + timedelta(hours=request.duration_hours)
             else:
                 # Lock indefinitely (far future date)
-                cred.locked_until = datetime.utcnow() + timedelta(days=365*10)
+                cred.locked_until = datetime.now(UTC) + timedelta(days=365*10)
             
             await uow.credentials.update(cred)
             

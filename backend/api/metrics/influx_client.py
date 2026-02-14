@@ -284,6 +284,9 @@ class MetricsInfluxClient:
         """
         Generate sparkline data (time-series of aggregated values).
         
+        Optimized to use InfluxDB's window() function for efficient aggregation
+        in a single query instead of N separate queries.
+        
         Args:
             measurement: Measurement name
             field: Field name (or None for count)
@@ -295,45 +298,53 @@ class MetricsInfluxClient:
         Returns:
             List of aggregated values for each interval
         """
-        sparkline_data = []
+        filter_clauses = self._build_filter_clauses(filters)
+        total_duration = intervals * self._parse_duration_to_seconds(interval_duration)
         
-        for i in range(intervals):
-            # Calculate time range for this interval
-            start_offset = intervals - i
-            end_offset = intervals - i - 1
-            
-            filter_clauses = self._build_filter_clauses(filters)
-            
-            if field:
-                # Field-based aggregation
-                query = f'''
-                    from(bucket: "aico_telemetry")
-                    |> range(start: -{start_offset}{interval_duration}, stop: -{end_offset}{interval_duration})
-                    |> filter(fn: (r) => r._measurement == "{measurement}")
-                    |> filter(fn: (r) => r._field == "{field}")
-                    {filter_clauses}
-                    |> {aggregation}()
-                '''
-            else:
-                # Count-based aggregation
-                query = f'''
-                    from(bucket: "aico_telemetry")
-                    |> range(start: -{start_offset}{interval_duration}, stop: -{end_offset}{interval_duration})
-                    |> filter(fn: (r) => r._measurement == "{measurement}")
-                    {filter_clauses}
-                    |> count()
-                '''
-            
-            results = self.query(query)
-            value = results[0].get('value', 0.0) if results else 0.0
+        if field:
+            # Field-based aggregation using window()
+            query = f'''
+                from(bucket: "aico_telemetry")
+                |> range(start: -{total_duration}s)
+                |> filter(fn: (r) => r._measurement == "{measurement}")
+                |> filter(fn: (r) => r._field == "{field}")
+                {filter_clauses}
+                |> window(every: {interval_duration})
+                |> {aggregation}()
+                |> duplicate(column: "_stop", as: "_time")
+            '''
+        else:
+            # Count-based aggregation using window()
+            query = f'''
+                from(bucket: "aico_telemetry")
+                |> range(start: -{total_duration}s)
+                |> filter(fn: (r) => r._measurement == "{measurement}")
+                {filter_clauses}
+                |> window(every: {interval_duration})
+                |> count()
+                |> duplicate(column: "_stop", as: "_time")
+            '''
+        
+        results = self.query(query)
+        
+        # Extract values from windowed results
+        sparkline_data = []
+        for r in results:
+            value = r.get('value', 0.0)
             
             # For count sparklines, convert to rate if needed
             if not field and aggregation == "mean":
-                # Convert count to rate (e.g., count/60 for per-second rate)
                 duration_seconds = self._parse_duration_to_seconds(interval_duration)
                 value = value / duration_seconds if duration_seconds > 0 else 0.0
             
             sparkline_data.append(value)
+        
+        # Pad with zeros if we got fewer intervals than expected
+        while len(sparkline_data) < intervals:
+            sparkline_data.insert(0, 0.0)
+        
+        # Trim if we got more intervals than expected
+        sparkline_data = sparkline_data[-intervals:]
         
         return sparkline_data
     

@@ -217,10 +217,7 @@ def validate_startup_config(
     """
     all_errors = []
     
-    logger.info(f"🔍 [CONFIG_VALIDATION] Starting configuration validation for service: {service}")
-    
     # 1. Check required keys
-    logger.debug("[CONFIG_VALIDATION] Checking required configuration keys...")
     missing_keys = validate_required_keys(config, service)
     if missing_keys:
         error_msg = f"Missing required configuration keys: {', '.join(missing_keys)}"
@@ -228,11 +225,8 @@ def validate_startup_config(
         logger.error(f"❌ [CONFIG_VALIDATION] {error_msg}")
         if fail_fast:
             raise ConfigValidationError(error_msg)
-    else:
-        logger.info(f"✅ [CONFIG_VALIDATION] All required keys present ({len(REQUIRED_CONFIG_KEYS.get(service, []))} checked)")
     
     # 2. Validate domain schemas
-    logger.debug("[CONFIG_VALIDATION] Validating domain schemas...")
     schema_errors = validate_domain_schemas(config)
     if schema_errors:
         for domain, errors in schema_errors:
@@ -241,11 +235,8 @@ def validate_startup_config(
             logger.error(f"❌ [CONFIG_VALIDATION] {error_msg}")
             if fail_fast:
                 raise ConfigValidationError(error_msg)
-    else:
-        logger.info(f"✅ [CONFIG_VALIDATION] All domain schemas valid ({len(config.get_domains())} domains)")
     
     # 3. Validate config types
-    logger.debug("[CONFIG_VALIDATION] Validating configuration types...")
     type_errors = validate_config_types(config)
     if type_errors:
         for error in type_errors:
@@ -253,11 +244,8 @@ def validate_startup_config(
             logger.error(f"❌ [CONFIG_VALIDATION] {error}")
             if fail_fast:
                 raise ConfigValidationError(error)
-    else:
-        logger.info("✅ [CONFIG_VALIDATION] All configuration types valid")
     
     # 4. Validate config ranges
-    logger.debug("[CONFIG_VALIDATION] Validating configuration ranges...")
     range_errors = validate_config_ranges(config)
     if range_errors:
         for error in range_errors:
@@ -265,8 +253,6 @@ def validate_startup_config(
             logger.error(f"❌ [CONFIG_VALIDATION] {error}")
             if fail_fast:
                 raise ConfigValidationError(error)
-    else:
-        logger.info("✅ [CONFIG_VALIDATION] All configuration ranges valid")
     
     # Final check - if we collected errors and didn't fail fast, raise now
     if all_errors and not fail_fast:
@@ -274,8 +260,6 @@ def validate_startup_config(
         raise ConfigValidationError(
             f"Configuration validation failed with {len(all_errors)} error(s):\n{error_summary}"
         )
-    
-    logger.info(f"✅ [CONFIG_VALIDATION] Configuration validation PASSED for service: {service}")
 
 
 def print_config_summary(config: ConfigurationManager) -> None:
@@ -285,10 +269,4 @@ def print_config_summary(config: ConfigurationManager) -> None:
     Args:
         config: ConfigurationManager instance
     """
-    logger.info("📋 [CONFIG_VALIDATION] Configuration Summary:")
-    logger.info(f"  Environment: {config.get('system.environment', 'unknown')}")
-    logger.info(f"  Loaded domains: {', '.join(config.get_domains())}")
-    logger.info(f"  Config sources: {len(config.sources)}")
-    
-    for source in config.sources:
-        logger.info(f"    - {source.name} (priority: {source.priority})")
+    pass

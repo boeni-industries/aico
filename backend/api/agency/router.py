@@ -299,7 +299,7 @@ async def get_intention_set(
             active_intentions=active_intentions,
             open_goals_total=len(open_goals),
             hobby_goals_active=hobby_goals,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
         
     except Exception as e:
@@ -1004,7 +1004,7 @@ async def get_curiosity_status(
             curiosity_level=curiosity_level,
             curiosity_opportunities=opportunities,
             curiosity_goals_active=len(curiosity_goals),
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
         
     except Exception as e:
@@ -1046,8 +1046,8 @@ async def get_value_profile(
                 autonomy_level=default_autonomy,
                 sensitive_life_areas=None,
                 allowed_curiosity_domains=None,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC)
             )
             profile = await uow.ethics_value_profiles.create(profile)
             await uow.commit()
@@ -1113,7 +1113,7 @@ async def update_value_profile(
         
         # Serialize list to JSON string for database storage
         profile.sensitive_life_areas = json.dumps(sensitive_areas) if sensitive_areas else None
-        profile.updated_at = datetime.utcnow()
+        profile.updated_at = datetime.now(UTC)
         
         # Update via repository
         profile = await uow.ethics_value_profiles.update(profile)
@@ -1203,7 +1203,7 @@ async def grant_consent(
         import uuid as uuid_lib
         
         user_id = user["user_uuid"]
-        consent_id = f"consent-{user_id}-{datetime.utcnow().timestamp()}"
+        consent_id = f"consent-{user_id}-{datetime.now(UTC).timestamp()}"
         
         # Create consent record
         consent = ConsentRecord(
@@ -1211,7 +1211,7 @@ async def grant_consent(
             user_id=user_id,
             consent_scope=json.dumps(request.scope),
             decision=request.decision,
-            granted_at=datetime.utcnow()
+            granted_at=datetime.now(UTC)
         )
         
         consent = await uow.consent_records.create(consent)
@@ -1253,7 +1253,7 @@ async def list_consents(
                 user_id=c.user_id,
                 scope=json.loads(c.consent_scope) if c.consent_scope and isinstance(c.consent_scope, str) else {},
                 decision=c.decision,
-                granted_at=c.granted_at if c.granted_at else datetime.utcnow()
+                granted_at=c.granted_at if c.granted_at else datetime.now(UTC)
             )
             for c in consents
         ]
@@ -1648,7 +1648,7 @@ async def get_agency_state(
             value_profile=value_profile,
             consent_required_actions=consent_required_actions,
             recent_events=recent_events,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )
         
         # Cache the response

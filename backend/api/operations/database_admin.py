@@ -16,7 +16,7 @@ import time
 import shutil
 import uuid
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Optional, List
 from pathlib import Path
 
@@ -586,7 +586,7 @@ async def get_storage_trends(database_name: str) -> StorageTrendResponse:
         
         # Generate 7 days of simulated historical data
         # In production, replace with actual historical metrics
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         for i in range(7, 0, -1):
             timestamp = (now - timedelta(days=i)).isoformat()
             # Simulate gradual growth (90-100% of current size)

@@ -79,7 +79,7 @@ class Planner:
         self.skill_matcher = None
         if skill_registry:
             self.skill_matcher = SkillMatcher(skill_registry)
-            logger.info("[PLANNER] Initialized with SkillMatcher for robust skill assignment")
+            pass  # SkillMatcher initialized
         
         logger.debug(
             f"[PLANNER] Initialized with LLM: {llm_client is not None}, "
@@ -326,7 +326,7 @@ class Planner:
                 logger.debug(f"[PLANNER] LLM result content: {result}")
                 # Extract content from modelservice_client response structure
                 response = result.get("data", {}).get("content", "")
-                logger.debug(f"[PLANNER] Extracted response length: {len(response)}, first 100 chars: {response[:100] if response else 'EMPTY'}")
+                logger.debug(f"[PLANNER] Extracted response length: {len(response)}, first 200 chars: {response[:200] if response else 'EMPTY'}")
             else:
                 logger.warning("[PLANNER] LLM client has no compatible method")
                 return None
@@ -1039,12 +1039,9 @@ Return your plan as a JSON object with a "steps" array."""
         unmatched_count = len(steps) - matched_count
         
         if unmatched_count == 0:
-            logger.info(f"[PLANNER] All {len(steps)} steps successfully matched to skills")
+            pass  # All steps matched
         else:
-            logger.info(
-                f"[PLANNER] Skill assignment complete: {matched_count}/{len(steps)} matched, "
-                f"{unmatched_count} unmatched (logged as skill gaps)"
-            )
+            pass  # Skill assignment complete with some unmatched
         
         return steps
     
