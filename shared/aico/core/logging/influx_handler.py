@@ -157,9 +157,17 @@ class InfluxDBLogHandler(logging.Handler):
             elif record.name.startswith("shared.") or record.name.startswith("aico."):
                 inferred_service = "shared"
 
+        # Extract logger prefix (first 2 segments) for low-cardinality tag
+        # Examples: "backend.api", "shared.memory", "cli.commands"
+        logger_prefix = "unknown"
+        if isinstance(record.name, str) and "." in record.name:
+            parts = record.name.split(".")
+            logger_prefix = ".".join(parts[:2]) if len(parts) >= 2 else parts[0]
+        
         tags = {
             "service": inferred_service,
             "level": record.levelname,
+            "logger_prefix": logger_prefix,
         }
         
         # Fields (not indexed, for data)

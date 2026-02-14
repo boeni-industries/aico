@@ -21,21 +21,8 @@ warnings.filterwarnings("ignore", category=ResourceWarning)
 shared_path = Path(__file__).parent.parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
-from aico.core.config import ConfigurationManager
-from aico.security import AICOKeyManager
-
-# Monkey patch InfluxDB ApiClient to suppress __del__ errors
-try:
-    from influxdb_client._sync.api_client import ApiClient
-    _original_del = ApiClient.__del__
-    def _patched_del(self):
-        try:
-            _original_del(self)
-        except:
-            pass  # Suppress all cleanup errors
-    ApiClient.__del__ = _patched_del
-except ImportError:
-    pass  # InfluxDB client not installed yet
+# Lazy imports - don't load heavy modules at import time
+# ConfigurationManager, AICOKeyManager, InfluxDBClient imported in functions
 
 app = typer.Typer(
     help=(
@@ -56,9 +43,25 @@ def _logs_main(ctx: typer.Context):
 
 
 def _get_influx_client():
-    """Get InfluxDB client with credentials."""
+    """Get InfluxDB client with credentials (lazy imports for fast startup)."""
     try:
+        # Lazy imports - only load when actually needed
         from influxdb_client import InfluxDBClient
+        from influxdb_client._sync.api_client import ApiClient
+        from aico.core.config import ConfigurationManager
+        from aico.security import AICOKeyManager
+        
+        # Monkey patch InfluxDB ApiClient to suppress __del__ errors
+        try:
+            _original_del = ApiClient.__del__
+            def _patched_del(self):
+                try:
+                    _original_del(self)
+                except:
+                    pass  # Suppress all cleanup errors
+            ApiClient.__del__ = _patched_del
+        except (AttributeError, ImportError):
+            pass
         
         config = ConfigurationManager()
         config.initialize(lightweight=True)
@@ -92,7 +95,7 @@ def tail_logs(
     exact_level: Optional[str] = typer.Option(None, "--exact-level", help="Filter by exact level only (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
     logger: Optional[str] = typer.Option(None, "--logger", help="Filter by logger name"),
     lines: int = typer.Option(50, "--lines", "-n", help="Number of lines to show"),
-    last: str = typer.Option("48h", "--last", help="Time range to search (e.g., 1h, 30m, 2d)"),
+    last: str = typer.Option("1h", "--last", help="Time range to search (e.g., 1h, 30m, 2d)"),
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output (not implemented yet)")
 ):
     """Show the most recent N log entries (like tail -n)."""
@@ -110,20 +113,11 @@ def tail_logs(
     # Log level hierarchy (lower index = lower severity)
     level_hierarchy = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     
-    # Build Flux query
+    # Build optimized Flux query - uses tags for filtering, queries only message field
+    # This eliminates the expensive pivot operation for fast sub-second performance
     filters = [
         f'r._measurement == "logs"',
-        # We store message/logger/module/function as FIELDS (not tags).
-        # Influx returns one row per field, so we must pivot to reconstruct
-        # the full log entry for display.
-        (
-            '('
-            'r._field == "message" or '
-            'r._field == "logger" or '
-            'r._field == "module" or '
-            'r._field == "function"'
-            ')'
-        )
+        f'r._field == "message"'  # Only query message field
     ]
     
     if service:
@@ -146,21 +140,17 @@ def tail_logs(
             console.print(f"[yellow]⚠ Invalid exact level '{exact_level}'. Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL[/yellow]")
             return
     if logger:
-        filters.append(f'r.logger =~ /{logger}/')
+        # Use logger_prefix tag for fast filtering
+        filters.append(f'r.logger_prefix =~ /{logger}/')
     
     filter_str = " and ".join(filters)
     
-    # Tail shows the most recent N lines.
-    # Keep this query efficient: apply a global limit server-side.
-    # In Flux, limit() applies per-table, so we group() first to get a single table.
-    # Then we pivot fields into columns so we can display logger/module/function.
+    # Optimized query: filter by tags, query only message field, no pivot needed
+    # This achieves sub-second performance even with large log volumes
     query = f'''
     from(bucket: "{bucket}")
       |> range(start: -{last})
       |> filter(fn: (r) => {filter_str})
-      |> group(columns: ["_time", "service", "level"])
-      |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
-      |> group()
       |> sort(columns: ["_time"], desc: true)
       |> limit(n: {lines})
     '''
@@ -185,7 +175,7 @@ def tail_logs(
         # Re-sort for display (oldest to newest)
         all_records.sort(key=lambda r: r.get_time())
         
-        # Display logs
+        # Display logs (optimized - using tags, no pivot needed)
         for record in all_records:
                 # Convert UTC timestamp to local time for display
                 utc_time = record.get_time()
@@ -193,21 +183,8 @@ def tail_logs(
                 timestamp = local_time.strftime("%Y-%m-%d %H:%M:%S")
                 level = record.values.get("level", "INFO")
                 service_name = record.values.get("service", "unknown")
-                logger_name = record.values.get("logger") or "unknown"
-                message = record.values.get("message") or ""
-                module = record.values.get("module")
-                function = record.values.get("function")
-
-                display_logger_name = logger_name
-                try:
-                    if (
-                        isinstance(service_name, str)
-                        and isinstance(logger_name, str)
-                        and logger_name.startswith(f"{service_name}.")
-                    ):
-                        display_logger_name = logger_name[len(service_name) + 1 :]
-                except Exception:
-                    display_logger_name = logger_name
+                logger_prefix = record.values.get("logger_prefix", "unknown")
+                message = record.get_value() or ""  # message is the field value
                 
                 # Color by level
                 level_colors = {
@@ -219,11 +196,8 @@ def tail_logs(
                 }
                 color = level_colors.get(level, "white")
                 
-                suffix = ""
-                if module and function:
-                    suffix = f" ({module}.{function})"
                 console.print(
-                    f"[dim]{timestamp}[/dim] [{color}]{level:8}[/{color}] [cyan]{service_name}[/cyan].[dim]{display_logger_name}[/dim] - {message}{suffix}"
+                    f"[dim]{timestamp}[/dim] [{color}]{level:8}[/{color}] [cyan]{service_name}[/cyan].[dim]{logger_prefix}[/dim] - {message}"
                 )
         
     except Exception as e:
