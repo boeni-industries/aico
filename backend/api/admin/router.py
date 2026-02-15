@@ -1472,18 +1472,37 @@ async def list_logs(
             for value in values:
                 timestamp_ns = int(value[0])
                 log_line = value[1]
-                
-                # Parse metadata from log line (format: message | {json_metadata})
+
+                # Parse structured metadata from log line.
+                # Preferred format (new): a single JSON object per line
+                # Legacy format: message | {json_metadata}
                 message = log_line
                 metadata = {}
-                if " | " in log_line:
+                parsed_json = False
+                try:
+                    stripped = log_line.lstrip()
+                    if stripped.startswith("{") and stripped.endswith("}"):
+                        obj = json.loads(stripped)
+                        if isinstance(obj, dict):
+                            parsed_json = True
+                            metadata = obj
+                            message = str(
+                                obj.get("msg")
+                                or obj.get("message")
+                                or obj.get("event")
+                                or ""
+                            )
+                except Exception:
+                    parsed_json = False
+
+                if not parsed_json and " | " in log_line:
                     parts = log_line.split(" | ", 1)
                     message = parts[0]
                     if len(parts) > 1:
                         try:
                             metadata = json.loads(parts[1])
-                        except:
-                            pass
+                        except Exception:
+                            metadata = {}
                 
                 # Convert nanosecond timestamp to datetime
                 timestamp_s = timestamp_ns / 1_000_000_000
@@ -1517,8 +1536,8 @@ async def list_logs(
                 timestamp=log["timestamp"].isoformat(),
                 level=log["level"],
                 subsystem=log["service"],
-                module=log["metadata"].get("module", log["logger_prefix"]),
-                function=log["metadata"].get("function", ""),
+                module=log["metadata"].get("module") or log["metadata"].get("logger_prefix") or log["logger_prefix"],
+                function=log["metadata"].get("function") or log["metadata"].get("func") or "",
                 message=log["message"],
                 topic="",
                 extra_data=None
@@ -1654,114 +1673,126 @@ async def get_logs_stats(
     loki_url = config.get('loki.url', 'http://127.0.0.1:3100')
     
     try:
-        # Get logs for last 24h to calculate all stats
+        # We intentionally avoid pulling raw log lines here because Loki's
+        # max_entries_limit/limit would bias results toward the most recent logs.
+        # Use aggregations instead.
+
+        selector_all = '{service=~"backend|modelservice|cli|shared"}'
+        selector_errors = '{service=~"backend|modelservice|cli|shared", level=~"ERROR|CRITICAL"}'
+
+        def _instant(query: str) -> float:
+            url = f"{loki_url}/loki/api/v1/query"
+            resp = requests.get(url, params={"query": query}, timeout=15)
+            resp.raise_for_status()
+            payload = resp.json()
+            if payload.get("status") != "success":
+                return 0.0
+            res = payload.get("data", {}).get("result", [])
+            if not res:
+                return 0.0
+            val = res[0].get("value", [])
+            if len(val) < 2:
+                return 0.0
+            try:
+                return float(val[1])
+            except Exception:
+                return 0.0
+
+        def _instant_series(query: str, label: str) -> dict:
+            url = f"{loki_url}/loki/api/v1/query"
+            resp = requests.get(url, params={"query": query}, timeout=15)
+            resp.raise_for_status()
+            payload = resp.json()
+            if payload.get("status") != "success":
+                return {}
+            out = {}
+            for item in payload.get("data", {}).get("result", []):
+                metric = item.get("metric", {})
+                key = metric.get(label)
+                val = item.get("value", [])
+                if key is None or len(val) < 2:
+                    continue
+                try:
+                    out[str(key)] = int(float(val[1]))
+                except Exception:
+                    continue
+            return out
+
+        def _range(query: str, start: datetime, end: datetime, step_seconds: int) -> list:
+            url = f"{loki_url}/loki/api/v1/query_range"
+            params = {
+                "query": query,
+                # Loki expects nanoseconds
+                "start": int(start.timestamp() * 1_000_000_000),
+                "end": int(end.timestamp() * 1_000_000_000),
+                "step": step_seconds,
+            }
+            resp = requests.get(url, params=params, timeout=30)
+            resp.raise_for_status()
+            payload = resp.json()
+            if payload.get("status") != "success":
+                return []
+            return payload.get("data", {}).get("result", [])
+
+        # Time window
         end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(hours=24)
-        
-        # Query all logs from last 24h
-        # Match all known AICO services (backend, modelservice, cli, shared)
-        url = f"{loki_url}/loki/api/v1/query_range"
-        params = {
-            "query": '{service=~"backend|modelservice|cli|shared"}',
-            "limit": 5000,  # Loki's max_entries_limit
-            "start": int(start_time.timestamp()),
-            "end": int(end_time.timestamp()),
-            "direction": "backward"
-        }
-        
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        result = response.json()
-        
-        if result.get("status") != "success":
-            # Return empty stats
-            return LogsStatsResponse(
-                total_logs=0,
-                by_level={},
-                by_subsystem={},
-                recent_activity={},
-                error_rate_trend=0.0,
-                log_volume_trend=0.0
-            )
-        
-        # Process all logs
-        by_level = defaultdict(int)
-        by_subsystem = defaultdict(int)
+
+        # Totals and distributions
+        total_logs = int(_instant(f"sum(count_over_time({selector_all}[24h]))"))
+        by_level = _instant_series(f"sum by(level) (count_over_time({selector_all}[24h]))", "level")
+        by_subsystem = _instant_series(f"sum by(service) (count_over_time({selector_all}[24h]))", "service")
+
+        # Hourly timeline: sum over all logs with 1h buckets
+        series = _range(f"sum(count_over_time({selector_all}[1h]))", start_time, end_time, step_seconds=3600)
+
         hourly_counts = defaultdict(int)
-        last_hour_by_level = defaultdict(int)
-        prev_hour_by_level = defaultdict(int)
-        
-        last_hour_start = end_time - timedelta(hours=1)
-        prev_hour_start = end_time - timedelta(hours=2)
-        
-        streams = result.get("data", {}).get("result", [])
-        total_logs = 0
-        
-        for stream in streams:
-            labels = stream.get("stream", {})
-            level = labels.get("level", "INFO")
-            service = labels.get("service", "unknown")
-            values = stream.get("values", [])
-            
-            for value in values:
-                timestamp_ns = int(value[0])
-                timestamp_s = timestamp_ns / 1_000_000_000
-                dt = datetime.fromtimestamp(timestamp_s, tz=timezone.utc)
-                
-                # Count by level
-                by_level[level] += 1
-                
-                # Count by subsystem
-                by_subsystem[service] += 1
-                
-                # Count by hour for timeline
-                hour_str = str(dt.hour)
-                hourly_counts[hour_str] += 1
-                
-                # Count for trend analysis
-                if dt >= last_hour_start:
-                    last_hour_by_level[level] += 1
-                elif dt >= prev_hour_start:
-                    prev_hour_by_level[level] += 1
-                
-                total_logs += 1
-        
-        # Calculate trends
-        last_hour_total = sum(last_hour_by_level.values())
-        prev_hour_total = sum(prev_hour_by_level.values())
-        
-        last_hour_errors = last_hour_by_level.get('ERROR', 0)
-        prev_hour_errors = prev_hour_by_level.get('ERROR', 0)
-        
+        for item in series:
+            for ts, val in item.get("values", []):
+                try:
+                    # Loki returns ts as seconds string for range results
+                    dt = datetime.fromtimestamp(float(ts), tz=timezone.utc).astimezone()
+                    hourly_counts[str(dt.hour)] += int(float(val))
+                except Exception:
+                    continue
+
+        # Ensure keys 0-23 exist (Studio expects full day)
+        recent_activity = {str(h): int(hourly_counts.get(str(h), 0)) for h in range(24)}
+
+        # Trend analysis: compare last hour to previous hour
+        last_hour_total = _instant(f"sum(count_over_time({selector_all}[1h]))")
+        prev_hour_total = _instant(f"sum(count_over_time({selector_all}[1h] offset 1h))")
+        last_hour_errors = _instant(f"sum(count_over_time({selector_errors}[1h]))")
+        prev_hour_errors = _instant(f"sum(count_over_time({selector_errors}[1h] offset 1h))")
+
         last_hour_error_rate = (last_hour_errors / last_hour_total * 100) if last_hour_total > 0 else 0
         prev_hour_error_rate = (prev_hour_errors / prev_hour_total * 100) if prev_hour_total > 0 else 0
-        
+
         if prev_hour_error_rate > 0:
             error_rate_trend = ((last_hour_error_rate - prev_hour_error_rate) / prev_hour_error_rate) * 100
         else:
             error_rate_trend = 0.0
-        
+
         if prev_hour_total > 0:
             log_volume_trend = ((last_hour_total - prev_hour_total) / prev_hour_total) * 100
         else:
             log_volume_trend = 0.0
-        
-        # Convert defaultdicts to regular dicts and limit subsystems to top 10
+
         by_subsystem_sorted = dict(sorted(by_subsystem.items(), key=lambda x: x[1], reverse=True)[:10])
-        
+
         response = LogsStatsResponse(
             total_logs=total_logs,
-            by_level=dict(by_level),
+            by_level=by_level,
             by_subsystem=by_subsystem_sorted,
-            recent_activity=dict(hourly_counts),
+            recent_activity=recent_activity,
             error_rate_trend=error_rate_trend,
-            log_volume_trend=log_volume_trend
+            log_volume_trend=log_volume_trend,
         )
-        
+
         # Cache the result
         _stats_cache["data"] = response
         _stats_cache["timestamp"] = now
-        
+
     except Exception as e:
         logger.error(f"Failed to get Loki stats: {e}")
         # Return empty stats on error

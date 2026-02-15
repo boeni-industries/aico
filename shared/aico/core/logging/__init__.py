@@ -17,6 +17,8 @@ Usage:
 from .simple import (
     initialize_logging,
     get_logger,
+    set_log_context,
+    clear_log_context,
     shutdown_logging,
     get_loki_stats,
     is_initialized,
@@ -26,6 +28,8 @@ from .simple import (
 __all__ = [
     'initialize_logging',
     'get_logger',
+    'set_log_context',
+    'clear_log_context',
     'shutdown_logging',
     'get_loki_stats',
     'is_initialized',

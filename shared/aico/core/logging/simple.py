@@ -17,9 +17,66 @@ Usage:
 import logging
 import os
 import sys
+import contextvars
 from typing import Optional
 
 from .loki_handler import LokiLogHandler
+
+_ctx_request_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("aico_request_id", default=None)
+_ctx_client_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("aico_client_id", default=None)
+_ctx_session_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("aico_session_id", default=None)
+_ctx_user_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("aico_user_id", default=None)
+_ctx_conversation_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("aico_conversation_id", default=None)
+
+
+class _AICOLogContextFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        request_id = _ctx_request_id.get()
+        client_id = _ctx_client_id.get()
+        session_id = _ctx_session_id.get()
+        user_id = _ctx_user_id.get()
+        conversation_id = _ctx_conversation_id.get()
+
+        if request_id and not getattr(record, "request_id", None):
+            record.request_id = request_id
+        if client_id and not getattr(record, "client_id", None):
+            record.client_id = client_id
+        if session_id and not getattr(record, "session_id", None):
+            record.session_id = session_id
+        if user_id and not getattr(record, "user_id", None):
+            record.user_id = user_id
+        if conversation_id and not getattr(record, "conversation_id", None):
+            record.conversation_id = conversation_id
+
+        return True
+
+
+def set_log_context(
+    *,
+    request_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    conversation_id: Optional[str] = None,
+):
+    if request_id is not None:
+        _ctx_request_id.set(request_id)
+    if client_id is not None:
+        _ctx_client_id.set(client_id)
+    if session_id is not None:
+        _ctx_session_id.set(session_id)
+    if user_id is not None:
+        _ctx_user_id.set(user_id)
+    if conversation_id is not None:
+        _ctx_conversation_id.set(conversation_id)
+
+
+def clear_log_context():
+    _ctx_request_id.set(None)
+    _ctx_client_id.set(None)
+    _ctx_session_id.set(None)
+    _ctx_user_id.set(None)
+    _ctx_conversation_id.set(None)
 
 # Global state
 _initialized = False
@@ -84,6 +141,9 @@ def initialize_logging(
     # Get root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(resolved_log_level)
+
+    # Inject request/user correlation fields into every record
+    root_logger.addFilter(_AICOLogContextFilter())
 
     # Suppress noisy third-party INFO logs (e.g. periodic health checks)
     logging.getLogger("httpx").setLevel(logging.WARNING)

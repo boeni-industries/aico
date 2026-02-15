@@ -66,18 +66,9 @@ def add_influx_handler_to_logger(
     Returns:
         The created InfluxDBLogHandler instance
     """
-    resolved_level = _resolve_log_level(service_name=service_name, log_level=level)
-    handler = InfluxDBLogHandler(
-        influx_url=influx_url,
-        org=org,
-        bucket=bucket,
-        token=token,
-        service_name=service_name,
-        **handler_kwargs
+    raise RuntimeError(
+        "InfluxDB logging has been removed. Use Loki logging via setup_loki_logging() / initialize_logging()."
     )
-    handler.setLevel(resolved_level)
-    logger.addHandler(handler)
-    return handler
 
 
 def setup_influx_logging(
@@ -106,48 +97,9 @@ def setup_influx_logging(
     Returns:
         InfluxDBLogHandler instance or None if disabled/failed
     """
-    if not enabled:
-        return None
-    
-    try:
-        # Get config if not provided
-        if not all([influx_url, org, bucket, token]):
-            from aico.core.config import ConfigurationManager
-            from aico.security import AICOKeyManager
-            
-            config = ConfigurationManager()
-            config.initialize(lightweight=True)
-            
-            influx_url = influx_url or config.get("influx.url", "http://127.0.0.1:8086")
-            org = org or config.get("influx.org", "aico")
-            bucket = bucket or config.get("influx.bucket", "aico_telemetry")
-            
-            if not token:
-                key_manager = AICOKeyManager(config)
-                token = key_manager.get_database_password("influx", username="admin_token")
-        
-        if not token:
-            print(f"[InfluxDB Logging] No token available, skipping setup", flush=True)
-            return None
-        
-        # Add handler to root logger
-        root_logger = logging.getLogger()
-        handler = add_influx_handler_to_logger(
-            logger=root_logger,
-            influx_url=influx_url,
-            org=org,
-            bucket=bucket,
-            token=token,
-            service_name=service_name,
-            level=level
-        )
-        
-        print(f"[InfluxDB Logging] Enabled for service '{service_name}'", flush=True)
-        return handler
-    
-    except Exception as e:
-        print(f"[InfluxDB Logging] Setup failed: {e}", flush=True)
-        return None
+    # InfluxDB log export is no longer supported. Keep this function as a
+    # compatibility shim to ensure older code paths can't silently write logs.
+    return None
 
 
 def add_loki_handler_to_logger(

@@ -134,7 +134,7 @@ services:
       com.aico.deployment.type: "local-dev"
 
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:12.1.0
     container_name: aico-grafana
     restart: unless-stopped
     environment:

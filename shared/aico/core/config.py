@@ -258,18 +258,14 @@ class ConfigurationManager:
                         available = []
                         if isinstance(value, dict):
                             available = list(value.keys())
-                        logger.error(
-                            "[CONFIG_ERROR] Configuration key '%s' not found (missing segment '%s'). "
+                        # Missing optional keys are expected during incremental config migration.
+                        # Do not emit stack traces in this case (it creates noisy log storms).
+                        logger.warning(
+                            "[CONFIG_WARNING] Configuration key '%s' not found (missing segment '%s'). "
                             "Returning provided default. Available keys at this level: %s",
                             key,
                             k,
                             available,
-                        )
-                        import traceback
-                        logger.error(
-                            "[CONFIG_ERROR] Stack trace for missing key '%s':\n%s",
-                            key,
-                            "".join(traceback.format_stack(limit=40)),
                         )
                     return default
 

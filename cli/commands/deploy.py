@@ -1280,10 +1280,14 @@ def deploy_grafana(
     max_wait = 60
     wait_interval = 2
     elapsed = 0
-    
+
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    grafana_url = config.get("grafana.url", "http://127.0.0.1:3000")
+    grafana_url = (
+        os.getenv("AICO_GRAFANA_URL")
+        or config.get_optional("grafana.url")
+        or "http://127.0.0.1:3001"
+    )
     
     while elapsed < max_wait:
         try:
@@ -1309,7 +1313,18 @@ def deploy_grafana(
             timeout=5.0
         )
         if response.status_code == 200:
-            datasources = response.json()
+            content_type = (response.headers.get("Content-Type") or "").lower()
+            if "json" not in content_type:
+                console.print(
+                    format_warning(
+                        "⚠ Grafana /api/datasources did not return JSON. "
+                        f"Content-Type={response.headers.get('Content-Type')!r}."
+                    )
+                )
+                console.print(format_warning(f"⚠ Response (first 200 chars): {response.text[:200]!r}"))
+                datasources = []
+            else:
+                datasources = response.json()
             loki_ds = [ds for ds in datasources if ds.get("type") == "loki"]
             if loki_ds:
                 console.print(format_success(f"✓ Grafana API responding correctly"))

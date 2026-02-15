@@ -897,12 +897,13 @@ class BackendLifecycleManager:
         """Configure middleware stack in correct order"""
         if not self.app:
             raise RuntimeError("FastAPI app not created")
-        
+
         # Register exception handlers FIRST
         from backend.core.exception_handlers import register_exception_handlers
         register_exception_handlers(self.app)
-        
+
         # 1. CORS middleware (outermost)
+        from fastapi.middleware.cors import CORSMiddleware
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],  # Configure appropriately for production
@@ -910,73 +911,51 @@ class BackendLifecycleManager:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-        
+
         # 2. Metrics middleware (collect request metrics)
         from backend.api_gateway.middleware.metrics import MetricsMiddleware
         self.app.add_middleware(MetricsMiddleware)
-        
-        # 3. Request logging middleware (before encryption)
+
+        # 3. Correlation context middleware (request-scoped IDs for structured logging)
+        from fastapi import Request
+
+        @self.app.middleware("http")
+        async def inject_log_context(request: Request, call_next):
+            from uuid import uuid4
+            from aico.core.logging import set_log_context, clear_log_context
+
+            request_id = request.headers.get("x-request-id") or str(uuid4())
+            client_id = request.headers.get("x-client-id")
+            session_id = request.headers.get("x-session-id")
+
+            set_log_context(request_id=request_id, client_id=client_id, session_id=session_id)
+            try:
+                response = await call_next(request)
+            finally:
+                clear_log_context()
+
+            try:
+                response.headers.setdefault("x-request-id", request_id)
+            except Exception:
+                pass
+
+            return response
+
+        # 4. Request logging middleware
         @self.app.middleware("http")
         async def log_requests(request: Request, call_next):
             if request.url.path.startswith("/api/v1/"):
                 self.logger.debug(f"Request: {request.method} {request.url.path}")
-            
+
             response = await call_next(request)
-            
+
             if request.url.path.startswith("/api/v1/") and response.status_code >= 400:
                 self.logger.warning(f"Response: {request.method} {request.url.path} -> {response.status_code}")
-            
+
             return response
         
-        # 3. Plugin-based middleware will be added by plugins during their initialization
-        
+        # 5. Plugin-based middleware will be added by plugins during their initialization
         self.logger.debug("Middleware stack configured")
-    
-    def _mount_routers(self) -> None:
-        """Mount API routers with proper dependency injection"""
-        if not self.app:
-            raise RuntimeError("FastAPI app not created")
-        
-        # Import version function
-        from aico.core.version import get_backend_version
-        
-        # Health endpoint
-        @self.app.get("/api/v1/health")
-        async def health_check():
-            from datetime import datetime, timezone
-            import time
-            return {
-                "status": "healthy", 
-                "service": "aico-backend", 
-                "version": get_backend_version(),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0
-            }
-        
-        # Gateway status endpoint (missing route causing 404)
-        @self.app.get("/api/v1/gateway/status")
-        async def gateway_status():
-            return {
-                "status": "healthy",
-                "service": "aico-api-gateway", 
-                "adapters": ["rest", "websocket"],
-                "version": get_backend_version()
-            }
-        
-        # Handshake endpoint handled by encryption middleware - no fallback needed
-        
-        # Mount domain routers
-        self._mount_domain_routers()
-        
-        self.logger.debug("API routers mounted")
-        
-        # Apply encryption middleware as final ASGI wrapper (after all routers mounted)
-        self.logger.debug("Starting encryption middleware initialization")
-        key_manager = AICOKeyManager(self.config)
-        # Store reference to FastAPI app before wrapping for route display
-        self.fastapi_app = self.app
-        self.app = EncryptionMiddleware(self.app, key_manager)
-        self.logger.debug("Encryption middleware started successfully")
     
     def _display_service_status(self) -> None:
         """Display core service startup status"""
@@ -989,6 +968,24 @@ class BackendLifecycleManager:
         pass
     
     
+    def _mount_routers(self) -> None:
+        """Mount API routers with proper dependency injection"""
+        if not self.app:
+            raise RuntimeError("FastAPI app not created")
+
+        # Mount domain routers
+        self._mount_domain_routers()
+
+        self.logger.debug("API routers mounted")
+
+        # Apply encryption middleware as final ASGI wrapper (after all routers mounted)
+        self.logger.debug("Starting encryption middleware initialization")
+        key_manager = AICOKeyManager(self.config)
+        # Store reference to FastAPI app before wrapping for route display
+        self.fastapi_app = self.app
+        self.app = EncryptionMiddleware(self.app, key_manager)
+        self.logger.debug("Encryption middleware started successfully")
+
     def _mount_domain_routers(self) -> None:
         """Mount domain-specific API routers"""
         # Import routers

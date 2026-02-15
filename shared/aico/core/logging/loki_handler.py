@@ -77,6 +77,9 @@ class LokiLogHandler(logging.Handler):
 
         # Prevent queuing many pending writes
         self._write_in_flight = threading.Event()
+
+        # Shutdown guard to prevent scheduling work during interpreter teardown
+        self._closing = threading.Event()
         
         # Statistics
         self.stats = {
@@ -152,44 +155,57 @@ class LokiLogHandler(logging.Handler):
             "level": record.levelname,
             "logger_prefix": logger_prefix,
         }
-        
-        # Build log line with metadata (not indexed, stored as content)
-        # Format: timestamp | level | logger | message [metadata]
-        timestamp = datetime.fromtimestamp(record.created).isoformat()
-        
-        # Base log line
-        log_line = f"{record.getMessage()}"
-        
-        # Add metadata as JSON suffix for structured querying
-        metadata = {
+
+        # Build a single JSON object as the log line.
+        # This is the only approach that gives Grafana/Loki first-class structured log UX.
+        log_obj: Dict[str, Any] = {
+            "ts": datetime.fromtimestamp(record.created).isoformat(),
+            "level": record.levelname,
+            "service": inferred_service,
             "logger": record.name,
+            "logger_prefix": logger_prefix,
+            "msg": record.getMessage(),
             "module": record.module,
             "function": record.funcName if record.funcName != "<module>" else None,
             "pathname": record.pathname,
             "lineno": record.lineno,
         }
-        
-        # Add exception info if present
+
+        # Attach OpenTelemetry trace correlation (if active).
+        try:
+            from opentelemetry import trace
+
+            span = trace.get_current_span()
+            if span is not None:
+                ctx = span.get_span_context()
+                if getattr(ctx, "is_valid", False):
+                    log_obj["trace_id"] = format(ctx.trace_id, "032x")
+                    log_obj["span_id"] = format(ctx.span_id, "016x")
+        except Exception:
+            pass
+
+        # Attach exception info if present
         if record.exc_info:
             exc_text = self.formatter.formatException(record.exc_info) if self.formatter else str(record.exc_info)
-            metadata["exception"] = exc_text
+            log_obj["exception"] = exc_text
             if record.exc_info[0]:
-                metadata["exc_type"] = record.exc_info[0].__name__
-        
-        # Add extra fields from record
+                log_obj["exc_type"] = record.exc_info[0].__name__
+
+        # Attach a small, explicit set of known correlation IDs (avoid high-cardinality labels)
         if hasattr(record, "user_id") and record.user_id:
-            metadata["user_id"] = record.user_id
+            log_obj["user_id"] = record.user_id
         if hasattr(record, "request_id") and record.request_id:
-            metadata["request_id"] = record.request_id
+            log_obj["request_id"] = record.request_id
+        if hasattr(record, "client_id") and record.client_id:
+            log_obj["client_id"] = record.client_id
+        if hasattr(record, "session_id") and record.session_id:
+            log_obj["session_id"] = record.session_id
         if hasattr(record, "conversation_id") and record.conversation_id:
-            metadata["conversation_id"] = record.conversation_id
-        
-        # Remove None values
-        metadata = {k: v for k, v in metadata.items() if v is not None}
-        
-        # Append metadata as JSON
-        if metadata:
-            log_line += f" | {json.dumps(metadata)}"
+            log_obj["conversation_id"] = record.conversation_id
+
+        # Remove None values and JSON-serialize
+        log_obj = {k: v for k, v in log_obj.items() if v is not None}
+        log_line = json.dumps(log_obj, ensure_ascii=False, separators=(",", ":"))
         
         return {
             "timestamp": int(record.created * 1_000_000_000),  # nanoseconds
@@ -229,6 +245,9 @@ class LokiLogHandler(logging.Handler):
         """Flush buffered records to Loki."""
         if not self.buffer:
             return
+
+        if self._closing.is_set():
+            return
         
         # Don't queue multiple writes
         if self._write_in_flight.is_set():
@@ -245,7 +264,14 @@ class LokiLogHandler(logging.Handler):
         
         # Submit write to executor (non-blocking)
         self._write_in_flight.set()
-        self.executor.submit(self._write_batch, batch)
+        try:
+            # ThreadPoolExecutor raises RuntimeError if shutdown has started.
+            self.executor.submit(self._write_batch, batch)
+        except RuntimeError:
+            # During shutdown / interpreter exit we may not be able to schedule.
+            self._write_in_flight.clear()
+            with self.stats_lock:
+                self.stats["write_errors"] += 1
     
     def _write_batch(self, batch: List[Dict[str, Any]]):
         """Write batch of log entries to Loki."""
@@ -310,22 +336,36 @@ class LokiLogHandler(logging.Handler):
     
     def close(self):
         """Close handler and flush remaining records."""
+        self._closing.set()
         self.running = False
-        
-        # Flush remaining records
-        self.flush()
-        
+
+        try:
+            # Flush remaining records
+            self.flush()
+        except Exception:
+            pass
+
         # Wait for flush thread to finish
-        if self.flush_thread and self.flush_thread.is_alive():
-            self.flush_thread.join(timeout=5)
-        
-        # Shutdown executor
-        self.executor.shutdown(wait=True, cancel_futures=False)
-        
+        try:
+            if self.flush_thread and self.flush_thread.is_alive():
+                self.flush_thread.join(timeout=5)
+        except Exception:
+            pass
+
         # Close HTTP session
-        if self._http_session:
-            self._http_session.close()
-        
+        try:
+            if self._http_session is not None:
+                self._http_session.close()
+        except Exception:
+            pass
+
+        # Shutdown executor last
+        try:
+            if self.executor is not None:
+                self.executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+
         super().close()
     
     def get_stats(self) -> Dict[str, Any]:
