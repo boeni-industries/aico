@@ -861,8 +861,8 @@
             "uid": "P8E80F9AEF21F6940"
           },
           "editorMode": "code",
-          "expr": "sum by(service) (count_over_time({service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\" [1m]))",
-          "legendFormat": "{{service}}",
+          "expr": "sum(count_over_time({service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\" [1m])) or vector(0)",
+          "legendFormat": "errors",
           "interval": "1m",
           "intervalMs": 60000,
           "maxDataPoints": 60,
@@ -880,7 +880,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
         "y": 42
       },
@@ -917,10 +917,10 @@
         "uid": "P8E80F9AEF21F6940"
       },
       "gridPos": {
-        "h": 12,
-        "w": 24,
-        "x": 0,
-        "y": 50
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 42
       },
       "id": 13,
       "options": {
@@ -1077,8 +1077,8 @@
     ]
   },
   "timezone": "browser",
-  "title": "AICO Log Analysis Dashboard",
+  "title": "AICO Logs Overview",
   "uid": "aico-logs-overview",
-  "version": 19,
+  "version": 21,
   "weekStart": ""
 }
