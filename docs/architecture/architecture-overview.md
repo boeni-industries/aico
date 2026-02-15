@@ -6,7 +6,7 @@ title: Architecture Overview
 
 ## Project Summary
 
-AICO is an open-source experiment to build an **emotionally present, visually embodied, and proactive AI companion**—intended to act as a family member, confidante and sidekick, not just an assistant. Unlike productivity-oriented conversationbots, AICO naturally recognizes and builds individual relationships with family members through multi-modal identification, creating authentic bonds without technical barriers while maintaining a consistent core personality.
+AICO is an open-source project to build an **emotionally present, proactive AI companion** with durable memory and inspectable internal state. It is designed for local-first operation and for running as an operable system (CLI, scheduler, logs, metrics), not just a chat interface.
 
 **Core Principles:**
 - **Local-First Privacy:** All data and processing are local by default, with encrypted storage and secure communication.
@@ -15,7 +15,7 @@ AICO is an open-source experiment to build an **emotionally present, visually em
 - **Brain-Inspired Memory:** Complementary learning systems (fast hippocampal + slow cortical) for genuine relationship evolution.
 - **Knowledge Graph Intelligence:** Property graph with temporal reasoning for relationship modeling.
 - **Adaptive Learning:** Thompson Sampling and RLHF for behavioral optimization.
-- **Zero Configuration:** Systems learn automatically from natural interactions.
+- **Operability:** CLI-first operations, inspectability, and explicit persistence layers.
 
 **Planned Principles:**
 - **Natural Family Recognition:** Multi-modal identification (architecture defined, implementation planned).
@@ -29,7 +29,7 @@ AICO's features are organized into logical modules for development and deploymen
 
 ### 👥 Social Relationship Intelligence
 **Production Implementation:**
-- **Property Graph Storage**: NetworkX + PostgreSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties
+- **Property Graph Storage**: Knowledge graph storage and tooling (PostgreSQL-backed subsystems + graph analytics)
 - **Multi-Pass Entity Extraction**: GLiNER zero-shot recognition + LLM relationship extraction
 - **Entity Resolution**: 3-step deduplication (semantic blocking → LLM matching → merging)
 - **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
@@ -109,15 +109,14 @@ AICO's features are organized into logical modules for development and deploymen
 
 ### 🔒 Privacy & Security
 **Production Implementation:**
-- **SQLCipher Encryption**: AES-256-GCM for all databases (PostgreSQL + Drift)
+- **Secrets**: OS keychain/keyring-backed secret storage
 - **CurveZMQ**: 100% encrypted message bus with mandatory mutual authentication
 - **Argon2id**: Memory-hard KDF for master key derivation
 - **PBKDF2**: Database encryption key derivation (100k iterations)
 - **NaCl/libsodium**: Modern cryptography for frontend (Ed25519, X25519)
 - **JWT Authentication**: HS256 tokens with 24-hour expiry and refresh
 - **Platform Keychain**: OS-native secure storage (Keychain, Credential Manager)
-- **Audit Logging**: Encrypted log persistence with 7-day retention
-- **Database Resilience**: FULL synchronous mode for crash-safe operations
+- **Logs**: Centralized log storage via Loki (queried via LogQL)
 
 **Planned Features:**
 - Consent management and granular privacy controls
@@ -130,7 +129,7 @@ AICO's features are organized into logical modules for development and deploymen
 - **CLI v1.1.0**: 15 command groups with 100+ subcommands for complete system administration
 - **Task Scheduler**: Extensible task system with built-in and custom tasks
 - **Developer Tools**: Schema management, protobuf generation, testing utilities
-- **Hot Reload**: Configuration changes without service restart
+- **Configuration management**: Schema-validated YAML configuration with CLI tooling
 - **Health Monitoring**: Comprehensive system health and performance tracking
 
 **Planned Features:**
@@ -153,14 +152,14 @@ AICO's features are organized into logical modules for development and deploymen
 **Implemented:**
 - **CurveZMQ Message Bus** - 100% encrypted pub/sub with mandatory mutual authentication
 - **Protocol Buffers 6.32** - High-performance binary serialization for backend (5.0 for Flutter)
-- **Topic-Based Pub/Sub** - Hierarchical topics with wildcard pattern matching
+- **Topic-Based Pub/Sub** - Hierarchical topics with prefix-based routing
 - **Three-Tier Memory** - Working (LMDB) + Semantic (ChromaDB) + Adaptive (AMS)
 - **Hybrid Search V3** - Semantic + BM25 + IDF filtering + RRF fusion
 - **Property Graph** - NetworkX + PostgreSQL + ChromaDB for knowledge graph with temporal reasoning
 - **Thompson Sampling** - Contextual bandit for skill selection and behavioral learning
 - **Qwen3 Abliterated 8B** - Uncensored foundation model for character consistency
 - **Plugin Architecture** - Modular backend with lifecycle management
-- **Encrypted Storage** - SQLCipher (AES-256-GCM) for all databases
+- **Repository + UnitOfWork** - per-request PostgreSQL transaction/session pattern
 
 **Planned:**
 - **C-CPM Emotion Model** - Component Process Model for emotion simulation (Phase 1 implemented, advanced phases planned)
@@ -345,7 +344,7 @@ The AICO system consists of the following main parts:
 ### Backend Service
 Python-based persistent service providing core AICO functionality:
 - **Plugin-based architecture** with FastAPI and ZeroMQ message bus
-- **Encrypted data storage** using PostgreSQL with SQLCipher
+- **Transactional storage** using PostgreSQL (Repository + UnitOfWork per request)
 - **Continuous operation** enabling autonomous agency and background processing
 - **Modular design** with lifecycle management and dependency injection
 

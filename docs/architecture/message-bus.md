@@ -70,7 +70,7 @@ The Core Message Bus implements a **hybrid broker pattern** with the backend ser
 **Internal Communication (Backend Modules):**
 - **Protocol**: ZeroMQ with Protocol Buffers 6.32
 - **Transport**: TCP for all communication (inproc/ipc not used)
-- **Pattern**: Pub/Sub with topic hierarchy and wildcard pattern matching
+- **Pattern**: Pub/Sub with topic hierarchy and prefix-based routing
 - **Broker**: Backend service runs central ZeroMQ broker on ports 5555 (frontend) and 5556 (backend)
 - **Encryption**: Mandatory CurveZMQ with no plaintext fallback
 
@@ -123,9 +123,10 @@ The message bus uses a hierarchical topic structure that organizes messages by f
    - Example: `logs/*` becomes ZMQ filter `logs/`
    - This means ZeroMQ will deliver ANY message whose topic starts with that prefix
 
-2. **Application-level pattern matching**
-   - After ZeroMQ delivers messages based on prefix, AICO performs application-level pattern matching
-   - This is where wildcard semantics are applied
+2. **AICO subscription matching is prefix-based**
+   - AICO stores subscription patterns and matches incoming topics using prefix checks
+   - Special cases: `*` and `**` subscribe to all topics (empty ZMQ filter)
+   - There is no glob-style wildcard semantics (no `*` / `**` matching inside a pattern)
 
 #### ZeroMQ Prefix Matching
 
@@ -155,7 +156,6 @@ ZeroMQ uses simple prefix matching (no wildcards):
 
 2. **Understand ZeroMQ's prefix behavior**
    - ZeroMQ delivers ANY message whose topic starts with your filter
-   - No application-level filtering is implemented
    - Design topics carefully to leverage prefix matching effectively
 
 #### Common Pitfalls

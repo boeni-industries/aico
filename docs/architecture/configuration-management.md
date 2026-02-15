@@ -14,9 +14,8 @@ AICO's configuration management system provides a unified, hierarchical, and sec
 - **Hierarchical Overrides**: Environment → User → Runtime configuration layering
 - **Type Safety**: Strong typing with validation and schema enforcement
 - **Privacy-First**: Sensitive configuration encrypted at rest
-- **Hot Reloading**: Runtime configuration updates without service restart
+- **Hot Reloading**: File watchers for automatic config reload (optional, skipped in lightweight mode)
 - **Environment Isolation**: Clear separation between dev/staging/prod environments
-- **Audit Trail**: Complete change tracking for security and compliance
 - **Cross-Platform**: Consistent behavior across Windows, macOS, Linux
 
 ## Architecture Overview
@@ -39,9 +38,8 @@ flowchart TD
     subgraph STORAGE [" 💾 Storage & Caching "]
         direction LR
         C1[(📋 Schemas)] 
-        C2[(🗃️ Config DB)]
-        C3[⚡ Cache]
-        C4[(📝 Audit)]
+        C2[⚡ Cache]
+        C3[(� Runtime)]
     end
     
     %% Applications (Bottom)
@@ -57,12 +55,11 @@ flowchart TD
     %% Main flow
     SOURCES --> PIPELINE
     PIPELINE --> C2
-    C2 --> C3
-    C3 --> APPS
+    C2 --> APPS
     
     %% Side connections
     C1 -.-> B2
-    APPS -.-> C4
+    C3 -.-> C2
     
     %% Styling
     classDef sourceStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
@@ -194,8 +191,8 @@ validation_errors = config.validate_schemas()
 - **Initialization**: Loads schemas and configurations with file watchers
 - **Dot-notation access**: `api_gateway.rest.port`, `postgres.host`, `system.log_level`
 - **Schema validation**: JSON Schema-based validation
-- **Hot reloading**: Automatic reload on file changes
-- **Encrypted persistence**: Runtime changes stored securely
+- **Hot reloading**: Automatic reload on file changes (via watchdog observers, optional)
+- **Runtime persistence**: Runtime changes stored in `runtime.yaml` (platform-specific user config dir)
 
 ## Subsystem Integration
 

@@ -47,6 +47,7 @@ GET /interactions/{interaction_id}
     "answer_json": {},
     "answered_at": "ISO8601",
     "expires_at": "ISO8601",
+    "idempotency_key": "string",
     "created_at": "ISO8601",
     "updated_at": "ISO8601"
   },
@@ -70,7 +71,14 @@ GET /interactions/{interaction_id}
 **Response 404:**
 ```json
 {
-  "detail": "Interaction not found"
+  "detail": "interaction not found"
+}
+```
+
+**Response 410:**
+```json
+{
+  "detail": "interaction expired"
 }
 ```
 
@@ -85,34 +93,32 @@ GET /interactions
 ```
 
 **Query Parameters:**
-- `status` (string, optional): Filter by status (pending|answered|approved|rejected|cancelled)
-- `type` (string, optional): Filter by type (question|choice|dialogue|approval|ack)
-- `requirement` (string, optional): Filter by requirement (required|optional)
-- `severity` (string, optional): Filter by severity (low|medium|high)
-- `limit` (integer, optional): Maximum number of results (default: 50, max: 100)
+- `status` (string, optional; repeatable): Filter by status
+  - terminal statuses: `answered`, `approved`, `rejected`, `cancelled`, `expired`
+- `interaction_type` (string, optional; repeatable): Filter by type (`question|choice|dialogue|approval|ack`)
+- `category` (string, optional; repeatable): Filter by category
+- `created_after` (ISO8601 datetime, optional): Filter by creation time lower bound
+- `created_before` (ISO8601 datetime, optional): Filter by creation time upper bound
+- `limit` (integer, optional): Maximum number of results (default: 50, max: 200)
 - `offset` (integer, optional): Pagination offset (default: 0)
 
 **Response 200:**
 ```json
 {
-  "interactions": [
+  "items": [
     {
       "interaction_id": "uuid",
       "user_id": "uuid",
       "correlation_id": "uuid",
       "interaction_type": "question",
       "status": "pending",
-      "prompt": "string",
-      "title": "string",
       "requirement": "required",
       "severity": "medium",
       "created_at": "ISO8601",
       "updated_at": "ISO8601"
     }
   ],
-  "total": 42,
-  "limit": 50,
-  "offset": 0
+  "total": 42
 }
 ```
 
@@ -253,6 +259,13 @@ POST /interactions/{interaction_id}/reject
     "to_status": "rejected",
     ...
   }
+}
+```
+
+**Response 422:**
+```json
+{
+  "detail": "interaction type not rejectable"
 }
 ```
 
@@ -424,7 +437,6 @@ Once an interaction reaches any of these states, no further transitions are allo
 - `rejected`
 - `cancelled`
 - `expired`
-- `dismissed`
 
 ---
 
@@ -441,33 +453,19 @@ Format: Protobuf (AicoMessage with Struct payload)
 ```json
 {
   "interaction": {
-    "interactionId": "uuid",
-    "userId": "uuid",
-    "interactionType": "question",
+    "interaction_id": "uuid",
+    "user_id": "uuid",
+    "interaction_type": "question",
     "status": "answered",
     ...
   },
   "event": {
-    "eventId": "uuid",
-    "eventType": "answered",
+    "event_id": "uuid",
+    "event_type": "answered",
     "actor": "user:uuid",
     ...
   }
 }
-```
-
----
-
-## Rate Limiting
-
-- **User endpoints**: 100 requests per minute per user
-- **Admin endpoints**: 1000 requests per minute
-
-Rate limit headers:
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1612345678
 ```
 
 ---
@@ -478,7 +476,7 @@ X-RateLimit-Reset: 1612345678
 
 ```bash
 # 1. Simulate question (admin)
-curl -X POST http://localhost:8772/api/v1/admin/interactions/simulate \
+curl -X POST http://localhost:<port>/api/v1/admin/interactions/simulate \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -491,7 +489,7 @@ curl -X POST http://localhost:8772/api/v1/admin/interactions/simulate \
   }'
 
 # 2. Answer question (user)
-curl -X POST http://localhost:8772/api/v1/interactions/interaction-uuid/answer \
+curl -X POST http://localhost:<port>/api/v1/interactions/interaction-uuid/answer \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -502,7 +500,7 @@ curl -X POST http://localhost:8772/api/v1/interactions/interaction-uuid/answer \
 ### List Pending Interactions
 
 ```bash
-curl -X GET "http://localhost:8772/api/v1/interactions?status=pending&limit=10" \
+curl -X GET "http://localhost:<port>/api/v1/interactions?status=pending&limit=10" \
   -H "Authorization: Bearer $USER_TOKEN"
 ```
 
@@ -510,10 +508,10 @@ curl -X GET "http://localhost:8772/api/v1/interactions?status=pending&limit=10" 
 
 ```bash
 # Approve
-curl -X POST http://localhost:8772/api/v1/interactions/interaction-uuid/approve \
+curl -X POST http://localhost:<port>/api/v1/interactions/interaction-uuid/approve \
   -H "Authorization: Bearer $USER_TOKEN"
 
 # Reject
-curl -X POST http://localhost:8772/api/v1/interactions/interaction-uuid/reject \
+curl -X POST http://localhost:<port>/api/v1/interactions/interaction-uuid/reject \
   -H "Authorization: Bearer $USER_TOKEN"
 ```

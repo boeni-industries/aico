@@ -118,10 +118,9 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **AES-256-GCM** | Database encryption | Authenticated encryption for PostgreSQL data |
-| **PBKDF2** | Key derivation | Database-specific encryption keys |
-| **Drift + SQLCipher** | Frontend database | Type-safe SQL with encryption for Flutter message cache |
-| **Keyring** | Credential storage | Platform-native secure storage (Keychain/Credential Manager) |
+| **Drift + SQLCipher** | Frontend database | Type-safe SQL with AES-256-GCM encryption for Flutter message cache |
+| **Keyring** | Credential storage | Platform-native secure storage (Keychain/Credential Manager) for secrets |
+| **PBKDF2** | Key derivation | Key derivation for encrypted secrets (100k iterations) |
 
 ## Communication Layer
 
@@ -141,7 +140,7 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **SQLCipher** | Database encryption | AES-256-GCM encryption for PostgreSQL and Drift databases |
+| **SQLCipher** | Frontend database encryption | AES-256-GCM encryption for Drift databases (Flutter message cache) |
 | **CurveZMQ** | Transport encryption | Elliptic curve encryption for all ZMQ message bus traffic |
 | **Argon2id** | Key derivation | Memory-hard KDF for master key derivation from password |
 | **PBKDF2** | Key derivation | Additional KDF for database encryption keys (100k iterations) |

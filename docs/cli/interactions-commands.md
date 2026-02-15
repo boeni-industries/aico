@@ -36,10 +36,10 @@ aico interactions simulate <type> [OPTIONS]
 **Type-Specific Options:**
 
 **Question:**
-- `--expected-type` - Expected answer type (text, number, date, etc.)
+- `--answer-type`, `-a` - Expected answer type (text, yes_no, number, date, choice)
 
 **Choice:**
-- `--options` - Comma-separated list of allowed options (required)
+- `--options`, `-o` - Comma-separated list of allowed options (required for choice type)
 
 **Scenario Options:**
 - `--scenario` - Execution scenario: create_only, create_then_answer, create_then_cancel
@@ -224,12 +224,10 @@ aico interactions list [OPTIONS]
 | Option | Type | Description |
 |--------|------|-------------|
 | `--user`, `-u` | UUID | Filter by user UUID |
-| `--status`, `-s` | Enum | Filter by status (pending, answered, approved, rejected, cancelled) |
-| `--type`, `-t` | Enum | Filter by type (question, choice, dialogue, approval) |
-| `--requirement` | Enum | Filter by requirement (required, optional) |
-| `--severity` | Enum | Filter by severity (low, medium, high) |
-| `--limit`, `-l` | Integer | Maximum results (default: 50, max: 100) |
-| `--offset`, `-o` | Integer | Pagination offset (default: 0) |
+| `--status`, `-s` | Enum | Filter by status (pending, answered, approved, rejected, cancelled, expired) - can specify multiple |
+| `--type`, `-t` | Enum | Filter by type (question, choice, dialogue, approval) - can specify multiple |
+| `--category`, `-c` | String | Filter by category - can specify multiple |
+| `--limit`, `-l` | Integer | Maximum results (default: 50) |
 | `--format`, `-f` | Enum | Output format: table, json (default: table) |
 
 **Examples:**
@@ -243,17 +241,15 @@ aico interactions list \
   --user 1e69de47-a3af-4343-8dba-dbf5dcf5f160 \
   --status pending
 
-# List high severity required interactions
+# List by category
 aico interactions list \
   --user 1e69de47-a3af-4343-8dba-dbf5dcf5f160 \
-  --severity high \
-  --requirement required
+  --category general
 
-# List with pagination
+# List with limit
 aico interactions list \
   --user 1e69de47-a3af-4343-8dba-dbf5dcf5f160 \
-  --limit 20 \
-  --offset 40
+  --limit 20
 
 # JSON output
 aico interactions list \
@@ -263,13 +259,23 @@ aico interactions list \
 
 **Output (table format):**
 ```
-Interaction Requests (10 found)
+Interaction Requests (3 found)
 
-ID             User           Type       Status      Requirement   Severity   Prompt                Created
-─────────────────────────────────────────────────────────────────────────────────────────────────────────
-9b4db2b8...    1e69de47...    question   cancelled   optional      low        Test manual cancel    2026-02-07T23:49:14
-5d398ea8...    1e69de47...    question   cancelled   optional      low        Cancel scenario       2026-02-07T23:48:55
-25bc6323...    1e69de47...    question   answered    optional      low        Auto-answer test      2026-02-07T23:48:38
+1. d926f067-96ad-40b3-ad54-e5c13d0c0329
+  User: 1e69de47-a3af-4343-8dba-dbf5dcf5f160
+  Type: question
+  Status: answered
+  Requirement: required
+  Severity: medium
+  Category: general
+  Prompt: What is your favorite programming language?
+  Created: 2026-02-07T23:45:26Z
+
+2. 7deeafd5-19bc-487c-847a-a7ea065b3c2e
+  User: 1e69de47-a3af-4343-8dba-dbf5dcf5f160
+  Type: approval
+  Status: approved
+  ...
 ```
 
 ---
@@ -442,8 +448,17 @@ aico logs tail --last 50 | grep -i "Subscribed to interaction"
 
 ---
 
-## Environment Variables
+## Configuration
 
-- `AICO_API_GATEWAY_HOST` - Override API Gateway host (default: localhost)
-- `AICO_API_GATEWAY_PORT` - Override API Gateway port (default: 8772)
-- `AICO_LOG_LEVEL` - Set log level (DEBUG, INFO, WARN, ERROR)
+WebSocket connection settings are read from `config/defaults/api_gateway.yaml`:
+
+```yaml
+api_gateway:
+  protocols:
+    websocket:
+      enabled: true
+      port: 8772
+      path: "/ws"
+```
+
+The CLI uses JWT tokens stored in the system keychain for authentication. Run `aico gateway auth login` to authenticate before using interaction commands.
