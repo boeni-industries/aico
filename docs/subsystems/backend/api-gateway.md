@@ -89,25 +89,12 @@ api/{domain}/
 - Topic-based routing (`logs.*`, `conversation.*`)
 
 **Database Access**:
-- Shared `PostgreSQL (via UnitOfWork)` (PostgreSQL with AES-256-GCM)
-- Single database file: `data/PostgreSQL database`
-- Key derivation via `AICOKeyManager`
+- PostgreSQL-backed subsystems accessed via Repository + UnitOfWork
+- Per-request UnitOfWork pattern (no shared database connection)
 
 **Configuration Management**:
 - YAML-based configuration with schema validation
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/api-gateway.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/api-gateway.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/subsystems/backend/api-gateway.md
-- Plugin-specific sections in `api_gateway.yaml` and `plugins.yaml`
-=======
 - Plugin-specific sections in `config/defaults/api_gateway.yaml`
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/api-gateway.md
-=======
-- Plugin-specific sections in `config/defaults/api_gateway.yaml`
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/api-gateway.md
-=======
-- Plugin-specific sections in `config/defaults/api_gateway.yaml`
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/subsystems/backend/api-gateway.md
 - Runtime updates via `ConfigurationManager`
 
 **Process Management**:

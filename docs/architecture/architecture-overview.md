@@ -534,12 +534,11 @@ AICO uses a **multi-database architecture** with specialized databases for diffe
 
 ### 2. InfluxDB - Time-Series Telemetry
 
-**Purpose**: Metrics, logs, and time-series data
+**Purpose**: Metrics and time-series telemetry
 - System performance metrics
 - API request/response times
 - Model inference latency
 - Resource utilization
-- Application logs (structured)
 
 **Technology Stack**:
 - InfluxDB 2.x (Docker container) with `aico_telemetry` bucket
@@ -553,7 +552,22 @@ AICO uses a **multi-database architecture** with specialized databases for diffe
 - Retention policies
 - Grafana-compatible queries
 
-### 3. ChromaDB - Vector Embeddings
+Note: InfluxDB telemetry is available in Pro/Enterprise deployments.
+
+### 3. Loki - Log Aggregation
+
+**Purpose**: Structured application logs with LogQL query support
+
+**Technology Stack**:
+- Loki 2.9 (Docker container)
+- HTTP push API and LogQL queries
+
+**Key Features**:
+- Label-based indexing for fast filtering
+- LogQL queries for tails, filters, and aggregations
+- Queried from the CLI via `aico logs ...`
+
+### 4. ChromaDB - Vector Embeddings
 
 **Purpose**: Semantic memory and similarity search
 - Conversation segment embeddings
@@ -576,28 +590,11 @@ AICO uses a **multi-database architecture** with specialized databases for diffe
 
 #### Data & Storage Layer
 
-```python
-# Example: Encrypted database usage
-from aico.data.uow import UnitOfWork
-from aico.security import AICOKeyManager
-
-key_manager = AICOKeyManager(config_manager)
-master_key = key_manager.authenticate()
-db_key = key_manager.derive_database_key(master_key, "PostgreSQL", "PostgreSQL database")
-
-conn = UnitOfWork()  # PostgreSQL with connection pooling
-with conn:
-    conn.execute("INSERT INTO logs (message) VALUES (?)", ["Hello World"])
-```
-
-- **Primary Storage (PostgreSQL):** Encrypted PostgreSQL-compatible engine with SQLCipher-style integration
-- **Vector Database (ChromaDB):** Embedding storage for semantic search and KG embeddings
-- **Analytical Engine:** PostgreSQL + ChromaDB hybrid queries for analytics
-- **Unified Schema:** Single core schema with atomic migrations
-
-#### Learning System
-- **Continual Learning:** Ongoing learning from interactions and experiences.
-- **Skill Acquisition:** Learning new capabilities and behaviors.
+- **Primary Storage (PostgreSQL):** Core transactional storage, accessed via Repository + UnitOfWork per request
+- **Vector Database (ChromaDB):** Embedding storage for semantic search
+- **Working Memory (LMDB):** Fast TTL-based short-term memory store
+- **Log Storage (Loki):** Structured logs with LogQL queries
+- **Telemetry (InfluxDB):** Optional time-series metrics (Pro/Enterprise)
 
 #### Context Manager
 - **Conversation State:** Maintains current conversation context and history.
@@ -684,7 +681,7 @@ The current backend follows this initialization sequence:
 1. **Main Process** (`main.py`):
    - Initialize configuration and logging
    - Setup PID file management and signal handlers
-   - Create shared encrypted database connection
+   - Initialize core services and lifecycle manager
 
 2. **API Gateway** (`BackendLifecycleManager`):
    - Initialize `ServiceContainer` with dependency injection

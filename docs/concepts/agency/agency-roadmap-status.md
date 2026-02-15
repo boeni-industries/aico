@@ -181,7 +181,5 @@ title: Agency System - Current Status
 ## Related Documentation
 
 - [Roadmap Overview](agency-roadmap-overview.md)
-- [Phase 8 Details](agency-phase-8-cli-analysis.md)
-- [Phase 9 Details](agency-phase-9-lesson-management.md)
-- [Phase 10 Details](agency-phase-10-ui-frontend.md)
-- [Testing & QA](agency-phase-7-testing-qa.md)
+- [Agency Metrics](agency-metrics.md)
+- [Agency Integration Contracts](agency-integration.md)

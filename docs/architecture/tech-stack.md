@@ -90,7 +90,7 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 |------------|---------|---------------|
 | **PostgreSQL 18.1** | Core application data | ACID transactions, referential integrity, JSON support. Stores users, conversations, knowledge graph, agency data |
 | **Loki 2.9** | Log aggregation | Purpose-built log storage with LogQL queries. Stores structured application logs with 30-day retention |
-| **InfluxDB 2.x** | Time-series metrics | High-performance metrics storage. Stores system metrics, API latency, model performance data |
+| **InfluxDB 2.x (Pro/Enterprise)** | Time-series metrics | High-performance metrics storage. Stores system metrics, API latency, model performance data |
 | **ChromaDB 1.0.16+** | Vector embeddings | Semantic search with cosine similarity. Stores conversation embeddings, KG entity embeddings |
 | **LMDB** | Working memory (30-day TTL) | Memory-mapped key-value store for active session data, sub-millisecond access |
 | **DuckDB** | Analytics (planned) | OLAP queries for conversation analysis and reporting |
@@ -164,7 +164,7 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 | **Docker** | Container runtime | ✅ Required for database services |
 | **PostgreSQL 18.1 (Docker)** | Core database container | ✅ Production deployment |
 | **Loki 2.9 (Docker)** | Log aggregation container | ✅ Production deployment |
-| **InfluxDB 2.x (Docker)** | Metrics database container | ✅ Production deployment |
+| **InfluxDB 2.x (Docker)** | Metrics database container | ✅ Pro/Enterprise deployments |
 | **ChromaDB (planned)** | Vector database container | 🚧 Future containerization |
 | **Docker Compose** | Multi-container orchestration | 🚧 Planned for full stack deployment |
 
@@ -222,7 +222,7 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 |------------|---------|---------------|
 | **Custom Logging System** | Unified logging | AICO-specific logging with subsystem/module hierarchy |
 | **Loki 2.9** | Log aggregation | Purpose-built log storage with LogQL queries and 30-day retention |
-| **InfluxDB 2.x** | Metrics storage | Time-series database for performance metrics and telemetry |
+| **InfluxDB 2.x (Pro/Enterprise)** | Metrics storage | Time-series database for performance metrics and telemetry |
 | **OpenTelemetry** | Instrumentation | Standardized metrics and tracing instrumentation |
 | **Prometheus (optional)** | Metrics export | Optional Prometheus-compatible metrics endpoint |
 | **Pydantic 2.11+** | Schema validation | Type-safe validation of API requests and responses |

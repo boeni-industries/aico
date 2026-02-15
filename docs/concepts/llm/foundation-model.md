@@ -286,19 +286,7 @@ repeat_penalty: 1.1        # Repetition control
 ollama create eve -f config/modelfiles/Modelfile.eve
 ```
 
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/llm/foundation-model.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/llm/foundation-model.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/llm/foundation-model.md
-### **Production Configuration (modelservice.yaml)**
-=======
 ### **Production Configuration (`config/defaults/modelservice.yaml`)**
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/llm/foundation-model.md
-=======
-### **Production Configuration (`config/defaults/modelservice.yaml`)**
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/llm/foundation-model.md
-=======
-### **Production Configuration (`config/defaults/modelservice.yaml`)**
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/llm/foundation-model.md
 ```yaml
 ollama:
     host: "127.0.0.1"

@@ -11,7 +11,7 @@ AICO's data layer implements **Clean Architecture** principles with a multi-data
 **Production Databases:**
 - ✅ **PostgreSQL 18.1** (Docker): Core application data (users, conversations, knowledge graph, agency)
 - ✅ **Loki 2.9** (Docker): Log aggregation with LogQL queries
-- ✅ **InfluxDB 2.x** (Docker): Time-series metrics (performance data, telemetry)
+- ✅ **InfluxDB 2.x (Pro/Enterprise)** (Docker): Time-series metrics (performance data, telemetry)
 - ✅ **ChromaDB**: Vector embeddings for semantic search
 - ✅ **LMDB**: Working memory with 30-day TTL
 

@@ -40,8 +40,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - Agency engine integration
 - Core database tables
 
-[→ Phase 0 Details](agency-phase-0-foundations.md)
-
 ---
 
 ### Phase 1: Goal System & Planning ✅
@@ -53,8 +51,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - Goal/Intention models and storage
 - Planning component with LLM integration
 - Scheduler integration with resource constraints
-
-[→ Phase 1 Details](agency-phase-1-goals-planning.md)
 
 ---
 
@@ -68,8 +64,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - PersonalityService with Big Five traits
 - 54 comprehensive tests, 73% coverage
 
-[→ Phase 2 Details](agency-phase-2-memory-world-model.md)
-
 ---
 
 ### Phase 3: Curiosity, Intrinsic Motivation & Hobbies ✅
@@ -81,8 +75,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - CuriosityEngine with 3 detectors
 - 6 default hobby templates
 - Three-gate filtering system
-
-[→ Phase 3 Details](agency-phase-3-curiosity-hobbies.md)
 
 ---
 
@@ -96,8 +88,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - GoalArbiter with adaptive scoring
 - 120 tests passing, full backend integration
 
-[→ Phase 4 Details](agency-phase-4-values-ethics.md)
-
 ---
 
 ### Phase 5: Self-Reflection & Behavioral Learning ✅
@@ -109,8 +99,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - SelfReflectionEngine with LLM enhancement
 - LessonApplicationService
 - 41 lessons, 1,437 reflection runs, 2,257 self-model entries
-
-[→ Phase 5 Details](agency-phase-5-self-reflection.md)
 
 ---
 
@@ -124,8 +112,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - World model drift detection
 - Hypothesis generation and testing
 
-[→ Phase 6 Details](agency-phase-6-advanced-integration.md)
-
 ---
 
 ### Phase 7: Comprehensive Testing & QA ✅
@@ -138,8 +124,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - 80% overall coverage
 - Skills database schema corrected
 - 90.7% warning reduction (6,199 → 575)
-
-[→ Phase 7 Details](agency-phase-7-testing-qa.md)
 
 ---
 
@@ -155,8 +139,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - Health monitoring and diagnostics
 - Reflection run analysis
 - Skill performance tracking
-
-[→ Phase 8 Details](agency-phase-8-cli-analysis.md)
 
 ---
 
@@ -174,8 +156,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - ✅ Full filtering support (status, confidence, time windows)
 - ✅ JSON output and rich table formatting
 
-[→ Phase 9 Details](agency-phase-9-lesson-management.md)
-
 ---
 
 ### Phase 10: Web Dashboard & REST API 🔮
@@ -189,8 +169,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - Metrics and analytics visualization
 - Lesson management interface
 - System health monitoring
-
-[→ Phase 10 Details](agency-phase-10-ui-frontend.md)
 
 ---
 
@@ -207,8 +185,6 @@ This document provides a high-level overview of AICO's agency system implementat
 - Agency settings and controls
 - Real-time WebSocket updates
 - Metrics and analytics visualization
-
-[→ Phase 11 Details](agency-phase-11-flutter-frontend.md)
 
 ---
 
@@ -249,20 +225,5 @@ These items were deferred from completed phases and represent potential improvem
 ---
 
 ## Quick Navigation
-
-| Phase | Status | Document |
-|-------|--------|----------|
-| Phase 0 | ✅ Complete | [Foundations](agency-phase-0-foundations.md) |
-| Phase 1 | ✅ Complete | [Goals & Planning](agency-phase-1-goals-planning.md) |
-| Phase 2 | ✅ Complete | [Memory & World Model](agency-phase-2-memory-world-model.md) |
-| Phase 3 | ✅ Complete | [Curiosity & Hobbies](agency-phase-3-curiosity-hobbies.md) |
-| Phase 4 | ✅ Complete | [Values & Ethics](agency-phase-4-values-ethics.md) |
-| Phase 5 | ✅ Complete | [Self-Reflection](agency-phase-5-self-reflection.md) |
-| Phase 6 | ✅ Complete | [Advanced Integration](agency-phase-6-advanced-integration.md) |
-| Phase 7 | ✅ Complete | [Testing & QA](agency-phase-7-testing-qa.md) |
-| Phase 8 | ✅ Complete | [CLI & Analysis](agency-phase-8-cli-analysis.md) |
-| Phase 9 | ✅ Complete | [Lesson Management](agency-phase-9-lesson-management.md) |
-| Phase 10 | 🔮 Future | [Web Dashboard & REST API](agency-phase-10-ui-frontend.md) |
-| Phase 11 | 🔮 Future | [Flutter Frontend](agency-phase-11-flutter-frontend.md) |
 
 Last Updated: 2025-12-15

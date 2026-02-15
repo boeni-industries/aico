@@ -357,11 +357,7 @@ Implements emotional state persistence based on Kuppens et al. (2010) and Schere
   - Puccetti et al. (2021): "Leaky integrator neurons with accumulation and decay"
   - Scherer CPM: "Recursive appraisal process continuously updating results"
 
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/emotion/emotion-simulation-architecture.md
-**Configuration** (agency.yaml):
-=======
 **Configuration** (`config/defaults/emotion.yaml`):
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/emotion/emotion-simulation-architecture.md
 ```yaml
 inertia:
   enabled: true
@@ -415,11 +411,7 @@ inertia:
 - **Context Sensitivity**: Different regulation strategies for different situational contexts
 - **Multilingual Support**: Threat detection uses sentiment model output, not language-specific keywords
 
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/concepts/emotion/emotion-simulation-architecture.md
-**Configuration** (agency.yaml):
-=======
 **Configuration** (`config/defaults/emotion.yaml`):
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/concepts/emotion/emotion-simulation-architecture.md
 ```yaml
 regulation_strength: 0.3  # Base dampening (0.3 = 9% reduction)
 ```

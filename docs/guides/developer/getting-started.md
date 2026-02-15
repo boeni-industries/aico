@@ -718,7 +718,7 @@ If you modify `Modelfile.eve`, regenerate:
 aico ollama generate eve --force
 ```
 
-For more details, see [Modelfiles README](../../../config/modelfiles/README.md).
+For more details, see the Modelfiles README in the repository at `config/modelfiles/README.md`.
 
 ### Directory Structure
 After setup, you'll have cross-platform directories:
@@ -851,7 +851,6 @@ For detailed protobuf development guidelines, see [Protocol Buffers & API Contra
 - [Developer Guidelines & Conventions](./guidelines.md)
 - [Plugin System Overview](../../subsystems/backend/plugin-system.md)
 - [Data Layer & Storage](../../concepts/data/data-layer.md)
-- [Admin UI Architecture](../../subsystems/studio/admin-ui-master.md)
 - [Protocol Buffers & API Contracts](./protobuf.md)
 - [Privacy & Security](../../security/data-security.md)
 

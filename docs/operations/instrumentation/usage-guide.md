@@ -160,20 +160,7 @@ Metrics are automatically displayed in the Studio Metrics tab with:
 5. **Monitor slow operations** - API Gateway automatically logs requests >1s
 
 ## Configuration
-
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/operations/instrumentation/usage-guide.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/operations/instrumentation/usage-guide.md
-<<<<<<< /Users/mbo/Documents/dev/aico/docs/operations/instrumentation/usage-guide.md
-Instrumentation is configured in `config/defaults/telemetry.yaml`:
-=======
 Instrumentation is configured in `config/defaults/instrumentation.yaml`:
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/operations/instrumentation/usage-guide.md
-=======
-Instrumentation is configured in `config/defaults/instrumentation.yaml`:
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/operations/instrumentation/usage-guide.md
-=======
-Instrumentation is configured in `config/defaults/instrumentation.yaml`:
->>>>>>> /Users/mbo/.windsurf/worktrees/aico/aico-fe8d342f/docs/operations/instrumentation/usage-guide.md
 
 ```yaml
   mode: dev  # casual, pro, dev, production
