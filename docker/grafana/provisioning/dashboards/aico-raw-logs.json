@@ -186,10 +186,6 @@
       }
     ]
   },
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
   "timepicker": {
     "refresh_intervals": [
       "10s",
@@ -204,6 +200,6 @@
   "timezone": "browser",
   "title": "AICO Raw Logs",
   "uid": "aico-raw-logs",
-  "version": 9,
+  "version": 10,
   "weekStart": ""
 }
