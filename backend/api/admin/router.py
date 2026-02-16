@@ -1677,8 +1677,8 @@ async def get_logs_stats(
         # max_entries_limit/limit would bias results toward the most recent logs.
         # Use aggregations instead.
 
-        selector_all = '{service=~"backend|modelservice|cli|shared"}'
-        selector_errors = '{service=~"backend|modelservice|cli|shared", level=~"ERROR|CRITICAL"}'
+        selector_all = '{service=~".+"}'
+        selector_errors = '{service=~".+", level=~"ERROR|CRITICAL"}'
 
         def _instant(query: str) -> float:
             url = f"{loki_url}/loki/api/v1/query"
@@ -1744,19 +1744,42 @@ async def get_logs_stats(
         by_subsystem = _instant_series(f"sum by(service) (count_over_time({selector_all}[24h]))", "service")
 
         # Hourly timeline: sum over all logs with 1h buckets
-        series = _range(f"sum(count_over_time({selector_all}[1h]))", start_time, end_time, step_seconds=3600)
+        # Build a deterministic last-24h bucket series and map Loki samples onto it.
+        step_seconds = 3600
+        series = _range(
+            f"sum(count_over_time({selector_all}[1h]))",
+            start_time,
+            end_time,
+            step_seconds=step_seconds,
+        )
 
-        hourly_counts = defaultdict(int)
+        # Pre-build 24 bucket timestamps (UTC), oldest -> newest.
+        bucket_times_utc = [start_time + timedelta(seconds=step_seconds * i) for i in range(24)]
+        bucket_counts = [0 for _ in range(24)]
+
         for item in series:
             for ts, val in item.get("values", []):
                 try:
-                    # Loki returns ts as seconds string for range results
-                    dt = datetime.fromtimestamp(float(ts), tz=timezone.utc).astimezone()
-                    hourly_counts[str(dt.hour)] += int(float(val))
+                    # Loki/Prometheus-style APIs may return timestamps in seconds (float)
+                    # or nanoseconds (int-like string). Handle both.
+                    ts_float = float(ts)
+                    if ts_float > 1_000_000_000_000:
+                        ts_float = ts_float / 1_000_000_000
+
+                    # Map timestamp to bucket index.
+                    idx = int(round((ts_float - start_time.timestamp()) / step_seconds))
+                    if 0 <= idx < 24:
+                        bucket_counts[idx] = int(float(val))
                 except Exception:
                     continue
 
-        # Ensure keys 0-23 exist (Studio expects full day)
+        # Studio expects a dict keyed by local hour-of-day.
+        # Use each bucket's local hour-of-day as key and fill any missing with 0.
+        hourly_counts = defaultdict(int)
+        for i, dt_utc in enumerate(bucket_times_utc):
+            local_hour = dt_utc.astimezone().hour
+            hourly_counts[str(local_hour)] += int(bucket_counts[i])
+
         recent_activity = {str(h): int(hourly_counts.get(str(h), 0)) for h in range(24)}
 
         # Trend analysis: compare last hour to previous hour

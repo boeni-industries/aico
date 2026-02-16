@@ -207,8 +207,17 @@ class LokiLogHandler(logging.Handler):
         log_obj = {k: v for k, v in log_obj.items() if v is not None}
         log_line = json.dumps(log_obj, ensure_ascii=False, separators=(",", ":"))
         
+        ts_ns = int(record.created * 1_000_000_000)
+        # Defensive: Loki rejects samples too far in the future. If a producer clock
+        # drifts or a record has a bad timestamp, clamp to a small future tolerance
+        # to avoid silent ingestion gaps.
+        now_ns = int(time.time() * 1_000_000_000)
+        max_future_ns = now_ns + 10_000_000_000  # 10s tolerance
+        if ts_ns > max_future_ns:
+            ts_ns = max_future_ns
+
         return {
-            "timestamp": int(record.created * 1_000_000_000),  # nanoseconds
+            "timestamp": ts_ns,  # nanoseconds
             "labels": labels,
             "line": log_line
         }
