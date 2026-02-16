@@ -913,8 +913,8 @@ Platform-specific features:
 
 - [Interactions Commands](interactions-commands.md) - Detailed interaction testing documentation
 - [Configuration Management](../architecture/configuration-management.md) - Configuration system architecture
-- [Security](../architecture/architecture-overview.md#security--privacy) - Security architecture
-- [API Documentation](../api/) - REST API reference
+- [Security](../architecture/architecture-overview.md#privacy-security) - Security architecture
+- [API Documentation](../api/interactions-api.md) - REST API reference
 
 ---
 
