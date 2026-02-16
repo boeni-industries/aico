@@ -4,6 +4,16 @@ title: Agency Component – Control, Safety & Transparency
 
 # Control, Safety & Transparency
 
+## Status
+
+- **Implemented (v1)**: Values/Ethics evaluation primitives exist (`ValuesEthicsService`, `PolicyEffect`, `EvaluationResult`) in `shared/aico/ai/agency/values_ethics.py`.
+- **Implemented (v1)**: policy + consent REST endpoints exist in `backend/api/agency/router.py` (e.g., `GET /api/v1/agency/policies`, `POST /api/v1/agency/consent`, `GET /api/v1/agency/consent`).
+- **Implemented (v1)**: Values & Ethics is enforced at key decision points (e.g., `AgencyEngine.create_goal_from_curiosity_signal(...)` evaluates curiosity signals before goal creation).
+- **Implemented (v1)**: append-only, queryable audit-style tables exist for governance and debugging:
+  - `agency_events_log` (see `shared/aico/data/postgres/schema.sql`), and
+  - `ethics_gate_audit` (see `shared/aico/data/postgres/schema.sql`).
+- **WIP**: user-facing AgencyMode / PauseState / CapabilityConfig as a unified UX-configurable system, and a single UX-oriented “audit log” view that joins agency events + ethics decisions into stable, user-facing explanation artifacts.
+
 ## 1. Purpose
 
 The Control, Safety & Transparency component defines **how far** AICO’s agency can go and **how that power is exposed and governed** at the UX/infra level. It sits **on top of** the Values & Ethics / policy engine and World Model to:
@@ -23,6 +33,10 @@ Four core responsibilities:
 - **Permissions & capabilities** – manage whitelists/blacklists for tools, integrations, and action classes, implemented via the structured policy engine (`agency-component-values-ethics.md`).
 - **Audit logging** – record autonomous actions, triggering goals/plans, EvaluationResult decisions, tools used, and key context.
 - **Explainability** – generate human-understandable explanations based on ontology-backed provenance (PerceptualEvents, Goals, WorldStateFacts, policies).
+
+**Implementation note (v1):** the system already logs structured agency events (e.g., curiosity signals blocked/needs consent) via the agency event store. A dedicated, UX-oriented “audit log” with stable schemas and explainability artifacts is **WIP**.
+
+**Implementation note (v1):** the underlying persistence already includes `agency_events_log` and `ethics_gate_audit`, but the “audit log” described here is a product/UX concept that would sit on top of these raw logs.
 
 ## 3. Data Model (Conceptual)
 
@@ -61,14 +75,20 @@ Four core responsibilities:
   - Updates AgencyMode; internally selects/updates the relevant ValueProfile / PolicyRules.  
   - May adjust Scheduler/Lifecycle caps (e.g., fewer proactive tasks in cautious mode).
 
+  **WIP**: a first-class AgencyMode configuration surface; current implementation centers on policies + consents rather than a separate mode subsystem.
+
 - **UpdateCapabilities(config_deltas)**  
   - Turn specific tools/integrations/action-classes on/off or toggle `requires_explicit_consent`.  
   - Writes through to Values & Ethics as structured PolicyRules.
+
+  **WIP**: capability toggles as a dedicated subsystem; current implementation is policy-rule centric.
 
 - **PauseAgency(scope, reason)** / **ResumeAgency()**  
   - Set PauseState and emit events to Scheduler/Goal Arbiter/Conversation so that:
     - proactive behaviour and/or background tasks are reduced or stopped,  
     - user-initiated requests may still be honoured within policy.
+
+  **WIP**: pause/resume as an implemented, persisted control plane for agency execution.
 
 - **RecordAuditEntry(event)**  
   - Called at key points in the Goal→Plan→Skill→Tool chain, especially when:
@@ -76,6 +96,8 @@ Four core responsibilities:
     - a high-impact goal/plan is started or stopped,  
     - a policy decision blocks or modifies behaviour,  
     - explicit consent is requested/received.
+
+  **Implementation note (v1):** similar telemetry is available as agency events; the dedicated `AuditEntry` model/table described below is **WIP**.
 
 - **ExplainAction(action_ref)**  
   - Given a reference to an observed action (e.g., a proactive message, tool call, or blocked request), gather:
@@ -115,8 +137,8 @@ Four core responsibilities:
 ## 6. Persistence & Metrics
 
 - **Persistence**  
-  - AgencyMode, PauseState, and CapabilityConfig are persisted in PostgreSQL config tables, aligned with Values & Ethics and Skill/Tool registries.  
-  - AuditEntries are stored append-only in a dedicated audit log table, with optional promotion into AMS/KG where needed.  
+  - AgencyMode, PauseState, and CapabilityConfig are persisted in PostgreSQL config tables, aligned with Values & Ethics and Skill/Tool registries. **WIP**  
+  - AuditEntries are stored append-only in a dedicated audit log table, with optional promotion into AMS/KG where needed. **WIP**  
   - No separate store for policies; those live in the Values & Ethics component.
 
 - **Metrics & Visibility**  

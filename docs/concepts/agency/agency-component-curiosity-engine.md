@@ -18,7 +18,7 @@ The Curiosity Engine provides **intrinsic motivation** for AICO. It detects gaps
 
 It is responsible for:
 
-- Maintaining a stream of **CuriositySignalEvent** PerceptualEvents (see `agency-ontology-schemas.md`).  
+- **WIP**: maintaining a stream of **CuriositySignalEvent** PerceptualEvents (see `agency-ontology-schemas.md`) as the canonical integration mechanism.  
 - Proposing **hobby and self‑development activities** (`Hobby` entities, agent‑self goals) that remain aligned with user wellbeing and values.  
 - Doing so under explicit **safety, values, and resource constraints** enforced by the Values & Ethics component and Scheduler/Resource Monitor, as described in `agency-component-values-ethics.md`, `agency-component-scheduler-governance.md`, and the Personality/Values/Emotion and Core Infrastructure sections of `agency-architecture.md`.
 
@@ -92,6 +92,8 @@ Curiosity must always remain **second‑class to user wellbeing, consent, and re
   - May downgrade or defer signals when many user‑origin or safety‑critical goals are active.
 
 Only CuriositySignals that pass these gates with sufficient combined score are turned into CuriositySignalEvents.
+
+**WIP:** in v1, most curiosity signals are consumed directly as `IntrinsicSignal` objects (no intermediate PerceptualEvent emission) and converted into goals via `AgencyEngine.create_goal_from_curiosity_signal(...)`.
 
 **Implementation note (v1):**
 
@@ -314,11 +316,13 @@ This section provides concise scenarios illustrating how curiosity behaves in pr
    - CuriosityPolicy classifies the signal as **supportive** (helps user express interests, may reduce stress) and promotes it to event.
 
 3. **Event & goals**  
-   - `EmitCuriositySignalEvents` creates a `CuriositySignalEvent` describing “under‑served art/drawing interest”.  
-   - Goal System uses `ProposeGoalFromPercept` to create:  
+   - **WIP (canonical flow):** `EmitCuriositySignalEvents` creates a `CuriositySignalEvent` describing “under‑served art/drawing interest”.  
+   - **WIP (canonical flow):** Goal System uses `ProposeGoalFromPercept` to create:  
      - a `Hobby` node `h_drawing`,  
      - an agent‑self / curiosity project goal (e.g., "Explore drawing sessions together"),  
      - relations `FOCUSES_ON_HOBBY` and `IS_AGENT_SELF_GOAL`.
+
+   - **Implemented (v1):** `CuriosityScanTask` calls `curiosity_engine.scan_for_opportunities(...)` and then creates goals directly via `agency_engine.create_goal_from_curiosity_signal(...)`.
 
 4. **User interaction**  
    - During a suitable moment, AICO proposes a light suggestion (“Would you like to schedule some small drawing sessions together?”).  
@@ -342,8 +346,8 @@ This section provides concise scenarios illustrating how curiosity behaves in pr
    - Signal passes gates with a good but not extreme combined score.
 
 3. **Event & goal proposal**  
-   - A `CuriositySignalEvent` is emitted summarising the knowledge gap and suggesting a project like "Understand and support user’s daily rhythm".  
-   - Goal System proposes a curiosity‑origin project goal, which the Arbiter may keep in `proposed` until the user is explicitly asked.
+   - **WIP (canonical flow):** a `CuriositySignalEvent` is emitted summarising the knowledge gap and suggesting a project like "Understand and support user’s daily rhythm".  
+   - **WIP (canonical flow):** Goal System proposes a curiosity‑origin project goal, which the Arbiter may keep in `proposed` until the user is explicitly asked.
 
 4. **User-facing behaviour**  
    - At an appropriate time, AICO asks: “I realised I don’t fully understand your typical day, and that makes it harder to support your sleep and work. Would you like me to learn more about your routine?”  

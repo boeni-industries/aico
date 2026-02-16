@@ -263,7 +263,11 @@ The exact persistence structure for history and metrics is left to the implement
 
 ### 3.4 PerceptualEvent Contract (for this Component)
 
-The Goal & Intention System does **not** own the `PerceptualEvent` schema; the canonical definition and taxonomy live in `agency-ontology-schemas.md`. For correctness and interoperability, this component assumes that all incoming PerceptualEvents satisfy at least the following contract:
+The Goal & Intention System does **not** own the `PerceptualEvent` schema; the canonical definition and taxonomy live in `agency-ontology-schemas.md`.
+
+**WIP:** this section describes the intended contract once PerceptualEvents are the canonical input mechanism for goal proposal and updates. In v1, many goals are created/updated via direct API/service calls (with provenance stored ad-hoc in `Goal.metadata`) rather than via a strict PerceptualEvent ingestion pipeline.
+
+For correctness and interoperability, this component assumes that all incoming PerceptualEvents satisfy at least the following contract:
 
 - **Identity and timing**  
   - Each event has a stable `percept_id` and a `timestamp`.
@@ -284,6 +288,8 @@ The Goal & Intention System **reads but does not mutate** PerceptualEvents. It:
 - Copies selected fields into goal records for provenance (`last_percept_event_id`, `last_percept_type`, `last_percept_source_component`, `trigger_summary`).  
 - Uses the combination of `percept_type`, salience/urgency/risk/opportunity scores, and origin hints as inputs into base priority and Arbiter logic (see Section 5.1), without changing the original events.
 
+**Implementation note (v1):** the closest equivalent is storing relevant provenance in `Goal.metadata` and using the Goal Arbiter’s intention scoring (see `shared/aico/ai/agency/arbiter.py`) rather than explicit `last_percept_*` fields.
+
 ## 4. Operations / APIs
 
 This section describes the behaviours of the component as operations with inputs, preconditions, and effects. It is language‑agnostic and does not prescribe transport or serialisation formats.
@@ -298,6 +304,8 @@ This section describes the behaviours of the component as operations with inputs
     - Insert new goals in `state = proposed` or update existing related goals (e.g., merge with an open project) using goal-graph heuristics.  
     - Set perceptual provenance fields (`last_percept_event_id`, `last_percept_type`, `last_percept_source_component`, `trigger_summary`).
 
+  **WIP:** end-to-end `ProposeGoalFromPercept` as the primary production pathway. v1 commonly creates goals directly via the agency API / service layer.
+
 - **CreateOrUpdateGoal (Direct)**  
   - *Input*: structured goal payload (owner, horizon, origin, title, description, tags, optional parent/blocked_by), optional initial state.  
   - *Preconditions*: Caller is authorised (e.g., user‑facing API, system maintenance, Curiosity Engine, Self‑Reflection).  
@@ -305,11 +313,15 @@ This section describes the behaviours of the component as operations with inputs
     - Create a new goal or update an existing one while preserving audit history and graph invariants (no cycles in refinement hierarchy, consistent origin/owner).  
     - Optionally mark as active (turn into an intention) if caller is allowed to do so or if Arbiter policy permits.
 
+  **Implemented (v1):** direct create/update/list operations exist via `/api/v1/agency/*` (see `backend/api/agency/router.py`) and the underlying persistence layer (`aico.services.agency_service.AgencyService`).
+
 - **AttachPlanMetadataToGoal**  
   - *Input*: `goal_id`, plan identifier, high‑level plan summary, execution statistics hook.  
   - *Preconditions*: Goal exists; Planning System has generated or updated a plan.  
   - *Effect*:  
     - Link the goal to the current plan representation and update any plan‑related fields needed for metrics and explanation.
+
+  **WIP:** dedicated, typed plan linkage fields and goal history tables (v1 stores many fields in goal/plan records and/or metadata).
 
 ### 4.2 Lifecycle Operations
 
@@ -320,6 +332,8 @@ This section describes the behaviours of the component as operations with inputs
     - Set `state = active`.  
     - Optionally update `arbiter_score`, `is_primary_focus`, and intention‑related context.  
     - Emit an internal event so Planner and Scheduler can respond.
+
+  **Implementation note (v1):** activation exists via goal status updates (`pending|active|paused|completed|retired`) plus arbiter-managed intention sets. A dedicated internal event bus for these transitions is **WIP**.
 
 - **PauseGoal / ResumeGoal**  
   - *Input*: `goal_id`, reason, calling component.  
@@ -461,7 +475,9 @@ This section provides concise, non‑code examples to illustrate how goals and i
 ### 6.1 User-Origin Project with Tasks
 
 **Scenario**: The user says: "I need help preparing for my statistics exam next week."  
-The Conversation Engine produces a `UserIntentEvent` PerceptualEvent that `ProposeGoalFromPercept` turns into a project with supporting tasks.
+**WIP (canonical flow):** the Conversation Engine produces a `UserIntentEvent` PerceptualEvent that `ProposeGoalFromPercept` turns into a project with supporting tasks.
+
+**Implementation note (v1):** this is commonly realized via direct creation of a goal (e.g., via the agency API) with optional metadata recording the triggering user request.
 
 - **PerceptualEvent** (simplified view):
   - `percept_id`: `pe_1001`  

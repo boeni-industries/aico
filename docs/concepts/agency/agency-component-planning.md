@@ -4,6 +4,13 @@ title: Agency Component – Planning & Decomposition
 
 # Planning & Decomposition
 
+## Status
+
+- **Implemented (v1)**: `Planner.generate_initial_plan(goal, context)` in `shared/aico/ai/agency/planner.py` generates a `Plan` with ordered `PlanStep`s using LLM-first with template + simple fallbacks.
+- **Implemented (v1)**: plan domain models exist in `shared/aico/ai/agency/models.py` (`Plan`, `PlanStep`, `PlanStatus`, `StepStatus`).
+- **Implemented (v1)**: plans are persisted alongside goals (see `AgencyService.list_plans(...)` usage in `backend/api/agency/router.py`, e.g. `GET /api/v1/agency/goals/{goal_id}/plans`).
+- **WIP**: fully hierarchical planning (goals → subgoals → plan steps) with explicit world-model pre/postconditions and ontology grounding per step.
+
 ## 1. Purpose
 
 The Planning & Decomposition component turns abstract **goals and intentions** into **executable plans** that can be bound to skills/tools and scheduled.
@@ -18,13 +25,19 @@ The Planning & Decomposition component turns abstract **goals and intentions** i
   - preconditions and expected postconditions,  
   - one or more candidate Skills from the Skill Registry that can realise it.
 
+**Implementation note (v1):** `PlanStep` currently includes `description`, `status`, optional `skill_id` / `tool_id`, `depends_on`, and a free-form `metadata` dict. Explicit `linked_entities` and formal pre/postconditions are **WIP**.
+
 Planning is **hierarchical**: goals → subgoals → plan steps → skills → tools (see `agency-component-skills-tools.md`).
+
+**WIP**: subgoal trees as first-class objects; current implementation primarily creates linear steps for a single goal.
 
 ## 3. Data Model (Conceptual)
 
 - **Plan**  
   - `plan_id`, `goal_id`, `status` (proposed/active/completed/abandoned).  
   - structure: list/tree of **PlanStep** objects with dependencies.
+
+**Implementation note (v1):** statuses are `draft|active|completed|paused|abandoned` (see `PlanStatus` in `shared/aico/ai/agency/models.py`).
 
 - **PlanStep**  
   - `step_id`, `plan_id`, `description`,  
@@ -33,12 +46,16 @@ Planning is **hierarchical**: goals → subgoals → plan steps → skills → t
   - `candidate_skills` (list of `skill_id`s from the Skill Registry),  
   - `status` (pending/in_progress/success/partial/failure).
 
+**Implementation note (v1):** step status values are `pending|in_progress|done|skipped` (`StepStatus` in `shared/aico/ai/agency/models.py`).
+
 ## 4. Operations / Behaviour
 
 - **PlanFromGoal(goal)** – propose one or more candidate plans for a goal.  
 - **SelectPlan(plan_candidates)** – choose a plan given Values & Ethics, resources, and user preferences.  
 - **BindSkills(plan)** – use the Skill Registry (see Skills doc) to assign concrete skills to executable steps.  
 - **UpdatePlan(step_results)** – mark steps as succeeded/partial/failed, trigger backtracking or replanning when necessary.
+
+**Implementation note (v1):** plan generation is implemented; step execution bookkeeping and replanning policies are partially implemented / evolving (**WIP**) and depend on plan execution tooling.
 
 Plans are **read/write objects** stored alongside goals so Scheduler, Skills, and Self-Reflection can inspect and evolve them over time.
 

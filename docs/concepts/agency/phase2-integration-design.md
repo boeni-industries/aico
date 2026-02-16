@@ -1,4 +1,15 @@
+---
+title: Agency Phase 2: Memory, World Model & Relationship Integration
+---
+
 # Agency Phase 2: Memory, World Model & Relationship Integration
+
+## Status
+
+- **Implemented (v1)**: `WorldModelService` exists (`shared/aico/ai/world_model/service.py`) and provides basic context queries. Some sub-queries (e.g., open loops, recurring contexts) are placeholders.
+- **Implemented (v1)**: `PersonalityService` exists (`shared/aico/ai/personality/service.py`) with Phase 2 defaults plus simple priority/proactivity heuristics.
+- **Implemented (v1)**: `AgencyEngine` accepts optional `world_model` and `personality_service` and exposes Phase 2 goal creation helpers (see `shared/aico/ai/agency/engine.py`).
+- **WIP**: deep end-to-end use of AMS summaries/open loops as first-class planning inputs.
 
 ## Overview
 
@@ -52,6 +63,7 @@ class WorldModelService:
     async def get_open_loops(user_id: str) -> List[OpenLoop]
     async def get_recurring_contexts(user_id: str) -> List[Context]
     async def query_uncertain_areas(user_id: str) -> List[UncertainArea]
+    async def get_world_context(user_id: str, include_entities: bool, include_projects: bool, include_open_loops: bool) -> WorldContext
 ```
 
 **Dependencies**:
@@ -61,68 +73,31 @@ class WorldModelService:
 
 ### 2. AMS Integration in AgencyEngine
 
-**Changes to AgencyEngine**:
+**AgencyEngine Phase 2 helpers (implemented)**:
 ```python
 class AgencyEngine:
-    def __init__(self, config, db_connection, world_model: WorldModelService):
-        # ... existing init ...
-        self.world_model = world_model
-    
-    async def create_goal_with_context(
-        self,
-        user_id: str,
-        title: str,
-        **kwargs
-    ) -> Tuple[Goal, Optional[Plan]]:
-        # NEW: Retrieve user context from AMS
-        user_context = await self.world_model.get_user_context(user_id)
-        open_loops = await self.world_model.get_open_loops(user_id)
-        
-        # Enrich goal metadata with context
-        metadata = kwargs.get('metadata', {})
-        metadata['context'] = {
-            'open_loops': [loop.id for loop in open_loops],
-            'active_projects': user_context.active_projects,
-            'preferences': user_context.preferences,
-        }
-        
-        # Create goal with enriched metadata
-        return await self.create_goal_with_optional_plan(
+    async def create_goal_with_world_context(self, user_id: str, title: str, **kwargs):
+        world_context = await self.world_model.get_world_context(
             user_id=user_id,
-            title=title,
-            metadata=metadata,
-            **kwargs
+            include_entities=True,
+            include_projects=True,
+            include_open_loops=True,
         )
+        # Enrich goal metadata with world_context (see engine implementation)
+
+    async def create_goal_with_full_context(self, user_id: str, title: str, **kwargs):
+        personality_context = await self.personality.get_personality_context(user_id)
+        # Adjust priority and proactivity (Phase 2 heuristics)
+        # Optionally also attach world_context
 ```
 
 ### 3. Personality Integration
 
-**Changes to Goal Creation**:
+**PersonalityService hooks (implemented)**:
 ```python
-async def create_goal_with_personality(
-    self,
-    user_id: str,
-    title: str,
-    personality_context: PersonalityContext,
-    **kwargs
-) -> Tuple[Goal, Optional[Plan]]:
-    # Adjust priority based on personality traits
-    priority = self._adjust_priority_for_personality(
-        base_priority=kwargs.get('priority', GoalPriority.NORMAL),
-        personality=personality_context
-    )
-    
-    # Adjust goal type based on relationship vectors
-    if personality_context.relationship_closeness < 0.3:
-        # Low closeness = less proactive
-        kwargs['proactivity_level'] = 'low'
-    
-    return await self.create_goal_with_context(
-        user_id=user_id,
-        title=title,
-        priority=priority,
-        **kwargs
-    )
+personality = await personality_service.get_personality_context(user_id)
+adjusted_priority = personality_service.adjust_priority_for_personality(base_priority, personality)
+proactivity = personality_service.calculate_proactivity_level(personality)
 ```
 
 ### 4. Planning with Context
@@ -150,27 +125,16 @@ class Planner:
 ## Implementation Steps
 
 ### Step 1: Create WorldModelService (Week 1)
-- [ ] Create `shared/aico/ai/world_model/` directory
-- [ ] Implement `service.py` with basic queries
-- [ ] Implement `models.py` for data structures
-- [ ] Add tests for WorldModelService
+- Implemented; see `shared/aico/ai/world_model/*`.
 
 ### Step 2: Integrate AMS into AgencyEngine (Week 1-2)
-- [ ] Add `world_model` parameter to AgencyEngine
-- [ ] Implement `create_goal_with_context()` method
-- [ ] Update goal metadata to include AMS context
-- [ ] Add tests for AMS integration
+- Implemented in `AgencyEngine` as `create_goal_with_world_context` / `create_goal_with_full_context`.
 
 ### Step 3: Add Personality Hooks (Week 2)
-- [ ] Create `PersonalityService` wrapper
-- [ ] Implement priority adjustment based on traits
-- [ ] Implement proactivity adjustment based on relationships
-- [ ] Add tests for personality integration
+- Implemented; see `shared/aico/ai/personality/service.py`.
 
 ### Step 4: Update Planner (Week 2-3)
-- [ ] Add context-aware shape selection
-- [ ] Use world model in plan generation
-- [ ] Add tests for context-aware planning
+- **WIP**: deeper planner integration with world context beyond attaching metadata.
 
 ### Step 5: Integration Testing (Week 3)
 - [ ] End-to-end tests with real KG data

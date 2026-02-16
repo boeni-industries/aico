@@ -6,10 +6,10 @@ title: Agency Component – Emotion, Personality & Social Context
 
 ## Status
 
-- **Implemented (v1)**: internal emotion simulation service `EmotionEngine` in `backend/services/emotion_engine.py` (publishes compact emotional state; persisted history; REST access via `backend/api/emotion/router.py`).
+- **Implemented (v1)**: internal emotion simulation service `EmotionEngine` in `backend/services/emotion_engine.py` (publishes compact emotional state; persisted history; REST access via `backend/api/emotion/router.py` mounted at `/api/v1/emotion/*`; see router mounting in `backend/core/lifecycle_manager.py`).
 - **Partially implemented (v1)**: conversation conditioning can include emotion guidance when enabled via feature flag in `backend/services/conversation_engine.py` (`enable_emotion_integration`).
 - **Implemented (v1, baseline)**: `PersonalityService` exists (`shared/aico/ai/personality/service.py`) and provides a `PersonalityContext` with default traits + relationship vector (Phase 2 defaults).
-- **WIP**: `PersonalityPlugin` contract exists (`backend/services/personality_engine.py`), but does not yet perform real analysis.
+- **WIP**: `PersonalityPlugin` contract exists (`backend/services/personality_engine.py`), but does not yet perform real analysis (contract-only placeholder).
 - **WIP**: Social relationship modeling as described here (role/intimacy/trust/stability dynamics) is not implemented end-to-end; only foundational persistence models exist (e.g., `shared/aico/data/user/relationship_models.py`).
 
 ## 1. Purpose

@@ -4,6 +4,15 @@ title: Agency
 
 # Agency
 
+## Status
+
+- **Implemented (v1)**: core agency subsystems exist in `shared/aico/ai/agency/*` (notably `engine.py`, `arbiter.py`, `planner.py`, `executor.py`, `reflection.py`, `values_ethics.py`).
+- **Implemented (v1)**: agency is exposed via REST endpoints under `/api/v1/agency/*` (see `backend/api/agency/router.py`).
+- **Implemented (v1)**: background orchestration exists via scheduler tasks (see `backend/scheduler/tasks/agency_arbiter.py`, `backend/scheduler/tasks/agency_plan_executor.py`, `backend/scheduler/tasks/agency_reflection.py`, `backend/scheduler/tasks/curiosity_scan.py`).
+- **Implemented (v1)**: system health / self-healing surfaces exist (see `backend/api/system/health/router.py` and the scheduled `system.health.issue_detection` task in `backend/scheduler/tasks/issue_detection.py`).
+- **WIP**: end-to-end proactive initiation wiring (agency → conversation) as a canonical, always-on loop.
+- **WIP**: a dedicated lifecycle/daily rhythm state machine and embodiment mapping as described in the requirements below (see `agency-component-lifecycle.md` and `agency-component-embodiment.md`).
+
 ## 1. Requirements and Goals
 
 This section states the high‑level requirements that AICO’s agency system must satisfy. It serves as a contract for future architecture and implementation.
@@ -25,11 +34,15 @@ This section states the high‑level requirements that AICO’s agency system mu
 - **R5 – Continuous Lifecycle**  
   AICO must behave as a persistent, long‑lived agent with an explicit daily rhythm (active phases and sleep‑like phases), where long‑term processing (e.g., memory consolidation) can occur without user interaction.
 
+  **Implementation note (v1):** long-term/background processing exists via scheduler tasks (e.g., AMS consolidation and agency reflection), but a dedicated lifecycle state machine and daily rhythm policy layer are still **WIP**.
+
 - **R6 – Relationship‑Centric Agency**  
   AICO’s autonomous behavior must be anchored in its ongoing relationship with each user, including social roles, intimacy levels, and shared history, such that AICO is perceived as an independent entity in relationship with the user.
 
 - **R7 – Embodied Spatial Presence**  
   AICO’s agency must extend into a 3D embodied space (e.g., a flat with multiple rooms), where spatial location and posture (on the couch, at the desk, in bed, in the kitchen, etc.) reflect and constrain her current goals, activities, and lifecycle state.
+
+  **Implementation note (v1):** embodiment exists as a plugin contract; end-to-end mapping from goals/lifecycle to avatar/flat state is **WIP**.
 
 - **R8 – Curiosity and Intrinsic Motivation**  
   AICO must maintain its own curiosity and intrinsic drives (e.g., reducing uncertainty about the user’s world, mastering new skills, exploring promising ideas), such that it can initiate behavior even when there is no immediate external request, while remaining aligned with user values and safety constraints.

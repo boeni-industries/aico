@@ -4,6 +4,15 @@ title: Agency Component – Lifecycle & Daily Rhythm
 
 # Lifecycle & Daily Rhythm
 
+## Status
+
+- **Partially implemented (v1)**: some scheduler tasks gate execution based on:
+  - an optional `lifecycle_state` string hint (used by `CuriosityScanTask`; see `backend/scheduler/tasks/curiosity_scan.py`), and
+  - an explicit `TaskContext.system_idle()` check (used by `AgencyReflectionTask`; see `backend/scheduler/tasks/base.py` and `backend/scheduler/tasks/agency_reflection.py`).
+
+  **Implementation note (v1):** `TaskContext.system_idle()` is currently a placeholder that returns `True` (no real CPU/memory sampling yet). Treat it as **WIP** as an actual governance signal.
+- **WIP**: a dedicated Lifecycle state machine/component that evaluates ticks, persists `LifecycleState`, emits transition events, and provides user override APIs as described in this document.
+
 ## 1. Purpose
 
 The Lifecycle & Daily Rhythm component treats AICO as a **long‑lived process** with distinct phases (active vs sleep‑like) instead of a purely stateless request/response agent. It coordinates when agency may:
@@ -23,6 +32,8 @@ High-level lifecycle states (conceptual, not OS processes):
 
 Lifecycle transitions are driven by time‑of‑day, user activity, device constraints, and user configuration.
 
+**Implementation note (v1):** current code uses simpler, string-based lifecycle labels in task gating (e.g., `active`, `idle`, `sleep`, `consolidation`, `unknown`) where available (not universally populated). The mapping to the conceptual states above is **WIP**.
+
 ## 3. Data Model (Conceptual)
 
 - **LifecycleState**  
@@ -39,19 +50,27 @@ Lifecycle transitions are driven by time‑of‑day, user activity, device const
 
 Lifecycle state is persisted in the shared store and made available to Scheduler, Arbiter, Curiosity, and Embodiment.
 
+**WIP**: lifecycle persistence and a shared, authoritative lifecycle state store.
+
 ### 3.1 Persistence
 
 - **LifecycleState**  
   - Stored in the shared PostgreSQL-backed store (and/or KG) alongside other agency runtime state.  
   - Single current row/node per AICO agent; read by Scheduler, Arbiter, Curiosity, Embodiment, and Conversation.
 
+  **WIP**: this persistence layer; currently scheduler task contexts can carry ephemeral lifecycle hints.
+
 - **DailyRhythmConfig**  
   - Stored in configuration tables/files in the same PostgreSQL environment as other agency config (values, skills, policies).  
   - Loaded into memory by the Lifecycle component and editable via user/developer settings.
 
+  **WIP**: daily rhythm configuration as a first-class, user-editable subsystem.
+
 - **Lifecycle history (optional)**  
   - Transition log (`timestamp`, `old_state`, `new_state`, `reason`) stored as an append-only table for debugging, metrics, and Self-Reflection.  
   - Summaries or patterns may be promoted into AMS/KG as `MemoryItem`s if useful, but jobs themselves remain elsewhere.
+
+  **WIP**: append-only lifecycle transition history.
 
 - **Not owned by Lifecycle**  
   - Task definitions and queues (user-facing, background, maintenance) are persisted and owned by the **Scheduler / Task system**. Lifecycle only controls when different task classes are allowed to run via its state/flags, it does not store or manage individual jobs.
@@ -65,15 +84,23 @@ Lifecycle state is persisted in the shared store and made available to Scheduler
     - outstanding consolidation jobs.  
   - Decide whether to remain in current state or transition.
 
+  **WIP**: periodic lifecycle evaluation tick.
+
 - **EnterState(new_state, reason)**  
   - Update `LifecycleState` and emit an internal event so Scheduler, Curiosity, Embodiment, and Conversation can adjust behaviour.
+
+  **WIP**: lifecycle transition events.
 
 - **ScheduleSleepLikePhase()**  
   - During quiet hours, request a SLEEP_LIKE window from Scheduler & Resource Monitor.  
   - Within that window, prioritise AMS consolidation, World Model updates, Self‑Reflection tasks, and low‑impact curiosity probes.
 
+  **WIP**: coordinated “sleep-like window” scheduling across subsystems.
+
 - **RespectUserOverrides()**  
   - User can temporarily force ACTIVE or suppress SLEEP_LIKE (e.g., “stay awake and help me tonight”), within safety/resource limits.
+
+  **WIP**: explicit user override surface and enforcement.
 
 ## 5. Integration with Other Components
 

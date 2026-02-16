@@ -4,6 +4,14 @@ title: Agency Component – Values & Ethics Layer
 
 # Values & Ethics Layer
 
+## Status
+
+- **Implemented (v1)**: evaluation service exists as `ValuesEthicsService` in `shared/aico/ai/agency/values_ethics.py`.
+- **Implemented (v1)**: default global rules exist in `shared/aico/ai/agency/default_policies.py`.
+- **Implemented (v1)**: policy persistence tables exist in `shared/aico/data/postgres/schema.sql` (`ethics_policy_rules`, `ethics_value_profiles`, `ethics_gate_audit`, `ethics_decisions_cache`).
+- **Implemented (v1)**: policy + consent endpoints exist in `backend/api/agency/router.py` (e.g., `/api/v1/agency/policies`, `/api/v1/agency/consent`).
+- **Implemented (v1)**: a canonical consent ledger exists in PostgreSQL (see `consent_records`, plus related consent tables in `shared/aico/data/postgres/schema.sql` and SQLAlchemy mappings in `shared/aico/data/tables.py`). The agency consent endpoints persist via `uow.consent_records` in `backend/api/agency/router.py`.
+
 ## 1. Purpose
 
 The Values & Ethics layer provides **explicit value constraints and ethical reasoning hooks** for AICO’s agency. It ensures that autonomy, planning, and curiosity remain aligned with user wellbeing, safety, and agreed boundaries over long time horizons.
@@ -165,14 +173,14 @@ The layer exposes a small set of operations that other components call synchrono
 The **Self-Reflection & Self-Model** component can influence Values & Ethics in two config-controlled modes (see `agency-component-self-reflection.md`):
 
 - **Observe-only (default)**  
-  - Config: `values_ethics.policy_mode = "enforce"` (default).  
+  - Config: `agency.self_reflection.policy_mode = "observe_only"` (default).  
   - Behaviour:
     - Self-Reflection analyses behaviour and policy outcomes.  
-    - It writes `MemoryItem(type="reflection")` records with `lesson_type = "policy_suggestion"` and `target_kind = "policy_rule"`, linked via ontology to specific `PolicyRule`/ValueProfile entries.  
+    - It writes structured lessons to `agency_lessons` with `lesson_type = "policy_suggestion"` and `target_kind = "policy_rule"` (see `agency-component-self-reflection.md`).
     - Values & Ethics does **not** automatically change any rules based on these memories; a separate policy-authoring process (human or tool) may review and apply them.
 
 - **Allow-amend (advanced, opt-in)**  
-  - Config: `values_ethics.policy_mode = "warn_only"` (opt-in).  
+  - Config: `agency.self_reflection.policy_mode = "allow_amend"` (opt-in).  
   - Behaviour:
     - Self-Reflection is allowed to propose and apply **small, local amendments** to policy **only through the Values & Ethics service APIs** (no direct DB writes).  
     - Typical allowed changes: tuning thresholds/weights, adjusting rule priorities/soft caps, adding/removing narrowly-scoped exceptions.  
@@ -200,5 +208,8 @@ This keeps Values & Ethics as the **single source of truth and execution surface
 
 **Persistence pattern (recommended)**  
 - Global rails and deployment defaults are stored as versioned config files (YAML/JSON under `config/policy/`).  
-- Per-user `ValueProfile`s, effective `PolicyRule`s, and `consents` are **intended** to be persisted in the shared PostgreSQL store alongside AMS and the World Model, so policy decisions can join directly on ontology IDs and be audited like other structured state.  
-- In the current database snapshot, only `access_policies` exists; tables named `value_profiles`, `policy_rules`, and `consents` **do not yet exist** and will need to be introduced via explicit migrations. This document defines their **logical role and relationships only**; concrete table schemas and DDL are to be specified in the migrations/implementation docs that add them.
+- Per-user value profiles and effective policy rules are persisted in PostgreSQL (see `shared/aico/data/postgres/schema.sql`):
+  - `ethics_value_profiles`
+  - `ethics_policy_rules`
+  - decision/audit tables like `ethics_gate_audit` and `ethics_decisions_cache`
+- **WIP**: a canonical, queryable consent ledger table (e.g., `ethics_consents`) if/when we want consent history to be first-class at the storage layer.

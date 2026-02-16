@@ -4,21 +4,25 @@ title: Agency Component – Skill & Tool Layer
 
 # Skill & Tool Layer
 
+## Status
+
+- **Implemented (v1)**: in-process `SkillRegistry` / `Skill` base types exist in `shared/aico/ai/agency/skills/registry.py`.
+- **Implemented (v1)**: skill matching exists via `SkillMatcher` in `shared/aico/ai/agency/skills/matcher.py` (multiple strategies).
+- **Implemented (v1)**: skill invocation exists via `SkillInvoker` in `shared/aico/ai/agency/skill_invoker.py` and records executions (see `agency_skill_executions`).
+- **Implemented (v1)**: in-process `ToolRegistry` exists in `shared/aico/ai/agency/tools/registry.py` and is bootstrapped via `shared/aico/ai/agency/bootstrap.py`.
+- **WIP**: a persisted, ontology-backed skill catalog (skills as first-class World Model entities) and a scheduler-queued “skills run only via scheduler” execution path.
+
 ## 1. Purpose
 
-The Skill & Tool Layer defines the **concrete, executable capabilities** AICO can use to act, in a way that is:
+The Skill & Tool Layer defines the **concrete, executable capabilities** AICO can use to act.
 
-- **Ontology-backed** – skills/tools are first-class `Skill` entities in the shared ontology/World Model.  
-- **Policy-aware** – every invocation goes through Values & Ethics and resource budgets.  
-- **Schedulable** – skills are executed via the Scheduler, not ad hoc calls from LLM prompts.
+- **Ontology-backed** – **WIP**: skills/tools as first-class `Skill` entities in the shared ontology/World Model.
+- **Policy-aware** – skills carry safety metadata (e.g., `safety_level`, `side_effect_tags`) and execution policy hints; end-to-end “every invocation is pre-gated by Values & Ethics + scheduler budgets” is **WIP**.
+- **Schedulable** – **WIP**: executing plan steps by queueing explicit skill invocations in the backend scheduler.
 
 It is the bridge between **goals/plans** and **actual actions** (conversation, memory operations, external APIs, automations).
 
-This document focuses on the **conceptual model and flows**. The
-**implementation master spec** for concrete skills, tools, and their
-schemas/contracts lives in:
-
-- `WIP-self-healing-skills-tools.md` (project root)
+This document focuses on the **current implementation model and flows**, and marks forward-looking parts as `**WIP**`.
 
 
 ## 2. Conceptual Model
@@ -32,7 +36,7 @@ The layer organises capabilities into a small set of categories:
 - **Social skills** – check-ins, follow-ups, invitations, boundary-aware introductions.  
 - **External tools** – APIs, local automations, file/system operations, third-party integrations.
 
-All of these map to ontology `Skill` nodes with:
+**WIP:** mapping skills to ontology `Skill` nodes with:
 
 - `skill_id`, `name`, `description`,  
 - `input_schema_id`, `output_schema_id`,  
@@ -52,20 +56,22 @@ We follow a simple, hierarchical chain (in line with HTN-style and recent LLM pl
    - Each plan step is linked to ontology entities (Persons, Activities, LifeAreas, WorldStateFacts) via the World Model.
 
 3. **Skills (this layer)**  
-   - For each executable plan step, the Planner and Skill & Tool Layer choose **one or more `Skill` nodes** that can realise it.  
-   - Inputs to a skill are filled from the World Model (entity IDs, facts) and local parameters (text, options).
+   - For each executable plan step, the plan executor chooses a concrete `skill_id` from the `SkillRegistry`.
+   - Inputs are passed as a typed dict and validated against `Skill.parameters`.
 
 4. **Tools (implementation)**  
-   - Many skills are thin semantic wrappers around one or more concrete **tools** (Python functions, OS calls, HTTP APIs, external services).  
-   - The Skill & Tool Layer owns the mapping from `Skill.skill_id` to implementation and tooling details (endpoints, auth, timeouts).
+   - Many skills can be thin semantic wrappers around one or more concrete tools.
+   - In code, tools are registered in a process-local `ToolRegistry` (see `shared/aico/ai/agency/tools/registry.py`).
+   - A stable, end-to-end skill→tool mapping is partially implemented via `Skill.implementation_tools` (**WIP**: complete, enforced mapping and policy gating).
 
-Before any skill/tool executes, the Skill & Tool Layer:
+Before a skill executes, the runtime typically:
 
-- normalises the call (ontology IDs, LifeAreas, side-effect tags),  
-- calls Values & Ethics (skill/plan-level evaluation),  
-- checks resource budgets with Scheduler/Resource Monitor.
+- validates inputs via the skill’s parameter definitions,
+- executes via `SkillInvoker` with timeout + retry and records execution state.
 
-Only then is the skill invocation enqueued in the Scheduler and translated into concrete tool calls.
+**WIP**: canonical pre-execution gating that always invokes Values & Ethics and scheduler resource governance before running side-effectful skills.
+
+**WIP**: enqueue skill invocations as scheduler tasks instead of executing inline in the plan executor.
 
 ### 2.3 Minimal contract per skill
 
@@ -82,18 +88,15 @@ This metadata is used by the Planner, Values & Ethics, World Model, and Schedule
 
 Skill selection is **registry-driven**, not ad-hoc tool picking by the LLM:
 
-- A **Skill Registry** stores all available `Skill` definitions with their metadata (capabilities, LifeAreas, preconditions, side_effect_tags, safety_level, cost/latency hints).  
+- A `SkillRegistry` stores all available `Skill` implementations with their metadata (e.g., category, safety hints, side effects, capability tags).  
 - For each **plan step**, the Planner/Skills layer:
   - builds a step spec (NL description + linked ontology entities + desired effect type),  
   - queries the registry for skills whose **preconditions and capabilities match** that spec,  
   - filters by safety level and deployment/user preferences,  
-  - optionally uses an LLM **only to rank or choose among** the matched skills, never to invent arbitrary tools.
+  - may use semantic similarity / fuzzy matching as part of `SkillMatcher` (**WIP**: strict allow-listing only; today the system supports multiple matching strategies).
 - If a skill wraps multiple tools, the registry/skill config decides which concrete tool implementation to use based on context (e.g., LifeArea, relationship role, deployment config).
 
-The **concrete naming conventions**, schema IDs, and per-domain skill/tool
-sets (including maintenance/self-healing capabilities across PostgreSQL,
-ChromaDB, InfluxDB, and LMDB) are specified in the
-`WIP-self-healing-skills-tools.md` implementation guide.
+**Implementation note (v1):** registries are in-memory/process-local today. Bootstrapping of core tools happens in `shared/aico/ai/agency/bootstrap.py` (import-time registrations).
 
 The Planner and Skill & Tool Layer therefore always pick skills/tools from a **finite, ontology-typed set** with known contracts, rather than letting the LLM free-form call arbitrary APIs.
 
@@ -137,18 +140,16 @@ Tools are concrete implementations referenced by `implementation_ref`:
 
 Tools do **not** define their own free-form parameter lists; instead, they accept the **normalised input payload** defined by the `Skill`'s `input_schema_id`. Transport-specific details (e.g., how to map the payload into HTTP query/body fields or function arguments) live in the Tool runner configuration, not in the ontology.
 
-The mapping `Skill.skill_id → [Tool]` lives in a **Skill Registry** persisted alongside the ontology/World Model configuration.
+**WIP**: persist `Skill.skill_id → [tool_id]` mappings alongside the World Model / ontology configuration.
 
 
 ## 4. Operations / APIs
 
 ### 4.1 Registration and lookup
 
-- **RegisterSkill(SkillDefinition)**  
-  - Adds/updates a `Skill` in the registry, validating that referenced tools and schemas exist.  
+**Implementation note (v1):** skills are registered in-process by constructing skill classes and calling `SkillRegistry.register(...)` (see `shared/aico/ai/agency/skills/registry.py`).
 
-- **RegisterTool(ToolDefinition)**  
-  - Adds/updates a Tool implementation; can be reused by multiple skills.  
+**Implementation note (v1):** tools are registered in-process in `ToolRegistry.register_tool(...)` (see `shared/aico/ai/agency/tools/registry.py`).
 
 - **FindSkillsForStep(StepSpec)**  
   - Input: desired capabilities, LifeAreas, target entities, effect type.  
@@ -157,13 +158,14 @@ The mapping `Skill.skill_id → [Tool]` lives in a **Skill Registry** persisted 
 ### 4.2 Invocation
 
 - **InvokeSkill(skill_id, input, context)**  
-  - Called by Scheduler when executing a plan step.  
+  - Called by the plan executor via `SkillInvoker.invoke_skill(...)` (`shared/aico/ai/agency/skill_invoker.py`).
   - Steps:
-    - load `Skill` + implementation mapping from registry;  
-    - normalise input (attach ontology IDs, LifeAreas, side_effect_tags);  
-    - call Values & Ethics / resource checks;  
-    - dispatch to the appropriate Tool runner based on `backend` and `runtime_context`;  
-    - collect tool results, aggregate into skill-level `status`/`outputs`/`observables`.
+    - load `Skill` from `SkillRegistry`;
+    - validate inputs;
+    - execute with timeout + retry;
+    - record the execution for reflection/learning loops.
+
+  **WIP**: standardized tool-runner abstraction (python/http/zmq) with sandboxing and universal policy checks.
 
 - **Tool runner APIs** (internal to infra)  
   - E.g. `RunPythonTool`, `RunHttpTool`, `RunOsCommand`, each responsible for sandboxing, timeouts, logging, and mapping raw results into typed outputs.

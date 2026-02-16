@@ -4,6 +4,14 @@ title: Agency Self-Healing & System Health Integration
 
 # Agency Self-Healing & System Health Integration
 
+## Status
+
+- **Implemented (v1)**: system health endpoints exist for Studio/system integration (see `backend/api/system/health/router.py`).
+- **Implemented (v1)**: basic service/process health endpoints exist (see `backend/api/health/router.py`, including `GET /api/health` and `GET /api/health/detailed`).
+- **Implemented (v1)**: automated issue detection is scheduled via `system.health.issue_detection` (see `backend/scheduler/tasks/issue_detection.py`).
+- **Implemented (v1)**: issue detection uses maintenance skills from the Skill layer (see `aico.ai.agency.skills.maintenance.*`).
+- **WIP**: normalizing all health signals into persisted `PerceptualEvent` objects and using them as the canonical trigger for maintenance goal creation.
+
 ## 1. Purpose
 
 This document specifies how **Agency** implements self-healing behaviour that is
@@ -69,8 +77,15 @@ Self-healing is triggered by **health signals** from infrastructure and
 agency-level components. Examples (spanning AICO's multi-store architecture of PostgreSQL, ChromaDB,
 InfluxDB, and LMDB/working-memory stores):
 
-- `/api/health` and `/api/health/detailed` responses (CPU, memory, disk,
-  databases, Modelservice, Ollama, message bus).
+- `GET /api/health` and `GET /api/health/detailed` responses (CPU, memory, disk,
+  Modelservice, Ollama, message bus).
+- System Health endpoints for Studio workflows (see `backend/api/system/health/router.py`), e.g.:
+  - `GET /api/system/health/health`
+  - `GET /api/system/health/health/issues`
+  - `POST /api/system/health/health/check/connectivity`
+  - `POST /api/system/health/health/check/resources`
+  - `POST /api/system/health/health/check/models`
+  - `POST /api/system/health/health/check/ai-behaviour`
 - Modelservice health handler signals (ZMQ health checks).
 - Operations telemetry (latency, error rates).
 - Agency metrics (see `agency-metrics.md`):
@@ -79,15 +94,15 @@ InfluxDB, and LMDB/working-memory stores):
   - `open_loops_count`, `last_consolidation_time`.
   - `lifecycle_phase`, `scheduled_agency_tasks`, etc.
 
-All such conditions are normalised into **PerceptualEvents** with a suitable
-`percept_type`:
+All such conditions are conceptually normalised into **PerceptualEvents** with a suitable
+`percept_type` (**WIP**: persisted PerceptualEvent ingestion as a canonical trigger):
 
 - `SystemMaintenanceEvent` (e.g., DB disk pressure, memory index fragmentation).
 - `RiskOrOpportunityEvent` (e.g., critical component unhealthy).
 - `PatternEvent` (e.g., recurring plan failures).
 
 These events are produced by health/check components and are consumed by the
-Goal & Intention System via `ProposeGoalFromPercept`.
+Goal & Intention System (**WIP**: a single canonical `ProposeGoalFromPercept` integration surface; some paths currently create maintenance goals more directly).
 
 ### 3.2 Maintenance goals
 

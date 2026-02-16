@@ -16,13 +16,10 @@ This document provides a high-level overview of AICO's agency system implementat
 
 ## Current Status
 
-**Active Phase:** Phase 8 (Core Complete) → Phase 9 (In Progress)
+This roadmap is intentionally high-level. For the most up-to-date implementation status and metrics, use:
 
-**Quick Metrics:**
-- Tests: 943 passing (100% pass rate)
-- Coverage: 80% overall
-- Events: 1,188+ tracked
-- Active Data: 108 goals, 108 plans, 3,710 executions
+- `docs/concepts/agency/agency-roadmap-status.md`
+- the CLI (`cli/commands/agency.py`, e.g. `aico agency status`, `aico agency metrics`, `aico agency health`)
 
 [→ Detailed Current Status](agency-roadmap-status.md)
 

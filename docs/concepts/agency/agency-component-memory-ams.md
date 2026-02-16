@@ -4,6 +4,13 @@ title: Agency Component – Memory & AMS Integration
 
 # Memory & AMS Integration
 
+## Status
+
+- **Implemented (v1)**: `MemoryManager` orchestrates working + semantic memory and context assembly (`shared/aico/ai/memory/manager.py`, `shared/aico/ai/memory/context/*`).
+- **Implemented (v1)**: `ConversationEngine` retrieves memory context via `memory_manager.assemble_context(...)` and injects it into the LLM context (`backend/services/conversation_engine.py`).
+- **Implemented (v1)**: AMS-facing REST endpoints exist under `/api/v1/ams/*` (`backend/api/ams/router.py`) exposing consolidation status + behavioral learning / preferences derived from persisted tables.
+- **WIP**: tight coupling of AMS heavy consolidation to Lifecycle “SLEEP_LIKE” windows as a first-class, shared subsystem (see `agency-component-lifecycle.md`).
+
 ## 1. Purpose
 
 This component defines **how agency uses AICO’s memory stack** (working, semantic, KG/World Model, AMS) as its long-term backbone for:
@@ -21,18 +28,26 @@ It does not replace the existing Memory/AMS system; it **integrates** with it us
   - Short-lived buffers for recent conversation context and transient state.  
   - Fast access, limited size, no long-term guarantees.
 
+  **Implementation note (v1):** working memory is implemented as a store within `shared/aico/ai/memory/working.py` and coordinated by `MemoryManager`.
+
 - **Semantic memory** (ChromaDB + PostgreSQL)  
   - Text segments, embeddings, and hybrid search indices.  
   - Used for “what has happened” retrieval via similarity and metadata filtering.
+
+  **Implementation note (v1):** semantic memory is implemented in `shared/aico/ai/memory/semantic.py` and used by `MemoryManager` when enabled in config.
 
 - **Knowledge graph / World Model** (shared PostgreSQL-backed KG + schemas)  
   - Structured entities and relations (`Person`, `Activity`, `Goal`, `WorldStateFact`, `Skill`, etc.) as defined in the ontology and World Model docs.  
   - Provides stable, queryable facts and links that agency uses as its externalised “world state”.
 
+  **Implementation note (v1):** knowledge graph storage/extraction is integrated into `MemoryManager` (see `PropertyGraphStorage` usage in `shared/aico/ai/memory/manager.py`).
+
 - **Adaptive Memory System (AMS)**  
   - Consolidation and evolution layer over working, semantic, and KG.  
   - Learns patterns, routines, preferences; manages long-horizon learning and cleanup.  
   - Uses SLEEP_LIKE phases (Lifecycle) to run heavier consolidation and pattern extraction.
+
+  **WIP**: explicit, shared Lifecycle windows driving AMS scheduling.
 
 Agency sits **on top** of this stack: it does not own the stores, but defines **how agency components read/write** via MemoryManager/AMS/World Model APIs.
 
@@ -81,11 +96,13 @@ The exact concrete APIs are defined in the existing Memory/AMS and World Model i
   - During SLEEP_LIKE phases (see Lifecycle component), AMS runs consolidation jobs tagged as agency-relevant (e.g., routine extraction, preference updates).  
   - Agency components treat these as **asynchronous improvements** to World Model, skills metadata, and preferences.
 
+  **Implementation note (v1):** AMS consolidation is visible via `/api/v1/ams/*` endpoints and underlying tables; scheduling against Lifecycle phases is **WIP**.
+
 - **Self-Reflection Hooks**  
   - Self-Reflection reads from:  
     - logs and `MemoryItem`s about past decisions and outcomes,  
     - AMS-learned patterns (e.g., recurring failure contexts),  
-    - emotion/relationship traces stored via `emotion.memory.store`.  
+    - emotion/relationship traces stored via `emotion.memory.store`. **WIP**  
   - Writes back: reflection memories and small adjustments to skill/goal/policy metadata.
 
 ## 5. Integration with Other Components
@@ -107,7 +124,7 @@ The exact concrete APIs are defined in the existing Memory/AMS and World Model i
   - Scheduler enforces when AMS tasks execute, using Lifecycle flags and resource budgets.
 
 - **Emotion / Personality / Social**  
-  - Emotion simulation stores experiences via `emotion.memory.store`; these become part of the semantic/KG store that agency reads for emotional patterns and relationship history.
+  - Emotion simulation stores experiences via `emotion.memory.store`; these become part of the semantic/KG store that agency reads for emotional patterns and relationship history. **WIP**
 
 ## 6. Persistence Notes
 

@@ -4,6 +4,14 @@ title: Agency Component – Self-Reflection & Self-Model
 
 # Self-Reflection & Self-Model
 
+## Status
+
+- **Implemented (v1)**: reflection engine exists as `SelfReflectionEngine` in `shared/aico/ai/agency/reflection.py` and is invoked via `AgencyEngine.run_self_reflection(...)`.
+- **Implemented (v1)**: scheduled execution exists as `AgencyReflectionTask` in `backend/scheduler/tasks/agency_reflection.py` (cron default `0 3 * * *`) with idle/battery gating.
+- **Implemented (v1)**: persistence uses PostgreSQL tables in `shared/aico/data/postgres/schema.sql` (`agency_lessons`, `agency_self_model`, `agency_reflection_runs`) and SQLAlchemy mappings in `shared/aico/data/tables.py`.
+- **Implemented (v1)**: transparency endpoints exist in `backend/api/agency/router.py` under `/api/v1/agency/reflection/*` (runs, lessons, self-model, skill performance, summary).
+- **WIP**: projection of lessons into the Knowledge Graph / Memory/AMS as first-class entities (current system stores structured lessons in the agency tables and returns them via API).
+
 ## 1. Purpose
 
 Self-Reflection gives AICO a **model of itself over time**: what it tried, how it behaved, what worked, and what should change. It runs periodically (often during Lifecycle SLEEP_LIKE phases or low-activity windows) to:
@@ -33,32 +41,28 @@ It is intentionally conservative: Self-Reflection adjusts **parameters and prefe
 ## 3. Integration Points
 
 **Reads from:**
-- `ams_behavioral_feedback` - Skill execution outcomes and performance metrics
-- `agency_goals` - Goal lifecycle and completion patterns (including curiosity-driven goals)
-- `feedback_events` - User satisfaction ratings and feedback
-- `emotion_history` - User emotional trajectories (valence, arousal, stress patterns)
-- `user_relationships` - Social relationship data (closeness, interaction frequency)
+- `agency_skill_executions` - Skill execution outcomes and timing
+- `ams_behavioral_feedback` - Behavioral feedback signals (incl. user feedback/reward signals)
+- `agency_goals` - Goal lifecycle and completion patterns
+- `emotion_history` - Emotion history signals (when available)
+- `user_relationships` - Relationship/social interaction signals
+- `ethics_gate_audit` - Values & Ethics gate outcomes (for identifying repeated blocks/policy friction)
 
 **Writes to:**
-- `agency_lessons` - Behavioral lessons and improvement suggestions
-- `agency_self_model` - Performance tracking for skills and goal types
+- `agency_lessons` - Behavioral lessons and change proposals (skill tuning, arbiter weights, curiosity intensity, policy threshold tweaks)
+- `agency_self_model` - Aggregated performance summaries for tracked entities (e.g., skills, goal types)
 - `agency_reflection_runs` - Audit trail of reflection job execution
-- Knowledge Graph - Self-model facts and lesson provenance edges
-- Memory/AMS - Lessons as queryable MemoryItems
-- (When applied) Skill metadata, planner templates, arbiter weights, persona configuration
+- (When applied) Updates are performed via the lesson applicator (`shared/aico/ai/agency/lesson_applicator.py`) and stored in the corresponding tables (e.g., `agency_arbiter_adjustments`, user skill learning data, and ethics policy rules).
 
 **Collaborates with:**
-- `LessonApplicationService` - Applies lessons to system configuration
-- `LessonMemoryProjector` - Projects lessons to Memory/AMS and Knowledge Graph
-- `BehavioralFeedbackService` - Consumes performance data
-- `WorldModelService` - Links lessons to hypotheses, queries self-assessment
-- `ContextAssembler` - Provides lessons to conversation context
-- Goal Arbiter - Adjusts goal prioritization based on lessons
-- Values & Ethics - Policy suggestions (observe_only mode) or amendments (allow_amend mode)
+- `LessonApplicationService` - Applies lessons (implemented as `LessonApplicationService` in `shared/aico/ai/agency/lesson_applicator.py`)
+- `ContextAssembler` - May surface lessons in runtime context assembly (**WIP**: consistent inclusion policies)
+- Goal Arbiter - Can consume applied adjustments (e.g., via `agency_arbiter_adjustments`)
+- Values & Ethics - In `allow_amend` mode, applies user-scoped policy tweaks by writing to ethics policy rules via UoW
 
 ## 4. Policy Interaction Modes
 
-Self-Reflection interacts with Values & Ethics in **two modes**, controlled by configuration (see `values_ethics.policy_mode` in `config/defaults/agency.yaml`):
+Self-Reflection interacts with Values & Ethics in **two modes**, controlled by configuration (see `agency.self_reflection.policy_mode`):
 
 - `observe_only` (default / safest)
   - Self-Reflection:
@@ -69,7 +73,7 @@ Self-Reflection interacts with Values & Ethics in **two modes**, controlled by c
   - Values & Ethics (or a separate policy-authoring UI/process) may later review these lessons and manually apply them as rule changes
 
 - `allow_amend` (config-gated, advanced)
-  - When explicitly enabled, Self-Reflection may propose and apply **small, local amendments** to Values & Ethics **through the Values & Ethics service**, never by writing policy tables directly.
+  - When explicitly enabled, Self-Reflection may propose and apply **small, local amendments** to Values & Ethics via the ethics policy repositories (UoW), creating user-scoped copies when needed.
   - Typical allowed changes (subject to future refinement):
     - tuning numeric thresholds and weights inside existing rules,
     - adjusting rule priorities or soft caps,
@@ -80,174 +84,37 @@ In both modes, every suggestion or amendment must be fully **auditable and expla
 
 ## 5. Persistence and Audit for Self-Reflection Outputs
 
-Self-Reflection uses **dedicated tables** for performance and clarity, separate from the user-curated `user_memories` table. This design choice prioritizes query performance, type safety, and clear separation between user semantic memories and system performance metrics.
+Self-Reflection uses **dedicated tables** for performance and clarity, separate from user-curated semantic memory. The authoritative schema lives in `shared/aico/data/postgres/schema.sql` (and SQLAlchemy mappings in `shared/aico/data/tables.py`).
 
 ### 5.1 Dedicated Reflection Tables
 
-The implementation uses three dedicated tables in the `agency` schema (see Schema Version 24 in `core.py`):
+The implementation uses dedicated `agency_*` tables in PostgreSQL (see `schema.sql`):
 
-#### 5.1.1 `agency_lessons` Table
+#### 5.1.1 `agency_lessons`
 
-Stores behavioral lessons generated from self-reflection analysis:
+Stores behavioral lessons generated from reflection analysis. See:
 
-```sql
-CREATE TABLE IF NOT EXISTS agency_lessons (
-    lesson_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    
-    -- Lesson classification
-    lesson_type TEXT NOT NULL,  -- skill_tuning, planner_heuristic, curiosity_focus, persona_style, policy_suggestion
-    target_kind TEXT NOT NULL,  -- skill, planner_template, arbiter_weight, curiosity_policy, persona_trait, policy_rule
-    target_id TEXT,             -- ID of the target entity (skill_id, policy_rule_id, etc.)
-    
-    -- Human-readable summary
-    summary_text TEXT NOT NULL,
-    
-    -- Structured change proposal (JSON)
-    proposed_change TEXT NOT NULL,  -- JSON: {change_type, field, old, new, notes}
-    
-    -- Evidence and confidence
-    confidence REAL NOT NULL,       -- 0.0 to 1.0
-    metrics_basis TEXT,             -- JSON: {time_span, sample_size, outcome_counts, etc.}
-    
-    -- Scope and status
-    scope TEXT NOT NULL,            -- this_user, global_default
-    status TEXT NOT NULL,           -- active, superseded, rejected
-    superseded_by TEXT,             -- lesson_id that replaced this one
-    
-    -- Application tracking
-    applied_at TIMESTAMP,           -- When the lesson was applied
-    applied_by TEXT,                -- Component that applied it
-    
-    -- Provenance
-    source_reflection_run_id TEXT,
-    evidence_window_start TIMESTAMP,
-    evidence_window_end TIMESTAMP,
-    
-    -- Links to related entities
-    related_goal_ids TEXT,         -- JSON array
-    related_trajectory_ids TEXT,   -- JSON array
-    related_event_ids TEXT,        -- JSON array
-    
-    -- Audit trail
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (superseded_by) REFERENCES agency_lessons(lesson_id) ON DELETE SET NULL
-)
-```
+- `shared/aico/data/postgres/schema.sql` (`CREATE TABLE IF NOT EXISTS agency_lessons ...`)
+- `shared/aico/data/agency/lesson_models.py` (Pydantic model)
+- `shared/aico/data/repositories/postgres/lesson_repository.py` (CRUD + JSON field handling)
 
-#### 5.1.2 `agency_self_model` Table
+#### 5.1.2 `agency_self_model`
 
-Tracks performance metrics for skills, goal types, and interaction patterns:
+Stores aggregated performance summaries used by reflection and transparency endpoints. See `shared/aico/data/agency/reflection_models.py`.
 
-```sql
-CREATE TABLE IF NOT EXISTS agency_self_model (
-    model_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    
-    -- What this tracks
-    entity_type TEXT NOT NULL,     -- skill, goal_type, interaction_pattern
-    entity_id TEXT NOT NULL,       -- Specific skill_id, goal type name, etc.
-    
-    -- Performance metrics (JSON)
-    performance_summary TEXT NOT NULL,  -- JSON: {success_rate, avg_duration, user_satisfaction, etc.}
-    
-    -- Temporal scope
-    window_start TIMESTAMP NOT NULL,
-    window_end TIMESTAMP NOT NULL,
-    sample_size INTEGER NOT NULL,
-    
-    -- Confidence and freshness
-    confidence REAL NOT NULL,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Metadata
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
-    UNIQUE(user_id, entity_type, entity_id, window_start)
-)
-```
+#### 5.1.3 `agency_reflection_runs`
 
-#### 5.1.3 `agency_reflection_runs` Table
+Stores an audit trail of reflection runs. It is written by `SelfReflectionEngine.run_reflection(...)`.
 
-Audit trail for reflection job execution:
+### 5.2 Enumerated Values
 
-```sql
-CREATE TABLE IF NOT EXISTS agency_reflection_runs (
-    run_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    
-    -- Run metadata
-    run_type TEXT NOT NULL,        -- scheduled, triggered, manual
-    trigger_reason TEXT,           -- sleep_phase, goal_completion, user_request, etc.
-    
-    -- Analysis scope
-    analysis_window_start TIMESTAMP NOT NULL,
-    analysis_window_end TIMESTAMP NOT NULL,
-    
-    -- Results
-    lessons_generated INTEGER DEFAULT 0,
-    lessons_applied INTEGER DEFAULT 0,
-    
-    -- Timing
-    started_at TIMESTAMP NOT NULL,
-    completed_at TIMESTAMP,
-    duration_seconds REAL,
-    
-    -- Status
-    status TEXT NOT NULL,          -- running, completed, failed
-    error_message TEXT,
-    
-    -- Metadata
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
-)
-```
-
-### 5.2 Enumerated Field Values
-
-The following fields use these exact string values:
-
-- `lesson_type`
-  - `"skill_tuning"`
-  - `"planner_heuristic"`
-  - `"curiosity_focus"`
-  - `"persona_style"`
-  - `"policy_suggestion"`
-
-- `target_kind`
-  - `"skill"`
-  - `"planner_template"`
-  - `"arbiter_weight"`
-  - `"curiosity_policy"`
-  - `"persona_trait"`
-  - `"policy_rule"`
-
-- `proposed_change.change_type`
-  - `"threshold_tweak"`
-  - `"weight_tweak"`
-  - `"exception_add"`
-  - `"exception_remove"`
-  - `"template_update"`
-
-- `scope`
-  - `"this_user"`
-  - `"global_default"`
-
-- `status`
-  - `"active"`
-  - `"superseded"`
-  - `"rejected"`
+Enumerations and allowed values are defined in code (see `shared/aico/ai/agency/models.py` for `LessonType`, `LessonStatus`, `LessonScope`, and run status/type enums). Any textual values in the database should be treated as implementation-defined.
 
 ### 5.3 Data Sources for Reflection Analysis
 
 The reflection engine analyzes performance data from dedicated behavioral tracking tables:
 
-#### 5.3.1 `ams_behavioral_feedback` Table
+#### 5.3.1 Behavioral Feedback
 
 **Purpose:** Tracks skill execution outcomes and performance metrics  
 **Populated by:** `BehavioralFeedbackService` (automatic during skill execution)  
@@ -260,7 +127,7 @@ The reflection engine analyzes performance data from dedicated behavioral tracki
 - `execution_time_ms` - Performance timing
 - `user_satisfaction` - Optional user satisfaction score
 
-**Analysis:** `_analyze_skill_performance()` queries this table to:
+**Implementation note (v1):** the reflection engine analyzes both `ams_behavioral_feedback` and `agency_skill_executions`.
 - Calculate success rates per skill
 - Identify poorly performing skills (< 50% success)
 - Generate lessons to adjust skill selection weights
@@ -278,10 +145,11 @@ The reflection engine analyzes performance data from dedicated behavioral tracki
 - Generate lessons to adjust goal arbiter weights
 - Optimize goal prioritization
 
-#### 5.3.3 `ams_behavioral_feedback` Table (User Feedback)
+#### 5.3.3 User Feedback
 
 **Purpose:** Tracks explicit user feedback and ratings (thumbs up/down)  
-**Populated by:** User feedback system via `/api/v1/behavioral/feedback`  
+**Populated by:** feedback capture flows that write into the existing behavioral feedback tables (**WIP**: richer, structured free-text analysis).
+  
 **Used for:** Immediate skill confidence updates and persona/style adjustments
 
 **Key fields:**
@@ -362,15 +230,19 @@ This guarantees that:
 
 ### 6.1 Core Components
 
-**File:** `/shared/aico/ai/agency/reflection.py`
+**File:** `shared/aico/ai/agency/reflection.py`
 
 **Main class:** `SelfReflectionEngine`
 
 **Key methods:**
 - `run_reflection()` - Main orchestrator for reflection runs
-- `_analyze_skill_performance()` - Analyzes skill success rates
+- `_analyze_skill_executions()` - Analyzes skill outcomes and execution characteristics
 - `_analyze_goal_patterns()` - Analyzes goal completion patterns
 - `_analyze_user_feedback()` - Analyzes user satisfaction
+- `_analyze_curiosity_outcomes()` - Analyzes curiosity outcomes
+- `_analyze_emotion_patterns()` - Analyzes emotion patterns
+- `_analyze_social_patterns()` - Analyzes social patterns
+- `_analyze_policy_patterns()` - Analyzes Values & Ethics gate patterns
 - `get_active_lessons()` - Retrieves active lessons for a user
 - `get_self_model()` - Retrieves performance model for an entity
 
@@ -388,15 +260,17 @@ This guarantees that:
 core:
   agency:
     self_reflection:
-      policy_mode: "observe_only"  # or "allow_amend"
-      min_sample_size: 10           # Minimum data points before generating lessons
-      confidence_threshold: 0.7     # Minimum confidence to apply lessons
+      policy_mode: "observe_only"  # observe_only | allow_amend | disabled
+      min_sample_size: 10
+      confidence_threshold: 0.7
 ```
+
+**Runtime note (v1):** scheduled runs are controlled separately by `agency.self_reflection.enabled` (see `backend/scheduler/tasks/agency_reflection.py`).
 
 ### 6.3 Typical Workflow
 
 ```
-1. Scheduled Trigger (e.g., nightly at 3 AM)
+1. Scheduled Trigger (e.g., nightly at 3 AM via `AgencyReflectionTask`)
    ↓
 2. run_reflection(user_id, run_type=SCHEDULED)
    ↓
@@ -414,14 +288,14 @@ core:
    - Generate lessons for problematic patterns
    ↓
 6. Analyze user feedback (7-day window)
-   - Query feedback_events
+   - Query behavioral feedback sources (e.g., `ams_behavioral_feedback`)
    - Calculate satisfaction scores
    - Generate persona adjustment lessons
    ↓
-7. Apply lessons (confidence >= 0.7)
-   - LessonApplicationService.apply_lesson()
-   - Update system configuration
-   - Mark lessons as applied
+7. Apply lessons (only if `policy_mode = allow_amend` and confidence >= threshold)
+   - `LessonApplicationService.apply_lesson(...)`
+   - Persist adjustments (arbiter adjustments / user skill learning data / ethics policy rules)
+   - Mark the lesson as applied
    ↓
 8. Complete reflection run
    - Update status: COMPLETED

@@ -35,8 +35,14 @@ This loop is realized across several domains.
 Across all domains, AICO distinguishes between **raw signals** (text, audio/video frames, sensor readings, calendar rows, web responses) and **semantic events** that agency can reason about.
 
 - A **Perception / Sensors layer** collects raw inputs from all authorised channels: conversation, AMS/World Model analyses, social/relationship updates, device sensors (e.g., camera/microphone), external services (calendar, web, OS events), etc.
-- These inputs are **interpreted upstream** by specialised components (Conversation Engine, AMS & World Model, Emotion Engine, sensor/external adapters) into **semantic PerceptualEvents** as defined in `agency-ontology-schemas.md`: structured objects containing a natural‑language summary plus structured slots (JSON‑like attributes such as entities, time spans, topics, scores, `percept_type`, `source_component`, salience/urgency).
+- These inputs are **interpreted upstream** by specialised components (Conversation Engine, AMS & World Model, Emotion Engine, sensor/external adapters) into **semantic PerceptualEvents** as defined in `agency-ontology-schemas.md`.
+
+  **Implemented (v1):** the PerceptualEvent model and taxonomy exist in `shared/aico/ai/agency/perceptual_events.py` and are used by some upstream extractors (e.g., `shared/aico/ai/agency/goal_extractor.py`).
+
+  **WIP:** a single, universal “PerceptualEvent ingestion bus” where all subsystems publish and the Goal System consumes as the canonical input.
 - The **Autonomous Agency Domain** (Goal System, Curiosity Engine, Goal Arbiter, Planning) consumes only these interpreted semantic events, not raw signals. Goals and intentions are therefore always grounded in explained, inspectable input rather than opaque sensor streams.
+
+  **WIP:** in v1, many flows still create goals via direct API/service calls (with provenance stored ad-hoc in goal metadata) rather than exclusively through PerceptualEvents.
 
 ## 3. Domain and Module Mapping
 
@@ -81,7 +87,9 @@ Across all domains, AICO distinguishes between **raw signals** (text, audio/vide
   + Supplies summaries and facts for use in planning and reflection.
 
 - **World Model Service (Knowledge/Property Graph + Schemas)**  
-  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings, following the core types and relations defined in `agency-ontology-schemas.md` (Person/User/AICOAgent, Activities/Goals/Hobbies, MemoryItem, WorldStateFact, LifeArea, Skill, Place, Device, PerceptualEvent links, etc.), built on the shared AMS knowledge graph and PostgreSQL store.  
+  + Maintains a hybrid world model combining knowledge/property graph, semantic memory, and embeddings, built on the shared AMS knowledge graph and PostgreSQL store.
+
+  **WIP:** a strictly enforced mapping between the ontology types in `agency-ontology-schemas.md` and the persisted KG representation (`kg_nodes.label` / `kg_edges.relation_type`).
   + Detects inconsistencies, drifts, and unknowns in AICO’s understanding of the user and environment, including conflicts between facts, sparse coverage in key LifeAreas, and unstable routines.  
   + Exposes schema- and graph-augmented queries, denormalised views, embedding-based similarity queries, and hypothesis APIs to planning, curiosity, and self-reflection.
 

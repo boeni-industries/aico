@@ -18,6 +18,7 @@ This document lists key **metrics, states, and KPIs** of the Agency system.
   - `POST /api/v1/agency/consent`, `GET /api/v1/agency/consent`, `DELETE /api/v1/agency/consent/{consent_id}`
   - `GET /api/v1/agency/events`
   - `GET /api/v1/agency/reflection/*` (runs, lessons, self-model, skill performance, summary)
+- **Implemented (v1)**: basic operational health/metrics snapshots exist as internal tools registered in the agency ToolRegistry (see `shared/aico/ai/agency/tools/agency_metrics.py`, e.g., `tool.agency.metrics.snapshot`, `tool.agency.detect_stalled_plans`).
 - **WIP**: many “user-facing metrics” below are defined as UX targets and are not all computed/exposed as explicit metrics yet.
 
 
@@ -157,6 +158,8 @@ The following metrics are primarily intended for developers, operators, and eval
 | Name | Type | Scope | Purpose |
 | ---- | ---- | ----- | ------- |
 | lessons_generated | count/time-series + list | per-user | Inspect how many lessons AICO is extracting and their content. |
+| agency_metrics_snapshot | structured snapshot | per-agent | Backed by `tool.agency.metrics.snapshot` (**WIP**: a dedicated REST endpoint that exposes this tool output). |
+| stalled_plans_detected | count + list | per-agent | Backed by `tool.agency.detect_stalled_plans` (**WIP**: a dedicated REST endpoint that exposes this tool output). |
 | scheduled_agency_tasks | list + states | per-agent, per-user | See what background work is queued and its status. |
 | agency_resource_usage | gauge (CPU/mem/battery share) | per-agent | Monitor resource cost of agency-related work. |
 | lifecycle_state_time_distribution | breakdown (time spent per LifecycleState) | per-agent, time-series | Analyse how much time AICO spends in ACTIVE / FOCUSED_WORK / IDLE_LIGHT / SLEEP_LIKE / MAINTENANCE to tune daily rhythm and background work policies. |

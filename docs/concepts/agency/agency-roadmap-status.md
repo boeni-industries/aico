@@ -12,19 +12,11 @@ title: Agency System - Current Status
 
 ## Quick Metrics
 
-| Metric | Value |
-|--------|-------|
-| **Tests** | 943 passing (100% pass rate) |
-| **Coverage** | 80% overall |
-| **Warnings** | 575 (down from 6,199, -90.7%) |
-| **Events Tracked** | 1,188+ events |
-| **Goals** | 108 active/completed |
-| **Plans** | 108 generated |
-| **Plan Executions** | 3,710 tracked |
-| **Skills** | 486 registered |
-| **Reflection Runs** | 1,437 completed |
-| **Lessons** | 41 generated |
-| **Self-Model Entries** | 2,257 tracked |
+This document is a snapshot and can drift. Prefer the CLI and the database tables as the source of truth:
+
+- CLI entrypoint: `cli/commands/agency.py` (e.g. `aico agency status`, `aico agency metrics`, `aico agency health`, `aico agency reflection-history`, `aico agency lessons *`)
+- Agency REST endpoints: `backend/api/agency/router.py`
+- Core tables: `shared/aico/data/postgres/schema.sql`
 
 ---
 
@@ -38,9 +30,9 @@ title: Agency System - Current Status
 - ✅ Time window filtering support (`--last`, `--since`)
 
 **Phase 9 - Completed:**
-- ✅ `aico agency lessons ls` - List and filter lessons
-- ✅ `aico agency lessons show <id>` - Detailed lesson view
-- ✅ `aico agency lessons approve/reject <id>` - Approval workflow
+- ✅ `aico agency lessons list` - List and filter lessons
+- ✅ `aico agency lessons review <id>` - Detailed lesson view
+- ✅ `aico agency lessons approve <id>` / `aico agency lessons reject <id>` - Approval workflow
 - ✅ `aico agency lessons stats` - Lesson analytics
 
 **Next Steps:**

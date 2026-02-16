@@ -1,3 +1,7 @@
+---
+title: Agency Phase 2 Implementation Summary
+---
+
 # Agency Phase 2 Implementation Summary
 
 **Date:** December 9, 2025  
@@ -5,7 +9,7 @@
 
 ## Overview
 
-Phase 2 successfully integrates **world model context** and **personality traits** into the Agency system, enabling context-aware goal creation with personality-based priority adjustments and relationship-driven proactivity.
+Phase 2 integrates **world model context** and **personality traits** into the Agency system, enabling context-aware goal creation with personality-based priority adjustments and relationship-driven proactivity.
 
 ---
 
@@ -72,7 +76,7 @@ Phase 2 successfully integrates **world model context** and **personality traits
 Enriches goal metadata with world model context:
 - Active projects from knowledge graph
 - Related entities (top 5)
-- Open loops (placeholder for future AMS integration)
+- Open loops (**WIP**: currently a placeholder in `WorldModelService.get_open_loops()`)
 - Retrieval timestamp
 
 #### `create_goal_with_full_context()` ⭐ **Recommended Phase 2 Method**
@@ -151,7 +155,7 @@ All Phase 1 tests continue to pass, confirming backward compatibility.
 
 ### ✅ AMS Integration (v1)
 - [x] Connect Goal System and Planning to AMS for retrieving context
-- [ ] Use AMS summaries and open-loop lists (placeholder - Phase 4+ optimization)
+- [ ] Use AMS summaries and open-loop lists (**WIP**: open loops are currently placeholder)
 - [ ] Track AMS unified indexing (Phase 4+ optimization)
 
 ### ✅ World Model & Knowledge/Property Graph (v1)

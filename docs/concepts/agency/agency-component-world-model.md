@@ -4,13 +4,22 @@ title: Agency Component – World Model & Knowledge Graph
 
 # World Model & Knowledge/Property Graph
 
+## Status
+
+- **Implemented (v1)**: a unified World Model service exists as `WorldModelService` in `shared/aico/ai/world_model/service.py`, providing queries over the knowledge graph plus semantic memory.
+- **Implemented (v1)**: the knowledge/property graph is persisted in PostgreSQL tables `kg_nodes` / `kg_edges` (see `shared/aico/data/postgres/schema.sql`).
+- **Partially implemented (v1)**: basic context queries exist (entities around user, active projects, uncertain areas), while “open loops” and recurring context analysis are present as stubs/placeholders.
+- **WIP**: a complete PerceptualEvent→WorldStateFact ingestion pipeline, ontology-driven schema extensions (e.g., `Routine`, `LifeArea`), and an LLM-based simulation/counterfactual layer as an explicit subsystem.
+- **Implemented (v1)**: a knowledge graph HTTP API exists under `/api/v1/kg/*` (see `backend/api/kg/router.py`), providing graph query and schema/stats endpoints over the shared KG store.
+- **WIP**: a dedicated, higher-level “world model” HTTP API surface (domain-level endpoints for world-context views, hypotheses, routines/life-areas) beyond the generic KG query layer.
+
 ## 1. Purpose
 
-The World Model component maintains AICO’s structured understanding of **people, entities, situations, routines, and environments**. It is a **hybrid world model**, informed by recent research, that combines:
+The World Model component maintains AICO’s structured understanding of **people, entities, situations, and environments**. It is intended to be a **hybrid world model** that combines:
 
-- an explicit **knowledge/property graph** and JSON schemas (see `agency-ontology-schemas.md`) as the canonical store of entities and relations,  
-- **semantic memory and embeddings** for similarity, clustering, and soft generalisation, and  
-- an **LLM-based "simulator lens"** that can roll forward plausible futures and counterfactuals over the structured state (for planning, explanation, and self‑reflection).
+- an explicit **knowledge/property graph** as the canonical store of entities and relations (implemented today via `kg_nodes` / `kg_edges`),
+- **semantic memory** as a complementary store used for topical recency and similarity retrieval,
+- an **LLM-based "simulator lens"** (**WIP**) that can roll forward plausible futures and counterfactuals over the structured state.
 
 The primary focus is on **social and everyday-life world modelling** rather than low-level physics: people, relationships, projects, habits, hobbies, and daily/weekly routines are first‑class. The World Model must:
 
@@ -89,6 +98,8 @@ Domains that require **detailed external knowledge** (e.g., medical knowledge, g
     - create or update **WorldStateFacts** (e.g., "user started a new project", "relationship status changed"), and/or  
     - create or update **MemoryItems** in AMS (episodic or reflective entries linked back to the same entities).
 
+  **WIP**: a canonical PerceptualEvent ingestion pipeline that performs these updates end-to-end. The current `WorldModelService` focuses on query-time context assembly and relies on existing KG/AMS writers.
+
 - **Continuous reconciliation and drift detection**  
   - As new PerceptualEvents arrive, the World Model must detect:  
     - **inconsistencies** (e.g., two incompatible facts about a job, relationship, or schedule), and  
@@ -121,7 +132,7 @@ At the ontology level, the World Model **reuses** all core entities defined in `
 
 The World Model graph is expected to **build on and extend** the existing knowledge graph infrastructure used by AMS (`/docs/concepts/memory`), using the **same underlying persistence/DB** (current implementation: PostgreSQL-backed property graph) but richer schemas and views.
 
-Concretely, v1 of the World Model requires the following **schema extensions**:
+**WIP**: the following schema extensions are described as a target design. They are not implemented as dedicated node/edge types end-to-end today:
 
 - **New node types**  
   - `Routine` (subtype of Activity) – recurring, structured pattern of behaviour.  
@@ -152,7 +163,7 @@ Concretely, v1 of the World Model requires the following **schema extensions**:
   - **Routine timelines** – view that orders `Routine` and their linked activities/habits over time.  
   - **Relationship-centric egonets** – view for a person’s local social graph (Persons, Relationships, shared Activities/Goals).
 
-All of the above are to be introduced by **updating `agency-ontology-schemas.md` and the PostgreSQL/graph schema used by AMS**, not by creating a separate graph database for the World Model.
+All of the above should be introduced by updating `agency-ontology-schemas.md` and the shared PostgreSQL/KG schema, not by creating a separate graph database for the World Model.
 
 ### 3.2 Storage and Indexing Views
 
@@ -226,7 +237,7 @@ This provenance and versioning model is intentionally **lightweight**: it is ric
 
 ## 4. Operations / APIs
 
-This section outlines the main **operation categories** the World Model service supports. Exact transport (HTTP, gRPC, in-process) is implementation-specific; the important part is the **behavioural contract** and how it interacts with AMS, Goals, Curiosity, and Values/Ethics.
+This section outlines the main **operation categories** the World Model service supports. In the current implementation, this is primarily an in-process service API (`WorldModelService`) rather than a dedicated HTTP router.
 
 ### 4.1 Ingestion Operations
 

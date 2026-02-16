@@ -6,8 +6,9 @@ title: Agency Component – Embodiment & Spatial State
 
 ## Status
 
-- **Implemented (v1)**: an embodiment plugin contract exists (`backend/services/embodiment_engine.py`), returning a contract-shaped response (`avatar_actions`, `voice_parameters`, `device_presence`).
-- **WIP**: concrete avatar control, 3D living-space state, room/posture mapping from lifecycle/goals, and feeding embodiment interactions back as agency `PerceptualEvent`s.
+- **Implemented (v1)**: a contract-only embodiment plugin exists (`backend/services/embodiment_engine.py` → `EmbodimentPlugin`), returning a contract-shaped response (`avatar_actions`, `voice_parameters`, `device_presence`).
+- **WIP**: concrete embodiment logic (avatar control, voice synthesis parameters, multi-device presence) and any shared implementation modules (the plugin currently contains placeholders and does not delegate to `shared/aico/ai/embodiment/*`).
+- **WIP**: 3D living-space state, room/posture mapping from lifecycle/goals, and feeding embodiment interactions back as agency `PerceptualEvent`s.
 
 ## Embodiment Types
 

@@ -4,6 +4,14 @@ title: Agency Component – Scheduler & Resource Governance
 
 # Scheduler & Resource Governance
 
+## Status
+
+- **Implemented (v1)**: backend scheduler service exists in `backend/scheduler/core.py` (`TaskScheduler`, `TaskRegistry`, `TaskExecutor`) with task discovery and cron-based scheduling.
+- **Implemented (v1)**: task base types exist in `backend/scheduler/tasks/base.py` (`BaseTask`, `TaskContext`, `TaskResult`, `TaskStatus`, `TaskQueue`, `TaskPriority`, retry configuration).
+- **Implemented (v1)**: resource monitoring exists via `backend/scheduler/resource_monitor.py` (`ResourceMonitor`, `ResourceSnapshot`).
+- **Implemented (v1)**: scheduler admin API exists under `/api/v1/scheduler/*` (see `backend/api/scheduler/router.py`).
+- **WIP**: end-to-end `EvaluateTaskReadiness` that combines Values & Ethics, Safety/Control, and a persisted LifecycleState; current readiness gating is primarily implemented inside individual tasks (e.g., `should_run()` checks).
+
 ## 1. Purpose
 
 The Scheduler & Resource Governance component ensures AICO’s autonomy is **bounded and respectful** of system and user constraints by deciding **when and how much** work to run, once Values & Ethics and Safety & Control have said *what is allowed*.
@@ -19,9 +27,13 @@ It:
 - **Tasks & queues**  
   - All work (plan steps with Skills, AMS/World Model jobs, maintenance) is represented as Tasks grouped into logical queues (e.g., `user_facing`, `background_light`, `background_heavy`, `maintenance`).
 
+  **Implementation note (v1):** queue types are represented as `TaskQueue` enum values in `backend/scheduler/tasks/base.py`. Enforcement of per-queue budgets/fairness is partially implemented and still evolving (**WIP**).
+
 - **Resource governance**  
   - Each Task has a `resource_profile` and `runtime_context` describing expected CPU/memory/battery and sensitivity (foreground vs background).  
   - A Resource Monitor enforces per-queue and global budgets.
+
+  **Implementation note (v1):** `ResourceMonitor` provides system snapshots and helpers (e.g., idle detection, defer heuristics). Full “budget enforcement” across queues is **WIP**.
 
 - **Constraint integration**  
   - Scheduler only runs Tasks that are:
@@ -29,6 +41,8 @@ It:
     - consistent with Safety & Control (AgencyMode, PauseState, capabilities),  
     - permitted by Lifecycle (e.g., heavy jobs mainly in SLEEP_LIKE),  
     - within resource budgets and user/device constraints.
+
+  **WIP**: unified constraint integration across Values & Ethics, PauseState/capabilities, and Lifecycle as a single readiness function.
 
 ## 3. Data Model (Conceptual)
 
@@ -46,10 +60,14 @@ It:
   - timestamps (created_at, started_at, completed_at, last_deferred_at),  
   - `defer_reason` (if deferred: lifecycle, resource, policy, pause_state, etc.).
 
+**Implementation note (v1):** the scheduler persists scheduled task definitions (cron + config) in the database and maintains execution state in-memory; `TaskResult` already includes `defer_reason` and retry hints.
+
 - **QueueConfig**  
   - per queue: `max_concurrent`, `max_cpu_share`, `max_battery_share`, `allowed_lifecycle_states`, etc.
 
 Tasks and queue configs are stored in the shared PostgreSQL-backed task system, not in this doc’s component alone.
+
+**WIP**: an explicit persisted `QueueConfig` model; current configuration is primarily code/config driven.
 
 ## 4. Operations & Behaviour
 
@@ -64,6 +82,11 @@ Tasks and queue configs are stored in the shared PostgreSQL-backed task system, 
     - LifecycleState and `QueueConfig.allowed_lifecycle_states`,  
     - current resource usage vs queue/global budgets.  
   - Returns a decision: runnable now / defer with reason / discard.
+
+  **Implementation note (v1):** readiness checks are partially implemented in:
+  - task-specific gating (e.g., `should_run()` methods),
+  - resource heuristics (see `ResourceMonitor`).
+  A single canonical `EvaluateTaskReadiness` used by the scheduler dispatch loop is **WIP**.
 
 - **DispatchLoop()**  
   - Periodically and on triggers (new tasks, state changes), select tasks per queue using:
@@ -103,8 +126,10 @@ Tasks and queue configs are stored in the shared PostgreSQL-backed task system, 
 ## 6. Persistence & Metrics
 
 - **Persistence**  
-  - Tasks, their status, and queue configurations are persisted in a task database (PostgreSQL) shared with other backend services.  
+  - Tasks and their schedules/config are persisted in a task database (PostgreSQL) shared with other backend services.  
   - LifecycleState, AgencyMode, and PolicyRules live in their respective components but are read by Scheduler at decision time.
+
+  **WIP**: persisted queue configuration + persisted task execution state beyond execution history tables.
 
 - **Metrics**  
   - Metrics such as `scheduled_agency_tasks`, `agency_resource_usage`, and `tasks_run_vs_deferred_by_lifecycle` (see `agency-metrics.md`) are fed by Scheduler’s task and decision logs.  
@@ -114,24 +139,25 @@ This design keeps Scheduler focused on **when and how** to run tasks under resou
 
 ## 7. Implementation Notes & Existing Scheduler Integration
 
-- This component is implemented by **extending the existing `backend.scheduler` service** (`TaskScheduler`, `TaskExecutor`, and `TaskStore`):  
-  - The conceptual `Task` maps directly to rows in `TaskStore`, with agency-specific fields stored in `config` (origin, queue, plan/step/goal IDs, skill/tool IDs, `resource_profile`, `runtime_context`, cached `evaluation_result`).  
+- This component is implemented by **extending the existing `backend.scheduler` service** (`TaskScheduler`, `TaskExecutor`, and the scheduler repositories/service layer):  
+  - The conceptual scheduled task maps to rows in the `scheduler_tasks` table, accessed via `SchedulerService` (`shared/aico/services/scheduler_service.py`) and repositories (`shared/aico/data/repositories/postgres/scheduler_tasks_repository.py`) using the UnitOfWork pattern.  
+  - Agency-specific fields are stored in the task `config` payload (origin, queue, plan/step/goal IDs, skill/tool IDs, `resource_profile`, `runtime_context`, cached `evaluation_result`).  
   - The conceptual `DispatchLoop()` corresponds to `TaskScheduler._scheduler_loop()` / `_check_and_execute_tasks()`, extended with an `EvaluateTaskReadiness` check that consults Lifecycle, Values & Ethics, Safety & Control, and the Resource Monitor before calling `TaskExecutor.execute_task(...)`.
 - There is **only one scheduler service and task database** in the system; agency does not introduce a second scheduler. It adds:
   - richer task metadata,  
   - readiness gating that combines policy, lifecycle, and resources,  
   - and metrics/logging that make agency-related scheduling decisions visible.
 
-### 7.1 Required TaskStore Schema / Config Fields
+### 7.1 Required Scheduler Task Schema / Config Fields
 
-The existing scheduler uses the `scheduled_tasks` table with the schema:
+The existing scheduler uses the `scheduler_tasks` table (see `shared/aico/data/postgres/schema.sql` and SQLAlchemy mappings in `shared/aico/data/tables.py`). Conceptually, it contains:
 
 ```sql
-scheduled_tasks(
+scheduler_tasks(
   task_id    TEXT PRIMARY KEY,
   task_class TEXT      NOT NULL,
   schedule   TEXT      NOT NULL,
-  config     TEXT,               -- JSON payload as text
+  config     TEXT,               -- JSON payload (stored as text)
   enabled    BOOLEAN   DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -178,4 +204,4 @@ Agency integration requires that `config` (TEXT containing JSON) be able to hold
 }
 ```
 
-No new table is introduced for agency; all fields above are stored in the existing `scheduled_tasks.config` JSON payload (TEXT). Code in `TaskStore`/scheduler should parse/emit this JSON structure when working with agency-related tasks.
+No new table is introduced for agency; all fields above are stored in the existing `scheduler_tasks.config` JSON payload. Scheduler code parses/emits this JSON structure when working with agency-related tasks.

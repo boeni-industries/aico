@@ -4,6 +4,14 @@ title: Agency Integration
 
 # Agency Integration
 
+## Status
+
+- **Implemented (v1)**: `AgencyEngine` is registered in the AI registry and consumed by scheduler tasks (e.g., `backend/scheduler/tasks/agency_plan_executor.py`, `backend/scheduler/tasks/agency_arbiter.py`).
+- **Implemented (v1)**: memory integration is centered around `MemoryManager` (`shared/aico/ai/memory/manager.py`) and scheduler-driven consolidation (e.g., `backend/scheduler/tasks/ams_consolidation.py`).
+- **Implemented (v1)**: Values & Ethics and Self-Reflection exist as first-class subsystems (see `shared/aico/ai/agency/values_ethics.py` and `shared/aico/ai/agency/reflection.py`) with transparency endpoints under `/api/v1/agency/*`.
+- **WIP**: end-to-end proactive message initiation wiring (agency → conversation) via message bus topics.
+- **WIP**: some language propagation into the KG layer (treat KG language fields as not guaranteed end-to-end until verified).
+
 ## 1. Purpose
 
 This document describes how **agency** integrates with AICO’s existing systems:
@@ -66,6 +74,8 @@ Key integration surfaces:
 
 AMS consolidation is driven by the **Task Scheduler** via `backend/scheduler/tasks/ams_consolidation.py`, which pulls `memory_manager` from the AI registry and runs consolidation when enabled and idle.
 
+**Implementation note (v1):** `backend/scheduler/tasks/ams_consolidation.py` currently imports the registry from `backend.services.conversation_engine` to retrieve `ai_registry.get("memory")`.
+
 ### 2.3 Emotion Simulation
 
 `EmotionEngine` is registered as a core service and started before the conversation engine:
@@ -127,12 +137,12 @@ The emotion engine and personality simulation (see `personality-sim-architecture
 At integration level, **Self-Reflection** and **Values & Ethics** form a closed loop:
 
 - Self-Reflection periodically analyses behaviour, outcomes, and metrics (see `agency-component-self-reflection.md`).
-- It records lessons as `MemoryItem(type="reflection")` in AMS/World Model, including `lesson_type`, `target_kind`, `target_id`, and a structured `proposed_change` diff.
+- It records lessons in PostgreSQL in `agency_lessons` (see `shared/aico/ai/agency/reflection.py` and `shared/aico/data/postgres/schema.sql`).
 - For policy-related lessons (`lesson_type = "policy_suggestion"`, `target_kind = "policy_rule"`), Values & Ethics consumes these memories in two modes:
   - `observe_only` (default): suggestions are **read-only** input for a human or dedicated policy-authoring flow.
   - `allow_amend` (opt-in): small, local amendments may be applied **via Values & Ethics APIs only**, which:
-    - update the existing `policy_rules` / ValueProfile tables,
-    - emit audit logs tied back to the originating reflection MemoryItem.
+    - update `ethics_policy_rules` / `ethics_value_profiles` as needed,
+    - emit audit logs tied back to the originating lesson.
 
 This keeps Values & Ethics as the single execution surface and store for policy, while allowing agency to gradually adapt within clear, audit-backed boundaries.
 
@@ -225,87 +235,6 @@ Future work should refine these contracts into concrete protobuf schemas and RES
 
 Agency reuses existing PostgreSQL/Chroma/LMDB schemas.
 
-- **Implemented (v1)**: `users.primary_language` exists in the PostgreSQL user profile schema and is used by `ConversationEngine` as the default `conversation_language`.
-- **WIP**: the precise migration layering described below (a single `SchemaVersion 19` in `shared/aico/data/schemas/core.py`) does not match the current repository layout; treat the following as conceptual migration guidance rather than a verbatim code pointer.
-
-The following migration block sketches the **agency-specific** Values & Ethics policy tables:
-
-```python
-N: SchemaVersion(
-    version=N,
-    name="Values & Ethics Policy Tables",
-    description="Add value_profiles, policy_rules, and consents tables for the Values & Ethics subsystem",
-    sql_statements=[
-        # Per-user value / trait / priority profiles
-        """CREATE TABLE IF NOT EXISTS value_profiles (
-            uuid TEXT PRIMARY KEY,
-            user_uuid TEXT NOT NULL,
-            profile_type TEXT NOT NULL,              -- e.g. 'default', 'experimental'
-            traits_json TEXT NOT NULL,               -- JSON blob with value/trait weights
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_active BOOLEAN DEFAULT TRUE,
-            FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
-        )""",
-
-        # Canonical policy rules
-        """CREATE TABLE IF NOT EXISTS policy_rules (
-            uuid TEXT PRIMARY KEY,
-            user_uuid TEXT NOT NULL,                 -- owner / subject of the rule
-            rule_type TEXT NOT NULL,                 -- classifier / hard_rule / consent_gate / rate_limit / etc.
-            scope TEXT NOT NULL,                     -- goal / plan / skill / message / system
-            target TEXT,                             -- optional target identifier (skill_id, goal_label, etc.)
-            condition_json TEXT NOT NULL,            -- JSON condition structure
-            action_json TEXT NOT NULL,               -- JSON action/effect structure
-            status TEXT NOT NULL,                    -- draft / active / disabled / deprecated
-            source TEXT NOT NULL,                    -- human / self_reflection / system_default
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
-        )""",
-
-        # Consents / preferences / revocations
-        """CREATE TABLE IF NOT EXISTS consents (
-            uuid TEXT PRIMARY KEY,
-            user_uuid TEXT NOT NULL,
-            subject TEXT NOT NULL,                   -- what the consent is about (feature, data_use, autonomy_level)
-            scope TEXT NOT NULL,                     -- global / per_contact / per_context
-            value TEXT NOT NULL,                     -- granted / denied / limited / pending
-            metadata_json TEXT,                      -- extra structured info (limits, notes, etc.)
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
-        )""",
-
-        # Indexes
-        "CREATE INDEX IF NOT EXISTS idx_value_profiles_user_active "
-        "ON value_profiles(user_uuid, is_active)",
-
-        "CREATE INDEX IF NOT EXISTS idx_policy_rules_user_status "
-        "ON policy_rules(user_uuid, status)",
-
-        "CREATE INDEX IF NOT EXISTS idx_policy_rules_scope_target "
-        "ON policy_rules(scope, target)",
-
-        "CREATE INDEX IF NOT EXISTS idx_consents_user_subject "
-        "ON consents(user_uuid, subject)",
-
-        "CREATE INDEX IF NOT EXISTS idx_consents_scope_value "
-        "ON consents(scope, value)"
-    ],
-    rollback_statements=[
-        "DROP INDEX IF EXISTS idx_consents_scope_value",
-        "DROP INDEX IF EXISTS idx_consents_user_subject",
-        "DROP INDEX IF EXISTS idx_policy_rules_scope_target",
-        "DROP INDEX IF EXISTS idx_policy_rules_user_status",
-        "DROP INDEX IF EXISTS idx_value_profiles_user_active",
-        "DROP TABLE IF EXISTS consents",
-        "DROP TABLE IF EXISTS policy_rules",
-        "DROP TABLE IF EXISTS value_profiles"
-    ]
-),
-```
-
-Replace `N` with the next free schema version in `CORE_SCHEMA`. No other migrations are required for agency.
-
-**WIP**: This section is intentionally conceptual and must be validated against the current migration system before being used as an implementation recipe.
+- **Implemented (v1)**: `users.primary_language` exists in `user_profiles` and is used by the conversation stack as the default language preference.
+- **Implemented (v1)**: Values & Ethics persistence is already present in `shared/aico/data/postgres/schema.sql` (e.g., `ethics_policy_rules`, `ethics_value_profiles`, `ethics_gate_audit`).
+- **WIP**: a canonical consent ledger table at the storage layer (see `agency-component-values-ethics.md` for current status).

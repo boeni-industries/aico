@@ -1,4 +1,16 @@
+---
+title: AICO Ontology & Schemas
+---
+
 # AICO Ontology & Schemas
+
+## Status
+
+- **Implemented (v1)**: property graph persistence exists as generic `kg_nodes` / `kg_edges` tables (see `shared/aico/data/postgres/schema.sql`) with `label`, `properties` (JSONB), and `relation_type`.
+- **Implemented (v1)**: a `PerceptualEvent` data structure and top-level taxonomy exist in code (see `shared/aico/ai/agency/perceptual_events.py`).
+- **Implemented (v1)**: schema learning primitives exist (Phase 6.4) (see `shared/aico/ai/world_model/schema_learner.py` and `shared/aico/ai/world_model/models.py`).
+- **WIP**: an end-to-end ingestion pipeline that persists `PerceptualEvent` objects into the KG and uses them as first-class provenance across World Model → Goals/Intentions.
+- **WIP**: a strictly enforced, globally canonical ontology (typed nodes/edges like `Person`, `Project`, `WorldStateFact`, etc.) mapped onto `kg_nodes.label` / `kg_edges.relation_type`.
 
 ## 1. Purpose and Scope
 
@@ -66,7 +78,14 @@ We define the ontology in five interlocking areas:
 
 ## 4. Core Types and Identifiers
 
-This section lists the **primary types and relations** AICO commits to. Actual storage can be in a property graph (nodes/edges) or equivalent, but these types must exist conceptually.
+This section lists the **primary types and relations** AICO commits to.
+
+**Implementation note (v1):** the current KG persistence layer stores nodes/edges generically as:
+
+- `kg_nodes.label` + `kg_nodes.properties` (JSONB)
+- `kg_edges.relation_type` + `kg_edges.properties` (JSONB)
+
+There is not yet a single enforced mapping of this doc’s type names to `label` / `relation_type`. Treat the following as the target conceptual ontology and evolve the storage conventions incrementally.
 
 ### 4.1 Agents and Persons
 
@@ -176,6 +195,10 @@ These types are used by the **Emotion/Personality/Social** components and influe
 
 - **PerceptualEvent**  
   The **central interpreted event unit** consumed by the agency subsystem, already defined at high level in other docs. Here we define the core ontology for it.
+
+  **Implemented (v1):** `PerceptualEvent` and its taxonomy are defined in `shared/aico/ai/agency/perceptual_events.py` (see `PerceptType`, `PerceptualEvent`, and `PerceptualEvent.to_dict()`).
+
+  **WIP:** persisting PerceptualEvents as KG nodes/edges (and linking them to `kg_nodes` entities as provenance) is not implemented end-to-end.
 
   Minimal conceptual slots:
   - Identity: `percept_id`, `timestamp`, `source_component` (conversation_engine, world_model, ams, sensor_adapter, external_service_adapter, scheduler, etc.).
@@ -294,11 +317,10 @@ This section ties the ontology to concrete components described in other agency 
 
 ### 6.2 World Model Service / KG+Schemas
 
-- Represents **Person, User, AICOAgent, Activity, Project, Task, Habit, Hobby, Place, Device, MemoryItem, WorldStateFact, Skill** as nodes and edges according to Section 4.
-- Uses PerceptualEvents as **ingestion edges**:
-  - `LEARNED_FROM(MemoryItem, PerceptualEvent)`
-  - `REALISES(WorldStateFact, Goal)` via events that confirm success.
-- Provides schema-aware APIs to other components (see `agency-component-world-model.md`).
+- **Implemented (v1)**: the World Model uses a property graph storage abstraction and the PostgreSQL-backed KG tables (see `shared/aico/ai/knowledge_graph/storage.py`, `shared/aico/services/kg_service.py`, and `shared/aico/data/postgres/schema.sql`).
+- **Implemented (v1)**: schema learning components exist (`SchemaLearner`) but should be treated as early-stage and not yet a universal ontology enforcement mechanism.
+- **WIP**: representing the full set of types in Section 4 as stable labels + relations across all pipelines.
+- **WIP**: PerceptualEvent-driven ingestion edges like `LEARNED_FROM(MemoryItem, PerceptualEvent)` and `EVIDENCED_BY(WorldStateFact, PerceptualEvent)` as first-class, queryable KG relationships.
 
 ### 6.3 Goals & Intentions Component
 
@@ -344,8 +366,9 @@ This section ties the ontology to concrete components described in other agency 
 
 ## 7. Representation and Implementation Notes
 
-- **Primary store**: property/knowledge graph (nodes/edges) backed by the shared PostgreSQL store used by AMS and the World Model, plus:
-  - **JSON-like schemas** for PerceptualEvents, MemoryItems, Goals, Skills, and auxiliary PostgreSQL tables for policy (ValueProfile/PolicyRule) and skill registries.
+- **Primary store (v1)**: property/knowledge graph tables in PostgreSQL (`kg_nodes`, `kg_edges`) with JSONB `properties` (see `shared/aico/data/postgres/schema.sql`).
+- **Service surface (v1)**: repository/UoW-backed `KGService` (`shared/aico/services/kg_service.py`) for CRUD and basic queries.
+- **WIP**: a single canonical JSON schema registry for PerceptualEvents / World facts / skills that is enforced at write-time.
 - **We do not require** heavy OWL reasoning in v1.  
   Reasoning is largely delegated to:
   - LLM-based components (goal interpretation, planning, explanation).
