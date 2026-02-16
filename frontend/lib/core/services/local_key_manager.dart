@@ -11,9 +11,7 @@ class LocalKeyManager {
   static const _masterKeyStorageKey = 'aico_master_key_v1';
 
   static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
+    aOptions: AndroidOptions(),
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.first_unlock_this_device,
     ),

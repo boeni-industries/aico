@@ -46,9 +46,8 @@ class MessageBusPlugin(BasePlugin):
     
     async def initialize(self) -> None:
         """Initialize plugin with dependencies"""
-        # Get database connection from service container
-        self.db_connection = self.require_service('database')
-        #print(f"[MESSAGE BUS PLUGIN] initialize() - db_connection: {self.db_connection is not None}")
+        # No dependencies needed - message bus is pure infrastructure
+        pass
     
     async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Process incoming request - required by PluginInterface"""
@@ -73,13 +72,12 @@ class MessageBusPlugin(BasePlugin):
             
             # Start message bus host directly in current async context
             print(f"[MESSAGE BUS PLUGIN] Starting message bus host...")
-            await self.message_bus_host.start(db_connection=self.db_connection)
+            await self.message_bus_host.start(db_connection=None)
             print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
             
             self.logger.info("Message bus plugin started", extra={
                 "bind_address": self.bind_address,
-                "db_connection": "provided" if self.db_connection else "none",
-                "persistence": "enabled" if self.db_connection else "disabled"
+                "persistence": "disabled (PostgreSQL uses UoW pattern)"
             })
             
             # Notify backend's ZMQ log transport that broker is ready
@@ -154,7 +152,7 @@ class MessageBusPlugin(BasePlugin):
                 "status": "healthy" if is_running else "stopped",
                 "message": f"Message bus {'running' if is_running else 'stopped'}",
                 "bind_address": self.bind_address,
-                "persistence": "enabled" if self.db_connection else "disabled",
+                "persistence": "disabled (PostgreSQL uses UoW pattern)",
                 "registered_modules": stats.get("registered_modules", []),
                 "total_messages": stats.get("total_messages", 0)
             }
@@ -167,22 +165,8 @@ class MessageBusPlugin(BasePlugin):
     
     def _notify_log_transport_broker_ready(self):
         """Notify backend's ZMQ log transport that broker is ready to accept connections"""
-        try:
-            from aico.core.logging import get_logger_factory
-            
-            # Get the backend-specific logger factory instance
-            factory = get_logger_factory("backend")
-            
-            if factory and hasattr(factory, '_transport') and factory._transport:
-                factory._transport.mark_broker_ready()
-                self.logger.info("Notified backend ZMQ log transport that broker is ready")
-            else:
-                self.logger.warning("Backend factory missing _transport or transport is None")
-            
-        except Exception as e:
-            # Don't fail startup if notification fails
-            self.logger.error(f"Exception in notification: {e}")
-            self.logger.warning(f"Failed to notify log transport broker ready: {e}")
+        # ZMQ log transport removed - logs now go directly to InfluxDB
+        pass
     
     async def shutdown(self) -> None:
         """Cleanup message bus plugin resources"""

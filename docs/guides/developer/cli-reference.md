@@ -154,7 +154,7 @@ aico db vacuum    # Maintenance
 ### Options
 
 - `--db-path` (init, status, test): Custom database file path
-- `--db-type` (init, status, test): Database type (libsql only - others planned)
+- `--db-type` (init, status, test): Database type (PostgreSQL only - others planned)
 - `--password` (init, test): Provide master password directly
 - `--table` (count): Specific table to count
 - `--all` (count): Count all tables

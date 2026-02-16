@@ -7,7 +7,7 @@ Following AICO domain-based API organization patterns.
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from datetime import datetime
+from datetime import datetime, UTC
 import gzip
 import base64
 import json
@@ -34,7 +34,7 @@ from .exceptions import (
 )
 
 router = APIRouter()
-logger = get_logger("api", "logs_router")
+logger = get_logger("api.logs_router")
 
 
 @router.post("/", response_model=LogSubmissionResponse)
@@ -61,7 +61,7 @@ async def submit_log(
         log_data = sanitize_log_entry(log_data)
         
         # Add server-side metadata
-        log_data['received_at'] = datetime.utcnow().isoformat()
+        log_data['received_at'] = datetime.now(UTC).isoformat()
         log_data['source'] = 'frontend_api'
         
         # Add subsystem field for AICO logging
@@ -115,7 +115,10 @@ async def submit_log_batch(
                 raise LogValidationError(f"Invalid compressed log data: {e}")
         else:
             # Use regular logs field
-            log_entries = log_batch.logs
+            log_entries = log_batch.logs or []
+
+        if not log_entries:
+            raise LogValidationError("No log entries provided")
         
         if len(log_entries) > 1000:
             raise LogBatchTooLargeError()
@@ -136,7 +139,7 @@ async def submit_log_batch(
                 log_data = sanitize_log_entry(log_data)
                 
                 # Add server-side metadata
-                log_data['received_at'] = datetime.utcnow().isoformat()
+                log_data['received_at'] = datetime.now(UTC).isoformat()
                 log_data['source'] = 'frontend_api'
                 log_data['batch_index'] = i
                 
@@ -160,7 +163,7 @@ async def submit_log_batch(
             errors=errors if errors else None
         )
         
-    except LogBatchTooLargeError:
+    except LogSubmissionError:
         raise
     except Exception as e:
         logger.error(f"Failed to process log batch: {e}")
@@ -189,7 +192,9 @@ async def process_log_entry(log_data: dict):
             if len(module_parts) >= 2:
                 module = module_parts[1]  # Use the second part as the module name
         
-        subsystem_logger = get_logger(subsystem, module)
+        # Construct logger name from subsystem and module
+        logger_name = f"{subsystem}.{module}" if module else subsystem
+        subsystem_logger = get_logger(logger_name)
         
         # Map log levels to Python logging levels
         level_mapping = {
@@ -238,12 +243,31 @@ async def process_log_entry(log_data: dict):
         # Add error details if present
         if log_data.get('error_details'):
             extra_context['error_details'] = log_data['error_details']
+
+        message = log_data.get('message', 'No message')
+        if str(log_level).upper() == 'ERROR' and log_data.get('error_details'):
+            error_details = log_data.get('error_details')
+            if isinstance(error_details, dict):
+                err_type = error_details.get('type')
+                err_message = error_details.get('message')
+                err_stack = error_details.get('stack')
+
+                compact_parts = []
+                if err_type or err_message:
+                    compact_parts.append(f"{err_type or 'Error'}: {err_message or ''}".strip())
+                if isinstance(err_stack, str) and err_stack.strip():
+                    stack_lines = [ln for ln in err_stack.splitlines() if ln.strip()]
+                    stack_preview = "\\n".join(stack_lines[:20])
+                    compact_parts.append(stack_preview)
+
+                if compact_parts:
+                    message = f"{message} | " + " | ".join(compact_parts)
         
         # Remove None values
         extra_context = {k: v for k, v in extra_context.items() if v is not None}
         
         # Log the message using AICO logging infrastructure
-        log_method(log_data.get('message', 'No message'), extra=extra_context)
+        log_method(message, extra=extra_context)
         
     except Exception as e:
         # Fallback logging if something goes wrong

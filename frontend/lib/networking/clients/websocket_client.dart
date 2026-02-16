@@ -28,6 +28,7 @@ class WebSocketClient {
   Timer? _heartbeatTimer;
   Timer? _reconnectTimer;
   final Queue<Map<String, dynamic>> _messageQueue = Queue();
+  final Set<String> _subscriptions = {};
   
   String? _url;
   WebSocketConnectionState _state = WebSocketConnectionState.disconnected;
@@ -48,6 +49,10 @@ class WebSocketClient {
   Stream<WebSocketConnectionState> get connectionState => _stateController.stream;
   WebSocketConnectionState get currentState => _state;
   bool get isConnected => _state == WebSocketConnectionState.connected;
+  
+  /// Stream of broadcast messages from subscribed topics
+  Stream<Map<String, dynamic>> get broadcasts => 
+    messages.where((msg) => msg['type'] == 'broadcast');
 
   Future<void> connect(String url, {bool enableEncryption = true}) async {
     _url = url;
@@ -63,6 +68,31 @@ class WebSocketClient {
     await _channel?.sink.close();
     _channel = null;
     _reconnectAttempts = 0;
+    _subscriptions.clear();
+  }
+  
+  /// Subscribe to a topic for broadcast messages
+  void subscribe(String topic) {
+    if (!_subscriptions.contains(topic)) {
+      _subscriptions.add(topic);
+      sendMessage({
+        'type': 'subscribe',
+        'topic': topic,
+      });
+      debugPrint('Subscribed to topic: $topic');
+    }
+  }
+  
+  /// Unsubscribe from a topic
+  void unsubscribe(String topic) {
+    if (_subscriptions.contains(topic)) {
+      _subscriptions.remove(topic);
+      sendMessage({
+        'type': 'unsubscribe',
+        'topic': topic,
+      });
+      debugPrint('Unsubscribed from topic: $topic');
+    }
   }
 
   void sendMessage(Map<String, dynamic> message) {
@@ -102,6 +132,7 @@ class WebSocketClient {
       _setupMessageHandling();
       _startHeartbeat();
       _flushMessageQueue();
+      _resubscribeToTopics();
       
     } catch (e) {
       debugPrint('WebSocket connection failed: $e');
@@ -267,5 +298,16 @@ class WebSocketClient {
     await disconnect();
     await _messageController.close();
     await _stateController.close();
+  }
+  
+  void _resubscribeToTopics() {
+    // Resubscribe to all topics after reconnection
+    for (final topic in _subscriptions) {
+      sendMessage({
+        'type': 'subscribe',
+        'topic': topic,
+      });
+      debugPrint('Resubscribed to topic: $topic');
+    }
   }
 }

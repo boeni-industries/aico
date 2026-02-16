@@ -11,7 +11,7 @@ from aico.core.logging import get_logger
 
 from .models import ContextItem
 
-logger = get_logger("ai", "memory.context.retrievers")
+logger = get_logger("ai.memory.context.retrievers")
 
 
 class ContextRetrievers:
@@ -110,8 +110,12 @@ class ContextRetrievers:
             return []
         
         try:
-            # Query semantic memory
-            results = await self.semantic_store.query(user_id, query, limit=limit)
+            # Query semantic memory using the correct method name
+            results = await self.semantic_store.query_segments(
+                query_text=query,
+                user_id=user_id,
+                max_results=limit
+            )
             
             # Convert to ContextItems
             items = []
@@ -119,8 +123,8 @@ class ContextRetrievers:
                 items.append(ContextItem(
                     content=result.get('content', ''),
                     source_tier='semantic',
-                    relevance_score=result.get('score', 0.5),
-                    timestamp=datetime.fromisoformat(result.get('timestamp', datetime.utcnow().isoformat())),
+                    relevance_score=result.get('hybrid_score', 0.5),
+                    timestamp=datetime.fromisoformat(result.get('metadata', {}).get('timestamp', datetime.utcnow().isoformat())),
                     metadata=result.get('metadata', {}),
                     item_type='knowledge'
                 ))
@@ -130,6 +134,8 @@ class ContextRetrievers:
             
         except Exception as e:
             logger.error(f"Semantic memory retrieval failed: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return []
     
     async def get_episodic_context(

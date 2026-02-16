@@ -11,13 +11,13 @@ Retention Policy:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 from aico.core.logging import get_logger
 from .base import BaseTask, TaskContext, TaskResult
 
-logger = get_logger("backend", "scheduler.tasks.ams_trajectory_cleanup")
+logger = get_logger("backend.scheduler.tasks.ams_trajectory_cleanup")
 
 
 class TrajectoryCleanupTask(BaseTask):
@@ -29,8 +29,8 @@ class TrajectoryCleanupTask(BaseTask):
     
     Configuration:
     - Schedule: Weekly on Sunday at 3 AM
-    - Archive after: core.memory.behavioral.trajectory_logging.retention_days
-    - Delete after: core.memory.behavioral.trajectory_logging.hard_delete_days
+    - Archive after: memory.behavioral.trajectory_logging.retention_days
+    - Delete after: memory.behavioral.trajectory_logging.hard_delete_days
     """
     
     task_id = "ams.trajectory_cleanup"
@@ -48,7 +48,7 @@ class TrajectoryCleanupTask(BaseTask):
         Returns:
             TaskResult with cleanup statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("\n" + "="*60)
@@ -57,7 +57,7 @@ class TrajectoryCleanupTask(BaseTask):
             logger.info("🧠 [AMS_CLEANUP] Starting trajectory cleanup task")
             
             # Check if behavioral learning is enabled
-            behavioral_config = context.config_manager.get("core.memory.behavioral", {})
+            behavioral_config = context.config_manager.get("memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
             print(f"🧠 [AMS_CLEANUP] Behavioral learning enabled: {enabled}")
@@ -76,52 +76,75 @@ class TrajectoryCleanupTask(BaseTask):
             archive_after_days = context.get_config("archive_after_days", 90)
             delete_after_days = context.get_config("delete_after_days", 365)
             
-            archive_cutoff = datetime.utcnow() - timedelta(days=archive_after_days)
+            archive_cutoff = datetime.now(timezone.utc) - timedelta(days=archive_after_days)
             print(f"\n [AMS_CLEANUP] Archiving trajectories older than {archive_cutoff.date()} ({archive_after_days} days)")
             logger.info(f" [AMS_CLEANUP] Archiving trajectories older than {archive_cutoff.date()} ({archive_after_days} days without feedback)")
             
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            
             print("   Querying trajectories to archive...")
-            archive_result = context.db_connection.execute(
-                """UPDATE trajectories 
-                   SET archived = TRUE 
-                   WHERE timestamp < ? 
-                   AND trajectory_id NOT IN (
-                       SELECT DISTINCT trajectory_id FROM feedback_events WHERE trajectory_id IS NOT NULL
-                   )
-                   AND archived = FALSE""",
-                (archive_cutoff.isoformat(),)
-            )
-            archived_count = archive_result.rowcount if hasattr(archive_result, 'rowcount') else 0
+            # Archive old trajectories without feedback via UoW
+            async with UnitOfWork(session_factory) as uow:
+                # Get trajectories to archive
+                old_trajectories = await uow.ams_trajectories.list(
+                    filters={
+                        'timestamp__lt': archive_cutoff,
+                        'archived': False
+                    },
+                    limit=100000
+                )
+                
+                # Filter out those with feedback
+                feedback_trajectory_ids = set()
+                all_feedback = await uow.ams_behavioral_feedback.list(
+                    filters={'trajectory_id__ne': None},
+                    limit=100000
+                )
+                feedback_trajectory_ids = {f.trajectory_id for f in all_feedback if f.trajectory_id}
+                
+                archived_count = 0
+                for traj in old_trajectories:
+                    if traj.trajectory_id not in feedback_trajectory_ids:
+                        traj.archived = True
+                        await uow.ams_trajectories.update(traj)
+                        archived_count += 1
+                
+                await uow.commit()
             print(f"   Archived {archived_count} trajectories")
             
-            delete_cutoff = datetime.utcnow() - timedelta(days=delete_after_days)
+            delete_cutoff = datetime.now(timezone.utc) - timedelta(days=delete_after_days)
             print(f"\n [AMS_CLEANUP] Deleting archived trajectories older than {delete_cutoff.date()} ({delete_after_days} days)")
             logger.info(f" [AMS_CLEANUP] Deleting archived trajectories older than {delete_cutoff.date()} ({delete_after_days} days)")
             
             print("   Querying archived trajectories to delete...")
-            delete_result = context.db_connection.execute(
-                """DELETE FROM trajectories 
-                   WHERE timestamp < ? 
-                   AND archived = TRUE""",
-                (delete_cutoff.isoformat(),)
-            )
-            deleted_count = delete_result.rowcount if hasattr(delete_result, 'rowcount') else 0
+            async with UnitOfWork(session_factory) as uow:
+                old_archived = await uow.ams_trajectories.list(
+                    filters={
+                        'timestamp__lt': delete_cutoff,
+                        'archived': True
+                    },
+                    limit=100000
+                )
+                
+                deleted_count = 0
+                for traj in old_archived:
+                    await uow.ams_trajectories.delete(traj.trajectory_id)
+                    deleted_count += 1
+                
+                await uow.commit()
             print(f"   Deleted {deleted_count} archived trajectories")
             
-            context.db_connection.commit()
-            
             # Get current trajectory counts
-            stats = context.db_connection.execute(
-                """SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN archived = TRUE THEN 1 ELSE 0 END) as archived,
-                    SUM(CASE WHEN feedback_reward IS NOT NULL THEN 1 ELSE 0 END) as with_feedback
-                   FROM trajectories"""
-            ).fetchone()
+            async with UnitOfWork(session_factory) as uow:
+                all_trajs = await uow.ams_trajectories.list(limit=100000)
+                total = len(all_trajs)
+                archived = sum(1 for t in all_trajs if t.archived)
+                with_feedback = sum(1 for t in all_trajs if t.feedback_reward is not None)
             
-            total, archived, with_feedback = stats if stats else (0, 0, 0)
-            
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"\n [AMS_CLEANUP] Cleanup complete in {duration:.2f}s")
             print(f"   Archived: {archived_count} trajectories")
             print(f"   Deleted: {deleted_count} archived trajectories")
@@ -143,7 +166,7 @@ class TrajectoryCleanupTask(BaseTask):
             )
             
         except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"🧠 [AMS_CLEANUP] Task execution failed: {e}")
             
             return TaskResult(

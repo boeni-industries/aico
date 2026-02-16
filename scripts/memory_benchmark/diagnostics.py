@@ -93,11 +93,11 @@ class MemorySystemDiagnostics:
             score = result.knowledge_retention.percentage
             if score < 70:
                 recommendations = [
-                    "Check entity extraction pipeline (GLiNER → ChromaDB)",
-                    "Verify user_facts collection indexing",
-                    "Review conversation segmentation logic",
-                    "Analyze fact storage timing and async processing",
-                    "Test memory retrieval query performance"
+                    "Check whether relevant prior turns are being injected into the LLM context",
+                    "Review context assembly selection (recency vs relevance gating)",
+                    "Verify corrections/facts are reflected in subsequent turns",
+                    "Review prompt budget allocation (system vs history vs retrieved context)",
+                    "Check end-to-end transport/auth stability (handshake + JWT)"
                 ]
                 
                 # Add specific recommendations based on details
@@ -122,10 +122,11 @@ class MemorySystemDiagnostics:
             score = result.entity_extraction.percentage
             if score < 70:
                 recommendations = [
-                    "Review GLiNER model performance for this conversation type",
-                    "Check NER request/response pipeline",
-                    "Verify entity storage in ChromaDB user_facts collection",
-                    "Analyze entity type coverage (PERSON, GPE, ORG, etc.)"
+                    "Assistant is not acknowledging key entities introduced by the user",
+                    "Check identity/system prompt content (may be overriding user-provided facts)",
+                    "Check context assembly for missing relevant snippets",
+                    "Check prompt truncation/compression behavior",
+                    "Consider adding entity-type metadata and retrieval filters"
                 ]
                 
                 # Add specific recommendations based on precision/recall
@@ -177,17 +178,17 @@ class MemorySystemDiagnostics:
                 ],
                 'knowledge_retention': [
                     "SYSTEMIC ISSUE: Memory storage/retrieval pipeline broken",
-                    "Audit ChromaDB user_facts collection integrity",
-                    "Review entity extraction → storage pipeline",
-                    "Check async memory processing timing",
-                    "Verify conversation segmentation logic"
+                    "Review context assembly pipeline end-to-end (working history + semantic retrieval + KG)",
+                    "Check that the latest user turn is always included and not drowned by old context",
+                    "Verify correction retention (new truth overrides old)",
+                    "Add context injection telemetry and inspect selected blocks"
                 ],
                 'entity_extraction': [
                     "SYSTEMIC ISSUE: Entity extraction system needs attention",
-                    "Evaluate GLiNER model performance across domains",
-                    "Review NER service integration",
-                    "Check entity storage format and indexing",
-                    "Analyze entity type coverage gaps"
+                    "Check scenario expectations vs assistant responses for systematic misses",
+                    "Add stricter validation rules to force entity acknowledgement",
+                    "Improve retrieval precision (reduce false positives, increase precision)",
+                    "Consider adding a lightweight evaluator model for entity/citation checks"
                 ]
             }
             

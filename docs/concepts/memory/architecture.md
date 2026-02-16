@@ -74,8 +74,8 @@ AICO's memory system implements a sophisticated four-tier architecture designed 
 - **Scope**: Conversation chunks scoped by conversation_id and user_id
 - **Performance**: Full-corpus BM25 for accurate IDF statistics
 
-**B. Knowledge Graph (ChromaDB + libSQL)**
-- **Storage**: Hybrid ChromaDB (vectors) + libSQL (relational queries)
+**B. Knowledge Graph (ChromaDB + PostgreSQL)**
+- **Storage**: Hybrid ChromaDB (vectors) + PostgreSQL (relational queries)
 - **Extraction**: Multi-pass with GLiNER (entities) + LLM (relationships)
 - **Entity Resolution**: 3-step process (semantic blocking → LLM matching → LLM merging)
 - **Graph Fusion**: Conflict resolution, temporal updates, canonical IDs
@@ -234,7 +234,7 @@ class EmbeddingService:
 **Purpose**: Learn user interaction patterns, preferences, and behavioral adaptation
 
 **Planned Implementation**:
-- **Storage**: libSQL for fast pattern queries (no embeddings needed)
+- **Storage**: PostgreSQL for fast pattern queries (no embeddings needed)
 - **Scope**: User-level behavioral patterns across all conversations
 - **Learning**: Continuous observation and pattern extraction
 - **Adaptation**: Real-time response style and content adjustment
@@ -286,8 +286,8 @@ class ModelServiceIntegration:
         self.modelservice_client = ModelserviceClient()
         
         # Model configurations from unified config
-        self.llm_model = config.get("core.modelservice.default_models.conversation", "hermes3:8b")
-        self.embedding_model = config.get("memory.semantic.embedding_model", "paraphrase-multilingual")
+        self.llm_model = config.get("modelservice.ollama.default_models.conversation.name")
+        self.embedding_model = config.get("modelservice.transformers.models.embeddings")
         
     async def generate_embeddings(self, texts: List[str]) -> List[np.ndarray]:
         """Generate embeddings via modelservice/Ollama."""
@@ -345,7 +345,7 @@ class AICOMemoryManager:
         # Storage backends
         self.working_memory = LMDBStore(config.working_memory_path)  # Conversation history + context
         self.semantic_store = ChromaDBStore(config.semantic_db_path)  # Segments + KG
-        self.procedural_store = LibSQLStore(config.procedural_db_path)  # User patterns (planned)
+        self.procedural_store = PostgreSQLStore(config.procedural_db_path)  # User patterns (planned)
         
         # Unified model service integration
         self.model_service = ModelServiceIntegration(config)
@@ -389,7 +389,31 @@ class AICOMemoryManager:
 1. **Real-time Updates**: Working memory receives and stores all conversation messages
 2. **Semantic Extraction**: Background process extracts segments and KG facts from conversations
 3. **Pattern Learning**: Procedural memory updated based on interaction outcomes (planned)
-4. **Memory Consolidation**: Periodic cleanup and optimization of stored data
+4. **Database Integration Flow
+
+**Write Flow** (New conversation message):
+1. **LMDB**: Store in working memory (immediate access)
+2. **PostgreSQL**: Create metadata record with conversation_id, user_id, timestamp
+3. **Modelservice**: Generate 768-dim embedding via sentence-transformers
+4. **ChromaDB**: Store embedding with metadata for semantic search
+
+**Read Flow** (Retrieve relevant context):
+1. **Query**: User asks question
+2. **Modelservice**: Generate query embedding
+3. **ChromaDB**: Semantic search returns top-N similar segments
+4. **PostgreSQL**: Fetch full metadata for returned segment IDs
+5. **LMDB**: Check working memory for recent context
+6. **Fusion**: Combine semantic + recency + relationship scores
+
+**Why This Architecture**:
+- **PostgreSQL**: ACID guarantees for metadata, referential integrity for relationships
+- **ChromaDB**: Optimized for vector similarity search (cosine distance)
+- **LMDB**: Ultra-fast access for active conversations
+- **Separation**: Each database handles what it does best
+
+## Memory Consolidation
+
+The consolidation process transfers experiences from working memory to long-term storage:d data
 
 **Consistency Management**:
 - **Conflict Detection**: Identify contradictory information across memory tiers
@@ -440,9 +464,9 @@ class AICOMemoryManager:
 ### Model Configuration Strategy
 
 ```yaml
-# Unified configuration in core.yaml
-core:
-  modelservice:
+# Model configuration lives in the modelservice domain
+modelservice:
+  ollama:
     default_models:
       conversation: "hermes3:8b"
       embedding: "paraphrase-multilingual"  # Primary multilingual model
@@ -472,6 +496,46 @@ memory:
     semantic_weight: 0.7  # Weight for semantic similarity
     bm25_weight: 0.3      # Weight for BM25 score
 ```
+
+## 2026 State-of-the-Art Memory Mechanics (No Architecture Change)
+
+AICO’s multi-tier memory stack is already compatible with state-of-the-art 2026 systems. The primary improvements are in *mechanics and governance*:
+
+### 1) Budgeted “Memory Blocks” for Prompt Assembly
+
+Rather than pushing “more history” into the LLM, modern systems assemble context as a set of budgeted blocks with explicit priorities:
+- Identity/policies
+- Recent turn buffer (working)
+- Thread summary (working → compressed)
+- Retrieved episodic snippets (semantic segments)
+- Stable facts & preferences (knowledge graph / semantic)
+- Behavioral constraints (style, preferences, safety)
+
+This makes token usage predictable and reduces drift caused by long, high-entropy history.
+
+### 2) Consolidation Loops (Flush Working → Long-Term)
+
+State-of-the-art memory systems run periodic consolidation:
+- Summarize older spans into a rolling summary per thread
+- Extract stable facts/preferences into the graph with confidence
+- Attach provenance (where it came from) and timestamps
+
+The result is less raw “chat dump” and more structured, retrievable memory.
+
+### 3) Conflict-Aware Updates
+
+Long-term memory must support updates:
+- Latest user correction overrides older facts
+- Confidence decay for unconfirmed facts
+- Optional versioning/audit trail for debugging and trust
+
+### 4) Evaluation & Observability as First-Class Concerns
+
+Mature memory systems ship with evaluation harnesses and runtime diagnostics:
+- Retrieval hit-rate and false positive rate
+- “Answers latest user turn” rate (drift detection)
+- Correction retention / override correctness
+- Latency and token cost breakdown per block
 
 ### Deployment Considerations
 
@@ -517,15 +581,29 @@ shared/aico/ai/memory/
 ├── manager.py           # MemoryManager - central coordinator extending BaseAIProcessor
 ├── working.py           # WorkingMemoryStore - LMDB conversation history + context
 ├── semantic.py          # SemanticMemoryStore - ChromaDB segments with hybrid search
-├── procedural.py        # ProceduralMemoryStore - libSQL user patterns (planned)
+├── bm25.py              # BM25 keyword ranking
+├── fusion.py            # Hybrid search fusion (RRF, weighted)
+├── memory_album.py      # Memory consolidation and browsing
 ├── context/             # Context assembly module
 │   ├── assembler.py     # ContextAssembler - cross-tier coordination
 │   ├── retrievers.py    # Memory tier retrievers
 │   ├── scorers.py       # Relevance scoring
 │   └── graph_ranking.py # KG-based context ranking
-├── fusion.py            # Hybrid search fusion (RRF, weighted)
-├── bm25.py              # BM25 keyword ranking
-└── memory_album.py      # Memory consolidation and browsing (planned)
+├── temporal/            # Temporal metadata + evolution tracking
+│   ├── metadata.py
+│   ├── evolution.py
+│   └── queries.py
+├── consolidation/       # Memory consolidation engine
+│   ├── scheduler.py
+│   ├── replay.py
+│   ├── reconsolidation.py
+│   └── state.py
+├── behavioral/          # Skill-based interaction learning
+│   ├── skills.py
+│   ├── thompson_sampling.py
+│   ├── preferences.py
+│   └── models.py
+└── unified/             # Placeholder for unified indexing (Phase 4)
 ```
 
 ### Architecture Integration Patterns
@@ -536,7 +614,7 @@ shared/aico/ai/memory/
 - Supports environment-specific and user-specific configuration overrides
 
 **Database Integration:**
-- Reuses `EncryptedLibSQLConnection` for persistent storage components
+- Reuses `PostgreSQL (via UnitOfWork)` for persistent storage components
 - Follows existing schema management and migration patterns
 - Maintains encryption-at-rest for all persistent data using AICO's key management
 
@@ -563,5 +641,4 @@ This architecture provides the foundation for AICO's sophisticated memory capabi
 - [Hybrid Search Guide](hybrid-search.md) - **NEW**: Detailed hybrid search implementation (V3)
 - [Context Management](context-management.md) - Context assembly and thread resolution
 - [Implementation Concepts](implementation.md) - Conceptual implementation approach
-- [Thread Resolution](thread-resolution.md) - Integrated thread resolution system
-- [Memory Roadmap](memory_roadmap.md) - Detailed implementation timeline
+

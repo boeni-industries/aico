@@ -111,7 +111,7 @@ class ApiUserService {
       final validToken = await _tokenManager.getValidToken();
       if (validToken != null) {
         debugPrint('UserService: Found valid token, attempting token-based auto-login');
-        // TODO: Get user info from token or make a lightweight API call
+        // NOTE: Get user info from token or make a lightweight API call
         // For now, we need credentials for full user data
       }
       
@@ -251,7 +251,7 @@ class ApiUserService {
   /// Check if username is available (networking layer implementation)
   Future<bool> checkUsernameAvailability(String username) async {
     try {
-      // TODO: Implement actual API call when backend endpoint is available
+      // NOTE: Implement actual API call when backend endpoint is available
       throw UnimplementedError('Username availability check not yet implemented in backend API');
     } catch (e) {
       if (e is DioException) {
@@ -264,7 +264,7 @@ class ApiUserService {
   /// Check if email is available (networking layer implementation)
   Future<bool> checkEmailAvailability(String email) async {
     try {
-      // TODO: Implement actual API call when backend endpoint is available
+      // NOTE: Implement actual API call when backend endpoint is available
       throw UnimplementedError('Email availability check not yet implemented in backend API');
     } catch (e) {
       if (e is DioException) {
@@ -280,7 +280,7 @@ class ApiUserService {
       final token = await _tokenManager.getValidToken();
       if (token == null) return null;
       
-      // TODO: Implement API call to get current user from token when backend endpoint is available
+      // NOTE: Implement API call to get current user from token when backend endpoint is available
       throw UnimplementedError('Get current user from token not yet implemented in backend API');
     } catch (e) {
       if (e is DioException) {

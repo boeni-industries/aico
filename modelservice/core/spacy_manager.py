@@ -105,8 +105,8 @@ class SpaCyManager:
         self.config_manager = ConfigurationManager()
         self.config_manager.initialize()
         
-        # Get spaCy-specific config from core.modelservice.spacy
-        self.spacy_config = self.config_manager.get("core.modelservice.spacy", {})
+        # Get spaCy-specific config from modelservice.spacy
+        self.spacy_config = self.config_manager.get("modelservice.spacy", {})
         
         # Loaded models cache
         self.nlp_models: Dict[str, any] = {}
@@ -119,7 +119,7 @@ class SpaCyManager:
         """Ensure logger is initialized (lazy initialization)."""
         if self.logger is None:
             try:
-                self.logger = get_logger("modelservice", "core.spacy_manager")
+                self.logger = get_logger("modelservice.core.spacy_manager")
             except RuntimeError:
                 # Logging not initialized yet, use basic Python logger as fallback
                 import logging

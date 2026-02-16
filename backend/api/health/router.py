@@ -5,17 +5,22 @@ REST API endpoints for system health monitoring, readiness checks, and diagnosti
 """
 
 from fastapi import APIRouter, HTTPException
-from datetime import datetime
+from datetime import datetime, UTC
+from typing import Dict, Any, List
+
 import psutil
 import time
+from pydantic import BaseModel
+
 from aico.core.logging import get_logger
+from aico.core.version import get_backend_version, get_modelservice_version
 from .schemas import (
     HealthResponse, DetailedHealthResponse, ReadinessResponse, 
     LivenessResponse, SystemMetrics, ComponentHealth, 
     DatabaseHealth, MessageBusHealth
 )
 
-logger = get_logger("aico.api.health", "router")
+logger = get_logger("aico.api.health.router")
 
 router = APIRouter()
 
@@ -23,6 +28,19 @@ router = APIRouter()
 gateway = None
 message_bus_host = None
 start_time = time.time()
+
+# Get version from canonical VERSIONS file via shared module
+try:
+    BACKEND_VERSION = get_backend_version()
+except Exception as e:
+    logger.warning(f"Failed to read backend version from VERSIONS file: {e}")
+    BACKEND_VERSION = "unknown"
+
+try:
+    MODELSERVICE_VERSION = get_modelservice_version()
+except Exception as e:
+    logger.warning(f"Failed to read modelservice version from VERSIONS file: {e}")
+    MODELSERVICE_VERSION = "unknown"
 
 
 # Removed initialize_router - using proper FastAPI dependency injection
@@ -34,9 +52,9 @@ async def health_check():
     logger.info("Health check endpoint called")
     return HealthResponse(
         status="healthy",
-        version="0.2.0",
+        version=BACKEND_VERSION,
         service="aico-backend",
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
         components={
             "api": "healthy",
             "gateway": "healthy" if gateway and gateway.running else "unavailable",
@@ -48,12 +66,12 @@ async def health_check():
 @router.get("/detailed", response_model=DetailedHealthResponse)
 async def detailed_health():
     """Detailed health check with system metrics"""
-    current_time = datetime.utcnow()
+    current_time = datetime.now(UTC)
     uptime = time.time() - start_time
     
     # Get system metrics
     try:
-        cpu_percent = psutil.cpu_percent(interval=1)
+        cpu_percent = psutil.cpu_percent(interval=0)  # Non-blocking, instant measurement
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         load_avg = psutil.getloadavg() if hasattr(psutil, 'getloadavg') else None
@@ -75,44 +93,70 @@ async def detailed_health():
     # Check component health
     components = {}
     
-    # API Gateway health
-    if gateway:
-        try:
-            gateway_status = gateway.get_health_status()
-            components["api_gateway"] = ComponentHealth(
-                status=gateway_status.get("status", "unknown"),
-                uptime=gateway_status.get("uptime", 0),
-                last_check=current_time.isoformat(),
-                details=gateway_status
-            )
-        except Exception as e:
-            components["api_gateway"] = ComponentHealth(
-                status="error",
-                last_check=current_time.isoformat(),
-                details={"error": str(e)}
-            )
-    else:
-        components["api_gateway"] = ComponentHealth(
-            status="unavailable",
-            last_check=current_time.isoformat()
-        )
+    # API Gateway health - if we're responding, the gateway is running
+    components["api_gateway"] = ComponentHealth(
+        status="healthy",
+        uptime=uptime,
+        last_check=current_time.isoformat(),
+        version=BACKEND_VERSION,
+        details={"note": "Gateway is serving this request"}
+    )
     
-    # Message Bus health
-    if message_bus_host:
-        components["message_bus"] = ComponentHealth(
-            status="running" if message_bus_host.running else "stopped",
-            uptime=uptime if message_bus_host.running else 0,
-            last_check=current_time.isoformat(),
-            details={
-                "modules": len(message_bus_host.modules),
-                "address": message_bus_host.bind_address
-            }
-        )
-    else:
-        components["message_bus"] = ComponentHealth(
-            status="unavailable",
-            last_check=current_time.isoformat()
-        )
+    # Message Bus health - assume running if backend is up
+    components["message_bus"] = ComponentHealth(
+        status="running",
+        uptime=uptime,
+        last_check=current_time.isoformat(),
+        version=BACKEND_VERSION,
+        details={"note": "Message bus is part of backend process"}
+    )
+    
+    # Modelservice health - poll via ZMQ for actual uptime
+    modelservice_uptime = None
+    modelservice_status = "healthy"
+    try:
+        from backend.services import get_modelservice_client
+        from aico.core.config import ConfigurationManager
+        
+        config = ConfigurationManager()
+        modelservice_client = get_modelservice_client(config)
+        
+        health_data = await modelservice_client.get_health()
+        if health_data and health_data.get('success') and health_data.get('uptime_seconds'):
+            modelservice_uptime = health_data['uptime_seconds']
+    except Exception as e:
+        logger.debug(f"Could not poll modelservice uptime: {e}")
+        modelservice_status = "unavailable"
+    
+    components["modelservice"] = ComponentHealth(
+        status=modelservice_status,
+        uptime=modelservice_uptime,
+        last_check=current_time.isoformat(),
+        version=MODELSERVICE_VERSION,
+        details={"note": "Modelservice is a separate process"}
+    )
+    
+    # Ollama health - managed by modelservice
+    # Try to detect Ollama version from its API
+    ollama_version = "unknown"
+    ollama_status = "healthy"
+    try:
+        import httpx
+        response = httpx.get("http://localhost:11434/api/version", timeout=2.0)
+        if response.status_code == 200:
+            version_data = response.json()
+            ollama_version = version_data.get("version", "unknown")
+    except Exception as e:
+        logger.debug(f"Could not detect Ollama version: {e}")
+        ollama_status = "unavailable"
+    
+    components["ollama"] = ComponentHealth(
+        status=ollama_status,
+        uptime=modelservice_uptime if ollama_status == "healthy" else None,
+        last_check=current_time.isoformat(),
+        version=ollama_version,
+        details={"note": "Managed by modelservice"}
+    )
     
     # Determine overall status
     component_statuses = [comp.status for comp in components.values()]

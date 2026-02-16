@@ -67,7 +67,7 @@ def get_versions_path():
         return (Path(__file__).parent.parent.parent / "VERSIONS").resolve()
 
 VERSIONS_PATH = get_versions_path()
-SUBSYSTEMS = ["aico", "shared", "cli", "backend", "frontend", "studio", "modelservice"]
+SUBSYSTEMS = ["aico", "shared", "cli", "backend", "frontend", "modelservice"]
 
 
 def read_versions():
@@ -90,7 +90,7 @@ Examples:
 def show(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to show (shared/cli/backend/frontend/studio/all). If omitted, shows all subsystems.",
+        help="Which subsystem to show (shared/cli/backend/frontend/modelservice/all). If omitted, shows all subsystems.",
         show_default=False
     )
 ):
@@ -130,7 +130,7 @@ Show the version for a subsystem, or all subsystems if no subsystem is specified
         # Single subsystem display with enhanced styling
         v = versions.get(subsystem)
         if v:
-            icon = {"shared": "📚", "cli": "⚡", "backend": "🤖", "frontend": "🖥️", "studio": "⚙️"}.get(subsystem, "📦")
+            icon = {"shared": "📚", "cli": "⚡", "backend": "🤖", "frontend": "🖥️", "modelservice": "🤖"}.get(subsystem, "📦")
             panel = Panel(
                 f"{icon} [bold white]{subsystem}[/bold white]\n[bold green]{v}[/bold green]",
                 title="[bold cyan]Version Info[/bold cyan]",
@@ -158,7 +158,7 @@ Examples:
 def history(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to show history for (shared/cli/backend/frontend/studio/all). If omitted, shows all.",
+        help="Which subsystem to show history for (shared/cli/backend/frontend/modelservice/all). If omitted, shows all.",
         show_default=False
     ),
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
@@ -383,31 +383,6 @@ def update_frontend_version(version: str):
         return True
     return False
 
-def update_studio_version(version: str):
-    """Update version in studio/package.json"""
-    package_file = get_project_root() / "studio" / "package.json"
-    if not package_file.exists():
-        return False
-    
-    try:
-        import json
-        with open(package_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        if 'version' in data:
-            # Only update if version is different
-            if data['version'] != version:
-                data['version'] = version
-                with open(package_file, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                return True
-    except (json.JSONDecodeError, IOError) as e:
-        # Log JSON file operation failure - this could indicate file corruption or permissions
-        from rich.console import Console
-        console = Console()
-        console.print(f"[yellow]Warning: Failed to update package.json version in {package_file}: {e}[/yellow]")
-    
-    return False
 
 def update_modelservice_version(version: str):
     """Update version in modelservice/main.py"""
@@ -435,7 +410,7 @@ Reads the VERSIONS file and updates version strings in:
 - cli/aico.py (__version__)
 - backend/pyproject.toml or setup.py
 - frontend/pubspec.yaml
-- studio/package.json
+- modelservice/main.py
 
 Examples:
   aico version sync
@@ -460,7 +435,6 @@ def sync():
         "cli": update_cli_version,
         "backend": update_backend_version,
         "frontend": update_frontend_version,
-        "studio": update_studio_version,
         "modelservice": update_modelservice_version
     }
     
@@ -519,7 +493,7 @@ Examples:
 def check(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to check (shared/cli/backend/frontend/studio/all). If omitted, checks all subsystems.",
+        help="Which subsystem to check (shared/cli/backend/frontend/modelservice/all). If omitted, checks all subsystems.",
         show_default=False
     ),
 ):
@@ -533,7 +507,6 @@ def check(
         "cli": read_cli_version,
         "backend": read_backend_version,
         "frontend": read_frontend_version,
-        "studio": read_studio_version,
         "modelservice": read_modelservice_version
     }
     subsystems_to_check = SUBSYSTEMS if subsystem is None or subsystem == "all" else [subsystem]
@@ -647,16 +620,6 @@ def read_aico_version():
     except Exception:
         return None
 
-def read_studio_version():
-    studio_file = get_project_root() / "studio" / "package.json"
-    if not studio_file.exists():
-        return None
-    import json
-    try:
-        data = json.loads(studio_file.read_text(encoding='utf-8'))
-        return data.get("version")
-    except Exception:
-        return None
 
 def read_modelservice_version():
     """Read version from modelservice/main.py"""
@@ -680,7 +643,7 @@ No changes are made.
 def next(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to preview (shared/cli/backend/frontend/studio/modelservice/all). If omitted, previews all subsystems.",
+        help="Which subsystem to preview (shared/cli/backend/frontend/modelservice/all). If omitted, previews all subsystems.",
         show_default=False
     ),
     level: str = typer.Argument(
@@ -745,7 +708,7 @@ Examples:
 def bump(
     subsystem: str = typer.Argument(
         ...,
-        help="Which subsystem to bump (shared/cli/backend/frontend/studio). Must be specified.",
+        help="Which subsystem to bump (shared/cli/backend/frontend/modelservice). Must be specified.",
     ),
     level: str = typer.Argument(
         ...,
@@ -829,7 +792,6 @@ def bump(
         "cli": update_cli_version,
         "backend": update_backend_version,
         "frontend": update_frontend_version,
-        "studio": update_studio_version,
         "modelservice": update_modelservice_version
     }
     update_func = update_functions[subsystem]
@@ -863,12 +825,10 @@ def bump(
         # For modelservice, add modelservice/main.py
         modelservice_main = get_project_root() / "modelservice" / "main.py"
         subprocess.run(["git", "add", str(modelservice_main)], check=True)
-    else:
-        project_file = {
-            "frontend": get_project_root() / "frontend" / "pubspec.yaml",
-            "studio": get_project_root() / "studio" / "package.json"
-        }[subsystem]
-        subprocess.run(["git", "add", str(project_file)], check=True)
+    elif subsystem == "frontend":
+        # For frontend, add frontend/pubspec.yaml
+        frontend_pubspec = get_project_root() / "frontend" / "pubspec.yaml"
+        subprocess.run(["git", "add", str(frontend_pubspec)], check=True)
     # Project file addition is now handled above
     subprocess.run(["git", "commit", "-m", commit_msg], check=True)
 

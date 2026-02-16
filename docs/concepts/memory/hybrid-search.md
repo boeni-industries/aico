@@ -107,32 +107,33 @@ def fuse_with_rrf(documents, k=60, min_semantic_score=0.35):
 
 ## Configuration
 
-### Core Settings (`config/defaults/core.yaml`)
-
+### Settings (`config/defaults/memory.yaml`)
 ```yaml
-core:
-  memory:
-    semantic:
-      # Hybrid search fusion method
-      fusion_method: "rrf"  # "rrf" (recommended) or "weighted" (legacy)
-      rrf_rank_constant: 0  # 0 = adaptive (recommended), or 10-60 manual
-      
-      # BM25 configuration
-      bm25_min_idf: 0.6  # Minimum IDF threshold for query terms
-                         # Higher = more aggressive filtering of common words
-      
-      # Semantic relevance filtering
-      min_semantic_score: 0.35  # Minimum semantic score for relevance
-                                # Documents below this are filtered as irrelevant
-                                # Range: 0.0-1.0 (higher = stricter)
-      
-      # Result quality threshold
-      min_similarity: 0.4  # Minimum hybrid score for final results
-                          # Applied AFTER fusion
-      
-      # Legacy weighted fusion (if fusion_method="weighted")
-      semantic_weight: 0.7  # Weight for semantic similarity
-      bm25_weight: 0.3      # Weight for BM25 score
+  semantic:
+    # Hybrid search fusion method
+    fusion_method: "rrf"  # "rrf" (recommended) or "weighted" (legacy)
+    rrf_rank_constant: 0  # 0 = adaptive (recommended), or 10-60 manual
+    
+    # BM25 configuration
+    bm25_min_idf: 0.6  # Minimum IDF threshold for query terms
+                       # Higher = more aggressive filtering of common words
+    
+    # Semantic relevance filtering
+    min_semantic_score: 0.35  # Minimum semantic score for relevance
+                              # Documents below this are filtered as irrelevant
+                              # Range: 0.0-1.0 (higher = stricter)
+    
+    # Result quality threshold
+    min_similarity: 0.4  # Minimum hybrid score for final results
+                        # Applied AFTER fusion
+    
+    # Legacy weighted fusion (if fusion_method="weighted")
+    semantic_weight: 0.7  # Weight for semantic similarity
+    bm25_weight: 0.3      # Weight for BM25 score
+
+# Embedding model source of truth:
+# The embedding model is configured under:
+#   modelservice.transformers.models.embeddings.model_id
 ```
 
 ### Threshold Guidelines
@@ -445,7 +446,6 @@ print(f"Query time: {time.time() - start:.3f}s")
 
 - [Memory System Overview](overview.md) - Core memory architecture
 - [Memory Architecture](architecture.md) - Four-tier memory system
-- [Semantic Memory Implementation](semantic.py) - Code implementation
 - [Configuration Management](../../architecture/configuration-management.md) - Config system
 
 ---

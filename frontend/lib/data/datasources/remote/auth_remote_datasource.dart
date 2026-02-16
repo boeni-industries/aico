@@ -1,5 +1,6 @@
 import 'package:aico_frontend/data/models/auth_model.dart';
 import 'package:aico_frontend/networking/services/resilient_api_service.dart';
+import 'package:flutter/foundation.dart';
 
 abstract class AuthRemoteDataSource {
   Future<AuthModel?> authenticate(String userUuid, String pin);
@@ -15,12 +16,12 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<AuthModel?> authenticate(String userUuid, String pin) async {
     try {
-      print('🔐 [AuthRemoteDataSource] Starting authentication for user: $userUuid');
-      print('🔐 [AuthRemoteDataSource] Calling executeOperation...');
+      debugPrint('🔐 [AuthRemoteDataSource] Starting authentication for user: $userUuid');
+      debugPrint('🔐 [AuthRemoteDataSource] Calling executeOperation...');
       
       final responseData = await _resilientApi.executeOperation<dynamic>(
         () {
-          print('🔐 [AuthRemoteDataSource] Inside operation callback, calling apiClient.request with skipTokenEntirely...');
+          debugPrint('🔐 [AuthRemoteDataSource] Inside operation callback, calling apiClient.request with skipTokenEntirely...');
           // Use request() with skipTokenEntirely=true to bypass ALL token operations
           return _resilientApi.apiClient.request(
             'POST',
@@ -36,24 +37,24 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       ).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
-          print('❌ [AuthRemoteDataSource] Authentication request timed out after 10s');
+          debugPrint('❌ [AuthRemoteDataSource] Authentication request timed out after 10s');
           return null;
         },
       );
 
-      print('🔐 [AuthRemoteDataSource] executeOperation completed, responseData: ${responseData != null ? "received" : "null"}');
+      debugPrint('🔐 [AuthRemoteDataSource] executeOperation completed, responseData: ${responseData != null ? "received" : "null"}');
 
       if (responseData != null) {
-        print('✅ [AuthRemoteDataSource] Authentication successful, parsing response...');
+        debugPrint('✅ [AuthRemoteDataSource] Authentication successful, parsing response...');
         return AuthModel.fromJson(responseData);
       }
       
-      print('⚠️ [AuthRemoteDataSource] Authentication failed - null response');
+      debugPrint('⚠️ [AuthRemoteDataSource] Authentication failed - null response');
       // Return null on failure - let UI handle gracefully
       return null;
     } catch (e) {
-      print('❌ [AuthRemoteDataSource] Authentication failed with error: $e');
-      print('❌ [AuthRemoteDataSource] Error type: ${e.runtimeType}');
+      debugPrint('❌ [AuthRemoteDataSource] Authentication failed with error: $e');
+      debugPrint('❌ [AuthRemoteDataSource] Error type: ${e.runtimeType}');
       return null;
     }
   }

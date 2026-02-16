@@ -15,6 +15,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
 from aico.ai.utils import detect_language
+from modelservice.handlers.tts_utils import clean_text_for_tts
 
 
 class PiperTtsHandler:
@@ -41,7 +42,7 @@ class PiperTtsHandler:
         self._voices = {}  # Language -> voice model mapping
         self._piper_voices = {}  # Cached loaded voice models
         self._quality = "medium"
-        self._logger = get_logger("modelservice", "piper_tts_handler")
+        self._logger = get_logger("modelservice.piper_tts_handler")
         
     async def initialize(self):
         """Initialize Piper TTS system."""
@@ -63,24 +64,24 @@ class PiperTtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("No configuration manager provided to Piper TTS handler")
             
-            tts_config = self._config.get("core.modelservice.tts.piper", None)
+            tts_config = self._config.get("modelservice.tts.piper", None)
             if tts_config is None:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: Piper TTS configuration not found!\n"
-                    "Expected path: core.modelservice.tts.piper\n"
-                    "Check config/defaults/core.yaml for proper structure.\n"
+                    "Expected path: modelservice.tts.piper\n"
+                    "Check config/defaults/modelservice.yaml for proper structure.\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("No Piper TTS configuration found in core.modelservice.tts.piper")
+                raise RuntimeError("No Piper TTS configuration found in modelservice.tts.piper")
             
             if not tts_config:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: Piper TTS configuration is empty!\n"
-                    "Path: core.modelservice.tts.piper\n"
+                    "Path: modelservice.tts.piper\n"
                     "Configuration exists but contains no data.\n"
                     "="*80
                 )
@@ -88,7 +89,7 @@ class PiperTtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("Piper TTS configuration is empty")
             
-            self._logger.info(f"✅ Found Piper config: {tts_config}")
+            self._logger.debug(f"✅ Found Piper config: {tts_config}")
             
             # Load voice configuration
             self._voices = tts_config.get("voices", None)
@@ -96,12 +97,12 @@ class PiperTtsHandler:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: No voices section in Piper configuration!\n"
-                    "Expected path: core.modelservice.tts.piper.voices\n"
+                    "Expected path: modelservice.tts.piper.voices\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("No voices configured in core.modelservice.tts.piper.voices")
+                raise RuntimeError("No voices configured in modelservice.tts.piper.voices")
             
             if not self._voices:
                 error_msg = (
@@ -119,7 +120,7 @@ class PiperTtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("Piper voices configuration is empty")
             
-            self._logger.info(f"✅ Configured voices: {self._voices}")
+            self._logger.debug(f"✅ Configured voices: {self._voices}")
             
             # Get quality setting
             self._quality = tts_config.get("quality", "medium")
@@ -162,12 +163,12 @@ class PiperTtsHandler:
             overall_start = time.time()
             
             # Auto-detect language if enabled (or if language is empty/invalid)
-            auto_detect = self._config.get("core.modelservice.tts.auto_detect_language", None)
+            auto_detect = self._config.get("modelservice.tts.auto_detect_language", None)
             if auto_detect is None:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: auto_detect_language configuration missing!\n"
-                    "Expected path: core.modelservice.tts.auto_detect_language\n"
+                    "Expected path: modelservice.tts.auto_detect_language\n"
                     "This must be explicitly set to true or false.\n"
                     "="*80
                 )
@@ -178,8 +179,9 @@ class PiperTtsHandler:
             auto_detect = bool(auto_detect)
             
             # Debug logging
-            print(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'", flush=True)
-            self._logger.info(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}'")
+            self._logger.debug(
+                f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'"
+            )
             
             if auto_detect or not language or language.strip() == "":
                 # Use 'en' as fallback if detection fails
@@ -189,12 +191,11 @@ class PiperTtsHandler:
                 print(f"🔍 Detected language: {result.language} (confidence: {result.confidence:.2f})", flush=True)
                 language = result.language
             else:
-                print(f"🔍 [DEBUG] Skipping detection - using provided language: {language}", flush=True)
-                self._logger.info(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
+                self._logger.debug(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
             
-            # Clean markdown and special formatting from text
+            # Clean markdown and special formatting from text (using shared utility)
             clean_start = time.time()
-            cleaned_text = self._clean_text_for_tts(text)
+            cleaned_text = clean_text_for_tts(text)
             clean_time = time.time() - clean_start
             self._logger.info(f"🎤 Original text: {len(text)} chars, cleaned: {len(cleaned_text)} chars")
             
@@ -375,60 +376,3 @@ class PiperTtsHandler:
         # Return audio unchanged - processing made pop/click worse
         # The artifact is likely from the audio player, not the audio data
         return audio_bytes
-    
-    def _clean_text_for_tts(self, text: str) -> str:
-        """
-        Clean text for TTS by removing markdown and special formatting.
-        
-        Args:
-            text: Raw text with markdown
-            
-        Returns:
-            Cleaned text suitable for TTS
-        """
-        import re
-        
-        # Convert em-dashes and double hyphens to period for pauses
-        # Piper doesn't respect commas, only periods create reliable pauses
-        text = re.sub(r'\s*—\s*', '. ', text)  # Em-dash → period with space
-        text = re.sub(r'\s*–\s*', '. ', text)  # En-dash → period with space
-        text = re.sub(r'\s+--\s+', '. ', text)  # Double hyphen → period with space
-        
-        # Expand common abbreviations for better pronunciation
-        text = re.sub(r'\bP\.S\.', 'Postscript', text, flags=re.IGNORECASE)
-        text = re.sub(r'\be\.g\.', 'for example', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bi\.e\.', 'that is', text, flags=re.IGNORECASE)
-        text = re.sub(r'\betc\.', 'etcetera', text, flags=re.IGNORECASE)
-        
-        # Remove markdown bold/italic
-        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold**
-        text = re.sub(r'\*([^*]+)\*', r'\1', text)      # *italic*
-        text = re.sub(r'__([^_]+)__', r'\1', text)      # __bold__
-        text = re.sub(r'_([^_]+)_', r'\1', text)        # _italic*_
-        
-        # Remove markdown links [text](url)
-        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-        
-        # Remove ALL emojis - comprehensive Unicode ranges
-        text = re.sub(r'[\U0001F600-\U0001F64F]', '', text)  # Emoticons
-        text = re.sub(r'[\U0001F300-\U0001F5FF]', '', text)  # Symbols & pictographs
-        text = re.sub(r'[\U0001F680-\U0001F6FF]', '', text)  # Transport & map
-        text = re.sub(r'[\U0001F1E0-\U0001F1FF]', '', text)  # Flags
-        text = re.sub(r'[\U00002702-\U000027B0]', '', text)  # Dingbats
-        text = re.sub(r'[\U000024C2-\U0001F251]', '', text)  # Enclosed characters
-        
-        # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        # Remove trailing punctuation artifacts (space before closing paren/bracket)
-        text = re.sub(r'\s+([)\]}])', r'\1', text)
-        
-        # Remove any remaining non-printable characters
-        text = ''.join(char for char in text if char.isprintable() or char.isspace())
-        
-        # CRITICAL: Ensure all periods and commas have EXACTLY ONE space after them
-        # This MUST be last, or Piper will pronounce the punctuation!
-        text = re.sub(r'\.\s*', '. ', text)  # Period followed by any whitespace → period + single space
-        text = re.sub(r',\s*', ', ', text)  # Comma followed by any whitespace → comma + single space
-        
-        return text

@@ -7,7 +7,7 @@ logging, path resolution, and message bus communication.
 """
 
 from .config import ConfigurationManager
-from .logging import get_logger, AICOLogger
+from .logging import get_logger
 from .paths import AICOPaths
 from .topics import AICOTopics, TopicPermissions
 from .bus import (
@@ -25,4 +25,4 @@ except ImportError:
     AicoMessage = None
     MessageMetadata = None
 
-__all__ = ['ConfigurationManager', 'get_logger', 'AICOLogger', 'AICOPaths', 'MessageBusClient', 'MessageBusBroker', 'AicoMessage', 'MessageMetadata', 'create_client', 'create_broker']
+__all__ = ['ConfigurationManager', 'get_logger', 'AICOPaths', 'MessageBusClient', 'MessageBusBroker', 'AicoMessage', 'MessageMetadata', 'create_client', 'create_broker']

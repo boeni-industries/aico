@@ -19,30 +19,10 @@ except ImportError:
     __version__ = "x.x.x"
 
 # Re-export main components for convenience
-from .libsql import (
-    LibSQLConnection, 
-    EncryptedLibSQLConnection,
-    create_encrypted_database,
-    SchemaManager,
-    SchemaVersion,
-    SchemaRegistry,
-    register_schema
-)
-from .user import (
-    UserProfile,
-    AuthenticationData,
-    UserService
-)
+from aico.ai.user.models import UserProfile
+from .uow import UnitOfWork
 
 __all__ = [
-    "LibSQLConnection",
-    "EncryptedLibSQLConnection",
-    "create_encrypted_database",
-    "SchemaManager",
-    "SchemaVersion",
-    "SchemaRegistry",
-    "register_schema",
     "UserProfile",
-    "AuthenticationData", 
-    "UserService",
+    "UnitOfWork",
 ]

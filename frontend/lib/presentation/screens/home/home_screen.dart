@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:aico_frontend/domain/providers/tts_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_audio_settings_provider.dart';
@@ -168,49 +167,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     return Scaffold(
       body: HomeBackground(
         animationController: _backgroundAnimationController,
-        child: Row(
+        child: Stack(
           children: [
-            // Left drawer for navigation
-            if (isDesktop)
-              ListenableBuilder(
-                listenable: Listenable.merge([_navigationController, _drawerController]),
-                builder: (context, _) => HomeLeftDrawer(
-                  accentColor: accentColor,
-                  isExpanded: _drawerController.isLeftDrawerExpanded,
-                  currentPage: _navigationController.currentPage,
-                  onToggle: _drawerController.toggleLeftDrawer,
-                  onPageChange: _navigationController.switchToPage,
+            Row(
+              children: [
+                // Left drawer for navigation
+                if (isDesktop)
+                  ListenableBuilder(
+                    listenable: Listenable.merge([_navigationController, _drawerController]),
+                    builder: (context, _) => HomeLeftDrawer(
+                      accentColor: accentColor,
+                      isExpanded: _drawerController.isLeftDrawerExpanded,
+                      currentPage: _navigationController.currentPage,
+                      onToggle: _drawerController.toggleLeftDrawer,
+                      onPageChange: _navigationController.switchToPage,
+                    ),
+                  ),
+                
+                // Main content area
+                Expanded(
+                  flex: (_drawerController.isRightDrawerOpen && isDesktop) ? 2 : 3,
+                  child: SafeArea(
+                    child: ListenableBuilder(
+                      listenable: _navigationController,
+                      builder: (context, _) => _buildMainContent(context, theme, accentColor),
+                    ),
+                  ),
                 ),
-              ),
-            
-            // Main content area
-            Expanded(
-              flex: (_drawerController.isRightDrawerOpen && isDesktop) ? 2 : 3,
-              child: SafeArea(
-                child: ListenableBuilder(
-                  listenable: _navigationController,
-                  builder: (context, _) => _buildMainContent(context, theme, accentColor),
-                ),
-              ),
+                
+                // Right drawer for thoughts and memory
+                if (isDesktop)
+                  ListenableBuilder(
+                    listenable: _drawerController,
+                    builder: (context, _) {
+                      if (!_drawerController.isRightDrawerOpen) return const SizedBox.shrink();
+                      
+                      return HomeRightDrawer(
+                        accentColor: accentColor,
+                        glowController: _glowAnimationController,
+                        glowAnimation: _glowAnimation,
+                        isExpanded: _drawerController.isRightDrawerExpanded,
+                        onToggle: _drawerController.toggleRightDrawer,
+                        scrollToMessageId: _drawerController.scrollToThoughtId,
+                      );
+                    },
+                  ),
+              ],
             ),
             
-            // Right drawer for thoughts and memory
-            if (isDesktop)
-              ListenableBuilder(
-                listenable: _drawerController,
-                builder: (context, _) {
-                  if (!_drawerController.isRightDrawerOpen) return const SizedBox.shrink();
-                  
-                  return HomeRightDrawer(
-                    accentColor: accentColor,
-                    glowController: _glowAnimationController,
-                    glowAnimation: _glowAnimation,
-                    isExpanded: _drawerController.isRightDrawerExpanded,
-                    onToggle: _drawerController.toggleRightDrawer,
-                    scrollToMessageId: _drawerController.scrollToThoughtId,
-                  );
-                },
-              ),
           ],
         ),
       ),

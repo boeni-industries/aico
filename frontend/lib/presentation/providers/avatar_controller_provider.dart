@@ -18,35 +18,25 @@ class AvatarController extends ChangeNotifier {
   }) {
     _startTalkingCallback = onStartTalking;
     _stopTalkingCallback = onStopTalking;
-    debugPrint('[AvatarController] Callbacks registered');
   }
   
   /// Unregister callbacks (cleanup)
   void unregisterCallbacks() {
     _startTalkingCallback = null;
     _stopTalkingCallback = null;
-    debugPrint('[AvatarController] Callbacks unregistered');
   }
   
   /// Start talking animation
   void startTalking() {
-    debugPrint('[AvatarController] 🎬 startTalking() called');
     if (_startTalkingCallback != null) {
-      debugPrint('[AvatarController] ✅ Executing startTalking callback');
       _startTalkingCallback!();
-    } else {
-      debugPrint('[AvatarController] ⚠️ Cannot start talking - no callback registered');
     }
   }
   
   /// Stop talking animation
   void stopTalking() {
-    debugPrint('[AvatarController] 🎬 stopTalking() called');
     if (_stopTalkingCallback != null) {
-      debugPrint('[AvatarController] ✅ Executing stopTalking callback');
       _stopTalkingCallback!();
-    } else {
-      debugPrint('[AvatarController] ⚠️ Cannot stop talking - no callback registered');
     }
   }
 }

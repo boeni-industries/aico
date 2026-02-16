@@ -27,9 +27,6 @@ from aico.security.key_manager import AICOKeyManager
 from aico.security.service_auth import ServiceAuthManager
 from aico.security.transport import TransportIdentityManager
 
-# Import session management
-from aico.security import SessionService, SessionInfo
-
 # Logger will be initialized in classes
 
 
@@ -86,9 +83,9 @@ class AuthenticationManager:
     with database-backed session management for JWT tokens.
     """
     
-    def __init__(self, config: ConfigurationManager, db_connection=None):
+    def __init__(self, config: ConfigurationManager):
         self.config = config
-        self.logger = get_logger("backend", "api_gateway.auth")
+        self.logger = get_logger("backend.api_gateway.auth")
         
         # Use AICO security infrastructure
         self.key_manager = AICOKeyManager(config)
@@ -96,28 +93,23 @@ class AuthenticationManager:
         self.service_auth = ServiceAuthManager(self.key_manager, self.identity_manager)
         
         # JWT configuration - secrets managed by AICOKeyManager
-        self.jwt_algorithm = config.get("api_gateway.security.auth.jwt.algorithm", "HS256")
-        self.jwt_expiry_minutes = config.get("api_gateway.security.auth.jwt.expiry_minutes", 15)  # Short-lived tokens
+        self.jwt_algorithm = config.get("api_gateway.auth.jwt.algorithm", "HS256")
+        self.jwt_expiry_minutes = config.get("api_gateway.auth.jwt.expiry_hours", 24) * 60  # Convert hours to minutes
         
         # Get JWT secret from AICOKeyManager (zero-effort security)
         self.jwt_secret = self._get_jwt_secret()
         
-        # Database-backed session management
-        if db_connection:
-            self.session_service = SessionService(db_connection)
-            # Track cleanup operations
-            self._last_cleanup = datetime.utcnow()
-            self._cleanup_interval_hours = 24  # Run full cleanup daily
-        else:
-            self.session_service = None
-            self.logger.warning("No database connection provided - session management disabled")
-        
-        # Password context for API key hashing
+        # Password hashing configuration
+        # bcrypt is the recommended algorithm for password hashing
+        # https://passlib.readthedocs.io/en/stable/lib/passlib.hash.bcrypt.html
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
         # API key configuration
-        self.api_key_header = config.get("api_gateway.security.auth.api_key.header", "X-API-Key")
-        self.session_cookie = config.get("api_gateway.security.auth.session.cookie", "aico_session")
+        self.api_key_header = config.get("api_gateway.auth.api_key.header", "X-API-Key")
+        self.session_cookie = config.get("api_gateway.auth.session.cookie_name", "aico_session")
+        
+        # Session service is not initialized in __init__ - it's set externally by the gateway
+        self.session_service = None
         
         # In-memory stores for API keys and fallback token revocation
         self.api_keys: Dict[str, User] = {}
@@ -128,7 +120,7 @@ class AuthenticationManager:
     
     def generate_jwt_token(self, user_uuid: str, username: str = None, roles: List[str] = None, 
                           permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None) -> str:
-        """Generate JWT access token for user with session backing (zero-effort security)"""
+        """Generate JWT access token for user (session creation handled at endpoint level)"""
         import time
         from datetime import datetime, timedelta
         
@@ -150,35 +142,11 @@ class AuthenticationManager:
         
         token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
         
-        # Create session record if session service is available
-        if self.session_service and device_uuid:
-            try:
-                self.session_service.create_session(
-                    user_uuid=user_uuid,
-                    device_uuid=device_uuid,
-                    jwt_token=token,
-                    expires_in_minutes=expires_minutes
-                )
-                self.logger.info("Session created successfully", extra={
-                    "user_uuid": user_uuid,
-                    "device_uuid": device_uuid
-                })
-                
-                # Trigger periodic cleanup check
-                self._periodic_cleanup()
-                
-            except Exception as e:
-                self.logger.error("Failed to create session record", extra={
-                    "error": str(e),
-                    "user_uuid": user_uuid,
-                    "expires_minutes": expires_minutes,
-                    "error_type": type(e).__name__
-                })
-                # Don't fail token generation if session creation fails
-                pass
+        # NOTE: Session creation moved to endpoint level using AsyncSessionService + UoW
+        # This ensures proper async PostgreSQL access with repository pattern
         
         self.logger.info("JWT access token generated", extra={
-            "module": "api_gateway",
+            "subsystem": "api_gateway",
             "function": "generate_jwt_token",
             "topic": "auth.jwt.token_generated",
             "user_uuid": user_uuid,
@@ -213,7 +181,7 @@ class AuthenticationManager:
         token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
         
         self.logger.info("JWT refresh token generated", extra={
-            "module": "api_gateway",
+            "subsystem": "api_gateway",
             "function": "generate_refresh_token",
             "topic": "auth.jwt.refresh_token_generated",
             "user_uuid": user_uuid,
@@ -251,7 +219,7 @@ class AuthenticationManager:
             success = True
         
         self.logger.info("JWT token revoked", extra={
-            "module": "api_gateway",
+            "subsystem": "api_gateway",
             "function": "revoke_token", 
             "topic": "auth.jwt.token_revoked",
             "via_session_service": self.session_service is not None
@@ -266,7 +234,7 @@ class AuthenticationManager:
             return self.key_manager.get_jwt_secret("api_gateway")
         except Exception as e:
             self.logger.error("Failed to get JWT secret from key manager", extra={
-                "module": "api_gateway",
+                "subsystem": "api_gateway",
                 "function": "_get_jwt_secret",
                 "topic": "auth.jwt.secret_error",
                 "error": str(e)
@@ -544,7 +512,7 @@ class AuthenticationManager:
         """Revoke JWT token"""
         self.revoked_tokens.add(token)
     
-    def refresh_token(self, current_token: str, device_uuid: str = None) -> Optional[str]:
+    def refresh_token(self, current_token: str, device_uuid: str = None, user_agent: str = None) -> Optional[str]:
         """Refresh JWT token with session rotation"""
         try:
             # Validate current token first
@@ -572,7 +540,8 @@ class AuthenticationManager:
                 username=payload.get("username"),
                 roles=payload.get("roles", ["user"]),
                 permissions=set(payload.get("permissions", [])),
-                device_uuid=device_uuid or "unknown"
+                device_uuid=device_uuid or "unknown",
+                user_agent=user_agent
             )
             
             return new_token
@@ -634,7 +603,7 @@ class AuthorizationManager:
     """
     
     def __init__(self, authz_config: Dict[str, Any]):
-        self.logger = get_logger("backend", "api_gateway.authz")
+        self.logger = get_logger("backend.api_gateway.authz")
         self.config = authz_config
         
         # RBAC configuration

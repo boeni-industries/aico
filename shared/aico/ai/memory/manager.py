@@ -16,7 +16,7 @@ Core Functionality:
 
 Memory Tier Integration:
 - Working Memory: Conversation history, session context, message storage (LMDB with 24hr TTL)
-- Semantic Memory: Knowledge base with hybrid search (ChromaDB segments + libSQL knowledge graph)
+- Semantic Memory: Knowledge base with hybrid search (ChromaDB segments + PostgreSQL knowledge graph)
 - Procedural Memory: User patterns, preferences, behavioral learning (planned)
 - Context Assembly: Cross-tier context coordination and relevance scoring
 
@@ -57,9 +57,12 @@ Performance & Reliability:
 """
 
 from typing import Dict, List, Optional, Any
-from datetime import datetime
-import asyncio
+from datetime import datetime, timezone
 from dataclasses import dataclass
+import asyncio
+import time
+import logging
+import json
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
@@ -83,7 +86,7 @@ from aico.ai.knowledge_graph.modelservice_client import ModelserviceClient
 from .consolidation import ConsolidationScheduler, IdleDetector
 from .temporal import EvolutionTracker
 
-logger = get_logger("shared", "ai.memory.manager")
+logger = get_logger("shared.ai.memory.manager")
 
 
 @dataclass
@@ -128,17 +131,17 @@ class MemoryManager(BaseAIProcessor):
     - Phase 4 🔄: Advanced relationship intelligence and memory album
     """
     
-    def __init__(self, config: ConfigurationManager, db_connection=None):
+    def __init__(self, config: ConfigurationManager, uow_factory=None):
         """
         Initialize memory manager with configuration.
         
         Args:
             config: Configuration manager
-            db_connection: Optional pre-authenticated database connection (for backend use)
+            uow_factory: Optional Unit of Work factory for PostgreSQL access (for backend use)
         """
         self.config = config
         self._initialized = False
-        self._db_connection = db_connection  # Store provided database connection
+        self._uow_factory = uow_factory  # Store UoW factory for PostgreSQL access
         
         # Memory stores (lazy initialization)
         self._working_store: Optional[WorkingMemoryStore] = None  # Conversation history + context
@@ -170,7 +173,7 @@ class MemoryManager(BaseAIProcessor):
         self._behavioral_enabled = False
         
         # Configuration following AICO patterns
-        self._memory_config = self.config.get("core.memory", {})
+        self._memory_config = self.config.get("memory", {})
         
         # CRITICAL: Check for empty config - always indicates a major issue
         if not self._memory_config:
@@ -188,7 +191,7 @@ class MemoryManager(BaseAIProcessor):
             logger.error(f"🚨 [CONFIG_ERROR] Memory config keys: {list(self._memory_config.keys())}")
             logger.error("🚨 [CONFIG_ERROR] Expected 'semantic' key with 'enabled' setting")
         
-        logger.info("[DEBUG] MemoryManager: Initialized with configuration")
+        logger.debug("[DEBUG] MemoryManager: Initialized with configuration")
         logger.debug(f"Memory config: {self._memory_config}")
         logger.debug(f"Semantic config check: {semantic_config}")
         logger.debug(f"Semantic enabled check: {semantic_config.get('enabled', False)}")
@@ -198,14 +201,14 @@ class MemoryManager(BaseAIProcessor):
     
     def set_modelservice(self, modelservice):
         """Inject modelservice dependency for semantic memory operations"""
-        logger.info("[SEMANTIC] 🔧 LEGACY: set_modelservice() called - injecting dependency")
+        logger.debug("[SEMANTIC] 🔧 LEGACY: set_modelservice() called - injecting dependency")
         self._modelservice = modelservice
         # If semantic store is already initialized, inject dependency
         if self._semantic_store:
-            logger.info("[SEMANTIC] 🔧 LEGACY: Injecting modelservice into existing semantic store")
+            logger.debug("[SEMANTIC] 🔧 LEGACY: Injecting modelservice into existing semantic store")
             self._semantic_store.set_modelservice(modelservice)
         else:
-            logger.info("[SEMANTIC] 🔧 LEGACY: Semantic store not yet initialized, dependency will be injected during init")
+            logger.debug("[SEMANTIC] 🔧 LEGACY: Semantic store not yet initialized, dependency will be injected during init")
         
     async def initialize(self) -> None:
         """Initialize memory components based on implementation phase"""
@@ -214,7 +217,7 @@ class MemoryManager(BaseAIProcessor):
             return
             
         logger.info("🧠 [MEMORY_MANAGER] 🚀 Starting memory components initialization...")
-        logger.info("[DEBUG] MemoryManager: Initializing memory components.")
+        logger.debug("[DEBUG] MemoryManager: Initializing memory components.")
         
         try:
             # Phase 1: Initialize working memory (immediate)
@@ -226,19 +229,15 @@ class MemoryManager(BaseAIProcessor):
             # Initialize semantic memory if enabled
             if self._memory_config.get("semantic", {}).get("enabled", False):
                 logger.info("[SEMANTIC] Semantic memory enabled in config, initializing...")
-                print(f"🔍 [MEMORY_MANAGER] About to create SemanticMemoryStore...")
-                logger.info(f"🔍 [MEMORY_MANAGER] About to create SemanticMemoryStore...")
                 self._semantic_store = SemanticMemoryStore(self.config)
-                print(f"🔍 [MEMORY_MANAGER] ✅ SemanticMemoryStore created successfully")
-                logger.info(f"🔍 [MEMORY_MANAGER] ✅ SemanticMemoryStore created successfully")
                 
                 # CRITICAL FIX: Get modelservice from backend services and inject dependency
                 try:
                     from backend.services import get_modelservice_client
                     modelservice_client = get_modelservice_client(self.config)
-                    logger.info("[SEMANTIC] 🔧 INJECTING MODELSERVICE DEPENDENCY")
+                    logger.debug("[SEMANTIC] 🔧 INJECTING MODELSERVICE DEPENDENCY")
                     self._semantic_store.set_modelservice(modelservice_client)
-                    logger.info("[SEMANTIC] ✅ Modelservice dependency injected successfully")
+                    logger.debug("[SEMANTIC] ✅ Modelservice dependency injected successfully")
                 except Exception as e:
                     logger.error(f"[SEMANTIC] ❌ FAILED to inject modelservice dependency: {e}")
                     logger.error("[SEMANTIC] ⚠️  Semantic memory will not be able to query facts!")
@@ -249,9 +248,7 @@ class MemoryManager(BaseAIProcessor):
                 logger.info("[SEMANTIC] Semantic memory disabled in config")
             
             # Initialize knowledge graph components FIRST so ContextAssembler can use them
-            print("🔍 [MEMORY_MANAGER] About to call _initialize_knowledge_graph()...")
             await self._initialize_knowledge_graph()
-            print(f"🔍 [MEMORY_MANAGER] _initialize_knowledge_graph() returned, _kg_initialized={self._kg_initialized}")
             
             # Initialize processing components based on available stores (including KG)
             self._context_assembler = ContextAssembler(
@@ -261,7 +258,7 @@ class MemoryManager(BaseAIProcessor):
                 behavioral_store=None,  # Planned for Phase 3
                 kg_storage=self._kg_storage if self._kg_initialized else None,
                 kg_modelservice=self._kg_modelservice if self._kg_initialized else None,
-                db_connection=self._db_connection
+                uow_factory=self._uow_factory
             )
             
             # Initialize AMS components (Phase 1.5)
@@ -274,73 +271,30 @@ class MemoryManager(BaseAIProcessor):
         except Exception as e:
             error_msg = f"Failed to initialize memory manager: {e}"
             logger.error(error_msg)
-            print(f"🚨 [MEMORY_INIT_ERROR] {error_msg}")
             
             # Get full stack trace
             import traceback
             stack_trace = traceback.format_exc()
             logger.error(f"🚨 [MEMORY_INIT_ERROR] Full stack trace:\n{stack_trace}")
-            print(f"🚨 [MEMORY_INIT_ERROR] Full stack trace:\n{stack_trace}")
             raise
     
     async def _initialize_knowledge_graph(self) -> None:
         """Initialize knowledge graph components for structured memory extraction."""
-        print("🔍 [KG_DEBUG] _initialize_knowledge_graph() CALLED")
         try:
-            print("🔍 [KG_DEBUG] Inside try block")
             logger.info("🕸️ [KG] Initializing knowledge graph components...")
-            print("🔍 [KG_DEBUG] Logger.info called")
             
-            # Get database connection from working store (reuse existing connection)
-            print(f"🔍 [KG_DEBUG] Checking working store: {self._working_store}")
-            if not self._working_store:
-                print("🔍 [KG_DEBUG] Working store is None, returning early")
-                logger.warning("🕸️ [KG] Working store not available, skipping KG initialization")
+            # Use UoW factory for PostgreSQL access
+            if not self._uow_factory:
+                logger.warning("🕸️ [KG] UoW factory not available, KG initialization skipped")
                 return
-            print("🔍 [KG_DEBUG] Working store OK, continuing...")
             
-            # Get encrypted database connection
-            from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-            from aico.core.paths import AICOPaths
-            from aico.security import AICOKeyManager
-            
-            # Create encrypted database connection for KG
-            # Reuse existing database connection if available
-            print(f"🔍 [KG_DEBUG] Checking for _db_connection: hasattr={hasattr(self, '_db_connection')}, value={getattr(self, '_db_connection', None)}")
-            if hasattr(self, '_db_connection') and self._db_connection:
-                db_connection = self._db_connection
-                print("🔍 [KG_DEBUG] Using provided database connection")
-                logger.info("🕸️ [KG] Reusing existing database connection")
-            else:
-                print("🔍 [KG_DEBUG] No db_connection provided, attempting authentication...")
-                key_manager = AICOKeyManager()
-                try:
-                    master_key = key_manager.authenticate(interactive=False)
-                    print("🔍 [KG_DEBUG] Authentication succeeded")
-                except Exception as auth_error:
-                    print(f"🔍 [KG_DEBUG] Authentication failed: {auth_error}")
-                    logger.warning(f"🕸️ [KG] Authentication failed: {auth_error}, trying to get cached key")
-                    # Try to get cached master key
-                    master_key = key_manager.get_cached_master_key()
-                    if not master_key:
-                        print("🔍 [KG_DEBUG] No cached master key, RETURNING EARLY")
-                        logger.error("🕸️ [KG] No cached master key available, KG initialization failed")
-                        return
-                    print("🔍 [KG_DEBUG] Got cached master key")
-                
-                db_path = AICOPaths.get_database_path()
-                db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-                db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-                logger.info("🕸️ [KG] Created new database connection")
+            logger.info("🕸️ [KG] Using UoW factory for PostgreSQL access")
             
             # Get ChromaDB client from semantic store
-            print("🔍 [KG_DEBUG] Getting ChromaDB client...")
             chromadb_client = None
             if self._semantic_store and hasattr(self._semantic_store, '_chroma_client'):
                 chromadb_client = self._semantic_store._chroma_client
-                print("🔍 [KG_DEBUG] Got ChromaDB client from semantic store")
             else:
-                print("🔍 [KG_DEBUG] Creating new ChromaDB client...")
                 logger.warning("🕸️ [KG] ChromaDB client not available from semantic store")
                 # Create our own ChromaDB client
                 import chromadb
@@ -350,46 +304,35 @@ class MemoryManager(BaseAIProcessor):
                     path=str(chromadb_path),
                     settings=Settings(anonymized_telemetry=False, allow_reset=True)
                 )
-                print("🔍 [KG_DEBUG] ChromaDB client created")
             
             # Initialize modelservice client (but don't connect yet - message bus may not be ready)
-            print("🔍 [KG_DEBUG] Creating ModelserviceClient (deferred connection)...")
             self._kg_modelservice = ModelserviceClient()
-            # Note: Connection will happen lazily on first use
-            logger.info("🕸️ [KG] Modelservice client created (connection deferred)")
             
-            # Initialize storage (pass modelservice for embedding generation)
-            print("🔍 [KG_DEBUG] Initializing PropertyGraphStorage...")
-            self._kg_storage = PropertyGraphStorage(db_connection, chromadb_client, self._kg_modelservice)
-            logger.info("🕸️ [KG] Storage initialized")
+            # Initialize storage (pass UoW factory for PostgreSQL and modelservice for embedding generation)
+            self._kg_storage = PropertyGraphStorage(self._uow_factory, chromadb_client, self._kg_modelservice)
             
-            # Initialize extraction pipeline (modelservice will connect on first use)
-            print("🔍 [KG_DEBUG] Initializing MultiPassExtractor...")
-            self._kg_extractor = MultiPassExtractor(self._kg_modelservice, self.config)
-            logger.info("🕸️ [KG] Extractor initialized")
+            # Initialize extraction pipeline with ChromaDB for semantic ranking
+            # Pass chromadb_client to enable state-of-the-art semantic entity ranking
+            self._kg_extractor = MultiPassExtractor(
+                self._kg_modelservice, 
+                self.config,
+                chromadb_client=chromadb_client  # Enable semantic ranking
+            )
             
             # Initialize entity resolver
-            print("🔍 [KG_DEBUG] Initializing EntityResolver...")
             self._kg_resolver = EntityResolver(self._kg_modelservice, self.config)
-            logger.info("🕸️ [KG] Entity resolver initialized")
             
             # Initialize graph fusion
-            print("🔍 [KG_DEBUG] Initializing GraphFusion...")
             self._kg_fusion = GraphFusion(self._kg_modelservice, self.config)
-            logger.info("🕸️ [KG] Graph fusion initialized")
             
-            print("🔍 [KG_DEBUG] About to set _kg_initialized=True")
             self._kg_initialized = True
             logger.info("🕸️ [KG] ✅ Knowledge graph components initialized successfully")
-            print("🔍 [KG_DEBUG] KG initialization COMPLETE!")
             
         except Exception as e:
-            print(f"🔍 [KG_DEBUG] EXCEPTION CAUGHT: {e}")
             logger.error(f"🕸️ [KG] ❌ Failed to initialize knowledge graph: {e}")
             import traceback
             error_trace = traceback.format_exc()
             logger.error(f"🕸️ [KG] Traceback: {error_trace}")
-            print(f"🔍 [KG_DEBUG] Full traceback:\n{error_trace}")
             # Don't fail overall initialization if KG fails
             self._kg_initialized = False
     
@@ -406,13 +349,11 @@ class MemoryManager(BaseAIProcessor):
         - PreferenceManager: User preference vectors (Phase 3)
         """
         try:
-            print("🧠 [AMS] Initializing Adaptive Memory System components...")
             logger.info("🧠 [AMS] Initializing Adaptive Memory System components...")
             
             # Check if AMS is enabled in configuration
             ams_config = self._memory_config.get("consolidation", {})
             if not ams_config.get("enabled", False):
-                print("🧠 [AMS] ⚠️  Consolidation disabled in configuration, skipping AMS initialization")
                 logger.info("🧠 [AMS] Consolidation disabled in configuration, skipping AMS initialization")
                 return
             
@@ -422,7 +363,6 @@ class MemoryManager(BaseAIProcessor):
                 cpu_threshold_percent=idle_config.get("cpu_threshold", 20.0),
                 check_interval_seconds=idle_config.get("check_interval_seconds", 60)
             )
-            print("🧠 [AMS] ✅ Idle detector initialized")
             logger.info("🧠 [AMS] Idle detector initialized")
             
             # Initialize consolidation scheduler
@@ -432,79 +372,75 @@ class MemoryManager(BaseAIProcessor):
                 max_duration_minutes=ams_config.get("max_duration_minutes", 60),
                 user_sharding_cycle_days=ams_config.get("user_sharding_cycle_days", 7)
             )
-            print("🧠 [AMS] ✅ Consolidation scheduler initialized")
             logger.info("🧠 [AMS] Consolidation scheduler initialized")
             
             # Initialize evolution tracker
             temporal_config = self._memory_config.get("temporal", {})
             if temporal_config.get("enabled", True):
                 self._evolution_tracker = EvolutionTracker()
-                print("🧠 [AMS] ✅ Evolution tracker initialized")
                 logger.info("🧠 [AMS] Evolution tracker initialized")
             
             self._ams_enabled = True
-            print("🧠 [AMS] ✅✅✅ Adaptive Memory System components initialized successfully!")
             logger.info("🧠 [AMS] ✅ Adaptive Memory System components initialized successfully")
             
             # Initialize behavioral learning components (Phase 3)
             behavioral_config = self._memory_config.get("behavioral", {})
-            if behavioral_config.get("enabled", False) and self._db_connection:
+            if behavioral_config.get("enabled", False) and self._uow_factory:
                 try:
                     from .behavioral import SkillStore, ThompsonSamplingSelector, PreferenceManager
                     
-                    print("🧠 [AMS] Initializing behavioral learning components...")
                     logger.info("🧠 [AMS] Initializing behavioral learning components...")
                     
                     # Skill store
-                    self._skill_store = SkillStore(self._db_connection)
-                    print("🧠 [AMS] ✅ Skill store initialized")
+                    self._skill_store = SkillStore(self._uow_factory)
                     logger.info("🧠 [AMS] Skill store initialized")
                     
                     # Initialize base skills if not present
                     await self._skill_store.initialize_base_skills()
-                    print("🧠 [AMS] ✅ Base skills initialized")
                     logger.info("🧠 [AMS] Base skills initialized")
                     
                     # Thompson Sampling selector
                     bandit_config = behavioral_config.get("contextual_bandit", {})
                     self._thompson_sampling = ThompsonSamplingSelector(
-                        db_connection=self._db_connection,
+                        uow_factory=self._uow_factory,
                         prior_alpha=bandit_config.get("prior_alpha", 1.0),
                         prior_beta=bandit_config.get("prior_beta", 1.0)
                     )
-                    print("🧠 [AMS] ✅ Thompson Sampling selector initialized")
                     logger.info("🧠 [AMS] Thompson Sampling selector initialized")
                     
                     # Preference manager
                     self._preference_manager = PreferenceManager(
-                        db_connection=self._db_connection,
+                        uow_factory=self._uow_factory,
                         learning_rate=behavioral_config.get("learning_rate", 0.1)
                     )
-                    print("🧠 [AMS] ✅ Preference manager initialized")
                     logger.info("🧠 [AMS] Preference manager initialized")
                     
                     self._behavioral_enabled = True
-                    print("🧠 [AMS] ✅ Behavioral learning initialized successfully")
                     logger.info("🧠 [AMS] ✅ Behavioral learning initialized successfully")
                     
                 except Exception as e:
-                    print(f"🧠 [AMS] ⚠️  Failed to initialize behavioral learning: {e}")
                     logger.error(f"🧠 [AMS] Failed to initialize behavioral learning: {e}")
                     self._behavioral_enabled = False
             else:
-                print("🧠 [AMS] Behavioral learning disabled in configuration")
                 logger.info("🧠 [AMS] Behavioral learning disabled in configuration")
             
         except Exception as e:
-            print(f"🧠 [AMS] ❌❌❌ Failed to initialize AMS components: {e}")
             logger.error(f"🧠 [AMS] ❌ Failed to initialize AMS components: {e}")
             import traceback
             error_trace = traceback.format_exc()
-            print(f"🧠 [AMS] Traceback:\n{error_trace}")
             logger.error(f"🧠 [AMS] Traceback: {error_trace}")
             # Don't fail overall initialization if AMS fails
             self._ams_enabled = False
             self._behavioral_enabled = False
+
+    @property
+    def kg_storage(self):
+        """Expose knowledge graph storage abstraction for read/write operations.
+
+        Returns the PropertyGraphStorage instance if KG initialization succeeded,
+        otherwise None.
+        """
+        return self._kg_storage if self._kg_initialized else None
     
     async def schedule_consolidation(self, user_id: str) -> bool:
         """
@@ -529,8 +465,7 @@ class MemoryManager(BaseAIProcessor):
             return False
     
     async def process(self, context: ProcessingContext) -> ProcessingResult:
-        """
-        Process memory operations based on context.
+        """Process memory operations based on context.
         
         Handles memory storage, retrieval, and context assembly
         for AI processing pipeline integration.
@@ -541,54 +476,60 @@ class MemoryManager(BaseAIProcessor):
         """
         import time
         timestamp = time.time()
-        print(f"🚨 [MEMORY_MANAGER_DEBUG] MemoryManager.process() CALLED! [{timestamp:.6f}]")
-        import time
+        logger.debug(f"[MEMORY_MANAGER_DEBUG] process() called at {timestamp:.6f}")
         timestamp = time.time()
-        print(f"🚨 [MEMORY_MANAGER_DEBUG] Context: conversation_id={context.conversation_id}, message_type={context.message_type} [{timestamp:.6f}]")
+        logger.debug(
+            f"[MEMORY_MANAGER_DEBUG] Context: conversation_id={context.conversation_id}, "
+            f"message_type={context.message_type} [{timestamp:.6f}]"
+        )
         
         # DIAGNOSTIC: Track where the delay occurs
-        import time
         before_init_check = time.time()
-        print(f"🔍 [ASYNC_DEBUG] Before initialization check [{before_init_check:.6f}]")
+        logger.debug(f"[ASYNC_DEBUG] Before initialization check [{before_init_check:.6f}]")
         logger.info(f"🧠 [MEMORY_FLOW] Processing memory operation for conversation {context.conversation_id}")
         logger.info(f"🧠 [MEMORY_FLOW] Message type: {context.message_type}, Turn: {context.turn_number}")
         
         if not self._initialized:
-            import time
             before_init = time.time()
-            print(f"🔍 [ASYNC_DEBUG] Before initialize() [{before_init:.6f}]")
+            logger.debug(f"[ASYNC_DEBUG] Before initialize() [{before_init:.6f}]")
             logger.info("🧠 [MEMORY_FLOW] Lazy initializing memory system on first use")
             await self.initialize()
             after_init = time.time()
-            print(f"🔍 [ASYNC_DEBUG] After initialize() [{after_init:.6f}] - took {(after_init-before_init)*1000:.2f}ms")
+            logger.debug(
+                f"[ASYNC_DEBUG] After initialize() [{after_init:.6f}] - "
+                f"took {(after_init-before_init)*1000:.2f}ms"
+            )
             
-        import time
         before_context_assembly = time.time()
-        print(f"🔍 [ASYNC_DEBUG] Before context assembly [{before_context_assembly:.6f}]")
+        logger.debug(f"[ASYNC_DEBUG] Before context assembly [{before_context_assembly:.6f}]")
         start_time = datetime.utcnow()
         
         try:
             # Store current interaction (Phase 1+)
             if self._working_store:
-                import time
                 before_store = time.time()
-                print(f"🔍 [ASYNC_DEBUG] Before working memory store [{before_store:.6f}]")
+                logger.debug(f"[ASYNC_DEBUG] Before working memory store [{before_store:.6f}]")
                 logger.info("🧠 [MEMORY_FLOW] → Storing interaction in working memory")
                 await self._store_interaction(context)
                 after_store = time.time()
-                print(f"🔍 [ASYNC_DEBUG] After working memory store [{after_store:.6f}] - took {(after_store-before_store)*1000:.2f}ms")
+                logger.debug(
+                    f"[ASYNC_DEBUG] After working memory store [{after_store:.6f}] - "
+                    f"took {(after_store-before_store)*1000:.2f}ms"
+                )
                 logger.info("🧠 [MEMORY_FLOW] ✅ Working memory storage complete")
             else:
                 logger.warning("🧠 [MEMORY_FLOW] ⚠️  Working memory not available")
             
             # Assemble relevant context for processing
-            import time
             before_assemble = time.time()
-            print(f"🔍 [ASYNC_DEBUG] Before _assemble_context() [{before_assemble:.6f}]")
+            logger.debug(f"[ASYNC_DEBUG] Before _assemble_context() [{before_assemble:.6f}]")
             logger.info("🧠 [MEMORY_FLOW] → Assembling context from memory tiers")
             memory_context = await self._assemble_context(context)
             after_assemble = time.time()
-            print(f"🔍 [ASYNC_DEBUG] After _assemble_context() [{after_assemble:.6f}] - took {(after_assemble-before_assemble)*1000:.2f}ms")
+            logger.debug(
+                f"[ASYNC_DEBUG] After _assemble_context() [{after_assemble:.6f}] - "
+                f"took {(after_assemble-before_assemble)*1000:.2f}ms"
+            )
             
             # Log context assembly results
             context_items = memory_context.get("items", [])
@@ -647,25 +588,116 @@ class MemoryManager(BaseAIProcessor):
             await self.initialize()
             
         start_time = datetime.utcnow()
-        
-        if self._context_assembler:
-            result = await self._context_assembler.query_memories(query)
+
+        try:
+            if query.query_type == "semantic" and self._semantic_store:
+                segments = await self._semantic_store.query_segments(
+                    query_text=query.query_text,
+                    user_id=query.user_id,
+                    max_results=query.max_results,
+                )
+
+                memories: List[Dict[str, Any]] = []
+                relevance_scores: List[float] = []
+                for seg in segments or []:
+                    if not isinstance(seg, dict):
+                        continue
+
+                    metadata = seg.get("metadata", {})
+                    if not isinstance(metadata, dict):
+                        metadata = {}
+
+                    memories.append(
+                        {
+                            "type": "semantic",
+                            "content": seg.get("content", ""),
+                            "timestamp": metadata.get("timestamp"),
+                            "conversation_id": metadata.get("conversation_id"),
+                        }
+                    )
+                    relevance_scores.append(float(seg.get("hybrid_score", 0.0) or 0.0))
+
+                processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+                return MemoryResult(
+                    memories=memories,
+                    context_summary="",
+                    relevance_scores=relevance_scores,
+                    total_found=len(memories),
+                    processing_time_ms=processing_time,
+                )
+
             processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            result.processing_time_ms = processing_time
-            return result
-        else:
-            # Fallback - basic working memory query
-            logger.warning("Context assembler not available, using basic query")
+            logger.warning(
+                "query_memory fallback path used (query_type=%s, semantic_store=%s)",
+                query.query_type,
+                bool(self._semantic_store),
+            )
             return MemoryResult(
                 memories=[],
                 context_summary="Limited query capability in current phase",
                 relevance_scores=[],
                 total_found=0,
-                processing_time_ms=0.0
+                processing_time_ms=processing_time,
             )
+        except Exception as e:
+            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            logger.error("query_memory failed: %s", e)
+            return MemoryResult(
+                memories=[],
+                context_summary=f"Memory query failed: {e}",
+                relevance_scores=[],
+                total_found=0,
+                processing_time_ms=processing_time,
+            )
+
+    async def get_user_interests(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Return AMS-tracked user interests for curiosity engine.
+
+        Phase 6.3 integration point: CuriosityEngine expects an `ams_service`
+        exposing `get_user_interests(user_id, limit=...)`. When behavioral
+        components are not enabled yet, this should degrade gracefully and
+        simply return an empty list instead of raising.
+        """
+        if not getattr(self, "_behavioral_enabled", False):
+            logger.warning(
+                f"[AMS] get_user_interests called for user {user_id} but behavioral components are disabled; "
+                "returning empty list."
+            )
+            return []
+
+        preference_manager = getattr(self, "_preference_manager", None)
+        if preference_manager is None:
+            logger.warning(
+                f"[AMS] get_user_interests called for user {user_id} but PreferenceManager is not available; "
+                "returning empty list."
+            )
+            return []
+
+        try:
+            # Delegate to PreferenceManager if it implements interest retrieval.
+            if hasattr(preference_manager, "get_user_interests"):
+                result = await preference_manager.get_user_interests(user_id=user_id, limit=limit)
+                return result or []
+
+            logger.warning(
+                f"[AMS] PreferenceManager for user {user_id} does not support get_user_interests; "
+                "returning empty list."
+            )
+            return []
+        except Exception as e:
+            logger.error(f"[AMS] get_user_interests failed for user {user_id}: {e}")
+            return []
     
-    async def store_message(self, user_id: str, conversation_id: str, content: str, role: str) -> bool:
-        """V3 API: Store conversation segments (simplified)"""
+    async def store_message(self, user_id: str, conversation_id: str, content: str, role: str, language: str = "en") -> bool:
+        """V3 API: Store conversation segments (simplified)
+        
+        Args:
+            user_id: User identifier
+            conversation_id: Conversation identifier
+            content: Message content
+            role: Message role (user/assistant)
+            language: ISO/BCP-47 language code for the message (defaults to 'en')
+        """
         if not self._initialized:
             await self.initialize()
             
@@ -680,6 +712,7 @@ class MemoryManager(BaseAIProcessor):
                     "conversation_id": conversation_id,
                     "content": content,
                     "role": role,
+                    "language": language,  # Store language for future retrieval
                     "timestamp": datetime.utcnow().isoformat(),
                     "message_type": f"{role}_input" if role == "user" else f"{role}_response"
                 }
@@ -694,7 +727,8 @@ class MemoryManager(BaseAIProcessor):
                             user_id=user_id,
                             conversation_id=conversation_id,
                             role=role,
-                            content=content
+                            content=content,
+                            language=language
                         )
                     except Exception as e:
                         logger.error(f"Background segment storage failed: {e}")
@@ -704,12 +738,16 @@ class MemoryManager(BaseAIProcessor):
             # KG extraction moved to consolidation scheduler (AMS architecture)
             # Per-message extraction disabled to prevent embedding queue saturation
             # Messages will be processed in batches during idle periods via ams.kg_consolidation task
-            print(f"🕸️ [KG_CHECK] Checking if KG extraction should run: kg_initialized={self._kg_initialized}, role={role}")
+            logger.debug(
+                f"[KG_CHECK] Checking if KG extraction should run: "
+                f"kg_initialized={self._kg_initialized}, role={role}"
+            )
             if self._kg_initialized and role == "user":
-                print(f"🕸️ [KG] 📝 Message queued for consolidation (will be processed during next idle period)")
-                logger.info(f"🕸️ [KG] Message queued for consolidation scheduler")
+                logger.info("🕸️ [KG] Message queued for consolidation scheduler")
             else:
-                print(f"🕸️ [KG] ⚠️  Skipping: kg_initialized={self._kg_initialized}, role={role}")
+                logger.debug(
+                    f"[KG] Skipping KG extraction queue: kg_initialized={self._kg_initialized}, role={role}"
+                )
             
             logger.info(f"✅ Stored {role} message in memory")
             return True
@@ -846,7 +884,7 @@ class MemoryManager(BaseAIProcessor):
     
     async def _store_interaction(self, context: ProcessingContext) -> None:
         """V2: Use unified store_message() API for consistent fact extraction"""
-        logger.info(f"[DEBUG] MemoryManager: Using unified storage path for conversation {context.conversation_id}")
+        logger.debug(f"[DEBUG] MemoryManager: Using unified storage path for conversation {context.conversation_id}")
         
         # V2: Use the unified store_message API that includes fact extraction
         role = "user" if context.message_type == "user_input" else "assistant"
@@ -882,7 +920,7 @@ class MemoryManager(BaseAIProcessor):
                 "phase": 1
             }
             
-            logger.info("[DEBUG] MemoryManager: Assembling context from working memory.")
+            logger.debug("[DEBUG] MemoryManager: Assembling context from working memory.")
             if self._working_store:
                 working_context = await self._working_store.retrieve_user_history(context.user_id)
                 basic_context["memories"] = working_context
@@ -960,96 +998,85 @@ class MemoryManager(BaseAIProcessor):
         """
         import time
         start_time = time.time()
-        print(f"\n{'='*80}")
-        print(f"🕸️ [KG] 🚀 Background extraction task STARTED for user {user_id}")
-        print(f"🕸️ [KG] Text length: {len(text)} chars")
+        logger.info(f"[KG]  Background extraction task STARTED for user {user_id}, text_len={len(text)}")
         if shared_resolver:
-            print(f"🕸️ [KG] Using shared resolver (incremental HNSW)")
-        print(f"{'='*80}")
+            logger.info("[KG] Using shared resolver (incremental HNSW)")
         try:
-            # 1. Extract entities and relationships
-            print(f"\n🕸️ [KG] Step 1: Multi-pass extraction...")
-            extraction_start = time.time()
-            logger.info(f"🕸️ [KG] Starting background extraction for user {user_id}")
+            # 1. Load existing entities for context (prevents duplicates at extraction time)
+            context_start = time.time()
+            existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
+            context_time = time.time() - context_start
             
-            new_graph = await self._kg_extractor.extract(text, user_id)
+            # Build context for extractor (entity names and IDs for LLM to reference)
+            entity_context = []
+            for node in existing_nodes:
+                props = node.properties or {}
+                # Defensive: properties can be persisted as JSON strings depending on storage layer.
+                if isinstance(props, str):
+                    try:
+                        props = json.loads(props)
+                    except Exception:
+                        props = {"name": props}
+                if not isinstance(props, dict):
+                    props = {}
+                entity_context.append({
+                    "id": node.id,
+                    "label": node.label,
+                    "name": props.get("name", "")
+                })
+            logger.info(f"[KG] Loaded {len(entity_context)} existing entities in {context_time:.2f}s")
+            
+            # 2. Extract entities and relationships (with existing entity context)
+            extraction_start = time.time()
+            logger.info(f"[KG] Starting background extraction for user {user_id}")
+            
+            new_graph = await self._kg_extractor.extract(text, user_id, context={"entities": entity_context})
             extraction_time = time.time() - extraction_start
             
-            print(f"\n🕸️ [KG] ✅ Extraction complete in {extraction_time:.2f}s")
-            print(f"🕸️ [KG]    Nodes: {len(new_graph.nodes)}")
-            print(f"🕸️ [KG]    Edges: {len(new_graph.edges)}")
+            logger.info(
+                f"🕸️ [KG] Extraction complete in {extraction_time:.2f}s: "
+                f"nodes={len(new_graph.nodes)}, edges={len(new_graph.edges)}"
+            )
             logger.info(f"🕸️ [KG] Extracted {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges in {extraction_time:.2f}s")
             
             if len(new_graph.nodes) == 0 and len(new_graph.edges) == 0:
-                logger.info(" [KG]  No entities extracted, skipping")
+                logger.info("🕸️ [KG] No entities extracted, skipping")
                 return
             
-            # 2. Entity resolution (deduplicate against existing graph)
-            print(f"\n [KG]  Step 2: Entity resolution (HNSW-based deduplication)")
-            resolution_start = time.time()
-            superseded_ids = set()  # Track nodes that should be marked historical
-            try:
-                # Get existing nodes for this user
-                db_fetch_start = time.time()
-                existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
-                db_fetch_time = time.time() - db_fetch_start
-                print(f" [KG]    Found {len(existing_nodes)} existing nodes in DB ({db_fetch_time:.2f}s)")
-                
-                # Use shared resolver if provided (incremental HNSW), otherwise use instance resolver
-                resolver = shared_resolver if shared_resolver else self._kg_resolver
-                
-                # Resolve entities (deduplicate)
-                resolve_start = time.time()
-                resolution_result = await resolver.resolve(new_graph, user_id, existing_nodes)
-                resolve_time = time.time() - resolve_start
-                
-                resolved_graph = resolution_result.resolved_graph
-                superseded_ids = resolution_result.superseded_node_ids
-                
-                duplicates_merged = len(new_graph.nodes) - len(resolved_graph.nodes)
-                print(f"\n🕸️ [KG] ✅ Resolution complete in {resolve_time:.2f}s")
-                print(f"🕸️ [KG]    Before: {len(new_graph.nodes)} nodes")
-                print(f"🕸️ [KG]    After:  {len(resolved_graph.nodes)} nodes")
-                print(f"🕸️ [KG]    Merged: {duplicates_merged} duplicates")
-                
-                # Use resolved graph for storage
-                new_graph = resolved_graph
-            except Exception as e:
-                resolution_time = time.time() - resolution_start
-                print(f"\n🕸️ [KG] ⚠️  Entity resolution failed after {resolution_time:.2f}s: {e}")
-                print(f"🕸️ [KG]    Proceeding with unresolved graph")
-                logger.warning(f"Entity resolution failed: {e}, proceeding with unresolved graph")
-                superseded_ids = set()  # No superseded nodes if resolution failed
-                import traceback
-                traceback.print_exc()
+            # 3. Resolve pronoun coreferences to canonical user/AI entities
+            coref_start = time.time()
+            from aico.ai.knowledge_graph import resolve_coreferences
             
-            # 3. Graph fusion - SKIPPED (not critical for initial testing)
-            print(f"\n🕸️ [KG] Step 3: Graph fusion (skipped for now)")
+            # Get user's name from existing entities if available
+            user_name = None
+            for node in existing_nodes:
+                if node.label == "PERSON" and node.properties.get("is_user", False):
+                    user_name = node.properties.get("name")
+                    break
             
-            # 4. Save to storage (libSQL + ChromaDB with embeddings)
-            print(f"\n🕸️ [KG] Step 4: Saving to storage...")
+            new_graph = await resolve_coreferences(new_graph, user_id, user_name, self._uow_factory)
+            coref_time = time.time() - coref_start
+            logger.info(f"🕸️ [KG] Coreference resolution complete in {coref_time:.2f}s")
+            
+            # 4. Skip per-message resolution (context-aware extraction prevents most duplicates)
+            # Resolution now only runs in batch post-processing for final cleanup
+            superseded_ids = set()
+            
             storage_start = time.time()
             await self._kg_storage.save_graph(new_graph, superseded_node_ids=superseded_ids)
             storage_time = time.time() - storage_start
             
             total_time = time.time() - start_time
-            print(f"\n🕸️ [KG] ✅ Storage complete in {storage_time:.2f}s")
-            print(f"\n{'='*80}")
-            print(f"🕸️ [KG] ✅ PIPELINE COMPLETE in {total_time:.2f}s")
-            print(f"🕸️ [KG]    Extraction:  {extraction_time:.2f}s ({extraction_time/total_time*100:.1f}%)")
-            print(f"🕸️ [KG]    Resolution: {time.time() - resolution_start:.2f}s ({(time.time() - resolution_start)/total_time*100:.1f}%)")
-            print(f"🕸️ [KG]    Storage:    {storage_time:.2f}s ({storage_time/total_time*100:.1f}%)")
-            print(f"🕸️ [KG]    Final: {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
-            print(f"{'='*80}\n")
-            logger.info(f"🕸️ [KG] ✅ Knowledge graph saved successfully in {total_time:.2f}s")
+            logger.info(
+                f"🕸️ [KG] ✅ PIPELINE COMPLETE in {total_time:.2f}s "
+                f"(context={context_time:.2f}s, extraction={extraction_time:.2f}s, "
+                f"storage={storage_time:.2f}s, nodes={len(new_graph.nodes)}, "
+                f"edges={len(new_graph.edges)})"
+            )
             
         except Exception as e:
             total_time = time.time() - start_time
-            print(f"\n{'='*80}")
-            print(f"🕸️ [KG] ❌ PIPELINE FAILED after {total_time:.2f}s: {e}")
-            print(f"{'='*80}")
-            logger.error(f"🕸️ [KG] ❌ Background extraction failed: {e}")
+            logger.error(f"🕸️ [KG] ❌ PIPELINE FAILED after {total_time:.2f}s: {e}")
             import traceback
             error_trace = traceback.format_exc()
-            print(f"🕸️ [KG] Traceback:\n{error_trace}")
-            logger.error(f"🕸️ [KG] Traceback: {error_trace}")
+            logger.error(f"🕸️ [KG] Traceback:\n{error_trace}")

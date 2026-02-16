@@ -1,10 +1,14 @@
 system:
-  log_level: "WARNING"  # Minimal system logging in production
-  
-api:
-  cors_origins:
-    - "http://localhost:3000"    # Studio admin UI (production)
-    - "http://127.0.0.1:3000"    # IP variant for compatibility
+  environment: "production"
+  log_level: "INFO"  # Production environment overrides
+
+api_gateway:
+  protocols:
+    rest:
+      cors:
+        origins:
+          - "https://aico.app"    # Studio admin UI (production)
+          - "http://127.0.0.1:3000"    # IP variant for compatibility
 
 security:
   audit:

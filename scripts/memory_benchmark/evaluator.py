@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 import json
 import uuid
-import aiohttp
+ 
 
 # Add shared path for AICO modules
 shared_path = Path(__file__).parent.parent.parent / "shared"
@@ -34,6 +34,8 @@ except ImportError:
 from .scenarios import ConversationScenario, ScenarioLibrary
 from .metrics import MemoryMetrics, EvaluationResult, MetricScore
 from .reporters import RichReporter, JSONReporter, DetailedReporter
+from .api_client import EncryptedBenchmarkClient
+from .character import load_active_character_spec
 
 
 @dataclass
@@ -49,6 +51,7 @@ class EvaluationSession:
     evaluation_result: Optional['EvaluationResult'] = None
     user_id: Optional[str] = None
     conversation_id: Optional[str] = None
+    character_spec: Optional[Any] = None
     
     @property
     def duration_seconds(self) -> float:
@@ -59,27 +62,14 @@ class EvaluationSession:
 
 class MemoryIntelligenceEvaluator:
     """
-    V2 Memory System Evaluator for AICO's Fact-Centric Architecture
+    End-to-end memory/context evaluator.
     
-    Tests the sophisticated GLiNER + LLM fact extraction pipeline and 2-tier storage system.
+    This runner drives the *real* backend API through the API gateway:
+    - Transport encryption (handshake + encrypted JSON envelopes)
+    - JWT authentication
+    - Conversation processing via ConversationEngine + modelservice + Ollama
     
-    V2 Features:
-    - GLiNER multilingual entity extraction validation
-    - LLM fact classification accuracy testing
-    - Confidence-based fact storage verification
-    - Temporal validity and immutability testing
-    - ChromaDB semantic search performance
-    - LMDB session memory persistence
-    - Conversation-centric context assembly
-    - Zero pattern matching validation
-    
-    V2 Architecture Testing:
-    - Fact extraction pipeline (GLiNER → LLM → UserFact)
-    - 2-tier storage (Working LMDB + Semantic ChromaDB)
-    - Schema V5 libSQL metadata integration
-    - Direct modelservice integration via ZMQ
-    - Conversation strength calculation (not thread strength)
-    - Simplified conversation engine integration
+    The evaluator intentionally avoids direct DB access to ensure the full chain is exercised.
     """
     
     def __init__(self, 
@@ -87,7 +77,8 @@ class MemoryIntelligenceEvaluator:
                  auth_token: Optional[str] = None,
                  timeout_seconds: int = 30,
                  reuse_user: bool = False,
-                 user_id: Optional[str] = None):
+                 user_id: Optional[str] = None,
+                 pin: Optional[str] = None):
         """
         Initialize the Memory Intelligence Evaluator.
         
@@ -103,9 +94,24 @@ class MemoryIntelligenceEvaluator:
         self.timeout_seconds = timeout_seconds
         self.reuse_user = reuse_user
         self.persistent_user_id = user_id  # Use existing user if provided
+        self._pin = pin
         
         # Initialize AICO components (optional)
         self.config = ConfigurationManager() if ConfigurationManager else None
+        self.conversation_timeout_seconds: float = float(timeout_seconds)
+        if self.config is not None:
+            try:
+                self.config.initialize(lightweight=True)
+                configured_timeout = self.config.get("conversation.response_timeout_seconds", None)
+                if configured_timeout is not None:
+                    self.conversation_timeout_seconds = float(configured_timeout)
+            except Exception:
+                # If config is unavailable for any reason, keep CLI-provided timeout
+                self.conversation_timeout_seconds = float(timeout_seconds)
+
+        # Ensure HTTP client timeout is always >= conversation timeout (+buffer)
+        # so the client-side HTTP layer doesn't abort earlier than the backend.
+        self.timeout_seconds = int(max(float(self.timeout_seconds), self.conversation_timeout_seconds + 10.0))
         
         # Initialize evaluation components
         self.metrics = MemoryMetrics()
@@ -116,12 +122,7 @@ class MemoryIntelligenceEvaluator:
         self.json_reporter = JSONReporter()
         self.detailed_reporter = DetailedReporter()
         
-        # HTTP session for API calls
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.encryption_context: Optional[Dict[str, Any]] = None
-        self._client_private_key = None
-        self._verify_key = None
-        self._session_box = None
+        self._client: Optional[EncryptedBenchmarkClient] = None
         self._test_user_uuid: Optional[str] = None
         
         # Session tracking
@@ -130,20 +131,20 @@ class MemoryIntelligenceEvaluator:
         
     async def wait_for_backend_ready(self, max_wait_seconds: int = 60) -> bool:
         """Wait for AICO backend to be ready"""
-        
-        if not self.session:
-            self.session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=5)  # Short timeout for health checks
-            )
+        if not self._client:
+            self._client = EncryptedBenchmarkClient(self.backend_url, timeout_seconds=max(self.timeout_seconds, 30.0))
         
         start_time = time.time()
         
         while time.time() - start_time < max_wait_seconds:
             try:
-                async with self.session.get(f"{self.backend_url}/health") as response:
-                    if response.status == 200:
-                        print("✅ AICO backend is ready")
-                        return True
+                # Health is public and not encrypted
+                import httpx
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(f"{self.backend_url}/api/v1/health")
+                if resp.status_code == 200:
+                    print("✅ AICO backend is ready")
+                    return True
             except Exception as e:
                 # Silently continue checking
                 pass
@@ -155,13 +156,10 @@ class MemoryIntelligenceEvaluator:
         
     async def cleanup(self):
         """Clean up resources and test user"""
-        # Clean up test user first
         await self._cleanup_test_user()
-        
-        # Clean up HTTP session
-        if self.session:
-            await self.session.close()
-            self.session = None
+        if self._client:
+            await self._client.close()
+            self._client = None
             
     async def _cleanup_test_user(self):
         """Clean up the test user created during testing"""
@@ -179,199 +177,27 @@ class MemoryIntelligenceEvaluator:
             self._test_user_uuid = None
             return
             
-        print(f"🧹 Cleaning up test user: {self._test_user_uuid}")
-        
-        try:
-            import subprocess
-            from pathlib import Path
-            
-            result = subprocess.run([
-                "uv", "run", "python", "-m", "cli.aico_main", 
-                "security", "user-delete", 
-                self._test_user_uuid,
-                "--hard",
-                "--confirm"
-            ], 
-            cwd=Path(__file__).parent.parent.parent,
-            capture_output=True, 
-            text=True,
-            timeout=30
-            )
-            
-            if result.returncode == 0:
-                print("✅ Test user deleted successfully")
-            else:
-                print(f"⚠️ Failed to delete test user (return code {result.returncode}):")
-                print(f"   stderr: {result.stderr}")
-                print(f"   stdout: {result.stdout}")
-                
-        except Exception as e:
-            print(f"⚠️ Error during test user cleanup: {e}")
-        finally:
-            self._test_user_uuid = None  # Always clear to prevent double deletion
-
-    async def _perform_handshake(self):
-        """Perform encryption handshake with AICO backend"""
-        try:
-            print("🔐 Performing encryption handshake...")
-            
-            # Generate proper cryptographic keys like the working script
-            from nacl.public import PrivateKey
-            from nacl.signing import SigningKey
-            from nacl.utils import random
-            import base64
-            
-            # Generate ephemeral keys
-            client_private_key = PrivateKey.generate()
-            client_public_key = client_private_key.public_key
-            signing_key = SigningKey.generate()
-            verify_key = signing_key.verify_key
-            
-            # Generate challenge
-            challenge_bytes = random(32)
-            
-            # Create handshake request with proper format
-            handshake_request = {
-                "component": "memory_evaluator",
-                "identity_key": base64.b64encode(bytes(verify_key)).decode(),
-                "public_key": base64.b64encode(bytes(client_public_key)).decode(),
-                "timestamp": int(time.time()),
-                "challenge": base64.b64encode(challenge_bytes).decode()
-            }
-            
-            # Sign the challenge
-            signature = signing_key.sign(challenge_bytes).signature
-            handshake_request["signature"] = base64.b64encode(signature).decode()
-            
-            handshake_payload = {
-                "handshake_request": handshake_request
-            }
-            
-            # Perform handshake to get encryption keys
-            async with self.session.post(
-                f"{self.backend_url}/api/v1/handshake",
-                json=handshake_payload,
-                headers={"Content-Type": "application/json"}
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(f"Handshake failed: {response.status} - {error_text}")
-                
-                handshake_data = await response.json()
-                
-                if handshake_data.get("status") != "session_established":
-                    raise Exception(f"Handshake rejected: {handshake_data.get('error', 'Unknown error')}")
-                
-                # Store encryption context for subsequent requests
-                self.encryption_context = handshake_data
-                self._client_private_key = client_private_key
-                self._verify_key = verify_key
-                
-                # Set up session encryption
-                from nacl.public import PublicKey, Box
-                from nacl.secret import SecretBox
-                
-                response_data = handshake_data["handshake_response"]
-                server_public_key_b64 = response_data["public_key"]
-                server_public_key = PublicKey(base64.b64decode(server_public_key_b64))
-                
-                # Derive shared session key
-                shared_box = Box(client_private_key, server_public_key)
-                session_key = shared_box.shared_key()
-                self._session_box = SecretBox(session_key)
-                
-                print("✅ Encryption handshake successful")
-                
-        except Exception as e:
-            print(f"❌ Handshake failed: {e}")
-            raise
-            
-    async def _ensure_test_user(self) -> str:
-        """Ensure test user exists using CLI"""
-        try:
-            import subprocess
-            from pathlib import Path
-            
-            print("👤 Creating test user via CLI...")
-            
-            # Use the same approach as the working script
-            result = subprocess.run([
-                "uv", "run", "python", "-m", "cli.aico_main", 
-                "security", "user-create", 
-                "MemoryEvalUser",
-                "--nickname", "Memory Evaluator",
-                "--pin", "1234"
-            ], 
-            cwd=Path(__file__).parent.parent.parent,
-            capture_output=True, 
-            text=True,
-            timeout=30
-            )
-            
-            if result.returncode == 0:
-                # Extract UUID from output
-                output_lines = result.stdout.split('\n')
-                for line in output_lines:
-                    if line.startswith('UUID: '):
-                        test_uuid = line.replace('UUID: ', '').strip()
-                        print(f"✅ Test user created: {test_uuid}")
-                        self._test_user_uuid = test_uuid  # Store for cleanup
-                        return test_uuid
-                        
-            # If creation failed, show the error and don't create fake UUID
-            print(f"❌ User creation failed:")
-            print(f"   stdout: {result.stdout}")
-            print(f"   stderr: {result.stderr}")
-            print(f"   return code: {result.returncode}")
-            raise Exception(f"Failed to create test user: {result.stderr}")
-            
-        except Exception as e:
-            print(f"⚠️ CLI user creation failed: {e}")
-            raise
+        # Benchmarks should not mutate user data or require admin privileges.
+        # Cleanup is intentionally a no-op.
+        print(f"🔒 Skipping cleanup of test user: {self._test_user_uuid}")
+        self._test_user_uuid = None
 
     async def _authenticate_user(self):
         """Authenticate with a test user for API access"""
-        try:
-            print("🔐 Authenticating user...")
-            
-            # Priority 1: Use persistent user_id if provided
-            if self.persistent_user_id:
-                test_user_uuid = self.persistent_user_id
-                self._test_user_uuid = test_user_uuid  # Store it
-                print(f"🔒 Using persistent user: {test_user_uuid}")
-            # Priority 2: If reusing user and we already have a UUID, use it
-            elif self.reuse_user and self._test_user_uuid:
-                test_user_uuid = self._test_user_uuid
-                print(f"🔄 Reusing existing user: {test_user_uuid}")
-            # Priority 3: Create new user
-            else:
-                test_user_uuid = await self._ensure_test_user()
-            
-            # Now authenticate
-            auth_request = {
-                "user_uuid": test_user_uuid,
-                "pin": "1234",
-                "timestamp": int(time.time())
-            }
-            
-            # Send encrypted authentication request
-            response_data = await self._send_encrypted_request("/api/v1/users/authenticate", auth_request)
-            
-            if response_data and response_data.get("success", False):
-                self.auth_token = response_data.get("jwt_token", "")
-                print("✅ Authentication successful")
-                
-                # Set user_id in current session if it exists
-                if self.current_session:
-                    self.current_session.user_id = test_user_uuid
-            else:
-                error_msg = response_data.get('message', 'Unknown error') if response_data else 'No response'
-                print(f"❌ Authentication failed: {error_msg}")
-                # Continue without auth for testing
-                
-        except Exception as e:
-            print(f"⚠️ Authentication failed, continuing without auth: {e}")
-            # Continue without authentication for testing
+        if not self._client:
+            self._client = EncryptedBenchmarkClient(self.backend_url, timeout_seconds=max(self.timeout_seconds, 30.0))
+
+        if not self.persistent_user_id:
+            raise ValueError("Benchmark requires --user-id (existing user UUID) for end-to-end auth")
+        if not self._pin:
+            raise ValueError("Benchmark requires --pin for /api/v1/users/authenticate")
+
+        print("🔐 Authenticating user...")
+        auth = await self._client.authenticate_user(user_uuid=self.persistent_user_id, pin=self._pin)
+        self.auth_token = auth.jwt_token
+        self._test_user_uuid = self.persistent_user_id
+        if self.current_session:
+            self.current_session.user_id = self.persistent_user_id
             
     def _generate_test_uuid(self, seed: str) -> str:
         """Generate deterministic UUID from seed for testing"""
@@ -380,64 +206,13 @@ class MemoryIntelligenceEvaluator:
         hex_dig = hash_object.hexdigest()
         return f"{hex_dig[:8]}-{hex_dig[8:12]}-{hex_dig[12:16]}-{hex_dig[16:20]}-{hex_dig[20:32]}"
         
-    async def _send_encrypted_request(self, endpoint: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Send encrypted request and handle encrypted response"""
-        if not self._session_box:
-            raise RuntimeError("No active session - perform handshake first")
-        
+    async def _send_encrypted_request(self, endpoint: str, payload: Dict[str, Any], *, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        if not self._client:
+            self._client = EncryptedBenchmarkClient(self.backend_url, timeout_seconds=max(self.timeout_seconds, 30.0))
         try:
-            import json
-            import base64
-            
-            # Encrypt the payload
-            plaintext = json.dumps(payload).encode()
-            encrypted = self._session_box.encrypt(plaintext)
-            encrypted_b64 = base64.b64encode(encrypted).decode()
-            
-            # Create encrypted request envelope
-            request_envelope = {
-                "encrypted": True,
-                "payload": encrypted_b64,
-                "client_id": self._verify_key.encode().hex()[:16] if self._verify_key else "memory_eval"
-            }
-            
-            headers = {"Content-Type": "application/json"}
-            if self.auth_token:
-                headers["Authorization"] = f"Bearer {self.auth_token}"
-            
-            async with self.session.post(
-                f"{self.backend_url}{endpoint}",
-                json=request_envelope,
-                headers=headers
-            ) as response:
-                
-                if response.status != 200:
-                    # Try to decrypt error response
-                    try:
-                        error_data = await response.json()
-                        if error_data.get("encrypted"):
-                            encrypted_response = base64.b64decode(error_data["payload"])
-                            decrypted = self._session_box.decrypt(encrypted_response)
-                            error_info = json.loads(decrypted.decode())
-                            raise Exception(f"Request failed ({response.status}): {error_info.get('message', 'Unknown error')}")
-                    except:
-                        error_text = await response.text()
-                        raise Exception(f"Request failed: {response.status} - {error_text}")
-                
-                response_data = await response.json()
-                
-                # Decrypt response if encrypted
-                if response_data.get("encrypted"):
-                    encrypted_response = base64.b64decode(response_data["payload"])
-                    decrypted = self._session_box.decrypt(encrypted_response)
-                    return json.loads(decrypted.decode())
-                else:
-                    return response_data
-                    
+            return await self._client.request("POST", endpoint, json_body=payload, params=params)
         except Exception as e:
             print(f"❌ Encrypted request error: {e}")
-            import traceback
-            print(f"   Full traceback: {traceback.format_exc()}")
             return None
             
         
@@ -533,27 +308,23 @@ class MemoryIntelligenceEvaluator:
         
         # Set as current session so authentication can set user_id
         self.current_session = session
+
+        # Load active character spec (from runtime config + deployed Modelfile)
+        try:
+            session.character_spec = load_active_character_spec()
+            if session.character_spec.modelfile_path:
+                print(f"🎭 Active character model: {session.character_spec.model_name} (Modelfile: {session.character_spec.modelfile_path})")
+            else:
+                print(f"🎭 Active character model: {session.character_spec.model_name} (Modelfile not found in deployed config)")
+        except Exception as e:
+            session.character_spec = None
+            print(f"⚠️ Failed to load active character spec: {e}")
         
         print(f"🧠 Starting conversation scenario: {scenario.name}")
         
-        # Initialize HTTP session if not exists
-        if not self.session:
-
-            conversation_timeout = max(self.timeout_seconds, 200)  # At least 200s for memory processing
-            self.session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=conversation_timeout)
-            )
-        
-        # Try to perform encryption handshake (skip if it fails)
-        try:
-            await self._perform_handshake()
-            # Authenticate user after successful handshake
-            await self._authenticate_user()
-        except Exception as e:
-            print(f"❌ Handshake/auth FAILED: {e}")
-            import traceback
-            print(f"   Full traceback: {traceback.format_exc()}")
-            raise  # Don't continue without proper auth - this causes 500 errors
+        if not self._client:
+            self._client = EncryptedBenchmarkClient(self.backend_url, timeout_seconds=max(self.timeout_seconds, 30.0))
+        await self._authenticate_user()
         
         try:
             # Execute each conversation turn
@@ -565,34 +336,60 @@ class MemoryIntelligenceEvaluator:
                 # Send message to AICO backend
                 message_data = {
                     "message": turn.user_message,
-                    "message_type": "text",
-                    "metadata": turn.context_hints or {}  # Fixed: "context" -> "metadata"
+                    "conversation_id": conversation_id,
                 }
                 # Reduced noise - only show turn progress
                 print(f"💬 Turn {i+1}: {turn.user_message[:50]}...")
                 
                 # Send encrypted message request with timeout (match backend timeout)
                 # Allow for unoptimized LLM processing + buffer
-                timeout_seconds = 20.0  # 20 seconds to match backend 15s timeout + buffer
-                try:
-                    response_data = await asyncio.wait_for(
-                        self._send_encrypted_request("/api/v1/conversation/messages", message_data),
-                        timeout=timeout_seconds
+                timeout_seconds = float(self.conversation_timeout_seconds) + 10.0
+
+                async def _attempt_send() -> dict:
+                    return await asyncio.wait_for(
+                        self._send_encrypted_request(
+                            "/api/v1/conversation/messages",
+                            message_data,
+                            params={"stream": "false"},
+                        ),
+                        timeout=timeout_seconds,
                     )
-                    
-                    if not response_data:
-                        raise Exception("No response from conversation API")
-                        
-                except asyncio.TimeoutError:
-                    print(f"⏰ Turn {i+1} timed out after {timeout_seconds}s")
-                    # Create a timeout response for evaluation
-                    response_data = {
-                        "success": False,
-                        "message": "[TIMEOUT] Request timed out",
-                        "conversation_id": conversation_id,
-                        "conversation_action": "timeout",
-                        "ai_response": "[TIMEOUT] The AI response timed out"
-                    }
+
+                response_data = None
+                attempt_backoffs = [0.0, 2.0]  # initial attempt + one retry
+                for attempt_idx, backoff_seconds in enumerate(attempt_backoffs, start=1):
+                    if backoff_seconds:
+                        await asyncio.sleep(backoff_seconds)
+
+                    try:
+                        response_data = await _attempt_send()
+                        if not response_data:
+                            raise Exception("No response from conversation API")
+
+                        # Backend may return a soft-timeout payload (within 15s)
+                        ai_message_probe = (response_data.get("ai_response") or response_data.get("message") or "")
+                        if "request timed out" in ai_message_probe.lower():
+                            if attempt_idx < len(attempt_backoffs):
+                                print(f"⏰ Turn {i+1} got backend timeout response; retrying once...")
+                                # Preserve conversation id if backend created one
+                                conversation_id = response_data.get("conversation_id", conversation_id)
+                                message_data["conversation_id"] = conversation_id
+                                continue
+                        break
+
+                    except asyncio.TimeoutError:
+                        if attempt_idx < len(attempt_backoffs):
+                            print(f"⏰ Turn {i+1} timed out after {timeout_seconds}s; retrying once...")
+                            continue
+                        print(f"⏰ Turn {i+1} timed out after {timeout_seconds}s")
+                        response_data = {
+                            "success": False,
+                            "message": "[TIMEOUT] Request timed out",
+                            "conversation_id": conversation_id,
+                            "conversation_action": "timeout",
+                            "ai_response": "[TIMEOUT] The AI response timed out",
+                        }
+                        break
                 
                 turn_end = time.time()
                 response_time_ms = (turn_end - turn_start) * 1000
@@ -661,7 +458,8 @@ class MemoryIntelligenceEvaluator:
         print("🔗 Connecting to AICO memory systems...")
         await self.metrics.initialize_memory_connections()
         
-        # Calculate all metrics using REAL memory system integration
+        # Calculate metrics based on observed responses and scenario expectations
+        character_stability = await self.metrics.calculate_character_stability(session)
         context_adherence = await self.metrics.calculate_context_adherence(session)
         knowledge_retention = await self.metrics.calculate_knowledge_retention(session)
         entity_extraction = await self.metrics.calculate_entity_extraction_accuracy(session)
@@ -673,6 +471,7 @@ class MemoryIntelligenceEvaluator:
         
         # Calculate overall score
         overall_score = self.metrics.calculate_overall_score([
+            character_stability,
             context_adherence,
             knowledge_retention, 
             entity_extraction,
@@ -686,6 +485,7 @@ class MemoryIntelligenceEvaluator:
             session_id=session.session_id,
             scenario_name=session.scenario.name,
             overall_score=overall_score,
+            character_stability=character_stability,
             context_adherence=context_adherence,
             knowledge_retention=knowledge_retention,
             entity_extraction=entity_extraction,
@@ -781,142 +581,3 @@ class MemoryIntelligenceEvaluator:
             trends["average_overall_score"] = sum(scores) / len(scores)
             
         return trends
-
-    async def evaluate_v2_fact_extraction(self, test_messages: List[str]) -> Dict[str, Any]:
-        """
-        V2-specific evaluation: Test GLiNER + LLM fact extraction pipeline
-        
-        Args:
-            test_messages: List of messages to test fact extraction on
-            
-        Returns:
-            Detailed analysis of fact extraction performance
-        """
-        print("🧠 Testing V2 Fact Extraction Pipeline...")
-        
-        results = {
-            "total_messages": len(test_messages),
-            "facts_extracted": 0,
-            "entity_extraction_success": 0,
-            "llm_classification_success": 0,
-            "confidence_distribution": [],
-            "fact_types_found": {},
-            "multilingual_support": False,
-            "temporal_validity_correct": 0
-        }
-        
-        try:
-            # Test each message through the fact extraction pipeline
-            for i, message in enumerate(test_messages):
-                print(f"   Testing message {i+1}: {message[:50]}...")
-                
-                # Send message and check if facts are extracted
-                message_data = {
-                    "message": message,
-                    "message_type": "text",
-                    "test_fact_extraction": True  # Special flag for testing
-                }
-                
-                response = await self._send_encrypted_request("/api/v1/conversation/messages", message_data)
-                
-                if response and response.get("facts_extracted"):
-                    facts = response["facts_extracted"]
-                    results["facts_extracted"] += len(facts)
-                    
-                    # Analyze fact quality
-                    for fact in facts:
-                        confidence = fact.get("confidence", 0.0)
-                        results["confidence_distribution"].append(confidence)
-                        
-                        fact_type = fact.get("fact_type", "unknown")
-                        results["fact_types_found"][fact_type] = results["fact_types_found"].get(fact_type, 0) + 1
-                        
-                        # Check temporal validity logic
-                        is_immutable = fact.get("is_immutable", False)
-                        valid_until = fact.get("valid_until")
-                        
-                        if is_immutable and valid_until is None:
-                            results["temporal_validity_correct"] += 1
-                        elif not is_immutable and valid_until is not None:
-                            results["temporal_validity_correct"] += 1
-                
-                # Check entity extraction
-                if response and response.get("entities_extracted"):
-                    results["entity_extraction_success"] += 1
-                
-                await asyncio.sleep(0.5)  # Rate limiting
-                
-        except Exception as e:
-            print(f"❌ V2 fact extraction test failed: {e}")
-            
-        # Calculate success rates
-        if results["total_messages"] > 0:
-            results["entity_extraction_rate"] = results["entity_extraction_success"] / results["total_messages"]
-            results["fact_extraction_rate"] = results["facts_extracted"] / results["total_messages"]
-            
-        if results["confidence_distribution"]:
-            results["average_confidence"] = sum(results["confidence_distribution"]) / len(results["confidence_distribution"])
-            results["high_confidence_facts"] = sum(1 for c in results["confidence_distribution"] if c >= 0.7)
-            
-        return results
-
-    async def evaluate_v2_storage_performance(self) -> Dict[str, Any]:
-        """
-        V2-specific evaluation: Test 2-tier storage system performance
-        
-        Returns:
-            Performance metrics for LMDB + ChromaDB storage
-        """
-        print("💾 Testing V2 Storage Performance...")
-        
-        results = {
-            "lmdb_performance": {},
-            "chromadb_performance": {},
-            "schema_v5_integration": False,
-            "storage_consistency": True
-        }
-        
-        try:
-            # Test LMDB session memory performance
-            start_time = time.time()
-            
-            # Send test messages to populate session memory
-            test_messages = [
-                "My name is TestUser for evaluation",
-                "I really enjoy testing memory systems",
-                "This is a temporal fact that should expire"
-            ]
-            
-            for msg in test_messages:
-                await self._send_encrypted_request("/api/v1/conversation/messages", {
-                    "message": msg,
-                    "message_type": "text"
-                })
-                
-            lmdb_time = time.time() - start_time
-            results["lmdb_performance"] = {
-                "messages_stored": len(test_messages),
-                "total_time_seconds": lmdb_time,
-                "average_time_per_message": lmdb_time / len(test_messages)
-            }
-            
-            # Test ChromaDB semantic search performance
-            start_time = time.time()
-            
-            # Query for facts
-            search_response = await self._send_encrypted_request("/api/v1/memory/search", {
-                "query": "TestUser preferences",
-                "max_results": 10
-            })
-            
-            chromadb_time = time.time() - start_time
-            results["chromadb_performance"] = {
-                "search_time_seconds": chromadb_time,
-                "results_found": len(search_response.get("results", [])) if search_response else 0
-            }
-            
-        except Exception as e:
-            print(f"❌ V2 storage performance test failed: {e}")
-            results["error"] = str(e)
-            
-        return results

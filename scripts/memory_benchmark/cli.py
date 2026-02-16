@@ -185,7 +185,9 @@ def run_evaluation(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
     single: Optional[str] = typer.Option(None, "--single", "-s", help="Run single scenario"),
     reuse_user: bool = typer.Option(False, "--reuse-user", help="Reuse same user across all scenarios (for deduplication testing)"),
-    user_id: Optional[str] = typer.Option(None, "--user-id", help="Use existing user ID (for persistent deduplication testing)")
+    user_id: Optional[str] = typer.Option(None, "--user-id", help="Existing user UUID (required)"),
+    pin: Optional[str] = typer.Option(None, "--pin", help="User PIN for /api/v1/users/authenticate (required)"),
+    backend_url: str = typer.Option("http://localhost:8771", "--backend-url", help="Backend base URL")
 ):
     """Run memory evaluation test(s)"""
     
@@ -199,7 +201,9 @@ def run_evaluation(
         console.print()
     
     async def run_async():
-        evaluator = MemoryIntelligenceEvaluator(reuse_user=reuse_user, user_id=user_id)
+        if not user_id or not pin:
+            raise typer.BadParameter("--user-id and --pin are required for encrypted end-to-end benchmarking")
+        evaluator = MemoryIntelligenceEvaluator(backend_url=backend_url, reuse_user=reuse_user, user_id=user_id, pin=pin)
         library = ScenarioLibrary()
         
         try:
@@ -241,6 +245,7 @@ def run_evaluation(
                 console.print(f"\n[bold green]✅ Scenario Complete: {scenario_name}[/bold green]")
                 console.print(f"🎯 Overall Score: [bold]{result.overall_score.percentage:.1f}%[/bold]")
                 console.print(f"📈 Key Metrics:")
+                console.print(f"  Character Stability.... {result.character_stability.percentage:6.1f}%")
                 console.print(f"  Context Adherence........ {result.context_adherence.percentage:6.1f}%")
                 console.print(f"  Knowledge Retention...... {result.knowledge_retention.percentage:6.1f}%")
                 console.print(f"  Entity Extraction........ {result.entity_extraction.percentage:6.1f}%")
@@ -349,15 +354,13 @@ def run_evaluation(
                         console.print(f"      • Analyze LLM context utilization patterns")
                     elif weakest_metric == 'knowledge_retention':
                         console.print(f"   💡 [bold]Recommendations:[/bold]")
-                        console.print(f"      • Improve entity extraction accuracy")
+                        console.print(f"      • Improve context retrieval accuracy")
                         console.print(f"      • Check fact storage and retrieval pipeline")
                         console.print(f"      • Review conversation segmentation logic")
-                        console.print(f"      • Verify user_facts ChromaDB indexing")
                     elif weakest_metric == 'entity_extraction':
                         console.print(f"   💡 [bold]Recommendations:[/bold]")
                         console.print(f"      • Review GLiNER model performance")
                         console.print(f"      • Check NER request/response pipeline")
-                        console.print(f"      • Verify entity storage in ChromaDB")
                         console.print(f"      • Analyze entity type coverage")
                 
                 # Scenario-specific insights

@@ -1,12 +1,17 @@
+# Development environment overrides
 system:
-  log_level: "DEBUG"
-  
-api:
-  cors_origins:
-    - "http://localhost:3000"
-    - "http://127.0.0.1:3000"
-    - "http://localhost:8771"
-    - "http://127.0.0.1:8771"
+  environment: "development"
+  log_level: "INFO"
+
+api_gateway:
+  protocols:
+    rest:
+      cors:
+        origins:
+          - "http://localhost:3000"
+          - "http://127.0.0.1:3000"
+          - "http://localhost:8771"
+          - "http://127.0.0.1:8771"
 
 audit:
-  log_level: "DEBUG"  # Detailed audit logging for development
+  log_level: "INFO"

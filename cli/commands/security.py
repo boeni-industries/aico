@@ -54,6 +54,12 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("session", "Show CLI session status and timeout information"),
             ("clear", "Clear cached master key (forces password re-entry)"),
             ("test", "Performance diagnostics and key derivation benchmarking"),
+            ("list-keys", "List all AICO keys stored in system keyring"),
+            ("get-key", "Retrieve value of a specific key from keyring"),
+            ("pg-set", "Store Postgres password securely via AICOKeyManager"),
+            ("pg-env", "Export Postgres env vars for CI/CD and docker-compose"),
+            ("influx-set", "Store InfluxDB API token securely via AICOKeyManager"),
+            ("influx-env", "Export InfluxDB env vars for CI/CD and docker-compose"),
             ("user-create", "Create a new user with optional PIN authentication"),
             ("user-list", "List all users with filtering options"),
             ("user-update", "Update user profile information"),
@@ -76,6 +82,12 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             "aico security session",
             "aico security test",
             "aico security passwd",
+            "aico security list-keys",
+            "aico security get-key influx_admin_password",
+            "aico security get-key influx_admin_token_password --show",
+            "aico security pg-set",
+            "aico security influx-set",
+            "aico security pg-env --ci --format env --include-secrets",
             "aico security role-bootstrap <user-uuid>",
             "aico security role-assign <user-uuid> admin",
             "aico security role-list <user-uuid>"
@@ -97,6 +109,24 @@ app = typer.Typer(
     context_settings={"help_option_names": []}
 )
 console = Console()
+
+
+def _load_postgres_config():
+    """Lightweight helper to read postgres config."""
+    from aico.core.config import ConfigurationManager
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    return config.get("postgres", {}) or {}
+
+
+def _load_influx_config():
+    """Lightweight helper to read influx config."""
+    from aico.core.config import ConfigurationManager
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    return config.get("influx", {}) or {}
 
 
 @app.command(
@@ -302,6 +332,399 @@ def passwd():
     except Exception as e:
         console.print(f"❌ [red]Failed to change master password: {e}[/red]")
         raise typer.Exit(1)
+
+
+@app.command("pg-set", help="Store Postgres password securely via AICOKeyManager")
+@sensitive("stores Postgres database password in system keyring")
+def pg_set():
+    """Interactively store the Postgres password in the key manager.
+
+    This reads non-secret connection parameters (host, port, db_name, user)
+    from configuration and prompts only for the password, which is stored via
+    AICOKeyManager.store_database_password.
+    """
+
+    pg_cfg = _load_postgres_config()
+    if not pg_cfg:
+        console.print("❌ [red]No postgres configuration found[/red]")
+        raise typer.Exit(1)
+
+    host = pg_cfg.get("host", "127.0.0.1")
+    port = pg_cfg.get("port", 5432)
+    db_name = pg_cfg.get("db_name", "aico")
+    user = pg_cfg.get("user", "postgres")
+
+    console.print("\n✨ [bold cyan]Postgres Connection (from config)[/bold cyan]")
+    console.print(f"Host: [green]{host}[/green]")
+    console.print(f"Port: [green]{port}[/green]")
+    console.print(f"Database: [green]{db_name}[/green]")
+    console.print(f"User: [green]{user}[/green]")
+
+    password = typer.prompt("Enter Postgres password", hide_input=True)
+    confirm = typer.prompt("Confirm Postgres password", hide_input=True)
+
+    if not password or not password.strip():
+        console.print("❌ [red]Password cannot be empty[/red]")
+        raise typer.Exit(1)
+
+    if password != confirm:
+        console.print("❌ [red]Passwords do not match[/red]")
+        raise typer.Exit(1)
+
+    key_manager = _get_key_manager()
+    key_manager.store_database_password(password=password, database_type="postgres", username=user)
+
+    console.print("✅ [green]Postgres password stored securely[/green]")
+    console.print("🔐 Use 'aico security pg-env' to export env vars for CI/CD or docker-compose.")
+
+
+@app.command("pg-env", help="Export Postgres env vars for CI/CD and docker-compose")
+def pg_env(
+    format: str = typer.Option("env", "--format", "-f", help="Output format: env or json"),
+    include_secrets: bool = typer.Option(
+        False,
+        "--include-secrets",
+        help="Include real secrets in output (for CI/CD). By default secrets are redacted.",
+    ),
+    ci: bool = typer.Option(
+        False,
+        "--ci",
+        help="Non-interactive mode: suitable for CI. Fails if required secrets are missing.",
+    ),
+):
+    """Print Postgres-related environment variables.
+
+    This reads non-secret parameters from config and the password from the
+    key manager. It is designed for use in CI/CD pipelines and local shell
+    setups (e.g., generating .env files or eval-ing exports).
+    """
+
+    fmt = format.lower()
+    if fmt not in {"env", "json"}:
+        console.print("❌ [red]Invalid format. Use 'env' or 'json'.[/red]")
+        raise typer.Exit(1)
+
+    pg_cfg = _load_postgres_config()
+    if not pg_cfg:
+        console.print("❌ [red]No postgres configuration found[/red]")
+        raise typer.Exit(1)
+
+    host = str(pg_cfg.get("host", "127.0.0.1"))
+    port = str(pg_cfg.get("port", 5432))
+    db_name = str(pg_cfg.get("db_name", "aico"))
+    user = str(pg_cfg.get("user", "postgres"))
+
+    key_manager = _get_key_manager()
+    password = key_manager.get_database_password("postgres", username=user)
+
+    if ci and include_secrets and not password:
+        console.print(
+            "❌ [red]Postgres password not set in key manager. "
+            "Run 'aico security pg-set' or configure secrets before using --ci/--include-secrets.[/red]"
+        )
+        raise typer.Exit(1)
+
+    env_vars = {
+        "AICO_PG_HOST": host,
+        "AICO_PG_PORT": port,
+        "AICO_PG_DB": db_name,
+        "AICO_PG_USER": user,
+    }
+
+    if include_secrets and password:
+        env_vars["AICO_PG_PASSWORD"] = password
+    elif password:
+        env_vars["AICO_PG_PASSWORD"] = "********"
+
+    if fmt == "env":
+        for k, v in env_vars.items():
+            # Always print, even if redacted; caller decides how to use it.
+            console.print(f"{k}={v}")
+    else:  # json
+        import json as _json
+
+        console.print(_json.dumps(env_vars))
+
+
+@app.command("influx-set", help="Store InfluxDB API token securely via AICOKeyManager")
+@sensitive("stores InfluxDB API token in system keyring")
+def influx_set():
+    """Interactively store the InfluxDB API token in the key manager.
+
+    This reads non-secret connection parameters (url, org, bucket) from
+    configuration and prompts only for the token, which is stored via
+    AICOKeyManager.store_database_password using database_type="influx".
+    """
+
+    influx_cfg = _load_influx_config()
+    if not influx_cfg:
+        console.print("❌ [red]No influx configuration found[/red]")
+        raise typer.Exit(1)
+
+    url = influx_cfg.get("url", "http://127.0.0.1:8086")
+    org = influx_cfg.get("org", "aico")
+    bucket = influx_cfg.get("bucket", "aico_telemetry")
+
+    console.print("\n✨ [bold cyan]InfluxDB Configuration (from config)[/bold cyan]")
+    console.print(f"URL: [green]{url}[/green]")
+    console.print(f"Org: [green]{org}[/green]")
+    console.print(f"Bucket: [green]{bucket}[/green]")
+
+    token = typer.prompt("Enter InfluxDB API token", hide_input=True)
+    confirm = typer.prompt("Confirm InfluxDB API token", hide_input=True)
+
+    if not token or not token.strip():
+        console.print("❌ [red]Token cannot be empty[/red]")
+        raise typer.Exit(1)
+
+    if token != confirm:
+        console.print("❌ [red]Tokens do not match[/red]")
+        raise typer.Exit(1)
+
+    key_manager = _get_key_manager()
+    # Treat the Influx token as a database password under the "influx" namespace
+    key_manager.store_database_password(password=token, database_type="influx", username=None)
+
+    console.print("✅ [green]InfluxDB API token stored securely[/green]")
+    console.print("🔐 Use 'aico security influx-env' to export env vars for CI/CD or docker-compose.")
+
+
+@app.command("list-keys", help="List all AICO keys stored in system keyring")
+def list_keys(
+    show_values: bool = typer.Option(False, "--show", "-s", help="Show actual key values (redacted by default)")
+):
+    """List all AICO keys stored in the system keyring.
+    
+    Shows all keys managed by AICO including database passwords, tokens, and secrets.
+    Values are redacted by default for security.
+    """
+    import keyring
+    import subprocess
+    
+    key_manager = _get_key_manager()
+    service_name = key_manager.service_name
+    
+    console.print(f"\n🔑 [bold cyan]AICO Keyring Entries[/bold cyan] (service: {service_name})\n")
+    
+    # Get all keyring entries for AICO service
+    try:
+        # Use security command to list all AICO keyring entries
+        result = subprocess.run(
+            ["security", "dump-keychain"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        
+        # Parse the output to find AICO entries
+        # Format: "acct" comes before "svce" in each entry block
+        entries = []
+        current_entry = {}
+        
+        for line in result.stdout.split('\n'):
+            # Look for account name first
+            if '"acct"<blob>=' in line:
+                try:
+                    account = line.split('"acct"<blob>="')[1].split('"')[0]
+                    current_entry = {'account': account}
+                except (IndexError, ValueError):
+                    continue
+            # Then look for service name
+            elif '"svce"<blob>=' in line and current_entry.get('account'):
+                if '"AICO"' in line or '"AICO_Test"' in line:
+                    service = 'AICO' if '"AICO"' in line and 'Test' not in line else 'AICO_Test'
+                    current_entry['service'] = service
+                    entries.append(current_entry)
+                current_entry = {}
+        
+        # Remove duplicates based on account name
+        seen = set()
+        unique_entries = []
+        for entry in entries:
+            if entry['account'] not in seen:
+                seen.add(entry['account'])
+                unique_entries.append(entry)
+        entries = unique_entries
+        
+        # Create table
+        table = Table(
+            title="Stored Keys",
+            show_header=True,
+            header_style="bold yellow",
+            border_style="bright_blue",
+            box=box.SIMPLE_HEAD
+        )
+        table.add_column("Key Name", style="bold white", justify="left")
+        table.add_column("Type", style="cyan", justify="left")
+        table.add_column("Value", style="dim", justify="left")
+        
+        # Categorize and display entries
+        for entry in entries:
+            account = entry['account']
+            
+            # Determine key type
+            if 'password' in account:
+                key_type = "Database Password"
+            elif 'token' in account:
+                key_type = "API Token"
+            elif 'secret' in account:
+                key_type = "Secret"
+            elif account == 'master_key':
+                key_type = "Master Key"
+            elif account == 'salt':
+                key_type = "Salt"
+            else:
+                key_type = "Other"
+            
+            # Get value if requested
+            if show_values:
+                try:
+                    value = keyring.get_password(entry['service'], account)
+                    if value:
+                        display_value = value
+                    else:
+                        display_value = "[red]Not found[/red]"
+                except Exception as e:
+                    display_value = f"[red]Error: {e}[/red]"
+            else:
+                display_value = "********"
+            
+            table.add_row(account, key_type, display_value)
+        
+        console.print(table)
+        console.print(f"\n📊 Total: {len(entries)} keys stored\n")
+        
+        if not show_values:
+            console.print("💡 [dim]Use --show to display actual values (use with caution)[/dim]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to list keyring entries: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("get-key", help="Retrieve value of a specific key from keyring")
+@sensitive("retrieves sensitive key value from system keyring")
+def get_key(
+    key_name: str = typer.Argument(..., help="Name of the key to retrieve"),
+    show: bool = typer.Option(False, "--show", "-s", help="Show the full value (copies to clipboard by default)"),
+    copy: bool = typer.Option(True, "--copy/--no-copy", "-c", help="Copy value to clipboard")
+):
+    """Retrieve value of a specific key from the system keyring.
+    
+    By default, copies the value to clipboard without displaying it.
+    Use --show to display the value in the terminal.
+    
+    Examples:
+        aico security get-key influx_admin_password
+        aico security get-key influx_admin_token_password --show
+        aico security get-key postgres_postgres_password --no-copy --show
+    """
+    import keyring
+    import subprocess
+    
+    key_manager = _get_key_manager()
+    service_name = key_manager.service_name
+    
+    try:
+        # Try to get the value from keyring
+        value = keyring.get_password(service_name, key_name)
+        
+        if not value:
+            console.print(f"❌ [red]Key '{key_name}' not found in keyring[/red]")
+            console.print(f"\n💡 Use 'aico security list-keys' to see available keys")
+            raise typer.Exit(1)
+        
+        # Copy to clipboard if requested
+        if copy:
+            try:
+                process = subprocess.Popen(
+                    ['pbcopy'],
+                    stdin=subprocess.PIPE,
+                    close_fds=True
+                )
+                process.communicate(value.encode('utf-8'))
+                console.print(f"✅ [green]Value copied to clipboard[/green]")
+            except Exception as e:
+                console.print(f"⚠️ [yellow]Failed to copy to clipboard: {e}[/yellow]")
+        
+        # Show value if requested
+        if show:
+            console.print(f"\n🔑 [bold cyan]Key:[/bold cyan] {key_name}")
+            console.print(f"🔐 [bold yellow]Value:[/bold yellow]\n")
+            console.print(f"[green]{value}[/green]\n")
+        elif not copy:
+            # If not showing and not copying, just confirm it exists
+            console.print(f"✅ [green]Key '{key_name}' found[/green]")
+            console.print(f"💡 Use --show to display the value")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to retrieve key: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("influx-env", help="Export InfluxDB env vars for CI/CD and docker-compose")
+def influx_env(
+    format: str = typer.Option("env", "--format", "-f", help="Output format: env or json"),
+    include_secrets: bool = typer.Option(
+        False,
+        "--include-secrets",
+        help="Include real secrets in output (for CI/CD). By default secrets are redacted.",
+    ),
+    ci: bool = typer.Option(
+        False,
+        "--ci",
+        help="Non-interactive mode: suitable for CI. Fails if required secrets are missing.",
+    ),
+):
+    """Print InfluxDB-related environment variables.
+
+    This reads non-secret parameters from config and the API token from the
+    key manager. It is designed for use in CI/CD pipelines and local shell
+    setups (e.g., generating .env files or eval-ing exports).
+    """
+
+    fmt = format.lower()
+    if fmt not in {"env", "json"}:
+        console.print("❌ [red]Invalid format. Use 'env' or 'json'.[/red]")
+        raise typer.Exit(1)
+
+    influx_cfg = _load_influx_config()
+    if not influx_cfg:
+        console.print("❌ [red]No influx configuration found[/red]")
+        raise typer.Exit(1)
+
+    url = str(influx_cfg.get("url", "http://127.0.0.1:8086"))
+    org = str(influx_cfg.get("org", "aico"))
+    bucket = str(influx_cfg.get("bucket", "aico_telemetry"))
+
+    key_manager = _get_key_manager()
+    token = key_manager.get_database_password("influx", username=None)
+
+    if ci and include_secrets and not token:
+        console.print(
+            "❌ [red]InfluxDB token not set in key manager. "
+            "Run 'aico security influx-set' or configure secrets before using --ci/--include-secrets.[/red]"
+        )
+        raise typer.Exit(1)
+
+    env_vars = {
+        "AICO_INFLUX_URL": url,
+        "AICO_INFLUX_ORG": org,
+        "AICO_INFLUX_BUCKET": bucket,
+    }
+
+    if include_secrets and token:
+        env_vars["AICO_INFLUX_TOKEN"] = token
+    elif token:
+        env_vars["AICO_INFLUX_TOKEN"] = "********"
+
+    if fmt == "env":
+        for k, v in env_vars.items():
+            console.print(f"{k}={v}")
+    else:  # json
+        import json as _json
+
+        console.print(_json.dumps(env_vars))
 
 
 @app.command(
@@ -837,7 +1260,7 @@ def test():
         db_times = []
         for i in range(3):
             start_time = time.time()
-            db_key = key_manager.derive_database_key(master_key, "libsql", test_db_path)
+            db_key = key_manager.derive_database_key(master_key, "postgres", test_db_path)
             db_time = (time.time() - start_time) * 1000
             db_times.append(db_time)
             
@@ -925,6 +1348,7 @@ def user_create(
     nickname: str = typer.Option(None, "--nickname", "-n", help="Optional nickname"),
     user_type: str = typer.Option("person", "--type", "-t", help="User type (person)"),
     pin: str = typer.Option(None, "--pin", "-p", help="Optional PIN for authentication"),
+    primary_language: str = typer.Option("en", "--language", "-l", help="Primary language (ISO/BCP-47 code, e.g. 'en', 'de', 'fr')"),
     ctx: typer.Context = typer.Context
 ):
     """Create a new user with optional PIN authentication"""
@@ -938,10 +1362,12 @@ def user_create(
         console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type person')
         console.print('  aico security user-create "Bob Wilson" --pin 1234 --type person')
         console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin 5678')
+        console.print('  aico security user-create "Hans Müller" --language de --pin 1234')
         console.print("\n[bold yellow]Options:[/bold yellow]")
         console.print("  --nickname, -n    Optional nickname for the user")
         console.print("  --type, -t        User type: person (default: person)")
         console.print("  --pin, -p         Optional PIN for authentication")
+        console.print("  --language, -l    Primary language (ISO/BCP-47 code, default: en)")
         console.print("\n[dim]Use 'aico security user-list' to see existing users[/dim]")
         raise typer.Exit(1)
     import asyncio
@@ -949,38 +1375,23 @@ def user_create(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
     
     try:
-        # Initialize configuration and paths
-        config_manager = ConfigurationManager()
-        
-        # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        # Initialize key manager and get database key
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
-        # Create user
+        # Create user using PostgreSQL asyncpg
         async def create_user():
-            user = await user_service.create_user(
-                full_name=full_name,
-                nickname=nickname,
-                user_type=user_type,
-                pin=pin
-            )
-            return user
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                user_service = UserService(conn)
+                user = await user_service.create_user(
+                    full_name=full_name,
+                    nickname=nickname,
+                    user_type=user_type,
+                    pin=pin,
+                    primary_language=primary_language
+                )
+                return user
         
         user = asyncio.run(create_user())
         
@@ -991,6 +1402,7 @@ def user_create(
         if user.nickname:
             console.print(f"Nickname: {user.nickname}")
         console.print(f"Type: {user.user_type}")
+        console.print(f"Language: {user.primary_language or 'en'}")
         if pin:
             console.print("PIN: [dim]Configured[/dim]")
         
@@ -1014,41 +1426,45 @@ def role_assign(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.connection import get_postgres_pool
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        # Assign role using PostgreSQL asyncpg
+        async def assign_role_async():
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                authz_service = AuthorizationService(conn)
+                
+                # Validate role exists
+                available_roles = authz_service.list_all_roles()
+                if role not in available_roles:
+                    return None, available_roles
+                
+                # Assign role
+                success = authz_service.assign_role(user_uuid, role, granted_by)
+                if success:
+                    user_roles = authz_service.get_user_roles(user_uuid)
+                    return user_roles, None
+                return False, None
         
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        authz_service = AuthorizationService(db_conn)
+        result = asyncio.run(assign_role_async())
         
-        # Validate role exists
-        available_roles = authz_service.list_all_roles()
-        if role not in available_roles:
+        if result[0] is None:
             console.print(f"❌ [red]Unknown role: {role}[/red]")
-            console.print(f"Available roles: {', '.join(available_roles.keys())}")
+            console.print(f"Available roles: {', '.join(result[1].keys())}")
             raise typer.Exit(1)
-        
-        # Assign role
-        success = authz_service.assign_role(user_uuid, role, granted_by)
-        
-        if success:
-            console.print(f"✅ [green]Successfully assigned role '{role}' to user {user_uuid}[/green]")
-            
-            # Show updated roles
-            user_roles = authz_service.get_user_roles(user_uuid)
-            console.print(f"User roles: {', '.join(user_roles)}")
-        else:
+        elif result[0] is False:
             console.print(f"❌ [red]Failed to assign role '{role}' to user {user_uuid}[/red]")
             raise typer.Exit(1)
+        else:
+            console.print(f"✅ [green]Successfully assigned role '{role}' to user {user_uuid}[/green]")
+            console.print(f"User roles: {', '.join(result[0])}")
             
     except Exception as e:
         console.print(f"❌ [red]Role assignment failed: {e}[/red]")
@@ -1067,30 +1483,30 @@ def role_revoke(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.connection import get_postgres_pool
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        # Revoke role using PostgreSQL asyncpg
+        async def revoke_role_async():
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                authz_service = AuthorizationService(conn)
+                success = authz_service.revoke_role(user_uuid, role)
+                if success:
+                    user_roles = authz_service.get_user_roles(user_uuid)
+                    return True, user_roles
+                return False, None
         
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        authz_service = AuthorizationService(db_conn)
-        
-        # Revoke role
-        success = authz_service.revoke_role(user_uuid, role)
+        success, user_roles = asyncio.run(revoke_role_async())
         
         if success:
             console.print(f"✅ [green]Successfully revoked role '{role}' from user {user_uuid}[/green]")
-            
-            # Show updated roles
-            user_roles = authz_service.get_user_roles(user_uuid)
             console.print(f"Remaining roles: {', '.join(user_roles)}")
         else:
             console.print(f"❌ [red]Failed to revoke role '{role}' from user {user_uuid}[/red]")
@@ -1114,21 +1530,21 @@ def role_list(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.connection import get_postgres_pool
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        authz_service = AuthorizationService(db_conn)
+        # Note: Role commands use synchronous AuthorizationService
+        # We just need to provide it with an asyncpg connection
+        # The service itself doesn't use async operations
+        pool = asyncio.run(get_postgres_pool())
+        conn = asyncio.run(pool.acquire())
+        authz_service = AuthorizationService(conn)
         
         if user_uuid:
             # Show specific user's roles
@@ -1212,22 +1628,20 @@ def role_show(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.connection import get_postgres_pool
         from aico.core.authorization import AuthorizationService
         from aico.core.topics import AICOTopics
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        authz_service = AuthorizationService(db_conn)
+        # Get connection and create AuthorizationService
+        pool = asyncio.run(get_postgres_pool())
+        conn = asyncio.run(pool.acquire())
+        authz_service = AuthorizationService(conn)
         
         all_roles = authz_service.list_all_roles()
         
@@ -1308,21 +1722,19 @@ def role_check(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.connection import get_postgres_pool
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        authz_service = AuthorizationService(db_conn)
+        # Get connection and create AuthorizationService
+        pool = asyncio.run(get_postgres_pool())
+        conn = asyncio.run(pool.acquire())
+        authz_service = AuthorizationService(conn)
         
         # Check permission
         has_permission = authz_service.has_permission(user_uuid, permission)
@@ -1374,21 +1786,19 @@ def role_bootstrap(
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security.key_manager import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.data.postgres.connection import get_postgres_pool
         from aico.core.authorization import AuthorizationService
         
         config_manager = ConfigurationManager()
-        db_config = config_manager.get("database.libsql", {})
+        db_config = config_manager.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        authz_service = AuthorizationService(db_conn)
+        # Get connection and create AuthorizationService
+        pool = asyncio.run(get_postgres_pool())
+        conn = asyncio.run(pool.acquire())
+        authz_service = AuthorizationService(conn)
         
         # Bootstrap admin role
         success = authz_service.bootstrap_admin_user(user_uuid)
@@ -1418,7 +1828,7 @@ def role_bootstrap(
 def user_list(
     user_uuid: str = typer.Argument(None, help="Specific user UUID to show (only with --detailed)"),
     user_type: str = typer.Option(None, "--type", "-t", help="Filter by user type"),
-    limit: int = typer.Option(100, "--limit", "-l", help="Maximum number of users to show"),
+    limit: int = typer.Option(None, "--limit", "-l", help="Maximum number of users to show (default: all)"),
     detailed: bool = typer.Option(False, "--detailed", "-d", help="Show detailed information from all user-related tables")
 ):
     """List all users (or show detailed view of specific user)"""
@@ -1428,7 +1838,7 @@ def user_list(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
     
     console = Console()
@@ -1446,38 +1856,25 @@ def user_list(
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
         
-        # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        # Initialize key manager and get database key
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
+        # List users using PostgreSQL asyncpg
         if detailed:
             # Detailed view
             if user_uuid:
                 # Show detailed info for specific user
                 async def get_detailed_user():
-                    users = await user_service.list_users(limit=1000)
-                    user = next((u for u in users if u.uuid == user_uuid), None)
-                    if not user:
-                        return None, None, None, None
-                    
-                    # Get additional data
-                    auth_data = await user_service.get_user_authentication(user_uuid)
-                    relationships = await user_service.get_user_relationships(user_uuid)
-                    # Note: user_sessions would need to be implemented in UserService if available
-                    
-                    return user, auth_data, relationships, None
+                    pool = await get_postgres_pool()
+                    async with pool.acquire() as conn:
+                        user_service = UserService(conn)
+                        users = await user_service.list_users(limit=1000)
+                        user = next((u for u in users if u.uuid == user_uuid), None)
+                        if not user:
+                            return None, None, None, None
+                        
+                        # Get additional data
+                        auth_data = await user_service.get_user_authentication(user_uuid)
+                        relationships = await user_service.get_user_relationships(user_uuid)
+                        
+                        return user, auth_data, relationships, None
                 
                 user, auth_data, relationships, sessions = asyncio.run(get_detailed_user())
                 
@@ -1504,6 +1901,7 @@ def user_list(
                 table.add_row("Full Name", user.full_name)
                 table.add_row("Nickname", user.nickname or "-")
                 table.add_row("User Type", user.user_type)
+                table.add_row("Language", user.primary_language or "en")
                 table.add_row("Active", "[green]Yes[/green]" if user.is_active else "[red]No[/red]")
                 table.add_row("Created", str(user.created_at)[:19] if user.created_at else "-")
                 table.add_row("Updated", str(user.updated_at)[:19] if user.updated_at else "-")
@@ -1537,19 +1935,22 @@ def user_list(
             else:
                 # Show detailed info for all users
                 async def get_all_detailed():
-                    users = await user_service.list_users(user_type=user_type, limit=limit)
-                    detailed_users = []
-                    
-                    for user in users:
-                        auth_data = await user_service.get_user_authentication(user.uuid)
-                        relationships = await user_service.get_user_relationships(user.uuid)
-                        detailed_users.append({
-                            'user': user,
-                            'auth': auth_data,
-                            'relationships': relationships
-                        })
-                    
-                    return detailed_users
+                    pool = await get_postgres_pool()
+                    async with pool.acquire() as conn:
+                        user_service = UserService(conn)
+                        users = await user_service.list_users(user_type=user_type, limit=limit or 10000)
+                        detailed_users = []
+                        
+                        for user in users:
+                            auth_data = await user_service.get_user_authentication(user.uuid)
+                            relationships = await user_service.get_user_relationships(user.uuid)
+                            detailed_users.append({
+                                'user': user,
+                                'auth': auth_data,
+                                'relationships': relationships
+                            })
+                        
+                        return detailed_users
                 
                 detailed_users = asyncio.run(get_all_detailed())
                 
@@ -1568,9 +1969,11 @@ def user_list(
                     box=box.SIMPLE_HEAD,
                     padding=(0, 1)
                 )
-                table.add_column("UUID", style="bold white", justify="left", no_wrap=True, min_width=36)
-                table.add_column("Name", style="bold white", justify="left")
+                table.add_column("UUID", style="bold white", justify="left", no_wrap=True)
+                table.add_column("Name", style="bold white", justify="left", no_wrap=True)
+                table.add_column("Nickname", style="bold white", justify="left")
                 table.add_column("Type", style="green", justify="left")
+                table.add_column("Language", style="cyan", justify="left")
                 table.add_column("Active", style="bold white", justify="left")
                 table.add_column("PIN", style="bold white", justify="left")
                 table.add_column("Locked", style="bold white", justify="left")
@@ -1591,7 +1994,9 @@ def user_list(
                     table.add_row(
                         user.uuid,
                         user.full_name,
+                        user.nickname or "-",
                         user.user_type,
+                        user.primary_language or "en",
                         active_status,
                         pin_status,
                         locked_status,
@@ -1605,8 +2010,11 @@ def user_list(
         else:
             # Standard list view
             async def list_users():
-                users = await user_service.list_users(user_type=user_type, limit=limit)
-                return users
+                pool = await get_postgres_pool()
+                async with pool.acquire() as conn:
+                    user_service = UserService(conn)
+                    users = await user_service.list_users(user_type=user_type, limit=limit or 10000)
+                    return users
             
             users = asyncio.run(list_users())
             
@@ -1614,39 +2022,21 @@ def user_list(
                 console.print("No users found.")
                 return
             
-            # Create table following CLI style guide
-            table = Table(
-                title="✨ [bold cyan]AICO Users[/bold cyan]",
-                title_style="bold cyan",
-                title_justify="left",
-                border_style="bright_blue",
-                header_style="bold yellow",
-                show_lines=False,
-                box=box.SIMPLE_HEAD,
-                padding=(0, 1)
-            )
-            table.add_column("UUID", style="bold white", justify="left", no_wrap=True, min_width=36)
-            table.add_column("Name", style="bold white", justify="left")
-            table.add_column("Nickname", style="bold white", justify="left")
-            table.add_column("Type", style="green", justify="left")
-            table.add_column("Active", style="bold white", justify="left")
-            table.add_column("Created", style="dim", justify="left")
+            # Display users in a compact list format to avoid truncation
+            console.print()
+            console.print("✨ [bold cyan]AICO Users[/bold cyan]")
+            console.print()
             
             for user in users:
-                # Format active status with color coding
-                active_status = "[green]Yes[/green]" if user.is_active else "[red]No[/red]"
+                active_status = "[green]●[/green]" if user.is_active else "[red]○[/red]"
+                lang = user.primary_language or "en"
                 
-                table.add_row(
-                    user.uuid,  # Full UUID - no truncation
-                    user.full_name,
-                    user.nickname or "-",
-                    user.user_type,
-                    active_status,
-                    str(user.created_at)[:19] if user.created_at else "-"
-                )
+                console.print(f"{active_status} [bold white]{user.full_name}[/bold white] [dim]({user.nickname or 'no nickname'})[/dim]")
+                console.print(f"  UUID: [cyan]{user.uuid}[/cyan]")
+                console.print(f"  Type: [green]{user.user_type}[/green]  Language: [cyan]{lang}[/cyan]  Created: [dim]{str(user.created_at)[:19] if user.created_at else '-'}[/dim]")
+                console.print()
             
-            console.print()
-            console.print(table)
+            console.print(f"[dim]Total: {len(users)} user(s)[/dim]")
             console.print()
         
     except Exception as e:
@@ -1693,33 +2083,20 @@ def user_auth(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
     
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
         
-        # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        # Initialize key manager and get database key
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
-        # Authenticate user
+        # Authenticate user using PostgreSQL asyncpg
         async def authenticate():
-            result = await user_service.authenticate_user(user_uuid, pin)
-            return result
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                user_service = UserService(conn)
+                result = await user_service.authenticate_user(user_uuid, pin)
+                return result
         
         result = asyncio.run(authenticate())
         
@@ -1800,11 +2177,12 @@ def user_update(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
     
     # Get default user type from configuration
-    default_user_type = config_manager.get("user_profiles.default_user_type", "person")
+    # NOTE: user_profiles is still in core.yaml (not yet migrated to separate domain)
+    default_user_type = config_manager.get("core.user_profiles.default_user_type", "person")
     
     # Note: user_type field is currently not used - all users are 'person' type
     # Validate user_type if provided (only 'person' is valid)
@@ -1827,29 +2205,13 @@ def user_update(
         raise typer.Exit(1)
     
     try:
-        # Initialize configuration and paths
-        config_manager = ConfigurationManager()
-        
-        # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        # Initialize key manager and get database key
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
-        # Update user
+        # Update user using PostgreSQL asyncpg
         async def update_user():
-            user = await user_service.update_user(user_uuid, updates)
-            return user
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                user_service = UserService(conn)
+                user = await user_service.update_user(user_uuid, updates)
+                return user
         
         user = asyncio.run(update_user())
         
@@ -1892,33 +2254,20 @@ def user_delete(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
     
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
         
-        # Use configuration-based path resolution
-        db_config = config_manager.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        # Initialize key manager and get database key
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
-        # Get user first to confirm deletion
+        # Get user using PostgreSQL asyncpg
         async def get_user():
-            users = await user_service.list_users(limit=1000)  # Get all users
-            return next((u for u in users if u.uuid == user_uuid), None)
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                user_service = UserService(conn)
+                users = await user_service.list_users(limit=1000)
+                return next((u for u in users if u.uuid == user_uuid), None)
         
         user = asyncio.run(get_user())
         
@@ -1955,8 +2304,11 @@ def user_delete(
             
             # Perform hard delete
             async def hard_delete():
-                result = await user_service.hard_delete_user(user_uuid)
-                return result
+                pool = await get_postgres_pool()
+                async with pool.acquire() as conn:
+                    user_service = UserService(conn)
+                    result = await user_service.hard_delete_user(user_uuid)
+                    return result
             
             result = asyncio.run(hard_delete())
             
@@ -1986,8 +2338,11 @@ def user_delete(
             
             # Perform soft delete
             async def soft_delete():
-                result = await user_service.delete_user(user_uuid)
-                return result
+                pool = await get_postgres_pool()
+                async with pool.acquire() as conn:
+                    user_service = UserService(conn)
+                    result = await user_service.delete_user(user_uuid)
+                    return result
             
             result = asyncio.run(soft_delete())
             
@@ -2014,33 +2369,20 @@ def user_cleanup():
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
     
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
         
-        # Use configuration-based path resolution
-        db_config = config_manager.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        # Initialize key manager and get database key
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
-        # Get all soft-deleted users (is_active = FALSE)
+        # Get all soft-deleted users using PostgreSQL asyncpg
         async def get_soft_deleted_users():
-            users = await user_service.list_users(limit=10000)
-            return [u for u in users if not u.is_active]
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                user_service = UserService(conn)
+                users = await user_service.list_users(limit=10000)
+                return [u for u in users if not u.is_active]
         
         soft_deleted_users = asyncio.run(get_soft_deleted_users())
         
@@ -2105,18 +2447,21 @@ def user_cleanup():
         
         async def cleanup_users():
             nonlocal deleted_count, failed_count
-            for user in soft_deleted_users:
-                try:
-                    result = await user_service.hard_delete_user(user.uuid)
-                    if result:
-                        deleted_count += 1
-                        console.print(f"  ✓ Deleted: {user.full_name} ({user.uuid[:8]}...)")
-                    else:
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                user_service = UserService(conn)
+                for user in soft_deleted_users:
+                    try:
+                        result = await user_service.hard_delete_user(user.uuid)
+                        if result:
+                            deleted_count += 1
+                            console.print(f"  ✓ Deleted: {user.full_name} ({user.uuid[:8]}...)")
+                        else:
+                            failed_count += 1
+                            console.print(f"  ✗ Failed: {user.full_name} ({user.uuid[:8]}...)")
+                    except Exception as e:
                         failed_count += 1
-                        console.print(f"  ✗ Failed: {user.full_name} ({user.uuid[:8]}...)")
-                except Exception as e:
-                    failed_count += 1
-                    console.print(f"  ✗ Error deleting {user.full_name}: {e}")
+                        console.print(f"  ✗ Error deleting {user.full_name}: {e}")
         
         asyncio.run(cleanup_users())
         
@@ -2133,12 +2478,12 @@ def user_cleanup():
 
 
 @app.command("user-set-pin")
+@sensitive("allows resetting user PIN - requires authenticated session")
 def user_set_pin(
     user_uuid: str = typer.Argument(None, help="User UUID"),
-    new_pin: str = typer.Option(None, "--new-pin", "-n", help="New PIN", hide_input=True),
-    old_pin: str = typer.Option(None, "--old-pin", "-o", help="Current PIN (required if user has existing PIN)", hide_input=True)
+    new_pin: str = typer.Option(None, "--new-pin", "-n", help="New PIN", hide_input=True)
 ):
-    """Set or update user PIN"""
+    """Set or reset user PIN (admin operation - requires authenticated session)"""
     
     if user_uuid is None:
         console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
@@ -2146,11 +2491,12 @@ def user_set_pin(
         console.print("  aico security user-set-pin [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
         console.print('  aico security user-set-pin abc123def --new-pin 1234')
-        console.print('  aico security user-set-pin abc123def -n 5678 --old-pin 1234')
+        console.print('  aico security user-set-pin abc123def -n 5678')
         console.print("\n[bold yellow]Required Options:[/bold yellow]")
         console.print("  --new-pin, -n     New PIN for the user")
-        console.print("\n[bold yellow]Optional:[/bold yellow]")
-        console.print("  --old-pin, -o     Current PIN (required if user already has a PIN)")
+        console.print("\n[bold yellow]Note:[/bold yellow]")
+        console.print("  This command requires an authenticated CLI session (use 'aico security auth' first)")
+        console.print("  It will overwrite any existing PIN without requiring the old PIN")
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     
@@ -2160,7 +2506,7 @@ def user_set_pin(
         console.print("  aico security user-set-pin [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
         console.print(f'  aico security user-set-pin {user_uuid} --new-pin 1234')
-        console.print(f'  aico security user-set-pin {user_uuid} -n 5678 --old-pin 1234')
+        console.print(f'  aico security user-set-pin {user_uuid} -n 5678')
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     import asyncio
@@ -2168,55 +2514,35 @@ def user_set_pin(
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
     
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
         
-        # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
+        # Force set PIN using PostgreSQL asyncpg (no old PIN required)
+        async def force_reset_pin():
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                user_service = UserService(conn)
+                try:
+                    result = await user_service.force_set_pin(user_uuid, new_pin)
+                    return result
+                except ValueError as e:
+                    if "User not found" in str(e):
+                        return "user_not_found"
+                    else:
+                        raise
         
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        # Initialize key manager and get database key
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
-        # Set PIN
-        async def set_pin():
-            try:
-                result = await user_service.set_pin(user_uuid, new_pin, old_pin)
-                return result
-            except ValueError as e:
-                if "Old PIN required" in str(e):
-                    return "old_pin_required"
-                elif "User not found" in str(e):
-                    return "user_not_found"
-                else:
-                    raise
-        
-        result = asyncio.run(set_pin())
+        result = asyncio.run(force_reset_pin())
         
         if result == "user_not_found":
             console.print(f"❌ [red]User not found: {user_uuid}[/red]")
             raise typer.Exit(1)
-        elif result == "old_pin_required":
-            console.print("❌ [red]User already has a PIN. Please provide --old-pin to update it.[/red]")
-            raise typer.Exit(1)
-        elif result is False:
-            console.print("❌ [red]Invalid old PIN[/red]")
-            raise typer.Exit(1)
         elif result is True:
             console.print("✅ [green]PIN set successfully[/green]")
+            console.print("[dim]Note: This was an admin PIN reset. The old PIN (if any) has been overwritten.[/dim]")
         
     except Exception as e:
         console.print(f"❌ [red]Error setting PIN: {e}[/red]")
@@ -2233,7 +2559,7 @@ def user_stats():
     from aico.core.config import ConfigurationManager
     from aico.core.paths import AICOPaths
     from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
     
     console = Console()
@@ -2242,26 +2568,13 @@ def user_stats():
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
         
-        # Use configuration-based path resolution (following database command pattern)
-        db_config = config_manager.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        # Initialize key manager and get database key
-        key_manager = _get_key_manager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
-        # Get stats
+        # Get stats using PostgreSQL asyncpg
         async def get_stats():
-            stats = await user_service.get_user_stats()
-            return stats
+            pool = await get_postgres_pool()
+            async with pool.acquire() as conn:
+                user_service = UserService(conn)
+                stats = await user_service.get_user_stats()
+                return stats
         
         stats = asyncio.run(get_stats())
         

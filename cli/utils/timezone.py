@@ -8,12 +8,12 @@ from datetime import datetime
 from typing import Optional
 
 
-def format_timestamp_local(utc_timestamp: str, show_utc: bool = False) -> str:
+def format_timestamp_local(utc_timestamp, show_utc: bool = False) -> str:
     """
     Convert UTC timestamp to local timezone for display.
     
     Args:
-        utc_timestamp: UTC timestamp string (ISO format with Z or +00:00)
+        utc_timestamp: UTC timestamp (datetime object or ISO format string with Z or +00:00)
         show_utc: If True, display as UTC with "UTC" suffix
         
     Returns:
@@ -27,11 +27,19 @@ def format_timestamp_local(utc_timestamp: str, show_utc: bool = False) -> str:
         "2025-08-13 13:29:52 UTC"
     """
     try:
-        # Parse UTC timestamp (handle both Z and +00:00 formats)
-        if utc_timestamp.endswith('Z'):
-            dt_utc = datetime.fromisoformat(utc_timestamp[:-1] + '+00:00')
+        # Handle datetime objects from PostgreSQL
+        if isinstance(utc_timestamp, datetime):
+            dt_utc = utc_timestamp
+            # Ensure it has timezone info
+            if dt_utc.tzinfo is None:
+                # Assume UTC if no timezone
+                dt_utc = dt_utc.replace(tzinfo=datetime.now().astimezone().tzinfo)
         else:
-            dt_utc = datetime.fromisoformat(utc_timestamp)
+            # Parse UTC timestamp string (handle both Z and +00:00 formats)
+            if utc_timestamp.endswith('Z'):
+                dt_utc = datetime.fromisoformat(utc_timestamp[:-1] + '+00:00')
+            else:
+                dt_utc = datetime.fromisoformat(utc_timestamp)
         
         if show_utc:
             return dt_utc.strftime('%Y-%m-%d %H:%M:%S UTC')
@@ -41,7 +49,7 @@ def format_timestamp_local(utc_timestamp: str, show_utc: bool = False) -> str:
             return local_dt.strftime('%Y-%m-%d %H:%M:%S')
     except Exception:
         # Fallback to original format if parsing fails
-        return utc_timestamp[:19]
+        return str(utc_timestamp)[:19]
 
 
 def get_timezone_suffix(show_utc: bool = False) -> str:

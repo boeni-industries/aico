@@ -1,4 +1,6 @@
 import 'package:aico_frontend/core/platform/transparent_webview_channel.dart';
+import 'package:aico_frontend/domain/entities/tts_state.dart';
+import 'package:aico_frontend/domain/providers/tts_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_controller_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
@@ -34,7 +36,6 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   @override
   void initState() {
     super.initState();
-    debugPrint('[AvatarViewer] Initializing WebView avatar viewer');
     
     // Register animation callbacks with avatar controller IMMEDIATELY
     // Don't wait for post-frame callback - controller needs these NOW
@@ -43,7 +44,6 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
       onStartTalking: startTalking,
       onStopTalking: stopTalking,
     );
-    debugPrint('[AvatarViewer] ✅ Registered callbacks with AvatarController');
   }
   
   
@@ -65,6 +65,13 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
       }
     });
     
+    // Listen to TTS state for lip-sync text preparation
+    ref.listen(ttsProvider, (previous, next) {
+      if (_isReady && _webViewController != null) {
+        _handleTtsStateChange(previous, next);
+      }
+    });
+    
     return InAppWebView(
         initialSettings: InAppWebViewSettings(
           isInspectable: kDebugMode,
@@ -81,7 +88,6 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
       ),
       onWebViewCreated: (controller) async {
         _webViewController = controller;
-        debugPrint('[AvatarViewer] WebView created');
         
         // Force transparent background via JavaScript injection
         await controller.evaluateJavascript(source: '''
@@ -93,7 +99,6 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
         controller.addJavaScriptHandler(
           handlerName: 'ready',
           callback: (args) {
-            debugPrint('[AvatarViewer] Three.js scene ready: $args');
             if (mounted) {
               setState(() {
                 _isReady = true;
@@ -101,12 +106,20 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
             }
           },
         );
+        
+        // Add JavaScript handler for audio ended callback
+        controller.addJavaScriptHandler(
+          handlerName: 'audioEnded',
+          callback: (args) {
+            // Notify TTS provider that audio finished
+            ref.read(ttsProvider.notifier).stop();
+          },
+        );
       },
       onLoadStart: (controller, url) {
-        debugPrint('[AvatarViewer] Loading: $url');
+        // Silent
       },
       onLoadStop: (controller, url) async {
-        debugPrint('[AvatarViewer] Loaded: $url');
         
         // Immediately inject CSS to force transparent background
         await controller.evaluateJavascript(source: '''
@@ -126,15 +139,18 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
         for (int i = 0; i < 5; i++) {
           await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
           final success = await TransparentWebViewChannel.setTransparentBackground();
-          debugPrint('[AvatarViewer] Transparent attempt ${i + 1}: $success');
           if (success) break;
         }
       },
       onConsoleMessage: (controller, consoleMessage) {
-        debugPrint('[AvatarViewer] JS Console: ${consoleMessage.message}');
+        // Filter out verbose viseme updates - only log errors and important messages
+        final msg = consoleMessage.message;
+        if (!msg.contains('Viseme:') && !msg.contains('Emotion set to:')) {
+          debugPrint('[AvatarViewer] JS: $msg');
+        }
       },
-      onLoadError: (controller, url, code, message) {
-        debugPrint('[AvatarViewer] Load error: $message');
+      onReceivedError: (controller, request, error) {
+        debugPrint('[AvatarViewer] Load error: ${error.description}');
       },
     );
   }
@@ -144,35 +160,20 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   /// Maps emotional states and conversation modes to animations.
   /// Triggers animation changes and background color in Three.js via JavaScript bridge.
   void _applyAvatarState(AvatarRingState state) {
-    debugPrint('[AvatarViewer] 🎭 State change received: mode=${state.mode.name}, intensity=${state.intensity}');
-    
-    if (_webViewController == null) {
-      debugPrint('[AvatarViewer] ⚠️ WebViewController is null, skipping state update');
-      return;
-    }
-    
-    if (!_isReady) {
-      debugPrint('[AvatarViewer] ⚠️ Scene not ready, skipping state update');
+    if (_webViewController == null || !_isReady) {
       return;
     }
     
     // Trigger appropriate animation function based on mode
     if (state.mode == AvatarMode.speaking) {
-      debugPrint('[AvatarViewer] 🎬 Starting talking animation');
       _webViewController!.evaluateJavascript(
         source: "window.startTalking()",
       );
     } else {
-      debugPrint('[AvatarViewer] 🎬 Stopping talking animation (returning to idle)');
       _webViewController!.evaluateJavascript(
         source: "window.stopTalking()",
       );
     }
-    
-    // Background aura is now handled in Flutter (CompanionAvatar)
-    // No need to update WebView background - keep it transparent
-    
-    debugPrint('[AvatarViewer] ✅ State update complete');
   }
   
   /// Set avatar facial expression based on emotion
@@ -195,10 +196,7 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   /// Called when AICO starts responding (first streaming chunk).
   /// Triggers talking animation group with automatic variations.
   void startTalking() {
-    debugPrint('[AvatarViewer] 🗣️ Starting talking animation');
-    
     if (_webViewController == null || !_isReady) {
-      debugPrint('[AvatarViewer] ⚠️ Cannot start talking - WebView not ready');
       return;
     }
     
@@ -212,16 +210,37 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   /// Called when AICO finishes responding (streaming complete).
   /// Returns to idle animation group with automatic variations.
   void stopTalking() {
-    debugPrint('[AvatarViewer] 🤫 Stopping talking animation');
-    
     if (_webViewController == null || !_isReady) {
-      debugPrint('[AvatarViewer] ⚠️ Cannot stop talking - WebView not ready');
       return;
     }
     
     _webViewController!.evaluateJavascript(
       source: "window.stopTalking()",
     );
+  }
+  
+  /// Handle TTS state changes for lip-sync
+  /// 
+  /// Passes audio data to WebView for frequency-based lip-sync analysis.
+  /// Audio plays in both Flutter (for user) and WebView (for lip-sync).
+  void _handleTtsStateChange(TtsState? previous, TtsState next) {
+    // Only act when transitioning to speaking state
+    if (next.status == TtsStatus.speaking && previous?.status != TtsStatus.speaking) {
+      final audioData = next.metadata?['audioData'] as String?;
+      
+      if (audioData != null && audioData.isNotEmpty) {
+        // Pass audio to WebView for lip-sync
+        _webViewController!.evaluateJavascript(
+          source: """
+            (function() {
+              if (window.playAudioForLipSync) {
+                window.playAudioForLipSync('$audioData');
+              }
+            })();
+          """,
+        );
+      }
+    }
   }
   
   @override

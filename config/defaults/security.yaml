@@ -1,3 +1,6 @@
+# Keyring service name for macOS Keychain / Windows Credential Manager
+keyring_service_name: "AICO"
+
 encryption:
   algorithm: "AES-256-GCM"
   key_length: 32  # 256-bit keys
@@ -5,7 +8,7 @@ encryption:
   
   # Key derivation settings
   key_derivation:
-    # PBKDF2 settings (for LibSQL compatibility)
+    # PBKDF2 settings (for PostgreSQL database encryption)
     pbkdf2:
       iterations: 100000
     
@@ -112,7 +115,7 @@ cli:
 audit:
   enabled: true
   retention_days: 90
-  log_level: "standard"
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
 
 # Role-Based Access Control (RBAC) Configuration
 rbac:

@@ -9,7 +9,9 @@ from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from aico.core.logging import get_logger
-from aico.data.user import UserService
+from aico.data.uow import UnitOfWork
+from aico.data.user.models import UserProfile
+from aico.data.system.models import SystemEvent
 from .schemas import (
     CreateUserRequest, UpdateUserRequest, AuthenticateRequest, SetPinRequest,
     UserResponse, AuthenticationResponse, UserStatsResponse, UserListResponse
@@ -23,21 +25,22 @@ def _user_to_response(user) -> UserResponse:
         nickname=user.nickname,
         user_type=user.user_type,
         is_active=user.is_active,
+        primary_language=user.primary_language,
         created_at=user.created_at.isoformat() if user.created_at else None,
         updated_at=user.updated_at.isoformat() if user.updated_at else None
     )
 from .dependencies import validate_uuid, validate_user_type, validate_pin, security
-from backend.core.lifecycle_manager import get_user_service, get_auth_manager
+from backend.core.postgres_dependencies import get_uow
+from backend.core.lifecycle_manager import get_auth_manager
 from .exceptions import (
     UserNotFoundError, UserServiceError, InvalidCredentialsError,
     handle_user_service_exceptions
 )
 
 router = APIRouter()
-logger = get_logger("backend", "api.users_router")
+logger = get_logger("backend.api.users_router")
 
 # Router now uses proper FastAPI dependency injection - no global state needed
-# Dependencies are injected via get_user_service, get_auth_manager from dependencies.py
 
 
 async def get_admin_dependency(
@@ -59,11 +62,12 @@ async def get_admin_dependency(
 @handle_user_service_exceptions
 async def create_user(
     request: CreateUserRequest,
-    admin_user = Depends(get_admin_dependency)
+    admin_user = Depends(get_admin_dependency),
+    uow: UnitOfWork = Depends(get_uow)
 ):
-    """Create a new user"""
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
+    """Create a new user - PostgreSQL Repository Pattern"""
+    from datetime import datetime, UTC
+    import uuid as uuid_lib
     
     # Validate user type
     validate_user_type(request.user_type)
@@ -72,12 +76,36 @@ async def create_user(
     if request.pin:
         validate_pin(request.pin)
     
-    user = await user_service.create_user(
+    # Create user via repository
+    user = UserProfile(
+        uuid=str(uuid_lib.uuid4()),
         full_name=request.full_name,
         nickname=request.nickname,
         user_type=request.user_type,
-        pin=request.pin
+        is_active=True,
+        primary_language=request.primary_language or "en",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC)
     )
+    
+    await uow.users.create(user)
+    
+    # Handle PIN if provided
+    if request.pin:
+        from aico.data.auth.models import UserCredentials
+        import hashlib
+        
+        credentials = UserCredentials(
+            uuid=str(uuid_lib.uuid4()),
+            user_uuid=user.uuid,
+            pin_hash=hashlib.sha256(request.pin.encode()).hexdigest(),
+            failed_attempts=0,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+        await uow.credentials.create(credentials)
+    
+    await uow.commit()
     
     logger.info("User created via API", extra={
         "user_uuid": user.uuid,
@@ -85,43 +113,26 @@ async def create_user(
         "created_by": admin_user.get("user_uuid") if admin_user else "unknown"
     })
     
-    return UserResponse(
-        uuid=user.uuid,
-        full_name=user.full_name,
-        nickname=user.nickname,
-        user_type=user.user_type,
-        is_active=user.is_active,
-        created_at=user.created_at.isoformat() if user.created_at else None,
-        updated_at=user.updated_at.isoformat() if user.updated_at else None
-    )
+    return _user_to_response(user)
 
 
 @router.get("/{user_uuid}", response_model=UserResponse)
 @handle_user_service_exceptions
 async def get_user(
     user_uuid: str,
-    admin_user = Depends(get_admin_dependency)
+    admin_user = Depends(get_admin_dependency),
+    uow: UnitOfWork = Depends(get_uow)
 ):
-    """Get user by UUID"""
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
-    
+    """Get user by UUID - PostgreSQL Repository Pattern"""
     # Validate UUID format
     validate_uuid(user_uuid)
     
-    user = await user_service.get_user(user_uuid)
+    # Get user via repository
+    user = await uow.users.get_by_id(user_uuid)
     if not user:
         raise UserNotFoundError(user_uuid)
     
-    return UserResponse(
-        uuid=user.uuid,
-        full_name=user.full_name,
-        nickname=user.nickname,
-        user_type=user.user_type,
-        is_active=user.is_active,
-        created_at=user.created_at.isoformat() if user.created_at else None,
-        updated_at=user.updated_at.isoformat() if user.updated_at else None
-    )
+    return _user_to_response(user)
 
 
 @router.put("/{user_uuid}", response_model=UserResponse)
@@ -129,14 +140,17 @@ async def get_user(
 async def update_user(
     user_uuid: str,
     request: UpdateUserRequest,
-    admin_user = Depends(get_admin_dependency)
+    admin_user = Depends(get_admin_dependency),
+    uow: UnitOfWork = Depends(get_uow)
 ):
-    """Update user profile"""
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
-    
+    """Update user profile - PostgreSQL Repository Pattern"""
     # Validate UUID format
     validate_uuid(user_uuid)
+    
+    # Get existing user
+    user = await uow.users.get_by_id(user_uuid)
+    if not user:
+        raise UserNotFoundError(user_uuid)
     
     # Convert request to dict, excluding None values
     updates = {k: v for k, v in request.dict().items() if v is not None}
@@ -151,9 +165,14 @@ async def update_user(
     if "user_type" in updates:
         validate_user_type(updates["user_type"])
     
-    user = await user_service.update_user(user_uuid, updates)
-    if not user:
-        raise UserNotFoundError(user_uuid)
+    # Apply updates to user object
+    for key, value in updates.items():
+        if hasattr(user, key):
+            setattr(user, key, value)
+    
+    # Update via repository
+    user = await uow.users.update(user)
+    await uow.commit()
     
     logger.info("User updated via API", extra={
         "user_uuid": user_uuid,
@@ -161,33 +180,26 @@ async def update_user(
         "updated_by": admin_user.get("user_uuid") if admin_user else "unknown"
     })
     
-    return UserResponse(
-        uuid=user.uuid,
-        full_name=user.full_name,
-        nickname=user.nickname,
-        user_type=user.user_type,
-        is_active=user.is_active,
-        created_at=user.created_at.isoformat() if user.created_at else None,
-        updated_at=user.updated_at.isoformat() if user.updated_at else None
-    )
+    return _user_to_response(user)
 
 
 @router.delete("/{user_uuid}", status_code=status.HTTP_204_NO_CONTENT)
 @handle_user_service_exceptions
 async def delete_user(
     user_uuid: str,
-    admin_user = Depends(get_admin_dependency)
+    admin_user = Depends(get_admin_dependency),
+    uow: UnitOfWork = Depends(get_uow)
 ):
-    """Delete user (soft delete)"""
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
-    
+    """Delete user - PostgreSQL Repository Pattern"""
     # Validate UUID format
     validate_uuid(user_uuid)
     
-    success = await user_service.delete_user(user_uuid)
+    # Delete via repository
+    success = await uow.users.delete(user_uuid)
     if not success:
         raise UserNotFoundError(user_uuid)
+    
+    await uow.commit()
     
     logger.info("User deleted via API", extra={
         "user_uuid": user_uuid,
@@ -200,12 +212,9 @@ async def delete_user(
 async def list_users(
     user_type: Optional[str] = None,
     is_active: Optional[bool] = None,
-    user_service: UserService = Depends(get_user_service)
+    uow: UnitOfWork = Depends(get_uow)
 ) -> UserListResponse:
-    """List users with optional filtering"""
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
-    
+    """List users with optional filtering - PostgreSQL Repository Pattern"""
     # Cap maximum limit
     limit = 100
     
@@ -213,7 +222,15 @@ async def list_users(
     if user_type:
         validate_user_type(user_type)
     
-    users = await user_service.list_users(user_type=user_type, is_active=is_active, limit=limit)
+    # Build filters
+    filters = {}
+    if user_type:
+        filters['user_type'] = user_type
+    if is_active is not None:
+        filters['is_active'] = is_active
+    
+    # Get users via repository
+    users = await uow.users.list(filters=filters, limit=limit)
     
     user_responses = [_user_to_response(user) for user in users]
     
@@ -228,14 +245,13 @@ async def list_users(
 @router.post("/authenticate", response_model=AuthenticationResponse)
 async def authenticate_user(
     request: AuthenticateRequest,
-    user_service: UserService = Depends(get_user_service),
+    request_obj: Request,
+    uow: UnitOfWork = Depends(get_uow),
     auth_manager = Depends(get_auth_manager)
 ) -> AuthenticationResponse:
+    """Authenticate a user with PIN and return JWT token - PostgreSQL Repository Pattern"""
     logger.info(f"AUTHENTICATE_USER: Starting authentication for user_uuid: {request.user_uuid}")
     logger.info(f"AUTHENTICATE_USER: PIN provided: {bool(request.pin)}")
-    """Authenticate a user with PIN and return JWT token."""
-    
-    logger.info(f"Authentication endpoint called with user_uuid: {request.user_uuid}")
     
     # Validate UUID format
     validate_uuid(request.user_uuid)
@@ -244,28 +260,131 @@ async def authenticate_user(
     validate_pin(request.pin)
     
     try:
-        logger.info(f"Starting authentication for user: {request.user_uuid}")
-        result = await user_service.authenticate_user(request.user_uuid, request.pin)
-        logger.info(f"User service authentication result: {result}")
+        from datetime import datetime, UTC
+        from passlib.context import CryptContext
+        import uuid
         
-        if not result["success"]:
-            response = AuthenticationResponse(
-                success=False,
-                error=result["error"]
+        # Initialize bcrypt context (must match CLI UserService)
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+        async def _emit_auth_event(*, topic: str, user_uuid: str, user_name: str | None, reason: str | None) -> None:
+            now = datetime.now(UTC)
+            ip_address = getattr(request_obj.client, "host", None)
+            device_type = request_obj.headers.get("user-agent", None)
+            await uow.system_events.create(
+                SystemEvent(
+                    timestamp=now.isoformat().replace("+00:00", "Z"),
+                    topic=topic,
+                    source="backend.api.users",
+                    message_type="auth",
+                    message_id=str(uuid.uuid4()),
+                    priority=1,
+                    correlation_id=None,
+                    payload=None,
+                    metadata={
+                        "user_uuid": user_uuid,
+                        "user_name": user_name,
+                        "ip_address": ip_address,
+                        "device_type": device_type,
+                        "reason": reason,
+                    },
+                    created_at=now,
+                )
             )
-            logger.info(f"Authentication failed response: {response.dict()}")
-            return response
         
-        user = result["user"]
-        logger.info(f"Retrieved user from result: {user.uuid if user else 'None'}")
+        logger.info(f"Starting authentication for user: {request.user_uuid}")
         
-        # Get user roles from authorization service
-        from aico.core.authorization import AuthorizationService
-        authz_service = AuthorizationService(user_service.db)
-        logger.info("Getting user roles from authorization service")
-        user_roles = authz_service.get_user_roles(user.uuid)
-        user_permissions = authz_service.get_user_permissions(user.uuid)
-        logger.info(f"User roles: {user_roles}, permissions: {user_permissions}")
+        # Get user via repository
+        user = await uow.users.get_by_id(request.user_uuid)
+        if not user:
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=None,
+                reason="user_not_found",
+            )
+            await uow.commit()
+            return AuthenticationResponse(
+                success=False,
+                error="User not found"
+            )
+        
+        # Get credentials via repository
+        credentials = await uow.credentials.get_by_user_uuid(request.user_uuid)
+        if not credentials:
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="no_credentials",
+            )
+            await uow.commit()
+            return AuthenticationResponse(
+                success=False,
+                error="No credentials found for user"
+            )
+        
+        # Check if account is locked
+        if credentials.locked_until and credentials.locked_until > datetime.now(UTC):
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="account_locked",
+            )
+            await uow.commit()
+            return AuthenticationResponse(
+                success=False,
+                error=f"Account locked until {credentials.locked_until.isoformat()}"
+            )
+        
+        # Verify PIN using bcrypt (must match CLI UserService hashing)
+        if not pwd_context.verify(request.pin, credentials.pin_hash):
+            # Increment failed attempts
+            await uow.credentials.increment_failed_attempts(request.user_uuid)
+
+            await _emit_auth_event(
+                topic="auth.login.failed",
+                user_uuid=request.user_uuid,
+                user_name=user.full_name,
+                reason="invalid_pin",
+            )
+            await uow.commit()
+            
+            return AuthenticationResponse(
+                success=False,
+                error="Invalid PIN"
+            )
+        
+        # Reset failed attempts on successful login
+        await uow.credentials.reset_failed_attempts(request.user_uuid)
+        await uow.credentials.update_last_login(request.user_uuid)
+
+        await _emit_auth_event(
+            topic="auth.login.success",
+            user_uuid=request.user_uuid,
+            user_name=user.full_name,
+            reason=None,
+        )
+        await uow.commit()
+        
+        logger.info(f"Authentication successful for user: {user.uuid}")
+        
+        # Get user roles from auth_access_policies table
+        access_policies = await uow.auth_access_policies.get_user_policies(user.uuid, resource_type="role")
+        user_roles = [policy.permission for policy in access_policies] if access_policies else ["user"]
+        
+        # If no roles found, default to "user" role
+        if not user_roles:
+            user_roles = ["user"]
+        
+        logger.info(f"User roles loaded: {user_roles}", extra={"user_uuid": user.uuid, "roles": user_roles})
+        
+        user_permissions = []
+        
+        # Extract User-Agent from request headers for device detection
+        user_agent = request_obj.headers.get("user-agent", "")
+        device_uuid = "web-client"  # TODO: Generate proper device UUID from client
         
         # Generate JWT access token with proper roles and permissions
         jwt_token = auth_manager.generate_jwt_token(
@@ -273,7 +392,7 @@ async def authenticate_user(
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
-            device_uuid="web-client"  # Default device for web authentication
+            device_uuid=device_uuid
         )
         
         # Generate refresh token for token renewal
@@ -282,27 +401,99 @@ async def authenticate_user(
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
-            device_uuid="web-client"
+            device_uuid=device_uuid
         )
+        
+        # Create session record in database using AsyncSessionService + UoW
+        try:
+            from aico.security.async_session_service import AsyncSessionService
+            session_service = AsyncSessionService()
+            
+            # Create session for access token
+            await session_service.create_session(
+                uow=uow,
+                user_uuid=user.uuid,
+                device_uuid=device_uuid,
+                jwt_token=jwt_token,
+                expires_in_minutes=15,  # Access token expiry
+                session_type="rest"
+            )
+            
+            # Create session for refresh token
+            await session_service.create_session(
+                uow=uow,
+                user_uuid=user.uuid,
+                device_uuid=device_uuid,
+                jwt_token=refresh_token,
+                expires_in_minutes=7*24*60,  # 7 days for refresh token
+                session_type="refresh"
+            )
+            
+            # Commit session records
+            await uow.commit()
+            
+            logger.info("Sessions created successfully", extra={
+                "user_uuid": user.uuid,
+                "device_uuid": device_uuid
+            })
+            
+        except Exception as e:
+            logger.error(f"Failed to create session records: {e}", extra={
+                "user_uuid": user.uuid,
+                "error_type": type(e).__name__
+            })
+            # Don't fail authentication if session creation fails
+            # Sessions are for tracking/revocation, not required for auth to work
         
         response = AuthenticationResponse(
             success=True,
             user=_user_to_response(user),
             jwt_token=jwt_token,
             refresh_token=refresh_token,
-            last_login=result.get("last_login")
+            last_login=credentials.last_login.isoformat() if credentials.last_login else None
         )
         logger.info(f"Authentication success response: {response.dict()}")
         return response
         
     except Exception as e:
         logger.error(f"Authentication failed: {e}")
-        response = AuthenticationResponse(
+        import traceback
+        logger.error(traceback.format_exc())
+        try:
+            from datetime import datetime, UTC
+            import uuid
+
+            now = datetime.now(UTC)
+            ip_address = getattr(request_obj.client, "host", None)
+            device_type = request_obj.headers.get("user-agent", None)
+            await uow.system_events.create(
+                SystemEvent(
+                    timestamp=now.isoformat().replace("+00:00", "Z"),
+                    topic="auth.login.failed",
+                    source="backend.api.users",
+                    message_type="auth",
+                    message_id=str(uuid.uuid4()),
+                    priority=1,
+                    correlation_id=None,
+                    payload=None,
+                    metadata={
+                        "user_uuid": request.user_uuid,
+                        "user_name": None,
+                        "ip_address": ip_address,
+                        "device_type": device_type,
+                        "reason": "system_error",
+                    },
+                    created_at=now,
+                )
+            )
+            await uow.commit()
+        except Exception:
+            # Avoid masking the original auth failure.
+            pass
+        return AuthenticationResponse(
             success=False,
             error="Authentication system error"
         )
-        logger.info(f"Authentication failure response: {response.dict()}")
-        return response
 
 
 @router.post("/refresh", response_model=AuthenticationResponse)
@@ -463,7 +654,7 @@ async def logout_user(request: Request):
 async def refresh_token(
     request: Request,
     auth_manager = Depends(get_auth_manager),
-    user_service: UserService = Depends(get_user_service)
+    uow: UnitOfWork = Depends(get_uow),
 ):
     """Refresh JWT token for authenticated user with session rotation"""
     # Extract current token from Authorization header
@@ -497,10 +688,7 @@ async def refresh_token(
         raise HTTPException(status_code=500, detail="Failed to decode new token")
     
     # Get user data for response
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
-    
-    user = await user_service.get_user(user_uuid)
+    user = await uow.users.get_by_id(user_uuid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -519,11 +707,28 @@ async def refresh_token(
 
 @router.get("/stats", response_model=UserStatsResponse)
 async def get_user_stats(
-    user_service: UserService = Depends(get_user_service)
+    uow: UnitOfWork = Depends(get_uow),
 ) -> UserStatsResponse:
     """Get user statistics"""
-    if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
-    
-    stats = await user_service.get_user_stats()
-    return UserStatsResponse(**stats)
+    try:
+        users = await uow.users.list(filters={}, limit=100000)
+        total_users = len(users)
+        active_users = sum(1 for u in users if bool(getattr(u, "is_active", False)))
+        users_by_type: dict[str, int] = {}
+        for u in users:
+            user_type = getattr(u, "user_type", None) or "unknown"
+            users_by_type[user_type] = users_by_type.get(user_type, 0) + 1
+
+        # Placeholder until we have a proper "last_login" field in a repository.
+        # Keep schema contract stable.
+        recent_logins = 0
+
+        return UserStatsResponse(
+            total_users=total_users,
+            active_users=active_users,
+            users_by_type=users_by_type,
+            recent_logins=recent_logins,
+        )
+    except Exception as e:
+        logger.error(f"Failed to compute user stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to compute user stats")

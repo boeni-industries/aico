@@ -57,12 +57,12 @@ class AICOAPIGateway:
     
     def __init__(self, config_manager: Optional[ConfigurationManager] = None, db_connection=None):
         # Initialize logger for this instance
-        self.logger = get_logger("backend", "api_gateway.gateway")
+        self.logger = get_logger("backend.api_gateway.gateway")
         
         # Configuration
         self.config_manager = config_manager or ConfigurationManager()
         self.config_manager.initialize(lightweight=False)
-        self.config = self.config_manager.config_cache.get('core', {}).get('api_gateway', {})
+        self.config = self.config_manager.get('api_gateway', {})
         
         # Initialize key manager for transport encryption
         self.key_manager = AICOKeyManager(self.config_manager)

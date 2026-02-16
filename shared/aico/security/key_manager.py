@@ -34,12 +34,10 @@ def _get_logger():
             
             # Try to initialize logging if not already done
             try:
-                _logger = get_logger("shared", "security.key_manager")
+                _logger = get_logger("shared.security.key_manager")
             except RuntimeError:
-                # Logging not initialized, initialize with default service
-                config = ConfigurationManager()
-                initialize_logging(config, service_name="shared")
-                _logger = get_logger("shared", "security.key_manager")
+                # Logging not initialized, use basic logger
+                _logger = get_logger("shared.security.key_manager")
         except Exception:
             # Fallback to standard logging if unified system fails
             import logging
@@ -158,9 +156,17 @@ class AICOKeyManager:
     def _get_security_config(self, key: str):
         """Get security configuration value using hierarchical YAML system."""
         from aico.core.config import ConfigurationManager
+        from aico.core.config import ConfigurationError
         config_manager = ConfigurationManager()
         config_manager.initialize()
-        return config_manager.get(f"security.encryption.{key}")
+
+        try:
+            return config_manager.get(f"security.encryption.{key}")
+        except ConfigurationError:
+            try:
+                return config_manager.get(f"security.{key}")
+            except ConfigurationError:
+                return None
     
     @property
     def KEY_LENGTH(self) -> int:
@@ -207,10 +213,12 @@ class AICOKeyManager:
         if len(password) < min_length:
             raise ValueError(f"Password must be at least {min_length} characters long")
         
-        # Check for common weak passwords
-        weak_passwords = {"password", "123456", "12345", "admin", "qwerty", "letmein"}
-        if password.lower() in weak_passwords:
-            raise ValueError("Password is too common and easily guessable")
+        weak_passwords = self._get_security_config("password_policy.weak_passwords")
+        if isinstance(weak_passwords, (list, tuple, set)):
+            if password in weak_passwords:
+                raise ValueError("Password is too common and easily guessable")
+            if password.lower() in {str(p).lower() for p in weak_passwords}:
+                raise ValueError("Password is too common and easily guessable")
         
         # Basic complexity check
         has_upper = any(c.isupper() for c in password)
@@ -433,15 +441,14 @@ class AICOKeyManager:
         
         Args:
             master_key: Master key
-            database_type: Database type ("libsql", "duckdb", "rocksdb", "chroma")
-            db_path: Database path for salt file management (required for libsql)
-            use_pbkdf2: Use PBKDF2 for compatibility (libsql) vs Argon2id (others)
+            database_type: Database type ("postgres", "duckdb", "rocksdb", "chroma")
+            db_path: Database path for salt file management (required for postgres)
+            use_pbkdf2: Use PBKDF2 for compatibility (postgres) vs Argon2id (others)
             
         Returns:
             Database-specific encryption key
         """
-        if database_type == "libsql" and db_path:
-            # Use PBKDF2 with database-specific salt for LibSQL compatibility
+        if database_type == "postgres" and db_path:
             salt = self._get_or_create_db_salt(db_path)
             
             kdf = PBKDF2HMAC(
@@ -665,7 +672,7 @@ class AICOKeyManager:
             "salt_length": self.SALT_LENGTH
         }
         
-        if database_type == "libsql" and db_path:
+        if database_type == "postgres" and db_path:
             db_file = Path(db_path)
             salt_file = db_file.with_suffix(db_file.suffix + '.salt')
             info.update({
@@ -809,12 +816,12 @@ class AICOKeyManager:
         # Test database key derivations
         try:
             master_key = b"dummy_key_for_benchmark_32_bytes"
-            for db_type in ["libsql", "duckdb", "chroma"]:
+            for db_type in ["postgres", "duckdb", "chroma"]:
                 try:
                     start_time = time.time()
-                    if db_type == "libsql":
+                    if db_type == "postgres":
                         # For benchmarking, use in-memory salt (no disk writes)
-                        self._benchmark_libsql_key_derivation(master_key)
+                        self._benchmark_postgres_key_derivation(master_key)
                     else:
                         self.derive_database_key(master_key, db_type)
                     end_time = time.time()
@@ -848,9 +855,9 @@ class AICOKeyManager:
                 
         return results
     
-    def _benchmark_libsql_key_derivation(self, master_key: bytes) -> None:
+    def _benchmark_postgres_key_derivation(self, master_key: bytes) -> None:
         """
-        Benchmark LibSQL key derivation using in-memory salt (no disk writes).
+        Benchmark PostgreSQL key derivation using in-memory salt (no disk writes).
         
         Args:
             master_key: Master key for derivation
@@ -858,7 +865,6 @@ class AICOKeyManager:
         # Generate random salt in memory only (never written to disk)
         salt = os.urandom(self.SALT_LENGTH)
         
-        # Perform PBKDF2 key derivation (same as real LibSQL but no file I/O)
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=self.KEY_LENGTH,
@@ -868,7 +874,7 @@ class AICOKeyManager:
         )
         
         # Derive key (same computation as real database)
-        context = master_key + b"aico-db-libsql"
+        context = master_key + b"aico-db-postgres"
         kdf.derive(context)
         
         # Salt and derived key automatically garbage collected

@@ -160,14 +160,14 @@ class AICOPaths:
     
     @classmethod
     def get_episodic_memory_path(cls) -> Path:
-        """Get episodic memory directory (libSQL files)."""
+        """Get episodic memory directory."""
         episodic_dir = cls.get_memory_directory() / "episodic"
         episodic_dir.mkdir(parents=True, exist_ok=True)
         return episodic_dir
     
     @classmethod
     def get_behavioral_memory_path(cls) -> Path:
-        """Get behavioral memory directory (libSQL files for skills, preferences, patterns)."""
+        """Get behavioral memory directory."""
         behavioral_dir = cls.get_memory_directory() / "behavioral"
         behavioral_dir.mkdir(parents=True, exist_ok=True)
         return behavioral_dir
@@ -185,7 +185,14 @@ class AICOPaths:
             from aico.core.config import ConfigurationManager
             config_manager = ConfigurationManager()
             config_manager.initialize()
-            return config_manager.get("system.paths.directory_mode", "auto")
+            system_cfg = config_manager.config_cache.get("system")
+            if not isinstance(system_cfg, dict):
+                return "auto"
+            paths_cfg = system_cfg.get("paths")
+            if not isinstance(paths_cfg, dict):
+                return "auto"
+            value = paths_cfg.get("directory_mode")
+            return value if isinstance(value, str) and value else "auto"
         except Exception:
             # Fallback to 'auto' if configuration is not available
             return "auto"
@@ -202,7 +209,14 @@ class AICOPaths:
             from aico.core.config import ConfigurationManager
             config_manager = ConfigurationManager()
             config_manager.initialize()
-            return config_manager.get("system.paths.data_subdirectory", "data")
+            system_cfg = config_manager.config_cache.get("system")
+            if not isinstance(system_cfg, dict):
+                return "data"
+            paths_cfg = system_cfg.get("paths")
+            if not isinstance(paths_cfg, dict):
+                return "data"
+            value = paths_cfg.get("data_subdirectory")
+            return value if isinstance(value, str) and value else "data"
         except Exception:
             return "data"
     

@@ -1,0 +1,25 @@
+# Unified logging configuration - single source of truth for all subsystems
+# Unified Logging Configuration
+# Controls log levels, handlers, and retention policies
+
+# Default logging level
+level: "INFO"
+
+levels:
+  default: "INFO"  # Default log level for all subsystems
+  subsystems:
+    cli: "INFO"
+    backend: "INFO"
+    frontend: "INFO"
+    modelservice: "INFO"
+  modules:
+    # Fine-grained control per module if needed
+    security: "INFO"  # Security logs are important
+    database: "INFO"
+  externals:
+    ollama: "INFO"    # Ollama server and model logs
+
+# Retention and cleanup
+retention:
+  days: 7  # Keep logs for 30 days
+  max_size_mb: 1000  # Maximum total log storage size

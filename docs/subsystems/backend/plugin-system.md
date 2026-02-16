@@ -23,7 +23,7 @@ The Plugin System provides a standardized architecture for extending AICO backen
 - Business: 40 (started last)
 
 **Configuration**:
-- Plugin settings in `core.yaml` under `core.api_gateway.plugins.{name}`
+- Plugin settings in `config/defaults/api_gateway.yaml` under `api_gateway.plugins.{name}`
 - Enable/disable via `enabled: true/false`
 - Plugin-specific configuration sections
 
@@ -158,7 +158,7 @@ class MyPlugin(BasePlugin):
 1. **Create Plugin Class**: Inherit from appropriate base class
 2. **Implement Lifecycle**: Define `initialize()`, `start()`, `stop()` methods
 3. **Register Plugin**: Add to plugin registry in lifecycle manager
-4. **Configure**: Add plugin settings to `core.yaml`
+4. **Configure**: Add plugin settings to `config/defaults/api_gateway.yaml`
 5. **Test**: Use backend development environment
 6. **Deploy**: Plugin loaded automatically on backend startup
 
@@ -173,15 +173,13 @@ backend/api_gateway/plugins/
 └── validation_plugin.py       # Middleware plugin
 ```
 
-**Configuration in `core.yaml`**:
+**Configuration in `config/defaults/api_gateway.yaml`**:
 ```yaml
-core:
-  api_gateway:
-    plugins:
-      message_bus:
-        enabled: true
-      encryption:
-        enabled: true
+plugins:
+  message_bus:
+    enabled: true
+  encryption:
+    enabled: true
 ```
 
 ### Plugin Registration
@@ -226,10 +224,10 @@ def metadata(self) -> PluginMetadata:
 - Direct method calls within process
 - ZeroMQ message bus for inter-service communication
 - Protocol Buffers for message serialization
-- Shared database connection
+- Database access via Repository + UnitOfWork (per request)
 
 **Storage**:
-- Shared access to encrypted libSQL database
+- Shared access to encrypted PostgreSQL database
 - Configuration via YAML files
 - No plugin-specific storage isolation
 
@@ -244,7 +242,7 @@ def metadata(self) -> PluginMetadata:
 - Backend-only plugin system
 
 **Configuration Management**:
-- Plugin settings in `core.yaml`
+- Plugin settings in `config/defaults/api_gateway.yaml`
 - Requires backend restart to change plugin state
 - No dynamic plugin loading/unloading
 

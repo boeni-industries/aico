@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "InfluxDB Configuration",
+  "description": "InfluxDB time-series telemetry backend",
+  "type": "object",
+  "required": ["url", "org", "bucket"],
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "InfluxDB server URL"
+    },
+    "org": {
+      "type": "string",
+      "description": "InfluxDB organization"
+    },
+    "bucket": {
+      "type": "string",
+      "description": "InfluxDB bucket name"
+    },
+    "token": {
+      "type": "string",
+      "description": "InfluxDB authentication token"
+    },
+    "timeout": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Request timeout in milliseconds"
+    },
+    "batch_size": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Batch write size"
+    },
+    "flush_interval": {
+      "type": "integer",
+      "minimum": 100,
+      "description": "Flush interval in milliseconds"
+    },
+    "retention_policies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "duration": {
+            "type": "string",
+            "description": "Retention duration (e.g., '30d', '1y')"
+          },
+          "shard_duration": {
+            "type": "string",
+            "description": "Shard duration (e.g., '1d', '1w')"
+          }
+        }
+      }
+    }
+  }
+}

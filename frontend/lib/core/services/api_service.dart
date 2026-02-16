@@ -77,13 +77,13 @@ class ApiService {
     DateTime? endTime,
   }) async {
     final queryParameters = <String, String>{
-      if (limit != null) 'limit': limit.toString(),
-      if (offset != null) 'offset': offset.toString(),
-      if (level != null) 'level': level,
-      if (subsystem != null) 'subsystem': subsystem,
-      if (component != null) 'component': component,
-      if (startTime != null) 'start_time': startTime.toIso8601String(),
-      if (endTime != null) 'end_time': endTime.toIso8601String(),
+      ...?(limit == null ? null : <String, String>{'limit': limit.toString()}),
+      ...?(offset == null ? null : <String, String>{'offset': offset.toString()}),
+      ...?(level == null ? null : <String, String>{'level': level}),
+      ...?(subsystem == null ? null : <String, String>{'subsystem': subsystem}),
+      ...?(component == null ? null : <String, String>{'component': component}),
+      ...?(startTime == null ? null : <String, String>{'start_time': startTime.toIso8601String()}),
+      ...?(endTime == null ? null : <String, String>{'end_time': endTime.toIso8601String()}),
     };
     
     final response = await _client.request<LogsListResponse>('GET', '/admin/logs', queryParameters: queryParameters, fromJson: LogsListResponse.fromJson);

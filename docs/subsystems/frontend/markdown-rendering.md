@@ -98,4 +98,3 @@ flutter_highlight: ^0.7.0   # Code syntax highlighting
 
 - [markdown_widget Documentation](https://pub.dev/packages/markdown_widget)
 - [flutter_highlight Themes](https://pub.dev/packages/flutter_highlight)
-- [AICO Design System](../design/glassmorphism.md)

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PostgreSQL Shadow Configuration",
+  "description": "Shadow PostgreSQL instance for testing and validation",
+  "type": "object",
+  "required": ["host", "port", "db_name", "user"],
+  "properties": {
+    "host": {
+      "type": "string",
+      "description": "PostgreSQL server hostname"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "PostgreSQL server port"
+    },
+    "db_name": {
+      "type": "string",
+      "description": "Database name"
+    },
+    "user": {
+      "type": "string",
+      "description": "Database user"
+    },
+    "password": {
+      "type": "string",
+      "description": "Database password (managed via AICOKeyManager)"
+    },
+    "schema": {
+      "type": "string",
+      "description": "Default schema name"
+    }
+  }
+}

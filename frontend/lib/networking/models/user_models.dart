@@ -13,6 +13,8 @@ class User {
   final String? pin;
   @JsonKey(name: 'is_active')
   final bool? isActive;
+  @JsonKey(name: 'primary_language')
+  final String? primaryLanguage;
   @JsonKey(name: 'created_at')
   final DateTime createdAt;
   @JsonKey(name: 'updated_at')
@@ -25,6 +27,7 @@ class User {
     required this.userType,
     this.pin,
     this.isActive,
+    this.primaryLanguage,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -35,16 +38,21 @@ class User {
 
 @JsonSerializable()
 class CreateUserRequest {
+  @JsonKey(name: 'full_name')
   final String fullName;
   final String nickname;
+  @JsonKey(name: 'user_type')
   final String userType;
   final String pin;
+  @JsonKey(name: 'primary_language')
+  final String? primaryLanguage;
 
   const CreateUserRequest({
     required this.fullName,
     required this.nickname,
     required this.userType,
     required this.pin,
+    this.primaryLanguage,
   });
 
   factory CreateUserRequest.fromJson(Map<String, dynamic> json) =>
@@ -54,16 +62,21 @@ class CreateUserRequest {
 
 @JsonSerializable()
 class UpdateUserRequest {
+  @JsonKey(name: 'full_name')
   final String? fullName;
   final String? nickname;
+  @JsonKey(name: 'user_type')
   final String? userType;
   final String? pin;
+  @JsonKey(name: 'primary_language')
+  final String? primaryLanguage;
 
   const UpdateUserRequest({
     this.fullName,
     this.nickname,
     this.userType,
     this.pin,
+    this.primaryLanguage,
   });
 
   factory UpdateUserRequest.fromJson(Map<String, dynamic> json) =>

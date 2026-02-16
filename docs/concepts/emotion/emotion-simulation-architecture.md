@@ -357,15 +357,14 @@ Implements emotional state persistence based on Kuppens et al. (2010) and Schere
   - Puccetti et al. (2021): "Leaky integrator neurons with accumulation and decay"
   - Scherer CPM: "Recursive appraisal process continuously updating results"
 
-**Configuration** (core.yaml):
+**Configuration** (`config/defaults/emotion.yaml`):
 ```yaml
-emotion:
-  inertia:
-    enabled: true
-    weight: 0.4              # Previous state influence (0.3-0.5 healthy)
-    reactivity: 0.6          # Current appraisal influence
-    decay_per_turn: 0.1      # Decay rate per conversation turn
-    supportive_context_bias: true  # Maintain supportive tone
+inertia:
+  enabled: true
+  weight: 0.4              # Previous state influence (0.3-0.5 healthy)
+  reactivity: 0.6          # Current appraisal influence
+  decay_per_turn: 0.1      # Decay rate per conversation turn
+  supportive_context_bias: true  # Maintain supportive tone
 ```
 
 ### 3. Emotion Regulation Component
@@ -412,10 +411,9 @@ emotion:
 - **Context Sensitivity**: Different regulation strategies for different situational contexts
 - **Multilingual Support**: Threat detection uses sentiment model output, not language-specific keywords
 
-**Configuration** (core.yaml):
+**Configuration** (`config/defaults/emotion.yaml`):
 ```yaml
-emotion:
-  regulation_strength: 0.3  # Base dampening (0.3 = 9% reduction)
+regulation_strength: 0.3  # Base dampening (0.3 = 9% reduction)
 ```
 
 **Scientific References**:

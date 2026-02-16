@@ -10,6 +10,7 @@ import json
 import uuid
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+import time
 
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
@@ -45,7 +46,7 @@ class ModelServiceClient:
         else:
             self.config = config
             
-        self.logger = get_logger("backend", "services.modelservice_client")
+        self.logger = get_logger("backend.services.modelservice_client")
         self.bus_client: Optional[MessageBusClient] = None
         
         # Track pending requests by correlation_id to route responses correctly
@@ -54,6 +55,11 @@ class ModelServiceClient:
         
         # Track which topics we've already subscribed to (subscribe once per topic)
         self.subscribed_topics: set = set()
+
+        # Cache health probe results to avoid frequent 2s timeouts during Studio polling
+        self._health_cache: Optional[Dict[str, Any]] = None
+        self._health_cache_at: float = 0.0
+        self._health_cache_ttl_s: float = 5.0
     
     async def check_modelservice_health(self) -> bool:
         """Check if the modelservice is running and responding.
@@ -62,27 +68,30 @@ class ModelServiceClient:
             bool: True if modelservice is healthy, False otherwise
         """
         try:
-            # Use a very short timeout for health check
-            original_timeout = self.config.timeout
-            self.config.timeout = 2.0
-            
-            # Send a simple ping request
+            now = time.time()
+            if self._health_cache is not None and (now - self._health_cache_at) <= self._health_cache_ttl_s:
+                return bool(self._health_cache.get('success', False))
+
+            # Use a very short timeout for health check.
+            # IMPORTANT: do not mutate self.config.timeout (shared state) because health probes
+            # can run concurrently with chat/completions requests.
             result = await self._send_request(
-                "modelservice/health/request/v1", 
-                "modelservice/health/response/v1", 
-                {"check": "ping"}
+                "modelservice/health/request/v1",
+                "modelservice/health/response/v1",
+                {"check": "ping"},
+                timeout_override=2.0,
             )
-            
-            # Restore original timeout
-            self.config.timeout = original_timeout
+
+            # Cache result for a short time to prevent repeated timeouts
+            self._health_cache = result
+            self._health_cache_at = time.time()
             return result.get('success', False)
         except TimeoutError:
-            self.logger.error("⚠️ MODELSERVICE HEALTH CHECK FAILED - Service appears to be offline")
-            print("⚠️ MODELSERVICE HEALTH CHECK FAILED - Service appears to be offline")
+            # Health check timeout - no logging (happens frequently during startup)
             return False
         except Exception as e:
-            self.logger.error(f"⚠️ MODELSERVICE HEALTH CHECK FAILED: {e}")
-            print(f"⚠️ MODELSERVICE HEALTH CHECK FAILED: {e}")
+            # Health check failed - only log errors, not warnings
+            self.logger.error(f"Modelservice health check failed: {e}")
             return False
     
     async def _ensure_connection(self):
@@ -98,10 +107,17 @@ class ModelServiceClient:
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
     
-    async def _send_request(self, request_topic: str, response_topic: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _send_request(
+        self,
+        request_topic: str,
+        response_topic: str,
+        data: Dict[str, Any],
+        timeout_override: Optional[float] = None,
+    ) -> Dict[str, Any]:
         """Send a request via ZMQ and wait for response."""
-        import time
         start_time = time.time()
+
+        timeout_seconds = timeout_override if timeout_override is not None else self.config.timeout
         
         # Add detailed debugging for embedding and chat requests
         is_embedding_request = "embeddings" in request_topic
@@ -171,6 +187,14 @@ class ModelServiceClient:
                 request_proto.temperature = data["options"]["temperature"]
             if "max_tokens" in data.get("options", {}):
                 request_proto.max_tokens = data["options"]["max_tokens"]
+            if "response_format" in data.get("options", {}):
+                # Serialize response_format to JSON string if it's a dict (JSON Schema)
+                response_format = data["options"]["response_format"]
+                if isinstance(response_format, dict):
+                    import json
+                    request_proto.response_format = json.dumps(response_format)
+                else:
+                    request_proto.response_format = response_format
         elif "embeddings" in request_topic:
             # Create EmbeddingsRequest protobuf
             protobuf_start = time.time()
@@ -204,10 +228,10 @@ class ModelServiceClient:
             request_proto.text = data.get("text", "")
         elif "health" in request_topic:
             request_proto = HealthRequest()
-        elif "models" in request_topic:
-            request_proto = ModelsRequest()
         elif "status" in request_topic:
             request_proto = StatusRequest()
+        elif "models" in request_topic:
+            request_proto = ModelsRequest()
         else:
             # Fallback to HealthRequest for unknown types
             request_proto = HealthRequest()
@@ -243,21 +267,17 @@ class ModelServiceClient:
                         from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
                         embeddings_response = EmbeddingsResponse()
                         if message.any_payload.Unpack(embeddings_response):
-                            # Commented out to reduce log volume
-                            # self.logger.debug(f"Successfully unpacked EmbeddingsResponse: success={embeddings_response.success}")
                             req_data.update({
                                 'success': embeddings_response.success,
                                 'error': embeddings_response.error if embeddings_response.HasField('error') else None
                             })
                             if embeddings_response.success and embeddings_response.embedding:
                                 req_data['data'] = {'embedding': list(embeddings_response.embedding)}
-                                # Commented out to reduce log volume
-                                # self.logger.debug(f"Extracted embedding with {len(embeddings_response.embedding)} dimensions")
                             req_event.set()
                         else:
                             self.logger.error("Failed to unpack EmbeddingsResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     # Handle NER responses
                     elif "ner" in response_topic:
                         from aico.proto.aico_modelservice_pb2 import NerResponse
@@ -265,10 +285,10 @@ class ModelServiceClient:
                         if message.any_payload.Unpack(ner_response):
                             # Commented out to reduce log volume
                             # self.logger.debug(f"Successfully unpacked NerResponse: success={ner_response.success}")
-                            response_data = {
+                            req_data.update({
                                 'success': ner_response.success,
                                 'error': ner_response.error if ner_response.HasField('error') else None
-                            }
+                            })
                             if ner_response.success:
                                 # Convert protobuf map to Python dict with confidence scores
                                 entities = {}
@@ -280,30 +300,30 @@ class ModelServiceClient:
                                             'text': entity_with_conf.text,
                                             'confidence': entity_with_conf.confidence
                                         })
-                                response_data['data'] = {'entities': entities}
+                                req_data['data'] = {'entities': entities}
                                 self.logger.debug(f"Extracted {len(entities)} entity types with confidence scores")
-                            response_received.set()
+                            req_event.set()
                         else:
                             self.logger.error("Failed to unpack NerResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     # Handle Intent Classification responses
                     elif "intent" in response_topic:
                         from aico.proto.aico_modelservice_pb2 import IntentClassificationResponse
                         intent_response = IntentClassificationResponse()
                         if message.any_payload.Unpack(intent_response):
                             self.logger.debug(f"Successfully unpacked IntentClassificationResponse: success={intent_response.success}")
-                            response_data = {
+                            req_data.update({
                                 'success': intent_response.success,
                                 'error': intent_response.error if intent_response.HasField('error') else None
-                            }
+                            })
                             if intent_response.success:
                                 # Extract intent classification data
                                 alternatives = []
                                 for alt in intent_response.alternative_predictions:
                                     alternatives.append((alt.intent, alt.confidence))
                                 
-                                response_data['data'] = {
+                                req_data['data'] = {
                                     'predicted_intent': intent_response.predicted_intent,
                                     'confidence': intent_response.confidence,
                                     'detected_language': intent_response.detected_language,
@@ -312,11 +332,11 @@ class ModelServiceClient:
                                     'metadata': dict(intent_response.metadata)
                                 }
                                 self.logger.debug(f"Intent classified as: {intent_response.predicted_intent} (confidence={intent_response.confidence:.2f})")
-                            response_received.set()
+                            req_event.set()
                         else:
                             self.logger.error("Failed to unpack IntentClassificationResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     # Handle Sentiment responses
                     elif "sentiment" in response_topic:
                         self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Received sentiment response!")
@@ -324,62 +344,110 @@ class ModelServiceClient:
                         sentiment_response = SentimentResponse()
                         if message.any_payload.Unpack(sentiment_response):
                             self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Successfully unpacked SentimentResponse: success={sentiment_response.success}")
-                            response_data = {
+                            req_data.update({
                                 'success': sentiment_response.success,
                                 'error': sentiment_response.error if sentiment_response.HasField('error') else None
-                            }
+                            })
                             if sentiment_response.success:
-                                response_data['data'] = {
+                                req_data['data'] = {
                                     'sentiment': sentiment_response.sentiment,
                                     'confidence': sentiment_response.confidence
                                 }
                                 self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Extracted sentiment: {sentiment_response.sentiment} (confidence: {sentiment_response.confidence:.3f})")
                             else:
                                 self.logger.error(f"🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Sentiment response failed: {sentiment_response.error}")
-                            response_received.set()
+                            req_event.set()
                         else:
                             self.logger.error("🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Failed to unpack SentimentResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
+                    # Handle Status responses
+                    elif "status" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import StatusResponse
+                        status_response = StatusResponse()
+                        if message.any_payload.Unpack(status_response):
+                            self.logger.debug(f"Successfully unpacked StatusResponse: success={status_response.success}")
+                            req_data.update({
+                                'success': status_response.success,
+                                'error': status_response.error if status_response.HasField('error') else None
+                            })
+                            if status_response.success and status_response.HasField('status'):
+                                req_data['loaded_models_count'] = status_response.status.loaded_models_count
+                                req_data['loaded_models'] = list(status_response.status.loaded_models)
+                                req_data['ollama_running'] = status_response.status.ollama_running
+                                req_data['version'] = status_response.status.version
+                                self.logger.debug(f"Extracted status: {status_response.status.loaded_models_count} loaded models")
+                            req_event.set()
+                        else:
+                            self.logger.error("Failed to unpack StatusResponse")
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
+                    # Handle Health responses
+                    elif "health" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import HealthResponse
+                        health_response = HealthResponse()
+                        if message.any_payload.Unpack(health_response):
+                            self.logger.debug(f"Successfully unpacked HealthResponse: success={health_response.success}")
+                            req_data.update({
+                                'success': health_response.success,
+                                'error': health_response.error if health_response.HasField('error') else None
+                            })
+                            if health_response.success:
+                                req_data['status'] = health_response.status
+                                if health_response.HasField('uptime_seconds'):
+                                    req_data['uptime_seconds'] = health_response.uptime_seconds
+                                    self.logger.debug(f"Extracted uptime: {health_response.uptime_seconds}s")
+                            req_event.set()
+                        else:
+                            self.logger.error("Failed to unpack HealthResponse")
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                     else:
                         # Handle completions/chat responses
                         from aico.proto.aico_modelservice_pb2 import CompletionsResponse
                         completions_response = CompletionsResponse()
                         if message.any_payload.Unpack(completions_response):
                             self.logger.debug(f"Successfully unpacked CompletionsResponse: success={completions_response.success}")
-                            response_data = {
+                            req_data.update({
                                 'success': completions_response.success,
                                 'error': completions_response.error if completions_response.HasField('error') else None
-                            }
+                            })
                             if completions_response.HasField('result'):
                                 # Check if result has message field (actual field name from logs)
                                 if hasattr(completions_response.result, 'message'):
-                                    response_data['data'] = {'content': completions_response.result.message.content}
+                                    req_data['data'] = {'content': completions_response.result.message.content}
                                     self.logger.debug(f"Extracted message content: {completions_response.result.message.content[:100]}...")
                                 elif hasattr(completions_response.result, 'content'):
-                                    response_data['data'] = {'content': completions_response.result.content}
+                                    req_data['data'] = {'content': completions_response.result.content}
                                     self.logger.debug(f"Extracted content: {completions_response.result.content[:100]}...")
                                 else:
                                     # Log available fields for debugging
                                     fields = [field.name for field in completions_response.result.DESCRIPTOR.fields]
                                     self.logger.debug(f"Available result fields: {fields}")
-                                    response_data['data'] = {'content': str(completions_response.result)}
+                                    req_data['data'] = {'content': str(completions_response.result)}
                             else:
                                 self.logger.debug("No result field in response")
-                            response_received.set()
+                            req_event.set()
                         else:
                             self.logger.error("Failed to unpack CompletionsResponse")
-                            response_data = {'success': False, 'error': 'Failed to unpack response'}
-                            response_received.set()
+                            req_data.update({'success': False, 'error': 'Failed to unpack response'})
+                            req_event.set()
                 else:
                     # Handle case where message doesn't have any_payload
                     self.logger.debug(f"Message structure: {type(message)}, fields: {dir(message)}")
-                    response_data = {'success': False, 'error': 'Invalid message format'}
-                    response_received.set()
+                    req_data.update({'success': False, 'error': 'Invalid message format'})
+                    req_event.set()
             except Exception as e:
                 self.logger.error(f"Error parsing response: {e}")
-                response_data = {'success': False, 'error': str(e)}
-                response_received.set()
+                # Try to update the correct request's data if we can find it
+                if message_correlation_id and message_correlation_id in self.pending_requests:
+                    req_event, req_data, _, _ = self.pending_requests[message_correlation_id]
+                    req_data.update({'success': False, 'error': str(e)})
+                    req_event.set()
+                else:
+                    # Fallback for unknown correlation_id
+                    response_data = {'success': False, 'error': str(e)}
+                    response_received.set()
         
         # Subscribe to response topic (only once per topic)
         subscription_start = time.time()
@@ -391,49 +459,37 @@ class ModelServiceClient:
             self.subscribed_topics.add(response_topic)
             subscription_time = time.time() - subscription_start
             
-            # Only log slow subscriptions
-            if is_embedding_request and subscription_time > 0.01:
-                print(f"⏱️ [MODELSERVICE_TIMING] SLOW subscription: {subscription_time:.4f}s")
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
-            elif is_chat_request:
-                self.logger.debug(f"💬 [CHAT_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
-        else:
-            # Already subscribed - reuse existing subscription
-            if is_embedding_request:
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Reusing existing subscription to {response_topic}")
-            elif is_chat_request:
-                self.logger.debug(f"💬 [CHAT_DEBUG] Reusing existing subscription to {response_topic}")
+            # Log slow subscriptions
+            if is_embedding_request and subscription_time > 0.1:
+                self.logger.warning(f"Slow subscription: {subscription_time:.2f}s")
         
         try:
-            # Send request with correlation ID
+            # Send request with correlation ID and reply_to for targeted responses
             publish_start = time.time()
             # Reduced publishing debug noise
-            await self.bus_client.publish(request_topic, request_proto, correlation_id=correlation_id)
+            await self.bus_client.publish(
+                request_topic, 
+                request_proto, 
+                correlation_id=correlation_id,
+                reply_to=response_topic
+            )
             publish_time = time.time() - publish_start
             
-            # Only log slow publishing
-            if is_embedding_request and publish_time > 0.01:
-                print(f"⏱️ [MODELSERVICE_TIMING] SLOW publish: {publish_time:.4f}s")
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Waiting for response with timeout={self.config.timeout}s")
-            elif is_chat_request:
-                self.logger.debug(f"💬 [CHAT_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
-                self.logger.debug(f"💬 [CHAT_DEBUG] Waiting for response with timeout={self.config.timeout}s")
+            # Log slow publishing
+            if is_embedding_request and publish_time > 0.1:
+                self.logger.warning(f"Slow publish: {publish_time:.2f}s")
             
             # Wait for response with timeout
             wait_start = time.time()
             # Reduced wait debug noise
-            await asyncio.wait_for(response_received.wait(), timeout=self.config.timeout)
+            await asyncio.wait_for(response_received.wait(), timeout=timeout_seconds)
             wait_time = time.time() - wait_start
             total_time = time.time() - start_time
-            # Only log slow responses
-            if is_embedding_request and wait_time > 0.2:
-                print(f"⏱️ [MODELSERVICE_TIMING] SLOW response: {wait_time:.4f}s wait")
+            # Log slow responses
+            if is_embedding_request and wait_time > 1.0:
+                self.logger.warning(f"Slow response: {wait_time:.2f}s")
             
-            if is_embedding_request:
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
-                self.logger.debug(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={wait_time:.4f}s")
-            elif is_chat_request:
+            if is_chat_request:
                 self.logger.debug(f"💬 [CHAT_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
                 self.logger.debug(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={wait_time:.4f}s")
             
@@ -441,22 +497,25 @@ class ModelServiceClient:
             
         except asyncio.TimeoutError:
             total_time = time.time() - start_time
-            error_msg = f"Request timed out after {self.config.timeout}s - MODELSERVICE MAY BE OFFLINE"
+            error_msg = f"Request timed out after {timeout_seconds}s - MODELSERVICE MAY BE OFFLINE"
+
+            is_health_request = "health" in request_topic
             
             if is_embedding_request:
                 print(f"⏱️ [MODELSERVICE_TIMING] ❌ TIMEOUT after {total_time:.4f}s!")
-                print(f"⏱️ [MODELSERVICE_TIMING] Breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                print(f"⏱️ [MODELSERVICE_TIMING] Breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={timeout_seconds:.4f}s")
                 self.logger.error(f"🔍 [ZMQ_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
-                self.logger.error(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                self.logger.error(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={timeout_seconds:.4f}s")
             elif is_chat_request:
                 self.logger.error(f"💬 [CHAT_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
-                self.logger.error(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                self.logger.error(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={timeout_seconds:.4f}s")
                 self.logger.error(f"💬 [CHAT_DEBUG] Model requested: {data.get('model', 'unknown')}. Check if this model is available in Ollama.")
             
-            self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
-            import time
-            timestamp = time.time()
-            print(f"⚠️ {error_msg} [{timestamp:.6f}]")
+            if is_health_request:
+                # Health probes are expected to fail when modelservice is offline; avoid warning spam
+                self.logger.debug(f"⚠️ {error_msg}")
+            else:
+                self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
             return {"success": False, "error": error_msg}
             
         except Exception as e:
@@ -749,6 +808,27 @@ class ModelServiceClient:
             request_data
         )
     
+    async def classify_intent(
+        self, 
+        text: str,
+        model: str = "intent_classification"
+    ) -> Dict[str, Any]:
+        """Classify intent using zero-shot NLI model."""
+        request_data = {
+            "text": text,
+            "model": model
+        }
+        
+        self.logger.debug(f"Intent classification request: text='{text[:50]}...'")
+        
+        result = await self._send_request(
+            AICOTopics.MODELSERVICE_INTENT_REQUEST,
+            AICOTopics.MODELSERVICE_INTENT_RESPONSE,
+            request_data
+        )
+        
+        return result
+    
     async def get_sentiment_analysis(self, text: str) -> Dict[str, Any]:
         """Get sentiment analysis from modelservice."""
         request_data = {
@@ -801,7 +881,7 @@ def get_modelservice_client(config_manager: ConfigurationManager) -> ModelServic
     
     if _modelservice_client is None:
         _modelservice_client = ModelServiceClient(config_manager)
-        logger = get_logger("backend", "services.modelservice_client")
+        logger = get_logger("backend.services.modelservice_client")
         logger.info("Created modelservice client - Note: this does not guarantee the modelservice is running")
         print("[i] Created modelservice client - use check_modelservice_health() to verify service availability")
     

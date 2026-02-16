@@ -14,7 +14,7 @@ import numpy as np
 from .metadata import EvolutionRecord, PreferenceSnapshot, ChangeType
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "memory.temporal.evolution")
+logger = get_logger("shared.memory.temporal.evolution")
 
 
 class TrendDirection(Enum):

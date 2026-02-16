@@ -17,7 +17,7 @@ The working memory system serves as AICO's active consciousness during conversat
 - **Recovery Mechanism**: Periodic snapshots enable seamless session restoration
 
 **Dual-Storage Architecture:**
-The system employs a two-tier approach for optimal performance and resilience. LMDB provides the high-performance ephemeral layer where active conversations live, enabling sub-millisecond context retrieval. Simultaneously, periodic snapshots flow to encrypted libSQL storage, ensuring conversations can resume seamlessly even after unexpected system restarts.
+The system employs a two-tier approach for optimal performance and resilience. LMDB provides the high-performance ephemeral layer where active conversations live, enabling sub-millisecond context retrieval. Simultaneously, periodic snapshots flow to encrypted PostgreSQL storage, ensuring conversations can resume seamlessly even after unexpected system restarts.
 
 ### Thread Resolution Strategy
 
@@ -44,23 +44,30 @@ shared/aico/ai/memory/
 ├── __init__.py          # Module exports and public interface
 ├── manager.py           # MemoryManager - central coordinator
 ├── working.py           # WorkingMemoryStore - LMDB session context
-├── episodic.py          # EpisodicMemoryStore - encrypted libSQL conversations
-├── semantic.py          # SemanticMemoryStore - ChromaDB knowledge base
-├── procedural.py        # ProceduralMemoryStore - libSQL user patterns
-├── context.py           # ContextAssembler - cross-tier context assembly
-└── consolidation.py     # MemoryConsolidator - background processing
+├── semantic.py          # SemanticMemoryStore - ChromaDB conversation segments + hybrid search
+├── bm25.py              # BM25 keyword ranking
+├── fusion.py            # Hybrid search fusion (RRF, weighted)
+├── context/             # Context assembly module
+│   ├── assembler.py
+│   ├── retrievers.py
+│   ├── scorers.py
+│   └── graph_ranking.py
+├── temporal/            # Temporal metadata + evolution tracking
+├── consolidation/       # Consolidation engine
+├── behavioral/          # Behavioral learning (skills, preferences, contextual bandit)
+└── unified/             # Placeholder for unified indexing (Phase 4)
 ```
 
 **Storage Technologies:**
 - **Working Memory**: LMDB for high-performance ephemeral storage
-- **Episodic Memory**: Encrypted libSQL for conversation history persistence  
-- **Semantic Memory**: ChromaDB for vector similarity search and knowledge storage
-- **Behavioral Learning**: Encrypted libSQL for user patterns and behavioral data
+- **Semantic Memory**: ChromaDB for vector similarity search over conversation segments
+- **Knowledge Graph**: Hybrid ChromaDB + PostgreSQL via `shared/aico/ai/knowledge_graph/`
+- **Behavioral Learning**: Encrypted PostgreSQL for skills, trajectories, and preference vectors
 
 **Integration Patterns:**
 The memory system integrates with AICO's architecture through established patterns:
 - **ConfigurationManager**: Unified configuration following AICO's hierarchical config system
-- **EncryptedLibSQLConnection**: Reuses existing encrypted database infrastructure
+- **PostgreSQL (via UnitOfWork)**: Reuses existing encrypted database infrastructure
 - **BaseAIProcessor**: Inherits from shared AI processing interface for message bus integration
 - **Logging**: Uses AICO's structured logging system with proper module identification
 
@@ -203,5 +210,3 @@ When advanced features become unavailable due to resource constraints or user pr
 - [Memory System Overview](overview.md) - Core memory architecture and components
 - [Memory Architecture](architecture.md) - Detailed four-tier memory system design
 - [Context Management](context-management.md) - Context assembly and relevance scoring
-- [Thread Resolution](thread-resolution.md) - Integrated thread resolution system
-- [Memory Roadmap](memory_roadmap.md) - Detailed implementation timeline and milestones

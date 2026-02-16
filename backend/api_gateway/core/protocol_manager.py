@@ -19,7 +19,7 @@ class ProtocolAdapter(ABC):
     def __init__(self, config: Dict[str, Any], dependencies: Dict[str, Any]):
         self.config = config
         self.dependencies = dependencies
-        self.logger = dependencies.get('logger', get_logger("backend", "api_gateway.protocol"))
+        self.logger = dependencies.get('logger', get_logger("backend.api_gateway.protocol"))
         self.running = False
     
     @property
@@ -57,7 +57,7 @@ class ProtocolAdapterManager:
     """
     
     def __init__(self, config: Dict[str, Any], logger=None):
-        self.logger = logger if logger else get_logger("backend", "api_gateway.protocol_manager")
+        self.logger = logger if logger else get_logger("backend.api_gateway.protocol_manager")
         self.config = config
         self.registered_adapters: Dict[str, Type[ProtocolAdapter]] = {}
         self.active_adapters: Dict[str, ProtocolAdapter] = {}
@@ -151,6 +151,10 @@ class ProtocolAdapterManager:
             elif hasattr(adapter, 'message_task') and adapter.message_task:
                 # ZeroMQ adapter - keep message task alive
                 self.adapter_tasks[name] = adapter.message_task
+            
+            # Store additional background tasks (e.g., WebSocket bus subscription)
+            if hasattr(adapter, 'bus_subscription_task') and adapter.bus_subscription_task:
+                self.adapter_tasks[f"{name}_bus_subscription"] = adapter.bus_subscription_task
             
             self.logger.info(f"Started protocol adapter: {name}")
             return True

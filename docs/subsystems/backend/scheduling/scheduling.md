@@ -86,7 +86,7 @@ flowchart TD
     
     subgraph "AICO Infrastructure"
         BUS["Message Bus<br/>(ZeroMQ)"]
-        DB["Encrypted Database<br/>(libSQL)"]
+        DB["Encrypted Database<br/>(PostgreSQL)"]
         LOG["Logging System"]
         CONFIG["Configuration"]
     end
@@ -146,7 +146,7 @@ The executor maintains a registry of running tasks to prevent duplicate executio
 
 ### TaskStore (Persistence)
 
-The `TaskStore` manages persistent storage of task definitions, execution history, and performance metrics using AICO's encrypted libSQL database. It ensures task schedules survive system restarts and provides comprehensive audit trails.
+The `TaskStore` manages persistent storage of task definitions, execution history, and performance metrics using AICO's encrypted PostgreSQL database. It ensures task schedules survive system restarts and provides comprehensive audit trails.
 
 Storage capabilities:
 - **Task persistence**: Stores task definitions with schedules and configuration
@@ -391,9 +391,9 @@ AICO's CLI provides comprehensive task management capabilities:
 
 The scheduler uses a simplified configuration approach to avoid YAML bloat while maintaining flexibility:
 
-#### 1. Core Scheduler Configuration (core.yaml)
+#### 1. Scheduler Configuration (`config/defaults/scheduler.yaml`)
 ```yaml
-# config/defaults/core.yaml - Only scheduler-level settings
+# config/defaults/scheduler.yaml - Scheduler-level settings
 scheduler:
   enabled: true
   max_concurrent_tasks: 10
@@ -442,7 +442,7 @@ INSERT INTO scheduled_tasks (task_id, schedule, config) VALUES
 This approach provides:
 - **KISS**: No complex multi-tier hierarchy
 - **DRY**: Configuration defaults co-located with task implementation
-- **Scalable**: Unlimited tasks without bloating core.yaml
+- **Scalable**: Unlimited tasks without bloating the scheduler YAML
 - **Maintainable**: Task owners control their configuration schema
 
 ## Database Schema
@@ -592,7 +592,7 @@ if config_manager.get("scheduler", {}).get("enabled", True):
 **Phase 1: Core Scheduler (Day 1-2)**
 - `backend/scheduler/core.py` - TaskScheduler, TaskRegistry, TaskExecutor classes
 - `backend/scheduler/tasks/base.py` - BaseTask abstract class
-- `backend/scheduler/storage.py` - TaskStore with libSQL integration
+- `backend/scheduler/storage.py` - TaskStore with PostgreSQL integration
 - Database schema addition to core schema
 
 **Phase 2: Built-in Tasks (Day 3)**

@@ -252,7 +252,7 @@ The Telemetry System integrates with:
 
 ### 1. Storage Implementation
 
-- Primary storage uses a dedicated `telemetry` table in libSQL
+- Primary storage uses a dedicated `telemetry` table in PostgreSQL
 - Time-series optimized schema for efficient querying
 - Automatic partitioning by time period
 - Configurable retention policies based on telemetry category and importance
@@ -354,7 +354,7 @@ class ZeroMQSpanProcessor:
 
 ### 3. Unified Storage (Planned)
 
-Will use existing libSQL database:
+Will use existing PostgreSQL database:
 
 ```sql
 CREATE TABLE telemetry (
@@ -367,7 +367,7 @@ CREATE TABLE telemetry (
 
 ### 4. Query API (Planned)
 
-Will provide telemetry query capabilities integrated with libSQL.
+Will provide telemetry query capabilities integrated with PostgreSQL.
 
 ### 5. Visualization Components (Planned)
 

@@ -14,10 +14,38 @@ import uuid
 import zmq
 import zmq.asyncio
 from .topics import AICOTopics
-from .logging_context import get_logging_context, create_infrastructure_logger
+from .logging import get_logger
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message as ProtobufMessage
+
+# Optional metrics import
+# Note: We have both bus.py (this file) and bus/ (directory) in aico.core
+# To avoid naming conflicts, we import using importlib
+try:
+    import importlib.util
+    import os
+    import sys
+    
+    # Load metrics module directly from the bus directory
+    metrics_path = os.path.join(os.path.dirname(__file__), 'bus', 'metrics.py')
+    spec = importlib.util.spec_from_file_location("bus_metrics", metrics_path)
+    metrics_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(metrics_module)
+    track_message = metrics_module.track_message
+    METRICS_AVAILABLE = True
+except Exception as e:
+    from contextlib import contextmanager
+    METRICS_AVAILABLE = False
+    
+    # No-op context manager when metrics aren't available
+    @contextmanager
+    def track_message(*args, **kwargs):
+        class NoOpTracker:
+            def set_success(self, success): pass
+            def set_message_count(self, count): pass
+            def set_processing_time(self, time_ms): pass
+        yield NoOpTracker()
 
 # Windows compatibility fix for ZeroMQ
 if platform.system() == "Windows":
@@ -90,6 +118,7 @@ class MessageBusClient:
         self.client_id = client_id
         self.zmq_context = zmq_context or zmq.asyncio.Context()
         self.config = config_manager
+        self._no_subscription_warned_topics: Set[str] = set()
         self.running = False
         self.connected = False
         self.subscriber = None
@@ -97,16 +126,13 @@ class MessageBusClient:
         self.subscriptions = {}
         self.encryption_enabled = True  # Default to encrypted
         
-        # Use infrastructure logger for logging transport components to prevent circular dependencies
-        if client_id in ["zmq_log_transport", "log_consumer"]:
-            self.logger = create_infrastructure_logger(f"bus.client.{client_id}")
-        else:
-            try:
-                self.logger = get_logger("shared", f"bus.client.{client_id}")
-            except RuntimeError:
-                # Logging not initialized yet - use fallback
-                import logging
-                self.logger = logging.getLogger(f"shared.bus.client.{client_id}")
+        # Get logger with service context
+        try:
+            self.logger = get_logger(f"shared.bus.client.{client_id}")
+        except RuntimeError:
+            # Logging not initialized yet - use fallback
+            import logging
+            self.logger = logging.getLogger(f"shared.bus.client.{client_id}")
         
         # ZeroMQ context and sockets
         self.context = self.zmq_context
@@ -132,7 +158,7 @@ class MessageBusClient:
             from aico.core.config import ConfigurationManager
             config = ConfigurationManager()
             config.initialize(lightweight=True)
-            bus_config = config.get("core.message_bus", {})
+            bus_config = config.get("message_bus", {})
             host = bus_config.get("host", "localhost")
             pub_port = bus_config.get("pub_port", 5555)
             sub_port = bus_config.get("sub_port", 5556)
@@ -163,9 +189,7 @@ class MessageBusClient:
             
             # Configure CurveZMQ encryption if enabled
             if self.encryption_enabled:
-                self.logger.info(f"[SECURITY] Client {self.client_id} configuring CurveZMQ authentication")
                 self._configure_curve_sockets()
-                self.logger.info(f"[SECURITY] Client {self.client_id} CurveZMQ configuration complete")
             else:
                 self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} connecting WITHOUT encryption")
             
@@ -176,12 +200,9 @@ class MessageBusClient:
             self.connected = True  # Add connected property for compatibility
             # Update broker_address to reflect actual connection
             self.broker_address = f"tcp://{host}:{pub_port}"
-            self.logger.info(f"Connected to message bus at {self.broker_address}")
             
             # Test connection with a small delay to catch immediate auth failures
             await asyncio.sleep(0.1)
-            if self.encryption_enabled:
-                self.logger.info(f"[SECURITY] Client {self.client_id} CurveZMQ authentication appears successful")
             
             # Start message processing loop
             asyncio.create_task(self._message_loop())
@@ -224,10 +245,6 @@ class MessageBusClient:
             self.public_key = client_public.decode('ascii')
             self.secret_key = client_secret.decode('ascii')
             
-            # Security logging: Key generation success
-            self.logger.info(f"[SECURITY] CurveZMQ encryption enabled for client: {self.client_id}")
-            self.logger.debug(f"[SECURITY] Client public key fingerprint: {self.public_key[:8]}...")
-            
         except Exception as e:
             # Security logging: Encryption setup failure
             self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption for {self.client_id}: {e}")
@@ -257,10 +274,6 @@ class MessageBusClient:
             self.subscriber.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
             self.subscriber.setsockopt_string(zmq.CURVE_SERVERKEY, broker_public_key)
             
-            # Security logging: Socket configuration success
-            self.logger.info(f"[SECURITY] CurveZMQ socket encryption configured for client {self.client_id}")
-            self.logger.debug(f"[SECURITY] Publisher and subscriber sockets secured with CurveZMQ")
-            
         except Exception as e:
             # Security logging: Socket configuration failure
             self.logger.error(f"[SECURITY] CRITICAL: Failed to configure CurveZMQ sockets for {self.client_id}: {e}")
@@ -289,62 +302,56 @@ class MessageBusClient:
         if not self.running:
             raise MessageBusError("Client not connected")
         
-        # Create message metadata
-        metadata = _create_message_metadata(
-            message_id=str(uuid.uuid4()),
-            source=self.client_id,
-            message_type=topic
-        )
-        
-        # Add optional attributes
-        if correlation_id:
-            metadata.attributes["correlation_id"] = correlation_id
-        if reply_to:
-            metadata.attributes["reply_to"] = reply_to
-        if attributes:
-            metadata.attributes.update(attributes)
-        
-        # Create AICO message envelope
-        from ..proto.aico_core_envelope_pb2 import AicoMessage
-        message = AicoMessage()
-        message.metadata.CopyFrom(metadata)
-        
-        # Pack payload into Any field
-        any_payload = ProtoAny()
-        any_payload.Pack(payload)
-        message.any_payload.CopyFrom(any_payload)
-        
-        # Serialize message
-        message_data = message.SerializeToString()
-        
-        # Send the message
-        await self.publisher.send_multipart([topic.encode('utf-8'), message_data])
-        
-        # Security logging: Message publication (disabled to prevent feedback loop)
-        # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
-        # self.logger.debug(f"Published {encryption_status} protobuf message to topic '{topic}': {metadata.message_id}")
-        # self.logger.debug(f"Message data length: {len(message_data)} bytes")
-        # Skip security warnings for infrastructure components to prevent feedback loops
-        if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
-            self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
-        
-        # Log potential authentication failures for encrypted connections
-        if self.encryption_enabled:
-            self.logger.debug(f"[SECURITY] Client {self.client_id} published encrypted message {metadata.message_id} to topic '{topic}'")
+        # Track message publication metrics with client context
+        with track_message(topic, client_id=self.client_id, direction="publish") as tracker:
+            # Create message metadata
+            metadata = _create_message_metadata(
+                message_id=str(uuid.uuid4()),
+                source=self.client_id,
+                message_type=topic
+            )
             
-            # Add a mechanism to detect if messages are being silently dropped
-            # Store message info for potential timeout detection
-            if not hasattr(self, '_published_messages'):
-                self._published_messages = {}
-            self._published_messages[metadata.message_id] = {
-                'topic': topic,
-                'timestamp': asyncio.get_event_loop().time(),
-                'client_id': self.client_id
-            }
-        
-        # Persist message if enabled
-        if self.persistence_enabled:
-            await self._persist_message(message)
+            # Add optional attributes
+            if correlation_id:
+                metadata.attributes["correlation_id"] = correlation_id
+            if reply_to:
+                metadata.attributes["reply_to"] = reply_to
+            if attributes:
+                metadata.attributes.update(attributes)
+            
+            # Create AICO message envelope
+            from ..proto.aico_core_envelope_pb2 import AicoMessage
+            message = AicoMessage()
+            message.metadata.CopyFrom(metadata)
+            
+            # Pack payload into Any field
+            any_payload = ProtoAny()
+            any_payload.Pack(payload)
+            message.any_payload.CopyFrom(any_payload)
+            
+            # Serialize message
+            message_data = message.SerializeToString()
+            
+            # Send the message
+            await self.publisher.send_multipart([topic.encode('utf-8'), message_data])
+            
+            # Metrics are automatically recorded by track_message context manager
+            # (duration and count are tracked automatically)
+            
+            # Security logging: Message publication (disabled to prevent feedback loop)
+            # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
+            # self.logger.debug(f"Published {encryption_status} protobuf message to topic '{topic}': {metadata.message_id}")
+            # self.logger.debug(f"Message data length: {len(message_data)} bytes")
+            # Skip security warnings for infrastructure components to prevent feedback loops
+            if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
+                self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
+            
+            # Encrypted message logging disabled to prevent log spam
+            # Messages are encrypted and working - no need to log every single one at DEBUG level
+            
+            # Persist message if enabled
+            if self.persistence_enabled:
+                await self._persist_message(message)
     
     async def subscribe(self, topic_pattern: str, callback: Callable[[AicoMessage], None]):
         """Subscribe to messages matching a topic pattern"""
@@ -383,9 +390,7 @@ class MessageBusClient:
                 if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
                     self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} received plaintext message on topic '{topic}'")
                 
-                # Log successful encrypted message reception
-                if self.encryption_enabled:
-                    self.logger.debug(f"[SECURITY] Client {self.client_id} received encrypted message on topic '{topic}'")
+                # Encrypted message reception - logging disabled to prevent spam
                 
                 # Deserialize protobuf message
                 from ..proto.aico_core_envelope_pb2 import AicoMessage
@@ -404,7 +409,12 @@ class MessageBusClient:
                 if matching_callback:
                     await self._invoke_callback(matching_callback, message)
                 else:
-                    self.logger.warning(f"No matching subscription found for topic: {topic}")
+                    # This can be very high-frequency in busy systems; log once per topic.
+                    if topic not in self._no_subscription_warned_topics:
+                        self._no_subscription_warned_topics.add(topic)
+                        self.logger.warning(f"No matching subscription found for topic: {topic}")
+                    else:
+                        self.logger.debug(f"No matching subscription found for topic: {topic}")
                         
             except Exception as e:
                 if self.running:
@@ -425,29 +435,19 @@ class MessageBusClient:
     
     async def _invoke_callback(self, callback, message):
         """Invoke callback with proper error handling"""
-        # Use infrastructure logging context for logging transport components
-        context = get_logging_context()
+        # Extract topic from message metadata for metrics
+        topic = message.metadata.message_type if message.metadata else "unknown"
+        source = message.metadata.source if message.metadata else "unknown"
         
-        # Check if this is an infrastructure component based on logger type
-        is_infrastructure = hasattr(self.logger, '__class__') and 'InfrastructureLogger' in str(type(self.logger))
-        
-        if is_infrastructure:
-            with context.infrastructure_logging(self.client_id):
-                try:
-                    if asyncio.iscoroutinefunction(callback):
-                        await callback(message)
-                    else:
-                        callback(message)
-                except Exception as e:
-                    self.logger.error(f"Error in message callback: {e}")
-        else:
-            try:
-                if asyncio.iscoroutinefunction(callback):
-                    await callback(message)
-                else:
-                    callback(message)
-            except Exception as e:
-                self.logger.error(f"Error in message callback: {e}")
+        # Track message processing metrics with context
+        with track_message(topic, client_id=self.client_id, direction="consume", source=source) as tracker:
+            # Invoke callback
+            if asyncio.iscoroutinefunction(callback):
+                await callback(message)
+            else:
+                callback(message)
+            
+            # Metrics are automatically recorded by track_message context manager
     
     async def _persist_message(self, message: AicoMessage):
         """Persist message using the provided handler (if persistence enabled)"""
@@ -474,22 +474,23 @@ class MessageBusClient:
 class MessageBusBroker:
     """Central message bus broker running in the backend service"""
     
-    def __init__(self, bind_address: str = "tcp://*:5555"):
-        self.bind_address = bind_address
-        self.logger = get_logger("shared", "bus.broker")
+    def __init__(self, config_manager: Optional[ConfigurationManager] = None):
+        """Initialize the broker with ZeroMQ sockets."""
+        self.config_manager = config_manager or ConfigurationManager()
+        self.config_manager.initialize(lightweight=True)
+        bus_config = self.config_manager.get("message_bus", {})
         
-        # Parse ports from config
-        from aico.core.config import ConfigurationManager
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        bus_config = config.get("core.message_bus", {})
+        # Get bind_address from config if not provided
+        self.bind_address = bus_config.get("broker_address", "tcp://*:5555")
         self.pub_port = bus_config.get("pub_port", 5555)
         self.sub_port = bus_config.get("sub_port", 5556)
         
         # Check if encryption is enabled
-        security_config = config.get("security", {})
+        security_config = self.config_manager.get("security", {})
         transport_config = security_config.get("transport", {})
         self.encryption_enabled = transport_config.get("message_bus_encryption", True)
+        
+        self.logger = get_logger("shared.bus.broker")
         
         # ZeroMQ context and sockets (use asyncio context for compatibility with async clients)
         import zmq.asyncio
@@ -534,8 +535,6 @@ class MessageBusBroker:
             self.backend.bind(f"tcp://*:{self.sub_port}")
             
             self.running = True
-            self.logger.debug(f"[BROKER] Sockets bound successfully, starting proxy...")
-            self.logger.info(f"Message bus broker started on {self.bind_address}")
             
             # Start proxy loop
             await self._start_proxy_task()
@@ -614,19 +613,12 @@ class MessageBusBroker:
     async def _setup_curve_authentication(self):
         """Setup CurveZMQ encryption for the broker using minimal in-memory approach"""
         try:
-            # Security logging: Authentication setup start
-            self.logger.info("[SECURITY] Setting up CurveZMQ encryption for message bus broker")
-            
             # Use shared static broker keys (same approach as working test)
             self.server_public_key = _get_shared_broker_public_key()
             self.server_secret_key = _get_shared_broker_secret_key()
             
-            # Get authorized client keys and log them for debugging
+            # Get authorized client keys
             authorized_clients = self._get_authorized_client_keys()
-            self.logger.info(f"[SECURITY] Broker CurveZMQ keypair loaded successfully")
-            self.logger.debug(f"[SECURITY] Broker public key fingerprint: {self.server_public_key[:8]}...")
-            self.logger.info(f"[SECURITY] Authorized clients: {list(authorized_clients.keys())}")
-            self.logger.info(f"[SECURITY] CurveZMQ encryption setup complete - all connections will be encrypted")
             
         except Exception as e:
             self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption: {e}")
@@ -650,9 +642,6 @@ class MessageBusBroker:
             self.backend.setsockopt_string(zmq.CURVE_PUBLICKEY, self.server_public_key)
             self.backend.setsockopt(zmq.CURVE_SERVER, 1)
             
-            self.logger.info("[SECURITY] CurveZMQ broker socket configuration completed")
-            self.logger.debug("[SECURITY] Frontend and backend sockets configured as CURVE servers")
-            
         except Exception as e:
             self.logger.error(f"[SECURITY] CRITICAL: Failed to configure CurveZMQ broker sockets: {e}")
             # NO PLAINTEXT FALLBACK - Fail securely
@@ -666,7 +655,6 @@ class MessageBusBroker:
         """Main proxy loop for forwarding messages"""
         try:
             #print(f"[BROKER PROXY] Starting async proxy: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
-            self.logger.info(f"Broker Proxy started: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
             
             # Brief delay to ensure sockets are ready
             await asyncio.sleep(0.1)

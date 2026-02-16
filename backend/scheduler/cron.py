@@ -6,7 +6,7 @@ task scheduling.
 """
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass
 
@@ -42,7 +42,7 @@ class CronParser:
     }
     
     def __init__(self, cache_size: int = 1000):
-        self.logger = get_logger("backend", "scheduler.cron_parser")
+        self.logger = get_logger("backend.scheduler.cron_parser")
         self._cache: Dict[str, Tuple[CronField, ...]] = {}
         self._cache_size = cache_size
     
@@ -198,7 +198,7 @@ class CronParser:
             Next datetime when expression matches, or None if error
         """
         if after is None:
-            after = datetime.now()
+            after = datetime.now(timezone.utc)
         
         try:
             # Start from next minute (cron precision is minutes)
@@ -226,6 +226,33 @@ class CronParser:
             return True
         except ValueError:
             return False
+    
+    def count_runs_in_period(self, cron_expr: str, start: datetime, end: datetime) -> int:
+        """Count how many times a cron expression would run in a time period
+        
+        Args:
+            cron_expr: Cron expression to evaluate
+            start: Start of period (inclusive)
+            end: End of period (exclusive)
+            
+        Returns:
+            Number of times the cron expression matches in the period
+        """
+        try:
+            count = 0
+            current = start.replace(second=0, microsecond=0)
+            
+            # Iterate through every minute in the period
+            while current < end:
+                if self.matches(cron_expr, current):
+                    count += 1
+                current += timedelta(minutes=1)
+            
+            return count
+            
+        except Exception as e:
+            self.logger.error(f"Error counting runs for '{cron_expr}': {e}")
+            return 0
     
     def clear_cache(self):
         """Clear the parsing cache"""

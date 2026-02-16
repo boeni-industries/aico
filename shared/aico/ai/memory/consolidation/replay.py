@@ -13,7 +13,7 @@ import numpy as np
 
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "memory.consolidation.replay")
+logger = get_logger("shared.memory.consolidation.replay")
 
 
 @dataclass

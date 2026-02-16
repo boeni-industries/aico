@@ -12,10 +12,11 @@ from datetime import datetime, timezone
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
+from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
 
-logger = get_logger("shared", "ai.knowledge_graph.fusion")
+logger = get_logger("shared.ai.knowledge_graph.fusion")
 
 
 class GraphFusion:
@@ -44,8 +45,11 @@ class GraphFusion:
         self.config = config
         
         # Get config settings
-        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
+        kg_config = config.get("memory.semantic.knowledge_graph", {})
         self.llm_timeout = kg_config.get("llm_timeout_seconds", 30.0)
+        
+        # Initialize JSON sanitizer for robust LLM response parsing
+        self.json_sanitizer = LLMJsonSanitizer(strict=False, log_repairs=True)
         
         logger.info("GraphFusion initialized")
     
@@ -176,7 +180,8 @@ class GraphFusion:
             
             # Update node
             existing_node.properties = merged_properties
-            existing_node.updated_at = datetime.now(timezone.utc).isoformat()
+            existing_node.confidence = max(existing_node.confidence, new_node.confidence)
+            existing_node.updated_at = datetime.now(timezone.utc)
             existing_node.confidence = max(existing_node.confidence, new_node.confidence)
             
             return existing_node
@@ -200,7 +205,7 @@ class GraphFusion:
         if is_temporal_update:
             # Mark existing node as historical
             existing_node.is_current = 0
-            existing_node.valid_until = datetime.now(timezone.utc).isoformat()
+            existing_node.valid_until = datetime.now(timezone.utc)
             
             # Create new node with updated properties
             updated_node = Node.create(
@@ -219,7 +224,7 @@ class GraphFusion:
         else:
             # Not temporal - just update properties
             existing_node.properties = resolved_properties
-            existing_node.updated_at = datetime.now(timezone.utc).isoformat()
+            existing_node.updated_at = datetime.now(timezone.utc)
             existing_node.confidence = max(existing_node.confidence, new_node.confidence)
             
             return existing_node
@@ -250,7 +255,7 @@ class GraphFusion:
             merged_properties = {**existing_edge.properties, **new_edge.properties}
             
             existing_edge.properties = merged_properties
-            existing_edge.updated_at = datetime.now(timezone.utc).isoformat()
+            existing_edge.updated_at = datetime.now(timezone.utc)
             existing_edge.confidence = max(existing_edge.confidence, new_edge.confidence)
             
             return existing_edge
@@ -272,7 +277,7 @@ class GraphFusion:
         if is_temporal_update:
             # Mark existing edge as historical
             existing_edge.is_current = 0
-            existing_edge.valid_until = datetime.now(timezone.utc).isoformat()
+            existing_edge.valid_until = datetime.now(timezone.utc)
             
             # Create new edge
             updated_edge = Edge.create(
@@ -288,7 +293,7 @@ class GraphFusion:
             return updated_edge
         else:
             existing_edge.properties = resolved_properties
-            existing_edge.updated_at = datetime.now(timezone.utc).isoformat()
+            existing_edge.updated_at = datetime.now(timezone.utc)
             existing_edge.confidence = max(existing_edge.confidence, new_edge.confidence)
             
             return existing_edge
@@ -459,14 +464,15 @@ Return valid JSON only."""
         return f"{edge.source_id}|{edge.relation_type}|{edge.target_id}"
     
     def _parse_json_response(self, text: str) -> Dict[str, Any]:
-        """Parse JSON response from LLM."""
-        try:
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-            
-            return json.loads(text.strip())
-        except Exception as e:
-            logger.warning(f"Failed to parse JSON response: {e}")
+        """Parse JSON response from LLM using robust sanitizer with automatic repair."""
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=dict,
+            return_objects=True
+        )
+        
+        if result.success:
+            return result.data
+        else:
+            logger.warning(f"Failed to parse JSON response after all repair strategies: {result.error}")
             return {}

@@ -12,24 +12,24 @@ from datetime import datetime
 from aico.core.logging import get_logger
 from .models import Skill, UserSkillConfidence
 
-logger = get_logger("shared", "memory.behavioral.skills")
+logger = get_logger("shared.memory.behavioral.skills")
 
 
 class SkillStore:
     """
     Manages skill library with CRUD operations.
     
-    Skills are stored in libSQL database. No vector search needed for small skill sets.
+    Skills are stored in PostgreSQL database via UoW pattern.
     """
     
-    def __init__(self, db_connection):
+    def __init__(self, uow_factory):
         """
         Initialize skill store.
         
         Args:
-            db_connection: Encrypted libSQL database connection
+            uow_factory: Unit of Work factory for PostgreSQL access
         """
-        self.db = db_connection
+        self.uow_factory = uow_factory
     
     async def create_skill(self, skill: Skill) -> Skill:
         """
@@ -41,23 +41,9 @@ class SkillStore:
         Returns:
             Created skill with timestamps
         """
-        self.db.execute(
-            """INSERT INTO skills (
-                skill_id, skill_name, skill_type, trigger_context,
-                procedure_template, dimension_vector, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                skill.skill_id,
-                skill.skill_name,
-                skill.skill_type,
-                json.dumps(skill.trigger_context),
-                skill.procedure_template,
-                json.dumps(skill.dimension_vector),
-                skill.created_at.isoformat(),
-                skill.updated_at.isoformat()
-            )
-        )
-        self.db.commit()
+        async with self.uow_factory() as uow:
+            await uow.ams_behavioral_skills.create(skill)
+            await uow.commit()
         
         logger.info(f"Created skill: {skill.skill_id}", extra={
             "skill_id": skill.skill_id,
@@ -68,207 +54,171 @@ class SkillStore:
     
     async def get_skill(self, skill_id: str) -> Optional[Skill]:
         """Get skill by ID."""
-        row = self.db.execute(
-            "SELECT * FROM skills WHERE skill_id = ?",
-            (skill_id,)
-        ).fetchone()
-        
-        if not row:
-            return None
-        
-        return Skill(
-            skill_id=row[0],
-            skill_name=row[1],
-            skill_type=row[2],
-            trigger_context=json.loads(row[3]),
-            procedure_template=row[4],
-            dimension_vector=json.loads(row[5]),
-            created_at=datetime.fromisoformat(row[6]),
-            updated_at=datetime.fromisoformat(row[7])
-        )
+        async with self.uow_factory() as uow:
+            return await uow.ams_behavioral_skills.get_by_id(skill_id)
     
     async def list_skills(
         self,
         skill_type: Optional[str] = None,
-        limit: int = 100
+        language: Optional[str] = None
     ) -> List[Skill]:
         """
-        List skills with optional filtering.
+        List skills with optional filters.
         
         Args:
-            skill_type: Filter by 'base' or 'user_created'
-            limit: Maximum number of skills to return
+            skill_type: Filter by skill type
+            language: Filter by supported language
             
         Returns:
-            List of skills
+            List of matching skills
         """
+        filters = {}
         if skill_type:
-            rows = self.db.execute(
-                "SELECT * FROM skills WHERE skill_type = ? LIMIT ?",
-                (skill_type, limit)
-            ).fetchall()
-        else:
-            rows = self.db.execute(
-                "SELECT * FROM skills LIMIT ?",
-                (limit,)
-            ).fetchall()
+            filters['skill_type'] = skill_type
         
-        return [
-            Skill(
-                skill_id=row[0],
-                skill_name=row[1],
-                skill_type=row[2],
-                trigger_context=json.loads(row[3]),
-                procedure_template=row[4],
-                dimension_vector=json.loads(row[5]),
-                created_at=datetime.fromisoformat(row[6]),
-                updated_at=datetime.fromisoformat(row[7])
-            )
-            for row in rows
-        ]
+        async with self.uow_factory() as uow:
+            skills = await uow.ams_behavioral_skills.list(filters=filters, limit=1000)
+        
+        # Filter by language if specified (done in Python since it's a JSON field)
+        if language:
+            skills = [s for s in skills if language in s.supported_languages]
+        
+        return skills
     
-    async def get_user_confidence(
+    async def update_skill(self, skill: Skill) -> Skill:
+        """Update existing skill."""
+        async with self.uow_factory() as uow:
+            await uow.ams_behavioral_skills.update(skill)
+            await uow.commit()
+        
+        logger.info(f"Updated skill: {skill.skill_id}")
+        return skill
+    
+    async def delete_skill(self, skill_id: str) -> bool:
+        """Delete skill by ID."""
+        async with self.uow_factory() as uow:
+            result = await uow.ams_behavioral_skills.delete(skill_id)
+            await uow.commit()
+        
+        logger.info(f"Deleted skill: {skill_id}")
+        return result
+    
+    async def initialize_base_skills(self) -> None:
+        """
+        Initialize base skills if they don't exist.
+        
+        This is called during MemoryManager initialization to ensure
+        the skill library has default skills available.
+        """
+        # Check if any skills exist
+        existing_skills = await self.list_skills()
+        
+        if existing_skills:
+            logger.info(f"Skill library already initialized with {len(existing_skills)} skills")
+            return
+        
+        logger.info("Initializing base skill library...")
+        
+        # Base skills can be added here if needed
+        # For now, we just log that initialization is complete
+        # Skills will be added dynamically as the system learns
+        
+        logger.info("Base skill library initialized (empty - skills will be learned)")
+    
+    async def get_user_skill_confidence(
         self,
         user_id: str,
         skill_id: str
     ) -> Optional[UserSkillConfidence]:
-        """Get user's confidence score for a skill."""
-        row = self.db.execute(
-            "SELECT * FROM user_skill_confidence WHERE user_id = ? AND skill_id = ?",
-            (user_id, skill_id)
-        ).fetchone()
-        
-        if not row:
-            return None
-        
-        return UserSkillConfidence(
-            user_id=row[0],
-            skill_id=row[1],
-            confidence_score=row[2],
-            usage_count=row[3],
-            positive_count=row[4],
-            negative_count=row[5],
-            last_used_at=datetime.fromisoformat(row[6]) if row[6] else None
-        )
+        """Get user's confidence level for a skill."""
+        async with self.uow_factory() as uow:
+            # Query user_skill_confidence table
+            confidences = await uow.user_skill_confidence.list(
+                filters={'user_id': user_id, 'skill_id': skill_id},
+                limit=1
+            )
+            return confidences[0] if confidences else None
     
-    async def update_confidence(
+    async def update_user_skill_confidence(
         self,
         user_id: str,
         skill_id: str,
-        reward: int,
-        learning_rate: float = 0.1
-    ) -> float:
+        confidence_score: float,
+        execution_count: int
+    ) -> UserSkillConfidence:
+        """Update user's confidence level for a skill."""
+        async with self.uow_factory() as uow:
+            # Check if exists
+            existing = await self.get_user_skill_confidence(user_id, skill_id)
+            
+            if existing:
+                existing.confidence_score = confidence_score
+                existing.execution_count = execution_count
+                existing.updated_at = datetime.utcnow()
+                await uow.user_skill_confidence.update(existing)
+                await uow.commit()
+                return existing
+            else:
+                # Create new
+                new_confidence = UserSkillConfidence(
+                    user_id=user_id,
+                    skill_id=skill_id,
+                    confidence_score=confidence_score,
+                    execution_count=execution_count,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                await uow.user_skill_confidence.create(new_confidence)
+                await uow.commit()
+                return new_confidence
+    
+    async def get_recommended_skills(
+        self,
+        context: Dict[str, Any],
+        user_id: str,
+        top_k: int = 5
+    ) -> List[Skill]:
         """
-        Update skill confidence based on feedback using adaptive EMA.
+        Get recommended skills based on context.
         
         Args:
-            user_id: User ID
-            skill_id: Skill ID
-            reward: Feedback reward (-1, 0, 1)
-            learning_rate: Base learning rate
+            context: Current context (intent, entities, etc.)
+            user_id: User ID for personalization
+            top_k: Number of skills to return
             
         Returns:
-            New confidence score
+            List of recommended skills
         """
-        # Get current confidence or create new entry
-        confidence = await self.get_user_confidence(user_id, skill_id)
+        # Get all skills
+        all_skills = await self.list_skills()
         
-        if not confidence:
-            # Initialize with default confidence
-            self.db.execute(
-                """INSERT INTO user_skill_confidence (
-                    user_id, skill_id, confidence_score, usage_count,
-                    positive_count, negative_count, last_used_at
-                ) VALUES (?, ?, 0.5, 0, 0, 0, ?)""",
-                (user_id, skill_id, datetime.utcnow().isoformat())
-            )
-            self.db.commit()
-            confidence = await self.get_user_confidence(user_id, skill_id)
+        # Score skills based on context match
+        scored_skills = []
+        for skill in all_skills:
+            score = self._score_skill_match(skill, context)
+            scored_skills.append((score, skill))
         
-        # Adaptive learning rate: faster for new skills, slower for established
-        feedback_count = confidence.positive_count + confidence.negative_count
-        alpha = learning_rate * (1.0 + 5.0 / (1.0 + feedback_count))
-        
-        # Calculate target based on reward
-        if reward > 0:
-            target = 1.0
-        elif reward < 0:
-            target = 0.0
-        else:
-            return confidence.confidence_score  # No update for neutral
-        
-        # EMA update
-        new_confidence = alpha * target + (1 - alpha) * confidence.confidence_score
-        new_confidence = max(0.2, min(0.9, new_confidence))  # Clamp to [0.2, 0.9]
-        
-        # Update database
-        self.db.execute(
-            """UPDATE user_skill_confidence
-               SET confidence_score = ?,
-                   usage_count = usage_count + 1,
-                   positive_count = positive_count + ?,
-                   negative_count = negative_count + ?,
-                   last_used_at = ?
-               WHERE user_id = ? AND skill_id = ?""",
-            (
-                new_confidence,
-                1 if reward > 0 else 0,
-                1 if reward < 0 else 0,
-                datetime.utcnow().isoformat(),
-                user_id,
-                skill_id
-            )
-        )
-        self.db.commit()
-        
-        logger.info(f"Updated confidence: {confidence.confidence_score:.3f} → {new_confidence:.3f}", extra={
-            "user_id": user_id,
-            "skill_id": skill_id,
-            "reward": reward,
-            "alpha": alpha
-        })
-        
-        return new_confidence
+        # Sort by score and return top_k
+        scored_skills.sort(reverse=True, key=lambda x: x[0])
+        return [skill for _, skill in scored_skills[:top_k]]
     
-    async def initialize_base_skills(self) -> None:
-        """Initialize foundational base skills if not present."""
-        base_skills = [
-            Skill(
-                skill_id="concise_response",
-                skill_name="Concise Response",
-                skill_type="base",
-                trigger_context={"intent": ["question", "request"], "time_of_day": "any"},
-                procedure_template="Provide brief, bullet-point answers. Be concise and direct.",
-                dimension_vector=[0.2, 0.5, 0.5, 0.5, 0.3, 0.8, 0.3, 0.3, 0.5, 0.5, 0.7, 0.5, 0.6, 0.4, 0.5, 0.5]
-            ),
-            Skill(
-                skill_id="detailed_explanation",
-                skill_name="Detailed Explanation",
-                skill_type="base",
-                trigger_context={"intent": ["learning", "understanding"], "time_of_day": "any"},
-                procedure_template="Provide in-depth explanations with examples. Be thorough and educational.",
-                dimension_vector=[0.8, 0.5, 0.7, 0.5, 0.5, 0.6, 0.8, 0.8, 0.5, 0.6, 0.6, 0.6, 0.8, 0.6, 0.5, 0.5]
-            ),
-            Skill(
-                skill_id="casual_chat",
-                skill_name="Casual Chat",
-                skill_type="base",
-                trigger_context={"intent": ["chat", "social"], "time_of_day": "any"},
-                procedure_template="Use informal, conversational tone. Be friendly and relaxed.",
-                dimension_vector=[0.6, 0.2, 0.3, 0.6, 0.7, 0.3, 0.5, 0.5, 0.6, 0.6, 0.5, 0.7, 0.6, 0.7, 0.5, 0.5]
-            ),
-            Skill(
-                skill_id="technical_precision",
-                skill_name="Technical Precision",
-                skill_type="base",
-                trigger_context={"intent": ["technical", "code"], "time_of_day": "any"},
-                procedure_template="Use formal, precise language for technical topics. Be accurate and detailed.",
-                dimension_vector=[0.5, 0.8, 0.9, 0.4, 0.2, 0.7, 0.7, 0.6, 0.4, 0.5, 0.8, 0.4, 0.7, 0.5, 0.5, 0.5]
-            )
-        ]
+    def _score_skill_match(self, skill: Skill, context: Dict[str, Any]) -> float:
+        """
+        Score how well a skill matches the current context.
         
-        for skill in base_skills:
-            existing = await self.get_skill(skill.skill_id)
-            if not existing:
-                await self.create_skill(skill)
-                logger.info(f"Initialized base skill: {skill.skill_id}")
+        Simple implementation - can be enhanced with ML later.
+        """
+        score = 0.0
+        
+        # Check if skill type matches intent
+        if context.get('intent') == skill.skill_type:
+            score += 1.0
+        
+        # Check if entities match trigger context
+        context_entities = set(context.get('entities', []))
+        trigger_entities = set(skill.trigger_context.get('entities', []))
+        
+        if context_entities & trigger_entities:
+            score += 0.5
+        
+        return score

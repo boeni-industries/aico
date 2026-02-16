@@ -1,0 +1,18 @@
+# Grafana Configuration
+# Log visualization and dashboards
+
+# Connection settings
+url: "http://127.0.0.1:3001"
+
+# Admin credentials (stored in keyring)
+admin_user: "admin"
+
+# Default settings
+default_org: "AICO"
+default_dashboard: "logs"
+
+# Features
+features:
+  enable_alerting: true
+  enable_explore: true
+  enable_dashboards: true

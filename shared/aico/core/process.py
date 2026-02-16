@@ -17,7 +17,7 @@ from datetime import datetime
 from .paths import AICOPaths
 from .logging import get_logger
 
-logger = get_logger("core", "process")
+logger = get_logger("core.process")
 
 
 class ProcessManager:
@@ -241,7 +241,7 @@ class ProcessManager:
             paths = AICOPaths()
             shutdown_file = paths.get_runtime_path() / "gateway.shutdown"
             
-            print(f"Creating shutdown file: {shutdown_file}")
+            logger.info(f"Creating shutdown file: {shutdown_file}")
             shutdown_file.touch()
             
             # Wait for process to exit
@@ -250,15 +250,15 @@ class ProcessManager:
             
             while time.time() - start_time < timeout:
                 if not proc.is_running():
-                    print("Gateway stopped via shutdown file")
+                    logger.info("Gateway stopped via shutdown file")
                     return True
                 time.sleep(0.5)
             
-            print("Shutdown file timeout, falling back to signal")
+            logger.warning("Shutdown file timeout, falling back to signal")
             return False
             
         except Exception as e:
-            print(f"Shutdown file failed: {e}")
+            logger.error(f"Shutdown file failed: {e}")
             return False
     
     def find_service_processes(self) -> list:

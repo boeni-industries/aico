@@ -40,7 +40,7 @@ graph TD
 
 ### Device Registry
 
-The device registry manages trusted device information and is stored in the primary libSQL database:
+The device registry manages trusted device information and is stored in the primary PostgreSQL database:
 
 ```python
 # Example device registry schema
@@ -56,7 +56,7 @@ CREATE TABLE device_registry (
 ```
 
 **Key Features**:
-- Stored in libSQL for consistency with primary data layer
+- Stored in PostgreSQL for consistency with primary data layer
 - Manages trusted device information and relationships
 - Handles encryption keys and trust relationships
 - Supports device-specific sync policies
@@ -67,9 +67,9 @@ Different data types have different synchronization policies based on their impo
 
 | Data Type | Sync Priority | Policy | Database |
 |-----------|---------------|--------|----------|
-| User Profile | High | Immediate sync | libSQL |
-| Conversation History | Medium | Configurable (Full/Summary) | libSQL |
-| Personality Model | High | Full sync | libSQL |
+| User Profile | High | Immediate sync | PostgreSQL |
+| Conversation History | Medium | Configurable (Full/Summary) | PostgreSQL |
+| Personality Model | High | Full sync | PostgreSQL |
 | Vector Embeddings | Low | On-demand sync | ChromaDB |
 | Analytics Data | Low | Periodic batch sync | DuckDB |
 | Media Files | Low | Thumbnail only by default | File system |

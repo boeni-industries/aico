@@ -98,7 +98,7 @@ final class MemoryAlbumNotifierProvider
 }
 
 String _$memoryAlbumNotifierHash() =>
-    r'8a75e928f95e262d4667359b1028375ca79fef9e';
+    r'23dc5c8f92593f1cd826ae7f9f7bceab45006819';
 
 /// Notifier for managing memories
 

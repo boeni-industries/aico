@@ -7,7 +7,6 @@ import requests
 import json
 import asyncio
 import websockets
-import sqlite3
 from pathlib import Path
 
 # Test credentials
@@ -26,7 +25,7 @@ def check_database_sessions():
         from aico.core.paths import AICOPaths
         
         config = ConfigurationManager()
-        db_config = config.get("database.libsql", {})
+        db_config = config.get("postgres", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
         
@@ -38,28 +37,26 @@ def check_database_sessions():
         
         # Use encrypted connection like CLI commands
         from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-        
+                
         key_manager = AICOKeyManager()
         
         # Try session-based authentication first
         cached_key = key_manager._get_cached_session()
         if cached_key:
             key_manager._extend_session()
-            db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
+            db_key = key_manager.derive_database_key(cached_key, "postgres", str(db_path))
         else:
             # Try stored key from keyring
             import keyring
             stored_key = keyring.get_password(key_manager.service_name, "master_key")
             if stored_key:
                 master_key = bytes.fromhex(stored_key)
-                db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+                db_key = key_manager.derive_database_key(master_key, "postgres", str(db_path))
             else:
                 print("No master key available for database access")
                 return
         
-        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
+        conn = None          
         # Query sessions
         cursor = conn.execute("""
             SELECT uuid, user_uuid, device_uuid, expires_at, is_active, session_type 
@@ -76,8 +73,7 @@ def check_database_sessions():
         else:
             print("  - No sessions found")
         
-        # No close() method needed for EncryptedLibSQLConnection
-        return len([s for s in sessions if s[4]])  # Count active sessions
+        # No close() method needed for None          return len([s for s in sessions if s[4]])  # Count active sessions
         
     except Exception as e:
         print(f"Database check failed: {e}")

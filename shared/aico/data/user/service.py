@@ -1,5 +1,5 @@
 """
-Core User Management Service
+Core User Management Service - PostgreSQL AsyncPG Version
 
 Provides user CRUD operations and authentication functionality
 that can be used by both CLI and API Gateway components.
@@ -17,7 +17,6 @@ bcrypt.__about__ = bcrypt
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
-from aico.data.libsql.connection import LibSQLConnection
 from passlib.context import CryptContext
 
 from .models import UserProfile, AuthenticationData
@@ -26,16 +25,17 @@ from .models import UserProfile, AuthenticationData
 class UserService:
     """
     Core user management service providing CRUD operations and authentication
+    Uses PostgreSQL with asyncpg for all database operations
     """
     
-    def __init__(self, db_connection: LibSQLConnection):
+    def __init__(self, db_connection: Any):
+        """Initialize UserService with asyncpg connection or pool"""
         self.db = db_connection
-        self.logger = get_logger("shared", "user_service.core")
+        self.logger = get_logger("shared.user_service.core")
         
         # Load configuration
         self.config = ConfigurationManager()
-        security_config = self.config.config_cache.get('security', {})
-        auth_config = security_config.get('authentication', {})
+        auth_config = self.config.get('security.authentication', {})
         
         # Password context for PIN hashing with configurable rounds
         bcrypt_rounds = auth_config.get('password_hashing', {}).get('rounds', 12)
@@ -54,7 +54,7 @@ class UserService:
     # User CRUD Operations
     
     async def create_user(self, full_name: str, nickname: str = None, 
-                         user_type: str = 'parent', pin: str = None) -> UserProfile:
+                         user_type: str = 'parent', pin: str = None, primary_language: str = "en") -> UserProfile:
         """
         Create a new user with optional PIN authentication
         
@@ -63,6 +63,7 @@ class UserService:
             nickname: Optional nickname
             user_type: User type (person)
             pin: Optional PIN for authentication
+            primary_language: Primary language preference (ISO/BCP-47 code, defaults to 'en')
             
         Returns:
             Created user profile
@@ -70,26 +71,26 @@ class UserService:
         user_uuid = str(uuid.uuid4())
         
         try:
-            with self.db.transaction():
+            async with self.db.transaction():
                 # Create user profile
-                self.db.execute("""
-                    INSERT INTO users (uuid, full_name, nickname, user_type, is_active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, (user_uuid, full_name, nickname, user_type, True))
+                await self.db.execute("""
+                    INSERT INTO user_profiles (uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, user_uuid, full_name, nickname, user_type, True, primary_language)
                 
                 # Create authentication record if PIN provided
                 if pin:
                     auth_uuid = str(uuid.uuid4())
                     pin_hash = self.pwd_context.hash(pin)
                     
-                    self.db.execute("""
-                        INSERT INTO user_authentication 
+                    await self.db.execute("""
+                        INSERT INTO auth_user_credentials 
                         (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
-                        VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """, (auth_uuid, user_uuid, pin_hash))
+                        VALUES ($1, $2, $3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, auth_uuid, user_uuid, pin_hash)
                 
                 self.logger.info("User created", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "create_user",
                     "topic": "user_management",
                     "zmq_topic": "logs",
@@ -103,7 +104,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to create user: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "create_user", 
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -123,16 +124,14 @@ class UserService:
             User profile or None if not found
         """
         try:
-            result = self.db.fetch_one("""
-                SELECT uuid, full_name, nickname, user_type, is_active, created_at, updated_at
-                FROM users WHERE uuid = ? AND is_active = TRUE
-            """, (user_uuid,))
+            result = await self.db.fetchrow("""
+                SELECT uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at
+                FROM user_profiles WHERE uuid = $1 AND is_active = TRUE
+            """, user_uuid)
             
             if not result:
                 return None
                 
-            from datetime import datetime
-            
             # Convert string timestamps to datetime objects if needed
             created_at = result['created_at']
             if isinstance(created_at, str):
@@ -148,13 +147,14 @@ class UserService:
                 nickname=result['nickname'],
                 user_type=result['user_type'],
                 is_active=result['is_active'],
+                primary_language=result.get('primary_language'),
                 created_at=created_at,
                 updated_at=updated_at
             )
             
         except Exception as e:
             self.logger.error(f"Failed to get user: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "get_user",
                 "topic": "user_management", 
                 "zmq_topic": "logs",
@@ -174,29 +174,31 @@ class UserService:
         Returns:
             Updated user profile or None if not found
         """
-        allowed_fields = {'full_name', 'nickname', 'user_type'}
+        allowed_fields = {'full_name', 'nickname', 'user_type', 'primary_language'}
         update_fields = {k: v for k, v in updates.items() if k in allowed_fields}
         
         if not update_fields:
             return await self.get_user(user_uuid)
         
         try:
-            # Build dynamic UPDATE query
-            set_clause = ", ".join([f"{field} = ?" for field in update_fields.keys()])
+            # Build dynamic UPDATE query with PostgreSQL placeholders
+            set_clause = ", ".join([f"{field} = ${i+1}" for i, field in enumerate(update_fields.keys())])
             values = list(update_fields.values()) + [user_uuid]
             
-            with self.db.transaction():
-                result = self.db.execute(f"""
-                    UPDATE users 
+            async with self.db.transaction():
+                result = await self.db.execute(f"""
+                    UPDATE user_profiles 
                     SET {set_clause}, updated_at = CURRENT_TIMESTAMP
-                    WHERE uuid = ? AND is_active = TRUE
-                """, values)
+                    WHERE uuid = ${len(update_fields) + 1} AND is_active = TRUE
+                """, *values)
                 
-                if result.rowcount == 0:
+                # asyncpg returns command tag like 'UPDATE 1'
+                rows_affected = int(result.split()[-1]) if result else 0
+                if rows_affected == 0:
                     return None
                 
                 self.logger.info("User updated", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "update_user",
                     "topic": "user_management",
                     "zmq_topic": "logs", 
@@ -208,7 +210,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to update user: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "update_user",
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -229,18 +231,20 @@ class UserService:
             True if user was deleted, False if not found
         """
         try:
-            with self.db.transaction():
-                result = self.db.execute("""
-                    UPDATE users 
+            async with self.db.transaction():
+                result = await self.db.execute("""
+                    UPDATE user_profiles 
                     SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
-                    WHERE uuid = ? AND is_active = TRUE
-                """, (user_uuid,))
+                    WHERE uuid = $1 AND is_active = TRUE
+                """, user_uuid)
                 
-                if result.rowcount == 0:
+                # asyncpg returns command tag like 'UPDATE 1'
+                rows_affected = int(result.split()[-1]) if result else 0
+                if rows_affected == 0:
                     return False
                 
                 self.logger.info("User deleted", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "delete_user",
                     "topic": "user_management",
                     "zmq_topic": "logs",
@@ -251,7 +255,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to delete user: {e}", extra={
-                "module": "user_service", 
+                "subsystem": "user_service", 
                 "function": "delete_user",
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -271,20 +275,20 @@ class UserService:
             True if user was permanently deleted, False if not found
         """
         try:
-            with self.db.transaction():
+            async with self.db.transaction():
                 # Check if user exists
-                user = self.db.execute("SELECT uuid FROM users WHERE uuid = ?", (user_uuid,)).fetchone()
+                user = await self.db.fetchrow("SELECT uuid FROM user_profiles WHERE uuid = $1", user_uuid)
                 if not user:
                     return False
                 
                 # Delete in order to respect foreign key constraints
-                self.db.execute("DELETE FROM user_relationships WHERE user_uuid = ? OR related_user_uuid = ?", (user_uuid, user_uuid))
-                self.db.execute("DELETE FROM access_policies WHERE user_uuid = ?", (user_uuid,))
-                self.db.execute("DELETE FROM user_authentication WHERE user_uuid = ?", (user_uuid,))
-                self.db.execute("DELETE FROM users WHERE uuid = ?", (user_uuid,))
+                await self.db.execute("DELETE FROM user_relationships WHERE user_uuid = $1 OR related_user_uuid = $1", user_uuid)
+                await self.db.execute("DELETE FROM auth_access_policies WHERE user_uuid = $1", user_uuid)
+                await self.db.execute("DELETE FROM auth_user_credentials WHERE user_uuid = $1", user_uuid)
+                await self.db.execute("DELETE FROM user_profiles WHERE uuid = $1", user_uuid)
                 
                 self.logger.warning("User permanently deleted", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "hard_delete_user",
                     "topic": "user_management",
                     "zmq_topic": "logs",
@@ -296,7 +300,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to permanently delete user: {e}", extra={
-                "module": "user_service", 
+                "subsystem": "user_service", 
                 "function": "hard_delete_user",
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -318,16 +322,16 @@ class UserService:
             True if PIN was set successfully, False if old PIN verification failed
         """
         try:
-            with self.db.transaction():
+            async with self.db.transaction():
                 # Check if user exists
                 user = await self.get_user(user_uuid)
                 if not user:
                     raise ValueError(f"User not found: {user_uuid}")
                 
                 # Check if user already has authentication data
-                auth_data = self.db.execute("""
-                    SELECT pin_hash FROM user_authentication WHERE user_uuid = ?
-                """, (user_uuid,)).fetchone()
+                auth_data = await self.db.fetchrow("""
+                    SELECT pin_hash FROM auth_user_credentials WHERE user_uuid = $1
+                """, user_uuid)
                 
                 # If user has existing PIN, verify old PIN
                 if auth_data and auth_data['pin_hash']:
@@ -336,7 +340,7 @@ class UserService:
                     
                     if not self.pwd_context.verify(old_pin, auth_data['pin_hash']):
                         self.logger.warning("Failed PIN update attempt", extra={
-                            "module": "user_service",
+                            "subsystem": "user_service",
                             "function": "set_pin",
                             "topic": "authentication",
                             "zmq_topic": "logs",
@@ -350,21 +354,20 @@ class UserService:
                 
                 # Update or insert authentication data
                 if auth_data:
-                    self.db.execute("""
-                        UPDATE user_authentication 
-                        SET pin_hash = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE user_uuid = ?
-                    """, (pin_hash, user_uuid))
+                    await self.db.execute("""
+                        UPDATE auth_user_credentials 
+                        SET pin_hash = $1, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_uuid = $2
+                    """, pin_hash, user_uuid)
                 else:
-                    import uuid as uuid_lib
-                    auth_uuid = str(uuid_lib.uuid4())
-                    self.db.execute("""
-                        INSERT INTO user_authentication (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
-                        VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """, (auth_uuid, user_uuid, pin_hash))
+                    auth_uuid = str(uuid.uuid4())
+                    await self.db.execute("""
+                        INSERT INTO auth_user_credentials (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
+                        VALUES ($1, $2, $3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, auth_uuid, user_uuid, pin_hash)
                 
                 self.logger.info("User PIN updated", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "set_pin",
                     "topic": "authentication",
                     "zmq_topic": "logs",
@@ -376,8 +379,71 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to set PIN: {e}", extra={
-                "module": "user_service", 
+                "subsystem": "user_service", 
                 "function": "set_pin",
+                "topic": "authentication",
+                "zmq_topic": "logs",
+                "user_uuid": user_uuid,
+                "error": str(e)
+            })
+            raise
+    
+    async def force_set_pin(self, user_uuid: str, new_pin: str) -> bool:
+        """
+        Force set user PIN without old PIN verification (admin operation)
+        Requires authenticated CLI session for security
+        
+        Args:
+            user_uuid: User UUID
+            new_pin: New PIN to set
+            
+        Returns:
+            True if PIN was set successfully
+        """
+        try:
+            async with self.db.transaction():
+                # Check if user exists
+                user = await self.get_user(user_uuid)
+                if not user:
+                    raise ValueError(f"User not found: {user_uuid}")
+                
+                # Hash new PIN
+                pin_hash = self.pwd_context.hash(new_pin)
+                
+                # Check if user already has authentication data
+                auth_data = await self.db.fetchrow("""
+                    SELECT pin_hash FROM auth_user_credentials WHERE user_uuid = $1
+                """, user_uuid)
+                
+                # Update or insert authentication data
+                if auth_data:
+                    await self.db.execute("""
+                        UPDATE auth_user_credentials 
+                        SET pin_hash = $1, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_uuid = $2
+                    """, pin_hash, user_uuid)
+                else:
+                    auth_uuid = str(uuid.uuid4())
+                    await self.db.execute("""
+                        INSERT INTO auth_user_credentials (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
+                        VALUES ($1, $2, $3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, auth_uuid, user_uuid, pin_hash)
+                
+                self.logger.info("User PIN force reset", extra={
+                    "subsystem": "user_service",
+                    "function": "force_set_pin",
+                    "topic": "authentication",
+                    "zmq_topic": "logs",
+                    "user_uuid": user_uuid,
+                    "action": "pin_force_reset"
+                })
+                
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Failed to force set PIN: {e}", extra={
+                "subsystem": "user_service", 
+                "function": "force_set_pin",
                 "topic": "authentication",
                 "zmq_topic": "logs",
                 "user_uuid": user_uuid,
@@ -401,26 +467,27 @@ class UserService:
             # Build WHERE clause based on filters
             where_conditions = []
             params = []
+            param_count = 0
             
             if not include_inactive:
                 where_conditions.append("is_active = TRUE")
             
             if user_type:
-                where_conditions.append("user_type = ?")
+                param_count += 1
+                where_conditions.append(f"user_type = ${param_count}")
                 params.append(user_type)
             
             where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+            param_count += 1
             params.append(limit)
             
-            results = self.db.fetch_all(f"""
-                SELECT uuid, full_name, nickname, user_type, is_active, created_at, updated_at
-                FROM users 
+            results = await self.db.fetch(f"""
+                SELECT uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at
+                FROM user_profiles 
                 {where_clause}
                 ORDER BY created_at DESC
-                LIMIT ?
-            """, tuple(params))
-            
-            from datetime import datetime
+                LIMIT ${param_count}
+            """, *params)
             
             users = []
             for row in results:
@@ -439,6 +506,7 @@ class UserService:
                     nickname=row['nickname'],
                     user_type=row['user_type'],
                     is_active=row['is_active'],
+                    primary_language=row.get('primary_language'),
                     created_at=created_at,
                     updated_at=updated_at
                 ))
@@ -447,7 +515,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to list users: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "list_users", 
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -476,10 +544,10 @@ class UserService:
             if not user:
                 return {"success": False, "error": "User not found"}
             
-            auth_data = self.db.fetch_one("""
+            auth_data = await self.db.fetchrow("""
                 SELECT uuid, pin_hash, failed_attempts, locked_until, last_login
-                FROM user_authentication WHERE user_uuid = ?
-            """, (user_uuid,))
+                FROM auth_user_credentials WHERE user_uuid = $1
+            """, user_uuid)
             
             if not auth_data:
                 return {"success": False, "error": "No authentication configured"}
@@ -503,14 +571,14 @@ class UserService:
                 if failed_attempts >= self.max_failed_attempts:
                     locked_until = datetime.now() + timedelta(minutes=self.lockout_duration_minutes)
                 
-                self.db.execute("""
-                    UPDATE user_authentication 
-                    SET failed_attempts = ?, locked_until = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE user_uuid = ?
-                """, (failed_attempts, locked_until.isoformat() if locked_until else None, user_uuid))
+                await self.db.execute("""
+                    UPDATE auth_user_credentials 
+                    SET failed_attempts = $1, locked_until = $2, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_uuid = $3
+                """, failed_attempts, locked_until.isoformat() if locked_until else None, user_uuid)
                 
                 self.logger.warning("Authentication failed", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "authenticate_user",
                     "topic": "authentication",
                     "zmq_topic": "logs",
@@ -527,14 +595,14 @@ class UserService:
                 }
             
             # Successful authentication - reset failed attempts
-            self.db.execute("""
-                UPDATE user_authentication 
+            await self.db.execute("""
+                UPDATE auth_user_credentials 
                 SET failed_attempts = 0, locked_until = NULL, last_login = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-                WHERE user_uuid = ?
-            """, (user_uuid,))
+                WHERE user_uuid = $1
+            """, user_uuid)
             
             self.logger.info("User authenticated successfully", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "authenticate_user",
                 "topic": "authentication",
                 "zmq_topic": "logs",
@@ -550,7 +618,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Authentication error: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "authenticate_user",
                 "topic": "authentication", 
                 "zmq_topic": "logs",
@@ -577,30 +645,30 @@ class UserService:
             
             pin_hash = self.pwd_context.hash(new_pin)
             
-            with self.db.transaction():
+            async with self.db.transaction():
                 # Check if authentication record exists
-                existing = self.db.fetch_one("""
-                    SELECT uuid FROM user_authentication WHERE user_uuid = ?
-                """, (user_uuid,))
+                existing = await self.db.fetchrow("""
+                    SELECT uuid FROM auth_user_credentials WHERE user_uuid = $1
+                """, user_uuid)
                 
                 if existing:
                     # Update existing
-                    self.db.execute("""
-                        UPDATE user_authentication 
-                        SET pin_hash = ?, failed_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
-                        WHERE user_uuid = ?
-                    """, (pin_hash, user_uuid))
+                    await self.db.execute("""
+                        UPDATE auth_user_credentials 
+                        SET pin_hash = $1, failed_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_uuid = $2
+                    """, pin_hash, user_uuid)
                 else:
                     # Create new
                     auth_uuid = str(uuid.uuid4())
-                    self.db.execute("""
-                        INSERT INTO user_authentication 
+                    await self.db.execute("""
+                        INSERT INTO auth_user_credentials 
                         (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
-                        VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """, (auth_uuid, user_uuid, pin_hash))
+                        VALUES ($1, $2, $3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, auth_uuid, user_uuid, pin_hash)
                 
                 self.logger.info("User PIN updated", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "set_user_pin",
                     "topic": "authentication",
                     "zmq_topic": "logs",
@@ -611,7 +679,7 @@ class UserService:
                 
         except Exception as e:
             self.logger.error(f"Failed to set user PIN: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "set_user_pin",
                 "topic": "authentication",
                 "zmq_topic": "logs", 
@@ -631,15 +699,17 @@ class UserService:
             True if user was unlocked
         """
         try:
-            result = self.db.execute("""
-                UPDATE user_authentication 
+            result = await self.db.execute("""
+                UPDATE auth_user_credentials 
                 SET failed_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
-                WHERE user_uuid = ?
-            """, (user_uuid,))
+                WHERE user_uuid = $1
+            """, user_uuid)
             
-            if result.rowcount > 0:
+            # asyncpg returns command tag like 'UPDATE 1'
+            rows_affected = int(result.split()[-1]) if result else 0
+            if rows_affected > 0:
                 self.logger.info("User unlocked", extra={
-                    "module": "user_service",
+                    "subsystem": "user_service",
                     "function": "unlock_user",
                     "topic": "authentication",
                     "zmq_topic": "logs",
@@ -651,7 +721,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to unlock user: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "unlock_user", 
                 "topic": "authentication",
                 "zmq_topic": "logs",
@@ -671,24 +741,24 @@ class UserService:
             stats = {}
             
             # Total users
-            result = self.db.fetch_one("SELECT COUNT(*) as total FROM users WHERE is_active = TRUE")
+            result = await self.db.fetchrow("SELECT COUNT(*) as total FROM user_profiles WHERE is_active = TRUE")
             stats['total_users'] = result['total']
             
             # Users by type
-            results = self.db.fetch_all("""
+            results = await self.db.fetch("""
                 SELECT user_type, COUNT(*) as count 
-                FROM users WHERE is_active = TRUE 
+                FROM user_profiles WHERE is_active = TRUE 
                 GROUP BY user_type
             """)
             stats['users_by_type'] = {row['user_type']: row['count'] for row in results}
             
             # Authentication stats
-            result = self.db.fetch_one("""
+            result = await self.db.fetchrow("""
                 SELECT 
                     COUNT(*) as total_with_auth,
-                    SUM(CASE WHEN locked_until IS NOT NULL AND locked_until > datetime('now') THEN 1 ELSE 0 END) as locked_accounts
-                FROM user_authentication ua
-                JOIN users u ON ua.user_uuid = u.uuid
+                    SUM(CASE WHEN locked_until IS NOT NULL AND locked_until > CURRENT_TIMESTAMP THEN 1 ELSE 0 END) as locked_accounts
+                FROM auth_user_credentials ua
+                JOIN user_profiles u ON ua.user_uuid = u.uuid
                 WHERE u.is_active = TRUE
             """)
             stats['authentication'] = {
@@ -700,7 +770,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to get user stats: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "get_user_stats",
                 "topic": "user_management",
                 "zmq_topic": "logs",
@@ -719,10 +789,10 @@ class UserService:
             Dictionary with authentication data or None if not found
         """
         try:
-            result = self.db.fetch_one("""
+            result = await self.db.fetchrow("""
                 SELECT pin_hash, failed_attempts, locked_until, last_login, created_at, updated_at
-                FROM user_authentication WHERE user_uuid = ?
-            """, (user_uuid,))
+                FROM auth_user_credentials WHERE user_uuid = $1
+            """, user_uuid)
             
             if not result:
                 return None
@@ -738,7 +808,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to get user authentication: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "get_user_authentication",
                 "topic": "authentication",
                 "zmq_topic": "logs",
@@ -758,17 +828,17 @@ class UserService:
             List of relationship dictionaries
         """
         try:
-            results = self.db.fetch_all("""
+            results = await self.db.fetch("""
                 SELECT 
                     ur.relationship_type,
                     ur.related_user_uuid,
                     u.full_name as related_user_name,
                     ur.created_at
                 FROM user_relationships ur
-                JOIN users u ON ur.related_user_uuid = u.uuid
-                WHERE ur.user_uuid = ? AND u.is_active = TRUE
+                JOIN user_profiles u ON ur.related_user_uuid = u.uuid
+                WHERE ur.user_uuid = $1 AND u.is_active = TRUE
                 ORDER BY ur.created_at DESC
-            """, (user_uuid,))
+            """, user_uuid)
             
             return [
                 {
@@ -782,7 +852,7 @@ class UserService:
             
         except Exception as e:
             self.logger.error(f"Failed to get user relationships: {e}", extra={
-                "module": "user_service",
+                "subsystem": "user_service",
                 "function": "get_user_relationships",
                 "topic": "user_management",
                 "zmq_topic": "logs",

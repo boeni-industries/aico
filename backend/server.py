@@ -22,7 +22,7 @@ from aico.core.logging import get_logger
 from aico.core.process import ServiceContext
 from aico.core.config import ConfigurationManager
 
-logger = get_logger("backend", "server")
+logger = get_logger("backend.server")
 
 
 class AICOServer:
@@ -243,12 +243,8 @@ async def run_server_async(app: FastAPI, config_manager, detach: bool = True):
         detach: Whether to run in background mode
     """
     # Get host and port from configuration
-    core_config = config_manager.config_cache.get('core', {})
-    api_gateway_config = core_config.get('api_gateway', {})
-    rest_config = api_gateway_config.get('rest', {})
-    
-    host = rest_config.get('host', '127.0.0.1')
-    port = rest_config.get('port', 8771)
+    host = config_manager.get("api_gateway.rest.host", "127.0.0.1")
+    port = config_manager.get("api_gateway.rest.port", 8771)
     
     logger.info("Using simplified single FastAPI app architecture")
     

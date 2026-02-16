@@ -164,7 +164,7 @@ def test_db():
 
 #### Database Testing Strategy
 
-**Unit Tests** use in-memory SQLite for maximum speed and isolation.
+**Unit Tests** use in-memory PostgreSQL for maximum speed and isolation.
 
 **Integration Tests** use dedicated test database instances with controlled test data that mirrors production schema.
 

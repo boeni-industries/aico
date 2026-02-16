@@ -378,7 +378,7 @@ class MemoryAlbumRepository {
     DateTime? endDate,
     bool favoritesOnly = false,
   }) async {
-    // Query local SQLite database
+    // Query local PostgreSQL database
     // Fallback to API if not cached
   }
   

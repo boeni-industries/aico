@@ -257,6 +257,97 @@ class ScenarioLibrary:
             tests_entity_extraction=True,
             difficulty_level="hard"
         )
+
+        # Correction Retention Test
+        self.scenarios["correction_retention_test"] = ConversationScenario(
+            name="correction_retention_test",
+            description="Tests whether corrections override prior facts and remain stable across subsequent turns",
+            conversation_turns=[
+                ConversationTurn(
+                    user_message="Quick intro: my name is Michael.",
+                    expected_entities={"PERSON": ["Michael"]},
+                    expected_context_elements=["user_name_michael"],
+                    validation_rules=["should_remember_user_name"],
+                    thread_expectation="new"
+                ),
+                ConversationTurn(
+                    user_message="Small correction: actually, my name is Daniel.",
+                    expected_entities={"PERSON": ["Daniel"]},
+                    expected_context_elements=["user_name_daniel"],
+                    validation_rules=[],
+                    thread_expectation="continue"
+                ),
+                ConversationTurn(
+                    user_message="What is my name?",
+                    expected_entities={},
+                    expected_context_elements=["user_name_daniel"],
+                    validation_rules=[],
+                    thread_expectation="continue"
+                ),
+                ConversationTurn(
+                    user_message="And just to be sure: what did I say my name was at first?",
+                    expected_entities={},
+                    expected_context_elements=["user_name_michael"],
+                    validation_rules=[],
+                    thread_expectation="continue"
+                )
+            ],
+            success_criteria={
+                "context_adherence": 0.80,
+                "knowledge_retention": 0.85,
+                "overall_score": 0.80
+            },
+            tags=["working_memory", "corrections", "stability"],
+            tests_working_memory=True,
+            tests_semantic_memory=False,
+            tests_fact_extraction=False,
+            tests_entity_extraction=False,
+            tests_conversation_strength=True,
+            estimated_duration_minutes=3,
+            difficulty_level="medium"
+        )
+
+        # Distractor Resistance Test
+        self.scenarios["distractor_resistance_test"] = ConversationScenario(
+            name="distractor_resistance_test",
+            description="Tests whether the assistant stays anchored to the latest user intent and resists earlier topic attractors",
+            conversation_turns=[
+                ConversationTurn(
+                    user_message="Write 2 short sentences describing a cosmic flame in a dark void.",
+                    expected_entities={},
+                    expected_context_elements=["poetic_cosmic_flame"],
+                    validation_rules=[],
+                    thread_expectation="new"
+                ),
+                ConversationTurn(
+                    user_message="New topic: give me a concise checklist for my first morning at a new software engineering job.",
+                    expected_entities={"SKILL": ["software engineering"]},
+                    expected_context_elements=["practical_checklist"],
+                    validation_rules=[],
+                    thread_expectation="continue"
+                ),
+                ConversationTurn(
+                    user_message="Do not mention flames/cosmos/darkness/void. List the top 5 things I should do that morning.",
+                    expected_entities={},
+                    expected_context_elements=["practical_checklist"],
+                    validation_rules=[],
+                    thread_expectation="continue"
+                )
+            ],
+            success_criteria={
+                "context_adherence": 0.80,
+                "conversation_relevancy": 0.85,
+                "overall_score": 0.80
+            },
+            tags=["working_memory", "drift", "latest_turn"],
+            tests_working_memory=True,
+            tests_semantic_memory=False,
+            tests_fact_extraction=False,
+            tests_entity_extraction=False,
+            tests_conversation_strength=True,
+            estimated_duration_minutes=3,
+            difficulty_level="medium"
+        )
         
         # Semantic Memory Quality Test
         self.scenarios["semantic_memory_test"] = ConversationScenario(
@@ -591,9 +682,11 @@ class ScenarioLibrary:
         self.scenarios[scenario.name] = scenario
         
     def get_default_multi_scenario_set(self) -> List[str]:
-        """Get the default set of 3 diverse scenarios for multi-scenario testing"""
+        """Get the default set of scenarios for multi-scenario testing"""
         return [
             "comprehensive_memory_test",    # Personal/professional life with entities
             "technical_problem_solving",    # Technical discussion with code
-            "personal_relationships"        # Emotional/relationship conversation
+            "personal_relationships",       # Emotional/relationship conversation
+            "correction_retention_test",    # Corrections override and persist
+            "distractor_resistance_test"    # Latest-turn anchoring under distractors
         ]

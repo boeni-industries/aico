@@ -17,7 +17,6 @@ class MessageType(str, Enum):
     USER_INPUT = "user_input"
     AI_RESPONSE = "ai_response"
     SYSTEM = "system"
-    PROACTIVE = "proactive"
 
 
 # ThreadCreateRequest removed - conversations are created implicitly with first message
@@ -51,7 +50,7 @@ class ConversationStartRequest(BaseModel):
     message: str = Field(..., description="Message to send (required)")
     conversation_id: Optional[str] = Field(None, description="Optional conversation ID to continue existing conversation")
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context for conversation")
-    response_mode: Optional[str] = Field("text", description="Response mode: text, multimodal, proactive")
+    response_mode: Optional[str] = Field("text", description="Response mode: text, multimodal")
     
     @validator('message')
     def validate_message(cls, v):

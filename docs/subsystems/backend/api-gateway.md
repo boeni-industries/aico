@@ -89,13 +89,12 @@ api/{domain}/
 - Topic-based routing (`logs.*`, `conversation.*`)
 
 **Database Access**:
-- Shared `EncryptedLibSQLConnection` (libSQL with AES-256-GCM)
-- Single database file: `data/aico.db`
-- Key derivation via `AICOKeyManager`
+- PostgreSQL-backed subsystems accessed via Repository + UnitOfWork
+- Per-request UnitOfWork pattern (no shared database connection)
 
 **Configuration Management**:
 - YAML-based configuration with schema validation
-- Plugin-specific sections in `core.yaml`
+- Plugin-specific sections in `config/defaults/api_gateway.yaml`
 - Runtime updates via `ConfigurationManager`
 
 **Process Management**:
@@ -193,12 +192,12 @@ In federated mode, where multiple devices synchronize data across the network:
 - CurveZMQ for internal communication
 
 **Data Layer**:
-- Encrypted libSQL database (`data/aico.db`)
+- Encrypted PostgreSQL database (`data/PostgreSQL database`)
 - Protocol Buffers for message serialization
 - ZeroMQ message bus (ports 5555/5556)
 
 **Configuration**:
-- YAML-based configuration (`config/defaults/core.yaml`)
+- YAML-based configuration (`config/defaults/api_gateway.yaml`)
 - Schema validation
 - Runtime updates via `ConfigurationManager`
 
@@ -235,7 +234,7 @@ In federated mode, where multiple devices synchronize data across the network:
 - Key derivation via `AICOKeyManager` with Argon2id
 
 **Data Protection**:
-- Encrypted libSQL database with AES-256-GCM
+- Encrypted PostgreSQL database with AES-256-GCM
 - Protocol Buffers for structured message serialization
 - Local-only processing (no external data transmission)
 

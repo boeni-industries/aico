@@ -1,0 +1,20 @@
+# PostgreSQL configuration
+# Password / credentials are derived and stored via AICOKeyManager,
+# not kept in this config file.
+
+# Logical database name and schemas inside a single Postgres cluster
+db_name: "aico"
+core_schema: "aico_core"
+
+# Connection settings for local/remote Postgres
+host: "127.0.0.1"
+port: 5432
+user: "postgres"
+sslmode: "prefer"
+
+# Connection pool settings
+pool_size: 50              # Number of persistent connections (increased from 20)
+max_overflow: 30           # Additional connections when pool exhausted (increased from 10)
+pool_timeout: 60           # Seconds to wait for available connection (increased from 30)
+pool_recycle: 3600         # Recycle connections after N seconds (1 hour)
+pool_pre_ping: true        # Verify connections before use (health check)

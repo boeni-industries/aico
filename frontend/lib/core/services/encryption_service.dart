@@ -11,9 +11,7 @@ class EncryptionService {
   static const String _identityPublicKeyKey = 'aico_identity_public_key';
   
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
+    aOptions: AndroidOptions(),
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.first_unlock_this_device,
     ),
@@ -181,7 +179,7 @@ class EncryptionService {
       nonce: nonce,
     );
     
-    // Combine nonce + ciphertext and encode as base64 (NaCl format)
+    // Combine nonce + ciphertext to match PyNaCl Box.encrypt() EncryptedMessage format
     final combined = Uint8List.fromList([...nonce, ...ciphertext]);
     return base64Encode(combined);
   }
@@ -190,14 +188,13 @@ class EncryptionService {
   Map<String, dynamic> createEncryptedRequest(Map<String, dynamic> payload) {
     final encryptedPayload = encryptPayload(payload);
     return {
-      'encrypted': true,
-      'payload': encryptedPayload,
+      'encrypted_payload': encryptedPayload,
       'client_id': _clientId,
     };
   }
   
   /// Decrypt response payload using X25519 + XSalsa20-Poly1305
-  Map<String, dynamic> decryptPayload(String encryptedPayload) {
+  dynamic decryptPayload(String encryptedPayload) {
     if (!_sessionEstablished || _precalculatedBox == null) {
       throw EncryptionException('No active encryption session');
     }

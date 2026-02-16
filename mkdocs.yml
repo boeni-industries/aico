@@ -171,18 +171,24 @@ nav:
       - Message Bus: architecture/message-bus.md
       - Technology Stack: architecture/tech-stack.md
       - State Streaming: architecture/state-streaming.md
+  - Integration:
+      - Flutter Interaction System: integration/flutter-interaction-system.md
+      - Flutter Integration Ready: FLUTTER_INTEGRATION_READY.md
   - Subsystems:
       - Backend:
           - API Gateway: subsystems/backend/api-gateway.md
           - Plugin System: subsystems/backend/plugin-system.md
           - Log Consumer: subsystems/backend/log-consumer.md
+          - GQL Template Management: subsystems/backend/gql-template-management.md
           - Scheduling:
               - Overview: subsystems/backend/scheduling/scheduling.md
           - Conversation:
               - Overview: subsystems/backend/conversation/conversations.md
-              - Thread Manager: subsystems/backend/conversation/conversations-thread-manager.md
+              - Intent Classification: subsystems/backend/conversation/intent-classification.md
       - CLI:
-          - CLI: subsystems/cli/cli.md
+          - CLI Overview: subsystems/cli/cli.md
+          - CLI Handbook: cli/cli.md
+          - Interactions Commands: cli/interactions-commands.md
       - Frontend:
           - Overview: subsystems/frontend/frontend-architecture-overview.md
           - API Integration: subsystems/frontend/api-integration.md
@@ -190,21 +196,56 @@ nav:
           - Design Principles: subsystems/frontend/design-principles.md
           - Navigation: subsystems/frontend/navigation.md
           - Networking: subsystems/frontend/networking.md
+          - Encryption Integration: subsystems/frontend/encryption-integration.md
+          - Dependency Injection Analysis: subsystems/frontend/dependency-injection-analysis.md
+          - Markdown Rendering: subsystems/frontend/markdown-rendering.md
+          - Interaction System UX: subsystems/frontend/interaction-system-ux.md
+          - Status Indicator System: subsystems/frontend/status-indicator-system.md
           - Performance Guidelines: subsystems/frontend/performance-guidelines.md
           - State Management: subsystems/frontend/state-management.md
           - Testing Strategy: subsystems/frontend/testing-strategy.md
+          - UI Layout System: subsystems/frontend/ui-layout-system.md
           - User Flows: subsystems/frontend/user-flows.md
+          - Avatar:
+              - Overview: subsystems/frontend/avatar.md
+              - Lip Sync: subsystems/frontend/avatar-lip-sync.md
+              - Blendshapes: subsystems/frontend/avatar-blendshapes.md
+              - Animations: subsystems/frontend/avatar-animations.md
       - Modelservice:
           - Model Service: subsystems/modelservice/modelservice.md
-      - Studio:
-          - Admin UI: subsystems/studio/admin-ui.md
-          - Master Admin UI: subsystems/studio/admin-ui-master.md
+
   - Concepts:
       - AI:
           - Intent Classification: concepts/ai/intent_classification.md
+      - Agency:
+          - Overview: concepts/agency/agency.md
+          - Architecture: concepts/agency/agency-architecture.md
+          - Integration: concepts/agency/agency-integration.md
+          - Roadmap Overview: concepts/agency/agency-roadmap-overview.md
+          - Roadmap Status: concepts/agency/agency-roadmap-status.md
+          - Roadmap Phase 2 Integration Design: concepts/agency/phase2-integration-design.md
+          - Roadmap Phase 2 Implementation Summary: concepts/agency/phase2-implementation-summary.md
+          - Self-Healing: concepts/agency/agency-self-healing.md
+          - Metrics: concepts/agency/agency-metrics.md
+          - Ontology/Schemas: concepts/agency/agency-ontology-schemas.md
+          - Component - Curiosity Engine: concepts/agency/agency-component-curiosity-engine.md
+          - Component - Embodiment: concepts/agency/agency-component-embodiment.md
+          - Component - Emotion/Personality/Social: concepts/agency/agency-component-emotion-personality-social.md
+          - Component - Goal Arbiter/Meta Control: concepts/agency/agency-component-goal-arbiter-meta-control.md
+          - Component - Goals/Intentions: concepts/agency/agency-component-goals-intentions.md
+          - Component - Lifecycle: concepts/agency/agency-component-lifecycle.md
+          - Component - Memory (AMS): concepts/agency/agency-component-memory-ams.md
+          - Component - Planning: concepts/agency/agency-component-planning.md
+          - Component - Safety/Control: concepts/agency/agency-component-safety-control.md
+          - Component - Scheduler/Governance: concepts/agency/agency-component-scheduler-governance.md
+          - Component - Self Reflection: concepts/agency/agency-component-self-reflection.md
+          - Component - Skills/Tools: concepts/agency/agency-component-skills-tools.md
+          - Component - Values/Ethics: concepts/agency/agency-component-values-ethics.md
+          - Component - World Model: concepts/agency/agency-component-world-model.md
       - Data:
           - Data Layer: concepts/data/data-layer.md
           - Data Federation: concepts/data/data-federation.md
+          - Offline-First Persistence: concepts/data/offline-first-persistence.md
       - Embodiment: concepts/embodiment/embodiment.md
       - Memory:
           - Overview: concepts/memory/overview.md
@@ -212,17 +253,22 @@ nav:
           - Adaptive Memory: concepts/memory/ams.md
           - Hybrid Search: concepts/memory/hybrid-search.md
           - Context Management: concepts/memory/context-management.md
-          - Thread Resolution: concepts/memory/thread-resolution.md
           - Implementation: concepts/memory/implementation.md
           - Knowledge Graph: concepts/memory/semantic_knowledge_graph_memory.md
           - Research Summary: concepts/memory/kg_research_summary.md
       - Emotion:
-          - Architecture: concepts/emotion/emotion-sim-architecture.md
-          - Messaging: concepts/emotion/emotion-sim-msg.md
-          - Overview: concepts/emotion/emotion-sim.md
+          - Detection: concepts/emotion/emotion-detection.md
+          - Integration: concepts/emotion/emotion-integration.md
+          - Messages: concepts/emotion/emotion-messages.md
+          - Simulation Architecture: concepts/emotion/emotion-simulation-architecture.md
+          - Simulation: concepts/emotion/emotion-simulation.md
+      - Feedback:
+          - Overview: concepts/feedback/feedback-overview.md
+          - Memory Album Design: concepts/feedback/memory-album-design.md
       - LLM:
           - Foundation Model: concepts/llm/foundation-model.md
           - Multimodality: concepts/llm/multimodality.md
+
       - Personality:
           - Architecture: concepts/personality/personality-sim-architecture.md
           - Messaging: concepts/personality/personality-sim-msg.md
@@ -231,6 +277,8 @@ nav:
       - Roaming:
           - P2P Mesh: concepts/roaming/p2p-mesh.md
           - Roaming: concepts/roaming/roaming.md
+      - Speech:
+          - TTS: concepts/speech/tts.md
       - Social:
           - Social Relationship Modeling: concepts/social/social-relationship-modeling.md
   - Flows:
@@ -256,6 +304,10 @@ nav:
           - GQL Reference: guides/developer/gql-reference.md
       - Admin:
           - Admin Guide: guides/admin/admin-guide.md
+  - API:
+      - Interactions API: api/interactions-api.md
+  - Backend:
+      - Version Detection Cache: backend/version-detection-cache.md
   - Security:
       - Overview: security/security-overview.md
       - Data Security: security/data-security.md
@@ -272,6 +324,9 @@ nav:
           - Overview: operations/instrumentation/instrumentation.md
           - Logging: operations/instrumentation/instrumentation-logging.md
           - Telemetry: operations/instrumentation/telemetry.md
+          - Usage Guide: operations/instrumentation/usage-guide.md
+  - Testing:
+      - Testing Concepts: testing/testing_concepts.md
   - Roadmap:
       - Foundation I: roadmap/foundation-I.md
       - MVP: roadmap/mvp.md

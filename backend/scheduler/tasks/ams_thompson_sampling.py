@@ -8,13 +8,13 @@ Schedule: Daily at 4 AM (configurable via cron)
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 from aico.core.logging import get_logger
 from .base import BaseTask, TaskContext, TaskResult
 
-logger = get_logger("backend", "scheduler.tasks.ams_thompson_sampling")
+logger = get_logger("backend.scheduler.tasks.ams_thompson_sampling")
 
 
 class ThompsonSamplingUpdateTask(BaseTask):
@@ -25,8 +25,8 @@ class ThompsonSamplingUpdateTask(BaseTask):
     triple based on processed feedback events.
     
     Configuration:
-    - Schedule: core.memory.behavioral.contextual_bandit.update_interval_hours
-    - Min trajectories: core.memory.behavioral.contextual_bandit.min_trajectories
+    - Schedule: memory.behavioral.contextual_bandit.update_interval_hours
+    - Min trajectories: memory.behavioral.contextual_bandit.min_trajectories
     """
     
     task_id = "ams.thompson_sampling_update"
@@ -44,7 +44,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
         Returns:
             TaskResult with update statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("\n" + "="*60)
@@ -53,7 +53,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
             logger.info("🧠 [AMS_TS] Starting Thompson Sampling update task")
             
             # Check if behavioral learning is enabled
-            behavioral_config = context.config_manager.get("core.memory.behavioral", {})
+            behavioral_config = context.config_manager.get("memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
             print(f"🧠 [AMS_TS] Behavioral learning enabled: {enabled}")
@@ -71,20 +71,36 @@ class ThompsonSamplingUpdateTask(BaseTask):
             # Get configuration from behavioral config
             min_trajectories = behavioral_config.get("contextual_bandit", {}).get("min_trajectories", 1)
             lookback_days = context.get_config("lookback_days", 7)
-            lookback_date = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
+            # Use a datetime object for lookback_date so we can compare against
+            # the timestamp field (which is stored as a TIMESTAMP in PostgreSQL).
+            lookback_date = datetime.now(timezone.utc) - timedelta(days=lookback_days)
             
-            # Get feedback events from last N days
-            # Only process events with valid skill_id (not NULL or empty)
-            feedback_events = context.db_connection.execute(
-                """SELECT user_id, skill_id, reward, timestamp
-                   FROM feedback_events
-                   WHERE reward != 0
-                   AND timestamp >= ?
-                   AND skill_id IS NOT NULL
-                   AND skill_id != ''
-                   ORDER BY user_id, skill_id""",
-                (lookback_date,)
-            ).fetchall()
+            # Get feedback events from last N days via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                all_feedback = await uow.ams_behavioral_feedback.list(
+                    filters={'reward__ne': 0},
+                    limit=100000
+                )
+                # Filter in memory for timestamp and valid skill_id.
+                # Be tolerant to legacy rows where timestamp may have been
+                # stored as an ISO8601 string instead of a datetime.
+                feedback_events = []
+                for f in all_feedback:
+                    ts = f.timestamp
+                    if isinstance(ts, str):
+                        try:
+                            # fromisoformat handles the strings written by our tests
+                            ts = datetime.fromisoformat(ts)
+                        except Exception:
+                            continue
+                    if not ts or not f.skill_id or not f.skill_id.strip():
+                        continue
+                    if ts >= lookback_date:
+                        feedback_events.append((f.user_id, f.skill_id, f.reward, ts))
             
             if not feedback_events:
                 print("  [AMS_TS] No feedback events to process")
@@ -143,33 +159,40 @@ class ThompsonSamplingUpdateTask(BaseTask):
                 
                 print(f"      New: α={new_alpha:.2f}, β={new_beta:.2f}")
                 
-                # Upsert into context_skill_stats
-                context.db_connection.execute(
-                    """INSERT INTO context_skill_stats (
-                        user_id, context_bucket, skill_id, alpha, beta, last_updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(user_id, context_bucket, skill_id)
-                    DO UPDATE SET
-                        alpha = excluded.alpha,
-                        beta = excluded.beta,
-                        last_updated_at = excluded.last_updated_at""",
-                    (
-                        user_id,
-                        context_bucket,
-                        skill_id,
-                        new_alpha,
-                        new_beta,
-                        datetime.utcnow().isoformat()
+                # Upsert into ams_context_skill_stats via UoW
+                async with UnitOfWork(session_factory) as uow:
+                    from aico.data.ams.models import AMSContextSkillStats
+                    
+                    # Check if exists
+                    existing = await uow.ams_context_skill_stats.get(
+                        filters={
+                            'user_id': user_id,
+                            'context_bucket': context_bucket,
+                            'skill_id': skill_id
+                        }
                     )
-                )
+                    
+                    stats_data = AMSContextSkillStats(
+                        user_id=user_id,
+                        context_bucket=context_bucket,
+                        skill_id=skill_id,
+                        alpha=new_alpha,
+                        beta=new_beta,
+                        last_updated_at=datetime.now(timezone.utc)
+                    )
+                    
+                    if existing:
+                        await uow.ams_context_skill_stats.update(stats_data)
+                    else:
+                        await uow.ams_context_skill_stats.create(stats_data)
+                    
+                    await uow.commit()
                 
                 updated_count += 1
                 
                 logger.debug(f" [AMS_TS] Updated {user_id}/{skill_id}: α={new_alpha:.1f}, β={new_beta:.1f}")
             
-            context.db_connection.commit()
-            
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"\n [AMS_TS] Updated {updated_count} skill confidences in {duration:.2f}s")
             print(f"   Processed {len(feedback_events)} feedback events")
             print("="*60 + "\n")
@@ -188,7 +211,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
             )
             
         except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"🧠 [AMS_TS] Task execution failed: {e}")
             
             return TaskResult(

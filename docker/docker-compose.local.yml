@@ -1,0 +1,219 @@
+# AICO Local Development Infrastructure
+# All containers are labeled with project ownership and metadata
+name: aico
+
+services:
+  postgres:
+    image: postgres:18.1
+    container_name: aico-postgres
+    restart: unless-stopped
+    environment:
+      # Non-secret parameters; safe to keep here
+      POSTGRES_DB: aico
+      POSTGRES_USER: postgres
+      # Secret is provided via environment (AICO_PG_PASSWORD), never hardcoded
+      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD:-}
+    ports:
+      # Expose to host so aico CLI / psql can connect (matches core.yaml defaults)
+      - "5432:5432"
+    volumes:
+      # Postgres 18+ requires mount at /var/lib/postgresql (not /data subdirectory)
+      # This supports pg_ctlcluster format and proper version-specific directories
+      - aico-pgdata:/var/lib/postgresql
+      # Mount production-grade postgresql.conf for optimal performance
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      # Mount pg_hba.conf for password authentication
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command:
+      # Use custom configuration files
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+      - "-c"
+      - "hba_file=/etc/postgresql/pg_hba.conf"
+    labels:
+      # Project identification
+      com.aico.project: "aico"
+      com.aico.component: "postgres"
+      com.aico.service.type: "database"
+      com.aico.service.role: "primary-datastore"
+      # Standard Docker labels
+      org.opencontainers.image.title: "AICO Postgres Database"
+      org.opencontainers.image.description: "Primary relational database for AICO system"
+      org.opencontainers.image.vendor: "AICO"
+      # Management metadata
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  postgres-shadow:
+    image: postgres:18.1
+    container_name: aico-postgres-shadow
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aico
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD:-}
+    ports:
+      # Shadow instance exposed on a different port to avoid clashes
+      - "55432:5432"
+    volumes:
+      - aico-pgdata-shadow:/var/lib/postgresql
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+      - "-c"
+      - "hba_file=/etc/postgresql/pg_hba.conf"
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "postgres-shadow"
+      com.aico.service.type: "database"
+      com.aico.service.role: "shadow-datastore"
+      org.opencontainers.image.title: "AICO Postgres Shadow Database"
+      org.opencontainers.image.description: "Shadow relational database for AICO schema testing"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev-shadow"
+
+  influxdb:
+    image: influxdb:2
+    container_name: aico-influxdb
+    restart: unless-stopped
+    environment:
+      # InfluxDB initial setup credentials (provided via environment, never hardcoded)
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: aico-admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
+      DOCKER_INFLUXDB_INIT_ORG: aico
+      DOCKER_INFLUXDB_INIT_BUCKET: aico_telemetry
+      DOCKER_INFLUXDB_INIT_RETENTION: 720h
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
+    ports:
+      - "8086:8086"
+    volumes:
+      - aico-influxdata:/var/lib/influxdb2
+      - aico-influxconfig:/etc/influxdb2
+    labels:
+      # Project identification
+      com.aico.project: "aico"
+      com.aico.component: "influxdb"
+      com.aico.service.type: "database"
+      com.aico.service.role: "metrics-timeseries"
+      # Standard Docker labels
+      org.opencontainers.image.title: "AICO InfluxDB Time-Series Database"
+      org.opencontainers.image.description: "Time-series database for AICO metrics and telemetry"
+      org.opencontainers.image.vendor: "AICO"
+      # Management metadata
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: aico-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - aico-lokidata:/loki
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    command: -config.file=/etc/loki/local-config.yaml
+    labels:
+      # Project identification
+      com.aico.project: "aico"
+      com.aico.component: "loki"
+      com.aico.service.type: "logging"
+      com.aico.service.role: "log-aggregation"
+      # Standard Docker labels
+      org.opencontainers.image.title: "AICO Loki"
+      org.opencontainers.image.description: "Log aggregation system for AICO"
+      org.opencontainers.image.vendor: "AICO"
+      # Management metadata
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: aico-grafana
+    restart: unless-stopped
+    environment:
+      # Admin credentials provided via environment
+      GF_SECURITY_ADMIN_USER: ${AICO_GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${AICO_GRAFANA_PASSWORD:-}
+      # Disable analytics and update checks
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Server settings
+      GF_SERVER_ROOT_URL: "http://localhost:3001"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      # Default dashboard settings
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/etc/grafana/provisioning/dashboards/aico-logs-overview.json"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_HOME_PAGE: "/d/aico-logs-overview"
+    ports:
+      - "3001:3000"
+    volumes:
+      - aico-grafanadata:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - loki
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "grafana"
+      com.aico.service.type: "visualization"
+      com.aico.service.role: "log-visualization"
+      org.opencontainers.image.title: "AICO Grafana"
+      org.opencontainers.image.description: "Log visualization and dashboards for AICO"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+volumes:
+  aico-pgdata:
+    name: aico-pgdata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "postgres"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-pgdata-shadow:
+    name: aico-pgdata-shadow
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "postgres-shadow"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-influxdata:
+    name: aico-influxdata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "influxdb"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-influxconfig:
+    name: aico-influxconfig
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "influxdb"
+      com.aico.volume.type: "config"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-lokidata:
+    name: aico-lokidata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "loki"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-grafanadata:
+    name: aico-grafanadata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "grafana"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"

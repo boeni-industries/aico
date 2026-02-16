@@ -8,13 +8,13 @@ Schedule: Daily at 3 AM (configurable via cron)
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
 
 from aico.core.logging import get_logger
 from .base import BaseTask, TaskContext, TaskResult
 
-logger = get_logger("backend", "scheduler.tasks.ams_feedback_classification")
+logger = get_logger("backend.scheduler.tasks.ams_feedback_classification")
 
 
 class FeedbackClassificationTask(BaseTask):
@@ -25,8 +25,8 @@ class FeedbackClassificationTask(BaseTask):
     to categorize free-text feedback into predefined categories.
     
     Configuration:
-    - Schedule: core.memory.behavioral.contextual_bandit.update_interval_hours
-    - Min feedback: core.memory.behavioral.contextual_bandit.min_trajectories
+    - Schedule: memory.behavioral.contextual_bandit.update_interval_hours
+    - Min feedback: memory.behavioral.contextual_bandit.min_trajectories
     """
     
     task_id = "ams.feedback_classification"
@@ -55,7 +55,7 @@ class FeedbackClassificationTask(BaseTask):
         Returns:
             TaskResult with classification statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("\n" + "="*60)
@@ -64,7 +64,7 @@ class FeedbackClassificationTask(BaseTask):
             logger.info("🧠 [AMS_FEEDBACK] Starting feedback classification task")
             
             # Check if behavioral learning is enabled
-            behavioral_config = context.config_manager.get("core.memory.behavioral", {})
+            behavioral_config = context.config_manager.get("memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
             print(f"🧠 [AMS_FEEDBACK] Behavioral learning enabled: {enabled}")
@@ -79,19 +79,26 @@ class FeedbackClassificationTask(BaseTask):
                     data={"enabled": False}
                 )
             
-            # Get unprocessed feedback events
+            # Get unprocessed feedback events via UoW
             batch_size = context.get_config("batch_size", 100)
             
-            unprocessed_feedback = context.db_connection.execute(
-                """SELECT event_id, user_id, free_text 
-                   FROM feedback_events 
-                   WHERE processed = FALSE 
-                   AND free_text IS NOT NULL 
-                   AND free_text != ''
-                   AND (reason IS NULL OR reason = '')
-                   LIMIT ?""",
-                (batch_size,)
-            ).fetchall()
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Get unprocessed feedback with free text
+                # NOTE: processed is stored as INTEGER (0/1) in aico_core.ams_behavioral_feedback,
+                # so we must filter with 0 instead of boolean False to avoid type issues.
+                all_feedback = await uow.ams_behavioral_feedback.list(
+                    filters={'processed': 0},
+                    limit=batch_size * 2
+                )
+                # Filter in memory for non-empty free_text and empty reason
+                unprocessed_feedback = [
+                    f for f in all_feedback
+                    if f.free_text and f.free_text.strip() and (not f.reason or not f.reason.strip())
+                ][:batch_size]
             
             if not unprocessed_feedback:
                 print("ℹ️  [AMS_FEEDBACK] No unprocessed feedback to classify")
@@ -123,7 +130,10 @@ class FeedbackClassificationTask(BaseTask):
             
             print(f"   Using similarity threshold: {similarity_threshold}")
             
-            for idx, (event_id, user_id, free_text) in enumerate(unprocessed_feedback, 1):
+            for idx, feedback in enumerate(unprocessed_feedback, 1):
+                event_id = feedback.feedback_id
+                user_id = feedback.user_id
+                free_text = feedback.free_text
                 try:
                     print(f"  [{idx}/{len(unprocessed_feedback)}] Classifying: {event_id[:8]}... - '{free_text[:50]}...'")
                     
@@ -142,12 +152,11 @@ class FeedbackClassificationTask(BaseTask):
                         top_category = max(categories.items(), key=lambda x: x[1])[0]
                         
                         # Update feedback event with top category as reason
-                        context.db_connection.execute(
-                            """UPDATE feedback_events 
-                               SET reason = ?, processed = TRUE
-                               WHERE event_id = ?""",
-                            (top_category, event_id)
-                        )
+                        async with UnitOfWork(session_factory) as uow:
+                            feedback.reason = top_category
+                            feedback.processed = True
+                            await uow.ams_behavioral_feedback.update(feedback)
+                            await uow.commit()
                         
                         classified_count += 1
                         print(f"    ✅ Classified as: {top_category} (confidence: {categories[top_category]:.2f})")
@@ -164,9 +173,9 @@ class FeedbackClassificationTask(BaseTask):
                     print(f"    Traceback: {traceback.format_exc()}")
                     logger.error(f"🧠 [AMS_FEEDBACK] Failed to classify {event_id}: {e}", extra={"traceback": traceback.format_exc()})
             
-            context.db_connection.commit()
+            # Commits are handled per-update in async context
             
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print(f"\n✅ [AMS_FEEDBACK] Classified {classified_count}/{len(unprocessed_feedback)} events in {duration:.2f}s")
             print("="*60 + "\n")
             logger.info(f"🧠 [AMS_FEEDBACK] ✅ Classified {classified_count} feedback events in {duration:.2f}s")
@@ -183,7 +192,7 @@ class FeedbackClassificationTask(BaseTask):
             )
             
         except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"🧠 [AMS_FEEDBACK] Task execution failed: {e}")
             
             return TaskResult(

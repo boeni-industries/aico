@@ -25,11 +25,15 @@ class Node:
         source_text: Original text this node was extracted from
         created_at: When node was created (ISO 8601)
         updated_at: When node was last updated (ISO 8601)
+        language: Optional ISO/BCP-47 language code
         valid_from: When fact became true (event time, ISO 8601)
         valid_until: When fact stopped being true (event time, ISO 8601, None = current)
         is_current: Whether fact is currently valid (1 = current, 0 = historical)
         canonical_id: Stable ID across entity merges
         aliases: Known name variations
+        aliases_json: JSON-serialized aliases for persistence layer compatibility
+        reason: Optional reason for node creation/update
+        embedding: Cached embedding from resolution
     """
     id: str
     user_id: str
@@ -39,11 +43,14 @@ class Node:
     source_text: str
     created_at: str
     updated_at: str
+    language: Optional[str] = None  # ISO/BCP-47 language code
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     is_current: int = 1
     canonical_id: Optional[str] = None
     aliases: Optional[List[str]] = None
+    aliases_json: Optional[str] = None
+    reason: Optional[str] = None
     embedding: Optional[List[float]] = None  # Cached embedding from resolution
     
     @classmethod
@@ -54,12 +61,13 @@ class Node:
         properties: Dict[str, Any],
         confidence: float,
         source_text: str,
+        language: Optional[str] = "en",
         valid_from: Optional[str] = None,
         canonical_id: Optional[str] = None,
         aliases: Optional[List[str]] = None
     ) -> 'Node':
         """Create new node with auto-generated ID and timestamps."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         node_id = str(uuid.uuid4())
         
         return cls(
@@ -71,6 +79,7 @@ class Node:
             source_text=source_text,
             created_at=now,
             updated_at=now,
+            language=language,
             valid_from=valid_from or now,
             valid_until=None,
             is_current=1,
@@ -85,7 +94,7 @@ class Node:
     def to_chromadb_document(self) -> Dict[str, Any]:
         """Convert to ChromaDB document format."""
         # Combine all text fields for embedding
-        text_content = f"{self.label}: {json.dumps(self.properties)} | {self.source_text}"
+        text_content = f"{self.label}: {json.dumps(self.properties, sort_keys=True)} | {self.source_text}"
         
         return {
             "id": self.id,
@@ -100,22 +109,23 @@ class Node:
             }
         }
     
-    def to_libsql_tuple(self) -> tuple:
-        """Convert to tuple for libSQL insertion."""
+    def to_postgres_tuple(self) -> tuple:
+        """Convert to tuple for PostgreSQL insertion."""
         return (
             self.id,
             self.user_id,
             self.label,
-            json.dumps(self.properties),
+            json.dumps(self.properties, sort_keys=True),
             self.confidence,
             self.source_text,
             self.created_at,
             self.updated_at,
+            self.language,
             self.valid_from,
             self.valid_until,
             self.is_current,
             self.canonical_id,
-            json.dumps(self.aliases) if self.aliases else None
+            json.dumps(self.aliases, sort_keys=True) if self.aliases else None
         )
 
 
@@ -129,15 +139,16 @@ class Edge:
         user_id: Owner user ID
         source_id: Source node ID
         target_id: Target node ID
-        relation_type: Relationship type (KNOWS, WORKS_ON, DEPENDS_ON, etc.)
+        relation_type: Relationship type (HAS_SKILL, WORKS_ON, etc.)
         properties: Arbitrary key-value properties (JSON-serializable)
         confidence: Extraction confidence (0-1)
         source_text: Original text this edge was extracted from
         created_at: When edge was created (ISO 8601)
         updated_at: When edge was last updated (ISO 8601)
-        valid_from: When relationship became true (event time, ISO 8601)
+        valid_from: When relationship started (event time, ISO 8601)
         valid_until: When relationship ended (event time, ISO 8601, None = current)
         is_current: Whether relationship is currently valid (1 = current, 0 = historical)
+        reason: Optional reason for edge creation/update
     """
     id: str
     user_id: str
@@ -152,6 +163,8 @@ class Edge:
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     is_current: int = 1
+    reason: Optional[str] = None
+    embedding: Optional[List[float]] = None  # Cached embedding from resolution
     
     @classmethod
     def create(
@@ -166,7 +179,7 @@ class Edge:
         valid_from: Optional[str] = None
     ) -> 'Edge':
         """Create new edge with auto-generated ID and timestamps."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         edge_id = str(uuid.uuid4())
         
         return cls(
@@ -192,7 +205,7 @@ class Edge:
     def to_chromadb_document(self) -> Dict[str, Any]:
         """Convert to ChromaDB document format."""
         # Combine all text fields for embedding
-        text_content = f"{self.relation_type}: {json.dumps(self.properties)} | {self.source_text}"
+        text_content = f"{self.relation_type}: {json.dumps(self.properties, sort_keys=True)} | {self.source_text}"
         
         return {
             "id": self.id,
@@ -208,15 +221,15 @@ class Edge:
             }
         }
     
-    def to_libsql_tuple(self) -> tuple:
-        """Convert to tuple for libSQL insertion."""
+    def to_postgres_tuple(self) -> tuple:
+        """Convert to tuple for PostgreSQL insertion."""
         return (
             self.id,
             self.user_id,
             self.source_id,
             self.target_id,
             self.relation_type,
-            json.dumps(self.properties),
+            json.dumps(self.properties, sort_keys=True),
             self.confidence,
             self.source_text,
             self.created_at,
@@ -240,17 +253,42 @@ class PropertyGraph:
     edges: List[Edge] = field(default_factory=list)
     
     def add_node(self, node: Node) -> None:
-        """Add node to graph."""
+        """Add node to graph with duplicate prevention."""
+        # Check for duplicate by (label, properties)
+        node_key = (node.label, json.dumps(node.properties, sort_keys=True))
+        for existing_node in self.nodes:
+            existing_key = (existing_node.label, json.dumps(existing_node.properties, sort_keys=True))
+            if node_key == existing_key:
+                # Duplicate found - keep the one with higher confidence
+                if node.confidence > existing_node.confidence:
+                    self.nodes.remove(existing_node)
+                    self.nodes.append(node)
+                return
+        # Not a duplicate - add it
         self.nodes.append(node)
     
     def add_edge(self, edge: Edge) -> None:
-        """Add edge to graph."""
+        """Add edge to graph with duplicate prevention."""
+        # Check for duplicate by (source_id, target_id, relation_type)
+        edge_key = (edge.source_id, edge.target_id, edge.relation_type)
+        for existing_edge in self.edges:
+            existing_key = (existing_edge.source_id, existing_edge.target_id, existing_edge.relation_type)
+            if edge_key == existing_key:
+                # Duplicate found - keep the one with higher confidence
+                if edge.confidence > existing_edge.confidence:
+                    self.edges.remove(existing_edge)
+                    self.edges.append(edge)
+                return
+        # Not a duplicate - add it
         self.edges.append(edge)
     
     def merge(self, other: 'PropertyGraph') -> None:
-        """Merge another graph into this one."""
-        self.nodes.extend(other.nodes)
-        self.edges.extend(other.edges)
+        """Merge another graph into this one with deduplication."""
+        # Use add_node/add_edge to ensure deduplication
+        for node in other.nodes:
+            self.add_node(node)
+        for edge in other.edges:
+            self.add_edge(edge)
     
     def get_node_by_id(self, node_id: str) -> Optional[Node]:
         """Get node by ID."""

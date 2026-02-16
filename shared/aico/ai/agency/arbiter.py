@@ -1,0 +1,1197 @@
+"""
+Goal Arbiter - Central Decision-Making for Agency
+
+Collects, scores, ranks, and filters goal candidates from various sources.
+Maintains the "active intention set" and publishes changes to the message bus.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, UTC
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+from aico.core.bus import MessageBusClient
+
+from .models import Goal, GoalStatus, GoalOrigin, GoalPriority
+from .arbiter_adaptive import AdaptiveScoringEngine, AdaptiveConfig
+from .arbiter_context import ContextAwarePrioritization
+
+
+# ============================================================================
+# Enums
+# ============================================================================
+
+class IntentionStatus(str, Enum):
+    """Status of an intention in the active set."""
+    PROPOSED = "proposed"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    DROPPED = "dropped"
+    COMPLETED = "completed"
+
+
+class PriorityBand(str, Enum):
+    """Priority bands for intention scheduling."""
+    URGENT = "urgent"
+    NORMAL = "normal"
+    BACKGROUND = "background"
+
+
+# ============================================================================
+# Data Models
+# ============================================================================
+
+class ScoredGoal(BaseModel):
+    """Goal with arbiter scoring information."""
+    
+    goal: Goal
+    arbiter_score: float
+    priority_band: PriorityBand
+    score_breakdown: Dict[str, float] = Field(default_factory=dict)
+    reasons: List[str] = Field(default_factory=list)
+
+
+class Intention(BaseModel):
+    """Active intention in the intention set."""
+    
+    intention_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    goal_id: str
+    user_id: str
+    status: IntentionStatus = IntentionStatus.PROPOSED
+    arbiter_score: float
+    priority_band: PriorityBand
+    reasons: List[str] = Field(default_factory=list)
+    activated_at: Optional[datetime] = None
+    deactivated_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class IntentionSet(BaseModel):
+    """The active intention set - goals currently being pursued."""
+    
+    user_id: str
+    intentions: List[Intention] = Field(default_factory=list)
+    max_active: int = 3
+    max_background: int = 5
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    @property
+    def active_intentions(self) -> List[Intention]:
+        """Get currently active intentions."""
+        return [i for i in self.intentions if i.status == IntentionStatus.ACTIVE]
+    
+    @property
+    def proposed_intentions(self) -> List[Intention]:
+        """Get proposed intentions awaiting activation."""
+        return [i for i in self.intentions if i.status == IntentionStatus.PROPOSED]
+
+
+# ============================================================================
+# Goal Arbiter Service
+# ============================================================================
+
+class GoalArbiter:
+    """
+    Central decision-making component for agency.
+    
+    Responsibilities:
+    - Score and rank goal candidates
+    - Maintain active intention set
+    - Balance user goals, curiosity, hobbies, and maintenance
+    - Consider personality, emotion, values, and system load
+    - Publish intention set changes to message bus
+    """
+    
+    def __init__(
+        self,
+        agency_service: "AgencyService",
+        config=None,
+        message_bus: Optional[MessageBusClient] = None,
+        logger=None,
+        enable_adaptive: bool = False,
+        enable_context_aware: bool = False,
+        session_factory: Optional[Any] = None,
+    ):
+        self.agency_service = agency_service
+        self.message_bus = message_bus
+        self.logger = logger
+        self.config = config
+        # Session factory for UoW-based database access
+        self._session_factory = session_factory
+        
+        # Phase 6.5: Adaptive scoring and context-aware prioritization
+        # NOTE: Disabled until refactored to use UoW pattern
+        self.enable_adaptive = enable_adaptive
+        self.enable_context_aware = enable_context_aware
+        
+        if enable_adaptive:
+            if logger:
+                logger.warning("[ARBITER] Adaptive scoring disabled - needs UoW refactor")
+            self.adaptive_engine = None
+        else:
+            self.adaptive_engine = None
+        
+        if enable_context_aware:
+            if logger:
+                logger.warning("[ARBITER] Context-aware prioritization disabled - needs UoW refactor")
+            self.context_engine = None
+        else:
+            self.context_engine = None
+        
+        # Load scoring weights from config with validation
+        if config:
+            try:
+                arbiter_config = config.get("agency.arbiter", {})
+                weights_config = arbiter_config.get("scoring_weights", {})
+                
+                if not weights_config:
+                    raise ValueError("agency.arbiter.scoring_weights not found in configuration")
+                
+                self.weights = {
+                    "priority": float(weights_config.get("priority", 0.25)),
+                    "origin": float(weights_config.get("origin", 0.20)),
+                    "freshness": float(weights_config.get("freshness", 0.10)),
+                    "curiosity_score": float(weights_config.get("curiosity_score", 0.15)),
+                    "persistence": float(weights_config.get("persistence", 0.15)),
+                    "personality_fit": float(weights_config.get("personality_fit", 0.10)),
+                    "emotion_boost": float(weights_config.get("emotion_boost", 0.05)),
+                }
+                
+                # Validate weights sum to approximately 1.0
+                total_weight = sum(self.weights.values())
+                
+                if abs(total_weight - 1.0) > 0.01:
+                    raise ValueError(
+                        f"Arbiter scoring weights must sum to ~1.0, got {total_weight:.3f}. "
+                        f"Check agency.arbiter.scoring_weights in configuration."
+                    )
+                if logger:
+                    logger.debug(f"[ARBITER] Loaded scoring weights from config: {self.weights}")
+            except Exception as e:
+                error_msg = f"Failed to load arbiter configuration: {e}"
+                if logger:
+                    logger.error(f"[ARBITER] {error_msg}")
+                raise RuntimeError(error_msg)
+        else:
+            # Fallback defaults (should not happen in production)
+            self.weights = {
+                "priority": 0.30,
+                "origin": 0.20,
+                "freshness": 0.15,
+                "curiosity_score": 0.15,
+                "personality_fit": 0.10,
+                "emotion_boost": 0.10,
+            }
+        
+        # Cache for lesson-based adjustments
+        self._adjustments_cache: Dict[str, float] = {}
+        self._adjustments_cache_time: Optional[datetime] = None
+        self._adjustments_cache_ttl = 300  # 5 minutes
+        
+        # Only warn if config was actually None (not just missing weights)
+        if not config and logger:
+            logger.warning("[ARBITER] No config provided, using default scoring weights")
+        
+        # Origin priority scores (fixed, not configurable)
+        self.origin_scores = {
+            GoalOrigin.USER: 1.0,
+            GoalOrigin.CURIOSITY: 0.7,
+            GoalOrigin.HOBBY: 0.6,
+            GoalOrigin.MAINTENANCE: 0.5,
+            GoalOrigin.SYSTEM: 0.4,
+        }
+
+    # ========================================================================
+    # Goal lifecycle synchronization
+    # ========================================================================
+
+    async def _set_goal_status(self, goal_id: str, new_status: GoalStatus) -> None:
+        """Synchronize goal lifecycle state with intention decisions.
+
+        This uses AgencyService as the single source of truth for goal
+        persistence so that GoalStatus always reflects the latest arbiter
+        decision about commitment level.
+        """
+
+        try:
+            goal = await self.agency_service.get_goal(goal_id)
+            if not goal:
+                if self.logger:
+                    self.logger.warning(
+                        "[ARBITER] Attempted to update status for unknown goal",
+                        extra={"goal_id": goal_id, "new_status": new_status.value},
+                    )
+                return
+
+            if goal.status == new_status:
+                return
+
+            goal.status = new_status
+            await self.agency_service.update_goal(goal)
+
+            if self.logger:
+                self.logger.info(
+                    "[ARBITER] Updated goal lifecycle state",
+                    extra={"goal_id": goal_id, "new_status": new_status.value},
+                )
+        except Exception as exc:
+            if self.logger:
+                self.logger.error(
+                    f"[ARBITER] Failed to update goal status for {goal_id}: {exc}",
+                    exc_info=True,
+                )
+    
+    # ========================================================================
+    # Lesson-Based Adjustments
+    # ========================================================================
+    
+    async def _load_adjustments(self, user_id: Optional[str]) -> Dict[str, float]:
+        """
+        Load lesson-based adjustments from database.
+        
+        Args:
+            user_id: Optional user ID for user-specific adjustments
+            uow: Unit of Work for database access
+            
+        Returns:
+            Dict mapping adjustment keys to values
+        """
+        # Check cache
+        if self._adjustments_cache_time:
+            age = (datetime.now(UTC) - self._adjustments_cache_time).total_seconds()
+            if age < self._adjustments_cache_ttl:
+                return self._adjustments_cache.copy()
+        
+        # Load from database using repository
+        adjustments = {}
+        if not self._session_factory:
+            # Without a session factory we cannot hit the DB; return empty adjustments
+            return adjustments
+        from aico.data.uow import UnitOfWork
+        try:
+            async with UnitOfWork(self._session_factory) as uow:
+                # Build filters for active adjustments (global + user-specific)
+                if user_id:
+                    # Get both global and user-specific adjustments
+                    all_adjustments = await uow.agency_arbiter_adjustments.list(filters={"active": True})
+                    # Filter to global or matching user
+                    relevant_adjustments = [
+                        adj for adj in all_adjustments 
+                        if adj.user_id is None or adj.user_id == user_id
+                    ]
+                else:
+                    # Only global adjustments
+                    relevant_adjustments = await uow.agency_arbiter_adjustments.list(
+                        filters={"active": True, "user_id": None}
+                    )
+            
+            # Sort by confidence descending and take highest confidence for each key
+            relevant_adjustments.sort(key=lambda x: x.confidence, reverse=True)
+            
+            for adj in relevant_adjustments:
+                key = adj.adjustment_key
+                value = adj.adjustment_value
+                # Use highest confidence adjustment if multiple exist
+                if key not in adjustments:
+                    adjustments[key] = value
+            
+            # Update cache
+            self._adjustments_cache = adjustments
+            self._adjustments_cache_time = datetime.now(UTC)
+            
+            if adjustments and self.logger:
+                self.logger.debug(
+                    f"[ARBITER] Loaded {len(adjustments)} lesson-based adjustments"
+                )
+                
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"[ARBITER] Failed to load adjustments: {e}")
+        
+        return adjustments
+    
+    def _get_adjustments_cached(self) -> Dict[str, float]:
+        if self._adjustments_cache_time:
+            return self._adjustments_cache.copy()
+        return {}
+    
+    def _get_adjusted_weight(self, weight_key: str, base_value: float, user_id: Optional[str] = None) -> float:
+        """
+        Get weight value with lesson-based adjustments applied.
+        
+        Args:
+            weight_key: Weight key (e.g., "priority", "origin")
+            base_value: Base weight value from config
+            user_id: Optional user ID for user-specific adjustments
+            
+        Returns:
+            Adjusted weight value
+        """
+        adjustments = self._get_adjustments_cached()
+        
+        # Check for direct weight adjustment
+        if weight_key in adjustments:
+            return adjustments[weight_key]
+        
+        # Check for goal_type-specific adjustments
+        # (handled in score_goal method)
+        
+        return base_value
+    
+    # ========================================================================
+    # Scoring & Ranking
+    # ========================================================================
+    
+    def score_goal(
+        self,
+        goal: Goal,
+        context: Optional[Dict[str, Any]] = None
+    ) -> ScoredGoal:
+        """
+        Score a goal candidate using weighted factors.
+        
+        Phase 6.5: Now supports adaptive weights and context-aware adjustments.
+        
+        Args:
+            goal: Goal to score
+            context: Optional context (personality, emotion, system load)
+            
+        Returns:
+            ScoredGoal with score and breakdown
+        """
+        context = context or {}
+        breakdown = {}
+        
+        # Phase 6.5: Use adaptive weights if enabled
+        if self.enable_adaptive and self.adaptive_engine:
+            arm_id, adaptive_weights = self.adaptive_engine.select_arm(goal.user_id)
+            # Store arm_id for later reward feedback
+            context["selected_arm_id"] = arm_id
+            # Use adaptive weights instead of fixed weights
+            weights = adaptive_weights
+            if self.logger:
+                self.logger.debug(f"[ARBITER] Using adaptive weights from arm: {arm_id}")
+        else:
+            weights = self.weights
+        
+        # Load lesson-based adjustments for this user from cache
+        user_id = goal.user_id
+        adjustments = self._get_adjustments_cached()
+        
+        # Check for goal_type-specific adjustment from lessons
+        goal_type_key = f"goal_type_{goal.goal_type}"
+        goal_type_multiplier = adjustments.get(goal_type_key, 1.0)
+        
+        # Check for goal_type performance data from self-model
+        # This can further adjust scoring based on historical success
+        goal_type_performance = context.get("goal_type_performance", {})
+        if goal.goal_type in goal_type_performance:
+            perf_data = goal_type_performance[goal.goal_type]
+            success_rate = perf_data.get("success_rate", 0.5)
+            confidence = perf_data.get("confidence", 0.0)
+            
+            # Apply performance-based adjustment if we have confident data
+            if confidence >= 0.5:
+                # Boost or penalize based on success rate
+                # success_rate 0.8+ = 1.1x boost, 0.2- = 0.9x penalty
+                perf_multiplier = 0.9 + (success_rate * 0.2)
+                goal_type_multiplier *= perf_multiplier
+                
+                if self.logger:
+                    self.logger.debug(
+                        f"[ARBITER] Applied performance multiplier {perf_multiplier:.2f} "
+                        f"for {goal.goal_type} (success_rate={success_rate:.2f})"
+                    )
+        
+        # 1. Priority score (0.0-1.0)
+        priority_map = {
+            GoalPriority.HIGH: 1.0,
+            GoalPriority.NORMAL: 0.6,
+            GoalPriority.LOW: 0.3,
+        }
+        priority_score = priority_map.get(goal.priority, 0.6)
+        priority_weight = self._get_adjusted_weight("priority", self.weights["priority"], user_id)
+        breakdown["priority"] = priority_score * priority_weight
+        
+        # 2. Origin score
+        origin_score = self.origin_scores.get(goal.origin, 0.5)
+        origin_weight = self._get_adjusted_weight("origin", self.weights["origin"], user_id)
+        breakdown["origin"] = origin_score * origin_weight
+        
+        # 3. Freshness score (newer goals score higher)
+        age_hours = (datetime.now(UTC) - goal.created_at).total_seconds() / 3600
+        freshness_score = max(0.0, 1.0 - (age_hours / 168))  # Decay over 1 week
+        freshness_weight = self._get_adjusted_weight("freshness", self.weights["freshness"], user_id)
+        breakdown["freshness"] = freshness_score * freshness_weight
+        
+        # 4. Curiosity score (if from curiosity engine)
+        curiosity_score = 0.0
+        if goal.origin in [GoalOrigin.CURIOSITY, GoalOrigin.HOBBY]:
+            curiosity_score = goal.metadata.get("curiosity_score", 0.5)
+        curiosity_weight = self._get_adjusted_weight("curiosity_score", self.weights["curiosity_score"], user_id)
+        breakdown["curiosity_score"] = curiosity_score * curiosity_weight
+        
+        # 5. Personality fit (Phase 2+)
+        personality_fit = context.get("personality_fit", 0.5)
+        personality_weight = self._get_adjusted_weight("personality_fit", self.weights["personality_fit"], user_id)
+        breakdown["personality_fit"] = personality_fit * personality_weight
+        
+        # 6. Emotion boost (Phase 2+)
+        emotion_boost = context.get("emotion_boost", 0.5)
+        emotion_weight = self._get_adjusted_weight("emotion_boost", self.weights["emotion_boost"], user_id)
+        breakdown["emotion_boost"] = emotion_boost * emotion_weight
+        
+        # 7. Persistence score (intent frequency/reinforcement)
+        mention_count = goal.metadata.get("mention_count", 1)
+        mention_frequency = goal.metadata.get("mention_frequency", 0.0)
+        
+        # Score based on mention count: 1 mention = 0.0, 2 = 0.3, 3+ = 0.6-1.0
+        persistence_score = min(1.0, (mention_count - 1) * 0.3)
+        
+        # Boost if mentions are recent and frequent (>1 per day)
+        if mention_frequency > 1.0:
+            persistence_score = min(1.0, persistence_score * 1.2)
+        
+        persistence_weight = self._get_adjusted_weight("persistence", self.weights.get("persistence", 0.15), user_id)
+        breakdown["persistence"] = persistence_score * persistence_weight
+
+        deadline_boost = 0.0
+        deadline_raw = (goal.metadata or {}).get("deadline")
+        if deadline_raw:
+            try:
+                deadline_dt = datetime.fromisoformat(deadline_raw)
+                if deadline_dt.tzinfo is None:
+                    deadline_dt = deadline_dt.replace(tzinfo=UTC)
+                hours_to_deadline = (deadline_dt - datetime.now(UTC)).total_seconds() / 3600
+                if hours_to_deadline > 0:
+                    if hours_to_deadline <= 24:
+                        deadline_boost = 0.15 * (1.0 - (hours_to_deadline / 24.0))
+                    elif hours_to_deadline <= 168:
+                        deadline_boost = 0.05 * (1.0 - (hours_to_deadline / 168.0))
+            except Exception:
+                deadline_boost = 0.0
+        breakdown["deadline_boost"] = deadline_boost
+        
+        if self.logger and mention_count > 1:
+            self.logger.debug(
+                f"[ARBITER] Goal {goal.goal_id} persistence: "
+                f"mentions={mention_count}, frequency={mention_frequency:.2f}/day, score={persistence_score:.3f}"
+            )
+        
+        # Calculate total score
+        total_score = sum(breakdown.values())
+        
+        # Apply goal_type-specific multiplier from lessons
+        if goal_type_multiplier != 1.0:
+            total_score *= goal_type_multiplier
+            if self.logger:
+                self.logger.debug(
+                    f"[ARBITER] Applied goal_type multiplier {goal_type_multiplier} "
+                    f"to {goal.goal_type} (lesson-based adjustment)"
+                )
+        
+        # Phase 6.5: Apply context-aware adjustments
+        if self.enable_context_aware and self.context_engine:
+            total_score, context_adjustments = self.context_engine.apply_contextual_adjustments(
+                goal, total_score, user_id, context
+            )
+            # Store context adjustments as metadata (not in breakdown which expects floats)
+            if self.logger:
+                self.logger.debug(f"[ARBITER] Context adjustments: {context_adjustments}")
+        
+        # Determine priority band
+        if total_score >= 0.7:
+            priority_band = PriorityBand.URGENT
+        elif total_score >= 0.4:
+            priority_band = PriorityBand.NORMAL
+        else:
+            priority_band = PriorityBand.BACKGROUND
+        
+        # Build reasons
+        reasons = []
+        if goal.priority == GoalPriority.HIGH:
+            reasons.append("high_priority")
+        if goal.origin == GoalOrigin.USER:
+            reasons.append("user_requested")
+        if curiosity_score > 0.7:
+            reasons.append("high_curiosity")
+        if freshness_score > 0.8:
+            reasons.append("recently_created")
+        if deadline_boost > 0.0:
+            reasons.append("deadline_approaching")
+        
+        if self.logger:
+            self.logger.debug(
+                f"[ARBITER] Scored goal {goal.goal_id}: {total_score:.3f} "
+                f"({priority_band.value}) - {goal.title}"
+            )
+        
+        return ScoredGoal(
+            goal=goal,
+            arbiter_score=total_score,
+            priority_band=priority_band,
+            score_breakdown=breakdown,
+            reasons=reasons
+        )
+    
+    def rank_goals(
+        self,
+        goals: List[Goal],
+        context: Optional[Dict[str, Any]] = None
+    ) -> List[ScoredGoal]:
+        """
+        Score and rank a list of goals.
+        
+        Args:
+            goals: Goals to rank
+            context: Optional context for scoring
+            
+        Returns:
+            List of ScoredGoal sorted by score (highest first)
+        """
+        scored_goals = [self.score_goal(goal, context) for goal in goals]
+        scored_goals.sort(key=lambda sg: sg.arbiter_score, reverse=True)
+        
+        if self.logger:
+            self.logger.info(
+                f"[ARBITER] Ranked {len(scored_goals)} goals, "
+                f"top score: {scored_goals[0].arbiter_score:.3f}" if scored_goals else "no goals"
+            )
+        
+        return scored_goals
+    
+    # ========================================================================
+    # Intention Set Management
+    # ========================================================================
+    
+    async def get_intention_set(self, user_id: str) -> IntentionSet:
+        """
+        Get the current intention set for a user.
+        
+        This method creates its own UnitOfWork from the shared session_factory,
+        so callers do not need to manage transaction scope explicitly.
+        """
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory for intention set queries")
+
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(self._session_factory) as uow:
+            # Get intentions from repository
+            intention_entities = await uow.agency_intention_set.list(
+                filters={"user_id": user_id, "status": ["proposed", "active", "paused"]}
+            )
+        
+        intentions = []
+        for entity in intention_entities:
+            intentions.append(Intention(
+                intention_id=entity.intention_id,
+                goal_id=entity.goal_id,
+                user_id=entity.user_id,
+                status=IntentionStatus(entity.status),
+                arbiter_score=entity.arbiter_score,
+                priority_band=PriorityBand(entity.priority_band),
+                reasons=entity.reasons_json or [],
+                activated_at=entity.activated_at,
+                deactivated_at=entity.deactivated_at,
+                created_at=entity.created_at,
+                updated_at=entity.updated_at
+            ))
+        
+        # Sort by score descending
+        intentions.sort(key=lambda i: i.arbiter_score, reverse=True)
+        
+        return IntentionSet(user_id=user_id, intentions=intentions)
+    
+    async def update_intention_set(
+        self,
+        user_id: str,
+        candidate_goals: List[Goal],
+        context: Optional[Dict[str, Any]] = None
+    ) -> IntentionSet:
+        """
+        Update the intention set with new goal candidates.
+        
+        This is the main arbiter operation:
+        1. Score and rank all candidate goals
+        2. Get current intention set
+        3. Decide which goals to activate/deactivate
+        4. Update database and publish changes
+        
+        Args:
+            user_id: User ID
+            candidate_goals: New goal candidates to consider
+            context: Optional context for scoring
+            
+        Returns:
+            Updated IntentionSet
+        """
+        # Preload lesson-based adjustments for this user
+        await self._load_adjustments(user_id)
+        # Get current intention set
+        intention_set = await self.get_intention_set(user_id)
+        
+        # Score and rank candidates
+        scored_candidates = self.rank_goals(candidate_goals, context)
+        
+        # Determine which goals to activate
+        new_intentions = []
+        active_count = len(intention_set.active_intentions)
+        
+        for scored_goal in scored_candidates:
+            # Check if already in intention set
+            existing = next(
+                (i for i in intention_set.intentions if i.goal_id == scored_goal.goal.goal_id),
+                None
+            )
+            
+            if existing:
+                if existing.status == IntentionStatus.ACTIVE:
+                    # Already active, just update score if changed significantly
+                    if abs(existing.arbiter_score - scored_goal.arbiter_score) > 0.1:
+                        existing.arbiter_score = scored_goal.arbiter_score
+                        existing.priority_band = scored_goal.priority_band
+                        existing.updated_at = datetime.now(UTC)
+                        await self._update_intention(existing)
+                    # Ensure goal lifecycle is consistent with active intention
+                    await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                    continue
+                
+                # Intention exists but NOT active (dropped/proposed) → reactivation candidate
+                if scored_goal.priority_band == PriorityBand.URGENT:
+                    # Urgent goals always get reactivated
+                    existing.status = IntentionStatus.ACTIVE
+                    existing.arbiter_score = scored_goal.arbiter_score
+                    existing.priority_band = scored_goal.priority_band
+                    existing.activated_at = datetime.now(UTC)
+                    existing.updated_at = datetime.now(UTC)
+                    await self._update_intention(existing)
+                    await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                    
+                    # Generate plan if none exists (architectural requirement)
+                    try:
+                        existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                        if not existing_plans:
+                            await self._generate_plan_for_goal(scored_goal.goal)
+                            if self.logger:
+                                self.logger.info(f"[ARBITER] Generated plan for reactivated urgent intention: '{scored_goal.goal.title}'")
+                    except Exception as e:
+                        if self.logger:
+                            self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                    
+                    new_intentions.append(existing)
+                    if self.logger:
+                        self.logger.info(f"[ARBITER] Reactivated urgent intention: '{scored_goal.goal.title}'")
+                elif scored_goal.priority_band == PriorityBand.NORMAL:
+                    if active_count < intention_set.max_active:
+                        # Reactivate if capacity available
+                        existing.status = IntentionStatus.ACTIVE
+                        existing.arbiter_score = scored_goal.arbiter_score
+                        existing.priority_band = scored_goal.priority_band
+                        existing.activated_at = datetime.now(UTC)
+                        existing.updated_at = datetime.now(UTC)
+                        await self._update_intention(existing)
+                        await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                        
+                        # Generate plan if none exists (architectural requirement)
+                        try:
+                            existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                            if not existing_plans:
+                                await self._generate_plan_for_goal(scored_goal.goal)
+                                if self.logger:
+                                    self.logger.info(f"[ARBITER] Generated plan for reactivated intention: '{scored_goal.goal.title}'")
+                        except Exception as e:
+                            if self.logger:
+                                self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                        
+                        new_intentions.append(existing)
+                        active_count += 1
+                        if self.logger:
+                            self.logger.info(f"[ARBITER] Reactivated intention: '{scored_goal.goal.title}' (score={scored_goal.arbiter_score:.3f})")
+                    else:
+                        # At capacity: competitive replacement for reactivation
+                        active_intentions = [i for i in intention_set.intentions if i.status == IntentionStatus.ACTIVE]
+                        if active_intentions:
+                            lowest = min(active_intentions, key=lambda i: i.arbiter_score)
+                            if scored_goal.arbiter_score > lowest.arbiter_score:
+                                # Replace: deactivate lowest, reactivate this one
+                                await self.deactivate_intention(lowest.intention_id, reason="replaced_by_higher_score")
+                                existing.status = IntentionStatus.ACTIVE
+                                existing.arbiter_score = scored_goal.arbiter_score
+                                existing.priority_band = scored_goal.priority_band
+                                existing.activated_at = datetime.now(UTC)
+                                existing.updated_at = datetime.now(UTC)
+                                await self._update_intention(existing)
+                                await self._set_goal_status(existing.goal_id, GoalStatus.ACTIVE)
+                                
+                                # Generate plan if none exists (architectural requirement)
+                                try:
+                                    existing_plans = await self.agency_service.list_plans(goal_id=existing.goal_id)
+                                    if not existing_plans:
+                                        await self._generate_plan_for_goal(scored_goal.goal)
+                                        if self.logger:
+                                            self.logger.info(f"[ARBITER] Generated plan for competitively reactivated intention: '{scored_goal.goal.title}'")
+                                except Exception as e:
+                                    if self.logger:
+                                        self.logger.error(f"[ARBITER] Failed to generate plan for reactivated intention: {e}", exc_info=True)
+                                
+                                new_intentions.append(existing)
+                                if self.logger:
+                                    self.logger.info(
+                                        f"[ARBITER] Competitive reactivation: '{scored_goal.goal.title}' "
+                                        f"(score={scored_goal.arbiter_score:.3f}) replaced intention with score {lowest.arbiter_score:.3f}"
+                                    )
+                elif scored_goal.priority_band == PriorityBand.BACKGROUND:
+                    # Update to proposed status
+                    existing.status = IntentionStatus.PROPOSED
+                    existing.arbiter_score = scored_goal.arbiter_score
+                    existing.priority_band = scored_goal.priority_band
+                    existing.updated_at = datetime.now(UTC)
+                    await self._update_intention(existing)
+                    # Background intentions should not keep the goal marked as active
+                    await self._set_goal_status(existing.goal_id, GoalStatus.PAUSED)
+                    new_intentions.append(existing)
+                continue
+            
+            # No existing intention → create new
+            if scored_goal.priority_band == PriorityBand.URGENT:
+                # Urgent goals always get added
+                intention = await self._create_intention(scored_goal, user_id, activate=True)
+                if intention is None:
+                    continue
+                new_intentions.append(intention)
+                if self.logger:
+                    self.logger.info(f"[ARBITER] Created urgent intention: '{scored_goal.goal.title}'")
+            elif scored_goal.priority_band == PriorityBand.NORMAL:
+                if active_count < intention_set.max_active:
+                    # Add if capacity available
+                    intention = await self._create_intention(scored_goal, user_id, activate=True)
+                    if intention is None:
+                        continue
+                    new_intentions.append(intention)
+                    active_count += 1
+                    if self.logger:
+                        self.logger.info(f"[ARBITER] Created intention: '{scored_goal.goal.title}' (score={scored_goal.arbiter_score:.3f})")
+                else:
+                    # At capacity: check if this goal scores higher than lowest active intention
+                    active_intentions = [i for i in intention_set.intentions if i.status == IntentionStatus.ACTIVE]
+                    if active_intentions:
+                        lowest = min(active_intentions, key=lambda i: i.arbiter_score)
+                        if scored_goal.arbiter_score > lowest.arbiter_score:
+                            # Replace: deactivate lowest, activate new
+                            await self.deactivate_intention(lowest.intention_id, reason="replaced_by_higher_score")
+                            intention = await self._create_intention(scored_goal, user_id, activate=True)
+                            if intention is None:
+                                continue
+                            new_intentions.append(intention)
+                            if self.logger:
+                                self.logger.info(
+                                    f"[ARBITER] Competitive replacement: '{scored_goal.goal.title}' "
+                                    f"(score={scored_goal.arbiter_score:.3f}) replaced intention with score {lowest.arbiter_score:.3f}"
+                                )
+            elif scored_goal.priority_band == PriorityBand.BACKGROUND:
+                # Background goals are proposed but not activated
+                intention = await self._create_intention(scored_goal, user_id, activate=False)
+                if intention is None:
+                    continue
+                new_intentions.append(intention)
+        
+        # Enforce max_active capacity: deactivate lowest scorers if over limit
+        intention_set = await self.get_intention_set(user_id)
+        active_intentions = [i for i in intention_set.intentions if i.status == IntentionStatus.ACTIVE]
+        
+        if len(active_intentions) > intention_set.max_active:
+            # Sort by score, keep top max_active, deactivate the rest
+            sorted_active = sorted(active_intentions, key=lambda i: i.arbiter_score, reverse=True)
+            to_deactivate = sorted_active[intention_set.max_active:]
+            
+            for intention in to_deactivate:
+                await self.deactivate_intention(intention.intention_id, reason="capacity_limit")
+                if self.logger:
+                    self.logger.info(
+                        f"[ARBITER] Deactivated intention (score={intention.arbiter_score:.3f}) - over capacity"
+                    )
+        
+        # Refresh intention set after capacity enforcement
+        intention_set = await self.get_intention_set(user_id)
+        
+        # Activate/deactivate plans based on ALL intention statuses
+        await self._sync_plans_with_intentions(user_id, intention_set.intentions)
+        
+        # Publish changes if message bus available
+        if self.message_bus and new_intentions:
+            await self._publish_intention_set_update(intention_set)
+        
+        if self.logger:
+            self.logger.debug(
+                f"[ARBITER] Updated intention set for {user_id}: "
+                f"{len(intention_set.active_intentions)} active, "
+                f"{len(intention_set.proposed_intentions)} proposed"
+            )
+        
+        return intention_set
+    
+    async def activate_intention(self, intention_id: str) -> Intention:
+        """Activate a proposed intention."""
+        intention = await self._get_intention(intention_id)
+        if not intention:
+            raise ValueError(f"Intention {intention_id} not found")
+        
+        intention.status = IntentionStatus.ACTIVE
+        intention.activated_at = datetime.now(UTC)
+        intention.updated_at = datetime.now(UTC)
+        
+        await self._update_intention(intention)
+        # Intention activation always implies active goal commitment
+        await self._set_goal_status(intention.goal_id, GoalStatus.ACTIVE)
+        
+        if self.logger:
+            self.logger.info(f"[ARBITER] Activated intention {intention_id}")
+        
+        return intention
+    
+    async def deactivate_intention(self, intention_id: str, reason: str = "dropped") -> Intention:
+        """Deactivate an active intention."""
+        intention = await self._get_intention(intention_id)
+        if not intention:
+            raise ValueError(f"Intention {intention_id} not found")
+        
+        # Map deactivation reason to intention + goal lifecycle states
+        if reason == "dropped":
+            intention.status = IntentionStatus.DROPPED
+            new_goal_status = GoalStatus.RETIRED
+        else:
+            intention.status = IntentionStatus.PAUSED
+            new_goal_status = GoalStatus.PAUSED
+
+        intention.deactivated_at = datetime.now(UTC)
+        intention.updated_at = datetime.now(UTC)
+        
+        await self._update_intention(intention)
+        await self._set_goal_status(intention.goal_id, new_goal_status)
+        
+        if self.logger:
+            self.logger.info(f"[ARBITER] Deactivated intention {intention_id}: {reason}")
+        
+        return intention
+    
+    # ========================================================================
+    # Internal Helpers
+    # ========================================================================
+    
+    async def _create_intention(
+        self,
+        scored_goal: ScoredGoal,
+        user_id: str,
+        activate: bool,
+    ) -> Optional[Intention]:
+        """Create a new intention in the database using a fresh UoW.
+
+        Returns None if the referenced goal does not exist.
+        """
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory for intention creation")
+
+        from aico.data.agency.goal_models import AgencyIntentionSet
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(self._session_factory) as uow:
+            # Defensive check: never create child rows if the goal row is missing.
+            # This avoids FK violations if goal rows were deleted or if stale IDs
+            # leak into the arbiter candidate set.
+            goal_exists = await uow.goals.get_by_id(scored_goal.goal.goal_id)
+            if not goal_exists:
+                if self.logger:
+                    self.logger.error(
+                        f"[ARBITER] Skipping intention creation: goal_id not found in agency_goals: {scored_goal.goal.goal_id}",
+                        extra={"user_id": user_id, "goal_id": scored_goal.goal.goal_id},
+                    )
+                return None
+
+            # Create entity
+            entity = AgencyIntentionSet(
+                intention_id=str(uuid.uuid4()),
+                goal_id=scored_goal.goal.goal_id,
+                user_id=user_id,
+                status=IntentionStatus.ACTIVE.value if activate else IntentionStatus.PROPOSED.value,
+                arbiter_score=scored_goal.arbiter_score,
+                priority_band=scored_goal.priority_band.value,
+                reasons_json=scored_goal.reasons,
+                activated_at=datetime.now(UTC) if activate else None,
+                deactivated_at=None,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC)
+            )
+
+            await uow.agency_intention_set.create(entity)
+            await uow.commit()
+
+        # Keep goal lifecycle in sync with intention creation
+        if activate:
+            await self._set_goal_status(scored_goal.goal.goal_id, GoalStatus.ACTIVE)
+            
+            # Generate plan for newly activated intention (architectural requirement)
+            # Per agency-component-planning.md: "Takes a target goal/intention from the Arbiter"
+            try:
+                # Check if plan already exists
+                existing_plans = await self.agency_service.list_plans(goal_id=scored_goal.goal.goal_id)
+                if not existing_plans:
+                    # No plan exists - generate one
+                    plan = await self._generate_plan_for_goal(scored_goal.goal)
+                    if self.logger:
+                        self.logger.info(
+                            f"[ARBITER] Generated plan {plan.plan_id[:8]}... for newly activated intention "
+                            f"(goal: {scored_goal.goal.title})"
+                        )
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(
+                        f"[ARBITER] Failed to generate plan for intention {entity.intention_id}: {e}",
+                        exc_info=True
+                    )
+        else:
+            # Background / proposed intentions do not change goal status yet
+            # (goal remains pending until promoted to active intention)
+            if scored_goal.goal.status not in (GoalStatus.ACTIVE, GoalStatus.PAUSED, GoalStatus.COMPLETED, GoalStatus.RETIRED):
+                await self._set_goal_status(scored_goal.goal.goal_id, GoalStatus.PENDING)
+
+        return Intention(
+            intention_id=entity.intention_id,
+            goal_id=entity.goal_id,
+            user_id=entity.user_id,
+            status=IntentionStatus(entity.status),
+            arbiter_score=entity.arbiter_score,
+            priority_band=PriorityBand(entity.priority_band),
+            reasons=entity.reasons_json or [],
+            activated_at=entity.activated_at,
+            deactivated_at=entity.deactivated_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at
+        )
+    
+    async def _update_intention(self, intention: Intention) -> None:
+        """Update an existing intention in the database using a fresh UoW."""
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory for intention updates")
+
+        from aico.data.agency.goal_models import AgencyIntentionSet
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(self._session_factory) as uow:
+            # Create updated entity
+            entity = AgencyIntentionSet(
+                intention_id=intention.intention_id,
+                goal_id=intention.goal_id,
+                user_id=intention.user_id,
+                status=intention.status.value,
+                arbiter_score=intention.arbiter_score,
+                priority_band=intention.priority_band.value,
+                reasons_json=intention.reasons,
+                activated_at=intention.activated_at,
+                deactivated_at=intention.deactivated_at,
+                created_at=intention.created_at,
+                updated_at=datetime.now(UTC)
+            )
+
+            await uow.agency_intention_set.update(intention.intention_id, entity)
+            await uow.commit()
+    
+    async def _get_intention(self, intention_id: str) -> Optional[Intention]:
+        """Get an intention by ID using a fresh UoW."""
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory for intention queries")
+
+        from aico.data.uow import UnitOfWork
+
+        async with UnitOfWork(self._session_factory) as uow:
+            entity = await uow.agency_intention_set.get_by_id(intention_id)
+
+        if not entity:
+            return None
+
+        return Intention(
+            intention_id=entity.intention_id,
+            goal_id=entity.goal_id,
+            user_id=entity.user_id,
+            status=IntentionStatus(entity.status),
+            arbiter_score=entity.arbiter_score,
+            priority_band=PriorityBand(entity.priority_band),
+            reasons=entity.reasons_json or [],
+            activated_at=entity.activated_at,
+            deactivated_at=entity.deactivated_at,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at
+        )
+    
+    async def _sync_plans_with_intentions(
+        self,
+        user_id: str,
+        new_intentions: List[Intention],
+    ) -> None:
+        """Sync plan status with intention status changes.
+
+        Note: Plan updates go through AgencyService, which already wraps its
+        own UnitOfWork, so we do not open an additional UoW here.
+        """
+        from .models import PlanStatus
+        
+        for intention in new_intentions:
+            try:
+                # Get plan for this goal using AgencyService
+                plans = await self.agency_service.list_plans(goal_id=intention.goal_id)
+                
+                if not plans:
+                    continue  # No plan yet
+                
+                # Get the most recent plan
+                plan = plans[0]
+                current_plan_status = plan.status
+                
+                # Activate plan if intention is active and plan is draft
+                if intention.status == IntentionStatus.ACTIVE and current_plan_status == PlanStatus.DRAFT:
+                    plan.status = PlanStatus.ACTIVE
+                    plan.updated_at = datetime.now(UTC)
+                    await self.agency_service.update_plan(plan)
+                    
+                    if self.logger:
+                        self.logger.info(
+                            f"[ARBITER] Activated plan {plan.plan_id[:8]}... for intention {intention.intention_id[:8]}..."
+                        )
+                
+                # Pause plan if intention is dropped/paused and plan is active
+                elif intention.status in [IntentionStatus.DROPPED, IntentionStatus.PAUSED] and current_plan_status == PlanStatus.ACTIVE:
+                    plan.status = PlanStatus.PAUSED
+                    plan.updated_at = datetime.now(UTC)
+                    await self.agency_service.update_plan(plan)
+                    
+                    if self.logger:
+                        self.logger.info(
+                            f"[ARBITER] Paused plan {plan.plan_id[:8]}... for intention {intention.intention_id[:8]}..."
+                        )
+                        
+            except Exception as e:
+                if self.logger:
+                    self.logger.exception(
+                        f"[ARBITER] Failed to sync plan for intention {intention.intention_id}: {e}"
+                    )
+    
+    async def _generate_plan_for_goal(self, goal: Goal) -> Plan:
+        """Generate a plan for a goal using the agency engine's planner.
+        
+        This is called when the arbiter activates an intention, implementing the
+        architectural requirement that plans are created from intentions, not goals.
+        
+        Args:
+            goal: Goal to generate plan for
+            
+        Returns:
+            Generated Plan
+        """
+        # Import here to avoid circular dependency
+        from aico.ai import ai_registry
+        
+        agency_engine = ai_registry.get("agency")
+        if not agency_engine:
+            raise RuntimeError("AgencyEngine not available for plan generation")
+        
+        # Use the engine's plan generation method
+        plan = await agency_engine._generate_and_store_plan(goal)
+        
+        if self.logger:
+            self.logger.debug(
+                f"[ARBITER] Generated plan for goal {goal.goal_id}: {plan.plan_id}"
+            )
+        
+        return plan
+    
+    async def _publish_intention_set_update(self, intention_set: IntentionSet) -> None:
+        """Publish intention set update to message bus."""
+        if not self.message_bus:
+            return
+        
+        # TODO: Message bus publishing requires protobuf message, not dict
+        # For now, skip publishing - it's an optional feature for real-time UI updates
+        # The intention_set is persisted in DB which is the critical path
+        if self.logger:
+            self.logger.debug(
+                f"[ARBITER] Intention set updated for {intention_set.user_id} "
+                f"({len(intention_set.active_intentions)} active, "
+                f"{len(intention_set.proposed_intentions)} proposed)"
+            )
+    
+    # ========================================================================
+    # Phase 6.5: Adaptive Learning
+    # ========================================================================
+    
+    async def record_goal_outcome(
+        self,
+        goal_id: str,
+        outcome: str,
+        success: bool,
+        user_satisfaction: Optional[float] = None,
+        completion_time_minutes: Optional[int] = None,
+        metadata: Optional[Dict] = None
+    ) -> None:
+        """Record goal outcome for adaptive learning using an internal UoW."""
+        if not self.enable_adaptive:
+            return
+        if not self._session_factory:
+            raise RuntimeError("GoalArbiter requires session_factory to record goal outcomes")
+
+        try:
+            from aico.data.agency.goal_models import AgencyGoalOutcome
+            from aico.data.uow import UnitOfWork
+            
+            # Calculate reward based on outcome
+            reward = 0.0
+            if outcome == "completed":
+                reward = 0.8
+                if user_satisfaction is not None:
+                    reward = 0.5 + (user_satisfaction * 0.5)  # 0.5-1.0 range
+            elif outcome == "abandoned":
+                reward = 0.2
+            elif outcome == "failed":
+                reward = 0.1
+            elif outcome == "timeout":
+                reward = 0.3
+            
+            # Get the arm that was used for this goal
+            arm_id = None
+            if metadata and "selected_arm_id" in metadata:
+                arm_id = metadata["selected_arm_id"]
+            
+            # Create outcome entity
+            outcome_entity = AgencyGoalOutcome(
+                outcome_id=str(uuid.uuid4()),
+                goal_id=goal_id,
+                user_id=str(metadata.get("user_id")) if metadata and metadata.get("user_id") is not None else "",
+                arm_id=arm_id,
+                outcome=outcome,
+                success=success,
+                reward=reward,
+                completion_time_minutes=completion_time_minutes,
+                user_satisfaction=user_satisfaction,
+                metadata_json=metadata or {},
+                created_at=datetime.now(UTC).isoformat(),
+            )
+            
+            # Store in database
+            async with UnitOfWork(self._session_factory) as uow:
+                await uow.agency_goal_outcomes.create(outcome_entity)
+                await uow.commit()
+            
+            if self.logger:
+                self.logger.info(
+                    f"[ARBITER] Recorded outcome for goal {goal_id}: "
+                    f"{outcome} (reward: {reward:.2f}, success: {success})"
+                )
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"[ARBITER] Failed to record goal outcome: {e}")

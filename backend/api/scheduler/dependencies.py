@@ -12,7 +12,7 @@ from aico.core.logging import get_logger
 from backend.scheduler import TaskScheduler, CronParser
 from backend.scheduler.tasks.base import TaskContext
 
-logger = get_logger("api", "scheduler_dependencies")
+logger = get_logger("api.scheduler_dependencies")
 security = HTTPBearer(auto_error=False)
 
 
@@ -84,8 +84,6 @@ async def require_admin_access(credentials: Optional[HTTPAuthorizationCredential
         # In development, we might allow this, but log it
         # In production, this should raise HTTPException
         pass
-    else:
-        logger.info(f"Scheduler API access with token: {credentials.credentials[:10]}...")
     
     # For now, return True to allow access during development
     return True

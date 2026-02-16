@@ -37,7 +37,7 @@ def initialize_lmdb_env(config: Optional[ConfigurationManager] = None) -> None:
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     
-    memory_config = config.get("core.memory.working", {})
+    memory_config = config.get("memory.working", {})
     map_size = memory_config.get("map_size_mb", 100) * 1024 * 1024
     named_dbs = memory_config.get("named_databases", [])
 

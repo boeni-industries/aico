@@ -45,7 +45,7 @@ final class AvatarRingStateNotifierProvider
 }
 
 String _$avatarRingStateNotifierHash() =>
-    r'81ea5f465d18ce5d00a382efbda319ef38967811';
+    r'd4f036be1c50ad1c7e7faff70d84c2b134e25cb4';
 
 /// Provider for avatar ring state
 

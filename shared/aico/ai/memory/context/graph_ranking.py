@@ -10,7 +10,7 @@ from aico.core.logging import get_logger
 
 from .models import ContextItem
 
-logger = get_logger("ai", "memory.context.graph_ranking")
+logger = get_logger("ai.memory.context.graph_ranking")
 
 
 class GraphContextRanker:

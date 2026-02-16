@@ -1,0 +1,144 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Memory Configuration",
+  "description": "Multi-tier memory system with working, semantic, and behavioral memory",
+  "type": "object",
+  "required": ["working", "semantic"],
+  "properties": {
+    "working": {
+      "type": "object",
+      "required": ["ttl_seconds", "named_databases"],
+      "properties": {
+        "ttl_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Time-to-live for working memory entries"
+        },
+        "named_databases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "LMDB named databases"
+        },
+        "map_size_mb": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "LMDB map size in MB"
+        }
+      }
+    },
+    "semantic": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "embedding_timeout_seconds": {
+          "type": "number",
+          "minimum": 1
+        },
+        "max_results": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "min_similarity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "min_semantic_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fusion_method": {
+          "type": "string",
+          "enum": ["rrf", "weighted"]
+        },
+        "knowledge_graph": {
+          "type": "object",
+          "properties": {
+            "max_gleanings": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "llm_timeout_seconds": {
+              "type": "number",
+              "minimum": 1
+            },
+            "entity_resolution": {
+              "type": "object",
+              "properties": {
+                "similarity_threshold": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "use_llm_matching": {
+                  "type": "boolean"
+                },
+                "use_llm_merging": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "temporal": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "metadata_retention_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence_decay_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "consolidation": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "user_sharding_cycle_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_concurrent_users": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "behavioral": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "learning_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "exploration_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}

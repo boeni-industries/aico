@@ -19,7 +19,7 @@ def verify_ttl():
     config.initialize()
     
     # Get TTL value
-    ttl_seconds = config.get("core.memory.working.ttl_seconds", 86400)
+    ttl_seconds = config.get("memory.working.ttl_seconds", 86400)
     
     print(f"\n✓ Config loaded successfully")
     print(f"  TTL value: {ttl_seconds} seconds")

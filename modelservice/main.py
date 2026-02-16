@@ -12,6 +12,9 @@ import signal
 import warnings
 from pathlib import Path
 
+# Disable tokenizers parallelism to avoid fork issues
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Suppress harmless SyntaxWarnings from third-party dependencies (Python 3.13)
 # These are from jsonlines, pysbd (used by Coqui TTS) - not our code
 warnings.filterwarnings('ignore', category=SyntaxWarning)
@@ -22,9 +25,16 @@ if sys.platform == "win32":
 
 # Initialize configuration before any imports that get loggers
 from aico.core.config import ConfigurationManager
+from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import get_logger
 config_manager = ConfigurationManager()
-config_manager.initialize()
+# Use lightweight initialization in modelservice to avoid starting file watchers.
+# IMPORTANT: This means modelservice no longer hot-reloads configuration files.
+# Any changes under /config that should affect modelservice now require a
+# modelservice restart to take effect. This avoids macOS FSEvents
+# "already scheduled" errors when multiple processes watch the same
+# config directory.
+config_manager.initialize(lightweight=True)
 # Logging will be initialized service-specifically in initialize_modelservice()
 from aico.core.version import get_modelservice_version
 from .core.zmq_service import ModelserviceZMQService
@@ -37,22 +47,35 @@ __version__ = get_modelservice_version()
 # Global service instance for signal handling
 _zmq_service = None
 
+# Track service start time for uptime calculation
+import time
+_start_time = time.time()
+
 
 async def initialize_modelservice():
     """Initialize modelservice with Ollama and return configuration."""
-    # Use the already initialized global config manager
+    # CRITICAL: Validate configuration before proceeding.
+    # Validate the already-initialized global config manager to avoid starting file
+    # watchers (and to avoid validating a different initialization mode).
     cfg = config_manager
+    try:
+        validate_startup_config(cfg, service="modelservice", fail_fast=True)
+        print_config_summary(cfg)
+    except Exception as e:
+        print(f"❌ FATAL: Configuration validation failed: {e}")
+        print("Modelservice cannot start with invalid configuration.")
+        raise SystemExit(1)
     
     # Initialize service-specific logging first to capture all subsequent logs
     from aico.core.logging import initialize_logging
-    logger_factory = initialize_logging(cfg, service_name="modelservice")
+    initialize_logging(service_name="modelservice", enable_loki=True, enable_console=True)
     
     # Now we can get a logger
-    logger = get_logger("modelservice", "main")
+    logger = get_logger("modelservice.main")
     
-    # The modelservice config is actually under the 'core' domain
-    core_config = cfg.get("core", {})
-    modelservice_config = core_config.get("modelservice", {})
+    # Get modelservice config from new domain structure
+    # NOTE: Config is validated at startup - if missing, startup fails
+    modelservice_config = cfg.get("modelservice", {})
     env = os.getenv("AICO_ENV", "development")
 
     # Startup: Display initial info and use standard AICO logging
@@ -76,20 +99,88 @@ async def initialize_modelservice():
         print("✅ Backend is available")
         logger.info("Backend confirmed available at startup")
     
-    # Start ZMQ service EARLY to capture all subsequent logs
+    # Initialize ZMQ service EARLY to capture all subsequent logs
     print("🔌 Starting ZMQ logging service...")
     logger.info("Starting ZMQ service early for log capture")
     
     zmq_service = ModelserviceZMQService(cfg, None)  # No ollama_manager yet
     await zmq_service.start_early()  # New method for early startup
     
-    # Initialize ZMQ logging transport - but don't try to connect yet
-    # Connection will happen automatically when mark_broker_ready() is called
-    if not logger_factory._transport:
-        print("⚠️  Logger factory has no transport!")
+    # Initialize InfluxDB metrics exporter (honor instrumentation flag)
+    instrumentation_config = cfg.get("instrumentation", {})
+    if instrumentation_config.get("enabled", False):
+        print("📊 Initializing InfluxDB metrics exporter...")
+        logger.info("Initializing InfluxDB metrics exporter (instrumentation enabled)")
+        try:
+            from opentelemetry import metrics as otel_metrics
+            from opentelemetry.sdk.metrics import MeterProvider
+            from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+            from opentelemetry.sdk.resources import Resource
+            from backend.core.otel_influx_exporter import OTelInfluxExporter
+            import socket
+            
+            # Get InfluxDB config
+            influx_config = cfg.get("influx", {})
+            influx_url = influx_config.get("url", "http://127.0.0.1:8086")
+            influx_org = influx_config.get("org", "aico")
+            influx_bucket = influx_config.get("bucket", "aico_telemetry")
+            
+            # Retrieve token from keyring
+            influx_token = None
+            try:
+                from aico.security.key_manager import AICOKeyManager
+                
+                # Use the global config_manager (already initialized at module level)
+                key_manager = AICOKeyManager(config_manager)
+                influx_token = key_manager.get_database_password("influx", username="admin_token")
+                
+                if not influx_token:
+                    logger.warning("InfluxDB token not found in keyring; metrics may not be exported. Run 'aico deploy influx' to set up credentials.")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve InfluxDB token from keyring: {e}")
+                influx_token = None
+            
+            # Create resource for modelservice
+            resource = Resource.create({
+                "service.name": "modelservice",
+                "service.version": __version__,
+                "deployment.environment": instrumentation_config.get("mode", "casual"),
+                "host.name": socket.gethostname(),
+            })
+            
+            # Create InfluxDB exporter
+            influx_exporter = OTelInfluxExporter(
+                influx_url=influx_url,
+                org=influx_org,
+                bucket=influx_bucket,
+                token=influx_token,
+                resource_attributes=dict(resource.attributes),
+            )
+            
+            # Wrap exporter in periodic reader (exports every 60 seconds, matching backend)
+            influx_reader = PeriodicExportingMetricReader(
+                exporter=influx_exporter,
+                export_interval_millis=60000,  # 60 seconds (as per schema.lp)
+            )
+            
+            # Create and set meter provider
+            meter_provider = MeterProvider(
+                resource=resource,
+                metric_readers=[influx_reader]
+            )
+            otel_metrics.set_meter_provider(meter_provider)
+            
+            print("✅ InfluxDB metrics exporter ready")
+            logger.info("InfluxDB metrics exporter initialized successfully")
+        except Exception as e:
+            print(f"⚠️  Metrics initialization failed: {e}")
+            logger.warning(f"Metrics initialization failed: {e}")
+    else:
+        print("⏹️  Instrumentation disabled in config; skipping metrics setup")
+        logger.info("Instrumentation disabled in config; skipping modelservice metrics initialization")
     
-    # Also test without the extra topic to see if that works
-    logger.info("Testing modelservice log without extra topic")
+    # ZMQ log transport removed - logs now go directly to InfluxDB
+    logger.info("Modelservice logging initialized with InfluxDB")
     
     # Initialize OllamaManager (now that ZMQ logging is available)
     from .core.ollama_manager import OllamaManager
@@ -197,7 +288,7 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
         import httpx
         
         # Get backend configuration
-        backend_config = cfg.get("core.api_gateway", {})
+        backend_config = cfg.get("api_gateway", {})
         host = backend_config.get("host", "localhost")
         port = backend_config.get("port", 8771)
         
@@ -214,7 +305,7 @@ async def shutdown_modelservice(ollama_manager, process_manager):
     """Gracefully shutdown modelservice and Ollama."""
     # Get logger safely
     try:
-        logger = get_logger("modelservice", "main")
+        logger = get_logger("modelservice.main")
     except:
         logger = None
     
@@ -258,7 +349,7 @@ def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     # Get logger (it should be initialized by now)
     try:
-        logger = get_logger("modelservice", "main")
+        logger = get_logger("modelservice.main")
         logger.info(f"Received signal {signum}, initiating shutdown")
     except:
         print(f"Received signal {signum}, initiating shutdown")
@@ -271,6 +362,10 @@ async def main():
     """Main entry point for the modelservice ZMQ service."""
     global _zmq_service
     
+    # Initialize these to None so they're always defined for cleanup
+    ollama_manager = None
+    process_manager = None
+    
     try:
         # Set up signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, signal_handler)
@@ -282,20 +377,7 @@ async def main():
         # Complete the full ZMQ service initialization (subscribe to all topics)
         await _zmq_service.start()
         
-        # NOW mark broker ready - log consumer is fully initialized and ready
-        from aico.core.logging import get_logger_factory
-        logger_factory = get_logger_factory("modelservice")  # Get modelservice-specific factory
-        # Got logger factory
-        # Check factory has transport
-        # Check transport object
-        
-        if logger_factory and logger_factory._transport:
-            # Calling mark_broker_ready
-            logger_factory._transport.mark_broker_ready()  # This will trigger automatic flush of buffered logs
-            # mark_broker_ready completed
-        else:
-            # Cannot call mark_broker_ready - missing factory or transport
-            pass
+        # ZMQ log transport removed - logs now go directly to InfluxDB
         
         # Keep the service running (both foreground and background modes)
         # Entering service loop
@@ -305,22 +387,23 @@ async def main():
         
     except KeyboardInterrupt:
         try:
-            logger = get_logger("modelservice", "main")
+            logger = get_logger("modelservice.main")
             logger.info("Received keyboard interrupt")
         except:
             print("Received keyboard interrupt")
     except Exception as e:
         try:
-            logger = get_logger("modelservice", "main")
+            logger = get_logger("modelservice.main")
             logger.error(f"Modelservice error: {str(e)}")
         except:
             print(f"Modelservice error: {str(e)}")
         raise
     finally:
-        # Cleanup
+        # Cleanup - ollama_manager and process_manager are always defined (may be None)
         if _zmq_service:
             await _zmq_service.stop()
-        await shutdown_modelservice(ollama_manager, process_manager)
+        if ollama_manager is not None:
+            await shutdown_modelservice(ollama_manager, process_manager)
 
 
 def run_main():
@@ -329,13 +412,13 @@ def run_main():
         asyncio.run(main())
     except KeyboardInterrupt:
         try:
-            logger = get_logger("modelservice", "main")
+            logger = get_logger("modelservice.main")
             logger.info("Modelservice stopped by user")
         except:
             print("Modelservice stopped by user")
     except Exception as e:
         try:
-            logger = get_logger("modelservice", "main")
+            logger = get_logger("modelservice.main")
             logger.error(f"Fatal error: {str(e)}")
         except:
             print(f"Fatal error: {str(e)}")

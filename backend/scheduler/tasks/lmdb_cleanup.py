@@ -5,13 +5,13 @@ Periodically removes expired entries from LMDB working memory to prevent
 unbounded growth of stale data.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from backend.scheduler.tasks.base import BaseTask, TaskContext, TaskResult
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "scheduler.tasks.lmdb_cleanup")
+logger = get_logger("backend.scheduler.tasks.lmdb_cleanup")
 
 
 class LMDBCleanupTask(BaseTask):
@@ -77,7 +77,7 @@ class LMDBCleanupTask(BaseTask):
                 message=f"Cleaned up {deleted_count} expired entries",
                 data={
                     "deleted_count": deleted_count,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
             
@@ -93,15 +93,16 @@ class LMDBCleanupTask(BaseTask):
             )
     
     async def _get_memory_manager(self, context: TaskContext):
-        """Get memory manager from service container."""
+        """Get memory manager from AI registry."""
         try:
-            from backend.services import get_memory_manager
+            from aico.ai import ai_registry
             
-            # Get memory manager (will initialize if needed)
-            memory_manager = get_memory_manager(
-                context.config,
-                context.db_connection
-            )
+            # Get memory manager from AI registry (registered during backend startup)
+            memory_manager = ai_registry.get("memory")
+            
+            if not memory_manager:
+                logger.error("Memory manager not found in AI registry")
+                return None
             
             # Ensure it's initialized
             if not memory_manager._initialized:

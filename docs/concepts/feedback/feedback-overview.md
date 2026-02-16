@@ -229,7 +229,7 @@ AICO's feedback system moves beyond traditional thumbs-up/down patterns to creat
 ### 6.2 Database Schema
 
 ```sql
--- Unified feedback event store (libSQL)
+-- Unified feedback event store (PostgreSQL)
 CREATE TABLE IF NOT EXISTS feedback_events (
   -- Identity
   id TEXT PRIMARY KEY,
@@ -528,7 +528,7 @@ WHERE user_uuid = ?
 
 | System | Technology | Purpose | Data |
 |--------|-----------|---------|------|
-| **LibSQL** | SQLite | Structured data, ACID | `feedback_events`, `facts_metadata` (extended) |
+| **PostgreSQL** | PostgreSQL | Structured data, ACID | `feedback_events`, `facts_metadata` (extended) |
 | **ChromaDB** | Vector DB | Semantic search | Conversation segments (existing) |
 | **LMDB** | Key-value | Fast ephemeral | Active sessions (existing) |
 

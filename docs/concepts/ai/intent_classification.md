@@ -284,15 +284,13 @@ if current_intent == "greeting" and not conversation_active:
 
 ## Configuration
 
-### Config File (`core.yaml`)
+### Config File (`config/defaults/modelservice.yaml`)
 
 ```yaml
-ai:
-  intent_classifier:
-    confidence_threshold: 0.7  # Minimum confidence for prediction
-    cache_size: 1000           # Max cached embeddings
-    context_window: 10         # Recent intents to track
-    enable_few_shot: true      # Enable learning from examples
+transformers:
+  models:
+    intent_classification:
+      model_id: "xlm-roberta-base"
 ```
 
 ### Model Configuration (`transformers_manager.py`)

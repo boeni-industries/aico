@@ -15,7 +15,7 @@ from aico.core.logging import get_logger
 from .models import Node, Edge, PropertyGraph
 from .storage import PropertyGraphStorage
 
-logger = get_logger("shared", "ai.knowledge_graph.query")
+logger = get_logger("shared.ai.knowledge_graph.query")
 
 
 @dataclass

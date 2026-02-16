@@ -1,46 +1,46 @@
 """
 Property Graph Storage
 
-Hybrid storage backend using ChromaDB (semantic search) and libSQL (relational queries).
+Hybrid storage backend using ChromaDB (semantic search) and PostgreSQL (relational queries).
 Implements dual-write pattern for consistency.
 """
 
 from typing import List, Optional, Dict, Any
 import json
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
+import time
 
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 
 from .models import Node, Edge, PropertyGraph
 
-logger = get_logger("shared", "ai.knowledge_graph.storage")
+logger = get_logger("shared.ai.knowledge_graph.storage")
 
 
 class PropertyGraphStorage:
     """
     Hybrid storage backend for property graphs.
     
-    Uses ChromaDB for semantic search and libSQL for fast filtering/traversal.
+    Uses ChromaDB for semantic search and PostgreSQL for fast filtering/traversal.
     All operations are dual-write to maintain consistency.
     """
     
     def __init__(
         self,
-        db_connection: EncryptedLibSQLConnection,
+        uow_factory,  # UnitOfWork factory for PostgreSQL
         chromadb_client: Any,  # chromadb.Client
         modelservice_client: Any = None  # ModelserviceClient for embeddings
     ):
         """
-        Initialize storage with encrypted database and ChromaDB client.
+        Initialize storage with UoW factory and ChromaDB client.
         
         Args:
-            db_connection: Encrypted LibSQL connection (injected)
+            uow_factory: Unit of Work factory for PostgreSQL access
             chromadb_client: ChromaDB client for semantic search
             modelservice_client: Modelservice client for embedding generation
         """
-        self.db = db_connection
+        self.uow_factory = uow_factory
         self.chromadb = chromadb_client
         self.modelservice = modelservice_client
         
@@ -58,59 +58,22 @@ class PropertyGraphStorage:
     
     async def save_node(self, node: Node) -> None:
         """
-        Save node to both ChromaDB and libSQL.
+        Save node to both ChromaDB and PostgreSQL.
         
         Args:
             node: Node to save
         """
-        import asyncio
-        
-        def _sync_save_to_db():
-            """Synchronous database write - runs in thread pool"""
-            try:
-                print(f"🕸️ [STORAGE_DB] Executing INSERT for node {node.id}...")
-                with self.db:
-                    self.db.execute(
-                        """
-                        INSERT INTO kg_nodes (
-                            id, user_id, label, properties, confidence, source_text,
-                            created_at, updated_at, valid_from, valid_until, is_current,
-                            canonical_id, aliases_json
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(id) DO UPDATE SET
-                            properties = excluded.properties,
-                            confidence = excluded.confidence,
-                            updated_at = excluded.updated_at,
-                            valid_until = excluded.valid_until,
-                            is_current = excluded.is_current
-                        """,
-                        node.to_libsql_tuple()
-                    )
-                    self.db.commit()
-                print(f"🕸️ [STORAGE_DB] INSERT committed for node {node.id}")
-            except Exception as e:
-                print(f"🕸️ [STORAGE_DB] ❌ Database write FAILED: {e}")
-                import traceback
-                print(f"🕸️ [STORAGE_DB] Traceback:\n{traceback.format_exc()}")
-                raise
-        
         try:
-            print(f"🕸️ [STORAGE] Saving node {node.id} (label={node.label})...")
-            
-            # Run blocking database operations in thread pool to avoid blocking event loop
-            print(f"🕸️ [STORAGE] Executing database INSERT in thread pool...")
-            await asyncio.to_thread(_sync_save_to_db)
-            print(f"🕸️ [STORAGE] Database INSERT complete")
-            
+            # Save to PostgreSQL via UoW
+            async with self.uow_factory() as uow:
+                await uow.kg_nodes.create(node)
+                await uow.commit()
             # Generate embedding and save to ChromaDB
-            print(f"🕸️ [STORAGE] Generating embedding for node...")
             doc = node.to_chromadb_document()
             
             # Generate embedding via modelservice
             embedding_result = await self.modelservice.generate_embeddings([doc["document"]])
             embeddings = embedding_result.get("embeddings", [])
-            
-            print(f"🕸️ [STORAGE] Saving to ChromaDB with embedding...")
             
             def _sync_save_to_chroma():
                 """Synchronous ChromaDB write - runs in thread pool"""
@@ -122,10 +85,8 @@ class PropertyGraphStorage:
                 )
             
             await asyncio.to_thread(_sync_save_to_chroma)
-            print(f"🕸️ [STORAGE] ChromaDB upsert complete")
             
             logger.debug(f"Saved node {node.id} (label={node.label})")
-            print(f"🕸️ [STORAGE] ✅ Node {node.id} saved successfully")
             
         except Exception as e:
             logger.error(f"Failed to save node {node.id}: {e}")
@@ -133,45 +94,16 @@ class PropertyGraphStorage:
     
     async def save_edge(self, edge: Edge) -> None:
         """
-        Save edge to both ChromaDB and libSQL.
+        Save edge to both ChromaDB and PostgreSQL.
         
         Args:
             edge: Edge to save
         """
-        import asyncio
-        
-        def _sync_save_to_db():
-            """Synchronous database write - runs in thread pool"""
-            with self.db:
-                self.db.execute(
-                    """
-                    INSERT INTO kg_edges (
-                        id, user_id, source_id, target_id, relation_type, properties,
-                        confidence, source_text, created_at, updated_at,
-                        valid_from, valid_until, is_current
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                        properties = excluded.properties,
-                        confidence = excluded.confidence,
-                        updated_at = excluded.updated_at,
-                        valid_until = excluded.valid_until,
-                        is_current = excluded.is_current
-                    """,
-                    edge.to_libsql_tuple()
-                )
-        
-        def _sync_save_to_chroma():
-            """Synchronous ChromaDB write - runs in thread pool"""
-            doc = edge.to_chromadb_document()
-            self._edge_collection.upsert(
-                ids=[doc["id"]],
-                documents=[doc["document"]],
-                metadatas=[doc["metadata"]]
-            )
-        
         try:
-            # Run blocking database operations in thread pool
-            await asyncio.to_thread(_sync_save_to_db)
+            # Save to PostgreSQL via UoW
+            async with self.uow_factory() as uow:
+                await uow.kg_edges.create(edge)
+                await uow.commit()
             
             # Generate embedding and save to ChromaDB
             doc = edge.to_chromadb_document()
@@ -195,78 +127,187 @@ class PropertyGraphStorage:
     
     async def save_graph(self, graph: PropertyGraph, superseded_node_ids: set = None) -> None:
         """
-        Save property graph to both libSQL and ChromaDB.
+        Save property graph to both PostgreSQL and ChromaDB.
         
         Args:
             graph: PropertyGraph to save
-            superseded_node_ids: Set of node IDs that should be marked as historical (is_current=0)
+            superseded_node_ids: Set of node IDs that should be marked as historical (is_current=False)
         """
-        import time
         storage_start = time.time()
         
         if superseded_node_ids is None:
             superseded_node_ids = set()
         
-        # Mark superseded nodes as historical before saving new ones
+        # Mark superseded nodes as historical (if any from resolution)
         if superseded_node_ids:
-            print(f"\n  💾 [STORAGE] Marking {len(superseded_node_ids)} superseded nodes as historical...")
-            def _mark_historical():
-                with self.db:
-                    for node_id in superseded_node_ids:
-                        self.db.execute(
-                            "UPDATE kg_nodes SET is_current = 0, updated_at = ? WHERE id = ?",
-                            (datetime.now(timezone.utc).isoformat(), node_id)
-                        )
-                    self.db.commit()
-            await asyncio.to_thread(_mark_historical)
-            print(f"  💾 [STORAGE] ✅ Marked {len(superseded_node_ids)} nodes as historical")
-        
-        # Save to libSQL (structured queries)
-        def _sync_save_all():
-            with self.db:
-                # Save nodes
-                for node in graph.nodes:
-                    self.db.execute(
-                        """
-                        INSERT OR REPLACE INTO kg_nodes 
-                        (id, user_id, label, properties, confidence, source_text, is_current, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            node.id, node.user_id, node.label,
-                            json.dumps(node.properties), node.confidence, node.source_text,
-                            1, node.created_at, node.updated_at
-                        )
-                    )
-                
-                # Save edges
-                for edge in graph.edges:
-                    # Debug: Check if source_text exists
-                    if not hasattr(edge, 'source_text') or edge.source_text is None:
-                        print(f"  💾 [STORAGE] ⚠️  Edge {edge.id} missing source_text! Edge: {edge}")
-                        # Set default source_text to avoid constraint violation
-                        edge.source_text = ""
+            async with self.uow_factory() as uow:
+                for node_id in superseded_node_ids:
+                    # Mark node as historical
+                    await uow.kg_nodes.mark_as_superseded(node_id, None)
                     
-                    self.db.execute(
-                        """
-                        INSERT OR REPLACE INTO kg_edges 
-                        (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            edge.id, edge.source_id, edge.target_id, edge.relation_type,
-                            json.dumps(edge.properties), edge.confidence, edge.user_id,
-                            edge.source_text, 1, edge.created_at, edge.updated_at
-                        )
-                    )
+                    # Mark edges pointing to/from this node as historical to prevent orphans
+                    # Get all edges for this node
+                    edges = await uow.kg_edges.list(filters={'source_id': node_id, 'is_current': True})
+                    for edge in edges:
+                        edge.is_current = False
+                        edge.updated_at = datetime.now(UTC)
+                        await uow.kg_edges.update(edge)
+                    
+                    edges = await uow.kg_edges.list(filters={'target_id': node_id, 'is_current': True})
+                    for edge in edges:
+                        edge.is_current = False
+                        edge.updated_at = datetime.now(UTC)
+                        await uow.kg_edges.update(edge)
                 
-                self.db.commit()
+                await uow.commit()
         
-        print(f"\n  💾 [STORAGE] Saving to libSQL: {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
-        libsql_start = time.time()
-        await asyncio.to_thread(_sync_save_all)
-        libsql_time = time.time() - libsql_start
-        print(f"  💾 [STORAGE] ✅ libSQL complete in {libsql_time:.2f}s")
+        # Clean up ChromaDB embeddings
+        async with self.uow_factory() as uow:
+            current_nodes = await uow.kg_nodes.list(filters={'is_current': True}, limit=100000)
+            current_node_ids = set(node.id for node in current_nodes)
+            
+            current_edges = await uow.kg_edges.list(filters={'is_current': True}, limit=100000)
+            current_edge_ids = set(edge.id for edge in current_edges)
+        
+        def _sync_cleanup_chromadb():
+            # Get all node IDs from ChromaDB
+            try:
+                chroma_nodes = self._node_collection.get()
+                chroma_node_ids = set(chroma_nodes['ids']) if chroma_nodes['ids'] else set()
+            except Exception as e:
+                logger.warning(f"Failed to get ChromaDB node IDs: {e}")
+                chroma_node_ids = set()
+            
+            orphaned_node_ids = chroma_node_ids - current_node_ids
+            
+            # Delete orphaned node embeddings
+            if orphaned_node_ids:
+                try:
+                    self._node_collection.delete(ids=list(orphaned_node_ids))
+                    logger.info(f"Deleted {len(orphaned_node_ids)} orphaned node embeddings from ChromaDB")
+                except Exception as e:
+                    logger.warning(f"Failed to delete orphaned node embeddings: {e}")
+            
+            # Get all edge IDs from ChromaDB
+            try:
+                chroma_edges = self._edge_collection.get()
+                chroma_edge_ids = set(chroma_edges['ids']) if chroma_edges['ids'] else set()
+            except Exception as e:
+                logger.warning(f"Failed to get ChromaDB edge IDs: {e}")
+                chroma_edge_ids = set()
+            
+            orphaned_edge_ids = chroma_edge_ids - current_edge_ids
+            
+            # Delete orphaned edge embeddings
+            if orphaned_edge_ids:
+                try:
+                    self._edge_collection.delete(ids=list(orphaned_edge_ids))
+                    logger.info(f"Deleted {len(orphaned_edge_ids)} orphaned edge embeddings from ChromaDB")
+                except Exception as e:
+                    logger.warning(f"Failed to delete orphaned edge embeddings: {e}")
+        
+        await asyncio.to_thread(_sync_cleanup_chromadb)
+        
+        # Save nodes and edges to PostgreSQL
+        postgres_start = time.time()
+        
+        node_id_mapping = {}  # attempted_id -> actual_id for deduplication
+        
+        async with self.uow_factory() as uow:
+            # Save nodes with deduplication handling
+            for node in graph.nodes:
+                try:
+                    # Use a savepoint so a single failed insert doesn't abort the
+                    # entire transaction (which would break the deduplication query
+                    # below with InFailedSQLTransactionError).
+                    async with uow._session.begin_nested():
+                        await uow.kg_nodes.create(node)
+                    node_id_mapping[node.id] = node.id
+                except Exception as e:
+                    # Check if node already exists (deduplication)
+                    existing_nodes = await uow.kg_nodes.list(
+                        filters={
+                            'user_id': node.user_id,
+                            'label': node.label,
+                            'is_current': True
+                        },
+                        limit=100
+                    )
+                    
+                    # Find exact match by properties
+                    existing_node = None
+                    for candidate in existing_nodes:
+                        if candidate.properties == node.properties:
+                            existing_node = candidate
+                            break
+                    
+                    if existing_node:
+                        node_id_mapping[node.id] = existing_node.id
+                        logger.info(f"[NODE_DEDUP] Node already exists: label={node.label}, existing_id={existing_node.id}, attempted_id={node.id}")
+                        
+                        # Update confidence if new one is higher
+                        if node.confidence > existing_node.confidence:
+                            existing_node.confidence = node.confidence
+                            existing_node.updated_at = node.updated_at
+                            await uow.kg_nodes.update(existing_node)
+                            print(f"  💾 [STORAGE] 🔄 Updated node confidence: {node.label} ({existing_node.id})")
+                        else:
+                            print(f"  💾 [STORAGE] ✅ Node exists with higher confidence: {node.label} ({existing_node.id})")
+                    else:
+                        # Different error - re-raise
+                        logger.error(f"Failed to save node {node.id}: {e}")
+                        raise
+            
+            # Save edges with node ID remapping and deduplication
+            for edge in graph.edges:
+                # Update edge node references if nodes were deduplicated
+                actual_source_id = node_id_mapping.get(edge.source_id, edge.source_id)
+                actual_target_id = node_id_mapping.get(edge.target_id, edge.target_id)
+                
+                if actual_source_id != edge.source_id or actual_target_id != edge.target_id:
+                    print(f"  💾 [STORAGE] 🔄 Remapping edge references: source {edge.source_id[:8]}→{actual_source_id[:8]}, target {edge.target_id[:8]}→{actual_target_id[:8]}")
+                    edge.source_id = actual_source_id
+                    edge.target_id = actual_target_id
+                
+                # Check if duplicate edge already exists
+                existing_edges = await uow.kg_edges.list(
+                    filters={
+                        'source_id': actual_source_id,
+                        'target_id': actual_target_id,
+                        'is_current': True
+                    },
+                    limit=10
+                )
+                
+                # Find exact match by relation_type
+                existing_edge = None
+                for candidate in existing_edges:
+                    if candidate.relation_type == edge.relation_type:
+                        existing_edge = candidate
+                        break
+                
+                if existing_edge:
+                    # Update confidence if new one is higher
+                    if edge.confidence > existing_edge.confidence:
+                        existing_edge.confidence = edge.confidence
+                        existing_edge.updated_at = edge.updated_at
+                        await uow.kg_edges.update(existing_edge)
+                        print(f"  💾 [STORAGE] 🔄 Updated edge confidence: {edge.relation_type} ({existing_edge.id})")
+                    else:
+                        print(f"  💾 [STORAGE] ✅ Edge exists: {edge.relation_type} ({existing_edge.id})")
+                else:
+                    # New edge - insert
+                    try:
+                        async with uow._session.begin_nested():
+                            await uow.kg_edges.create(edge)
+                    except Exception as e:
+                        logger.error(f"Failed to save edge {edge.id}: {e}")
+                        raise
+            
+            await uow.commit()
+        
+        postgres_time = time.time() - postgres_start
+        print(f"  💾 [STORAGE] ✅ PostgreSQL complete in {postgres_time:.2f}s")
         
         # Save to ChromaDB (semantic search) - reuse cached embeddings from resolution
         node_docs = [node.to_chromadb_document() for node in graph.nodes]
@@ -300,18 +341,22 @@ class PropertyGraphStorage:
         embedding_time = time.time() - embedding_start
         print(f"  💾 [STORAGE] ✅ Embeddings ready in {embedding_time:.2f}s ({len(nodes_with_embeddings)} cached, {len(nodes_without_embeddings)} generated)")
         
-        chroma_nodes_start = time.time()
-        def _sync_save_nodes_to_chroma():
-            self._node_collection.upsert(
-                ids=[doc["id"] for doc in node_docs],
-                embeddings=embeddings,
-                documents=[doc["document"] for doc in node_docs],
-                metadatas=[doc["metadata"] for doc in node_docs]
-            )
-        
-        await asyncio.to_thread(_sync_save_nodes_to_chroma)
-        chroma_nodes_time = time.time() - chroma_nodes_start
-        print(f"  💾 [STORAGE] ✅ ChromaDB nodes saved in {chroma_nodes_time:.2f}s")
+        # Only save to ChromaDB if we have nodes (avoid empty embeddings list error)
+        if node_docs:
+            chroma_nodes_start = time.time()
+            def _sync_save_nodes_to_chroma():
+                self._node_collection.upsert(
+                    ids=[doc["id"] for doc in node_docs],
+                    embeddings=embeddings,
+                    documents=[doc["document"] for doc in node_docs],
+                    metadatas=[doc["metadata"] for doc in node_docs]
+                )
+            
+            await asyncio.to_thread(_sync_save_nodes_to_chroma)
+            chroma_nodes_time = time.time() - chroma_nodes_start
+            print(f"  💾 [STORAGE] ✅ ChromaDB nodes saved in {chroma_nodes_time:.2f}s")
+        else:
+            print(f"  💾 [STORAGE] ⏭️  No new nodes to save to ChromaDB (edge-only graph)")
         
         # Save edges to ChromaDB
         if graph.edges:
@@ -344,13 +389,13 @@ class PropertyGraphStorage:
         # Final summary
         total_storage_time = time.time() - storage_start
         print(f"\n  💾 [STORAGE] ✅ STORAGE COMPLETE in {total_storage_time:.2f}s")
-        print(f"  💾 [STORAGE]    libSQL:     {libsql_time:.2f}s ({libsql_time/total_storage_time*100:.1f}%)")
-        print(f"  💾 [STORAGE]    ChromaDB:   {total_storage_time - libsql_time:.2f}s ({(total_storage_time - libsql_time)/total_storage_time*100:.1f}%)")
+        print(f"  💾 [STORAGE]    PostgreSQL: {postgres_time:.2f}s ({postgres_time/total_storage_time*100:.1f}%)")
+        print(f"  💾 [STORAGE]    ChromaDB:   {total_storage_time - postgres_time:.2f}s ({(total_storage_time - postgres_time)/total_storage_time*100:.1f}%)")
         print(f"  💾 [STORAGE]    Saved: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
     
     async def get_node(self, node_id: str) -> Optional[Node]:
         """
-        Get node by ID from libSQL.
+        Get node by ID from PostgreSQL.
         
         Args:
             node_id: Node ID
@@ -358,16 +403,8 @@ class PropertyGraphStorage:
         Returns:
             Node if found, None otherwise
         """
-        with self.db:
-            result = self.db.execute(
-                "SELECT * FROM kg_nodes WHERE id = ?",
-                (node_id,)
-            ).fetchone()
-        
-        if not result:
-            return None
-        
-        return self._row_to_node(result)
+        async with self.uow_factory() as uow:
+            return await uow.kg_nodes.get_by_id(node_id)
     
     async def get_user_nodes(
         self,
@@ -381,27 +418,19 @@ class PropertyGraphStorage:
         Args:
             user_id: User ID
             label: Optional label filter (PERSON, EVENT, etc.)
-            current_only: Only return current facts (is_current=1)
+            current_only: Only return current facts (is_current=True)
             
         Returns:
             List of nodes
         """
-        query = "SELECT * FROM kg_nodes WHERE user_id = ?"
-        params = [user_id]
-        
+        filters = {'user_id': user_id}
         if label:
-            query += " AND label = ?"
-            params.append(label)
-        
+            filters['label'] = label
         if current_only:
-            query += " AND is_current = 1"
+            filters['is_current'] = True
         
-        query += " ORDER BY created_at DESC"
-        
-        with self.db:
-            results = self.db.execute(query, params).fetchall()
-        
-        return [self._row_to_node(row) for row in results]
+        async with self.uow_factory() as uow:
+            return await uow.kg_nodes.list(filters=filters, limit=10000)
     
     async def search_nodes(
         self,
@@ -453,7 +482,6 @@ class PropertyGraphStorage:
         if not results["ids"] or not results["ids"][0]:
             return []
         
-        # Fetch full nodes from libSQL
         node_ids = results["ids"][0]
         nodes = []
         for node_id in node_ids:
@@ -478,20 +506,19 @@ class PropertyGraphStorage:
         Returns:
             List of edges
         """
-        if direction == "outgoing":
-            query = "SELECT * FROM kg_edges WHERE source_id = ? AND is_current = 1"
-        elif direction == "incoming":
-            query = "SELECT * FROM kg_edges WHERE target_id = ? AND is_current = 1"
-        else:  # both
-            query = "SELECT * FROM kg_edges WHERE (source_id = ? OR target_id = ?) AND is_current = 1"
-            with self.db:
-                results = self.db.execute(query, (node_id, node_id)).fetchall()
-            return [self._row_to_edge(row) for row in results]
-        
-        with self.db:
-            results = self.db.execute(query, (node_id,)).fetchall()
-        
-        return [self._row_to_edge(row) for row in results]
+        async with self.uow_factory() as uow:
+            if direction == "outgoing":
+                return await uow.kg_edges.list(filters={'source_id': node_id, 'is_current': True}, limit=10000)
+            elif direction == "incoming":
+                return await uow.kg_edges.list(filters={'target_id': node_id, 'is_current': True}, limit=10000)
+            else:  # both
+                outgoing = await uow.kg_edges.list(filters={'source_id': node_id, 'is_current': True}, limit=10000)
+                incoming = await uow.kg_edges.list(filters={'target_id': node_id, 'is_current': True}, limit=10000)
+                # Combine and deduplicate
+                edge_dict = {edge.id: edge for edge in outgoing}
+                for edge in incoming:
+                    edge_dict[edge.id] = edge
+                return list(edge_dict.values())
     
     async def get_user_graph(
         self,
@@ -510,52 +537,11 @@ class PropertyGraphStorage:
         """
         nodes = await self.get_user_nodes(user_id, current_only=current_only)
         
-        # Get all edges
-        query = "SELECT * FROM kg_edges WHERE user_id = ?"
-        params = [user_id]
-        
+        filters = {'user_id': user_id}
         if current_only:
-            query += " AND is_current = 1"
+            filters['is_current'] = True
         
-        with self.db:
-            results = self.db.execute(query, params).fetchall()
-        
-        edges = [self._row_to_edge(row) for row in results]
+        async with self.uow_factory() as uow:
+            edges = await uow.kg_edges.list(filters=filters, limit=100000)
         
         return PropertyGraph(nodes=nodes, edges=edges)
-    
-    def _row_to_node(self, row: tuple) -> Node:
-        """Convert database row to Node object."""
-        return Node(
-            id=row[0],
-            user_id=row[1],
-            label=row[2],
-            properties=json.loads(row[3]),
-            confidence=row[4],
-            source_text=row[5],
-            created_at=row[6],
-            updated_at=row[7],
-            valid_from=row[8],
-            valid_until=row[9],
-            is_current=row[10],
-            canonical_id=row[11],
-            aliases=json.loads(row[12]) if row[12] else []
-        )
-    
-    def _row_to_edge(self, row: tuple) -> Edge:
-        """Convert database row to Edge object."""
-        return Edge(
-            id=row[0],
-            user_id=row[1],
-            source_id=row[2],
-            target_id=row[3],
-            relation_type=row[4],
-            properties=json.loads(row[5]),
-            confidence=row[6],
-            source_text=row[7],
-            created_at=row[8],
-            updated_at=row[9],
-            valid_from=row[10],
-            valid_until=row[11],
-            is_current=row[12]
-        )

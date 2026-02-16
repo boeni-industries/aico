@@ -18,11 +18,12 @@ from dataclasses import dataclass
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
+from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
 from .modelservice_client import ModelserviceClient
 
-logger = get_logger("shared", "ai.knowledge_graph.entity_resolution")
+logger = get_logger("shared.ai.knowledge_graph.entity_resolution")
 
 
 @dataclass
@@ -94,7 +95,7 @@ class EntityResolver:
         self.config = config
         
         # Get config settings
-        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
+        kg_config = config.get("memory.semantic.knowledge_graph", {})
         er_config = kg_config.get("entity_resolution", {})
         
         self.similarity_threshold = er_config.get("similarity_threshold", 0.85)
@@ -114,6 +115,9 @@ class EntityResolver:
         # Map HNSW internal IDs to Node objects
         self.id_to_node: Dict[int, Node] = {}
         self.node_to_id: Dict[str, int] = {}  # Map node.id to HNSW ID
+        
+        # Initialize JSON sanitizer for robust LLM response parsing
+        self.json_sanitizer = LLMJsonSanitizer(strict=False, log_repairs=True)
         self.next_hnsw_id = 0
         
         print(f"🔍 [ENTITY_RESOLVER] Initialized with HNSW index (dim={dim}, max_elements={max_elements})")
@@ -211,6 +215,14 @@ class EntityResolver:
         """Add nodes to HNSW index with their embeddings."""
         if not nodes:
             return
+        
+        # Ensure properties are dicts (defensive deserialization)
+        for node in nodes:
+            if isinstance(node.properties, str):
+                try:
+                    node.properties = json.loads(node.properties)
+                except (json.JSONDecodeError, TypeError):
+                    node.properties = {}
         
         # Generate embeddings for nodes
         texts = [self._node_to_text(node) for node in nodes]
@@ -519,7 +531,7 @@ Return valid JSON only."""
             )
             
             # Parse results
-            results = self._parse_json_response(response.get("text", ""))
+            results = self._parse_json_array_response(response.get("text", ""))
             
             # Return confirmed duplicates
             duplicates = []
@@ -818,6 +830,13 @@ Return valid JSON only."""
     
     def _node_to_text(self, node: Node) -> str:
         """Convert node to text for embedding."""
+        # Ensure properties is a dict (defensive deserialization)
+        if isinstance(node.properties, str):
+            try:
+                node.properties = json.loads(node.properties)
+            except (json.JSONDecodeError, TypeError):
+                node.properties = {}
+        
         # Handle properties that might be lists (data corruption)
         props_parts = []
         for k, v in node.properties.items():
@@ -832,14 +851,29 @@ Return valid JSON only."""
         return f"{node.label} {props_text}"
     
     def _parse_json_response(self, text: str) -> Dict[str, Any]:
-        """Parse JSON response from LLM."""
-        try:
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-            
-            return json.loads(text.strip())
-        except Exception as e:
-            logger.warning(f"Failed to parse JSON response: {e}")
+        """Parse JSON response from LLM using robust sanitizer with automatic repair."""
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=dict,
+            return_objects=True
+        )
+        
+        if result.success:
+            return result.data
+        else:
+            logger.warning(f"Failed to parse JSON response after all repair strategies: {result.error}")
             return {}
+
+    def _parse_json_array_response(self, text: str) -> List[Dict[str, Any]]:
+        """Parse JSON array response from LLM using robust sanitizer with automatic repair."""
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=list,
+            return_objects=True,
+        )
+
+        if result.success:
+            return result.data
+
+        logger.warning(f"Failed to parse JSON response after all repair strategies: {result.error}")
+        return []

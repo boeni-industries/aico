@@ -5,17 +5,20 @@ Handles the complex logic for processing user messages through the AI pipeline.
 This module centralizes all completion-related processing logic.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
 import httpx
+from dataclasses import dataclass
 from typing import Dict, Any, Optional, Callable, Awaitable
-from aico.core.message_bus import MessageBusClient
+from aico.core.bus import MessageBusClient
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
 from .protobuf_messages import ModelserviceMessageParser
 from .ollama_manager import OllamaManager
-from shared.aico.core.config import ConfigurationManager
+from aico.core.config import ConfigurationManager
 
 
 @dataclass
@@ -37,7 +40,7 @@ class MessageProcessor:
             self.config_manager.initialize()
         
         # Get Ollama configuration
-        self.ollama_config = self.config_manager.get("core.modelservice.ollama", {})
+        self.ollama_config = self.config_manager.get("modelservice.ollama", {})
         
         # Build Ollama URL from config
         ollama_host = self.ollama_config.get("host", "127.0.0.1")
@@ -46,8 +49,7 @@ class MessageProcessor:
         
         # Initialize logger first
         try:
-            from shared.aico.core.logging import get_logger
-            self.logger = get_logger("modelservice", "core.message_processor")
+            self.logger = get_logger("modelservice.core.message_processor")
         except RuntimeError:
             # Logging not initialized yet, use basic Python logger as fallback
             import logging
@@ -178,6 +180,8 @@ class MessageProcessor:
         processed_prompt: str
     ) -> Dict[str, Any]:
         """Generate completion using Ollama."""
+        from modelservice.core.metrics import track_inference
+        
         # Prepare Ollama request payload
         ollama_payload = {
             "model": request.model,
@@ -202,17 +206,34 @@ class MessageProcessor:
             if params.stop is not None:
                 ollama_payload["options"]["stop"] = params.stop
         
-        # Send request to Ollama
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self.ollama_url}/api/generate",
-                json=ollama_payload
-            )
-            
-            if response.status_code != 200:
-                raise RuntimeError(f"Ollama error: {response.text}")
-                
-            return response.json()
+        # Track inference metrics
+        with track_inference(request.model, task_type="completion") as tracker:
+            try:
+                # Send request to Ollama
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    response = await client.post(
+                        f"{self.ollama_url}/api/generate",
+                        json=ollama_payload
+                    )
+                    
+                    if response.status_code != 200:
+                        tracker.set_success(False)
+                        tracker.set_error(f"HTTP {response.status_code}")
+                        raise RuntimeError(f"Ollama error: {response.text}")
+                    
+                    result = response.json()
+                    
+                    # Extract token count from response if available
+                    if "eval_count" in result:
+                        tracker.set_tokens(result["eval_count"])
+                    
+                    tracker.set_success(True)
+                    return result
+                    
+            except Exception as e:
+                tracker.set_success(False)
+                tracker.set_error(str(e))
+                raise
     
     async def _postprocess_response(
         self,

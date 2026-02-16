@@ -8,7 +8,7 @@ Uses the same transport security patterns as backend-modelservice communication.
 import httpx
 import asyncio
 from contextlib import asynccontextmanager, contextmanager
-from typing import Dict, Any, Optional, Generator
+from typing import Dict, Any, Optional, Generator, Union, Sequence, Tuple
 
 from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
@@ -17,22 +17,28 @@ from aico.security.service_auth import ServiceAuthManager
 from aico.security.exceptions import EncryptionError
 
 
-class CLIModelServiceClient:
-    """Encrypted HTTP client for CLI-modelservice communication."""
+@contextmanager
+def get_modelservice_client():
+    """Get a ZMQ-based modelservice client for CLI commands."""
+    from cli.utils.zmq_client import CLIZMQClient
+    yield CLIZMQClient()
+
+
+class CLIBackendClient:
+    """Encrypted HTTP client for CLI-backend API Gateway communication."""
     
     def __init__(self):
         self.config_manager = ConfigurationManager()
         self.config_manager.initialize()
         
-        # Get modelservice configuration for direct connection (same path as backend)
-        modelservice_config = self.config_manager.get("core.modelservice", {})
-        rest_config = modelservice_config.get("rest", {})
+        # Get backend API Gateway configuration
+        gateway_config = self.config_manager.get("api_gateway", {})
+        rest_config = gateway_config.get("rest", {})
         host = rest_config.get("host", "127.0.0.1")
-        port = rest_config.get("port", 8773)
+        port = rest_config.get("port", 8771)
         self.base_url = f"http://{host}:{port}"
         
-        
-        # Initialize service authentication (same as backend ModelServiceClient)
+        # Initialize service authentication
         self.key_manager = AICOKeyManager(self.config_manager)
         self.identity_manager = TransportIdentityManager(self.key_manager)
         self.service_auth = ServiceAuthManager(self.key_manager, self.identity_manager)
@@ -44,21 +50,19 @@ class CLIModelServiceClient:
     def _initialize_secure_channel(self):
         """Initialize secure transport channel for encrypted communication."""
         try:
-            # Use 'backend' identity for service-to-service communication
             self.secure_channel = self.identity_manager.create_secure_channel("backend")
         except Exception as e:
             raise EncryptionError(f"Failed to initialize secure channel: {e}") from e
     
     async def _ensure_session(self):
-        """Ensure encrypted session is established with modelservice."""
+        """Ensure encrypted session is established with backend."""
         if self.session_established and self.secure_channel.is_session_valid():
             return
         
         try:
-            # Perform handshake with modelservice
+            # Perform handshake with backend
             handshake_request = self.secure_channel.create_handshake_request()
             
-            # Wrap handshake request in expected format
             handshake_payload = {
                 "handshake_request": handshake_request
             }
@@ -70,48 +74,53 @@ class CLIModelServiceClient:
                 )
                 
                 if response.status_code != 200:
-                    raise EncryptionError(f"Modelservice handshake failed: HTTP {response.status_code} - {response.text}")
+                    raise EncryptionError(f"Backend handshake failed: HTTP {response.status_code} - {response.text}")
                 
                 response_data = response.json()
                 
-                # Extract handshake response from API Gateway wrapper
                 if response_data.get("status") == "session_established":
-                    handshake_response = response.json()
-                    self.secure_channel.process_handshake_response(handshake_response["handshake_response"])
+                    self.secure_channel.process_handshake_response(response_data["handshake_response"])
                     self.session_established = True
                 else:
                     raise EncryptionError(f"Handshake failed: {response_data.get('error', 'Unknown error')}")
                 
-                # if not success:
-                #     raise EncryptionError("Modelservice handshake response processing failed")
-                
-                # self.session_established = True
-                
         except httpx.RequestError as e:
-            raise EncryptionError(f"Network error during modelservice handshake: {e}") from e
+            raise EncryptionError(f"Network error during backend handshake: {e}") from e
     
-    async def request(self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Make encrypted HTTP request to modelservice."""
+    async def request(
+        self,
+        method: str,
+        endpoint: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Union[Dict[str, Any], Sequence[Tuple[str, Any]]]] = None,
+    ) -> Dict[str, Any]:
+        """Make encrypted HTTP request to backend."""
         await self._ensure_session()
         
         if not self.secure_channel:
-            raise EncryptionError("No secure channel available for modelservice communication")
+            raise EncryptionError("No secure channel available for backend communication")
         
-        url = f"{self.base_url}/api/v1{endpoint}"
+        url = f"{self.base_url}{endpoint}"
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Create client_id from identity key (use backend identity for consistency)
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 identity = self.identity_manager.get_component_identity("backend")
                 client_id = bytes(identity.verify_key).hex()[:16]
                 
-                # Prepare headers
+                # Get JWT token for authentication
+                jwt_token = self.key_manager.get_jwt_token("api_gateway")
+                if not jwt_token:
+                    raise EncryptionError(
+                        "No JWT token found. Run 'aico gateway auth login' to authenticate."
+                    )
+                
                 headers = {
                     "X-Client-ID": client_id,
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {jwt_token}"
                 }
                 
-                # Encrypt request payload if provided
+                # Encrypt request payload
                 if data:
                     encrypted_payload = self.secure_channel.encrypt_json_payload(data)
                     request_data = {
@@ -120,21 +129,30 @@ class CLIModelServiceClient:
                         "client_id": client_id
                     }
                 else:
-                    # For GET requests, still need to indicate encryption
                     request_data = {
                         "encrypted": True,
                         "client_id": client_id
                     }
                 
-                # All encrypted requests use POST (encryption middleware expects JSON body)
-                response = await client.post(url, headers=headers, json=request_data)
+                # Use appropriate HTTP method
+                if method.upper() == "POST":
+                    response = await client.post(url, headers=headers, json=request_data, params=params)
+                elif method.upper() == "GET":
+                    response = await client.get(url, headers=headers, params=params)
+                elif method.upper() == "DELETE":
+                    response = await client.delete(url, headers=headers, json=request_data, params=params)
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")
                 
-                if response.status_code != 200:
+                if response.status_code not in [200, 201, 204]:
                     raise httpx.HTTPStatusError(
-                        f"Modelservice API error: {method} {endpoint} returned HTTP {response.status_code}",
+                        f"Backend API error: {method} {endpoint} returned HTTP {response.status_code}",
                         request=response.request,
                         response=response
                     )
+                
+                if response.status_code == 204:
+                    return {}
                 
                 # Decrypt response
                 response_data = response.json()
@@ -143,37 +161,35 @@ class CLIModelServiceClient:
                 elif "encrypted_payload" in response_data:
                     return self.secure_channel.decrypt_json_payload(response_data["encrypted_payload"])
                 else:
-                    raise EncryptionError(f"Received unencrypted response from {endpoint}")
+                    # Some responses might not be encrypted (error messages, etc.)
+                    return response_data
                     
         except httpx.RequestError as e:
             raise EncryptionError(f"Network error during {method} {endpoint}: {e}") from e
     
-    def get(self, endpoint: str):
-        """Synchronous GET request - returns JSON data directly."""
-        return asyncio.run(self.request("GET", endpoint))
+    def post(
+        self,
+        endpoint: str,
+        json: Optional[Dict[str, Any]] = None,
+        params: Optional[Union[Dict[str, Any], Sequence[Tuple[str, Any]]]] = None,
+    ):
+        """Synchronous POST request."""
+        return asyncio.run(self.request("POST", endpoint, json, params))
     
-    def post(self, endpoint: str, json: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None):
-        """Synchronous POST request - returns JSON data directly.""" 
-        return asyncio.run(self.request("POST", endpoint, json))
-    
-    def delete(self, endpoint: str):
-        """Synchronous DELETE request - returns JSON data directly."""
-        return asyncio.run(self.request("DELETE", endpoint))
-
-
-# Global client instance - reset to None to force recreation with new config
-_cli_modelservice_client: Optional[CLIModelServiceClient] = None
+    def get(
+        self,
+        endpoint: str,
+        params: Optional[Union[Dict[str, Any], Sequence[Tuple[str, Any]]]] = None,
+    ):
+        """Synchronous GET request."""
+        return asyncio.run(self.request("GET", endpoint, None, params))
 
 
 @contextmanager
-def get_modelservice_client() -> Generator[CLIModelServiceClient, None, None]:
-    """Get encrypted modelservice client for CLI commands."""
-    global _cli_modelservice_client
-    
-    # Always create new client to pick up latest configuration
-    _cli_modelservice_client = CLIModelServiceClient()
-    
-    yield _cli_modelservice_client
+def get_backend_client() -> Generator[CLIBackendClient, None, None]:
+    """Get encrypted backend API client for CLI commands."""
+    client = CLIBackendClient()
+    yield client
 
 
 @contextmanager  

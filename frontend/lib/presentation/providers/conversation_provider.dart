@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/database/message_database.dart' hide Message;
@@ -12,6 +11,7 @@ import 'package:aico_frontend/domain/usecases/send_message_usecase.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_controller_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_audio_settings_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -137,17 +137,14 @@ class ConversationNotifier extends _$ConversationNotifier {
 
   Future<void> _loadConversationFromCache() async {
     try {
-      debugPrint('🔍 [CONVERSATION_PROVIDER] Starting _loadConversationFromCache');
       // Load all recent messages for the user (no conversation_id needed)
       AICOLog.info('Loading recent messages from cache',
         topic: 'conversation_provider/load_messages');
       
       // Get all user messages from cache (empty string = all conversations)
-      debugPrint('🔍 [CONVERSATION_PROVIDER] Calling getMessages with empty string');
       final allMessages = await _messageRepository.getMessages(
         '', // Empty string loads all user messages
         onBackgroundSyncComplete: (freshMessages) {
-          debugPrint('🔄 [CONVERSATION_PROVIDER] Background sync complete: ${freshMessages.length} messages');
           // Update with fresh messages from background sync
           state = state.copyWith(
             messages: freshMessages,
@@ -155,10 +152,8 @@ class ConversationNotifier extends _$ConversationNotifier {
           );
         },
       );
-      debugPrint('🔍 [CONVERSATION_PROVIDER] getMessages returned ${allMessages.length} messages');
       
       if (allMessages.isEmpty) {
-        debugPrint('⚠️ [CONVERSATION_PROVIDER] No messages found in cache');
         AICOLog.info('No messages found',
           topic: 'conversation_provider/no_messages');
         
@@ -169,17 +164,6 @@ class ConversationNotifier extends _$ConversationNotifier {
       }
       
       // Show all messages
-      debugPrint('✅ [CONVERSATION_PROVIDER] Setting state with ${allMessages.length} messages');
-      if (allMessages.isNotEmpty) {
-        final firstContent = allMessages.first.content.length > 50 
-            ? allMessages.first.content.substring(0, 50) 
-            : allMessages.first.content;
-        final lastContent = allMessages.last.content.length > 50 
-            ? allMessages.last.content.substring(0, 50) 
-            : allMessages.last.content;
-        debugPrint('   First message: ${allMessages.first.timestamp} - $firstContent...');
-        debugPrint('   Last message: ${allMessages.last.timestamp} - $lastContent...');
-      }
       state = state.copyWith(
         messages: allMessages,
         allMessages: allMessages,
@@ -206,16 +190,13 @@ class ConversationNotifier extends _$ConversationNotifier {
     final totalCount = state.allMessages.length;
     
     if (currentCount >= totalCount) {
-      debugPrint('📊 [Lazy Load] All messages already displayed');
       return; // All messages already shown
     }
     
-    // Calculate how many more messages to show (from the beginning)
-    final newCount = (currentCount + additionalCount).clamp(0, totalCount);
+    // Load 50 more messages (or remaining if less than 50)
+    final newCount = currentCount + 50;
     final startIndex = totalCount - newCount;
     final expandedMessages = state.allMessages.sublist(startIndex);
-    
-    debugPrint('📊 [Lazy Load] Expanding from $currentCount to ${expandedMessages.length} messages');
     
     state = state.copyWith(messages: expandedMessages);
   }

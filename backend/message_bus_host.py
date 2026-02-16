@@ -7,7 +7,7 @@ Runs the central message bus broker and provides integration with backend module
 import asyncio
 import logging
 import uuid
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
@@ -17,7 +17,6 @@ from aico.core.bus import MessageBusBroker, MessageBusClient
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
 from aico.proto.aico_core_api_gateway_pb2 import ApiEvent
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths
 
@@ -26,14 +25,14 @@ class AICOMessageBusHost:
     
     def __init__(self, bind_address: str = "tcp://*:5555"):
         self.bind_address = bind_address
-        self.logger = get_logger("backend", "message_bus_host")
+        self.logger = get_logger("backend.message_bus_host")
         
         # Core components
-        self.broker = MessageBusBroker(bind_address)
+        self.broker = MessageBusBroker()
         self.internal_client = None
         
-        # Database integration
-        self.db_connection: Optional[EncryptedLibSQLConnection] = None
+        # Database integration (PostgreSQL migration - no longer needed)
+        self.db_connection: Optional[Any] = None
         
         # Module registry
         self.modules: Dict[str, MessageBusClient] = {}
@@ -44,7 +43,7 @@ class AICOMessageBusHost:
         self.pending_messages = []
         self.shutdown_timeout = 3.0  # Max time to wait for message draining
     
-    async def start(self, db_connection: Optional[EncryptedLibSQLConnection] = None):
+    async def start(self, db_connection: Optional[Any] = None):
         """Start the message bus host"""
         try:
             print(f"[MESSAGE BUS HOST] Starting broker on {self.bind_address}...")
@@ -271,7 +270,7 @@ class AICOMessageBusHost:
                     COUNT(DISTINCT source) as unique_sources,
                     MIN(timestamp) as earliest_message,
                     MAX(timestamp) as latest_message
-                FROM events
+                FROM system_events
             """)
             
             row = await cursor.fetchone()
@@ -351,7 +350,7 @@ class AICOMessageBusHost:
                 
                 # Insert message into database (using actual protobuf fields)
                 db_connection.execute("""
-                    INSERT INTO events (
+                    INSERT INTO system_events (
                         timestamp, topic, source, message_type, message_id,
                         priority, correlation_id, payload, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -461,7 +460,7 @@ class AICOMessageBusHost:
                 
                 # Insert message into database synchronously for reliability
                 self.db_connection.execute("""
-                    INSERT INTO events (
+                    INSERT INTO system_events (
                         timestamp, topic, source, message_type, message_id,
                         priority, correlation_id, payload, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

@@ -52,10 +52,10 @@ class SecurityPlugin(BasePlugin):
         """Initialize security managers"""
         try:
             config_manager = self.require_service('config')
-            database = self.require_service('database')
+            # Database not needed - PostgreSQL uses UoW pattern per request
             
-            # Create authentication manager instance
-            self.auth_manager = AuthenticationManager(config_manager, db_connection=database)
+            # Create authentication manager instance (session management now at endpoint level)
+            self.auth_manager = AuthenticationManager(config_manager)
             print("[✓] Authentication manager ready")
             
             # Create authorization manager instance  

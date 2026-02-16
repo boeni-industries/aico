@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:aico_frontend/domain/entities/tts_state.dart';
 import 'package:aico_frontend/domain/providers/tts_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'avatar_state_provider.g.dart';

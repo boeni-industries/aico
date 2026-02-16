@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Log Consumer Service persists application logs from the ZeroMQ message bus to the encrypted database. It runs as a backend plugin and provides reliable log storage for the entire AICO system.
+The Log Consumer Service receives application logs from the ZeroMQ message bus and persists them to Loki for queryable, structured log storage. It runs as a backend plugin and provides log storage for the AICO system.
 
 ## Architecture ✅
 
@@ -11,7 +11,7 @@ The Log Consumer Service persists application logs from the ZeroMQ message bus t
 - **AICOLogConsumer**: Main service class with ZMQ subscription and database persistence
 - **Plugin Integration**: Runs as `log_consumer` plugin in backend service container
 - **Message Bus Subscription**: Connects to port 5556 with `logs.*` topic filtering
-- **Database Storage**: Persists to encrypted `aico.db` logs table
+- **Log Storage**: Writes to Loki (HTTP push API) for LogQL queries
 
 ### Message Flow ✅
 
@@ -19,11 +19,15 @@ The Log Consumer Service persists application logs from the ZeroMQ message bus t
 Application Logger → ZMQ Transport → Message Bus (5555/5556) → Log Consumer → Database
 ```
 
+```text
+Application Logger → ZMQ Transport → Message Bus (5555/5556) → Log Consumer → Loki
+```
+
 **Current Implementation**:
 1. **Logger** creates LogEntry protobuf message
 2. **ZMQ Transport** sends to message bus on `logs.*` topics
 3. **Message Bus Broker** routes to subscriber port 5556
-4. **Log Consumer** processes and inserts to encrypted database
+4. **Log Consumer** processes and pushes to Loki
 
 ## Implementation ✅
 
@@ -47,21 +51,10 @@ self.subscriber.setsockopt(zmq.SUBSCRIBE, b"logs.")
 - `message`: Log message text
 - `extra`: JSON metadata (optional)
 
-### Database Schema ✅
+### Log storage ✅
 
-**Logs Table** (encrypted libSQL):
-```sql
-CREATE TABLE logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TEXT NOT NULL,
-    level TEXT NOT NULL,
-    subsystem TEXT NOT NULL,
-    module TEXT NOT NULL,
-    function_name TEXT,
-    message TEXT NOT NULL,
-    extra TEXT  -- JSON metadata
-);
-```
+- Loki stores logs as streams labeled by fields like service and level
+- Querying uses LogQL (via the API and `aico logs ...`)
 
 ### Plugin Lifecycle ✅
 
@@ -72,13 +65,11 @@ CREATE TABLE logs (
 
 ## Configuration ✅
 
-**Message Bus Settings** (`config/defaults/core.yaml`):
+**Message Bus Settings** (`config/defaults/message_bus.yaml`):
 ```yaml
-core:
-  message_bus:
-    host: "localhost"
-    pub_port: 5555    # Publisher port
-    sub_port: 5556    # Subscriber port
+host: "localhost"
+pub_port: 5555    # Publisher port
+sub_port: 5556    # Subscriber port
 ```
 
 ## Backend Integration ✅
@@ -88,8 +79,7 @@ core:
 **Startup Sequence**:
 1. **Message Bus Plugin** starts ZMQ broker (ports 5555/5556)
 2. **Log Consumer Plugin** initializes and connects to subscriber port
-3. **Shared Resources** use same encrypted database connection
-4. **Coordinated Lifecycle** with other backend plugins
+3. **Coordinated Lifecycle** with other backend plugins
 
 **Current Status**: Active plugin in production backend
 
@@ -123,9 +113,9 @@ aico bus test
 ## Security ✅
 
 **Data Protection**:
-- **Encrypted Database**: All logs stored in encrypted `aico.db`
+- **Local-first storage**: Logs are stored locally via Loki
 - **Local Processing**: No external log transmission
-- **Access Control**: Database restricted to backend service
+- **Access Control**: Gateway endpoints that query logs are authenticated
 - **CurveZMQ**: Message bus encryption for transport security
 
 **Privacy**:

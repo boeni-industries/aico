@@ -50,7 +50,7 @@ class BasePlugin(BaseService):
         super().__init__(name, container)
         
         # Plugin-specific configuration
-        self.plugin_config = self.get_config(f"core.api_gateway.plugins.{name}", {})
+        self.plugin_config = self.get_config(f"api_gateway.plugins.{name}", {})
         self.enabled = self.plugin_config.get("enabled", False)
         
         # Plugin metadata (must be implemented by subclasses)
@@ -260,7 +260,7 @@ class PluginRegistry:
     
     def __init__(self):
         self._plugin_classes: Dict[str, type] = {}
-        self.logger = get_logger("backend", "core.plugin_registry")
+        self.logger = get_logger("backend.core.plugin_registry")
     
     def register_plugin_class(self, name: str, plugin_class: type) -> None:
         """Register a plugin class"""

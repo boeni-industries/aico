@@ -159,7 +159,7 @@ uv sync --extra cli --extra backend --extra test  # Reinstall everything
 
 ## AICO Dependency Groups
 
-- **Core (shared)**: cryptography, keyring, libsql-client, pyyaml, jsonschema, watchdog, pyzmq, protobuf, platformdirs, psutil, passlib, bcrypt
+- **Core (shared)**: cryptography, keyring, PostgreSQL-client, pyyaml, jsonschema, watchdog, pyzmq, protobuf, platformdirs, psutil, passlib, bcrypt
 - **CLI group**: typer, rich, requests
 - **Backend group**: fastapi, httpx, pydantic, pyjwt, uvicorn, chromadb
 - **Test group**: pytest

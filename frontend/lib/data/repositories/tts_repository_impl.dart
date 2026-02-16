@@ -1,15 +1,13 @@
 import 'dart:async';
-import 'dart:collection';
-import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/data/datasources/remote/tts_remote_datasource.dart';
 import 'package:aico_frontend/domain/entities/tts_state.dart';
 import 'package:aico_frontend/domain/repositories/tts_repository.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:crypto/crypto.dart';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:just_audio/just_audio.dart';
 
 /// TTS repository implementation with backend streaming and LRU cache
 class TtsRepositoryImpl implements TtsRepository {
@@ -23,7 +21,7 @@ class TtsRepositoryImpl implements TtsRepository {
   StreamSubscription? _audioStreamSubscription;
 
   // LRU cache for audio data (text hash -> WAV bytes)
-  final _audioCache = LinkedHashMap<String, Uint8List>();
+  final Map<String, Uint8List> _audioCache = <String, Uint8List>{};
   static const int _maxCacheSize = 20; // Max 20 cached audio files
   static const int _maxCacheBytes = 50 * 1024 * 1024; // 50MB max
   int _currentCacheBytes = 0;
@@ -93,7 +91,7 @@ class TtsRepositoryImpl implements TtsRepository {
         
         await for (final chunk in _remoteDataSource.synthesize(
           text: text,
-          language: 'en', // TODO: Get from user preferences
+          language: 'en', // NOTE: Should come from user preferences
           speed: 1.0,
         )) {
           chunkCount++;
@@ -138,17 +136,20 @@ class TtsRepositoryImpl implements TtsRepository {
         }
       });
       
-      // NOW set status to speaking and start playback
+      // NOW set status to speaking and pass audio data
       debugPrint('🎵 [TTS] Setting status to SPEAKING');
       _updateState(_currentState.copyWith(
         status: TtsStatus.speaking,
         currentText: text,
         progress: 0.0,
+        metadata: {
+          'audioData': base64.encode(wavData), // Pass audio for WebView lip-sync
+        },
       ));
       
-      // Start playback
-      await _audioPlayer?.play();
-      debugPrint('🎵 [TTS] Playback started');
+      // WebView will handle playback for lip-sync
+      // Don't play in Flutter to avoid double audio
+      debugPrint('🎵 [TTS] Audio passed to WebView (not playing in Flutter)');
       
     } catch (e, stackTrace) {
       AICOLog.error('TTS speak failed', error: e, stackTrace: stackTrace);

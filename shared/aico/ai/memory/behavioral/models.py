@@ -22,6 +22,7 @@ class Skill(BaseModel):
     trigger_context: Dict[str, Any]  # JSON: {intent: [...], time_of_day: ...}
     procedure_template: str  # Prompt template to inject
     dimension_vector: List[float] = Field(..., min_length=16, max_length=16)  # 16 explicit dimensions
+    supported_languages: List[str] = Field(default_factory=lambda: ["en"])  # ISO/BCP-47 codes
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

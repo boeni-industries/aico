@@ -23,7 +23,7 @@ class ConversationFlowTester:
     """Test the complete conversation flow"""
     
     def __init__(self):
-        self.logger = get_logger("test", "conversation_flow")
+        self.logger = get_logger("test.conversation_flow")
         self.bus_client = None
         self.test_conversation_id = str(uuid.uuid4())
         self.responses_received = []

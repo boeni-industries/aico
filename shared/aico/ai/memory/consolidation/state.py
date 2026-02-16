@@ -11,7 +11,7 @@ from enum import Enum
 
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "memory.consolidation.state")
+logger = get_logger("shared.memory.consolidation.state")
 
 
 class ConsolidationStatus(Enum):
@@ -340,14 +340,14 @@ class ConsolidationStateManager:
         Persist current state to storage.
         
         Args:
-            storage: Storage backend (e.g., libSQL)
+            storage: Storage backend
         """
         state_dict = self._current_state.to_dict()
         
         try:
             await storage.execute(
                 """
-                INSERT OR REPLACE INTO consolidation_state 
+                INSERT OR REPLACE INTO ams_consolidation_state 
                 (id, state_json, updated_at) 
                 VALUES (?, ?, ?)
                 """,
@@ -366,11 +366,11 @@ class ConsolidationStateManager:
         Load state from storage.
         
         Args:
-            storage: Storage backend (e.g., libSQL)
+            storage: Storage backend
         """
         try:
             result = await storage.execute(
-                "SELECT state_json FROM consolidation_state WHERE id = ?",
+                "SELECT state_json FROM ams_consolidation_state WHERE id = ?",
                 ("current",)
             )
             

@@ -257,7 +257,7 @@ final class EmotionStateProvider
   }
 }
 
-String _$emotionStateHash() => r'ba693230a354a93f603925cf0a8af62faab6f96c';
+String _$emotionStateHash() => r'1c3e1d0cc177dd7d9e238154820bc6a66100f1fc';
 
 /// Provider for current emotion state with polling
 

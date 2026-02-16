@@ -24,7 +24,6 @@ class AuthRepositoryImpl implements AuthRepository {
     // Store refresh token if provided
     if (authModel.refreshToken != null) {
       await _localDataSource.storeRefreshToken(authModel.refreshToken!);
-      debugPrint('AuthRepository: Stored refresh token');
     }
     
     // Convert to domain entity
@@ -40,15 +39,12 @@ class AuthRepositoryImpl implements AuthRepository {
       final credentials = await _localDataSource.getStoredCredentials();
       
       if (credentials == null) {
-        debugPrint('AuthRepository: No stored credentials found');
         return null;
       }
 
       // First, try to use existing valid token for instant auto-login
       final token = await _localDataSource.getToken();
       if (token != null && !JWTDecoder.isExpired(token)) {
-        debugPrint('AuthRepository: Using valid token for instant auto-login');
-        
         // Decode JWT to extract user info (no network call!)
         final userUuid = JWTDecoder.getUserUuid(token);
         final username = JWTDecoder.getUsername(token);
@@ -69,8 +65,6 @@ class AuthRepositoryImpl implements AuthRepository {
             createdAt: DateTime.now(),
           );
           
-          debugPrint('AuthRepository: Token-based auto-login successful for user: $username (role: ${role.name})');
-          
           // Load refresh token if available
           final refreshToken = await _localDataSource.getRefreshToken();
           
@@ -83,7 +77,6 @@ class AuthRepositoryImpl implements AuthRepository {
       }
 
       // Token invalid/expired - fall back to re-authentication
-      debugPrint('AuthRepository: No valid token, re-authenticating with stored credentials');
       final authModel = await _remoteDataSource.authenticate(
         credentials['userUuid']!,
         credentials['pin']!,
@@ -91,7 +84,6 @@ class AuthRepositoryImpl implements AuthRepository {
       
       if (authModel == null) {
         // Backend unavailable - don't clear credentials, just return null
-        debugPrint('AuthRepository: Re-authentication failed - backend unavailable');
         return null;
       }
       

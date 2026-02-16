@@ -12,14 +12,15 @@ Architecture: Aligns with AMS design - fast hippocampal capture, slow cortical c
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 from aico.core.logging import get_logger
+from aico.ai.knowledge_graph.models import PropertyGraph
 
 from .base import BaseTask, TaskContext, TaskResult
 
-logger = get_logger("backend", "scheduler.tasks.kg_consolidation")
+logger = get_logger("backend.scheduler.tasks.kg_consolidation")
 
 
 class KGConsolidationTask(BaseTask):
@@ -30,9 +31,9 @@ class KGConsolidationTask(BaseTask):
     messages and stores them in the knowledge graph.
     
     Configuration:
-    - Schedule: core.memory.kg_consolidation.schedule.cron
-    - Batch size: core.memory.kg_consolidation.batch_size
-    - Enabled: core.memory.kg_consolidation.enabled
+    - Schedule: memory.kg_consolidation.schedule.cron
+    - Batch size: memory.kg_consolidation.batch_size
+    - Enabled: memory.kg_consolidation.enabled
     """
     
     task_id = "ams.kg_consolidation"
@@ -51,7 +52,7 @@ class KGConsolidationTask(BaseTask):
         Returns:
             TaskResult with consolidation statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             print("🕸️ [KG_TASK] ========================================")
@@ -59,14 +60,14 @@ class KGConsolidationTask(BaseTask):
             print("🕸️ [KG_TASK] ========================================")
             logger.info("🕸️ [KG_TASK] Starting KG consolidation task")
             
-            # Load configuration from core.memory.consolidation.kg_extraction
-            memory_config = context.config_manager.get("core.memory", {})
+            # Load configuration from memory.consolidation.kg_extraction
+            memory_config = context.config_manager.get("memory", {})
             consolidation_config = memory_config.get("consolidation", {})
             kg_config = consolidation_config.get("kg_extraction", {})
             
             if not kg_config:
-                print("🕸️ [KG_TASK] ⚠️  Configuration 'core.memory.consolidation.kg_extraction' not found, using defaults")
-                logger.warning("🕸️ [KG_TASK] Configuration 'core.memory.consolidation.kg_extraction' not found")
+                print("🕸️ [KG_TASK] ⚠️  Configuration 'memory.consolidation.kg_extraction' not found, using defaults")
+                logger.warning("🕸️ [KG_TASK] Configuration 'memory.consolidation.kg_extraction' not found")
             
             enabled = context.get_config("enabled", kg_config.get("enabled", True))
             batch_size = context.get_config("batch_size", kg_config.get("batch_size", 50))
@@ -163,9 +164,28 @@ class KGConsolidationTask(BaseTask):
             # Get users with unconsolidated messages
             print("🕸️ [KG_TASK] Getting users with unconsolidated messages...")
             users_with_pending = await self._get_users_with_pending_messages(
-                memory_manager, 
-                batch_size
+                memory_manager=memory_manager,
+                batch_size=batch_size,
             )
+
+            # Filter to non-technical active users via Postgres user_profiles
+            if users_with_pending:
+                from aico.data.postgres.connection import get_session_factory
+                from aico.data.uow import UnitOfWork
+
+                session_factory = await get_session_factory()
+                async with UnitOfWork(session_factory) as uow:
+                    non_technical_users = await uow.user_profiles.list(
+                        filters={"is_active": True, "is_technical": False},
+                        limit=100000,
+                    )
+                    allowed_ids = {u.uuid for u in non_technical_users}
+
+                users_with_pending = {
+                    user_id: msgs
+                    for user_id, msgs in users_with_pending.items()
+                    if user_id in allowed_ids
+                }
             
             if not users_with_pending:
                 print("🕸️ [KG_TASK] ✅ No unconsolidated messages found")
@@ -286,9 +306,51 @@ class KGConsolidationTask(BaseTask):
                     else:
                         print(f"🕸️ [KG_TASK]    No duplicates found (clean extraction)")
                     
-                    # Mark messages as consolidated (get unique conversation IDs)
-                    conversation_ids = list(set([msg.get("conversation_id") for msg in messages if msg.get("conversation_id")]))
-                    await self._mark_messages_consolidated(memory_manager, user_id, conversation_ids)
+                    # Trigger ChromaDB cleanup after deduplication to remove orphaned embeddings
+                    print(f"🕸️ [KG_TASK] 🧹 Running post-deduplication ChromaDB cleanup...")
+                    cleanup_start = time.time()
+                    await memory_manager._kg_storage.save_graph(
+                        PropertyGraph(nodes=[], edges=[]),
+                        superseded_node_ids=set()
+                    )
+                    cleanup_time = time.time() - cleanup_start
+                    print(f"🕸️ [KG_TASK] ✅ ChromaDB cleanup completed in {cleanup_time:.2f}s")
+                    
+                    # Clean up historical embeddings from ChromaDB after deduplication
+                    print(f"\n🕸️ [KG_TASK] 🧹 Cleaning up historical ChromaDB embeddings...")
+                    cleanup_start = time.time()
+                    from .kg_consolidation_chromadb import cleanup_chromadb_historical
+                    cleanup_stats = await cleanup_chromadb_historical(memory_manager)
+                    cleanup_time = time.time() - cleanup_start
+                    print(f"🕸️ [KG_TASK] ✅ ChromaDB cleanup completed in {cleanup_time:.2f}s")
+                    if cleanup_stats.get('nodes_deleted', 0) > 0 or cleanup_stats.get('edges_deleted', 0) > 0:
+                        print(f"🕸️ [KG_TASK]    Deleted {cleanup_stats['nodes_deleted']} historical node embeddings")
+                        print(f"🕸️ [KG_TASK]    Deleted {cleanup_stats['edges_deleted']} historical edge embeddings")
+                    else:
+                        print(f"🕸️ [KG_TASK]    No historical embeddings to clean")
+                    
+                    # Quality validation and enhancement
+                    print(f"\n🕸️ [KG_TASK] 🔍 Running quality validation and enhancement...")
+                    quality_start = time.time()
+                    from .kg_quality import KGQualityValidator
+                    quality_validator = KGQualityValidator(memory_manager, memory_manager._kg_modelservice)
+                    quality_stats = await quality_validator.validate_and_enhance(user_id, batch_window_minutes=30)
+                    quality_time = time.time() - quality_start
+                    print(f"🕸️ [KG_TASK] ✅ Quality validation completed in {quality_time:.2f}s")
+                    print(f"🕸️ [KG_TASK]    Quality score: {quality_stats['quality_score']:.1f}%")
+                    print(f"🕸️ [KG_TASK]    Temporal updates: {quality_stats['temporal_updates']}")
+                    print(f"🕸️ [KG_TASK]    Relationships added: {quality_stats['relationships_added']}")
+                    print(f"🕸️ [KG_TASK]    Connectivity: {quality_stats['metrics']['connectivity_rate']:.1f}%")
+                    print(f"🕸️ [KG_TASK]    Isolated nodes: {quality_stats['metrics']['isolated_nodes']}/{quality_stats['metrics']['total_nodes']}")
+                    
+                    # Mark messages as consolidated (get message timestamps)
+                    message_timestamps = [msg.get("timestamp") for msg in messages if msg.get("timestamp")]
+                    print(f"🕸️ [KG_TASK] 🏷️  Marking {len(message_timestamps)} messages as consolidated")
+                    if not message_timestamps:
+                        print(f"🕸️ [KG_TASK] ⚠️  WARNING: No timestamps found in messages!")
+                    else:
+                        await self._mark_messages_consolidated(memory_manager, user_id, message_timestamps)
+                        print(f"🕸️ [KG_TASK] ✅ Messages marked as consolidated")
                     
                     total_messages += processed_count
                     user_time = time.time() - user_start
@@ -303,7 +365,7 @@ class KGConsolidationTask(BaseTask):
                     errors.append(error_msg)
             
             # Summary
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             print("\n🕸️ [KG_TASK] ════════════════════════════════════════════════════════")
             print(f"🕸️ [KG_TASK] 🎉 CONSOLIDATION COMPLETE")
             print(f"🕸️ [KG_TASK] ════════════════════════════════════════════════════════")
@@ -502,39 +564,199 @@ class KGConsolidationTask(BaseTask):
             print(f"🕸️ [KG_TASK] 🔍 Total: {len(total_superseded_ids)} duplicate entities to merge")
             print(f"🕸️ [KG_TASK] 🔍 Node mapping: {len(node_mapping)} superseded -> canonical mappings")
             
-            # Mark superseded nodes as historical and update edges
+            # Mark superseded nodes as historical and update edges via UoW
             edges_updated = 0
             
-            # Get database connection
-            db = memory_manager._kg_storage.db
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from datetime import datetime, UTC
             
-            # Mark duplicates as historical
-            for node_id in total_superseded_ids:
-                db.execute(
-                    "UPDATE kg_nodes SET is_current = 0, updated_at = datetime('now') WHERE id = ?",
-                    (node_id,)
-                )
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Mark duplicates as historical (only if not already historical)
+                for node_id in total_superseded_ids:
+                    # Check if node exists and is current
+                    node = await uow.kg_nodes.get(filters={'id': node_id})
+                    if not node:
+                        continue
+                    
+                    # Skip if already historical
+                    if not node.is_current:
+                        continue
+                    
+                    # Check if a historical version already exists
+                    historical_nodes = await uow.kg_nodes.list(
+                        filters={
+                            'user_id': node.user_id,
+                            'label': node.label,
+                            'properties': node.properties,
+                            'is_current': False
+                        },
+                        limit=1
+                    )
+                    
+                    if historical_nodes:
+                        # Historical version already exists - delete this node instead
+                        logger.warning(
+                            f"[POST_DEDUP] Historical node already exists for {node.label}. "
+                            f"Deleting duplicate node {node_id} instead of marking historical."
+                        )
+                        # First delete edges referencing this node
+                        edges_to_delete = await uow.kg_edges.list(
+                            filters={'source_id': node_id},
+                            limit=10000
+                        )
+                        edges_to_delete.extend(await uow.kg_edges.list(
+                            filters={'target_id': node_id},
+                            limit=10000
+                        ))
+                        for edge in edges_to_delete:
+                            await uow.kg_edges.delete(edge.id)
+                        
+                        # Then delete the node
+                        await uow.kg_nodes.delete(node_id)
+                    else:
+                        # Safe to mark as historical
+                        node.is_current = False
+                        node.updated_at = datetime.now(UTC)
+                        await uow.kg_nodes.update(node)
             
-            # Update edges to point to canonical nodes
-            print(f"🕸️ [KG_TASK] 🔄 Updating edges to point to canonical nodes...")
-            for superseded_id, canonical_id in node_mapping.items():
-                # Update edges where superseded node is the source
-                result = db.execute(
-                    "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ? AND user_id = ?",
-                    (canonical_id, superseded_id, user_id)
-                )
-                edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                # Update edges to point to canonical nodes
+                print(f"🕸️ [KG_TASK] 🔄 Updating edges to point to canonical nodes...")
+                for superseded_id, canonical_id in node_mapping.items():
+                    # Update edges where superseded node is the source
+                    source_edges = await uow.kg_edges.list(
+                        filters={'source_id': superseded_id, 'user_id': user_id},
+                        limit=10000
+                    )
+                    
+                    for edge in source_edges:
+                        try:
+                            edge.source_id = canonical_id
+                            edge.updated_at = datetime.now(UTC)
+                            await uow.kg_edges.update(edge)
+                            edges_updated += 1
+                        except Exception as e:
+                            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                                logger.warning(
+                                    f"[POST_DEDUP] UNIQUE constraint prevented edge update (source_id). "
+                                    f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                                )
+                                await uow.kg_edges.delete(edge.id)
+                            else:
+                                raise
+                    
+                    # Update edges where superseded node is the target
+                    target_edges = await uow.kg_edges.list(
+                        filters={'target_id': superseded_id, 'user_id': user_id},
+                        limit=10000
+                    )
+                    
+                    for edge in target_edges:
+                        try:
+                            edge.target_id = canonical_id
+                            edge.updated_at = datetime.now(UTC)
+                            await uow.kg_edges.update(edge)
+                            edges_updated += 1
+                        except Exception as e:
+                            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                                logger.warning(
+                                    f"[POST_DEDUP] UNIQUE constraint prevented edge update (target_id). "
+                                    f"Deleting duplicate edge: superseded={superseded_id}, canonical={canonical_id}"
+                                )
+                                await uow.kg_edges.delete(edge.id)
+                            else:
+                                raise
+            
+                print(f"🕸️ [KG_TASK] ✅ Updated {edges_updated} edge references")
                 
-                # Update edges where superseded node is the target
-                result = db.execute(
-                    "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ? AND user_id = ?",
-                    (canonical_id, superseded_id, user_id)
+                # CRITICAL FIX: Update orphaned edges from previous batches
+                print(f"🕸️ [KG_TASK] 🔄 Checking for orphaned edges from previous batches...")
+                
+                # Find all current edges for this user
+                all_edges = await uow.kg_edges.list(
+                    filters={'user_id': user_id, 'is_current': True},
+                    limit=100000
                 )
-                edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
-            
-            print(f"🕸️ [KG_TASK] ✅ Updated {edges_updated} edge references")
-            
-            db.commit()
+                
+                orphaned_fixed = 0
+                orphaned_deleted = 0
+                
+                for edge in all_edges:
+                    # Check if source or target nodes are historical
+                    source_node = await uow.kg_nodes.get(filters={'id': edge.source_id})
+                    target_node = await uow.kg_nodes.get(filters={'id': edge.target_id})
+                    
+                    source_historical = source_node and not source_node.is_current
+                    target_historical = target_node and not target_node.is_current
+                    
+                    if not source_historical and not target_historical:
+                        continue
+                    
+                    fixed = False
+                    
+                    # If source is historical, find its canonical replacement
+                    if source_historical and source_node:
+                        canonical_sources = await uow.kg_nodes.list(
+                            filters={
+                                'user_id': user_id,
+                                'label': source_node.label,
+                                'properties': source_node.properties,
+                                'is_current': True
+                            },
+                            limit=1
+                        )
+                        
+                        if canonical_sources:
+                            try:
+                                edge.source_id = canonical_sources[0].id
+                                edge.updated_at = datetime.now(UTC)
+                                await uow.kg_edges.update(edge)
+                                orphaned_fixed += 1
+                                fixed = True
+                            except Exception as e:
+                                if "unique" in str(e).lower():
+                                    await uow.kg_edges.delete(edge.id)
+                                    orphaned_deleted += 1
+                                    fixed = True
+                    
+                    # If target is historical, find its canonical replacement
+                    if target_historical and target_node and not fixed:
+                        canonical_targets = await uow.kg_nodes.list(
+                            filters={
+                                'user_id': user_id,
+                                'label': target_node.label,
+                                'properties': target_node.properties,
+                                'is_current': True
+                            },
+                            limit=1
+                        )
+                        
+                        if canonical_targets:
+                            try:
+                                edge.target_id = canonical_targets[0].id
+                                edge.updated_at = datetime.now(UTC)
+                                await uow.kg_edges.update(edge)
+                                orphaned_fixed += 1
+                                fixed = True
+                            except Exception as e:
+                                if "unique" in str(e).lower():
+                                    await uow.kg_edges.delete(edge.id)
+                                    orphaned_deleted += 1
+                                    fixed = True
+                    
+                    # If we couldn't find a canonical node, delete the edge as last resort
+                    if not fixed:
+                        await uow.kg_edges.delete(edge.id)
+                        orphaned_deleted += 1
+                
+                if orphaned_fixed > 0:
+                    print(f"🕸️ [KG_TASK] ✅ Fixed {orphaned_fixed} orphaned edges from previous batches")
+                if orphaned_deleted > 0:
+                    print(f"🕸️ [KG_TASK] 🧹 Deleted {orphaned_deleted} orphaned edges (no canonical node found)")
+                    logger.warning(f"[POST_DEDUP] Deleted {orphaned_deleted} orphaned edges with no canonical replacement")
+                
+                await uow.commit()
             
             return {
                 'duplicates_merged': len(total_superseded_ids),
@@ -543,30 +765,29 @@ class KGConsolidationTask(BaseTask):
             
         except Exception as e:
             print(f"🕸️ [KG_TASK] ⚠️  Post-batch deduplication failed: {e}")
-            logger.error(f"🕸️ [KG_TASK] Post-batch deduplication failed: {e}")
             import traceback
             traceback.print_exc()
-            return {'duplicates_merged': 0, 'edges_updated': 0}
+            return {'nodes_deleted': 0, 'edges_deleted': 0}
     
     async def _mark_messages_consolidated(
         self,
         memory_manager,
         user_id: str,
-        conversation_ids: List[str]
+        message_timestamps: List[str]
     ) -> None:
         """
-        Mark messages as consolidated in working memory.
+        Mark specific messages as consolidated in working memory.
         
         Args:
             memory_manager: Memory manager instance
             user_id: User ID
-            conversation_ids: List of conversation IDs that were processed
+            message_timestamps: List of message timestamps that were processed
         """
         try:
             working_store = memory_manager._working_store
             
             if not working_store or not working_store._initialized:
-                logger.warning("🕸️ [KG_TASK] Working memory store not initialized")
+                logger.info("🕸️ [KG_TASK] Working memory store not yet initialized, skipping consolidation marking")
                 return
             
             db = working_store.dbs.get("session_memory")
@@ -574,33 +795,57 @@ class KGConsolidationTask(BaseTask):
                 logger.warning("🕸️ [KG_TASK] session_memory database not available")
                 return
             
-            # Update messages in LMDB by scanning for matching conversation_ids
-            updated_count = 0
-            with working_store.env.begin(db=db, write=True) as txn:
+            # Update messages in LMDB by scanning for matching timestamps
+            # First pass: collect messages to update (read-only)
+            messages_to_update = []
+            total_scanned = 0
+            matching_timestamps = 0
+            
+            # Convert timestamps to set for O(1) lookup
+            timestamp_set = set(message_timestamps)
+            logger.info(f"🕸️ [KG_TASK] 🔍 Scanning LMDB for {len(timestamp_set)} specific message timestamps")
+            
+            with working_store.env.begin(db=db, write=False) as txn:
                 cursor = txn.cursor()
                 
                 for key, value in cursor:
+                    total_scanned += 1
                     try:
-                        # Check if this message belongs to one of the processed conversations
-                        key_str = key.decode('utf-8')
-                        conv_id = key_str.split(':')[0] if ':' in key_str else None
-                        
-                        if conv_id not in conversation_ids:
-                            continue
-                        
-                        # Parse and update message
+                        # Parse message
                         msg = json.loads(value.decode('utf-8'))
                         
+                        # Check if this is one of the processed messages
+                        msg_timestamp = msg.get('timestamp')
+                        if msg_timestamp not in timestamp_set:
+                            continue
+                        
+                        matching_timestamps += 1
+                        
+                        # Verify it's a user message for this user
                         if msg.get('role') == 'user' and msg.get('user_id') == user_id:
-                            if not msg.get('kg_consolidated', False):
+                            # Check if not consolidated (handle both None and False)
+                            kg_consolidated = msg.get('kg_consolidated')
+                            logger.debug(f"🕸️ [KG_TASK] Message {msg_timestamp}: kg_consolidated={kg_consolidated}")
+                            
+                            if not kg_consolidated:
                                 msg['kg_consolidated'] = True
-                                msg['kg_consolidated_at'] = datetime.utcnow().isoformat()
-                                
-                                # Write back to LMDB
-                                txn.put(key, json.dumps(msg).encode('utf-8'))
-                                updated_count += 1
+                                msg['kg_consolidated_at'] = datetime.now(timezone.utc).isoformat()
+                                messages_to_update.append((key, msg))
                     
                     except (json.JSONDecodeError, KeyError, IndexError) as e:
+                        logger.warning(f"🕸️ [KG_TASK] Failed to parse message: {e}")
+                        continue
+            
+            logger.info(f"🕸️ [KG_TASK] Marking {len(messages_to_update)} messages as consolidated (scanned {total_scanned} total, matched {matching_timestamps} timestamps)")
+            
+            # Second pass: write updates
+            updated_count = 0
+            with working_store.env.begin(db=db, write=True) as txn:
+                for key, msg in messages_to_update:
+                    try:
+                        txn.put(key, json.dumps(msg).encode('utf-8'))
+                        updated_count += 1
+                    except Exception as e:
                         logger.warning(f"🕸️ [KG_TASK] Failed to update message: {e}")
                         continue
             

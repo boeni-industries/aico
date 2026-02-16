@@ -18,7 +18,7 @@ Design Principles:
 import asyncio
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -151,14 +151,11 @@ class EmotionEngine(BaseService):
         self.db_connection = self.container.get_service("database")
         
         # Configuration
-        emotion_config = self.container.config.get("core.emotion", {})
-        print(f"🔍 [EMOTION_ENGINE] emotion_config loaded: {emotion_config}")
+        emotion_config = self.container.config.get("emotion", {})
         self.appraisal_sensitivity = emotion_config.get("appraisal_sensitivity", 0.7)
         self.regulation_strength = emotion_config.get("regulation_strength", 0.8)
         self.threat_arousal_boost = emotion_config.get("threat_arousal_boost", 0.25)
         self.max_history_size = emotion_config.get("max_history_size", 100)
-        print(f"🔍 [EMOTION_ENGINE] regulation_strength set to: {self.regulation_strength}")
-        print(f"🔍 [EMOTION_ENGINE] threat_arousal_boost set to: {self.threat_arousal_boost}")
         
         # Emotional inertia configuration (Kuppens et al., 2010; Scherer CPM)
         inertia_config = emotion_config.get("inertia", {})
@@ -190,35 +187,29 @@ class EmotionEngine(BaseService):
         """Initialize service resources"""
         # Load persisted state from database, or create neutral baseline
         await self._load_persisted_state()
-        print(f"🎭 [EMOTION_ENGINE] Initialized with state: {self.current_state.subjective_feeling.value}")
         self.logger.info(f"Emotion processor initialized with state: {self.current_state.subjective_feeling.value}")
     
     async def start(self) -> None:
         """Start the emotion processor service"""
         try:
-            print("🎭 [EMOTION_ENGINE] 🚀 STARTING EMOTION ENGINE...")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Starting emotion processor...")
+            self.logger.info("Starting emotion processor...")
             
             # Initialize message bus client
             self.bus_client = MessageBusClient("emotion_processor")
             await self.bus_client.connect()
-            print("🎭 [EMOTION_ENGINE] ✅ Message bus client connected")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Message bus client connected")
+            self.logger.info("Message bus client connected")
             
             # Subscribe to conversation events
             await self._setup_subscriptions()
-            print("🎭 [EMOTION_ENGINE] ✅ Subscriptions established")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Subscriptions established")
+            self.logger.info("Subscriptions established")
             
             # Publish initial neutral state
-            await self._publish_emotional_state(self.current_state)
+            await self._publish_emotional_state(self.current_state, persist_history=False)
             
-            print("🎭 [EMOTION_ENGINE] 🎉 EMOTION ENGINE STARTED SUCCESSFULLY!")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Emotion processor started successfully")
+            self.logger.info("Emotion processor started successfully")
             
         except Exception as e:
-            print(f"🎭 [EMOTION_ENGINE] ❌ Failed to start: {e}")
-            self.logger.error(f"🎭 [EMOTION_PROCESSOR] Failed to start: {e}")
+            self.logger.error(f"Failed to start emotion processor: {e}")
             raise
     
     async def stop(self) -> None:
@@ -253,7 +244,6 @@ class EmotionEngine(BaseService):
             sentiment_response_pattern,
             self._handle_sentiment_response
         )
-        print(f"🎭 [EMOTION_ENGINE] 🎧 Subscribed to sentiment responses: {sentiment_response_pattern}")
         
         # Optional: Subscribe to user emotion detection results
         if self.enable_user_emotion_detection:
@@ -292,7 +282,6 @@ class EmotionEngine(BaseService):
                 "valence": self._map_sentiment_to_valence(sentiment_response.sentiment)
             }
             
-            print(f"🎭 [EMOTION_ENGINE] ✅ Sentiment: {sentiment_response.sentiment} (confidence={sentiment_response.confidence:.2f})")
             
             # Complete emotional processing with sentiment data
             await self._complete_emotional_processing(
@@ -307,15 +296,12 @@ class EmotionEngine(BaseService):
             
         except Exception as e:
             import traceback
-            print(f"🚨 [EMOTION_ENGINE] ERROR in sentiment response handler: {e}")
-            print(f"🚨 [EMOTION_ENGINE] Traceback: {traceback.format_exc()}")
             self.logger.error(f"Error handling sentiment response: {e}\n{traceback.format_exc()}")
     
     async def _handle_conversation_turn(self, message) -> None:
         """Handle incoming conversation turn - start async emotional processing"""
         try:
-            print("🎭 [EMOTION_ENGINE] 📨 Received conversation turn event")
-            self.logger.info("🎭 [EMOTION_PROCESSOR] Received conversation turn event")
+            self.logger.debug("Received conversation turn event")
             
             # Unpack ConversationMessage from envelope
             from aico.proto.aico_conversation_pb2 import ConversationMessage
@@ -365,8 +351,7 @@ class EmotionEngine(BaseService):
         # Stage 1: Relevance Assessment ("Does this matter to me?")
         base_relevance = await self._assess_relevance(message_text, user_emotion, sentiment_data)
         relevance = self.conversational_context.adjust_relevance(base_relevance, message_text)
-        print(f"🎭 [EMOTION_ENGINE] Stage 1 - Relevance: {base_relevance:.2f} → {relevance:.2f} (context-adjusted)")
-        self.logger.debug(f"🎭 Appraisal Stage 1 - Relevance: {relevance:.2f}")
+        self.logger.debug(f"Appraisal Stage 1 - Relevance: {relevance:.2f}")
         
         # Update context with current turn (after relevance calculation)
         self.conversational_context.update(message_text, valence, arousal, relevance)
@@ -374,25 +359,16 @@ class EmotionEngine(BaseService):
         # Stage 2: Implication Check ("What does this mean for my goals?")
         base_goal_impact = await self._analyze_goal_impact(message_text, relevance, sentiment_data)
         goal_impact = self.conversational_context.adjust_goal_impact(base_goal_impact, valence)
-        if base_goal_impact != goal_impact:
-            print(f"🎭 [EMOTION_ENGINE] Stage 2 - Goal Impact: {base_goal_impact} → {goal_impact} (episode-adjusted)")
-        else:
-            print(f"🎭 [EMOTION_ENGINE] Stage 2 - Goal Impact: {goal_impact}")
-        self.logger.debug(f"🎭 Appraisal Stage 2 - Goal Impact: {goal_impact}")
+        self.logger.debug(f"Appraisal Stage 2 - Goal Impact: {goal_impact}")
         
         # Stage 3: Coping Check ("Can I handle this?")
         coping_capability = await self._determine_coping_capability(message_text, goal_impact, sentiment_data)
-        print(f"🎭 [EMOTION_ENGINE] Stage 3 - Coping: {coping_capability}")
-        self.logger.debug(f"🎭 Appraisal Stage 3 - Coping: {coping_capability}")
+        self.logger.debug(f"Appraisal Stage 3 - Coping: {coping_capability}")
         
         # Stage 4: Normative Check ("Is this socially appropriate?")
         base_social = await self._apply_social_regulation(goal_impact, coping_capability, sentiment_data)
         social_appropriateness = self.conversational_context.adjust_social_appropriateness(base_social)
-        if base_social != social_appropriateness:
-            print(f"🎭 [EMOTION_ENGINE] Stage 4 - Social Appropriateness: {base_social} → {social_appropriateness} (context-adjusted)")
-        else:
-            print(f"🎭 [EMOTION_ENGINE] Stage 4 - Social Appropriateness: {social_appropriateness}")
-        self.logger.debug(f"🎭 Appraisal Stage 4 - Social Regulation: {social_appropriateness}")
+        self.logger.debug(f"Appraisal Stage 4 - Social Regulation: {social_appropriateness}")
         
         # Create appraisal result
         appraisal = AppraisalResult(
@@ -407,8 +383,7 @@ class EmotionEngine(BaseService):
         # Generate CPM emotional state from appraisal
         emotional_state = self._generate_cpm_emotional_state(appraisal, sentiment_data)
         
-        print(f"🎭 [EMOTION_ENGINE] Generated state: {emotional_state.subjective_feeling.value} (v={emotional_state.mood_valence:.2f}, a={emotional_state.mood_arousal:.2f}, i={emotional_state.intensity:.2f})")
-        self.logger.debug(f"🎭 Generated CPM state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
+        self.logger.debug(f"Generated CPM state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
         
         return emotional_state
     
@@ -452,10 +427,8 @@ class EmotionEngine(BaseService):
             # Return immediately - response will be handled by callback
                 
         except Exception as e:
-            print(f"🎭 [EMOTION_ENGINE] ❌ Sentiment request ERROR: {e}")
             import traceback
-            print(f"🎭 [EMOTION_ENGINE] Traceback: {traceback.format_exc()}")
-            self.logger.error(f"Sentiment request error: {e}")
+            self.logger.error(f"Sentiment request error: {e}\n{traceback.format_exc()}")
             # Clean up
             if request_id in self.pending_sentiment_requests:
                 del self.pending_sentiment_requests[request_id]
@@ -469,22 +442,17 @@ class EmotionEngine(BaseService):
     ) -> None:
         """Complete emotional processing with sentiment data (called from callback)"""
         try:
-            print(f"🔍 [EMOTION_ENGINE] _complete_emotional_processing CALLED for conversation {conversation_id}")
-            
             # Update previous state BEFORE generating new state (for inertia calculation)
             previous_feeling = self.current_state.subjective_feeling if self.current_state else None
             self.previous_state = self.current_state
-            print(f"🔍 [EMOTION_ENGINE] Previous state saved: {previous_feeling}")
             
             # Run appraisal with sentiment data (uses self.previous_state for inertia)
-            print(f"🔍 [EMOTION_ENGINE] About to call _process_emotional_response_with_sentiment...")
             emotional_state = await self._process_emotional_response_with_sentiment(
                 user_id=user_id,
                 message_text=message_text,
                 conversation_id=conversation_id,
                 sentiment_data=sentiment_data
             )
-            print(f"🔍 [EMOTION_ENGINE] _process_emotional_response_with_sentiment returned: {emotional_state.subjective_feeling.value}")
             
             # Update current state after generation
             self.current_state = emotional_state
@@ -497,10 +465,7 @@ class EmotionEngine(BaseService):
             
             # Log state transition if significant change
             if previous_feeling and previous_feeling != emotional_state.subjective_feeling:
-                print(f"🎭 [EMOTION_ENGINE] 🔄 State transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
-                self.logger.info(f"🎭 Emotional state transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
-            
-            print(f"🎭 [EMOTION_ENGINE] 💭 Generated state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
+                self.logger.info(f"Emotional state transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
             
             # Publish emotional state
             await self._publish_emotional_state(emotional_state)
@@ -512,8 +477,6 @@ class EmotionEngine(BaseService):
             
         except Exception as e:
             import traceback
-            print(f"🚨 [EMOTION_ENGINE] EXCEPTION in _complete_emotional_processing: {e}")
-            print(f"🚨 [EMOTION_ENGINE] Traceback: {traceback.format_exc()}")
             self.logger.error(f"Error completing emotional processing: {e}\n{traceback.format_exc()}")
     
     def _map_sentiment_to_valence(self, label: str) -> float:
@@ -779,25 +742,20 @@ class EmotionEngine(BaseService):
         
         if appraisal.social_appropriateness == "crisis_protocol":
             # Crisis: High arousal, valence from sentiment but biased toward action
-            target_valence = max(0.2, valence_from_sentiment * 0.8)  # Floor at 0.2 for protective stance
+            target_valence = valence_from_sentiment * 0.8
             target_arousal = 0.8
             motivational_tendency = "approach"
         elif appraisal.social_appropriateness == "empathetic_response":
-            # Empathy: Convert user's negative sentiment to AI's positive concern
-            # (User distress → AI warm concern, not AI distress)
             if valence_from_sentiment < 0:
-                # Convert negative sentiment to positive concern (invert and scale)
-                # More negative user sentiment = higher AI concern valence
-                target_valence = abs(valence_from_sentiment) * 0.5  # Moderate positive concern
+                target_valence = max(-1.0, valence_from_sentiment * 1.3)
             else:
-                # Positive user sentiment in empathetic context: gentle positive response
-                target_valence = valence_from_sentiment * 0.6
+                target_valence = min(1.0, valence_from_sentiment * 0.6)
             # High relevance = higher arousal (deeper concern)
             target_arousal = 0.65 if appraisal.relevance > 0.65 else 0.5
             motivational_tendency = "approach"
         elif appraisal.social_appropriateness == "calm_resolution":
             # Resolution: Slight positive bias (relief), low arousal
-            target_valence = max(0.2, valence_from_sentiment * 0.7)  # Gentle positive bias
+            target_valence = valence_from_sentiment * 0.7
             target_arousal = 0.4
             motivational_tendency = "neutral"
         elif appraisal.social_appropriateness == "warm_engagement":
@@ -817,14 +775,11 @@ class EmotionEngine(BaseService):
         # Store target for logging
         valence = target_valence
         arousal = target_arousal
-        print(f"🎯 [AROUSAL_DEBUG] Stage 1 - Base arousal set: {arousal:.2f} (context: {appraisal.social_appropriateness})")
         
         # Apply emotion regulation FIRST (part of CPM Stage 3: Coping Potential)
         # Regulation is part of the appraisal process itself, not post-processing
         # (Scherer CPM: coping potential modulates arousal before state persistence)
-        arousal_before_regulation = arousal
         arousal = arousal * (1.0 - self.regulation_strength * 0.3)
-        print(f"🎯 [AROUSAL_DEBUG] Stage 2 - After regulation: {arousal:.2f} (was {arousal_before_regulation:.2f}, regulation_strength={self.regulation_strength:.2f})")
         
         # Extract sentiment values once for all regulation logic
         sentiment_valence = sentiment_data.get("valence", 0.0)
@@ -841,12 +796,9 @@ class EmotionEngine(BaseService):
             
             if (relevance > 0.65 and sentiment_valence < -0.3 and confidence > 0.4):
                 # Amplify arousal for contextually relevant threats (language-agnostic)
-                print(f" [AROUSAL_BOOST] Triggered! relevance={relevance:.2f}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}, arousal before={arousal:.2f}")
                 arousal *= (1.0 + self.threat_arousal_boost)  # Configurable boost (default 25%)
                 threat_detected = True  # Mark for reduced inertia
-                print(f" [AROUSAL_BOOST] Arousal after boost: {arousal:.2f} (+{self.threat_arousal_boost*100:.0f}%)")
-            else:
-                print(f"⚠️ [AROUSAL_BOOST] NOT triggered: relevance={relevance:.2f} (need >0.65), sentiment_valence={sentiment_valence:.2f} (need <-0.3), confidence={confidence:.2f} (need >0.4)")
+                self.logger.debug(f"Threat arousal boost applied: +{self.threat_arousal_boost*100:.0f}%")
         
         # Savoring: Amplify positive emotions through mindful appreciation
         # (Bryant & Veroff, 2007: Positive emotion regulation)
@@ -856,14 +808,9 @@ class EmotionEngine(BaseService):
         if (appraisal.goal_impact in ["engaging_opportunity", "supportive_opportunity", "resolution_opportunity"] and 
             sentiment_valence > 0.4 and 
             confidence > 0.35):
-            arousal_before_savoring = arousal
-            print(f"✨ [SAVORING] Triggered! goal_impact={appraisal.goal_impact}, confidence={confidence:.2f}, valence before={valence:.2f}, arousal before={arousal:.2f}")
             valence *= 1.15  # Amplify valence (15% boost - increased from 10%)
             arousal *= 1.20  # Amplify arousal (20% boost - increased from 15%)
-            print(f"✨ [SAVORING] After amplification: valence={valence:.2f}, arousal={arousal:.2f}")
-            print(f"🎯 [AROUSAL_DEBUG] Stage 3 - After savoring: {arousal:.2f} (was {arousal_before_savoring:.2f}, +20% boost)")
-        else:
-            print(f"⚠️ [SAVORING] NOT triggered: goal_impact={appraisal.goal_impact}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}")
+            self.logger.debug(f"Savoring amplification applied: valence +15%, arousal +20%")
         
         # Apply emotional inertia AFTER regulation (Kuppens et al., 2010; Scherer CPM recursive appraisal)
         # Inertia blends the REGULATED appraisal with previous state to prevent double-dampening
@@ -876,43 +823,23 @@ class EmotionEngine(BaseService):
             # Existential threats should dominate emotional state, not be dampened by inertia
             if threat_detected:
                 effective_inertia *= 0.3  # Reduce inertia to 30% for threat responses
-                print(f"🔥 [THREAT_OVERRIDE] Reducing inertia for acute threat response: {effective_inertia:.2f}")
+                self.logger.debug(f"Threat override: reducing inertia to {effective_inertia:.2f}")
             
             effective_reactivity = 1.0 - effective_inertia
             
-            print(f"🧠 [INERTIA] Previous: {self.previous_state.subjective_feeling.value} (v={self.previous_state.mood_valence:.2f}, a={self.previous_state.mood_arousal:.2f})")
-            print(f"🧠 [INERTIA] Target (regulated): (v={valence:.2f}, a={arousal:.2f})")
-            print(f"🧠 [INERTIA] Weights: inertia={effective_inertia:.2f}, reactivity={effective_reactivity:.2f}, turns={self.turns_since_state_change}")
-            
-            # Store regulated values for comparison
-            regulated_valence, regulated_arousal = valence, arousal
-            
             # Blend previous and current states (leaky integrator model)
-            arousal_before_inertia = arousal
             valence = (valence * effective_reactivity) + (self.previous_state.mood_valence * effective_inertia)
             arousal = (arousal * effective_reactivity) + (self.previous_state.mood_arousal * effective_inertia)
             
-            print(f"🧠 [INERTIA] Blended: (v={valence:.2f}, a={arousal:.2f})")
-            print(f"🎯 [AROUSAL_DEBUG] Stage 4 - After inertia: {arousal:.2f} (was {arousal_before_inertia:.2f}, previous={self.previous_state.mood_arousal:.2f})")
-            
-            # Apply minimum valence floor to prevent excessive decay in positive contexts
-            # Scientific basis: Fredrickson (2001) - Positive emotions should persist
-            # If previous state was non-negative (v>0.1), maintain minimum positive valence
-            # to avoid drift to zero during neutral inputs or recovery scenarios
-            if self.previous_state.mood_valence > 0.1 and valence < 0.15:
-                original_valence = valence
-                valence = 0.15  # Minimum floor for positive emotional contexts
-                print(f"🛡️ [VALENCE_FLOOR] Applied minimum valence floor: {valence:.2f} (was {original_valence:.2f}, prev={self.previous_state.mood_valence:.2f})")
-            
-            # Supportive context bias: DISABLED per Kuppens et al. (2010)
-            # Excessive inertia prevents appropriate emotional responses
-            # Natural inertia (weight=0.4) is sufficient for emotional continuity
+            # Apply inertia decay based on turns since state change
+            # More turns without change = less inertia (more reactive)
+            inertia_decay_factor = max(0.0, 1.0 - (self.turns_since_state_change * self.inertia_decay))
         
         # Assign emotion label based on ACTUAL (post-inertia) valence/arousal
         # Using Russell's (1980) Circumplex Model of Affect
         # This ensures subjective feeling matches experienced emotional state
         feeling = self._map_valence_arousal_to_label(valence, arousal, appraisal)
-        print(f"🎭 [EMOTION_ENGINE] Final state: {feeling.value} (v={valence:.2f}, a={arousal:.2f})")
+        self.logger.debug(f"Final emotional state: {feeling.value} (v={valence:.2f}, a={arousal:.2f})")
         
         # Determine style parameters for LLM conditioning
         if feeling in [EmotionLabel.WARM_CONCERN, EmotionLabel.PROTECTIVE]:
@@ -938,7 +865,7 @@ class EmotionEngine(BaseService):
         
         # Create emotional state
         state = EmotionalState(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             cognitive_component=appraisal,
             physiological_arousal=arousal,
             motivational_tendency="approach" if valence > 0 else "neutral",
@@ -968,7 +895,7 @@ class EmotionEngine(BaseService):
         )
         
         return EmotionalState(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             cognitive_component=neutral_appraisal,
             physiological_arousal=0.3,
             motivational_tendency="neutral",
@@ -990,7 +917,7 @@ class EmotionEngine(BaseService):
     # STATE PUBLISHING & HISTORY
     # ============================================================================
     
-    async def _publish_emotional_state(self, state: EmotionalState) -> None:
+    async def _publish_emotional_state(self, state: EmotionalState, *, persist_history: bool = True) -> None:
         """Publish emotional state to message bus for consumers"""
         try:
             # Create protobuf timestamp
@@ -1026,7 +953,7 @@ class EmotionEngine(BaseService):
             self.logger.debug(f"Published emotional state: {state.subjective_feeling.value}")
             
             # Persist state to database
-            await self._persist_state(state)
+            await self._persist_state(state, persist_history=persist_history)
             
         except Exception as e:
             self.logger.error(f"Error publishing emotional state: {e}")
@@ -1056,110 +983,124 @@ class EmotionEngine(BaseService):
     # ============================================================================
     
     async def _load_persisted_state(self) -> None:
-        """Load emotional state from database on startup"""
+        """Load emotional state from database on startup via UoW"""
         try:
-            # Load current state
-            cursor = self.db_connection.execute(
-                "SELECT timestamp, subjective_feeling, mood_valence, mood_arousal, intensity, "
-                "warmth, directness, formality, engagement, closeness, care_focus "
-                "FROM emotion_state WHERE id = 1"
-            )
-            row = cursor.fetchone()
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
             
-            if row:
-                # Reconstruct emotional state from database
-                self.current_state = EmotionalState(
-                    timestamp=datetime.fromisoformat(row[0]),
-                    subjective_feeling=EmotionLabel(row[1]),
-                    mood_valence=row[2],
-                    mood_arousal=row[3],
-                    intensity=row[4],
-                    warmth=row[5],
-                    directness=row[6],
-                    formality=row[7],
-                    engagement=row[8],
-                    closeness=row[9],
-                    care_focus=row[10]
-                )
-                self.logger.info(f"🎭 Loaded persisted emotional state: {self.current_state.subjective_feeling.value}")
-            else:
-                # No persisted state, create neutral baseline
-                self.current_state = self._create_neutral_state()
-                self.logger.info("🎭 No persisted state found, initialized with neutral baseline")
-            
-            # Load history (last N entries)
-            cursor = self.db_connection.execute(
-                "SELECT timestamp, feeling, valence, arousal, intensity "
-                "FROM emotion_history "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?",
-                (self.max_history_size,)
-            )
-            
-            # Reverse to get chronological order
-            history_rows = list(reversed(cursor.fetchall()))
-            self.state_history = [
-                {
-                    "timestamp": row[0],
-                    "feeling": row[1],
-                    "valence": row[2],
-                    "arousal": row[3],
-                    "intensity": row[4]
-                }
-                for row in history_rows
-            ]
-            
-            if self.state_history:
-                self.logger.info(f"🎭 Loaded {len(self.state_history)} historical emotional states")
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Load current state (id=1)
+                state_row = await uow.emotion_state.get_current_state()
                 
+                if state_row:
+                    # Reconstruct emotional state from database
+                    neutral_appraisal = AppraisalResult(
+                        relevance=0.5,
+                        goal_impact="neutral",
+                        coping_capability="high_capability",
+                        social_appropriateness="neutral_response"
+                    )
+                    
+                    self.current_state = EmotionalState(
+                        timestamp=datetime.fromisoformat(state_row.timestamp).replace(tzinfo=UTC) if isinstance(state_row.timestamp, str) else state_row.timestamp.replace(tzinfo=UTC),
+                        cognitive_component=neutral_appraisal,
+                        physiological_arousal=state_row.mood_arousal,
+                        motivational_tendency="neutral",
+                        motor_expression="relaxed",
+                        subjective_feeling=EmotionLabel(state_row.subjective_feeling),
+                        mood_valence=state_row.mood_valence,
+                        mood_arousal=state_row.mood_arousal,
+                        intensity=state_row.intensity,
+                        warmth=state_row.warmth,
+                        directness=state_row.directness,
+                        formality=state_row.formality,
+                        engagement=state_row.engagement,
+                        closeness=state_row.closeness,
+                        care_focus=state_row.care_focus
+                    )
+                    self.logger.info(f"🎭 Loaded persisted emotional state: {self.current_state.subjective_feeling.value}")
+                else:
+                    # No persisted state, create neutral baseline
+                    self.current_state = self._create_neutral_state()
+                    self.logger.info("🎭 No persisted state found, initialized with neutral baseline")
+                
+                # Load history (last N entries)
+                history_rows = await uow.emotion_history.get_recent_for_user('system', limit=self.max_history_size)
+                
+                # Convert to chronological order (repository returns desc)
+                self.state_history = [
+                    {
+                        "timestamp": row.timestamp if isinstance(row.timestamp, str) else row.timestamp.isoformat(),
+                        "feeling": row.feeling,
+                        "valence": row.valence,
+                        "arousal": row.arousal,
+                        "intensity": row.intensity
+                    }
+                    for row in reversed(history_rows)
+                ]
+                
+                if self.state_history:
+                    self.logger.info(f"🎭 Loaded {len(self.state_history)} historical emotional states")
+                    
         except Exception as e:
             self.logger.error(f"Error loading persisted emotional state: {e}")
             # Fallback to neutral state
             self.current_state = self._create_neutral_state()
             self.state_history = []
     
-    async def _persist_state(self, state: EmotionalState) -> None:
-        """Persist emotional state to database"""
+    async def _persist_state(self, state: EmotionalState, *, persist_history: bool = True) -> None:
+        """Persist emotional state to database via UoW"""
         try:
-            # Update current state (single row with id=1)
-            self.db_connection.execute(
-                """INSERT OR REPLACE INTO emotion_state 
-                   (id, user_id, timestamp, subjective_feeling, mood_valence, mood_arousal, 
-                    intensity, warmth, directness, formality, engagement, closeness, care_focus, updated_at)
-                   VALUES (1, 'system', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
-                (
-                    state.timestamp.isoformat(),
-                    state.subjective_feeling.value,
-                    state.mood_valence,
-                    state.mood_arousal,
-                    state.intensity,
-                    state.warmth,
-                    state.directness,
-                    state.formality,
-                    state.engagement,
-                    state.closeness,
-                    state.care_focus
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.data.emotion.models import EmotionState as EmotionStateModel, EmotionHistory
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Check if current state exists (id=1)
+                existing_state = await uow.emotion_state.get_current_state()
+                
+                state_model = EmotionStateModel(
+                    id=1,
+                    user_id='system',
+                    timestamp=state.timestamp.isoformat(),
+                    subjective_feeling=state.subjective_feeling.value,
+                    mood_valence=state.mood_valence,
+                    mood_arousal=state.mood_arousal,
+                    intensity=state.intensity,
+                    warmth=state.warmth,
+                    directness=state.directness,
+                    formality=state.formality,
+                    engagement=state.engagement,
+                    closeness=state.closeness,
+                    care_focus=state.care_focus,
+                    updated_at=datetime.now(UTC).isoformat()
                 )
-            )
-            
-            # Add to history
-            compact_state = state.to_compact_dict()
-            self.db_connection.execute(
-                """INSERT INTO emotion_history 
-                   (user_id, timestamp, feeling, valence, arousal, intensity)
-                   VALUES ('system', ?, ?, ?, ?, ?)""",
-                (
-                    compact_state["timestamp"],
-                    compact_state["label"]["primary"],
-                    compact_state["mood"]["valence"],
-                    compact_state["mood"]["arousal"],
-                    compact_state["label"]["intensity"]
-                )
-            )
-            
-            self.db_connection.commit()
-            self.logger.debug(f"🎭 Persisted emotional state: {state.subjective_feeling.value}")
-            
+                
+                if existing_state:
+                    await uow.emotion_state.update(state_model)
+                else:
+                    await uow.emotion_state.create(state_model)
+
+                if persist_history:
+                    # Add to history
+                    compact_state = state.to_compact_dict()
+                    history_model = EmotionHistory(
+                        user_id='system',
+                        timestamp=compact_state["timestamp"],
+                        feeling=compact_state["label"]["primary"],
+                        valence=compact_state["mood"]["valence"],
+                        arousal=compact_state["mood"]["arousal"],
+                        intensity=compact_state["label"]["intensity"],
+                        created_at=datetime.now(UTC).isoformat()
+                    )
+
+                    await uow.emotion_history.create(history_model)
+                await uow.commit()
+                
+                self.logger.debug(f"🎭 Persisted emotional state: {state.subjective_feeling.value}")
+                
         except Exception as e:
             self.logger.error(f"Error persisting emotional state: {e}")
 

@@ -10,14 +10,14 @@ import time
 from typing import Dict, List, Optional, Any, Type
 from dataclasses import dataclass
 
-from aico.core.logging import get_logger, get_logger_factory
+from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusClient
 from aico.security.key_manager import AICOKeyManager
 
 # Import service container and plugin base classes
 from backend.core.service_container import ServiceContainer, BaseService
-from backend.services.log_consumer_service import LogConsumerService
+# LogConsumerService removed - logs now go directly to InfluxDB
 
 # Core gateway components
 from .protocol_manager import ProtocolAdapterManager
@@ -51,7 +51,7 @@ class GatewayCore:
     
     def __init__(self, config: ConfigurationManager, logger=None, db_connection=None):
         self.config = config
-        self.logger = logger or get_logger("backend", "api_gateway.core")
+        self.logger = logger or get_logger("backend.api_gateway.core")
         self.db_connection = db_connection
         
         # Initialize service container for new architecture
@@ -81,15 +81,14 @@ class GatewayCore:
         self.start_time = 0.0
         
         # Gateway configuration - use proper config path
-        core_config = config.get("core", {})
-        gateway_config = core_config.get("api_gateway", {})
+        gateway_config = config.get("api_gateway", {})
         self.enabled_protocols = gateway_config.get("protocols", {})
         self.enabled_plugins = gateway_config.get("plugins", {})
         
-        self.logger.info(f"Enabled protocols from config: {list(self.enabled_protocols.keys())}")
-        self.logger.info(f"Protocol configs: {self.enabled_protocols}")
+        self.logger.debug(f"Enabled protocols from config: {list(self.enabled_protocols.keys())}")
+        self.logger.debug(f"Protocol configs: {self.enabled_protocols}")
         
-        self.logger.info("Gateway core initialized with service container", extra={
+        self.logger.debug("Gateway core initialized with service container", extra={
             "enabled_protocols": list(self.enabled_protocols.keys()),
             "enabled_plugins": list(self.enabled_plugins.keys())
         })
@@ -110,11 +109,7 @@ class GatewayCore:
             # 3. Plugin loading disabled - handled by BackendLifecycleManager
             # await self._load_plugins()  # DISABLED - causes duplicate registration
 
-            # 4. Re-initialize loggers to ensure ZMQ transport is attached
-            logger_factory = get_logger_factory()
-            if logger_factory:
-                logger_factory.reinitialize_loggers()
-                logger_factory.mark_all_databases_ready()
+            # Logging initialization removed - logs now go directly to InfluxDB
             
             # 5. Initialize protocol adapters
             await self._initialize_protocols()
@@ -162,20 +157,9 @@ class GatewayCore:
     async def _register_core_services(self) -> None:
         """Register core services in the service container"""
         try:
-            self.logger.info("Registering core services in container...")
+            self.logger.debug("Registering core services in container...")
             
-            # Register log consumer service
-            if self.db_connection and self.zmq_context:
-                log_consumer_service = LogConsumerService(
-                    db_connection=self.db_connection,
-                    zmq_context=self.zmq_context
-                )
-                self.service_container.register_service(
-                    "log_consumer", 
-                    log_consumer_service,
-                    dependencies=[]
-                )
-                self.logger.info("Registered log consumer service")
+            # Log consumer service removed - logs now go directly to InfluxDB via handler
             
             # Register key manager as service
             self.service_container.register_service(
@@ -186,7 +170,7 @@ class GatewayCore:
             
             # Start registered services
             await self.service_container.start_all()
-            self.logger.info("Core services registered and started")
+            self.logger.debug("Core services registered and started")
             
         except Exception as e:
             self.logger.error(f"Failed to register core services: {e}")
@@ -201,7 +185,7 @@ class GatewayCore:
             await self.message_bus.connect()
             self.logger.debug("MessageBusClient.connect() completed successfully")
             # Message bus connected for service container
-            self.logger.info("Connected to message bus")
+            self.logger.debug("Connected to message bus")
             self.logger.debug("Message bus connection established")
         except Exception as e:
             self.logger.error(f"Failed to connect to message bus: {e}")
@@ -229,9 +213,8 @@ class GatewayCore:
         """Register built-in plugins based on configuration"""
         self.logger.debug("Starting plugin registration process")
         
-        # Get plugins configuration from core.api_gateway.plugins
-        core_config = self.config.get('core', {})
-        api_gateway_config = core_config.get('api_gateway', {})
+        # Get plugins configuration from api_gateway.plugins
+        api_gateway_config = self.config.get('api_gateway', {})
         plugins_config = api_gateway_config.get('plugins', {})
         
         self.logger.debug(f"Plugin config lookup result: {plugins_config}")
@@ -268,7 +251,7 @@ class GatewayCore:
             self.logger.debug(f"Config for {plugin_name}: {plugin_config}")
             
             if plugin_config.get('enabled', False):
-                self.logger.info(f"Registering plugin: {plugin_name}")
+                self.logger.debug(f"Registering plugin: {plugin_name}")
                 try:
                     plugin_instance = plugin_class(self.config, self.db_connection, self.zmq_context)
                     
@@ -292,7 +275,7 @@ class GatewayCore:
                     
                     # Store in loaded_plugins for immediate access
                     self.loaded_plugins[plugin_name] = plugin_instance
-                    self.logger.info(f"Successfully registered and started plugin: {plugin_name}")
+                    self.logger.debug(f"Successfully registered and started plugin: {plugin_name}")
                 except Exception as e:
                     self.logger.error(f"Failed to register plugin {plugin_name}: {e}")
                     import traceback
@@ -302,17 +285,17 @@ class GatewayCore:
         
         # Log final plugin count
         active_plugins = list(self.loaded_plugins.keys())
-        self.logger.info(f"Active plugins: {active_plugins}")
+        self.logger.debug(f"Active plugins: {active_plugins}")
         
         # Update gateway core references to plugin instances
         security_plugin = self.loaded_plugins.get('security')
         if security_plugin and hasattr(security_plugin, 'auth_manager'):
             self.auth_manager = security_plugin.auth_manager
-            self.logger.info("Updated gateway core auth_manager from security plugin")
+            self.logger.debug("Updated gateway core auth_manager from security plugin")
         
         if security_plugin and hasattr(security_plugin, 'authz_manager'):
             self.authz_manager = security_plugin.authz_manager
-            self.logger.info("Updated gateway core authz_manager from security plugin")
+            self.logger.debug("Updated gateway core authz_manager from security plugin")
     
     async def _initialize_protocols(self) -> None:
         """Initialize protocol adapters with dependency injection"""
@@ -334,12 +317,7 @@ class GatewayCore:
             }
             
             # Initialize REST adapter for FastAPI integration (no separate server)
-            self.logger.debug(f"Full config structure: {list(self.config.config_cache.keys())}")
-            self.logger.debug(f"Core config: {self.config.config_cache.get('core', {}).keys()}")
-            
-            # Use proper configuration access pattern
-            core_config = self.config.config_cache.get('core', {})
-            api_gateway_config = core_config.get('api_gateway', {})
+            api_gateway_config = self.config.get("api_gateway", {})
             rest_config = api_gateway_config.get('rest', {})
             
             self.logger.debug(f"API Gateway config: {api_gateway_config.keys()}")
@@ -367,7 +345,7 @@ class GatewayCore:
                     if not success:
                         self.logger.error(f"Failed to initialize protocol adapter: {protocol_name}")
             
-            self.logger.info("Protocol adapters initialized")
+            self.logger.debug("Protocol adapters initialized")
             
         except Exception as e:
             self.logger.error(f"Protocol initialization failed: {e}")
@@ -379,7 +357,7 @@ class GatewayCore:
             self.logger.debug("Starting protocol adapters...")
             await self.protocol_manager.start_all()
             self.logger.debug("Protocol adapters start_all() completed")
-            self.logger.info("Protocol adapters started")
+            self.logger.debug("Protocol adapters started")
         except Exception as e:
             self.logger.error(f"Failed to start protocols: {e}")
             import traceback
@@ -391,7 +369,7 @@ class GatewayCore:
         """Stop all protocol adapters"""
         try:
             await self.protocol_manager.stop_all()
-            self.logger.info("Protocol adapters stopped")
+            self.logger.debug("Protocol adapters stopped")
         except Exception as e:
             self.logger.error(f"Error stopping protocols: {e}")
     
@@ -411,7 +389,7 @@ class GatewayCore:
         for plugin_name, task in shutdown_tasks:
             try:
                 await asyncio.wait_for(task, timeout=5.0)
-                self.logger.info(f"Shutdown plugin: {plugin_name}")
+                self.logger.debug(f"Shutdown plugin: {plugin_name}")
             except asyncio.TimeoutError:
                 self.logger.warning(f"Plugin {plugin_name} shutdown timed out, cancelling")
                 task.cancel()
@@ -434,15 +412,15 @@ class GatewayCore:
         # NOTE: CORS middleware disabled to prevent bypassing ASGI encryption middleware
         # FastAPI HTTP middleware intercepts requests before ASGI middleware can process them
         # CORS should be handled at the ASGI level if needed
-        self.logger.info("Skipped CORS middleware - would bypass ASGI encryption middleware")
-        self.logger.info("CORS middleware skipped - would bypass ASGI encryption middleware")
+        self.logger.debug("Skipped CORS middleware - would bypass ASGI encryption middleware")
+        self.logger.debug("CORS middleware skipped - would bypass ASGI encryption middleware")
         
         # Let plugins configure their middleware
         for plugin_name, plugin in self.loaded_plugins.items():
             if hasattr(plugin, 'configure_fastapi_middleware'):
                 try:
                     plugin.configure_fastapi_middleware(app)
-                    self.logger.info(f"Plugin {plugin_name} configured FastAPI middleware")
+                    self.logger.debug(f"Plugin {plugin_name} configured FastAPI middleware")
                 except Exception as e:
                     self.logger.error(f"Plugin {plugin_name} failed to configure middleware: {e}")
     

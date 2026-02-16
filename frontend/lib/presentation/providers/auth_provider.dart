@@ -2,7 +2,6 @@ import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/providers/domain_providers.dart';
 import 'package:aico_frontend/domain/usecases/auth_usecases.dart';
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'auth_provider.g.dart';
@@ -112,8 +111,6 @@ class AuthNotifier extends _$AuthNotifier {
         );
       }
     } catch (e) {
-      debugPrint('AuthProvider: Auto-login failed with error: $e');
-      
       // Check if this is a backend unavailable error
       if (e.toString().contains('Authentication failed: Backend unavailable') ||
           e.toString().contains('connection refused') ||
@@ -163,13 +160,10 @@ class AuthNotifier extends _$AuthNotifier {
   }
 
   Future<bool> checkAuthStatus() async {
-    debugPrint('AuthProvider: Checking auth status...');
     AICOLog.debug('Checking auth status', topic: 'auth/status/check');
     
     try {
       final hasCredentials = await _checkAuthStatusUseCase.execute();
-      debugPrint('AuthProvider: Has stored credentials: $hasCredentials');
-      debugPrint('AuthProvider: Current auth state: ${state.isAuthenticated}');
       AICOLog.debug('Auth status check result', 
         topic: 'auth/status/result', 
         extra: {
@@ -178,16 +172,13 @@ class AuthNotifier extends _$AuthNotifier {
         });
       
       if (hasCredentials && !state.isAuthenticated) {
-        debugPrint('AuthProvider: Attempting auto-login...');
         AICOLog.info('Credentials found, attempting auto-login', topic: 'auth/status/autologin_trigger');
         await attemptAutoLogin();
       } else if (!hasCredentials) {
-        debugPrint('AuthProvider: No stored credentials found - clearing loading state');
         AICOLog.debug('No stored credentials found', topic: 'auth/status/no_credentials');
         // Ensure loading state is cleared when no credentials exist
         state = state.copyWith(isLoading: false);
       } else if (state.isAuthenticated) {
-        debugPrint('AuthProvider: Already authenticated');
         AICOLog.debug('Already authenticated', topic: 'auth/status/already_authenticated');
         // Ensure loading state is cleared when already authenticated
         state = state.copyWith(isLoading: false);
@@ -195,7 +186,6 @@ class AuthNotifier extends _$AuthNotifier {
       
       return hasCredentials;
     } catch (e) {
-      debugPrint('AuthProvider: Error during auth status check: $e');
       AICOLog.error('Auth status check failed', 
         topic: 'auth/status/error', 
         error: e);

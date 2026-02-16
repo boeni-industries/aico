@@ -11,7 +11,7 @@ import jwt
 from aico.core.logging import get_logger
 
 security = HTTPBearer()
-logger = get_logger("api", "admin_dependencies")
+logger = get_logger("api.admin_dependencies")
 
 
 # FastAPI dependency injection functions - no global state

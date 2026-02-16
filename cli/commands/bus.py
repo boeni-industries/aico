@@ -63,57 +63,19 @@ else:
 sys.path.insert(0, str(shared_path))
 
 from aico.core.bus import MessageBusClient, MessageBusBroker, create_client
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths
+from cli.utils.pg_connection import get_pg_connection
 # Required protobuf imports - fail loudly if not available
 from aico.proto import aico_core_logging_pb2
 from aico.proto.aico_core_envelope_pb2 import AicoMessage
 from google.protobuf.timestamp_pb2 import Timestamp
 from cli.decorators.sensitive import sensitive
 
-def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
-    """Helper function to get authenticated database connection with session support."""
+def _get_database_connection(force_fresh: bool = False):
+    """Helper function to get PostgreSQL database connection."""
     try:
-        from aico.core.config import ConfigurationManager
-        config = ConfigurationManager()
-        key_manager = AICOKeyManager(config)
-        
-        if not key_manager.has_stored_key():
-            console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
-            raise typer.Exit(1)
-        
-        # Try session-based authentication first
-        if not force_fresh:
-            cached_key = key_manager._get_cached_session()
-            if cached_key:
-                # Use active session
-                key_manager._extend_session()
-                db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-                return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
-        # Try stored key from keyring
-        import keyring
-        stored_key = keyring.get_password(key_manager.service_name, "master_key")
-        if stored_key:
-            master_key = bytes.fromhex(stored_key)
-            key_manager._cache_session(master_key)  # Cache for future use
-            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
-        # Need password - use typer.prompt instead of getpass to avoid hanging
-        password = typer.prompt("Enter master password", hide_input=True)
-        
-        # CRITICAL: Reject empty passwords immediately
-        if not password or not password.strip():
-            console.print("[red]Error: Password cannot be empty[/red]")
-            raise typer.Exit(1)
-        
-        master_key = key_manager.authenticate(password, interactive=False, force_fresh=force_fresh)
-        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        
-        return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        
+        return get_pg_connection()
     except Exception as e:
         console.print(f"[red]Error connecting to database: {e}[/red]")
         raise typer.Exit(1)
@@ -129,12 +91,8 @@ def test_connection(
     
     # Initialize logging for bus operations
     try:
-        from aico.core.config import ConfigurationManager
         from aico.core.logging import initialize_logging
-        
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        initialize_logging(config, service_name="cli")
+        initialize_logging(service_name="cli", enable_loki=True, enable_console=True)
     except Exception as e:
         console.print(f"[yellow]Warning: Could not initialize logging: {e}[/yellow]")
     
@@ -227,12 +185,8 @@ def monitor_traffic(
     
     # Initialize logging for bus operations
     try:
-        from aico.core.config import ConfigurationManager
         from aico.core.logging import initialize_logging
-        
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        initialize_logging(config, service_name="cli")
+        initialize_logging(service_name="cli", enable_loki=True, enable_console=True)
         
     except Exception as e:
         console.print(f"[red]✗ Failed to initialize logging: {e}[/red]")
@@ -290,20 +244,8 @@ def show_stats(
     console.print(f"[cyan]Message Bus Statistics[/cyan]")
     
     try:
-        # Auto-detect database path if not provided
-        if not db_path:
-            from aico.core.config import ConfigurationManager
-            config = ConfigurationManager()
-            db_config = config.get("database.libsql", {})
-            filename = db_config.get("filename", "aico.db")
-            directory_mode = db_config.get("directory_mode", "auto")
-            detected_db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-            console.print(f"[dim]Using database: {detected_db_path}[/dim]")
-        else:
-            detected_db_path = db_path
-        
         # Connect to database using established pattern
-        conn = _get_database_connection(detected_db_path)
+        conn = _get_database_connection()
         
         # Query statistics
         cursor = conn.execute("""
@@ -313,7 +255,7 @@ def show_stats(
                 COUNT(DISTINCT source) as unique_sources,
                 MIN(timestamp) as earliest_message,
                 MAX(timestamp) as latest_message
-            FROM events
+            FROM system_events
         """)
         
         row = cursor.fetchone()
@@ -338,7 +280,7 @@ def show_stats(
         # Top topics
         cursor = conn.execute("""
             SELECT topic, COUNT(*) as count
-            FROM events 
+            FROM system_events 
             GROUP BY topic 
             ORDER BY count DESC 
             LIMIT 10
@@ -379,22 +321,11 @@ def clear_messages(
             return
     
     try:
-        # Auto-detect database path if not provided
-        if not db_path:
-            from aico.core.config import ConfigurationManager
-            config = ConfigurationManager()
-            db_config = config.get("database.libsql", {})
-            filename = db_config.get("filename", "aico.db")
-            directory_mode = db_config.get("directory_mode", "auto")
-            detected_db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        else:
-            detected_db_path = db_path
-        
         # Connect to database using established pattern
-        conn = _get_database_connection(detected_db_path)
+        conn = _get_database_connection()
         
         # Clear messages
-        conn.execute("DELETE FROM events")
+        conn.execute("DELETE FROM system_events")
         conn.commit()
         
         console.print("[green]✓ Message log cleared[/green]")

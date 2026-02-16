@@ -45,7 +45,7 @@ final class ConversationNotifierProvider
 }
 
 String _$conversationNotifierHash() =>
-    r'e93434646dacd2542d4afafa9a786f219489c6b4';
+    r'59b4ab8c9bce457b5d752a0c2cde5c4fc2374d72';
 
 /// Conversation provider using Riverpod Notifier
 

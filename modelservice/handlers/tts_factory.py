@@ -1,5 +1,5 @@
 """
-TTS Engine Factory - Dynamic selection between XTTS and Piper.
+TTS Engine Factory - Dynamic selection between XTTS, Piper, and Kokoro.
 
 Provides a unified interface for TTS synthesis with engine selection
 based on configuration.
@@ -18,6 +18,7 @@ class TtsFactory:
     Supports:
     - XTTS: High-quality voice cloning (slower)
     - Piper: Ultra-fast synthesis (no cloning)
+    - Kokoro: Fast, high-quality synthesis (no cloning)
     """
     
     @staticmethod
@@ -34,7 +35,7 @@ class TtsFactory:
         Raises:
             RuntimeError: If engine is not configured or invalid
         """
-        logger = get_logger("modelservice", "tts_factory")
+        logger = get_logger("modelservice.tts_factory")
         
         if not config_manager:
             error_msg = (
@@ -48,19 +49,19 @@ class TtsFactory:
             raise RuntimeError("Configuration manager required for TTS factory")
         
         # Get engine selection from config
-        engine = config_manager.get("core.modelservice.tts.engine", None)
+        engine = config_manager.get("modelservice.tts.engine", None)
         if engine is None:
             error_msg = (
                 "\n" + "="*80 + "\n"
                 "❌ FATAL: TTS engine not configured!\n"
-                "Expected path: core.modelservice.tts.engine\n"
-                "Valid options: 'xtts', 'piper'\n"
-                "Check config/defaults/core.yaml\n"
+                "Expected path: modelservice.tts.engine\n"
+                "Valid options: 'xtts', 'piper', 'kokoro'\n"
+                "Check config/defaults/modelservice.yaml\n"
                 "="*80
             )
             logger.error(error_msg)
             print(error_msg, flush=True)
-            raise RuntimeError("TTS engine not configured at core.modelservice.tts.engine")
+            raise RuntimeError("TTS engine not configured at modelservice.tts.engine")
         
         logger.info(f"🎤 Creating TTS handler for engine: {engine}")
         
@@ -74,9 +75,14 @@ class TtsFactory:
             logger.info("✅ Using Piper TTS (ultra-fast, no cloning)")
             return PiperTtsHandler(config_manager)
         
+        elif engine == "kokoro":
+            from modelservice.handlers.kokoro_tts_handler import KokoroTtsHandler
+            logger.info("✅ Using Kokoro TTS (fast, high-quality)")
+            return KokoroTtsHandler(config_manager)
+        
         else:
             raise RuntimeError(
                 f"Invalid TTS engine '{engine}'. "
-                f"Valid options: 'xtts', 'piper'. "
+                f"Valid options: 'xtts', 'piper', 'kokoro'. "
                 f"Check modelservice.tts.engine in core.yaml"
             )

@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scheduler Configuration",
+  "description": "Task scheduler settings for background job execution",
+  "type": "object",
+  "required": ["enabled"],
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "description": "Enable task scheduler"
+    },
+    "max_concurrent_tasks": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum concurrent tasks"
+    },
+    "max_cpu_percent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Maximum CPU usage threshold"
+    },
+    "max_memory_percent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Maximum memory usage threshold"
+    },
+    "scheduler_interval": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "Scheduler check interval in seconds"
+    },
+    "task_timeout": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Default task timeout in seconds"
+    },
+    "idle_threshold_cpu": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "CPU idle threshold for triggering tasks"
+    },
+    "idle_threshold_memory": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Memory idle threshold for triggering tasks"
+    }
+  }
+}

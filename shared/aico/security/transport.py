@@ -91,7 +91,7 @@ class SecureTransportChannel:
     def __init__(self, identity: ComponentIdentity, key_manager: AICOKeyManager):
         self.identity = identity
         self.key_manager = key_manager
-        self.logger = get_logger("shared", "security.transport")
+        self.logger = get_logger("shared.security.transport")
         
         # Session state
         self.peer_identity: Optional[ComponentIdentity] = None
@@ -194,7 +194,7 @@ class SecureTransportChannel:
             # Establish session keys using the generated keypair
             self._establish_session_keys()
             
-            self.logger.info("Handshake request processed", extra={
+            self.logger.debug("Handshake request processed", extra={
                 "peer_component": request.component,
                 "session_established": self.session_established
             })
@@ -354,7 +354,7 @@ class TransportIdentityManager:
     
     def __init__(self, key_manager: AICOKeyManager):
         self.key_manager = key_manager
-        self.logger = get_logger("shared", "security.transport_identity")
+        self.logger = get_logger("shared.security.transport_identity")
         self._identities: Dict[str, ComponentIdentity] = {}
     
     def get_component_identity(self, component_name: str) -> ComponentIdentity:
@@ -401,6 +401,6 @@ class TransportIdentityManager:
         identity_key_bytes = base64.b64decode(identity_key_b64)
         client_id = identity_key_bytes.hex()[:16]
 
-        self.logger.info(f"Processed handshake for client_id: {client_id}")
+        self.logger.debug(f"Processed handshake for client_id: {client_id}")
 
         return client_id, response_data, channel

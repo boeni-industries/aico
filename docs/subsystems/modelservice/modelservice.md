@@ -53,12 +53,11 @@ OLLAMA_MAX_LOADED_MODELS=2   # Max models in memory
 OLLAMA_MAX_QUEUE=128         # Max queued requests
 ```
 
-**Port**: 11434 (from core.yaml configuration)
+**Port**: 11434 (from `config/defaults/modelservice.yaml` configuration)
 
-**Resource Management** (core.yaml):
+**Resource Management** (`config/defaults/modelservice.yaml`):
 ```yaml
-modelservice:
-  ollama:
+ollama:
     resources:
       auto_unload_minutes: 30
       max_concurrent_models: 2
@@ -80,8 +79,7 @@ Local-first design with zero external dependencies. No Docker required for simpl
 
 ## Logging Integration ✅
 
-**ZMQ Transport**: Ollama logs routed through message bus to Log Consumer
-**Unified Storage**: Encrypted database storage with other system logs
+**Log storage**: Loki (queried via LogQL)
 **CLI Access**: Available via `aico logs` commands
 
 **Fallback Paths**:
@@ -94,7 +92,7 @@ Local-first design with zero external dependencies. No Docker required for simpl
 **Transport Encryption**: CurveZMQ for all message bus communication
 **Message Validation**: Protocol Buffer schema validation
 **Access Control**: Internal service-to-service communication only
-**Logging**: All operations logged via ZMQ transport to encrypted database
+**Logging**: Operational signals are emitted as structured logs and can be queried from Loki
 
 ## ZMQ Message Topics ✅
 

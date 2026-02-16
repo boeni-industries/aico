@@ -16,6 +16,7 @@ from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass
 import sys
 from pathlib import Path
+from google.protobuf.struct_pb2 import Struct
 
 # Shared modules now installed via UV editable install
 
@@ -26,7 +27,7 @@ from aico.core.version import get_backend_version
 __version__ = get_backend_version()
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
-from aico.security import SessionService
+from aico.core.topics import AICOTopics
 
 from ..models.core.auth import AuthenticationManager, AuthorizationManager
 from ..models.core.message_router import MessageRouter
@@ -68,7 +69,7 @@ class WebSocketAdapter:
                  authz_manager: AuthorizationManager, message_router: MessageRouter,
                  rate_limiter: RateLimiter, validator: MessageValidator):
         
-        self.logger = get_logger("backend", "api_gateway.websocket")
+        self.logger = get_logger("backend.api_gateway.websocket")
         self.config = config
         self.auth_manager = auth_manager
         self.authz_manager = authz_manager
@@ -91,6 +92,10 @@ class WebSocketAdapter:
         
         # Heartbeat task
         self.heartbeat_task = None
+        
+        # Message bus client for interaction notifications
+        self.bus_client = None
+        self.bus_subscription_task = None
         
         self.logger.info("WebSocket adapter initialized", extra={
             "port": self.port,
@@ -116,6 +121,9 @@ class WebSocketAdapter:
             # Start heartbeat task
             self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             
+            # Start message bus subscription for interaction notifications
+            self.bus_subscription_task = asyncio.create_task(self._subscribe_to_interaction_notifications())
+            
             self.logger.info(f"WebSocket server running on ws://{host}:{self.port}{self.path} (Press CTRL+C to quit)")
             
         except Exception as e:
@@ -132,6 +140,21 @@ class WebSocketAdapter:
                     await self.heartbeat_task
                 except asyncio.CancelledError:
                     pass # Expected during shutdown - this is the correct behavior
+            
+            # Stop message bus subscription
+            if self.bus_subscription_task:
+                self.bus_subscription_task.cancel()
+                try:
+                    await self.bus_subscription_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Disconnect message bus client
+            if self.bus_client:
+                try:
+                    await self.bus_client.disconnect()
+                except Exception as e:
+                    self.logger.warning(f"Error disconnecting message bus client: {e}")
             
             # Close all connections
             for connection in list(self.connections.values()):
@@ -289,7 +312,7 @@ class WebSocketAdapter:
                     "session_id": connection.session_id
                 })
                 
-                self.logger.info("WebSocket authentication successful", extra={
+                self.logger.info(f"WebSocket authentication successful - user_uuid: {connection.user_uuid}, authenticated: {connection.authenticated}", extra={
                     "client_id": connection.client_id,
                     "user_uuid": connection.user_uuid,
                     "session_id": connection.session_id
@@ -476,8 +499,10 @@ class WebSocketAdapter:
             if connection.client_id in self.connections:
                 del self.connections[connection.client_id]
             
-            if not connection.websocket.closed:
+            try:
                 await connection.websocket.close(code=1000, reason=reason)
+            except Exception:
+                pass  # Connection already closed
             
             self.logger.debug(f"WebSocket connection closed: {connection.client_id} - {reason}")
             
@@ -541,3 +566,92 @@ class WebSocketAdapter:
                 await self._send_message(connection, broadcast_message)
             
             self.logger.debug(f"Broadcasted to {len(subscribers)} subscribers on topic: {topic}")
+    
+    async def broadcast_to_user(self, user_uuid: str, topic: str, message: Dict[str, Any]):
+        """Broadcast message to all authenticated connections for a specific user"""
+        user_connections = [
+            conn for conn in self.connections.values()
+            if conn.authenticated and conn.user_uuid == user_uuid
+        ]
+        
+        self.logger.info(f"Broadcasting to user {user_uuid[:8]}: found {len(user_connections)} connections")
+        
+        if user_connections:
+            broadcast_message = {
+                "type": "broadcast",
+                "topic": topic,
+                "data": message
+            }
+            
+            # Send to all user's connections
+            for connection in user_connections:
+                self.logger.info(f"Sending to connection {connection.client_id}")
+                await self._send_message(connection, broadcast_message)
+            
+            self.logger.info(f"Broadcasted to {len(user_connections)} connections for user {user_uuid[:8]}")
+        else:
+            self.logger.warning(f"No authenticated connections found for user {user_uuid[:8]}")
+    
+    def _struct_to_dict(self, s: Struct) -> Dict[str, Any]:
+        """Convert protobuf Struct to Python dict"""
+        from google.protobuf.json_format import MessageToDict
+        return MessageToDict(s)
+
+    async def _subscribe_to_interaction_notifications(self):
+        """Subscribe to message bus for interaction notification events"""
+        try:
+            self.bus_client = MessageBusClient("websocket_gateway_interactions")
+            await self.bus_client.connect()
+            
+            async def handle_interaction_notification(bus_message):
+                """Handle incoming interaction notification from message bus"""
+                try:
+                    topic = bus_message.metadata.message_type
+                    self.logger.info(f"WebSocket adapter received message on topic: {topic}")
+                    
+                    parts = topic.split(".")
+                    if len(parts) < 3:
+                        self.logger.warning(f"Topic has insufficient parts: {topic}")
+                        return
+
+                    # Payload is a protobuf Struct that contains JSON-ish dict
+                    payload_struct = Struct()
+                    bus_message.any_payload.Unpack(payload_struct)
+                    payload = self._struct_to_dict(payload_struct)
+                    
+                    self.logger.info(f"Unpacked payload, broadcasting to connections")
+
+                    # interaction.notifications.{user_uuid}
+                    if parts[0] == "interaction" and parts[1] == "notifications" and parts[2] != "admin":
+                        user_uuid = parts[2]
+                        await self.broadcast_to_user(user_uuid, topic, payload)
+                        self.logger.info(
+                            f"Forwarded interaction notification to user {user_uuid[:8]}",
+                            extra={"user_uuid": user_uuid, "topic": topic},
+                        )
+                        return
+
+                    # interaction.notifications.admin (admin-only; forward to subscribers)
+                    if parts[0] == "interaction" and parts[1] == "notifications" and parts[2] == "admin":
+                        await self.broadcast_to_subscribers(topic, payload)
+                        self.logger.info(
+                            "Forwarded interaction admin notification",
+                            extra={"topic": topic},
+                        )
+                except Exception as e:
+                    self.logger.error(f"Error handling interaction notification: {e}", exc_info=True)
+            
+            # Subscribe to all interaction notification topics (user-scoped + admin)
+            await self.bus_client.subscribe("interaction.notifications.", handle_interaction_notification)
+            
+            self.logger.info("Subscribed to interaction notification events on message bus")
+            
+            # Keep subscription alive
+            while True:
+                await asyncio.sleep(60)  # Keep alive
+                
+        except asyncio.CancelledError:
+            self.logger.info("Interaction notification subscription cancelled")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error in interaction notification subscription: {e}")

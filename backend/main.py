@@ -26,12 +26,20 @@ sys.path.insert(0, str(backend_dir))
 
 # Import AICO modules
 from aico.core.config import ConfigurationManager
-from aico.core.logging import initialize_logging
-from aico.core.logging_context import create_infrastructure_logger
+from aico.core.config_validation import validate_startup_config, print_config_summary
+from aico.core.logging import initialize_logging, get_logger, shutdown_logging
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
-initialize_logging(config_manager, service_name="backend")
+initialize_logging(service_name="backend", enable_loki=True, enable_console=True)
+
+# Explicitly initialize configuration before validation to avoid implicit initialization
+# (and file watcher startup) during validate_startup_config().
+config_manager.initialize(lightweight=False)
+
+# Validate startup configuration
+validate_startup_config(config_manager)
+print_config_summary(config_manager)
 
 from core.lifecycle_manager import BackendLifecycleManager
 
@@ -40,14 +48,11 @@ from aico.core.version import get_backend_version
 __version__ = get_backend_version()
 
 # Global components - config_manager already initialized above
-logger = create_infrastructure_logger("aico.infrastructure.backend.main")
+logger = get_logger("backend.main")
 process_manager = None
 shutdown_event = asyncio.Event()
 
 try:
-    # Configuration already initialized above
-    config_manager.initialize(lightweight=False)
-    
     # Initialize process manager AFTER logging is set up
     from aico.core.process import ProcessManager
     process_manager = ProcessManager("gateway")
@@ -63,31 +68,9 @@ except Exception as e:
 
 async def setup_backend_components():
     """Setup backend components using new lifecycle manager"""
-    # Create shared database connection
-    from aico.security import AICOKeyManager
-    from aico.core.paths import AICOPaths
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-    
-    key_manager = AICOKeyManager(config_manager)
-    paths = AICOPaths()
-    db_path = paths.resolve_database_path("aico.db")
-    
-    # Get encryption key
-    cached_key = key_manager._get_cached_session()
-    if cached_key:
-        key_manager._extend_session()
-        db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-    else:
-        import keyring
-        stored_key = keyring.get_password(key_manager.service_name, "master_key")
-        if stored_key:
-            master_key = bytes.fromhex(stored_key)
-            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        else:
-            raise RuntimeError("Master key not found. Run 'aico security setup' to initialize.")
-    
-    shared_db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-    logger.info("Created shared database connection")
+    # PostgreSQL connection handled by UnitOfWork pattern
+    # No shared database connection needed - each request gets its own UnitOfWork
+    logger.info("Backend using PostgreSQL with UnitOfWork pattern - no shared connection needed")
     
     # Create and initialize lifecycle manager with service container
     lifecycle_manager = BackendLifecycleManager(config_manager)
@@ -98,12 +81,6 @@ async def setup_backend_components():
     
     return app, lifecycle_manager
 
-
-# Removed unused create_app function - replaced by lifecycle manager
-
-
-
-
 async def main():
     """Run the application using lifecycle manager"""
     logger.info("Starting AICO Backend with lifecycle manager...")
@@ -112,12 +89,8 @@ async def main():
     app, lifecycle_manager = await setup_backend_components()
     
     # Get server configuration
-    core_config = config_manager.config_cache.get('core', {})
-    api_gateway_config = core_config.get('api_gateway', {})
-    rest_config = api_gateway_config.get('rest', {})
-    
-    host = rest_config.get('host', '127.0.0.1')
-    port = rest_config.get('port', 8771)
+    host = config_manager.get("api_gateway.rest.host", "127.0.0.1")
+    port = config_manager.get("api_gateway.rest.port", 8771)
     
     # The lifecycle manager already handles all service registration internally
     # No manual service registration needed here
@@ -128,7 +101,8 @@ async def main():
         port=port,
         log_level="info",
         lifespan="on",
-        access_log=False
+        access_log=False,
+        log_config=None  # Disable Uvicorn's logging config to prevent it from shutting down our handlers
     )
     server = uvicorn.Server(config)
 
@@ -159,14 +133,16 @@ async def main():
 
     # Beautiful cross-platform startup display
     print("\n" + "="*60)
-    print("[*] AICO Backend Server")
+    print("🚀 AICO Backend Server")
     print("="*60)
-    print(f"[>] Server: http://{host}:{port}")
-    print(f"[>] Environment: {os.getenv('AICO_ENV', 'development')}")
-    print(f"[>] Service Container: {len(lifecycle_manager.container._definitions)} services")
-    print(f"[>] Plugins: Active plugins will be shown after startup")
+    print(f"✓ Server: http://{host}:{port}")
+    print(f"✓ Environment: {os.getenv('AICO_ENV', 'development')}")
+    if hasattr(lifecycle_manager, 'container') and hasattr(lifecycle_manager.container, '_definitions'):
+        print(f"✓ Services: {len(lifecycle_manager.container._definitions)} registered")
     print("="*60)
-    print("[+] Starting server... (Press Ctrl+C to stop)\n")
+    print("✅ STARTUP COMPLETE - Server ready to accept connections")
+    print("="*60)
+    print("Press Ctrl+C to stop\n")
     
     try:
         # Start shutdown file monitoring task
@@ -190,8 +166,12 @@ async def main():
         await lifecycle_manager.stop()
         if process_manager:
             process_manager.cleanup_pid_files()
+        
+        # Shutdown logging system (flush and close InfluxDB handler)
+        print("[~] Shutting down logging system...")
+        shutdown_logging()
+        
         print("[+] Shutdown complete.")
-        logger.info("Shutdown complete.")
 
 if __name__ == "__main__":
     try:

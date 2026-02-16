@@ -6,6 +6,7 @@ class User extends Equatable {
   final String username;
   final String email;
   final UserRole role;
+  final String? primaryLanguage;
   final DateTime createdAt;
   final DateTime? lastLoginAt;
   final bool isActive;
@@ -15,6 +16,7 @@ class User extends Equatable {
     required this.username,
     required this.email,
     required this.role,
+    this.primaryLanguage,
     required this.createdAt,
     this.lastLoginAt,
     this.isActive = true,
@@ -26,6 +28,7 @@ class User extends Equatable {
         username,
         email,
         role,
+        primaryLanguage,
         createdAt,
         lastLoginAt,
         isActive,
@@ -36,6 +39,7 @@ class User extends Equatable {
     String? username,
     String? email,
     UserRole? role,
+    String? primaryLanguage,
     DateTime? createdAt,
     DateTime? lastLoginAt,
     bool? isActive,
@@ -45,6 +49,7 @@ class User extends Equatable {
       username: username ?? this.username,
       email: email ?? this.email,
       role: role ?? this.role,
+      primaryLanguage: primaryLanguage ?? this.primaryLanguage,
       createdAt: createdAt ?? this.createdAt,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
       isActive: isActive ?? this.isActive,
@@ -61,6 +66,7 @@ class User extends Equatable {
         (e) => e.name == json['role'],
         orElse: () => UserRole.user,
       ),
+      primaryLanguage: json['primaryLanguage'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastLoginAt: json['lastLoginAt'] != null
           ? DateTime.parse(json['lastLoginAt'] as String)
@@ -76,6 +82,7 @@ class User extends Equatable {
       'username': username,
       'email': email,
       'role': role.name,
+      'primaryLanguage': primaryLanguage,
       'createdAt': createdAt.toIso8601String(),
       'lastLoginAt': lastLoginAt?.toIso8601String(),
       'isActive': isActive,

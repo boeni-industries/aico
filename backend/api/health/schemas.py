@@ -22,6 +22,7 @@ class ComponentHealth(BaseModel):
     status: str = Field(..., description="Component status")
     uptime: Optional[float] = Field(None, description="Component uptime in seconds")
     last_check: str = Field(..., description="Last health check timestamp")
+    version: Optional[str] = Field(None, description="Component version")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional component details")
 
 

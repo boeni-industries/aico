@@ -10,26 +10,24 @@ from datetime import datetime, timezone
 import json
 import uuid
 
-from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "ai.memory.memory_album")
+logger = get_logger("shared.ai.memory.memory_album")
 
 
 class MemoryAlbumStore:
     """
     Manages user-curated memories in user_memories table.
     Shared between backend and CLI for consistent memory management.
+    Uses UnitOfWork pattern for PostgreSQL access.
     """
     
-    def __init__(self, db_connection: EncryptedLibSQLConnection):
+    def __init__(self):
         """
-        Initialize MemoryAlbumStore with encrypted database connection.
-        
-        Args:
-            db_connection: Encrypted LibSQL connection (injected via dependency injection)
+        Initialize MemoryAlbumStore.
+        No longer takes db_connection - uses UnitOfWork pattern.
         """
-        self.db = db_connection
+        pass
     
     async def store_user_curated_fact(
         self,
@@ -68,48 +66,55 @@ class MemoryAlbumStore:
             fact_id: The ID of the stored fact
         """
         
-        fact_id = f"fact_{uuid.uuid4().hex}"
-        # Store UTC time with explicit timezone marker
-        now = datetime.now(timezone.utc).isoformat()
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        cursor = self.db.execute(
-            """
-            INSERT INTO user_memories (
-                fact_id, user_id, fact_type, category, confidence,
-                is_immutable, valid_from, content, extraction_method,
-                source_conversation_id, source_message_id,
-                user_note, tags_json, emotional_tone, memory_type,
-                content_type, conversation_title, conversation_summary,
-                turn_range, key_moments_json,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                fact_id,
-                user_id,
-                fact_type,
-                category,
-                1.0,  # User-curated = 100% confidence
-                False,
-                now,
-                content,
-                "user_curated",  # KEY: Distinguishes from AI-extracted
-                conversation_id,
-                message_id,
-                user_note,
-                json.dumps(tags or []),
-                emotional_tone,
-                memory_type,
-                content_type,
-                conversation_title,
-                conversation_summary,
-                turn_range,
-                json.dumps(key_moments or []),
-                now,
-                now,
-            )
-        )
-        cursor.close()
+        fact_id = f"fact_{uuid.uuid4().hex}"
+        now = datetime.now(timezone.utc)
+        
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
+            
+            memory_data = {
+                # Core identity fields expected by AMSUserMemory
+                'fact_id': fact_id,
+                'user_id': user_id,
+                'fact_type': fact_type,
+                'category': category,
+                'confidence': 1.0,  # User-curated = 100% confidence
+                'is_immutable': False,
+                # Validity window – for user-curated memories we treat them as valid from now
+                'valid_from': now,
+                'valid_until': None,
+                # Content and extraction metadata
+                'content': content,
+                'entities_json': None,
+                'extraction_method': 'user_curated',
+                'source_conversation_id': conversation_id,
+                'source_message_id': message_id,
+                # Timestamps
+                'created_at': now,
+                'updated_at': now,
+                # User-facing metadata
+                'user_note': user_note,
+                'tags_json': {'tags': tags} if tags else None,
+                'is_favorite': False,
+                'revisit_count': 0,
+                'last_revisited': None,
+                'emotional_tone': emotional_tone,
+                'memory_type': memory_type,
+                'content_type': content_type,
+                'conversation_title': conversation_title,
+                'conversation_summary': conversation_summary,
+                'turn_range': turn_range,
+                'key_moments_json': {'items': key_moments} if key_moments else None,
+                'temporal_metadata': None,
+                'language': None,
+            }
+            
+            await ams_service.create_user_memory(memory_data)
         
         logger.info(f"Stored user-curated fact: {fact_id}", extra={
             "user_id": user_id,
@@ -144,47 +149,57 @@ class MemoryAlbumStore:
         Returns:
             List of user-curated facts as dictionaries
         """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        query = """
-            SELECT 
-                fact_id, content, category, fact_type,
-                user_note, tags_json, is_favorite, emotional_tone, memory_type,
-                source_conversation_id, source_message_id,
-                revisit_count, last_revisited,
-                content_type, conversation_title, conversation_summary,
-                turn_range, key_moments_json,
-                created_at, updated_at
-            FROM user_memories
-            WHERE user_id = ?
-                AND extraction_method = 'user_curated'
-        """
-        
-        params = [user_id]
-        
-        if category:
-            query += " AND category = ?"
-            params.append(category)
-        
-        if start_date:
-            query += " AND created_at >= ?"
-            params.append(start_date.isoformat())
-        
-        if end_date:
-            query += " AND created_at <= ?"
-            params.append(end_date.isoformat())
-        
-        if favorites_only:
-            query += " AND is_favorite = 1"
-        
-        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-        
-        cursor = self.db.execute(query, tuple(params))
-        results = cursor.fetchall()
-        
-        # Convert rows to dictionaries using column names
-        columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in results]
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            # Build filters for repository
+            filters = {
+                'user_id': user_id,
+                'extraction_method': 'user_curated'
+            }
+            
+            if category:
+                filters['category'] = category
+            
+            if start_date:
+                filters['created_at_gte'] = start_date
+            
+            if end_date:
+                filters['created_at_lte'] = end_date
+            
+            if favorites_only:
+                filters['is_favorite'] = True
+            
+            # Get memories directly via repository
+            memories = await uow.ams_user_memories.list(
+                filters=filters,
+                limit=limit,
+                offset=offset
+            )
+            
+            # Convert to dict format
+            return [
+                {
+                    'fact_id': m.fact_id,
+                    'user_id': m.user_id,
+                    'content': m.content,
+                    'category': m.category,
+                    'fact_type': m.fact_type,
+                    'user_note': m.user_note,
+                    'tags_json': m.tags_json,
+                    'is_favorite': m.is_favorite,
+                    'emotional_tone': m.emotional_tone,
+                    'memory_type': m.memory_type,
+                    'source_conversation_id': m.source_conversation_id,
+                    'source_message_id': m.source_message_id,
+                    'created_at': m.created_at,
+                    'updated_at': m.updated_at
+                }
+                for m in memories
+            ]
     
     async def update_fact_metadata(
         self,
@@ -207,40 +222,32 @@ class MemoryAlbumStore:
         Returns:
             True if update succeeded, False otherwise
         """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        updates = []
-        params = []
-        
-        if user_note is not None:
-            updates.append("user_note = ?")
-            params.append(user_note)
-        
-        if tags is not None:
-            updates.append("tags_json = ?")
-            params.append(json.dumps(tags))
-        
-        if is_favorite is not None:
-            updates.append("is_favorite = ?")
-            params.append(1 if is_favorite else 0)
-        
-        if not updates:
+        if user_note is None and tags is None and is_favorite is None:
             return False
         
-        updates.append("updated_at = ?")
-        params.append(datetime.now(timezone.utc).isoformat())
-        
-        params.extend([fact_id, user_id])
-        
-        query = f"""
-            UPDATE user_memories
-            SET {', '.join(updates)}
-            WHERE fact_id = ? AND user_id = ?
-        """
-        
-        cursor = self.db.execute(query, tuple(params))
-        rowcount = cursor.rowcount
-        cursor.close()
-        return rowcount > 0
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
+            
+            update_data = {}
+            if user_note is not None:
+                update_data['user_note'] = user_note
+            if tags is not None:
+                update_data['tags'] = tags
+            if is_favorite is not None:
+                update_data['is_favorite'] = is_favorite
+            
+            success = await ams_service.update_user_memory(
+                memory_id=fact_id,
+                user_id=user_id,
+                update_data=update_data
+            )
+            
+            return success
     
     async def record_revisit(self, fact_id: str, user_id: str) -> bool:
         """
@@ -253,18 +260,20 @@ class MemoryAlbumStore:
         Returns:
             True if update succeeded, False otherwise
         """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        cursor = self.db.execute(
-            """
-            UPDATE user_memories
-            SET revisit_count = revisit_count + 1,
-                last_revisited = CURRENT_TIMESTAMP
-            WHERE fact_id = ? AND user_id = ?
-            """,
-            (fact_id, user_id)
-        )
-        cursor.close()
-        return True
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
+            
+            success = await ams_service.record_memory_revisit(
+                memory_id=fact_id,
+                user_id=user_id
+            )
+            
+            return success
     
     async def delete_fact(self, fact_id: str, user_id: str) -> bool:
         """
@@ -277,21 +286,23 @@ class MemoryAlbumStore:
         Returns:
             True if deletion succeeded, False otherwise
         """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.ams_service import AMSService
         
-        cursor = self.db.execute(
-            """
-            DELETE FROM user_memories
-            WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
-            """,
-            (fact_id, user_id)
-        )
-        rowcount = cursor.rowcount
-        cursor.close()
-        if rowcount > 0:
-            logger.info(f"Deleted user-curated fact: {fact_id}", extra={
-                "user_id": user_id,
-                "fact_id": fact_id,
-            })
-            return True
-        
-        return False
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            ams_service = AMSService(uow)
+            
+            success = await ams_service.delete_user_memory(
+                memory_id=fact_id,
+                user_id=user_id
+            )
+            
+            if success:
+                logger.info(f"Deleted user-curated fact: {fact_id}", extra={
+                    "user_id": user_id,
+                    "fact_id": fact_id,
+                })
+            
+            return success

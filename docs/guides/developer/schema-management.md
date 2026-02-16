@@ -186,7 +186,7 @@ MY_SCHEMA = {
         ],
         rollback_statements=[
             "DROP INDEX IF EXISTS idx_users_email",
-            # Note: SQLite doesn't support DROP COLUMN
+            # Note: PostgreSQL doesn't support DROP COLUMN
             # Consider table recreation for complex rollbacks
         ]
     )
@@ -243,7 +243,7 @@ COMPLEX_SCHEMA = {
 
 ```python
 # backend/main.py - Fully automated schema application
-from aico.data import EncryptedLibSQLConnection, SchemaRegistry
+from aico.data import UnitOfWork, SchemaRegistry
 
 # Import all modules with registered schemas
 import aico.core.conversations.schema  # Registers conversation schema
@@ -251,9 +251,7 @@ import aico.core.users.schema         # Registers user schema
 import aico.core.memory.schema        # Registers memory schema
 
 def initialize_database():
-    connection = EncryptedLibSQLConnection(
-        db_path="~/.aico/user.db",
-        master_password=get_master_password()
+    connection = UnitOfWork()  # PostgreSQL with connection pooling
     )
     
     # Automatically applies all registered core schemas in priority order
@@ -309,7 +307,7 @@ class PluginManager:
 import pytest
 import tempfile
 from pathlib import Path
-from aico.data import EncryptedLibSQLConnection, SchemaManager
+from aico.data import UnitOfWork, SchemaManager
 
 @pytest.fixture
 def temp_db():
@@ -317,10 +315,7 @@ def temp_db():
     with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
         db_path = Path(f.name)
     
-    connection = EncryptedLibSQLConnection(
-        db_path=db_path,
-        master_password="test_password"
-    )
+    connection = UnitOfWork()  # PostgreSQL with connection pooling
     
     yield connection
     
@@ -371,7 +366,7 @@ def test_schema_evolution(temp_db):
             ],
             rollback_statements=[
                 "DROP INDEX IF EXISTS idx_users_email"
-                # Note: Can't drop column in SQLite
+                # Note: Can't drop column in PostgreSQL
             ]
         )
     }
@@ -475,7 +470,7 @@ async def test_full_plugin_lifecycle(temp_db):
 2. **Provide Complete Rollbacks**: Always include rollback statements for every change
 3. **Index Strategy**: Create indexes for commonly queried columns
 4. **Foreign Key Constraints**: Use foreign keys to maintain referential integrity
-5. **Data Types**: Use appropriate SQLite data types (INTEGER, TEXT, REAL, BLOB)
+5. **Data Types**: Use appropriate PostgreSQL data types (INTEGER, TEXT, REAL, BLOB)
 
 ### Security Considerations
 
@@ -533,7 +528,7 @@ def safe_schema_migration(connection, schema_definitions):
 ### Common Issues
 
 1. **Migration Already Applied**: Check migration history before applying
-2. **Rollback Limitations**: SQLite doesn't support DROP COLUMN - plan accordingly
+2. **Rollback Limitations**: PostgreSQL doesn't support DROP COLUMN - plan accordingly
 3. **Foreign Key Violations**: Ensure proper order when creating/dropping tables
 4. **Index Conflicts**: Use IF NOT EXISTS for index creation
 5. **Transaction Deadlocks**: Keep transactions short and avoid nested transactions
@@ -562,7 +557,7 @@ def debug_schema_state(connection, schema_definitions):
         print(f"Validation Issues: {validation}")
     
     # Table information
-    tables = connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    tables = connection.execute("SELECT name FROM PostgreSQL_master WHERE type='table'").fetchall()
     print(f"Tables: {[t[0] for t in tables]}")
 ```
 

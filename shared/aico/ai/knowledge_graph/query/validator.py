@@ -4,8 +4,11 @@ Query validation and security checks for GQL/Cypher queries.
 Ensures queries are safe to execute and don't violate security constraints.
 """
 
+import logging
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class QueryValidator:
@@ -44,25 +47,36 @@ class QueryValidator:
             Tuple of (is_valid, error_message)
             If valid, error_message is None
         """
+        logger.debug(f"Validating query: {query[:100]}...")
+        
         # Check query length
         if len(query) > self.MAX_QUERY_LENGTH:
-            return False, f"Query too long (max {self.MAX_QUERY_LENGTH} characters)"
+            error_msg = f"Query too long (max {self.MAX_QUERY_LENGTH} characters)"
+            logger.warning(f"Validation failed: {error_msg}")
+            return False, error_msg
         
         # Check for empty query
         if not query.strip():
-            return False, "Query cannot be empty"
+            error_msg = "Query cannot be empty"
+            logger.warning(f"Validation failed: {error_msg}")
+            return False, error_msg
         
         # Check for forbidden patterns
         query_upper = query.upper()
         for pattern in self.FORBIDDEN_PATTERNS:
             if re.search(pattern, query_upper, re.IGNORECASE):
-                return False, f"Forbidden pattern detected: {pattern}"
+                error_msg = f"Forbidden pattern detected: {pattern}"
+                logger.warning(f"Validation failed: {error_msg}")
+                return False, error_msg
         
         # Basic syntax check - must contain MATCH or RETURN
         if not (re.search(r'\bMATCH\b', query_upper) or 
                 re.search(r'\bRETURN\b', query_upper)):
-            return False, "Query must contain MATCH or RETURN clause"
+            error_msg = "Query must contain MATCH or RETURN clause"
+            logger.warning(f"Validation failed: {error_msg}")
+            return False, error_msg
         
+        logger.debug("Query validation passed")
         return True, None
     
     def add_limit(self, query: str) -> str:

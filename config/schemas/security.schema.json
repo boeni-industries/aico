@@ -36,7 +36,7 @@
                   "type": "integer",
                   "minimum": 10000,
                   "default": 100000,
-                  "description": "PBKDF2 iterations for LibSQL compatibility"
+                  "description": "PBKDF2 iterations for database encryption"
                 }
               },
               "required": ["iterations"]

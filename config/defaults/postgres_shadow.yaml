@@ -1,0 +1,9 @@
+# Shadow PostgreSQL instance for schema testing and experimentation
+
+db_name: "aico"
+core_schema: "aico_core"
+
+host: "127.0.0.1"
+port: 55432
+user: "postgres"
+sslmode: "prefer"

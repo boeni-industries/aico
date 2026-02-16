@@ -31,7 +31,7 @@ Currently, the frontend starts with a blank slate on each launch, requiring user
 
 ### Frontend (Flutter)
 
-**Local Storage**: Drift ORM with SQLite
+**Local Storage**: Drift ORM with PostgreSQL
 - `conversations` table: Conversation metadata
 - `messages` table: Full message history
 - `sync_metadata` table: Sync state tracking
@@ -130,7 +130,7 @@ getMessages(conversationId) {
 ### Frontend Impact
 
 **New Components**:
-- Local database layer (Drift ORM + SQLite)
+- Local database layer (Drift ORM + PostgreSQL)
 - Local data source (`ConversationLocalDataSource`)
 - Enhanced repository with cache-first logic
 - Database migration system
@@ -175,8 +175,8 @@ getMessages(conversationId) {
 |-----------|----------------|--------|
 | **Local-First Processing** | All data cached locally, backend optional after initial sync | ✅ Aligned |
 | **Privacy by Design** | No new data collection, just local caching of existing messages | ✅ Aligned |
-| **Zero-Effort Security** | Automatic encryption via Drift + SQLite, transparent to user | ✅ Aligned |
-| **Data Encryption** | SQLite database encrypted using platform secure storage | ✅ Aligned |
+| **Zero-Effort Security** | Automatic encryption via Drift + PostgreSQL, transparent to user | ✅ Aligned |
+| **Data Encryption** | PostgreSQL database encrypted using platform secure storage | ✅ Aligned |
 | **User Control** | User owns all cached data, can clear cache anytime | ✅ Aligned |
 
 **Security Considerations**:
@@ -195,7 +195,7 @@ getMessages(conversationId) {
 |-----------|----------------|--------|
 | **Simplicity First** | Cache-first pattern is straightforward, well-understood | ✅ Aligned |
 | **DRY** | Repository pattern reused, single source of truth (backend) | ✅ Aligned |
-| **KISS** | No overengineering - standard SQLite + background sync | ✅ Aligned |
+| **KISS** | No overengineering - standard PostgreSQL + background sync | ✅ Aligned |
 | **Modularity** | Clean separation: local datasource, repository, provider | ✅ Aligned |
 | **Resource Awareness** | 90-day retention + auto-cleanup prevents storage bloat | ✅ Aligned |
 | **Privacy & Security** | Local-first, encrypted, user-controlled | ✅ Aligned |

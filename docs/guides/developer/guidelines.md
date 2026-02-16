@@ -52,7 +52,7 @@
   - Ensure cross-device and cross-environment compatibility where possible.
 
 - **Data Layer Best Practices:**
-  - Currently uses libSQL for all structured data with encryption, ChromaDB for semantic memory / knowledge graph embeddings, and LMDB for high-speed working memory/cache.
+  - Currently uses PostgreSQL for all structured data with encryption, ChromaDB for semantic memory / knowledge graph embeddings, and LMDB for high-speed working memory/cache.
   - An additional analytics database is planned (backend technology still to be decided).
   - Optimize for local-first, file-based operation. Plan for future federated sync but do not assume cloud dependencies.
 

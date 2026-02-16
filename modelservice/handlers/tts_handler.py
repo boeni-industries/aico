@@ -9,10 +9,11 @@ import asyncio
 import io
 import wave
 from pathlib import Path
-from typing import AsyncGenerator, Optional
-
+from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from aico.core.paths import AICOPaths
 from aico.ai.utils import detect_language
+from modelservice.handlers.tts_utils import clean_text_for_tts
 
 
 class TtsHandler:
@@ -33,7 +34,7 @@ class TtsHandler:
         self._config = config_manager
         self._voices = {}  # Language -> speaker name mapping
         self._conditioning_cache = {}  # Cache for speaker embeddings
-        self._logger = get_logger("modelservice", "tts_handler")
+        self._logger = get_logger("modelservice.tts_handler")
         
     async def initialize(self):
         """
@@ -107,25 +108,25 @@ class TtsHandler:
                 raise RuntimeError("TTS handler requires configuration manager")
             
             self._logger.info("Loading TTS configuration from config (XTTS-specific)")
-            tts_config = self._config.get("core.modelservice.tts.xtts", None)
+            tts_config = self._config.get("modelservice.tts.xtts", None)
             if tts_config is None:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: XTTS configuration not found!\n"
-                    "Expected path: core.modelservice.tts.xtts\n"
+                    "Expected path: modelservice.tts.xtts\n"
                     "This is a critical configuration error.\n"
-                    "Check config/defaults/core.yaml for proper structure.\n"
+                    "Check config/defaults/modelservice.yaml for proper structure.\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("XTTS configuration missing at core.modelservice.tts.xtts")
+                raise RuntimeError("XTTS configuration missing at modelservice.tts.xtts")
             
             if not tts_config:
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: XTTS configuration is empty!\n"
-                    "Path: core.modelservice.tts.xtts\n"
+                    "Path: modelservice.tts.xtts\n"
                     "Configuration exists but contains no data.\n"
                     "="*80
                 )
@@ -133,7 +134,7 @@ class TtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("XTTS configuration is empty")
             
-            self._logger.info(f"✅ Found TTS config: {tts_config}")
+            self._logger.debug(f"✅ Found TTS config: {tts_config}")
             
             # Load voices
             self._voices = tts_config.get("voices", {})
@@ -155,7 +156,7 @@ class TtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("No voices configured in modelservice.tts.xtts.voices")
             
-            self._logger.info(f"✅ Configured voices: {self._voices}")
+            self._logger.debug(f"✅ Configured voices: {self._voices}")
             
             # Load custom voice if specified
             custom_voice = tts_config.get("custom_voice_path")
@@ -228,13 +229,13 @@ class TtsHandler:
             overall_start = time.time()
             
             # Auto-detect language if enabled (or if language is empty/invalid)
-            auto_detect = self._config.get("core.modelservice.tts.auto_detect_language", None)
+            auto_detect = self._config.get("modelservice.tts.auto_detect_language", None)
             if auto_detect is None:
                 # Config key missing - fail loudly
                 error_msg = (
                     "\n" + "="*80 + "\n"
                     "❌ FATAL: auto_detect_language configuration missing!\n"
-                    "Expected path: core.modelservice.tts.auto_detect_language\n"
+                    "Expected path: modelservice.tts.auto_detect_language\n"
                     "This must be explicitly set to true or false.\n"
                     "="*80
                 )
@@ -246,8 +247,9 @@ class TtsHandler:
             auto_detect = bool(auto_detect)
             
             # Debug logging
-            print(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'", flush=True)
-            self._logger.info(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}'")
+            self._logger.debug(
+                f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'"
+            )
             
             if auto_detect or not language or language.strip() == "":
                 # Use 'en' as fallback if detection fails
@@ -257,12 +259,11 @@ class TtsHandler:
                 print(f"🔍 Detected language: {result.language} (confidence: {result.confidence:.2f})", flush=True)
                 language = result.language
             else:
-                print(f"🔍 [DEBUG] Skipping detection - using provided language: {language}", flush=True)
-                self._logger.info(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
+                self._logger.debug(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
             
-            # Clean markdown and special formatting from text
+            # Clean markdown and special formatting from text (using shared utility)
             clean_start = time.time()
-            cleaned_text = self._clean_text_for_tts(text)
+            cleaned_text = clean_text_for_tts(text)
             clean_time = time.time() - clean_start
             self._logger.info(f"🎤 Original text: {len(text)} chars, cleaned: {len(cleaned_text)} chars")
             print("=" * 80)
@@ -331,46 +332,6 @@ class TtsHandler:
             import traceback
             traceback.print_exc()
             raise
-    
-    def _clean_text_for_tts(self, text: str) -> str:
-        """
-        Clean text for TTS by removing markdown and special formatting.
-        
-        Args:
-            text: Raw text with markdown
-            
-        Returns:
-            Cleaned text suitable for TTS
-        """
-        import re
-        
-        # Remove markdown bold/italic
-        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold**
-        text = re.sub(r'\*([^*]+)\*', r'\1', text)      # *italic*
-        text = re.sub(r'__([^_]+)__', r'\1', text)      # __bold__
-        text = re.sub(r'_([^_]+)_', r'\1', text)        # _italic_
-        
-        # Remove markdown links [text](url)
-        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-        
-        # Remove ALL emojis - comprehensive Unicode ranges
-        text = re.sub(r'[\U0001F600-\U0001F64F]', '', text)  # Emoticons
-        text = re.sub(r'[\U0001F300-\U0001F5FF]', '', text)  # Symbols & pictographs
-        text = re.sub(r'[\U0001F680-\U0001F6FF]', '', text)  # Transport & map
-        text = re.sub(r'[\U0001F1E0-\U0001F1FF]', '', text)  # Flags
-        text = re.sub(r'[\U00002702-\U000027B0]', '', text)  # Dingbats
-        text = re.sub(r'[\U000024C2-\U0001F251]', '', text)  # Enclosed characters
-        
-        # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        # Remove trailing punctuation artifacts (space before closing paren/bracket)
-        text = re.sub(r'\s+([)\]}])', r'\1', text)
-        
-        # Remove any remaining non-printable characters
-        text = ''.join(char for char in text if char.isprintable() or char.isspace())
-        
-        return text
     
     def _split_text(self, text: str, max_chars: int = 100) -> list[str]:
         """

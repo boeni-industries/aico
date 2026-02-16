@@ -59,7 +59,7 @@ class RESTAdapter:
                  rate_limiter: RateLimiter, validator: MessageValidator,
                  security_middleware: SecurityMiddleware, key_manager: AICOKeyManager):
         
-        self.logger = get_logger("backend", "api_gateway.rest")
+        self.logger = get_logger("backend.api_gateway.rest")
         self.config = config
         self.auth_manager = auth_manager
         self.authz_manager = authz_manager
@@ -221,8 +221,7 @@ def create_rest_adapter(config_manager) -> FastAPI:
     from ..middleware.security import SecurityMiddleware
     
     # Get configuration
-    config = config_manager.config_cache.get('core', {})
-    api_gateway_config = config.get('api_gateway', {})
+    api_gateway_config = config_manager.get("api_gateway", {})
     
     # Create required components
     key_manager = AICOKeyManager(config_manager)

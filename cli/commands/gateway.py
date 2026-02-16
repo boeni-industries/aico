@@ -194,20 +194,10 @@ def start(
 ):
     """Start the API Gateway service"""
     try:
-        # Load config directly inline (WORKING VERSION - DO NOT CHANGE)
-        import yaml
-        from pathlib import Path
-        
-        current = Path(__file__).parent.parent.parent
-        config_dir = current / "config"
-        core_yaml_path = config_dir / "defaults" / "core.yaml"
-        
-        if core_yaml_path.exists():
-            with open(core_yaml_path, 'r', encoding='utf-8') as f:
-                yaml_content = yaml.safe_load(f)
-            config = yaml_content.get("api_gateway", {})
-        else:
-            config = {}
+        # Use ConfigurationManager instead of direct YAML access
+        config_manager = ConfigurationManager()
+        config_manager.initialize(lightweight=True)
+        config = config_manager.get("api_gateway", {})
         
         console.print("[yellow]⏳ Starting API Gateway...[/yellow]")
         
@@ -222,7 +212,8 @@ def start(
         from pathlib import Path
         
         # Path to backend directory
-        backend_dir = Path(__file__).parent.parent.parent / "backend"
+        current = Path(__file__).parent.parent.parent
+        backend_dir = current / "backend"
         backend_main = backend_dir / "main.py"
         
         if not backend_main.exists():
@@ -522,20 +513,10 @@ def restart():
 def status():
     """Show API Gateway status and configuration"""
     try:
-        # Load config directly inline (WORKING VERSION - DO NOT CHANGE)
-        import yaml
-        from pathlib import Path
-        
-        current = Path(__file__).parent.parent.parent
-        config_dir = current / "config"
-        core_yaml_path = config_dir / "defaults" / "core.yaml"
-        
-        if core_yaml_path.exists():
-            with open(core_yaml_path, 'r', encoding='utf-8') as f:
-                yaml_content = yaml.safe_load(f)
-            config = yaml_content.get("api_gateway", {})
-        else:
-            config = {}
+        # Use ConfigurationManager instead of direct YAML access
+        config_manager = ConfigurationManager()
+        config_manager.initialize(lightweight=True)
+        config = config_manager.get("api_gateway", {})
         
         # Get live status first for primary display
         host = config.get('host', '127.0.0.1')
@@ -650,16 +631,12 @@ def status():
         
         # Transport Encryption Status
         try:
-            # Load security configuration for transport encryption
-            security_config_path = config_dir / "defaults" / "security.yaml"
-            transport_config = {}
+            # Use ConfigurationManager instead of direct YAML access
+            config_manager = ConfigurationManager()
+            config_manager.initialize(lightweight=True)
+            transport_config = config_manager.get("security.transport", {})
             
-            if security_config_path.exists():
-                with open(security_config_path, 'r', encoding='utf-8') as f:
-                    security_yaml = yaml.safe_load(f)
-                transport_config = security_yaml.get("transport_encryption", {})
-            
-            transport_enabled = transport_config.get("enabled", True)
+            transport_enabled = transport_config.get("encryption_enabled", True)
             algorithm = transport_config.get("algorithm", "XChaCha20-Poly1305")
             
             if transport_enabled:
@@ -768,20 +745,10 @@ def show_config(
 ):
     """⚙️ Show API Gateway configuration"""
     try:
-        # Load config directly inline (WORKING VERSION - DO NOT CHANGE)
-        import yaml
-        from pathlib import Path
-        
-        current = Path(__file__).parent.parent.parent
-        config_dir = current / "config"
-        core_yaml_path = config_dir / "defaults" / "core.yaml"
-        
-        if core_yaml_path.exists():
-            with open(core_yaml_path, 'r', encoding='utf-8') as f:
-                yaml_content = yaml.safe_load(f)
-            config = yaml_content.get("api_gateway", {})
-        else:
-            config = {}
+        # Use ConfigurationManager instead of direct YAML access
+        config_manager = ConfigurationManager()
+        config_manager.initialize(lightweight=True)
+        config = config_manager.get("api_gateway", {})
         
         if section:
             if section in config:
@@ -811,20 +778,10 @@ def show_config(
 def list_protocols():
     """🔌 List available protocol adapters"""
     try:
-        # Load config directly inline (same pattern as status command)
-        import yaml
-        from pathlib import Path
-        
-        current = Path(__file__).parent.parent.parent
-        config_dir = current / "config"
-        core_yaml_path = config_dir / "defaults" / "core.yaml"
-        
-        if core_yaml_path.exists():
-            with open(core_yaml_path, 'r', encoding='utf-8') as f:
-                yaml_content = yaml.safe_load(f)
-            config = yaml_content.get("api_gateway", {})
-        else:
-            config = {}
+        # Use ConfigurationManager instead of direct YAML access
+        config_manager = ConfigurationManager()
+        config_manager.initialize(lightweight=True)
+        config = config_manager.get("api_gateway", {})
         
         protocols = config.get("protocols", {})
         host = config.get('host', '127.0.0.1')
@@ -1089,6 +1046,22 @@ def auth_login():
         # Get or generate JWT secret using key manager
         jwt_secret = key_manager.get_jwt_secret("api_gateway")
         
+        # Auto-detect active user from database
+        from cli.utils.pg_connection import get_pg_connection
+        try:
+            db = get_pg_connection()
+            cursor = db.cursor()
+            cursor.execute("SELECT uuid FROM aico_core.user_profiles WHERE is_active = true LIMIT 1")
+            user_row = cursor.fetchone()
+            
+            if user_row:
+                user_id = user_row["uuid"]
+            else:
+                user_id = config_manager.get("core.user.id", "aico-cli")
+        except Exception:
+            # Fallback to config on any DB error
+            user_id = config_manager.get("core.user.id", "aico-cli")
+        
         # Get CLI roles from configuration - CLI gets admin access by default
         # This is intentional: CLI operations require admin privileges for system management
         cli_roles = ["cli", "admin"]  # CLI role includes admin privileges
@@ -1096,13 +1069,13 @@ def auth_login():
         # Create CLI token payload (matching backend admin endpoint expectations)
         now = datetime.utcnow()
         payload = {
-            "sub": "aico-cli",  # Subject: AICO CLI
-            "username": "aico-cli",  # Username field expected by backend
-            "iss": "aico-gateway",  # Issuer: AICO Gateway
-            "aud": "aico-api",  # Audience: AICO API
+            "sub": user_id,  # Subject: configured user or CLI
+            "user_uuid": user_id,  # User identifier from config
+            "username": user_id,
+            "roles": cli_roles,
+            "permissions": [],  # CLI has full access via admin role
             "iat": int(now.timestamp()),  # Issued at
             "exp": int((now + timedelta(days=7)).timestamp()),  # Expires in 7 days
-            "roles": cli_roles,  # CLI gets admin access for system operations
             "type": "cli_token"  # Token type
         }
         

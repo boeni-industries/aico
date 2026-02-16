@@ -30,8 +30,6 @@ class LogCache {
             final cachedLogs = jsonList.map((json) => LogEntry.fromJson(json)).toList();
             _memoryBuffer.addAll(cachedLogs);
           }
-        } else {
-          debugPrint('Storage service not ready, using in-memory cache only');
         }
       } catch (storageError) {
         // Storage service not available, continue with in-memory only
@@ -131,8 +129,6 @@ class LogCache {
           final jsonList = _memoryBuffer.map((entry) => entry.toJson()).toList();
           final jsonString = jsonEncode(jsonList);
           await storageService.setStringValue('pending_logs', jsonString);
-        } else {
-          debugPrint('Storage service not ready, skipping persistence');
         }
       } catch (storageError) {
         // Storage service not available, continue with in-memory only

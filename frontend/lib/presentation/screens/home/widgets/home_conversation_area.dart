@@ -1,10 +1,10 @@
+import 'package:aico_frontend/presentation/models/conversation_message.dart';
+import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/screens/home/widgets/home_toolbar.dart';
+import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../models/conversation_message.dart';
-import '../../../providers/conversation_provider.dart';
-import '../../../theme/glassmorphism.dart';
-import '../../../widgets/chat/interactive_message_bubble.dart';
-import 'home_toolbar.dart';
 
 /// Conversation area displaying messages or welcome state
 /// 

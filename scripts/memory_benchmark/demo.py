@@ -33,7 +33,7 @@ sys.path.insert(0, str(shared_path))
 from aico.core.logging import get_logger
 
 console = Console()
-logger = get_logger("scripts", "memory_eval.demo")
+logger = get_logger("scripts.memory_eval.demo")
 
 
 def create_banner():

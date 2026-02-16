@@ -125,10 +125,22 @@ You should see `Python 3.13.5`.
 
 > **ℹ️ Data Encryption Approach**
 > 
-> AICO uses application-level encryption with SQLCipher for all databases (libSQL in the backend and Drift on the frontend). Semantic memory and knowledge graph embeddings use ChromaDB, and working memory/cache uses LMDB, all with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
+> AICO uses application-level encryption with SQLCipher for all databases (PostgreSQL in the backend and Drift on the frontend). Semantic memory and knowledge graph embeddings use ChromaDB, and working memory/cache uses LMDB, all with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
 ### 3. UV Workspace Setup (Single Virtual Environment)
 AICO uses UV workspace management with a unified `pyproject.toml` at the root and a single shared virtual environment for all Python components.
+
+**Important (Development): Use `AICO_CONFIG_DIR` to isolate your runtime config**
+ 
+AICO reads and edits configuration from the *runtime config directory* (platform-dependent) by default. In development, you should point `AICO_CONFIG_DIR` to a repo-local path so different checkouts/branches don't share the same config state.
+ 
+ ```sh
+ # Example (recommended): keep runtime config inside the repo
+ export AICO_CONFIG_DIR="$PWD/.aico-dev/config"
+ 
+ # Seed the runtime config directory with schemas/defaults/environments/modelfiles
+ uv run aico config init
+ ```
 
 **Install UV globally (required):**
 
@@ -349,11 +361,287 @@ The project follows a monorepo structure with shared libraries and unified tooli
 
 ## Database Setup
 
+AICO uses a multi-database architecture. PostgreSQL, Loki, and InfluxDB run in **Docker containers** for consistent deployment across platforms.
+
+> **🐳 Docker Deployment**
+> 
+> PostgreSQL, Loki, and InfluxDB are containerized using Docker for:
+> - **Consistent environments** across development, testing, and production
+> - **Easy version management** (PostgreSQL 18.1, Loki 2.9, InfluxDB 2.x)
+> - **Isolated dependencies** without system-wide installation
+> - **Simple cleanup** with container removal
+> 
+> **Future**: Additional components (ChromaDB, analytics services) will be containerized as the architecture evolves.
+
+### Prerequisites
+
+**Install Docker**:
+- Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for your platform
+- Verify installation: `docker --version`
+- Ensure Docker daemon is running
+
+### PostgreSQL Deployment
+
+PostgreSQL stores all core application data (users, conversations, knowledge graph, agency).
+
+**Initial Deployment**:
+```bash
+aico deploy pg
+```
+
+This command:
+1. **Pulls PostgreSQL 18.1 Docker image** (if not present)
+2. **Starts PostgreSQL container** with persistent volume
+3. Connects to the containerized instance
+4. Creates the `aico` database if it doesn't exist
+5. Creates the `aico_core` schema
+6. Applies all schema migrations
+7. Sets up initial tables and indexes
+
+**Container Details**:
+- Image: `postgres:18.1`
+- Port: `5432` (mapped to host)
+- Volume: Persistent storage for database files
+- Network: Docker bridge network for inter-container communication
+
+**⚠️ DANGEROUS: Reset Database**:
+```bash
+aico deploy pg --nuke
+```
+
+**WARNING**: The `--nuke` flag will:
+- **STOP and REMOVE the PostgreSQL container**
+- **DELETE the persistent volume**
+- **ERASE ALL DATA permanently**
+- Pull fresh image and recreate container
+- Apply all migrations to new database
+
+**Use cases for --nuke**:
+- ✅ Development: Starting fresh after schema changes
+- ✅ Testing: Clean slate for integration tests
+- ❌ **NEVER in production** - you will lose all user data
+
+**Prerequisites**:
+- Docker installed and running
+- Database credentials configured in `config/defaults/postgres.yaml`
+- Password stored in system keyring via `aico security setup`
+
+### Loki Deployment
+
+Loki stores application logs with LogQL query support.
+
+**Initial Deployment**:
+```bash
+aico deploy loki
+```
+
+This command:
+1. **Pulls Loki 2.9 Docker image** (if not present)
+2. **Starts Loki container** with persistent volume
+3. Configures log retention (default: 30 days)
+4. Sets up label-based indexing
+5. No authentication required for local development
+
+**Container Details**:
+- Image: `grafana/loki:2.9.0`
+- Port: `3100` (mapped to host)
+- Volume: Persistent storage for logs
+- Network: Docker bridge network
+
+**⚠️ DANGEROUS: Reset Logs**:
+```bash
+aico deploy loki --nuke
+```
+
+**WARNING**: The `--nuke` flag will:
+- **STOP and REMOVE the Loki container**
+- **DELETE the persistent volume**
+- **ERASE ALL logs permanently**
+- Pull fresh image and recreate container
+
+**Use cases for --nuke**:
+- ✅ Development: Clear old logs
+- ✅ Testing: Fresh log baseline
+- ❌ **Use with caution** - historical logs are lost
+
+**Prerequisites**:
+- Docker installed and running
+- Loki URL configured in `config/defaults/loki.yaml` (http://localhost:3100)
+
+### InfluxDB Deployment
+
+InfluxDB stores time-series metrics and performance telemetry.
+
+**Initial Deployment**:
+```bash
+aico deploy influx
+```
+
+This command:
+1. **Pulls InfluxDB 2.x Docker image** (if not present)
+2. **Starts InfluxDB container** with persistent volume
+3. Connects to the containerized instance
+4. Creates the `aico` organization if it doesn't exist
+5. Creates the `aico_telemetry` bucket
+6. Sets up retention policies (default: 30 days)
+7. Configures API token for writes
+
+**Container Details**:
+- Image: `influxdb:2-alpine`
+- Port: `8086` (mapped to host)
+- Volume: Persistent storage for time-series data
+- Network: Docker bridge network
+
+**⚠️ DANGEROUS: Reset Metrics Database**:
+```bash
+aico deploy influx --nuke
+```
+
+**WARNING**: The `--nuke` flag will:
+- **STOP and REMOVE the InfluxDB container**
+- **DELETE the persistent volume**
+- **ERASE ALL metrics permanently**
+- Pull fresh image and recreate container
+- Reconfigure organization and bucket
+
+**Use cases for --nuke**:
+- ✅ Development: Clear old telemetry data
+- ✅ Testing: Fresh metrics baseline
+- ❌ **Use with caution** - historical data is lost
+
+**Prerequisites**:
+- Docker installed and running
+- InfluxDB URL configured in `config/defaults/influx.yaml` (http://localhost:8086)
+- API token stored in system keyring
+
+### Verification
+
+**Check PostgreSQL**:
+```bash
+aico pg tables  # List all tables in aico_core schema
+aico pg users   # List users (should be empty initially)
+```
+
+**Create Your User Account**
+
+After deploying databases, create your user:
+
+```bash
+aico security create-user
+```
+
+This will:
+1. Prompt for your full name and nickname
+2. Create a secure PIN
+3. Store user in PostgreSQL
+4. Set up authentication credentials
+
+**Check Loki**:
+```bash
+aico logs tail --lines 10  # Query recent logs from Loki
+```
+
+**Check InfluxDB**:
+```bash
+# InfluxDB now stores metrics only (not logs)
+curl http://localhost:8086/health  # Check InfluxDB health
+```
+
+### Database Configuration
+
+Edit `config/defaults/postgres.yaml`, `config/defaults/loki.yaml`, and `config/defaults/influx.yaml`:
+
+```yaml
+db_name: "aico"
+core_schema: "aico_core"
+host: "127.0.0.1"
+port: 5432
+user: "postgres"
+# Password stored in keyring
+
+# ---
+
+url: "http://127.0.0.1:8086"
+org: "aico"
+bucket: "aico_telemetry"
+# Token stored in keyring
+```
+
+### Troubleshooting
+
+**PostgreSQL connection failed**:
+```bash
+# Check if PostgreSQL container is running
+docker ps | grep postgres
+
+# View PostgreSQL container logs
+docker logs aico-postgres
+
+# Connect to PostgreSQL container directly
+docker exec -it aico-postgres psql -U postgres -c "SELECT version();"
+
+# Verify password in keyring
+aico security keyring list
+
+# Re-setup credentials
+aico security setup
+```
+
+**InfluxDB connection failed**:
+```bash
+# Check if InfluxDB container is running
+docker ps | grep influx
+
+# View InfluxDB container logs
+docker logs aico-influx
+
+# Check InfluxDB health endpoint
+curl http://localhost:8086/health
+
+# Verify token
+aico security keyring list
+```
+
+**Loki connection failed**:
+```bash
+# Check if Loki container is running
+docker ps | grep loki
+
+# View Loki container logs
+docker logs aico-loki
+
+# Check Loki health endpoint
+curl http://localhost:3100/ready
+
+# Test log query
+curl -G "http://localhost:3100/loki/api/v1/labels" | jq
+```
+
+**Docker issues**:
+```bash
+# Check Docker daemon status
+docker info
+
+# List all AICO containers
+docker ps -a | grep aico
+
+# Remove stopped containers
+docker rm aico-postgres aico-loki aico-influx
+
+# Remove volumes (⚠️ deletes data)
+docker volume rm aico-postgres-data aico-lokidata aico-influx-data
+```
+
+## Database Setup (Legacy)
+
 AICO uses encrypted databases for all data storage with security by design. The setup process automatically handles directory creation, security initialization, and database configuration.
 
 ### Quick Setup (Recommended)
 
 ```bash
+# Optional (recommended in dev): isolate runtime config per repo/branch
+export AICO_CONFIG_DIR="$PWD/.aico-dev/config"
+
 # 1. Initialize AICO configuration directories
 aico config init
 
@@ -382,7 +670,7 @@ aico config show
 
 #### 2. Database Initialization
 ```bash
-# Create encrypted libSQL database with automatic security setup
+# Create encrypted PostgreSQL database with automatic security setup
 aico db init
 
 # Test database connection and encryption
@@ -411,10 +699,11 @@ ollama run huihui_ai/qwen3-abliterated:8b-v2 "Hello, who are you?"
 ```
 
 **What this does:**
-- Reads the character definition from `config/modelfiles/Modelfile.eve`
-- Ensures the base model is pulled from Ollama
-- Configures model parameters (temperature, context window, etc.)
-- Sets up the character's personality and behavior via Modelfile
+- Reads the character definition from your *runtime config directory* (`$AICO_CONFIG_DIR/modelfiles/Modelfile.eve`)
+- Seeds/syncs Modelfiles from the repo templates when needed (`aico config init`)
+  - Ensures the base model is pulled from Ollama
+  - Configures model parameters (temperature, context window, etc.)
+  - Sets up the character's personality and behavior via Modelfile
 
 **Character Details:**
 - **Name**: Eve
@@ -429,7 +718,7 @@ If you modify `Modelfile.eve`, regenerate:
 aico ollama generate eve --force
 ```
 
-For more details, see [Modelfiles README](../../../config/modelfiles/README.md).
+For more details, see the Modelfiles README in the repository at `config/modelfiles/README.md`.
 
 ### Directory Structure
 After setup, you'll have cross-platform directories:
@@ -439,13 +728,16 @@ After setup, you'll have cross-platform directories:
 # Linux Example: ~/.local/share/aico/
 aico/
 ├── data/
-│   ├── aico.db              # Main libSQL database (encrypted)
-│   ├── aico.db.salt         # Encryption salt
+│   ├── PostgreSQL database              # Main PostgreSQL database (encrypted)
+│   ├── PostgreSQL database.salt         # Encryption salt
 │   ├── analytics.db         # Analytics database (planned, backend TBD)
 │   └── chroma/              # Vector database directory (ChromaDB)
 ├── config/
+│   ├── schemas/             # Configuration schemas (*.schema.json)
 │   ├── defaults/            # Default configuration files
-│   └── environments/        # Environment-specific overrides
+│   ├── environments/        # Environment-specific overrides
+│   ├── modelfiles/          # Modelfiles (e.g. Modelfile.eve)
+│   └── runtime.yaml         # Persisted runtime overrides
 ├── cache/                   # Application cache
 └── logs/                    # Application logs
 ```
@@ -461,7 +753,7 @@ aico config show
 aico db show
 
 # Get specific configuration values
-aico config get database.libsql.journal_mode
+aico config get postgres.host
 aico config get system.paths.directory_mode
 ```
 
@@ -559,7 +851,6 @@ For detailed protobuf development guidelines, see [Protocol Buffers & API Contra
 - [Developer Guidelines & Conventions](./guidelines.md)
 - [Plugin System Overview](../../subsystems/backend/plugin-system.md)
 - [Data Layer & Storage](../../concepts/data/data-layer.md)
-- [Admin UI Architecture](../../subsystems/studio/admin-ui-master.md)
 - [Protocol Buffers & API Contracts](./protobuf.md)
 - [Privacy & Security](../../security/data-security.md)
 

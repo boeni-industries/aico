@@ -6,6 +6,7 @@ library;
 
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
+import 'package:aico_frontend/presentation/widgets/chat/markdown_content.dart';
 import 'package:flutter/material.dart';
 
 class MemoryCard extends StatefulWidget {
@@ -35,8 +36,15 @@ class _MemoryCardState extends State<MemoryCard> {
       widget.memory.emotionalTone,
     );
 
-    // Debug: Print favorite status on rebuild
-    debugPrint('🎨 MemoryCard building: ${widget.memory.memoryId.substring(0, 8)}... isFavorite=${widget.memory.isFavorite}');
+    final rawPreview = (widget.memory.isConversationMemory
+            ? (widget.memory.conversationSummary ?? widget.memory.content)
+            : widget.memory.content)
+        .trim();
+
+    final previewMarkdown = MarkdownContent.truncateMarkdownSafely(
+      rawPreview,
+      maxChars: 800,
+    );
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -158,17 +166,27 @@ class _MemoryCardState extends State<MemoryCard> {
                     
                     // Content
                     Flexible(
-                      child: Text(
-                        (widget.memory.isConversationMemory 
-                            ? (widget.memory.conversationSummary ?? widget.memory.content)
-                            : widget.memory.content).trim(),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: MemoryAlbumTheme.textPrimary,
-                          height: 1.6,
+                      child: ClipRect(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 92),
+                          child: DefaultTextStyle.merge(
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: MemoryAlbumTheme.textPrimary,
+                              height: 1.6,
+                            ),
+                            child: IgnorePointer(
+                              child: SingleChildScrollView(
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: MarkdownContent(
+                                  data: previewMarkdown,
+                                  isDark: true,
+                                  accentColor: emotionalColor,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     

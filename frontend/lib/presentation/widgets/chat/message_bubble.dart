@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:ui';
+
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
-import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
 import 'package:aico_frontend/presentation/widgets/chat/markdown_content.dart';
+import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
 import 'package:flutter/material.dart';
 
 /// Message bubble widget that displays either a thinking animation or message content
@@ -13,6 +14,7 @@ class MessageBubble extends StatefulWidget {
   final bool isThinking;
   final DateTime timestamp;
   final Color accentColor;
+  final Widget? customChild;
 
   const MessageBubble({
     super.key,
@@ -21,6 +23,7 @@ class MessageBubble extends StatefulWidget {
     required this.isThinking,
     required this.timestamp,
     required this.accentColor,
+    this.customChild,
   });
 
   @override
@@ -295,7 +298,7 @@ class _MessageBubbleState extends State<MessageBubble>
               ),
             ],
           ),
-          child: Column(
+          child: widget.customChild ?? Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [

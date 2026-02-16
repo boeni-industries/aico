@@ -51,11 +51,18 @@ class LogCleanupTask(BaseTask):
                 cleaned_size = self._cleanup_log_files(context, retention_days, max_size_mb)
                 results["files_cleaned_mb"] = cleaned_size
             
-            # Clean up task execution history
-            task_store = context.db_connection
-            from ..storage import TaskStore
-            store = TaskStore(task_store)
-            exec_deleted = store.cleanup_old_executions(retention_days)
+            # Clean up task execution history via SchedulerService
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+                exec_deleted = await scheduler_service.cleanup_old_executions(cutoff_date)
+                await uow.commit()
+            
             results["task_executions_deleted"] = exec_deleted
             
             message = f"Log cleanup completed: {results}"
@@ -72,44 +79,11 @@ class LogCleanupTask(BaseTask):
             return TaskResult(success=False, error=error_msg)
     
     def _cleanup_database_logs(self, context: TaskContext, retention_days: int) -> int:
-        """Clean up old log entries from database"""
-        try:
-            # Format to match database timestamp format: ISO 8601 UTC with Z suffix
-            cutoff_date = (datetime.utcnow() - timedelta(days=retention_days)).replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
-            
-            # Count logs to be deleted first
-            count_cursor = context.db_connection.execute(
-                "SELECT COUNT(*) FROM logs WHERE timestamp < ?", (cutoff_date,)
-            )
-            count_to_delete = count_cursor.fetchone()[0]
-            self.logger.info(f"Found {count_to_delete} logs older than {cutoff_date} to delete")
-            
-            if count_to_delete == 0:
-                return 0
-            
-            # Delete the logs
-            cursor = context.db_connection.execute(
-                "DELETE FROM logs WHERE timestamp < ?", (cutoff_date,)
-            )
-            context.db_connection.commit()
-            
-            # Verify deletion
-            verify_cursor = context.db_connection.execute(
-                "SELECT COUNT(*) FROM logs WHERE timestamp < ?", (cutoff_date,)
-            )
-            remaining = verify_cursor.fetchone()[0]
-            deleted_count = count_to_delete - remaining
-            
-            if deleted_count > 0:
-                self.logger.info(f"Deleted {deleted_count} old log entries from database")
-            else:
-                self.logger.warning(f"DELETE executed but {remaining} logs still remain (expected 0)")
-            
-            return deleted_count
-            
-        except Exception as e:
-            self.logger.warning(f"Database log cleanup failed: {e}")
-            return 0
+        """Clean up old log entries - system_logs table removed, logs now in InfluxDB"""
+        # system_logs table no longer exists - logs are in InfluxDB with retention policies
+        # InfluxDB handles log retention automatically via bucket retention settings
+        self.logger.info("Log cleanup skipped - logs now stored in InfluxDB with automatic retention")
+        return 0
     
     def _cleanup_log_files(self, context: TaskContext, retention_days: int, max_size_mb: int) -> float:
         """Clean up old log files from filesystem"""
@@ -121,7 +95,7 @@ class LogCleanupTask(BaseTask):
             if not os.path.exists(log_dir):
                 return 0.0
             
-            cutoff_date = datetime.now() - timedelta(days=retention_days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
             total_cleaned = 0.0
             
             for filename in os.listdir(log_dir):
@@ -306,13 +280,15 @@ class HealthCheckTask(BaseTask):
     async def _check_database_health(self, context: TaskContext) -> bool:
         """Check database connectivity and basic operations"""
         try:
-            # Simple query to test database
-            def db_call():
-                cursor = context.db_connection.execute("SELECT 1")
-                return cursor.fetchone()
-            
-            result = await asyncio.to_thread(db_call)
-            return result is not None
+            # Simple query to test database via UoW
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Try to list a single user profile to verify DB connectivity
+                await uow.user_profiles.list(limit=1)
+            return True
             
         except Exception as e:
             self.logger.error(f"Database health check failed: {e}")
@@ -371,22 +347,28 @@ class DatabaseVacuumTask(BaseTask):
     async def execute(self, context: TaskContext) -> TaskResult:
         """Execute database vacuum task"""
         try:
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
             analyze_tables = context.get_config("analyze_tables", True)
 
             results = {}
 
-            # Perform a standard vacuum operation.
+            # Perform a standard vacuum operation via raw SQL through UoW session
             # This reclaims space and defragments the database.
             self.logger.info("Starting database VACUUM...")
-            context.db_connection.execute("VACUUM")
-            results["vacuum_type"] = "standard"
-            
-            # Analyze tables for query optimization
-            if analyze_tables:
-                context.db_connection.execute("ANALYZE")
-                results["tables_analyzed"] = True
-            
-            context.db_connection.commit()
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # VACUUM and ANALYZE must be run outside transaction, so use raw connection
+                await uow.session.execute("VACUUM")
+                results["vacuum_type"] = "standard"
+                
+                # Analyze tables for query optimization
+                if analyze_tables:
+                    await uow.session.execute("ANALYZE")
+                    results["tables_analyzed"] = True
+                
+                await uow.commit()
             
             message = f"Database vacuum completed: {results}"
             
@@ -400,3 +382,73 @@ class DatabaseVacuumTask(BaseTask):
             error_msg = f"Database vacuum failed: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             return TaskResult(success=False, error=error_msg)
+
+
+class AgencyConnectivityScanTask(BaseTask):
+    """Run Agency maintenance connectivity full scan via SkillInvoker.
+
+    This task is designed to be created and triggered manually (e.g. via
+    `aico scheduler trigger maintenance.agency_connectivity_scan`) and is
+    therefore disabled by default.
+    """
+
+    task_id = "maintenance.agency_connectivity_scan"
+    default_config = {
+        "enabled": False,  # Explicitly disabled; for manual triggering only
+        "schedule": "*/10 * * * *",  # Placeholder; effective only if enabled
+        "targets": ["postgres"],
+    }
+
+    async def execute(self, context: TaskContext) -> TaskResult:
+        """Execute connectivity scan via AgencyEngine skill.
+
+        Delegates to the `maint.connectivity.full_scan` skill using the
+        AgencyEngine's SkillInvoker, ensuring we reuse the same maintenance
+        logic as the HTTP endpoint and future self-healing flows.
+        """
+
+        from aico.ai import ai_registry
+
+        try:
+            agency_engine = ai_registry.get("agency")
+        except Exception as exc:  # pragma: no cover - defensive
+            error_msg = f"AgencyEngine not available for connectivity scan: {exc}"
+            self.logger.error(error_msg)
+            return TaskResult(success=False, error=error_msg)
+
+        targets = context.get_config("targets", ["postgres"])
+        input_data: Dict[str, Any] = {"targets": targets}
+
+        try:
+            result = await agency_engine.skill_invoker.invoke_skill(
+                skill_id="maint.connectivity.full_scan",
+                user_id="system_user",
+                input_data=input_data,
+                context={
+                    "trigger": "scheduler_connectivity_scan",
+                    "task_id": self.task_id,
+                    "initiator_type": "system",
+                    "source": "scheduler",
+                },
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            error_msg = f"Connectivity scan skill invocation failed: {exc}"
+            self.logger.error(error_msg, exc_info=True)
+            return TaskResult(success=False, error=error_msg)
+
+        # SkillInvoker.invoke_skill returns a dict with success/output/error fields.
+        if not result.get("success"):
+            error_msg = result.get("error") or "Connectivity scan reported failure"
+            self.logger.warning(f"Agency connectivity scan failed: {error_msg}")
+            return TaskResult(
+                success=False,
+                error=error_msg,
+                data={"output": result.get("output")},
+            )
+
+        # Successful scan; return the skill's structured output in TaskResult
+        return TaskResult(
+            success=True,
+            message="Agency connectivity scan completed successfully",
+            data=result.get("output"),
+        )

@@ -27,6 +27,7 @@ message CompletionsRequest {
   optional double top_p = 6;
   optional string system = 7;
   optional bool think = 8;  // Enable/disable thinking mode (Ollama 0.12+)
+  optional string response_format = 9;  // Response format type (e.g., "json_object" for structured JSON output)
 }
 
 // Streaming chunk message for real-time completions
@@ -121,6 +122,7 @@ message HealthResponse {
   bool success = 1;
   string status = 2;
   optional string error = 3;
+  optional double uptime_seconds = 4;
 }
 
 // Conversation completions response

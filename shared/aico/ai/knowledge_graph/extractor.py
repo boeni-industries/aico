@@ -3,6 +3,7 @@ Multi-Pass Extraction
 
 Implements multi-pass extraction pipeline with gleanings for high completeness.
 Uses GLiNER for entity extraction and LLM for relation extraction.
+Includes semantic entity ranking for optimal context selection.
 """
 
 from typing import List, Dict, Any, Optional
@@ -13,11 +14,13 @@ from datetime import datetime
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
+from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
 from .modelservice_client import ModelserviceClient
+from .semantic_ranker import SemanticEntityRanker
 
-logger = get_logger("shared", "ai.knowledge_graph.extractor")
+logger = get_logger("shared.ai.knowledge_graph.extractor")
 
 
 def normalize_relation_type(relation_type: str) -> str:
@@ -95,6 +98,14 @@ def normalize_entity_label(label: str) -> str:
     # Priority variants
     if label_lower in ["deadline"]:
         return "PRIORITY"
+    
+    # Organization variants (consolidate)
+    if label_lower in ["org", "organisation"]:
+        return "ORGANIZATION"
+    
+    # Location variants (consolidate)
+    if label_lower in ["gpe", "loc", "place"]:
+        return "LOCATION"
     
     # Default: uppercase the label
     return label.upper()
@@ -534,6 +545,13 @@ class GLiNEREntityExtractor(ExtractionStrategy):
             
             # Monitor false positive indicators
             print(f"\n🔍 [QUALITY] Analyzing entity quality...")
+            
+            # Handle empty deduplicated list (e.g., after NER timeout)
+            if not deduplicated:
+                print(f"⚠️  [QUALITY] No entities extracted - skipping quality analysis")
+                logger.warning("No entities extracted from GLiNER - returning empty graph")
+                return PropertyGraph()
+            
             low_confidence_count = sum(1 for e in deduplicated if e["confidence"] < 0.3)
             medium_confidence_count = sum(1 for e in deduplicated if 0.3 <= e["confidence"] < 0.5)
             high_confidence_count = sum(1 for e in deduplicated if e["confidence"] >= 0.5)
@@ -663,6 +681,12 @@ class GLiNEREntityExtractor(ExtractionStrategy):
                 elif text_stripped.replace(' ', '').replace('-', '').isdigit():
                     should_keep = False
                 
+                # 8. Filter meta-references (phrases about entities, not entities themselves)
+                elif text_stripped.lower() in {'my name', 'your name', 'his name', 'her name', 
+                                                'their name', 'that person', 'this thing', 
+                                                'the one i mentioned', 'that thing'}:
+                    should_keep = False
+                
                 if should_keep:
                     filtered_nodes.append(node)
                 else:
@@ -699,7 +723,8 @@ class LLMRelationExtractor(ExtractionStrategy):
     def __init__(
         self,
         modelservice_client: Any,
-        config: ConfigurationManager
+        config: ConfigurationManager,
+        chroma_client: Optional[Any] = None
     ):
         """
         Initialize with modelservice client and config.
@@ -707,13 +732,27 @@ class LLMRelationExtractor(ExtractionStrategy):
         Args:
             modelservice_client: Client for modelservice API
             config: Configuration manager
+            chroma_client: Optional ChromaDB client for semantic ranking
         """
         self.modelservice = modelservice_client
         self.config = config
+        self.chroma_client = chroma_client
         
         # Get LLM timeout from config
-        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
+        kg_config = config.get("memory.semantic.knowledge_graph", {})
         self.llm_timeout = kg_config.get("llm_timeout_seconds", 30.0)
+        
+        # Initialize JSON sanitizer for robust LLM response parsing
+        self.json_sanitizer = LLMJsonSanitizer(strict=False, log_repairs=True)
+        
+        # Initialize semantic ranker if ChromaDB available
+        self.semantic_ranker = None
+        if chroma_client:
+            self.semantic_ranker = SemanticEntityRanker(
+                modelservice_client=modelservice_client,
+                chroma_client=chroma_client
+            )
+            logger.info("🎯 [LLM_EXTRACTOR] Semantic entity ranking enabled")
     
     async def extract(
         self,
@@ -740,46 +779,59 @@ class LLMRelationExtractor(ExtractionStrategy):
             existing_entities = context.get("entities", [])
             entity_context = ""
             if existing_entities:
-                entity_list = [f"- {e['label']}: {e['name']}" for e in existing_entities]
+                # Smart context selection: semantic ranking or fallback to recency
+                MAX_CONTEXT_ENTITIES = 20  # Optimal: 15-20 entities for best relevance
+                
+                if len(existing_entities) > MAX_CONTEXT_ENTITIES:
+                    # Use semantic ranking if available (state-of-the-art approach)
+                    if self.semantic_ranker:
+                        print(f"🎯 [LLM_EXTRACTOR] Using semantic ranking for {len(existing_entities)} entities")
+                        pruned_entities = await self.semantic_ranker.rank_entities(
+                            text=text,
+                            user_id=user_id,
+                            existing_entities=existing_entities,
+                            max_results=MAX_CONTEXT_ENTITIES
+                        )
+                        print(f"🎯 [LLM_EXTRACTOR] Semantic ranking complete: {len(existing_entities)} → {len(pruned_entities)} entities")
+                    else:
+                        # Fallback: most recent entities (simple heuristic)
+                        pruned_entities = existing_entities[-MAX_CONTEXT_ENTITIES:]
+                        print(f"🔗 [LLM_EXTRACTOR] Pruned context: {len(existing_entities)} → {len(pruned_entities)} entities (recency fallback)")
+                else:
+                    pruned_entities = existing_entities
+                
+                entity_list = [f"- {e['label']}: {e['name']}" for e in pruned_entities]
                 entity_context = f"\n\nKnown entities:\n" + "\n".join(entity_list)
-                print(f"🔗 [LLM_EXTRACTOR] Processing with {len(existing_entities)} known entities")
+                print(f"🔗 [LLM_EXTRACTOR] Processing with {len(pruned_entities)} known entities")
             else:
                 print(f"🔗 [LLM_EXTRACTOR] No known entities provided")
             
-            prompt = f"""Extract relationships between DIFFERENT entities from the following text.
+            prompt = f"""Extract relationships between entities from this text. Return ONLY valid JSON.
 
-ENTITY TYPES:
-World Knowledge: PERSON, ORGANIZATION, LOCATION, EVENT, DATE, TIME, PRODUCT, SKILL, TOPIC
-Personal Graph: PROJECT, GOAL, TASK, ACTIVITY, INTEREST, PRIORITY
+Text: "{text}"
+{entity_context}
 
 RELATIONSHIP TYPES:
-World Knowledge: WORKS_FOR, WORKS_AT, LIVES_IN, LOCATED_IN, KNOWS, PART_OF, HAPPENED_IN
-Personal Graph: WORKING_ON, HAS_GOAL, CONTRIBUTES_TO, DEPENDS_ON, INTERESTED_IN, PRIORITIZES, COMPLETED, STARTED
+- WORKS_FOR, WORKS_AT, LIVES_IN, LOCATED_IN, BORN_IN, BORN_ON
+- KNOWS, PART_OF, HAPPENED_IN, CREATED_BY, OWNS, USES
+- WORKING_ON, HAS_GOAL, INTERESTED_IN, LEARNING, DISCUSSED
 
-IMPORTANT RULES:
-- Only extract relationships where source and target are DIFFERENT entities
-- Do NOT create self-referential relationships (e.g., "Michael" -> "has name" -> "Michael")
-- Extract personal activities: projects user is working on, goals they have, tasks to complete
-- If user mentions working on something, create WORKING_ON relationship
-- If user mentions wanting to achieve something, create HAS_GOAL relationship
-- If there are no meaningful relationships between different entities, return empty arrays
+RULES:
+1. Extract ALL relationships between DIFFERENT entities
+2. If entities appear together, they likely relate
+3. Include temporal context (dates, times)
+4. Include spatial context (locations)
+5. NO self-references (source ≠ target)
 
-RELATIONSHIP PROPERTIES:
-Include contextual details about each relationship:
-- role, title, position (for work relationships)
-- start_date, end_date, since, until (for temporal context)
-- amount, salary, percentage (for quantitative data)
+REQUIRED JSON FORMAT:
+{{
+  "relationships": [
+    {{"source": "entity_name", "relation_type": "TYPE", "target": "entity_name", "properties": {{}}}},
+  ],
+  "new_entities": []
+}}
 
-Example: "Sarah is CTO of TechCorp since 2020" → 
-{{"source": "Sarah", "relation_type": "WORKS_FOR", "target": "TechCorp", "properties": {{"role": "CTO", "start_date": "2020"}}}}
-
-Return JSON with:
-- "relationships": [{{"source": "...", "relation_type": "...", "target": "...", "properties": {{...}}}}]
-- "new_entities": [{{"label": "...", "name": "..."}}]
-
-Text: {text}{entity_context}
-
-Return valid JSON only, no explanation."""
+Return ONLY the JSON object above. No explanation, no markdown, just JSON."""
             
             logger.debug(f"Sending LLM prompt ({len(prompt)} chars) for relation extraction")
             
@@ -789,8 +841,8 @@ Return valid JSON only, no explanation."""
             response = await asyncio.wait_for(
                 self.modelservice.generate_completion(
                     prompt=prompt,
-                    temperature=0.3,  # Lower temp for structured output
-                    max_tokens=1024
+                    temperature=0.1,  # Very low temp for structured JSON output
+                    max_tokens=4096  # Increased to prevent truncation with many entities
                 ),
                 timeout=self.llm_timeout
             )
@@ -805,9 +857,13 @@ Return valid JSON only, no explanation."""
             # Log raw response for debugging
             raw_response = response.get("text", "")  # Fixed: key is "text", not "response"
             print(f"🔗 [LLM_EXTRACTOR] Raw response length: {len(raw_response)} chars")
-            if raw_response:
-                print(f"🔗 [LLM_EXTRACTOR] Raw response preview: {raw_response[:200]}...")
-            else:
+            
+            # DIAGNOSTIC: Log full LLM response
+            print(f"🔗 [LLM_EXTRACTOR] ========== FULL LLM RESPONSE ==========")
+            print(raw_response)
+            print(f"🔗 [LLM_EXTRACTOR] ========================================")
+            
+            if not raw_response:
                 print(f"🔗 [LLM_EXTRACTOR] ⚠️  RAW RESPONSE IS EMPTY!")
             
             # Parse LLM response
@@ -816,9 +872,20 @@ Return valid JSON only, no explanation."""
             print(f"🔗 [LLM_EXTRACTOR] Parsed result keys: {result.keys() if isinstance(result, dict) else 'NOT A DICT'}")
             print(f"🔗 [LLM_EXTRACTOR] Parsed: {len(result.get('relationships', []))} relationships, {len(result.get('new_entities', []))} new entities")
             
+            # DIAGNOSTIC: Detailed failure analysis
             if len(result.get('relationships', [])) == 0:
-                print(f"🔗 [LLM_EXTRACTOR] ⚠️  NO RELATIONSHIPS FOUND!")
+                print(f"🔗 [LLM_EXTRACTOR] ⚠️  ZERO RELATIONSHIPS EXTRACTED!")
+                print(f"🔗 [LLM_EXTRACTOR] Context entities: {len(existing_entities)}")
+                print(f"🔗 [LLM_EXTRACTOR] Text length: {len(text)} chars")
                 print(f"🔗 [LLM_EXTRACTOR] Full parsed result: {result}")
+                
+                # Rule-based fallback for co-occurring entities
+                if len(existing_entities) >= 2:
+                    print(f"🔗 [LLM_EXTRACTOR] 🔧 Applying rule-based fallback for {len(existing_entities)} entities")
+                    fallback_rels = self._infer_basic_relationships(existing_entities, text)
+                    if fallback_rels:
+                        result['relationships'] = fallback_rels
+                        print(f"🔗 [LLM_EXTRACTOR] ✅ Fallback generated {len(fallback_rels)} relationships")
             
             logger.debug(f"Received LLM response ({len(raw_response)} chars)")
             
@@ -837,6 +904,15 @@ Return valid JSON only, no explanation."""
             
             # Create edges for relationships
             for rel in result.get("relationships", []):
+                # Validate relationship has required fields (LLM sometimes truncates)
+                if not isinstance(rel, dict):
+                    print(f" [LLM_EXTRACTOR]  Skipping invalid relationship (not a dict): {rel}")
+                    continue
+                
+                if "source" not in rel or "target" not in rel or "relation_type" not in rel:
+                    print(f" [LLM_EXTRACTOR]  Skipping incomplete relationship (missing fields): {rel}")
+                    continue
+                
                 # Skip self-referential relationships (source == target)
                 if rel["source"].lower().strip() == rel["target"].lower().strip():
                     logger.warning(f"Skipping self-referential relationship: {rel['source']} -> {rel['relation_type']} -> {rel['target']}")
@@ -884,25 +960,112 @@ Return valid JSON only, no explanation."""
             return PropertyGraph()
     
     def _parse_llm_response(self, text: str) -> Dict[str, Any]:
-        """Parse LLM JSON response, handling common issues."""
-        try:
-            # Try to extract JSON from response
-            original_text = text
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-                print(f"🔗 [PARSER] Extracted JSON from markdown code block")
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-                print(f"🔗 [PARSER] Extracted from generic code block")
-            
-            parsed = json.loads(text.strip())
-            print(f"🔗 [PARSER] ✅ Successfully parsed JSON")
-            return parsed
-        except Exception as e:
-            print(f"🔗 [PARSER] ❌ Failed to parse LLM response: {e}")
-            print(f"🔗 [PARSER] Raw text (first 500 chars): {original_text[:500]}")
-            logger.warning(f"Failed to parse LLM response: {e}")
+        """Parse LLM JSON response using robust sanitizer with automatic repair."""
+        # Use the JSON sanitizer for robust parsing
+        result = self.json_sanitizer.sanitize(
+            text,
+            expected_type=dict,
+            return_objects=True
+        )
+        
+        if result.success:
+            print(f"🔗 [PARSER] ✅ Successfully parsed JSON (strategy: {result.strategy.value})")
+            return result.data
+        else:
+            print(f"🔗 [PARSER] ❌ Failed to parse LLM response: {result.error}")
+            print(f"🔗 [PARSER] Raw text (first 1000 chars): {text[:1000]}")
+            logger.warning(f"Failed to parse LLM response after all repair strategies: {result.error}")
             return {"relationships": [], "new_entities": []}
+    
+    def _infer_basic_relationships(self, entities: List[Dict[str, Any]], text: str) -> List[Dict[str, Any]]:
+        """
+        Rule-based relationship inference for when LLM fails.
+        
+        Uses simple heuristics based on entity types co-occurring in same text.
+        """
+        relationships = []
+        
+        # Group entities by type
+        by_type = {}
+        for entity in entities:
+            label = entity.get('label', 'ENTITY')
+            if label not in by_type:
+                by_type[label] = []
+            by_type[label].append(entity.get('name', ''))
+        
+        # Rule 1: PERSON + ORGANIZATION → WORKS_FOR
+        if 'PERSON' in by_type and 'ORGANIZATION' in by_type:
+            for person in by_type['PERSON']:
+                for org in by_type['ORGANIZATION']:
+                    relationships.append({
+                        'source': person,
+                        'relation_type': 'WORKS_FOR',
+                        'target': org,
+                        'properties': {}
+                    })
+        
+        # Rule 2: PERSON + LOCATION → LIVES_IN
+        if 'PERSON' in by_type and 'LOCATION' in by_type:
+            for person in by_type['PERSON']:
+                for loc in by_type['LOCATION']:
+                    relationships.append({
+                        'source': person,
+                        'relation_type': 'LIVES_IN',
+                        'target': loc,
+                        'properties': {}
+                    })
+        
+        # Rule 3: PERSON + DATE (birth context) → BORN_ON
+        if 'PERSON' in by_type and 'DATE' in by_type:
+            if any(word in text.lower() for word in ['born', 'birth', 'birthday']):
+                for person in by_type['PERSON']:
+                    for date in by_type['DATE']:
+                        relationships.append({
+                            'source': person,
+                            'relation_type': 'BORN_ON',
+                            'target': date,
+                            'properties': {}
+                        })
+        
+        # Rule 4: ORGANIZATION + LOCATION → LOCATED_IN
+        if 'ORGANIZATION' in by_type and 'LOCATION' in by_type:
+            for org in by_type['ORGANIZATION']:
+                for loc in by_type['LOCATION']:
+                    relationships.append({
+                        'source': org,
+                        'relation_type': 'LOCATED_IN',
+                        'target': loc,
+                        'properties': {}
+                    })
+        
+        # Rule 5: PERSON + PROJECT/ACTIVITY → WORKING_ON
+        if 'PERSON' in by_type:
+            for activity_type in ['PROJECT', 'ACTIVITY', 'TASK']:
+                if activity_type in by_type:
+                    for person in by_type['PERSON']:
+                        for activity in by_type[activity_type]:
+                            relationships.append({
+                                'source': person,
+                                'relation_type': 'WORKING_ON',
+                                'target': activity,
+                                'properties': {}
+                            })
+        
+        # Rule 6: PERSON + TOPIC/INTEREST → INTERESTED_IN
+        if 'PERSON' in by_type:
+            for interest_type in ['TOPIC', 'INTEREST', 'SKILL']:
+                if interest_type in by_type:
+                    for person in by_type['PERSON']:
+                        for interest in by_type[interest_type]:
+                            relationships.append({
+                                'source': person,
+                                'relation_type': 'INTERESTED_IN',
+                                'target': interest,
+                                'properties': {}
+                            })
+        
+        logger.info(f"Rule-based inference generated {len(relationships)} relationships from {len(entities)} entities")
+        return relationships
     
     def _find_or_create_node(
         self,
@@ -953,39 +1116,45 @@ class MultiPassExtractor:
     """
     Multi-pass extraction pipeline with gleanings.
     
-    Implements the multi-pass extraction algorithm:
-    1. Pass 1: GLiNER entity extraction + LLM relation extraction
-    2. Pass 2+: Gleaning passes to find missed information
+    Orchestrates entity extraction, relationship extraction, and iterative refinement.
+    Includes semantic entity ranking for optimal LLM context selection.
     """
     
     def __init__(
         self,
         modelservice_client: Any,
-        config: ConfigurationManager
+        config: ConfigurationManager,
+        max_gleanings: int = 0,
+        chromadb_client: Optional[Any] = None
     ):
         """
-        Initialize extractor with strategies.
+        Initialize multi-pass extractor.
         
         Args:
             modelservice_client: Client for modelservice API
             config: Configuration manager
+            max_gleanings: Maximum number of gleaning passes (0 = single pass)
+            chromadb_client: Optional ChromaDB client for semantic ranking
         """
+        self.modelservice = modelservice_client
         self.config = config
-        
-        # Get config settings
-        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
-        self.max_gleanings = kg_config.get("max_gleanings", 2)
+        self.max_gleanings = max_gleanings
         
         # Initialize extraction strategies
-        self.gliner_extractor = GLiNEREntityExtractor(modelservice_client)
-        self.llm_extractor = LLMRelationExtractor(modelservice_client, config)
+        self.entity_extractor = GLiNEREntityExtractor(modelservice_client)
+        self.relation_extractor = LLMRelationExtractor(
+            modelservice_client, 
+            config,
+            chroma_client=chromadb_client  # Enable semantic ranking
+        )
         
         logger.info(f"MultiPassExtractor initialized (max_gleanings={self.max_gleanings})")
     
     async def extract(
         self,
         text: str,
-        user_id: str
+        user_id: str,
+        context: Dict[str, Any] = None
     ) -> PropertyGraph:
         """
         Extract knowledge graph from text using multi-pass algorithm.
@@ -993,17 +1162,21 @@ class MultiPassExtractor:
         Args:
             text: Text to extract from
             user_id: User ID
+            context: Optional context with existing entities to prevent duplicates
             
         Returns:
             PropertyGraph with extracted entities and relationships
         """
+        if context is None:
+            context = {}
+            
         print(f"\n📚 [MULTIPASS] Starting multi-pass extraction (max_passes={self.max_gleanings + 1})")
         logger.info(f"Starting multi-pass extraction (max_passes={self.max_gleanings + 1})")
         pipeline_start = time.time()
         
-        # Pass 1: Initial extraction
+        # Pass 1: Initial extraction with context
         pass1_start = time.time()
-        graph = await self._initial_extraction(text, user_id)
+        graph = await self._initial_extraction(text, user_id, context)
         pass1_time = time.time() - pass1_start
         initial_count = len(graph)
         
@@ -1035,7 +1208,8 @@ class MultiPassExtractor:
     async def _initial_extraction(
         self,
         text: str,
-        user_id: str
+        user_id: str,
+        context: Dict[str, Any] = None
     ) -> PropertyGraph:
         """
         Pass 1: Initial extraction using GLiNER + LLM.
@@ -1043,15 +1217,18 @@ class MultiPassExtractor:
         Args:
             text: Text to extract from
             user_id: User ID
+            context: Optional context with existing entities
             
         Returns:
             PropertyGraph with initial extraction
         """
+        if context is None:
+            context = {}
         # Step 1: Extract entities using GLiNER (fast)
         print(f"\n  🔍 [ENTITIES] Starting GLiNER entity extraction...")
         entity_start = time.time()
         logger.debug("Starting entity extraction phase")
-        entity_graph = await self.gliner_extractor.extract(text, user_id, {})
+        entity_graph = await self.entity_extractor.extract(text, user_id, {})
         entity_time = time.time() - entity_start
         print(f"  🔍 [ENTITIES] ✅ Complete in {entity_time:.2f}s: {len(entity_graph.nodes)} entities")
         logger.info(f"Entity extraction complete: {len(entity_graph.nodes)} entities")
@@ -1061,23 +1238,26 @@ class MultiPassExtractor:
         graph.merge(entity_graph)
         
         # Step 2: Build entity context for relation extraction
-        entity_context = {
-            "entities": [
-                {
-                    "id": node.id,
-                    "label": node.label,
-                    "name": safe_get_name(node)
-                }
-                for node in entity_graph.nodes
-            ]
-        }
+        # Merge newly extracted entities with existing entities from context
+        all_entities = context.get("entities", [])  # Existing entities from DB
+        new_entities = [
+            {
+                "id": node.id,
+                "label": node.label,
+                "name": safe_get_name(node)
+            }
+            for node in entity_graph.nodes
+        ]
+        all_entities.extend(new_entities)
         
-        # Step 3: Extract relations WITH entity context (only one LLM call needed)
+        entity_context = {"entities": all_entities}
+        
+        # Step 3: Extract relations WITH full entity context (existing + new)
         print(f"🔗 [RELATIONS] Starting relation extraction with {len(entity_context['entities'])} known entities")
         logger.debug(f"Starting relation extraction with {len(entity_context['entities'])} known entities")
         
         try:
-            relation_graph = await self.llm_extractor.extract(text, user_id, entity_context)
+            relation_graph = await self.relation_extractor.extract(text, user_id, entity_context)
             print(f"🔗 [RELATIONS] Extraction complete: {len(relation_graph.edges)} relationships, {len(relation_graph.nodes)} new nodes")
             logger.info(f"Relation extraction complete: {len(relation_graph.edges)} relationships")
             graph.merge(relation_graph)
@@ -1146,7 +1326,7 @@ Return valid JSON only."""
             
             logger.debug(f"Sending gleaning prompt ({len(prompt)} chars)")
             
-            response = await self.llm_extractor.modelservice.generate_completion(
+            response = await self.relation_extractor.modelservice.generate_completion(
                 prompt=prompt,
                 model="eve",
                 temperature=0.3,
@@ -1156,7 +1336,7 @@ Return valid JSON only."""
             response_text = response.get("text", "")
             logger.debug(f"Received gleaning response ({len(response_text)} chars)")
             
-            result = self.llm_extractor._parse_llm_response(response_text)
+            result = self.relation_extractor._parse_llm_response(response_text)
             
             graph = PropertyGraph()
             
@@ -1183,10 +1363,10 @@ Return valid JSON only."""
                     logger.warning(f"Skipping self-referential relationship in gleaning: {rel['source']} -> {rel['relation_type']} -> {rel['target']}")
                     continue
                 
-                source_node = self.llm_extractor._find_or_create_node(
+                source_node = self.relation_extractor._find_or_create_node(
                     rel["source"], user_id, text, graph, context
                 )
-                target_node = self.llm_extractor._find_or_create_node(
+                target_node = self.relation_extractor._find_or_create_node(
                     rel["target"], user_id, text, graph, context
                 )
                 

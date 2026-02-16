@@ -30,12 +30,14 @@ This document defines AICO's real-time state streaming architecture for maintain
 
 **Configuration**:
 ```yaml
-websocket:
-  port: 8772
-  path: "/ws"
-  heartbeat_interval: 30
-  max_connections: 1000
-  max_message_size: 10MB
+api_gateway:
+  protocols:
+    websocket:
+      enabled: true
+      port: 8772
+      path: "/ws"
+      heartbeat_interval: 30
+      max_connections: 1000
 ```
 
 **Message Types Supported**:
@@ -65,11 +67,10 @@ websocket:
 **Location**: `/backend/api/conversation/router.py`
 
 **Status**: Partially implemented
-- ✅ WebSocket endpoint exists (`/api/v1/conversations/ws`)
-- ⚠️ No authentication (security risk)
-- ⚠️ No user-scoped filtering
-- ⚠️ Basic message bus integration
-- ❌ No structured state streaming
+- ✅ WebSocket endpoint exists (`/api/v1/conversation/ws`)
+- ⚠️ Currently accepts connections without authentication (see TODO in code)
+- ⚠️ Basic message bus integration for streaming responses
+- ❌ No generalized, structured state streaming service (this document describes the target design)
 
 ## State Streaming Architecture
 

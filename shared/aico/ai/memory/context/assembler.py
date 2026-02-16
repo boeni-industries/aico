@@ -15,7 +15,7 @@ from .retrievers import ContextRetrievers
 from .scorers import ContextScorer
 from .graph_ranking import GraphContextRanker
 
-logger = get_logger("ai", "memory.context.assembler")
+logger = get_logger("ai.memory.context.assembler")
 
 
 class ContextAssembler:
@@ -31,7 +31,7 @@ class ContextAssembler:
     Provides unified, prioritized context for AI processing.
     """
     
-    def __init__(self, working_store, episodic_store, semantic_store, behavioral_store, kg_storage=None, kg_modelservice=None, db_connection=None):
+    def __init__(self, working_store, episodic_store, semantic_store, behavioral_store, kg_storage=None, kg_modelservice=None, uow_factory=None):
         """
         Initialize context assembler.
         
@@ -42,7 +42,7 @@ class ContextAssembler:
             behavioral_store: Behavioral memory store
             kg_storage: Knowledge graph storage (optional)
             kg_modelservice: KG modelservice client (optional)
-            db_connection: Database connection for KG queries (optional)
+            uow_factory: Unit of Work factory for PostgreSQL access (optional)
         """
         self.retrievers = ContextRetrievers(
             working_store,
@@ -58,7 +58,7 @@ class ContextAssembler:
         # KG components
         self.kg_storage = kg_storage
         self.kg_modelservice = kg_modelservice
-        self.db_connection = db_connection
+        self.uow_factory = uow_factory
         
         # Configuration
         self._max_context_items = 50
@@ -138,8 +138,16 @@ class ContextAssembler:
                 except Exception as e:
                     logger.warning(f"Behavioral memory context retrieval failed: {e}")
             
+            # 4.3 Get agency lessons (self-reflection insights)
+            if self.uow_factory:
+                try:
+                    lesson_items = await self._get_agency_lessons(user_id, current_message)
+                    all_items.extend(lesson_items or [])
+                    logger.debug(f"Retrieved {len(lesson_items or [])} agency lessons")
+                except Exception as e:
+                    logger.warning(f"Agency lesson retrieval failed: {e}")
+            
             # 4.5 Get knowledge graph context (entities and relationships)
-            # Uses libSQL for structured queries (no embeddings needed)
             kg_context = {}
             if self.kg_storage and self.kg_modelservice:  # ENABLED
                 try:
@@ -149,9 +157,8 @@ class ContextAssembler:
                         item.content for item in working_items[-3:] if item.content
                     ]) if working_items else current_message
                     
-                    print(f"🕸️ [KG_CONTEXT] Getting recent KG entities from libSQL...")
+                    print(f"🕸️ [KG_CONTEXT] Getting recent KG entities from PostgreSQL...")
                     
-                    # Get recent nodes from libSQL (no embeddings needed, fast query)
                     # Moved from semantic search to avoid embedding queue saturation
                     kg_nodes = await self.kg_storage.get_user_nodes(
                         user_id,
@@ -162,48 +169,45 @@ class ContextAssembler:
                     
                     # Get edges connecting these nodes
                     kg_edges = []
-                    if kg_nodes and self.db_connection:
-                        node_ids = [node.id for node in kg_nodes]
-                        
-                        # Query edges that connect any of these nodes
-                        placeholders = ','.join(['?' for _ in node_ids])
-                        edge_query = f"""
-                            SELECT 
-                                e.id, e.relation_type, e.confidence,
-                                n1.properties as source_props,
-                                n2.properties as target_props
-                            FROM kg_edges e
-                            JOIN kg_nodes n1 ON e.source_id = n1.id
-                            JOIN kg_nodes n2 ON e.target_id = n2.id
-                            WHERE e.user_id = ? 
-                            AND e.is_current = 1
-                            AND (e.source_id IN ({placeholders}) OR e.target_id IN ({placeholders}))
-                            LIMIT 10
-                        """
-                        
-                        params = [user_id] + node_ids + node_ids
-                        
-                        def _get_edges():
-                            with self.db_connection:
-                                return self.db_connection.execute(edge_query, params).fetchall()
-                        
-                        edge_results = await asyncio.to_thread(_get_edges)
-                        
-                        import json
-                        for row in edge_results:
-                            source_props = json.loads(row[3])
-                            target_props = json.loads(row[4])
-                            kg_edges.append({
-                                "relation": row[1],
-                                "source": source_props.get("name", "?"),
-                                "target": target_props.get("name", "?"),
-                                "confidence": row[2]
-                            })
+                    if kg_nodes and self.kg_storage:
+                        # Use KG storage to get edges instead of direct DB access
+                        try:
+                            for node in kg_nodes[:5]:  # Limit to avoid too many queries
+                                edges = await self.kg_storage.get_edges_for_node(node.id, direction="both")
+                                for edge in edges:
+                                    source_props = getattr(edge, "source_properties", None)
+                                    if isinstance(source_props, str):
+                                        try:
+                                            import json
+                                            source_props = json.loads(source_props)
+                                        except Exception:
+                                            source_props = {}
+                                    if not isinstance(source_props, dict):
+                                        source_props = {}
+
+                                    target_props = getattr(edge, "target_properties", None)
+                                    if isinstance(target_props, str):
+                                        try:
+                                            import json
+                                            target_props = json.loads(target_props)
+                                        except Exception:
+                                            target_props = {}
+                                    if not isinstance(target_props, dict):
+                                        target_props = {}
+
+                                    kg_edges.append({
+                                        "relation": edge.relation_type,
+                                        "source": source_props.get("name", "?"),
+                                        "target": target_props.get("name", "?"),
+                                        "confidence": edge.confidence
+                                    })
+                        except Exception as e:
+                            logger.warning(f"Failed to retrieve KG edges: {e}")
                     
                     kg_context = {
                         "entities": [
                             {
-                                "name": node.properties.get("name", "?"),
+                                "name": (node.properties.get("name", "?") if isinstance(node.properties, dict) else "?"),
                                 "type": node.label,
                                 "confidence": node.confidence
                             }
@@ -416,3 +420,74 @@ class ContextAssembler:
         except Exception as e:
             logger.error(f"Failed to get user context: {e}")
             return {"user_id": user_id, "context_strength": 0.0}
+    
+    async def _get_agency_lessons(self, user_id: str, current_message: str) -> List[ContextItem]:
+        """
+        Retrieve relevant agency lessons for conversation context.
+        
+        Queries active lessons from the agency_lessons table and returns them
+        as ContextItems so they can be included in conversation context.
+        
+        Args:
+            user_id: User ID
+            current_message: Current message text for relevance filtering
+            
+        Returns:
+            List of ContextItems containing lesson information
+        """
+        items = []
+        
+        try:
+            # Query active lessons from database via UoW
+            async with self.uow_factory() as uow:
+                lessons = await uow.lessons.list(
+                    filters={"user_id": user_id, "status": "active"},
+                    limit=5
+                )
+            
+            rows = [(l.lesson_id, l.lesson_type, l.target_kind, l.target_id, 
+                    l.summary_text, l.confidence, l.created_at) for l in lessons 
+                    if l.confidence and l.confidence >= 0.7]
+            
+            # Convert to ContextItems
+            for row in rows:
+                lesson_type = row[1]
+                target_kind = row[2]
+                target_id = row[3]
+                description = row[4]
+                confidence = row[5]
+                created_at = row[6]
+
+                if isinstance(created_at, str):
+                    try:
+                        created_at_dt = datetime.fromisoformat(created_at)
+                    except Exception:
+                        created_at_dt = datetime.utcnow()
+                elif isinstance(created_at, datetime):
+                    created_at_dt = created_at
+                else:
+                    created_at_dt = datetime.utcnow()
+                
+                # Create context item
+                item = ContextItem(
+                    content=f"[Lesson: {lesson_type}] {description}",
+                    source_tier="behavioral",
+                    item_type="pattern",
+                    timestamp=created_at_dt,
+                    relevance_score=confidence,  # Use lesson confidence as relevance
+                    metadata={
+                        "lesson_id": row[0],
+                        "lesson_type": lesson_type,
+                        "target_kind": target_kind,
+                        "target_id": target_id,
+                        "confidence": confidence,
+                    }
+                )
+                items.append(item)
+            
+            logger.info(f"Retrieved {len(items)} agency lessons for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve agency lessons: {e}", exc_info=True)
+        
+        return items

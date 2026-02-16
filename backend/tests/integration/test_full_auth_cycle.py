@@ -24,49 +24,47 @@ REST_BASE = "http://127.0.0.1:8771/api/v1"
 WS_URL = "ws://127.0.0.1:8772/ws"
 
 def check_database_sessions():
-    """Check auth_sessions table in database"""
+    """Check auth_sessions table in PostgreSQL database"""
     try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
         from aico.core.config import ConfigurationManager
-        from aico.core.paths import AICOPaths
-        from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-        
         config = ConfigurationManager()
-        db_config = config.get("database.libsql", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
+        config.initialize(lightweight=True)
         
-        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
-        
-        if not db_path.exists():
-            print(f"Database file not found at: {db_path}")
+        pg_cfg = config.get("postgres", {})
+        if not pg_cfg:
+            print("No PostgreSQL configuration found")
             return
         
-        key_manager = AICOKeyManager()
-        cached_key = key_manager._get_cached_session()
-        if cached_key:
-            key_manager._extend_session()
-            db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-        else:
-            import keyring
-            stored_key = keyring.get_password(key_manager.service_name, "master_key")
-            if stored_key:
-                master_key = bytes.fromhex(stored_key)
-                db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            else:
-                print("No master key available for database access")
-                return
+        host = pg_cfg.get("host", "127.0.0.1")
+        port = int(pg_cfg.get("port", 5432))
+        db_name = pg_cfg.get("db_name", "aico")
+        user = pg_cfg.get("user", "postgres")
         
-        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+        # Get password from keyring
+        key_manager = AICOKeyManager(config)
+        password = key_manager.get_database_password("postgres", username=user)
         
-        cursor = conn.execute("""
-            SELECT uuid, user_uuid, device_uuid, expires_at, is_active, session_type 
-            FROM auth_sessions 
-            WHERE user_uuid = ? 
-            ORDER BY created_at DESC
-        """, (USER_UUID,))
+        if not password:
+            print("PostgreSQL password not found in keyring")
+            return
+        
+        db = psycopg2.connect(
+            host=host,
+            port=port,
+            dbname=db_name,
+            user=user,
+            password=password,
+            cursor_factory=RealDictCursor
+        )
+        
+        cursor = db.cursor()
+        cursor.execute("SELECT session_id, user_uuid, is_active, created_at, expires_at FROM aico_core.auth_sessions WHERE user_uuid = %s ORDER BY created_at DESC", (USER_UUID,))
         
         sessions = cursor.fetchall()
+        cursor.close()
+        db.close()
         print(f"\nDatabase sessions for user {USER_UUID}:")
         if sessions:
             for session in sessions:

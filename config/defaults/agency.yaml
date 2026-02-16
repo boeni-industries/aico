@@ -1,0 +1,120 @@
+# Agency Configuration
+# Autonomous goal management, planning, and proactive behavior
+
+# Curiosity Engine settings
+curiosity:
+  # **[effect]** Upper bound of curiosity signals produced per scan cycle.
+  # Higher values can increase background work and downstream goal proposals.
+  max_signals_per_scan: 10
+  # **[effect]** Minimum score threshold for a CuriositySignal to be considered for goal creation.
+  # Lower values = more (and noisier) signals become goals; higher values = fewer, higher-quality signals.
+  min_signal_score: 0.3  # Minimum score for goal creation
+
+# LLM Planning settings
+planning:
+  # **[effect]** Temperature used when LLM plan refinement is enabled.
+  # Higher = more creative/diverse plans; lower = more deterministic.
+  llm_temperature: 0.7
+  # **[effect]** Max tokens for LLM plan refinement output.
+  # Higher = more detailed plans; lower = shorter/cheaper.
+  llm_max_tokens: 1000
+  # **[effect]** Enables/disables the optional LLM refinement step for plans.
+  # When false, Agency planning remains deterministic/templated.
+  enable_llm_refinement: true  # Can disable LLM planning globally
+
+# Phase 5: Self-Reflection configuration
+self_reflection:
+  # **[effect]** Master switch for the scheduled self-reflection task.
+  # When false, the scheduler task will skip entirely.
+  enabled: true
+  # **[effect]** Controls whether reflection output is only recorded or also applied.
+  # Supported values:
+  # - "observe_only": Generate/store lessons and self-model, but do not apply operational changes.
+  # - "allow_amend": Apply eligible operational lessons (e.g. skill_tuning) and mark them applied.
+  # - "disabled": Reflection engine refuses to run (hard off), even if enabled=true.
+  # NOTE: Policy-rule amendments via Values & Ethics APIs are a separate (future) capability.
+  policy_mode: "allow_amend"
+  # **[effect]** Minimum number of samples required before generating lessons for an entity.
+  # Prevents overfitting on too little data.
+  min_sample_size: 10
+  # **[effect]** Minimum confidence for lessons to be eligible for application when policy_mode allows applying.
+  # Lessons below this threshold are stored but not applied.
+  confidence_threshold: 0.7
+
+# Phase 4: Values & Ethics configuration
+values_ethics:
+  # **[effect]** Enables Values & Ethics evaluation gates.
+  enabled: true  # Enable values/ethics evaluation for goals and plans
+  # **[effect]** Installs default policy rules at backend startup (idempotent) if enabled.
+  install_default_policies: true  # Install default policy rules on backend startup (idempotent)
+  # **[effect]** Controls how violations are handled:
+  # - "enforce": block disallowed actions (default)
+  # - "warn_only": allow but emit warnings
+  # - "disabled": skip evaluation entirely
+  policy_mode: "enforce"  # How to handle policy violations: "enforce" (block), "warn_only" (log), "disabled" (skip)
+
+# Phase 4: Goal Arbiter configuration
+arbiter:
+  # **[effect]** Enables/disables the goal scoring + intention-set selection.
+  enabled: true  # Enable goal scoring and intention set management
+  # **[effect]** Cap for concurrently active intentions.
+  max_active_intentions: 3  # Maximum number of actively pursued goals per user
+  # **[effect]** Cap for background/proposed intentions kept around.
+  max_background_intentions: 5  # Maximum number of background/proposed goals per user
+  # **[effect]** Weights for the scoring algorithm. These shape which goals become active.
+  scoring_weights:  # Weights for goal scoring algorithm (must sum to ~1.0)
+    priority: 0.25      # Weight for goal priority (high/normal/low) [was 0.30]
+    origin: 0.25        # Weight for goal origin (user > curiosity > hobby > maintenance) [was 0.20]
+    freshness: 0.10     # Weight for how recently the goal was created [was 0.15]
+    curiosity_score: 0.10  # Weight for curiosity signal score (if applicable) [was 0.15]
+    persistence: 0.15   # Weight for intent frequency/reinforcement [NEW]
+    personality_fit: 0.10  # Weight for personality alignment (Phase 2+)
+    emotion_boost: 0.05    # Weight for emotional state boost (Phase 2+) [was 0.10]
+  update_interval_minutes: 15  # How often to re-evaluate intention set (background task)
+
+# Phase 4: Safety & Control configuration
+safety_control:
+  # **[effect]** Global autonomy level for proactive behavior.
+  # quiet < balanced < proactive < autonomous.
+  # Autonomy level - controls how proactive AICO can be with goal creation and actions
+  # - "quiet": Only respond to explicit user requests, no autonomous goals
+  # - "balanced": Create goals from curiosity but require user activation (default)
+  # - "proactive": Autonomously activate goals and send occasional suggestions
+  # - "autonomous": Fully autonomous goal pursuit within safety constraints
+  autonomy_level: "proactive"
+  
+  # Quiet hours - time periods when AICO should not initiate proactive actions
+  quiet_hours:
+    # **[effect]** If enabled, proactive actions/messages are suppressed during quiet hours.
+    enabled: true  # Enable quiet hours enforcement
+    start_time: "22:00"  # Start of quiet period (24-hour format, local time)
+    end_time: "08:00"    # End of quiet period (24-hour format, local time)
+    timezone: "local"    # Timezone: "local" for system timezone or IANA name like "Europe/Zurich"
+  
+  # Consent requirements - when to require explicit user consent
+  consent:
+    # **[effect]** When true, AICO requires explicit user consent before creating goals in these categories.
+    require_for_curiosity: false  # Require consent before creating curiosity-driven goals
+    require_for_hobbies: false    # Require consent before creating hobby goals
+    require_for_sensitive_areas: true  # Require consent for goals touching sensitive life areas
+    consent_timeout_hours: 24     # Hours to wait for consent before dropping the goal
+  
+  # Rate limiting - prevent overwhelming the user with too many goals/messages
+  rate_limits:
+    # **[effect]** Hard limits to prevent overwhelming the user.
+    max_goals_per_day: 10  # Maximum new goals created per day per user
+    max_proactive_messages_per_day: 5  # Maximum proactive messages sent per day
+    min_hours_between_proactive: 2  # Minimum hours between proactive messages
+
+# Agency-wide retention policy for execution history
+execution_retention:
+  # **[effect]** If set, delete executions older than this many days.
+  # If null, age-based pruning is disabled.
+  # Delete executions older than this many days (if null, age-based pruning is disabled)
+  max_age_days: 10
+  # **[effect]** Keep at most this many most recent executions per plan.
+  # Keep at most this many most recent executions per plan (including all statuses)
+  max_executions_per_plan: 10
+  # **[effect]** Always keep at least this many newest executions per plan, regardless of age.
+  # Always keep at least this many newest executions per plan, regardless of age
+  min_keep_per_plan: 3

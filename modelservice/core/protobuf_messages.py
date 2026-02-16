@@ -61,19 +61,21 @@ class ModelserviceMessageFactory:
         
         # Debug logging for payload unpacking
         from aico.core.logging import get_logger
-        logger = get_logger("modelservice", "protobuf_debug")
-        
-        logger.info(f"[DEBUG] Attempting to unpack payload as {expected_type.__name__}")
-        logger.info(f"[DEBUG] Payload type URL: {envelope.any_payload.type_url}")
-        logger.info(f"[DEBUG] Payload value length: {len(envelope.any_payload.value)} bytes")
+        logger = get_logger("modelservice.protobuf_debug")
+
+        if logger.isEnabledFor(10):  # logging.DEBUG
+            logger.debug(f"[DEBUG] Attempting to unpack payload as {expected_type.__name__}")
+            logger.debug(f"[DEBUG] Payload type URL: {envelope.any_payload.type_url}")
+            logger.debug(f"[DEBUG] Payload value length: {len(envelope.any_payload.value)} bytes")
         
         payload = expected_type()
         if not envelope.any_payload.Unpack(payload):
-            logger.error(f"[DEBUG] FAILED to unpack payload as {expected_type.__name__}")
-            logger.error(f"[DEBUG] Expected type URL should contain: {expected_type.DESCRIPTOR.full_name}")
+            logger.error(f"FAILED to unpack payload as {expected_type.__name__}")
+            logger.error(f"Expected type URL should contain: {expected_type.DESCRIPTOR.full_name}")
             raise ValueError(f"Failed to unpack payload as {expected_type.__name__}")
-        
-        logger.info(f"[DEBUG] Successfully unpacked payload as {expected_type.__name__}")
+
+        if logger.isEnabledFor(10):  # logging.DEBUG
+            logger.debug(f"[DEBUG] Successfully unpacked payload as {expected_type.__name__}")
         return payload
     
     # Request message factories
@@ -242,10 +244,10 @@ class ModelserviceMessageParser:
     def extract_request_payload(envelope: AicoMessage, topic: str):
         """Extract request payload from envelope based on topic."""
         from aico.core.logging import get_logger
-        logger = get_logger("modelservice", "protobuf_debug")
+        logger = get_logger("modelservice.protobuf_debug")
         
         message_type = envelope.metadata.message_type
-        logger.info(f"[DEBUG] extract_request_payload called with message_type: {message_type}")
+        logger.debug(f"[DEBUG] extract_request_payload called with message_type: {message_type}")
         
         # Map message types to their corresponding protobuf classes
         request_types = {
@@ -270,9 +272,9 @@ class ModelserviceMessageParser:
         
         request_class = request_types.get(message_type)
         if not request_class:
-            logger.error(f"[DEBUG] Unknown request type: {message_type}")
+            logger.error(f"Unknown request type: {message_type}")
             raise ValueError(f"Unknown request type: {message_type}")
-        logger.info(f"[DEBUG] Found request class: {request_class.__name__} for message_type: {message_type}")
+        logger.debug(f"[DEBUG] Found request class: {request_class.__name__} for message_type: {message_type}")
         return ModelserviceMessageFactory.extract_payload(envelope, request_class)
     
     @staticmethod

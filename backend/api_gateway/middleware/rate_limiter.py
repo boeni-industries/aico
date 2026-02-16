@@ -63,7 +63,7 @@ class RateLimiter:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.logger = get_logger("backend", "api_gateway.rate_limiter")
+        self.logger = get_logger("backend.api_gateway.rate_limiter")
         
         # Configuration - convert per-minute to per-second
         requests_per_minute = config.get("default_requests_per_minute", 100)
@@ -102,7 +102,7 @@ class RateLimiter:
             raise HTTPException(status_code=429, detail=str(e))
         except Exception as e:
             self.logger.error(f"Rate limiter middleware error: {e}", extra={
-                "module": "api_gateway",
+                "subsystem": "api_gateway",
                 "function": "dispatch",
                 "topic": "rate_limiter.middleware_error",
                 "error": str(e)

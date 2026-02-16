@@ -11,7 +11,7 @@ import time
 from aico.core.logging import get_logger
 
 router = APIRouter()
-logger = get_logger("api", "handshake")
+logger = get_logger("api.handshake")
 
 # This will be injected during app initialization
 transport_manager = None

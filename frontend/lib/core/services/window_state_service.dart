@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -46,7 +46,6 @@ class WindowStateService with WindowListener {
             final packageInfo = await PackageInfo.fromPlatform();
             await windowManager.setTitle('AICO v${packageInfo.version}');
           } catch (e) {
-            debugPrint('[WindowStateService] Failed to set window title: $e');
             await windowManager.setTitle('AICO');
           }
           
@@ -59,7 +58,6 @@ class WindowStateService with WindowListener {
         windowManager.addListener(this);
         
         _isInitialized = true;
-        debugPrint('[WindowStateService] Initialized and restored window state');
       } catch (e) {
         debugPrint('[WindowStateService] Failed to initialize: $e');
       }
@@ -73,7 +71,6 @@ class WindowStateService with WindowListener {
       
       if (isMaximized) {
         await windowManager.maximize();
-        debugPrint('[WindowStateService] Restored maximized state');
       } else {
         final x = _prefs.getDouble(_keyWindowX);
         final y = _prefs.getDouble(_keyWindowY);
@@ -86,12 +83,10 @@ class WindowStateService with WindowListener {
             position: Offset(x, y),
             size: Size(width, height),
           );
-          debugPrint('[WindowStateService] Restored window bounds: ($x, $y, $width, $height)');
         } else {
           // First launch - set default size and center
           await windowManager.setSize(const Size(1200, 800));
           await windowManager.center();
-          debugPrint('[WindowStateService] First launch - set default size and centered');
         }
       }
     } catch (e) {

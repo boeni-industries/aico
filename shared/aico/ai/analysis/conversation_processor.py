@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "ai.conversation_processor")
+logger = get_logger("shared.ai.conversation_processor")
 
 
 @dataclass
@@ -69,11 +69,11 @@ class ConversationSegmentProcessor:
         Returns:
             List of conversation segments with extracted entities and metadata
         """
-        logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] process_conversation_history CALLED with {len(messages) if messages else 0} messages")
-        logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] conversation_id: {conversation_id}, user_id: {user_id}")
+        logger.debug(f" [CONVERSATION_PROCESSOR_DEBUG] process_conversation_history CALLED with {len(messages) if messages else 0} messages")
+        logger.debug(f" [CONVERSATION_PROCESSOR_DEBUG] conversation_id: {conversation_id}, user_id: {user_id}")
         
         if not messages:
-            logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] No messages provided, returning empty list")
+            logger.debug(f" [CONVERSATION_PROCESSOR_DEBUG] No messages provided, returning empty list")
             return []
             
         segments = []
@@ -142,39 +142,39 @@ class ConversationSegmentProcessor:
             logger.debug(f"🔄 [CONVERSATION_PROCESSOR] User-only text length: {len(user_only_text)}")
             
             # Extract entities using modelservice NER - ONLY from user messages
-            logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Extracting entities from USER messages only ({len(user_only_text)} chars)")
-            logger.info(f"🔍 [CONVERSATION_PROCESSOR] User text for NER: '{user_only_text[:200]}...'")
+            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] → Extracting entities from USER messages only ({len(user_only_text)} chars)")
+            logger.debug(f"🔍 [CONVERSATION_PROCESSOR] User text for NER: '{user_only_text[:200]}...'")
             
             if not user_only_text.strip():
                 logger.warning(f"🔄 [CONVERSATION_PROCESSOR] ⚠️ No user text found for entity extraction!")
                 entities = {}
             else:
                 try:
-                    logger.info(f"🔄 [CONVERSATION_PROCESSOR] ⚡ CALLING NER for user text: '{user_only_text[:100]}...'")
+                    logger.debug(f"🔄 [CONVERSATION_PROCESSOR] ⚡ CALLING NER for user text: '{user_only_text[:100]}...'")
                     entities = await self._extract_entities_via_modelservice(user_only_text)
-                    logger.info(f"🔄 [CONVERSATION_PROCESSOR] ⚡ NER RETURNED: {entities}")
+                    logger.debug(f"🔄 [CONVERSATION_PROCESSOR] ⚡ NER RETURNED: {entities}")
                 except Exception as e:
                     logger.error(f"🔄 [CONVERSATION_PROCESSOR] ❌ NER FAILED: {e}")
                     import traceback
                     logger.error(f"🔄 [CONVERSATION_PROCESSOR] ❌ NER TRACEBACK: {traceback.format_exc()}")
                     entities = {}
             entity_count = sum(len(v) for v in entities.values())
-            logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Extracted {entity_count} entities from segment")
+            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] ✅ Extracted {entity_count} entities from segment")
             
-            logger.info(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] About to start sentiment analysis...")
+            logger.debug(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] About to start sentiment analysis...")
             
             # Extract sentiment using modelservice
-            logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Analyzing sentiment for segment")
+            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] → Analyzing sentiment for segment")
             try:
                 sentiment, sentiment_confidence = await self._extract_sentiment_via_modelservice(segment_text)
-                logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Sentiment: {sentiment} (confidence: {sentiment_confidence:.3f})")
+                logger.debug(f"🔄 [CONVERSATION_PROCESSOR] ✅ Sentiment: {sentiment} (confidence: {sentiment_confidence:.3f})")
             except Exception as e:
                 logger.error(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] ❌ EXCEPTION during sentiment analysis: {e}")
                 import traceback
                 logger.error(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] ❌ Sentiment traceback: {traceback.format_exc()}")
                 sentiment, sentiment_confidence = "neutral", 0.5
             
-            logger.info(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] Sentiment analysis completed, continuing...")
+            logger.debug(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] Sentiment analysis completed, continuing...")
             
             # Get timestamp from first message
             timestamp = datetime.utcnow()
@@ -221,14 +221,14 @@ class ConversationSegmentProcessor:
             entities = response.get("data", {}).get("entities", {})
             
             # Debug log raw NER response
-            logger.info(f"🔍 [NER] Input text: '{text[:100]}...'")
-            logger.info(f"🔍 [NER] Raw modelservice response: {entities}")
+            logger.debug(f"🔍 [NER] Input text: '{text[:100]}...'")
+            logger.debug(f"🔍 [NER] Raw modelservice response: {entities}")
             
             # Filter out common false positives
             filtered_entities = self._filter_entities(entities, text)
             
             # Debug log filtered results
-            logger.info(f"🔍 [NER] Filtered entities: {filtered_entities}")
+            logger.debug(f"🔍 [NER] Filtered entities: {filtered_entities}")
             if filtered_entities:
                 logger.debug(f"[NER] Filtered entities: {filtered_entities}")
                 for entity_type, entity_list in filtered_entities.items():
