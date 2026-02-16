@@ -186,7 +186,8 @@ nav:
               - Overview: subsystems/backend/conversation/conversations.md
               - Intent Classification: subsystems/backend/conversation/intent-classification.md
       - CLI:
-          - CLI: subsystems/cli/cli.md
+          - CLI Overview: subsystems/cli/cli.md
+          - CLI Handbook: cli/cli.md
           - Interactions Commands: cli/interactions-commands.md
       - Frontend:
           - Overview: subsystems/frontend/frontend-architecture-overview.md
