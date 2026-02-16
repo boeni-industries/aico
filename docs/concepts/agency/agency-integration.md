@@ -44,6 +44,8 @@ Emotion and personality integration are scaffolded but largely optional today; m
 - `users.primary_language` (per-user preference, ISO/BCP-47) is loaded into `UserContext.conversation_language`.
 - This `conversation_language` is propagated to memory (`MemoryManager.store_message(..., language=...)`), KG nodes (`kg_nodes.language`), and skill metadata (`skills.supported_languages`) so that future agency components can select prompts, skills, and content in the correct language.
 
+**WIP**: the `kg_nodes.language` propagation described here is a target design; the current codebase already propagates language through `ConversationEngine` into `MemoryManager.store_message(..., language=...)` and stores `users.primary_language` in PostgreSQL, but KG language fields should be treated as in-progress until verified end-to-end.
+
 ### 2.2 Memory and AMS Integration
 
 `MemoryManager` is created and registered by `BackendLifecycleManager._register_ai_processors()`:
@@ -89,7 +91,9 @@ The conversation engine already exposes:
 
 - Provide **goals and plans** that explain why a given response or initiative is being taken.  
 - Influence **prompt construction** (via system/context prompts, skill selection, and planning templates).  
-- Trigger **proactive messages** (ResponseMode.PROACTIVE) without direct user input, via new topics like `AICOTopics.AGENCY_PROACTIVE_TRIGGER` and conversation engine callbacks.
+- Trigger **proactive messages** (ResponseMode.PROACTIVE) without direct user input, via topics like `AICOTopics.AI_AGENCY_PROACTIVE_TRIGGER` and conversation engine callbacks.
+
+**WIP**: the concrete topic name in code is `AICOTopics.AI_AGENCY_PROACTIVE_TRIGGER` (see `shared/aico/core/topics.py`). End-to-end proactive initiation wiring (agency -> conversation) is still in early integration stages.
 
 ### 3.2 Over Memory, World Model and AMS
 
@@ -162,7 +166,7 @@ To keep the system coherent, each domain should expose a small, well‑defined c
 ### 4.1 Conversation Engine ↔ Agency
 
 - **Agency → Conversation**  
-  - `propose_proactive_message(user_id, goal_id, content, metadata)` → publishes to conversation engine (e.g., via `AGENCY_PROACTIVE_TRIGGER` topic).  
+  - `propose_proactive_message(user_id, goal_id, content, metadata)` → publishes to conversation engine (e.g., via `AI_AGENCY_PROACTIVE_TRIGGER` topic). **WIP**  
   - `decorate_prompt(request_id, agency_context)` → hook to add goal/plan/skill context into system prompt or message list.
 
 - **Conversation → Agency**  
@@ -219,15 +223,12 @@ Future work should refine these contracts into concrete protobuf schemas and RES
 
 ## 6. Persistence & Migrations for Agency
 
-Agency reuses all existing PostgreSQL/Chroma/LMDB schemas; the **only new schema required for agency-specific logic** is for the Values & Ethics policy tables. In addition, a **separate core localisation prep migration** has already been implemented to support multilingual agency:
+Agency reuses existing PostgreSQL/Chroma/LMDB schemas.
 
-- `SchemaVersion 19` in `shared/aico/data/schemas/core.py` adds:
-  - `users.primary_language` – per-user language preference (ISO/BCP-47).
-  - `user_memories.language` – language of stored memory content.
-  - `kg_nodes.language` – language of node labels/source text.
-  - `skills.supported_languages` – JSON array of supported languages per skill.
+- **Implemented (v1)**: `users.primary_language` exists in the PostgreSQL user profile schema and is used by `ConversationEngine` as the default `conversation_language`.
+- **WIP**: the precise migration layering described below (a single `SchemaVersion 19` in `shared/aico/data/schemas/core.py`) does not match the current repository layout; treat the following as conceptual migration guidance rather than a verbatim code pointer.
 
-The following migration block defines the **agency-specific** Values & Ethics policy tables and should live alongside the localisation prep schema in `CORE_SCHEMA`:
+The following migration block sketches the **agency-specific** Values & Ethics policy tables:
 
 ```python
 N: SchemaVersion(
@@ -306,3 +307,5 @@ N: SchemaVersion(
 ```
 
 Replace `N` with the next free schema version in `CORE_SCHEMA`. No other migrations are required for agency.
+
+**WIP**: This section is intentionally conceptual and must be validated against the current migration system before being used as an implementation recipe.

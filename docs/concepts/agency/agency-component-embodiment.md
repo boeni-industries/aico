@@ -4,6 +4,11 @@ title: Agency Component – Embodiment & Spatial State
 
 # Embodiment & Spatial State
 
+## Status
+
+- **Implemented (v1)**: an embodiment plugin contract exists (`backend/services/embodiment_engine.py`), returning a contract-shaped response (`avatar_actions`, `voice_parameters`, `device_presence`).
+- **WIP**: concrete avatar control, 3D living-space state, room/posture mapping from lifecycle/goals, and feeding embodiment interactions back as agency `PerceptualEvent`s.
+
 ## Embodiment Types
 
 Embodiment is a core element of AICO. It is used to represent AICO in the user's environment and to provide a visual interface to the user. This can have multiple embodiments, e.g. a 3D avatar, a 2D image, or a text description, or a holographic representation OR aico can be embodies in a robot or other device.
@@ -13,7 +18,7 @@ Embodiment is a core element of AICO. It is used to represent AICO in the user's
 The Embodiment & Spatial State component connects agency to AICO’s **3D avatar and living‑space**:
 
 - Represents AICO in a flat with multiple rooms (desk/office, couch/living room, bedroom, kitchen, bathroom, etc.).  
-- Maps internal lifecycle and activity state (from Lifecycle + Scheduler: current plan step/goal) to room and posture.  
+- Maps internal lifecycle and activity state (from Lifecycle + Scheduler: current plan step/goal) to room and posture. **WIP**  
 - Provides a continuous, spatial visualization of what AICO is "doing" even when no chat is active.
 
 It acts as the primary **visual interface** to agency, complementing text conversation by showing:
@@ -22,6 +27,6 @@ It acts as the primary **visual interface** to agency, complementing text conver
 - Transitions between modes (moving rooms as goals change).  
 - Sleep and wake cycles.
 
-User interactions with the 3D space (e.g., clicking rooms, objects, or AICO) can be turned into `PerceptualEvent`s that influence goals and plans.
+User interactions with the 3D space (e.g., clicking rooms, objects, or AICO) can be turned into `PerceptualEvent`s that influence goals and plans. **WIP**
 
 Future work will specify the avatar control protocol, room state machine, and UX patterns.

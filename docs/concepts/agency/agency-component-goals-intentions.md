@@ -6,6 +6,12 @@ title: Agency Component – Goal & Intention System
 
 ## Component Description
 
+## Status
+
+- **Implemented (v1)**: persisted goals and plans via `AgencyService` (PostgreSQL + UnitOfWork), goal listing and updates, goal origins/priorities/status enums as defined in `shared/aico/ai/agency/models.py`.
+- **Implemented (v1)**: intention set as a persisted, arbiter-managed structure (`Intention`/`IntentionSet` in `shared/aico/ai/agency/arbiter.py`).
+- **WIP**: PerceptualEvent-based goal proposal pipeline, explicit horizon (`theme|project|task`), goal graph relationships (parent/child, blocked-by), and several lifecycle states described below (e.g., `proposed`, `dropped`).
+
 ## 1. Purpose
 
 The Goal & Intention System maintains AICO’s **ongoing goals, intentions, and open loops** across different time horizons. It is the central registry of “what AICO is currently trying to achieve”.
@@ -48,6 +54,12 @@ At this level we distinguish three main constructs and how they relate:
 - **Intention**  
   A *committed* subset of goals that AICO has currently adopted as guides for behaviour. An intention links a goal to a context and a commitment level (“AICO is actively working on this now”), following Bratman’s notion of intentions as stable policies rather than momentary desires.
 
+**Implementation mapping (v1):**
+
+- **Goal**: `aico.ai.agency.models.Goal` (persisted in PostgreSQL via `AgencyService`).
+- **Intention / IntentionSet**: `aico.ai.agency.arbiter.Intention` and `IntentionSet` (persisted; used by the arbiter to represent commitment beyond the goal row itself).
+- **PerceptualEvent**: **WIP** as an end-to-end ingestion pipeline (the concept exists and is referenced across docs, but is not currently the primary input mechanism for goal creation).
+
 Goals are organised along two orthogonal axes:
 
 - **Horizon (level of abstraction)**  
@@ -74,11 +86,19 @@ PerceptualEvents are the primary *triggers* that create or modify goals. Differe
 
 Goals and intentions evolve over time through a small number of states. Conceptually, we distinguish the **goal object** from its **intention status** (commitment).
 
-- **Proposed** – A goal has been suggested (by user, Curiosity Engine, Self‑Reflection, or maintenance logic) but is not yet adopted as an intention.
+- **Proposed** – A goal has been suggested (by user, Curiosity Engine, Self‑Reflection, or maintenance logic) but is not yet adopted as an intention. **WIP**: in v1, the closest equivalent is `GoalStatus.PENDING`.
 - **Active** – The goal is currently an intention: AICO is committed to pursuing it and allocating resources over time.
 - **Paused** – The goal remains in memory but is temporarily not pursued (e.g., deprioritised, blocked by another goal or user preference).
 - **Completed** – The goal’s success conditions have been satisfied to a reasonable degree.
-- **Dropped** – The goal is abandoned (no longer relevant, infeasible, or rejected by user/values).
+- **Dropped** – The goal is abandoned (no longer relevant, infeasible, or rejected by user/values). **WIP**: in v1, the closest equivalent is `GoalStatus.RETIRED`.
+
+**Implementation note (v1):** goal lifecycle status is represented by `GoalStatus` in `shared/aico/ai/agency/models.py`:
+
+- `pending`
+- `active`
+- `paused`
+- `completed`
+- `retired`
 
 Intention status applies to goals at any horizon. A single theme may be active while some of its associated projects or tasks are paused or completed.
 
@@ -162,31 +182,43 @@ At minimum, each goal record must support the following fields or equivalents:
 - **Semantic content**  
   - `title` – short human‑readable label.  
   - `description` – optional longer text description.  
-  - `horizon` – enum: `theme | project | task`.  
+  - `horizon` – enum: `theme | project | task`. **WIP**: not currently a first-class field in `Goal`.
   - `origin` – enum: `user | agent_self | curiosity | system_maintenance`.
 
+  **Implementation mapping (v1):** `Goal.origin` uses `GoalOrigin` with values:
+
+  - `user`
+  - `curiosity`
+  - `hobby`
+  - `maintenance`
+  - `system`
+
+  Conceptual `agent_self` can be represented as `hobby` in v1.
+
 - **Lifecycle and status**  
-  - `state` – enum: `proposed | active | paused | completed | dropped`.  
-  - `priority` – base priority score or band (e.g., integer or normalised float).  
+  - `state` – enum: `proposed | active | paused | completed | dropped`. **WIP**: v1 uses `Goal.status` with `pending|active|paused|completed|retired`.
+  - `priority` – base priority score or band (e.g., integer or normalised float). **Implemented (v1)**: `Goal.priority` is `low|normal|high`.
   - `created_at`, `updated_at` – timestamps.  
   - `due_at` – optional expected completion time or deadline.  
   - `last_state_change_at` – last time the lifecycle state changed.
 
 - **Structure and relationships**  
-  - `parent_goal_id` – optional pointer to parent in refinement hierarchy.  
-  - `blocked_by` – optional list of goal IDs that must progress before this goal can complete.  
-  - `tags` – list of lightweight labels for grouping and search (e.g., `health`, `work`, `hobby`).
+  - `parent_goal_id` – optional pointer to parent in refinement hierarchy. **WIP**
+  - `blocked_by` – optional list of goal IDs that must progress before this goal can complete. **WIP**
+  - `tags` – list of lightweight labels for grouping and search (e.g., `health`, `work`, `hobby`). **WIP** (can be represented in `Goal.metadata` in v1)
 
 - **Perceptual provenance**  
-  - `last_percept_event_id` – identifier of the most recent PerceptualEvent that created or significantly modified the goal.  
-  - `last_percept_type` – copy of the PerceptualEvent’s `percept_type` (see taxonomy in `agency-ontology-schemas.md`, e.g., `UserIntentEvent`, `PatternEvent`, `RiskOrOpportunityEvent`).  
-  - `last_percept_source_component` – copy of the PerceptualEvent’s `source_component` (e.g., `conversation_engine`, `world_model`, `ams`, `sensor_adapter`, `external_service_adapter`).  
-  - `trigger_summary` – short natural‑language summary of why this goal exists or was updated, suitable for explanations (may be derived directly from the PerceptualEvent’s `summary_text` plus additional context).
+  - `last_percept_event_id` – identifier of the most recent PerceptualEvent that created or significantly modified the goal. **WIP**
+  - `last_percept_type` – copy of the PerceptualEvent’s `percept_type` (see taxonomy in `agency-ontology-schemas.md`, e.g., `UserIntentEvent`, `PatternEvent`, `RiskOrOpportunityEvent`). **WIP**
+  - `last_percept_source_component` – copy of the PerceptualEvent’s `source_component` (e.g., `conversation_engine`, `world_model`, `ams`, `sensor_adapter`, `external_service_adapter`). **WIP**
+  - `trigger_summary` – short natural‑language summary of why this goal exists or was updated. **WIP**
+
+  In v1, provenance can be stored ad-hoc in `Goal.metadata`.
 
 - **Arbiter and metrics hooks**  
-  - `arbiter_score` – most recent score assigned by the Goal Arbiter (if any).  
-  - `is_primary_focus` – boolean flag used when exposing the current primary focus intention.  
-  - `activity_stats` – optional aggregate counters (e.g., times activated, times paused), for metrics and learning.
+  - `arbiter_score` – most recent score assigned by the Goal Arbiter (if any). **WIP** as a goal-level field; the score exists on `Intention` in the arbiter models.
+  - `is_primary_focus` – boolean flag used when exposing the current primary focus intention. **WIP**
+  - `activity_stats` – optional aggregate counters (e.g., times activated, times paused), for metrics and learning. **WIP**
 
 An implementation may add further fields (e.g., user‑visible settings, domain‑specific metadata) as long as these core aspects are preserved.
 

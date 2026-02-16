@@ -4,6 +4,14 @@ title: Agency Component – Curiosity Engine
 
 # Curiosity Engine
 
+## Status
+
+- **Implemented (v1)**: `CuriosityEngine.scan_for_opportunities(user_id, max_signals)` in `shared/aico/ai/curiosity/engine.py` produces scored `IntrinsicSignal` items (`shared/aico/ai/curiosity/models.py`).
+- **Implemented (v1)**: background scanning and goal creation via `backend/scheduler/tasks/curiosity_scan.py` (`CuriosityScanTask`), which calls:
+  - `curiosity_engine.scan_for_opportunities(...)`
+  - `agency_engine.create_goal_from_curiosity_signal(...)` (Values & Ethics gating included)
+- **WIP**: emitting curiosity signals as `CuriositySignalEvent` *PerceptualEvents* on a message bus for other components; the `PerceptualEvent` data structures exist (`shared/aico/ai/agency/perceptual_events.py`), but the end-to-end event stream contract is not the primary integration path yet.
+
 ## 1. Purpose
 
 The Curiosity Engine provides **intrinsic motivation** for AICO. It detects gaps, anomalies, and under‑explored regions in AICO’s world model and relationship with the user, and turns them into **self‑generated, agent‑self and curiosity‑origin goals**.
@@ -34,6 +42,8 @@ This section describes how curiosity behaves in practice: what kinds of curiosit
 
 - **CuriositySignalEvent (PerceptualEvent subtype)**  
   A PerceptualEvent with `percept_type = CuriositySignalEvent` that encodes a *concrete* curiosity opportunity (e.g., “creative writing is an under‑explored hobby domain with high potential value”), as defined in `agency-ontology-schemas.md`.
+
+  **WIP**: event emission as PerceptualEvents is a target design; the current implemented flow primarily returns `IntrinsicSignal` objects directly from the Curiosity Engine.
 
 - **CuriosityPolicy**  
   A set of rules and learned heuristics that decide **which CuriositySignals are turned into events and goals**, and at what intensity, after passing through Values/Ethics and resource gates.
@@ -83,6 +93,12 @@ Curiosity must always remain **second‑class to user wellbeing, consent, and re
 
 Only CuriositySignals that pass these gates with sufficient combined score are turned into CuriositySignalEvents.
 
+**Implementation note (v1):**
+
+- **Implemented**: a three-gate style filter exists inside `CuriosityEngine` (`_passes_gates(...)` in `shared/aico/ai/curiosity/engine.py`).
+- **Implemented**: a Values & Ethics gate also exists when converting signals into goals via `AgencyEngine.create_goal_from_curiosity_signal(...)` (see `shared/aico/ai/agency/engine.py`, `values_ethics.evaluate_curiosity_signal(...)`).
+- **WIP**: a unified, externally visible “CuriosityPolicy” (as a configured rule set with audit trails) beyond the current internal heuristics.
+
 
 ### 2.4 From Signals to Goals and Hobbies
 
@@ -93,6 +109,11 @@ For selected signals, the Curiosity Engine:
   - **Agent‑self / curiosity goals** (`origin = agent_self | curiosity`), and  
   - **Hobby‑linked projects** using ontology relations such as `FOCUSES_ON_HOBBY` and `IS_AGENT_SELF_GOAL`.
 - Relies on the Goal Arbiter and Values/Ethics to decide which of these become **active intentions** and with what priority relative to user‑origin and maintenance goals.
+
+**Implementation note (v1):**
+
+- **Implemented**: `IntrinsicSignal` items are converted into goals by `AgencyEngine.create_goal_from_curiosity_signal(...)` and persisted via `AgencyService`. The scheduler task `CuriosityScanTask` calls this conversion.
+- **WIP**: the intermediate `CuriositySignalEvent` PerceptualEvent and `ProposeGoalFromPercept` pipeline described above.
 
 
 ## 3. Data Model
@@ -112,6 +133,13 @@ This section specifies the main data structures that the Curiosity Engine must r
   - `user_relevance_score` – estimated impact on user’s long‑term wellbeing/relationship (often derived from LifeAreas and active goals).  
   - `cost_estimate` – rough resource/time estimate for investigating.
 
+**Implementation mapping (v1):** this corresponds to `IntrinsicSignal` in `shared/aico/ai/curiosity/models.py`:
+
+- `signal_id`, `user_id`, `signal_type` (`CuriosityType`)
+- `topic`, `description`, `context`
+- `novelty_score`, `uncertainty_score`, `user_relevance_score`, `feasibility_score`, `cost_estimate`
+- computed: `total_score`, `intrinsic_reward`, `priority`
+
 ### 3.2 CuriositySignalEvent (PerceptualEvent View)
 
 The Curiosity Engine turns selected CuriositySignals into PerceptualEvents with `percept_type = CuriositySignalEvent` and fields such as:
@@ -123,12 +151,16 @@ The Curiosity Engine turns selected CuriositySignals into PerceptualEvents with 
 - Optional `candidate_goal_summaries`, `candidate_goal_horizon`, `candidate_origin = curiosity | agent_self`.  
 - Optional pointers into the World Model: e.g., `linked_life_area_ids`, `linked_fact_ids`, or hypothesis IDs, to ground the event in specific graph entities.
 
+**WIP**: PerceptualEvent emission/consumption is not yet the primary implemented mechanism for curiosity.
+
 ### 3.3 Curiosity-Linked Goal Metadata
 
 Curiosity‑driven goals should be clearly identifiable in the Goal & Intention System by:
 
 - Tags such as `hobby`, `exploration`, or specific domain tags.  
 - Ontology relations like `FOCUSES_ON_HOBBY(Goal, Hobby)` and `IS_AGENT_SELF_GOAL(Goal)` where applicable.
+
+**Implementation note (v1):** the signal-to-goal linkage is stored in goal `metadata` (e.g., `curiosity_signal_id`, `curiosity_type`, `curiosity_score`) when creating goals from signals.
 
 
 ## 4. Operations / APIs
@@ -151,6 +183,8 @@ This section describes the Curiosity Engine’s behaviours as operations with in
   - *Input*: CuriositySignals classified as “promote to event now”.  
   - *Preconditions*: Signals have passed Values/Ethics, Emotion, and Resource gates with sufficient combined score.  
   - *Effect*: create one or more `CuriositySignalEvent` PerceptualEvents (as per `agency-ontology-schemas.md`), including `curiosity_type`, scores, and candidate goal hints, and publish them to the Perception/Events bus for consumption by the Goal & Intention System and other components.
+
+  **WIP**: publishing CuriositySignalEvents onto an events bus.
 
 ### 4.3 Goal Proposals
 
@@ -185,6 +219,8 @@ This section describes how curiosity behaves over time and in relation to user�
 - **Respecting safety and provenance**  
   - Hypotheses opened by curiosity carry explicit provenance (CuriositySignal IDs, applied policies) so that Values/Ethics and the user can see *why* AICO became curious about a topic.  
   - In sensitive domains, Values/Ethics may require that certain hypotheses never move to “confirmed” without explicit user confirmation, even if evidence is strong.
+
+**WIP**: hypothesis lifecycle APIs and end-to-end World Model integration for hypotheses.
 
 ### 5.1 Relationship to User-Origin Goals
 

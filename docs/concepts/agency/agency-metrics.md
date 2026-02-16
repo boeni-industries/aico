@@ -6,6 +6,20 @@ title: Agency Metrics & State Visibility
 
 This document lists key **metrics, states, and KPIs** of the Agency system.
 
+## Status
+
+- **Implemented (v1)**: core agency state is available via REST endpoints under `/api/v1/agency/*` (see `backend/api/agency/router.py`), including:
+  - `GET /api/v1/agency/state`
+  - `GET /api/v1/agency/intentions`
+  - `GET /api/v1/agency/goals`
+  - `GET /api/v1/agency/curiosity`
+  - `GET /api/v1/agency/profile`, `PUT /api/v1/agency/profile`
+  - `GET /api/v1/agency/policies`
+  - `POST /api/v1/agency/consent`, `GET /api/v1/agency/consent`, `DELETE /api/v1/agency/consent/{consent_id}`
+  - `GET /api/v1/agency/events`
+  - `GET /api/v1/agency/reflection/*` (runs, lessons, self-model, skill performance, summary)
+- **WIP**: many “user-facing metrics” below are defined as UX targets and are not all computed/exposed as explicit metrics yet.
+
 
 - **User-Facing Metrics** – values that can be surfaced directly (or with light explanation) to end users, including non-technical users.
 - **Engineering & Debug Metrics** – values primarily for developers, operators, and evaluators.
@@ -23,19 +37,21 @@ Each table uses these columns:
 
 | Name | Type | Scope | Purpose |
 | ---- | ---- | ----- | ------- |
-| primary_focus_intention | single goal summary | per-user | Represent the intention AICO currently treats as primary focus (top-scored by Goal Arbiter, with temporal smoothing). |
-| active_intentions | list of goal summaries | per-user | Show what AICO is currently working on (top goals/intentions). |
-| open_goals_total | gauge (count) | per-user | Indicate how many open projects/threads exist. |
-| hobby_goals_active | list of hobby summaries | per-user | Make AICO’s own hobbies and self-projects visible. |
+| primary_focus_intention | single goal summary | per-user | Backed by `GET /api/v1/agency/intentions` (`primary_focus`). **WIP**: temporal smoothing beyond “top scored right now”. |
+| active_intentions | list of goal summaries | per-user | Backed by `GET /api/v1/agency/intentions` (`active_intentions`). |
+| open_goals_total | gauge (count) | per-user | Backed by `GET /api/v1/agency/intentions` (`open_goals_total`). |
+| hobby_goals_active | list of hobby summaries | per-user | Backed by `GET /api/v1/agency/intentions` (`hobby_goals_active`). |
 
 ### 1.2 Curiosity, Intrinsic Motivation & Hobbies
 
 | Name | Type | Scope | Purpose |
 | ---- | ---- | ----- | ------- |
-| curiosity_level | scalar (e.g. low/medium/high) | per-user | Communicate how strong curiosity-driven behaviour is right now. |
-| curiosity_opportunities | short list of themes | per-user | Show what AICO is currently curious about (1–3 human-readable items). |
+| curiosity_level | scalar (e.g. low/medium/high) | per-user | Backed by `GET /api/v1/agency/curiosity`. |
+| curiosity_opportunities | short list of themes | per-user | Backed by `GET /api/v1/agency/curiosity`. |
 | hobby_activity_time | coarse duration per hobby | per-user, per-hobby | Indicate recent engagement with each hobby (e.g., "spent time this week"). |
 | hobby_state | enum + summary | per-hobby | Present the status of each hobby (active/paused/completed) with a short description. |
+
+`hobby_activity_time` and `hobby_state` are **WIP** as explicit user-facing metrics; the closest current source of truth is goals + plan/execution history in the agency tables and reflection summaries.
 
 ### 1.3 Memory, World Model & Open Loops
 
@@ -46,12 +62,16 @@ Each table uses these columns:
 | life_area_coverage | coarse breakdown (e.g. low/medium/high per LifeArea) | per-user | Give the user a simple view of how well AICO understands different areas of their life (Health, Work, Relationships, etc.) based on World Model facts. |
 | known_conflicts_present | boolean + short summary | per-user | Indicate whether the World Model currently has unresolved contradictions in important domains (e.g. job, relationship, routine) and, optionally, offer to clarify them. |
 
+All items in this section are currently **WIP** as explicit agency metrics endpoints.
+
 ### 1.4 Emotion, Relationship & Style
 
 | Name | Type | Scope | Purpose |
 | ---- | ---- | ----- | ------- |
 | emotional_state_current | enum + intensity | per-user | Provide a simple description of AICO’s current emotional stance, when appropriate. |
 | relationship_strength | scalar (coarsened) | per-user | Optionally summarise how close/stable AICO perceives the relationship (only if UX-appropriate). |
+
+These are **WIP** from an agency-metrics standpoint; emotion has its own subsystem and API, and relationship modeling is currently not exposed as a dedicated agency metric.
 
 ### 1.5 Agency Style, Initiative & Safety
 
@@ -62,6 +82,8 @@ Each table uses these columns:
 | safety_profile | config snapshot (coarse mode) | per-user, per-deployment | Show current safety/value mode (e.g., cautious / balanced / experimental). |
 | consent_required_actions | list of pending items | per-user | Surface actions waiting on explicit user approval/consent. |
 
+`safety_profile`, `consent_required_actions`, and consent CRUD are partially represented via `GET /api/v1/agency/profile`, `GET /api/v1/agency/policies`, and `GET /api/v1/agency/consent`. Higher-level UX summaries remain **WIP**.
+
 ### 1.6 Self-Reflection, Change & Lifecycle
 
 | Name | Type | Scope | Purpose |
@@ -70,6 +92,15 @@ Each table uses these columns:
 | behaviour_adjustments | short list of changes | per-user | Summarise what AICO is trying to do differently (high-level strategy changes). |
 | lifecycle_phase | enum (ACTIVE / FOCUSED_WORK / IDLE_LIGHT / SLEEP_LIKE / MAINTENANCE) | per-user, per-agent | Expose the current `LifecycleState` (from the Lifecycle component) and drive room/posture in the 3D flat. |
 | embodiment_state | enum (room, posture, activity label) | per-user | Map internal state to visual representation in the avatar and flat. |
+
+Self-reflection visibility is partially backed by:
+
+- `GET /api/v1/agency/reflection/runs`
+- `GET /api/v1/agency/reflection/lessons`
+- `GET /api/v1/agency/reflection/self-model`
+- `GET /api/v1/agency/reflection/summary`
+
+Lifecycle and embodiment metrics are currently **WIP** as agency-owned metrics.
 
 ## 2. Engineering & Debug Metrics
 

@@ -4,6 +4,12 @@ title: Agency Architecture
 
 # Agency Architecture
 
+## Status
+
+- **Implemented (v1)**: Agency core exists in `shared/aico/ai/agency/*` (notably `engine.py`, `arbiter.py`, `planner.py`, `executor.py`, `reflection.py`, `values_ethics.py`) and is exposed via `/api/v1/agency/*` (see `backend/api/agency/router.py`).
+- **Implemented (v1)**: background orchestration exists via scheduler tasks in `backend/scheduler/tasks/` (e.g., `agency_arbiter.py`, `agency_plan_executor.py`, `agency_reflection.py`, `curiosity_scan.py`).
+- **WIP**: a dedicated “Initiative Manager” module as a separate component; proactive initiation and embodiment/lifecycle mapping are still early integration.
+
 ## 1. Purpose and Scope
 
 This document describes the **technical architecture** of AICO’s agency system. It refines the conceptual requirements in `agency.md` into a concrete structure of domains, modules, data flows, and control loops.
@@ -65,6 +71,8 @@ Across all domains, AICO distinguishes between **raw signals** (text, audio/vide
   + Decides when to surface proactive behavior to the user (check‑ins, suggestions, follow‑ups).  
   + Ensures user‑visible initiatives respect quiet hours, preferences, and relationship context, and reflects the current intention set.
 
+  **WIP**: this exists as a conceptual component; there is no dedicated `InitiativeManager` implementation module yet.
+
 ### 3.2 Intelligence & Memory Domain
 
 - **Adaptive Memory System (AMS)**  
@@ -120,6 +128,8 @@ Across all domains, AICO distinguishes between **raw signals** (text, audio/vide
 + Renders AICO’s current state in a 3D flat with rooms (desk, couch, bed, kitchen, etc.).  
 + Room and posture are derived from the current lifecycle state and active goals (e.g., “working” → desk, “reading/learning” → couch, “sleep/consolidation” → bedroom).  
 + Acts as a visual, spatial interface to agency: users can see what AICO is doing even when not actively chatting.
+
+**WIP**: embodiment and “room/posture derived from goals” are not yet implemented end-to-end.
 
 ## 4. Data and Control Flows (Conceptual)
 
@@ -210,7 +220,7 @@ flowchart TD
     PL[Planning System]
     CEg[Curiosity Engine]
     SR[Self-Reflection]
-    IM[Initiative Manager]
+    IM[Initiative Manager (**WIP**)]
 
     class GS,GA,PL,CEg,SR,IM box;
 
