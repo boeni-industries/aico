@@ -17,7 +17,8 @@ import threading
 import time
 import json
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
+import email.utils
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 
@@ -85,6 +86,12 @@ class LokiLogHandler(logging.Handler):
 
         self._last_ts_per_stream: Dict[str, int] = {}
         self._last_ts_lock = threading.Lock()
+
+        # Estimate of Loki clock offset relative to this process:
+        #   loki_time ~= local_time + _loki_time_offset_ns
+        # Updated opportunistically from HTTP Date headers on push responses.
+        self._loki_time_offset_ns = 0
+        self._loki_time_offset_lock = threading.Lock()
         
         # Statistics
         self.stats = {
@@ -226,7 +233,14 @@ class LokiLogHandler(logging.Handler):
         # drifts or a record has a bad timestamp, clamp to a small future tolerance
         # to avoid silent ingestion gaps.
         now_ns = int(time.time() * 1_000_000_000)
-        max_future_ns = now_ns + 10_000_000_000  # 10s tolerance
+        with self._loki_time_offset_lock:
+            loki_offset_ns = int(self._loki_time_offset_ns)
+
+        # Clamp against Loki time, not local time. On dev machines with sleep/wake
+        # cycles, Docker/Loki time can drift behind local time, leading to
+        # "timestamp too new" rejects even if we clamp against local time.
+        loki_now_ns = now_ns + loki_offset_ns
+        max_future_ns = loki_now_ns + 10_000_000_000  # 10s tolerance
         if ts_ns > max_future_ns:
             ts_ns = max_future_ns
             with self.stats_lock:
@@ -371,6 +385,13 @@ class LokiLogHandler(logging.Handler):
                 json=payload,
                 timeout=10
             )
+
+            # Opportunistically learn Loki time from the HTTP Date header to
+            # compensate for host/container clock skew.
+            try:
+                self._update_loki_time_offset_from_response(response)
+            except Exception:
+                pass
             
             if response.status_code == 204:
                 # Success
@@ -390,6 +411,42 @@ class LokiLogHandler(logging.Handler):
         
         finally:
             self._write_in_flight.clear()
+
+    def _update_loki_time_offset_from_response(self, response: Any) -> None:
+        date_header = None
+        try:
+            date_header = response.headers.get("Date")
+        except Exception:
+            date_header = None
+
+        if not date_header:
+            return
+
+        try:
+            dt = email.utils.parsedate_to_datetime(date_header)
+        except Exception:
+            return
+
+        if dt is None:
+            return
+
+        if dt.tzinfo is None:
+            # HTTP dates are supposed to be GMT; treat as UTC if tz is missing.
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        loki_now_ns = int(dt.timestamp() * 1_000_000_000)
+        local_now_ns = int(time.time() * 1_000_000_000)
+        offset_ns = loki_now_ns - local_now_ns
+
+        # Clamp insane offsets (e.g., bad headers) to avoid harming ingestion.
+        # If offset is outside +/- 6 hours, ignore it.
+        if abs(offset_ns) > int(6 * 3600 * 1_000_000_000):
+            return
+
+        with self._loki_time_offset_lock:
+            # Smooth slightly to avoid jitter.
+            prev = int(self._loki_time_offset_ns)
+            self._loki_time_offset_ns = int(prev * 0.9 + offset_ns * 0.1)
     
     def flush(self):
         """Flush all buffered records immediately."""
