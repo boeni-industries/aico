@@ -64,7 +64,9 @@ class LokiLogHandler(logging.Handler):
         self.overflow_strategy = overflow_strategy
         
         # In-memory buffer (thread-safe deque)
-        self.buffer = deque(maxlen=buffer_size if overflow_strategy == "drop_oldest" else None)
+        # NOTE: Do NOT rely on deque(maxlen=...) because it silently drops items and
+        # bypasses our dropped-record statistics. Enforce buffer_size manually.
+        self.buffer = deque()
         self.buffer_lock = threading.Lock()
         
         # Background flush thread
@@ -80,12 +82,17 @@ class LokiLogHandler(logging.Handler):
 
         # Shutdown guard to prevent scheduling work during interpreter teardown
         self._closing = threading.Event()
+
+        self._last_ts_per_stream: Dict[str, int] = {}
+        self._last_ts_lock = threading.Lock()
         
         # Statistics
         self.stats = {
             "records_buffered": 0,
             "records_written": 0,
             "records_dropped": 0,
+            "timestamps_clamped": 0,
+            "timestamps_monotonic_adjusted": 0,
             "write_errors": 0,
             "last_flush": None
         }
@@ -106,12 +113,19 @@ class LokiLogHandler(logging.Handler):
             
             # Add to buffer (thread-safe)
             with self.buffer_lock:
-                if self.overflow_strategy == "drop_newest" and len(self.buffer) >= self.buffer_size:
-                    # Drop this record
-                    with self.stats_lock:
-                        self.stats["records_dropped"] += 1
-                    return
-                
+                if len(self.buffer) >= self.buffer_size:
+                    if self.overflow_strategy == "drop_newest":
+                        # Drop this record
+                        with self.stats_lock:
+                            self.stats["records_dropped"] += 1
+                        return
+
+                    # drop_oldest
+                    if self.buffer:
+                        self.buffer.popleft()
+                        with self.stats_lock:
+                            self.stats["records_dropped"] += 1
+
                 self.buffer.append(log_entry)
                 
                 with self.stats_lock:
@@ -215,6 +229,8 @@ class LokiLogHandler(logging.Handler):
         max_future_ns = now_ns + 10_000_000_000  # 10s tolerance
         if ts_ns > max_future_ns:
             ts_ns = max_future_ns
+            with self.stats_lock:
+                self.stats["timestamps_clamped"] += 1
 
         return {
             "timestamp": ts_ns,  # nanoseconds
@@ -302,6 +318,47 @@ class LokiLogHandler(logging.Handler):
                     str(entry["timestamp"]),
                     entry["line"]
                 ])
+
+            # Loki expects entries to be ordered by timestamp per stream.
+            # Also enforce monotonicity per stream to avoid ingestion rejects
+            # during clock adjustments (sleep/wake) or multi-threaded log bursts.
+            for label_str, stream in streams.items():
+                try:
+                    stream["values"].sort(key=lambda v: int(v[0]))
+                except Exception:
+                    pass
+
+                with self._last_ts_lock:
+                    last_ts = self._last_ts_per_stream.get(label_str)
+
+                if last_ts is not None:
+                    adjusted = 0
+                    prev = last_ts
+                    for item in stream["values"]:
+                        try:
+                            ts = int(item[0])
+                        except Exception:
+                            continue
+                        if ts <= prev:
+                            ts = prev + 1
+                            item[0] = str(ts)
+                            adjusted += 1
+                        prev = ts
+
+                    if adjusted:
+                        with self.stats_lock:
+                            self.stats["timestamps_monotonic_adjusted"] += adjusted
+
+                    with self._last_ts_lock:
+                        self._last_ts_per_stream[label_str] = prev
+                else:
+                    if stream.get("values"):
+                        try:
+                            last_val = int(stream["values"][-1][0])
+                            with self._last_ts_lock:
+                                self._last_ts_per_stream[label_str] = last_val
+                        except Exception:
+                            pass
             
             # Build Loki push request
             payload = {

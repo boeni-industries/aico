@@ -1424,7 +1424,7 @@ async def list_logs(
     if label_filters:
         logql_query = "{" + ", ".join(label_filters) + "}"
     else:
-        logql_query = '{job=~".+"}'  # Match all logs
+        logql_query = '{service=~".+"}'  # Match all logs
     
     # Add line filter for search
     if search:
@@ -1447,8 +1447,9 @@ async def list_logs(
     params = {
         "query": logql_query,
         "limit": limit + offset + 100,  # Fetch extra for accurate count
-        "start": int(since.timestamp()),
-        "end": int(until.timestamp()),
+        # Loki expects nanoseconds
+        "start": int(since.timestamp() * 1_000_000_000),
+        "end": int(until.timestamp() * 1_000_000_000),
         "direction": "backward"
     }
     
