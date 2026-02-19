@@ -103,6 +103,99 @@
   - Resource-level authorization beyond “auth only”.
   - Tenant/user scoping across message subjects and persistence.
 
+## Tenancy Model (decision)
+- **Decision**: start with **shared Postgres DB + shared schema** and enforce isolation via `tenant_id` + authz.
+- **Definitions**:
+  - **Deployment**: one installed/running AICO stack (ops boundary).
+  - **Tenant**: top-level data + authorization boundary (org/workspace).
+- **Enterprise installs**: typically a dedicated deployment with exactly **one tenant** (so `tenant_id` is constant, but still present).
+
+### Data model rules
+- All authoritative tables include **`tenant_id NOT NULL`**.
+- Primary/unique keys are scoped by tenant where appropriate (e.g. `UNIQUE(tenant_id, conversation_id)`).
+- Consider Postgres **Row Level Security (RLS)** later as a defense-in-depth option; do not require it to ship.
+
+### Authn/Authz rules
+- JWT/session identity includes `tenant_id` and `user_id`.
+- Gateway enforces:
+  - caller can only act within their `tenant_id`
+  - subject-level publish/subscribe permissions (future: NATS subject ACLs)
+
+### NATS subject scoping
+- Subjects are tenant-scoped (examples):
+  - `aico.<tenant_id>.conversation.*`
+  - `aico.<tenant_id>.interaction.notifications.<user_id>`
+- Keep `tenant_id` explicit even for local installs (single tenant) to avoid codepath divergence.
+
+## Virtual Entity Model: Agents (decision)
+- **Goal**: AICO can act as a stable, identifiable “virtual companion / virtual employee” with its own history and state.
+- **Decision**: model a globally unique **Agent** (`agent_id`) plus per-tenant **membership/context**, with strict tenant boundaries.
+
+### Identity and scope
+- **Agent identity**: `agent_id` is globally unique (UUID). This is the “person”.
+- **Tenant membership**: an agent participates in a tenant via `agent_memberships(tenant_id, agent_id, role, permissions, policy_flags)`.
+- **Conversations**:
+  - a conversation/thread has participants: users and agents.
+  - each message has a single author: `actor_type` (user/agent/system) + `actor_id`.
+
+### State and memory boundaries
+- **Emotional/agency state**: **tenant-scoped** (decision 1B)
+  - store state as `(tenant_id, agent_id, ...)` so “work self” and “private self” do not leak.
+- **Learning policy**: **explicit-only by default** (decision 2B)
+  - tenant agents learn only from:
+    - explicitly enabled/training-marked conversations, and/or
+    - designated tenant sources (docs/KB), and/or
+    - explicit user consent signals.
+- **Local/single-user override**: provide onboarding-friendly config that makes it trivial to enable “learn from all conversations” for private setups.
+
+### Agent membership policy (decision)
+- **Decision**: tenants control membership.
+  - Default: membership requires tenant admin approval.
+  - Optional: tenant can be configured “open” (auto-approve) for public communities.
+
+## Configuration Structure (onboarding-friendly)
+- **Goal**: config toggles must be self-explanatory, grouped, and suitable for onboarding prompts.
+
+### Final config keys (full namespaces)
+#### Conversation storage + delivery
+- `aico.conversations.storage.driver` = `postgres`
+- `aico.conversations.storage.persist_stream_chunks` = `false`
+- `aico.conversations.delivery.require_idempotency_key` = `true`
+
+#### Idempotency
+- `aico.idempotency.http.header_name` = `Idempotency-Key`
+- `aico.idempotency.enforcement.scope` = `tenant_user`  (meaning `(tenant_id, user_id, request_id)` must be unique)
+
+#### Event publication reliability
+- `aico.events.publication.mode` = `outbox`  (alternatives: `best_effort`)
+- `aico.events.outbox.poll_interval_ms`
+- `aico.events.outbox.batch_size`
+
+#### Agents (virtual entity) + membership
+- `aico.agents.identity.global_agent_id_enabled` = `true`
+- `aico.agents.membership.approval.required` = `true`
+- `aico.agents.membership.approval.mode` = `admin`  (alternatives: `open`)
+
+#### Learning (two booleans only)
+- `aico.learning.tenant.enabled` = `true`
+- `aico.learning.user.enabled` = `true`
+
+Semantics:
+- If `aico.learning.tenant.enabled = false`: learning is disabled globally for the tenant (no memory/KG consolidation, no preference updates, no indexing).
+- If `aico.learning.tenant.enabled = true` and `aico.learning.user.enabled = false`: disable user-specific learning for that user (their private companion state/memory does not evolve from new interactions).
+- Precedence: tenant-level disable overrides user-level enable.
+
+Wording (final):
+- **What “learning” means in AICO**: writing **derived state** from interactions (memory consolidation, KG extraction/indexing, behavioral confidence updates, self-reflection/lesson application). It is **not** cloud LLM fine-tuning.
+- **Tenant kill-switch** (`aico.learning.tenant.enabled`): “This workspace does not adapt. It may record conversations/feedback for product operation, but will not use them to update memory/KG/preferences/behavior.”
+- **User kill-switch** (`aico.learning.user.enabled`): “Do not adapt based on *my* interactions. My messages/feedback may be stored as raw records, but must not change the agent’s memory/KG/preferences/behavior because of me.”
+- **Public/enterprise agent expectation**: expose a user-facing control labelled **“Allow the agent to learn from me”** that maps to `aico.learning.user.enabled`, but only if tenant policy allows learning.
+
+#### Onboarding presets (boolean-only)
+- `aico.onboarding.private_companion.apply_defaults` = `false`
+- `aico.onboarding.team_workspace.apply_defaults` = `false`
+- `aico.onboarding.enterprise.apply_defaults` = `false`
+
 ## Migration Steps (incremental)
 1) **Make the bus abstraction real**: harden `MessageBusClient` as the single API boundary.
 2) **Add NATS transport** behind `MessageBusClient` (keep Protobuf + topic taxonomy).
@@ -121,3 +214,72 @@
 ## Open Questions
 - Which topics/flows must be **durable** (JetStream) vs **ephemeral** (core NATS)?
 - Tenancy model details (org/project/user scoping) and required subject naming conventions.
+
+## Durability (JetStream) vs Ephemeral (core NATS)
+- **Reality check (today)**:
+  - Postgres schema contains **AMS trajectories** (`ams_trajectories.user_input` / `ai_response`) and other derived memory tables, but **no canonical conversation message log** table.
+  - So the closest thing to “conversation truth” is currently **LMDB working memory** (plus optional trajectory logging for behavioral learning).
+- **UX requirement**: clients must be able to **catch up** and reflect backend reality after reconnect/restart.
+
+### Recommended durability matrix (target)
+- **Conversation user input**: **JetStream durable**
+  - Rationale: avoid loss when backend replicas restart; enables horizontal scaling.
+- **Conversation AI response (final)**: **JetStream durable**
+  - Rationale: required for deterministic client catch-up without relying on timing-sensitive pub/sub.
+- **Streaming chunks**: **Ephemeral**
+  - Rationale: delivery artifact; correctness is the final response.
+- **State streaming / telemetry**: **Ephemeral**
+  - Rationale: monitoring; replay not correctness-critical.
+- **Background jobs dispatch (heavy lifting)**: **JetStream durable (work queue)**
+  - Rationale: scalable workers; isolates heavy work from core service responsiveness.
+- **Interaction notifications**: **Ephemeral by default**
+  - Rationale: source of truth is Postgres (`interaction_requests`, `interaction_events`);
+    gateway can catch up by querying DB.
+
+### Catch-up strategy (target)
+- **Clients**: treat WebSockets as realtime, but always support **resync** via:
+  - durable streams (conversation input/final response), and/or
+  - DB reads for entities that are authoritative in Postgres (interactions, task/execution status).
+
+## Distributed Workers (heavy-lifting priority)
+- Introduce a worker pool consuming from **JetStream work-queue streams** for:
+  - memory consolidation
+  - KG extraction / indexing
+  - embedding generation (if not done inline with requests)
+- Core backend publishes jobs with stable ids (`job_id`, `correlation_id`) and stores authoritative job state in Postgres.
+- Workers:
+  - ack on completion (at-least-once delivery + idempotent handlers)
+  - persist results to Postgres (and publish optional completion events)
+
+## Decision: Conversation catch-up uses Postgres (source of truth)
+- **Decision**: conversation state (messages/turns) must be authoritative in **Postgres**, not reconstructed from JetStream.
+- **Role of JetStream**:
+  - durable transport for inputs/results (at-least-once), and
+  - work queues for background jobs,
+  - not the primary event store for long-term conversation history.
+
+### Implications (target)
+- Add a canonical Postgres schema for conversations (minimum):
+  - `conversations` (id, user_id/tenant_id, created_at, updated_at, title, status)
+  - `conversation_messages` (single table) (message_id, tenant_id, conversation_id, agent_id, actor_type, actor_id, content, metadata_json, created_at, correlation_id, request_id)
+  - indexes for `(conversation_id, created_at)` and `(user_id, created_at)`.
+- Gateway catch-up semantics:
+  - WebSocket reconnect triggers DB read: “messages since `last_seen_message_id`/timestamp”.
+- Delivery semantics:
+  - assume **at-least-once** (NATS/JetStream) and implement **idempotency** using `message_id` / `idempotency_key`.
+- Publish reliability:
+  - for DB→bus consistency, prefer an **outbox pattern** (transactional insert to `outbox_events`, async publisher) for critical notifications.
+
+### Message schema choice (decision)
+- **Decision**: keep `conversation_messages` as a **single table** with `metadata_json` (JSONB) for tool calls, attachments references, model metadata.
+- Split into additional tables only if there is proven need (analytics, very large payloads, attachment blobs).
+
+### Idempotency (decision)
+- **Decision**: idempotency is anchored at the **HTTP/gateway boundary**.
+  - Client supplies `Idempotency-Key` (preferred) or gateway generates one.
+  - Persist as `request_id` and enforce uniqueness (at least): `UNIQUE(tenant_id, user_id, request_id)`.
+  - Propagate `request_id`/`correlation_id` through NATS messages and DB writes.
+
+### Outbox usage (decision)
+- **Why**: prevents inconsistencies where DB commit succeeds but publish fails (or vice versa).
+- **Decision**: use **outbox** for correctness-critical state changes that must be observable to clients/services (e.g. conversation final response events).
