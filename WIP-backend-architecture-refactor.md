@@ -1,5 +1,20 @@
 # WIP: Backend Architecture Refactor (Local-first + Cloud/Enterprise)
 
+## Progress Checklist (tick-off)
+- [ ] Lock interfaces: freeze/version gateway↔core and core↔modelservice contracts; add contract tests
+- [ ] Introduce standalone Gateway service (authn/authz, rate limits, idempotency, WebSockets)
+- [ ] Publish frontend-independent External API Contract (OpenAPI + WebSocket spec + examples)
+- [ ] Centralize identity + scoping: make `tenant_id`/`user_id` mandatory end-to-end; enforce authz on every request/subscription
+- [ ] Postgres source of truth for conversations: add tables + catch-up API
+- [ ] Outbox for durable publication: stop publish-then-store for correctness-critical flows
+- [ ] Add NATS transport behind `MessageBusClient` (parallel-run with ZMQ initially)
+- [ ] Enable JetStream for durable flows; keep streaming chunks ephemeral; add replay/recovery tests
+- [ ] Replace LMDB working memory with Postgres (retention/TTL + indexes; cache only if proven)
+- [ ] Replace Chroma with Postgres + `pgvector` behind an interface; dual-write during migration; remove Chroma
+- [ ] Harden scheduler + workers: idempotent tasks, tenant-scoped, multi-replica safe (locks/leader election)
+- [ ] Make backend stateless: verify all correctness-critical state is in Postgres/JetStream
+- [ ] Decommission legacy: remove ZMQ broker path, LMDB, Chroma, and any bypasses around UoW/outbox
+
 ## Goals / Non-Goals
 - **Goal**: Single codebase and single “final-stack” architecture that runs:
   - **Local-first/offline** on consumer hardware (single node, minimal footprint)
@@ -71,6 +86,67 @@
 - **Request/Reply**: standardize correlation + reply subjects.
 - **Streaming**: stream chunks on dedicated subjects; optionally persist via JetStream when replay is needed.
 - **AuthZ** (future): enforce subject-level permissions for tenant/user scoping.
+
+## Public API Specification (frontend-independent)
+
+### Canonical contract
+- **OpenAPI is canonical**: the public contract is the generated OpenAPI document + Swagger UI.
+- **HTTP is mandatory**: every feature exposed to external frontends must be reachable over HTTP APIs documented in OpenAPI.
+- **WebSocket is adjunct**: WS only for realtime delivery; it must always have an HTTP catch-up equivalent (see below).
+
+### Base URL + versioning
+- **Base path**: `/api/v1`
+- **Breaking changes**: only in a new major path (`/api/v2`). No breaking changes inside the same major.
+
+### Content types
+- **Requests**: `Content-Type: application/json`
+- **Responses**: `application/json` (binary payloads are referenced by URL and fetched separately).
+
+### Authentication + identity
+- **Auth**: `Authorization: Bearer <jwt>`
+- **Identity claims (target)**: JWT contains `tenant_id` + `user_id` (and optional roles/permissions).
+- **Authorization**:
+  - Every request is authorized within caller’s `tenant_id`.
+  - User-scoped resources require `user_id` ownership/membership checks.
+  - Admin endpoints require admin role/permissions.
+
+### Required headers
+- **Tracing**: request may include `x-request-id`; server returns `x-request-id`.
+- **Client identity (target)**: `x-client-id`, `x-session-id` (used for logging/rate limits).
+- **Idempotency (target)**: `Idempotency-Key` on side-effecting endpoints (create/submit/transition).
+
+### Error model (target)
+- Non-2xx responses must return a consistent JSON envelope:
+  - `error_code` (stable string)
+  - `message` (human readable)
+  - `request_id`
+  - optional `details` (object)
+
+### Pagination (target)
+- List endpoints use `limit` + `offset`.
+- Responses return `items` + `total` (and echo `limit`/`offset`).
+
+### Realtime + catch-up rule
+- WebSockets provide realtime notifications only.
+- Clients must be able to fully reconstruct state after reconnect using HTTP:
+  - conversations: fetch messages since cursor (`message_id`/timestamp)
+  - interactions: list/detail endpoints (source of truth in Postgres)
+  - scheduler: list executions + status endpoints
+
+### Current API surface (v1 route groups)
+- The backend currently mounts these route groups under `/api/v1/*`:
+  - `health`, `echo`, `users`, `users-sessions`, `admin`, `logs`, `conversation`, `interactions`, `memory-album`, `kg`, `behavioral`, `emotion`, `tts`, `agency`, `system`, `operations`, `scheduler`, plus misc `memory`/`ams` routes.
+
+### WebSocket endpoints (current)
+- `GET /api/v1/conversation/ws`
+- `GET /api/v1/scheduler/ws/events`
+
+### Public-API readiness gaps (must close)
+- **WebSocket authentication**: WS endpoints must authenticate (JWT/session) at handshake and enforce user/tenant scoping.
+- **Identity normalization**: standardize on `tenant_id` + `user_id` naming in tokens, payloads, and DB.
+- **OpenAPI hygiene**: ensure all endpoints have stable request/response models and avoid ad-hoc `dict` responses.
+- **Idempotency enforcement**: gateway must enforce `Idempotency-Key` on all side-effecting endpoints and document retry semantics.
+- **Error envelope**: replace mixed patterns (`{"success": false}` vs raw `detail`) with one documented schema.
 
 ## State / Storage Implications
 - LMDB and local Chroma are not compatible with horizontal scaling and enterprise multi-tenancy.
