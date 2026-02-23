@@ -87,7 +87,7 @@ class WorldContext:
     open_loops: List[OpenLoop] = field(default_factory=list)
     recurring_contexts: List[Context] = field(default_factory=list)
     uncertain_areas: List[UncertainArea] = field(default_factory=list)
-    retrieved_at: datetime = field(default_factory=datetime.utcnow)
+    retrieved_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # Phase 6.4: Schema Learning, Hypothesis, and Drift Detection Models
@@ -111,8 +111,8 @@ class Schema:
     version: str  # semantic versioning (major.minor.patch)
     entity_type: str
     fields: Dict[str, FieldSchema] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     sample_count: int = 0  # Number of samples used to learn schema
     confidence: float = 0.0  # 0.0-1.0, based on sample consistency
 
@@ -123,7 +123,7 @@ class ValidationResult:
     is_valid: bool
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
-    validated_at: datetime = field(default_factory=datetime.utcnow)
+    validated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -138,8 +138,8 @@ class Hypothesis:
     status: str = "open"  # open, confirmed, rejected, needs_user_confirmation
     evidence: List[str] = field(default_factory=list)  # PerceptualEvent IDs
     counter_evidence: List[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     confirmed_at: Optional[datetime] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -152,7 +152,7 @@ class HypothesisTestResult:
     supports_hypothesis: bool
     confidence_delta: float  # Change in confidence (-1.0 to +1.0)
     evidence_ids: List[str] = field(default_factory=list)
-    tested_at: datetime = field(default_factory=datetime.utcnow)
+    tested_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     notes: Optional[str] = None
 
 
@@ -166,7 +166,7 @@ class DriftReport:
     severity: float  # 0.0-1.0, how significant the drift is
     old_state: Dict[str, Any] = field(default_factory=dict)
     new_state: Dict[str, Any] = field(default_factory=dict)
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     window_start: Optional[datetime] = None
     window_end: Optional[datetime] = None
     description: Optional[str] = None
@@ -180,7 +180,7 @@ class Contradiction:
     description: str
     severity: float  # 0.0-1.0, impact of contradiction
     resolution_strategy: str  # favor_recent, favor_confident, ask_user, open_hypothesis
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     resolved: bool = False
     resolved_at: Optional[datetime] = None
     resolution_notes: Optional[str] = None

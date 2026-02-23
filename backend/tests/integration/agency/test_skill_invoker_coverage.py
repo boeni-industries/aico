@@ -17,6 +17,8 @@ from aico.ai.agency.skills.registry import SkillRegistry, Skill, SkillResult, Sk
 
 class TestSkill(Skill):
     """Test skill implementation for testing."""
+
+    __test__ = False
     
     def __init__(self, skill_id_val="test_skill", should_fail=False, delay=0):
         self._skill_id = skill_id_val

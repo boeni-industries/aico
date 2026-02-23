@@ -6,7 +6,7 @@ Based on agency-component-curiosity-engine.md and agency-ontology-schemas.md.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from enum import Enum
 from typing import Dict, List, Any, Optional
 
@@ -100,7 +100,7 @@ class IntrinsicSignal:
     source_component: str = "curiosity_engine"
     target_ref: Optional[str] = None
     topic_tags: List[str] = field(default_factory=list)
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     expires_at: Optional[datetime] = None
     status: str = "pending"  # pending, converted, expired, dismissed
 

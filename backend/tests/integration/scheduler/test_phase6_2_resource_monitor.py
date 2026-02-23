@@ -11,7 +11,6 @@ from datetime import datetime
 from backend.scheduler.resource_monitor import ResourceMonitor, ResourceSnapshot
 
 
-@pytest.mark.asyncio
 class TestResourceMonitor:
     """Test resource monitoring functionality"""
     
@@ -286,7 +285,6 @@ class TestResourceMonitor:
             assert isinstance(snapshot.on_ac_power, bool)
 
 
-@pytest.mark.asyncio
 class TestResourceMonitorWithoutPsutil:
     """Test resource monitor behavior when psutil is unavailable"""
     

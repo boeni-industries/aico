@@ -14,6 +14,7 @@ import json
 import asyncio
 import websockets
 from pathlib import Path
+import pytest
 
 # Test credentials
 USER_UUID = "49188f6e-50c1-4e05-a0b8-292129f8de15"
@@ -87,20 +88,21 @@ def test_rest_full_cycle():
     
     # Step 1: Authenticate
     print("1. Authenticating via REST...")
-    response = requests.post(
-        f"{REST_BASE}/users/authenticate",
-        json={"user_uuid": USER_UUID, "pin": PIN},
-        timeout=10
-    )
-    
+    try:
+        response = requests.post(
+            f"{REST_BASE}/users/authenticate",
+            json={"user_uuid": USER_UUID, "pin": PIN},
+            timeout=3
+        )
+    except requests.RequestException as e:
+        pytest.skip(f"Auth backend not reachable: {e}")
+
     if response.status_code != 200:
-        print(f"Authentication failed: {response.status_code}")
-        return False
+        pytest.skip(f"Authentication endpoint not available for test (status={response.status_code})")
     
     data = response.json()
     if not data.get("success"):
-        print(f"Authentication failed: {data.get('error')}")
-        return False
+        pytest.skip(f"Authentication failed for configured test user (error={data.get('error')})")
     
     token = data.get("jwt_token")
     print(f"Authentication successful, token: {token[:20]}...")
@@ -118,11 +120,8 @@ def test_rest_full_cycle():
         timeout=10
     )
     
-    if user_response.status_code == 200:
-        print("Protected access works")
-    else:
-        print(f"Protected access failed: {user_response.status_code}")
-        return False
+    assert user_response.status_code == 200, f"Protected access failed: {user_response.status_code}"
+    print("Protected access works")
     
     # Step 3: Revoke token (logout)
     print("\n3. Revoking token (logout)...")
@@ -132,11 +131,8 @@ def test_rest_full_cycle():
         timeout=10
     )
     
-    if logout_response.status_code == 204:
-        print("Logout successful")
-    else:
-        print(f"Logout failed: {logout_response.status_code}")
-        return False
+    assert logout_response.status_code == 204, f"Logout failed: {logout_response.status_code}"
+    print("Logout successful")
     
     # Check database after logout
     sessions = check_database_sessions()
@@ -151,13 +147,12 @@ def test_rest_full_cycle():
         timeout=10
     )
     
-    if revoked_response.status_code == 401:
-        print("Access correctly denied after revocation")
-        return True
-    else:
-        print(f"Access still works after revocation: {revoked_response.status_code}")
-        print(f"Response: {revoked_response.text}")
-        return False
+    assert revoked_response.status_code == 401, (
+        f"Access still works after revocation: {revoked_response.status_code}. "
+        f"Response: {revoked_response.text}"
+    )
+    print("Access correctly denied after revocation")
+    return
 
 async def test_websocket_full_cycle():
     """Test complete WebSocket authentication cycle"""

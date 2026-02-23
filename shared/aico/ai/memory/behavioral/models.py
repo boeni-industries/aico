@@ -6,7 +6,7 @@ Pydantic models for skill-based interaction learning with RLHF.
 
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 class Skill(BaseModel):
@@ -23,8 +23,8 @@ class Skill(BaseModel):
     procedure_template: str  # Prompt template to inject
     dimension_vector: List[float] = Field(..., min_length=16, max_length=16)  # 16 explicit dimensions
     supported_languages: List[str] = Field(default_factory=lambda: ["en"])  # ISO/BCP-47 codes
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class UserSkillConfidence(BaseModel):
@@ -48,7 +48,7 @@ class FeedbackEvent(BaseModel):
     reason: Optional[str] = None  # Dropdown selection
     free_text: Optional[str] = Field(None, max_length=300)  # User's free text
     classified_categories: Optional[Dict[str, float]] = None  # {"too_verbose": 0.85, ...}
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     processed: bool = False
 
 
@@ -62,7 +62,7 @@ class Trajectory(BaseModel):
     selected_skill_id: Optional[str] = None
     ai_response: str
     feedback_reward: Optional[int] = Field(None, ge=-1, le=1)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     archived: bool = False
 
 
@@ -73,7 +73,7 @@ class ContextSkillStats(BaseModel):
     skill_id: str
     alpha: float = Field(default=1.0, ge=0.0)  # Beta distribution success parameter
     beta: float = Field(default=1.0, ge=0.0)  # Beta distribution failure parameter
-    last_updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PreferenceVector(BaseModel):
@@ -81,7 +81,7 @@ class PreferenceVector(BaseModel):
     user_id: str
     context_bucket: int = Field(..., ge=0, le=99)
     dimensions: List[float] = Field(..., min_length=16, max_length=16)  # Each in [0.0, 1.0]
-    last_updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     
     @classmethod
     def create_neutral(cls, user_id: str, context_bucket: int) -> "PreferenceVector":
