@@ -597,7 +597,7 @@ class EnhancedEthicsGate:
         self.policy_manager = policy_manager
         self.logger = logger
     
-    def check_ethics(
+    async def check_ethics(
         self,
         user_id: str,
         target_type: str,
@@ -627,7 +627,7 @@ class EnhancedEthicsGate:
                 return cached
         
         # Perform ethics check
-        decision, reasoning, rules_applied = self._perform_check(
+        decision, reasoning, rules_applied = await self._perform_check(
             user_id, target_type, target_id, check_level
         )
         
@@ -646,7 +646,7 @@ class EnhancedEthicsGate:
         
         return decision, reasoning, rules_applied
     
-    def _perform_check(
+    async def _perform_check(
         self,
         user_id: str,
         target_type: str,
@@ -655,7 +655,7 @@ class EnhancedEthicsGate:
     ) -> Tuple[EthicsDecision, str, List[str]]:
         """Perform the actual ethics check."""
         # Load applicable policies
-        policies = self.policy_manager.load_policies(user_id, target_type)
+        policies = await self.policy_manager.load_policies(user_id, target_type)
         
         if not policies:
             return EthicsDecision.APPROVED, "No policies apply", []

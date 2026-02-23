@@ -371,6 +371,14 @@ class TestConsentManager:
 
 class TestEnhancedEthicsGate:
     """Test enhanced ethics gate with caching."""
+
+    @pytest.fixture(autouse=True)
+    def _cleanup_policy_tables(self, test_db):
+        cursor = test_db.cursor()
+        cursor.execute("DELETE FROM aico_core.ethics_gate_audit")
+        cursor.execute("DELETE FROM aico_core.ethics_decisions_cache")
+        cursor.execute("DELETE FROM aico_core.agency_policy_rules")
+        test_db.commit()
     
     @pytest.fixture
     def db(self, test_db):
@@ -378,25 +386,26 @@ class TestEnhancedEthicsGate:
         return _DB(test_db)
     
     @pytest.fixture
-    def policy_manager(self, db):
+    def policy_manager(self, session_factory):
         """Create policy manager."""
-        return PolicyManager(db)
+        return PolicyManager(session_factory)
     
     @pytest.fixture
     def ethics_gate(self, db, policy_manager):
         """Create enhanced ethics gate."""
         return EnhancedEthicsGate(db, policy_manager)
     
-    def test_ethics_check_approved(self, ethics_gate, policy_manager, test_user, db):
+    @pytest.mark.asyncio
+    async def test_ethics_check_approved(self, ethics_gate, policy_manager, test_user, test_db):
         """Test ethics check that approves."""
         # Clean up any existing policies for this user and target type
-        db.execute("DELETE FROM agency_policy_rules WHERE user_id = ? OR target_type = 'goal'", (test_user,))
-        db.execute("DELETE FROM ethics_decisions_cache WHERE user_id = ?", (test_user,))
-        db.commit()
+        cursor = test_db.cursor()
+        cursor.execute("DELETE FROM agency_policy_rules WHERE user_id = %s", (test_user,))
+        test_db.commit()
         policy_manager._policy_cache.clear()
         
         # Add allowing policy
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("allow_policy"),
             rule_name="Allow Policy",
             target_type="goal",
@@ -407,7 +416,7 @@ class TestEnhancedEthicsGate:
             scope="user"
         )
         
-        decision, reasoning, rules = ethics_gate.check_ethics(
+        decision, reasoning, rules = await ethics_gate.check_ethics(
             user_id=test_user,
             target_type="goal",
             target_id="test-goal-1",
@@ -417,10 +426,11 @@ class TestEnhancedEthicsGate:
         assert decision == EthicsDecision.APPROVED
         assert len(rules) >= 1
     
-    def test_ethics_check_blocked(self, ethics_gate, policy_manager, test_user):
+    @pytest.mark.asyncio
+    async def test_ethics_check_blocked(self, ethics_gate, policy_manager, test_user):
         """Test ethics check that blocks."""
         # Add blocking policy
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("block_policy"),
             rule_name="Block Policy",
             target_type="goal",
@@ -431,7 +441,7 @@ class TestEnhancedEthicsGate:
             scope="user"
         )
         
-        decision, reasoning, rules = ethics_gate.check_ethics(
+        decision, reasoning, rules = await ethics_gate.check_ethics(
             user_id=test_user,
             target_type="goal",
             target_id="test-goal-2",
@@ -441,10 +451,11 @@ class TestEnhancedEthicsGate:
         assert decision == EthicsDecision.BLOCKED
         assert "block" in reasoning.lower()
     
-    def test_ethics_check_caching(self, ethics_gate, policy_manager, test_user):
+    @pytest.mark.asyncio
+    async def test_ethics_check_caching(self, ethics_gate, policy_manager, test_user):
         """Test that ethics decisions are cached."""
         # Add policy
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("cache_policy"),
             rule_name="Cache Policy",
             target_type="goal",
@@ -456,7 +467,7 @@ class TestEnhancedEthicsGate:
         )
         
         # First check (not cached)
-        decision1, _, _ = ethics_gate.check_ethics(
+        decision1, _, _ = await ethics_gate.check_ethics(
             user_id=test_user,
             target_type="goal",
             target_id="test-goal-cache",
@@ -464,7 +475,7 @@ class TestEnhancedEthicsGate:
         )
         
         # Second check (should use cache)
-        decision2, _, _ = ethics_gate.check_ethics(
+        decision2, _, _ = await ethics_gate.check_ethics(
             user_id=test_user,
             target_type="goal",
             target_id="test-goal-cache",
@@ -483,9 +494,10 @@ class TestEnhancedEthicsGate:
         assert cache_row is not None
         assert cache_row["hit_count"] >= 1
     
-    def test_ethics_audit_logging(self, ethics_gate, policy_manager, test_user, db):
+    @pytest.mark.asyncio
+    async def test_ethics_audit_logging(self, ethics_gate, policy_manager, test_user, test_db):
         """Test that ethics checks are audited."""
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("audit_policy"),
             rule_name="Audit Policy",
             target_type="goal",
@@ -496,7 +508,7 @@ class TestEnhancedEthicsGate:
             scope="user"
         )
         
-        ethics_gate.check_ethics(
+        await ethics_gate.check_ethics(
             user_id=test_user,
             target_type="goal",
             target_id="test-goal-audit",
@@ -505,10 +517,12 @@ class TestEnhancedEthicsGate:
         )
         
         # Check audit log
-        audit_rows = db.fetch_all(
-            "SELECT * FROM ethics_gate_audit WHERE user_id = ? AND target_id = ?",
+        cursor = test_db.cursor()
+        cursor.execute(
+            "SELECT * FROM ethics_gate_audit WHERE user_id = %s AND target_id = %s",
             (test_user, "test-goal-audit")
         )
+        audit_rows = cursor.fetchall()
         
         assert len(audit_rows) >= 1
         assert audit_rows[0]["check_level"] == 2
@@ -520,6 +534,14 @@ class TestEnhancedEthicsGate:
 
 class TestPolicyEthicsIntegration:
     """Test integration between policy, consent, and ethics systems."""
+
+    @pytest.fixture(autouse=True)
+    def _cleanup_policy_tables(self, test_db):
+        cursor = test_db.cursor()
+        cursor.execute("DELETE FROM aico_core.ethics_gate_audit")
+        cursor.execute("DELETE FROM aico_core.ethics_decisions_cache")
+        cursor.execute("DELETE FROM aico_core.agency_policy_rules")
+        test_db.commit()
     
     @pytest.fixture
     def db(self, test_db):
@@ -527,9 +549,9 @@ class TestPolicyEthicsIntegration:
         return _DB(test_db)
     
     @pytest.fixture
-    def policy_manager(self, db):
+    def policy_manager(self, session_factory):
         """Create policy manager."""
-        return PolicyManager(db)
+        return PolicyManager(session_factory)
     
     @pytest.fixture
     def consent_manager(self, db):
@@ -541,7 +563,8 @@ class TestPolicyEthicsIntegration:
         """Create enhanced ethics gate."""
         return EnhancedEthicsGate(db, policy_manager)
     
-    def test_policy_consent_integration(
+    @pytest.mark.asyncio
+    async def test_policy_consent_integration(
         self,
         policy_manager,
         consent_manager,
@@ -550,7 +573,7 @@ class TestPolicyEthicsIntegration:
     ):
         """Test that policies requiring consent work with consent manager."""
         # Add policy requiring consent
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("consent_policy"),
             rule_name="Consent Required Policy",
             target_type="curiosity_signal",
@@ -562,7 +585,7 @@ class TestPolicyEthicsIntegration:
         )
         
         # Check ethics (should need review)
-        decision, _, _ = ethics_gate.check_ethics(
+        decision, _, _ = await ethics_gate.check_ethics(
             user_id=test_user,
             target_type="curiosity_signal",
             target_id="test-signal-1",

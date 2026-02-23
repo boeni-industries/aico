@@ -10,11 +10,85 @@ This file is automatically loaded by pytest and provides:
 import pytest
 import sys
 from pathlib import Path
+import os
+import shutil
+import tempfile
 
 # Add project root and shared to Python path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "shared"))
+
+if "AICO_TEST_DB_NAME" not in os.environ:
+    os.environ["AICO_TEST_DB_NAME"] = "aico_test"
+
+
+def pytest_sessionstart(session):
+    if "AICO_TEST_DB_NAME" not in os.environ:
+        os.environ["AICO_TEST_DB_NAME"] = "aico_test"
+
+    try:
+        from aico.data.postgres import connection as pg_connection
+
+        pg_connection._pool = None
+        pg_connection._engine = None
+        pg_connection._session_factory = None
+    except Exception:
+        pass
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_test_config_dir():
+    if "AICO_CONFIG_DIR" in os.environ:
+        try:
+            cfg_root = Path(os.environ["AICO_CONFIG_DIR"])
+            user_dir = cfg_root / "user"
+            user_dir.mkdir(parents=True, exist_ok=True)
+            (user_dir / "agency.yaml").write_text(
+                "safety_control:\n  autonomy_level: 'balanced'\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+        yield
+        return
+
+    src_root = project_root / "config"
+    dst_root = Path(tempfile.mkdtemp(prefix="aico_test_config_"))
+
+    for subdir, pattern in (
+        ("defaults", "*.yaml"),
+        ("environments", "*.yaml"),
+        ("schemas", "*.schema.json"),
+        ("modelfiles", "Modelfile.*"),
+    ):
+        src = src_root / subdir
+        dst = dst_root / subdir
+        if not src.exists():
+            continue
+        dst.mkdir(parents=True, exist_ok=True)
+        for p in src.glob(pattern):
+            shutil.copy2(p, dst / p.name)
+
+    os.environ["AICO_CONFIG_DIR"] = str(dst_root)
+
+    user_dir = dst_root / "user"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    (user_dir / "agency.yaml").write_text(
+        "safety_control:\n  autonomy_level: 'balanced'\n",
+        encoding="utf-8",
+    )
+
+    try:
+        from aico.core.config import ConfigurationManager
+
+        ConfigurationManager._instance = None
+        ConfigurationManager._initialized = False
+        ConfigurationManager._watchers_started = False
+    except Exception:
+        pass
+
+    yield
 
 # Mock AICO logging before any imports (prevents logging conflicts in tests)
 from unittest.mock import MagicMock

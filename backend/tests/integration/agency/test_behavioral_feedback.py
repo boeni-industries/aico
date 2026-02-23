@@ -916,8 +916,13 @@ class TestAnalytics:
         assert success_rate == 0.5
     
     @pytest.mark.asyncio
-    async def test_get_user_satisfaction_trend(self, feedback_service, test_user):
+    async def test_get_user_satisfaction_trend(self, feedback_service, test_user, db):
         """Test getting user satisfaction trend over time."""
+        # Clean up any existing data for this user
+        cursor = db.cursor()
+        cursor.execute("DELETE FROM user_feedback_requests WHERE user_id = %s", (test_user,))
+        db.commit()
+        
         # Create feedback requests with ratings
         for i in range(5):
             request_id = await feedback_service.create_feedback_request(
@@ -939,6 +944,10 @@ class TestAnalytics:
         # Should have aggregated ratings
         assert all("avg_rating" in point for point in trend)
         assert all("count" in point for point in trend)
+        
+        # Clean up
+        cursor.execute("DELETE FROM user_feedback_requests WHERE user_id = %s", (test_user,))
+        db.commit()
 
 
 # ============================================================================

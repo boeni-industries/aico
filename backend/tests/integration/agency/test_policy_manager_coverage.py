@@ -73,19 +73,20 @@ class TestPolicyManagerCoverage:
         return _DB(test_db)
     
     @pytest.fixture
-    def policy_manager(self, db):
+    def policy_manager(self, session_factory):
         """Create policy manager with logger."""
         logger = Mock()
-        return PolicyManager(db, logger=logger)
+        return PolicyManager(session_factory, logger=logger)
     
     # ========================================================================
     # Load Policies Tests
     # ========================================================================
     
-    def test_load_policies_with_target_type_filter(self, policy_manager, test_user):
+    @pytest.mark.asyncio
+    async def test_load_policies_with_target_type_filter(self, policy_manager, test_user):
         """Test loading policies with target type filter (covers lines 146-148)."""
         # Add policies with different target types
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("goal_policy"),
             rule_name="Goal Policy",
             target_type="goal",
@@ -95,7 +96,7 @@ class TestPolicyManagerCoverage:
             scope="global"
         )
         
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("signal_policy"),
             rule_name="Signal Policy",
             target_type="curiosity_signal",
@@ -106,18 +107,19 @@ class TestPolicyManagerCoverage:
         )
         
         # Load only goal policies
-        policies = policy_manager.load_policies(target_type="goal")
+        policies = await policy_manager.load_policies(target_type="goal")
         
         assert len(policies) >= 1
         assert all(p.target_type == "goal" for p in policies)
     
-    def test_load_policies_cache_hit(self, policy_manager, test_user):
+    @pytest.mark.asyncio
+    async def test_load_policies_cache_hit(self, policy_manager, test_user):
         """Test that cache is used on second load (covers lines 126-128)."""
         # First load - populates cache
-        policies1 = policy_manager.load_policies(user_id=test_user)
+        policies1 = await policy_manager.load_policies(user_id=test_user)
         
         # Second load - should use cache
-        policies2 = policy_manager.load_policies(user_id=test_user)
+        policies2 = await policy_manager.load_policies(user_id=test_user)
         
         # Should return same results
         assert len(policies1) == len(policies2)
@@ -125,10 +127,11 @@ class TestPolicyManagerCoverage:
         # Verify cache was used (logger.debug should be called only once for load)
         # The second call should skip the database query
     
-    def test_load_policies_without_user_filter(self, policy_manager):
+    @pytest.mark.asyncio
+    async def test_load_policies_without_user_filter(self, policy_manager):
         """Test loading policies without user filter (covers lines 142-143)."""
         # Add global policy
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("global_only"),
             rule_name="Global Only",
             target_type="goal",
@@ -139,22 +142,26 @@ class TestPolicyManagerCoverage:
         )
         
         # Load without user_id
-        policies = policy_manager.load_policies(user_id=None)
+        policies = await policy_manager.load_policies(user_id=None)
         
         # Should only get global policies
         assert all(p.user_id is None for p in policies)
     
-    def test_load_policies_database_error(self, policy_manager, db):
+    @pytest.mark.asyncio
+    async def test_load_policies_database_error(self, test_user):
         """Test error handling when loading policies fails (covers lines 168-171)."""
-        with patch.object(db, 'fetch_all', side_effect=Exception("DB error")):
-            policies = policy_manager.load_policies()
-            
-            assert policies == []
-            assert policy_manager.logger.error.called
+        logger = Mock()
+        bad_session_factory = Mock(side_effect=Exception("DB error"))
+        policy_manager = PolicyManager(bad_session_factory, logger=logger)
+
+        policies = await policy_manager.load_policies(user_id=test_user)
+        assert policies == []
+        assert policy_manager.logger.error.called
     
-    def test_load_policies_logging(self, policy_manager, test_user):
+    @pytest.mark.asyncio
+    async def test_load_policies_logging(self, policy_manager, test_user):
         """Test that policy loading logs debug message (covers lines 160-164)."""
-        policy_manager.load_policies(user_id=test_user, force_refresh=True)
+        await policy_manager.load_policies(user_id=test_user, force_refresh=True)
         
         assert policy_manager.logger.debug.called
     
@@ -162,28 +169,33 @@ class TestPolicyManagerCoverage:
     # Add Policy Tests
     # ========================================================================
     
-    def test_add_policy_database_error(self, policy_manager, db):
+    @pytest.mark.asyncio
+    async def test_add_policy_database_error(self):
         """Test error handling when adding policy fails (covers lines 237-240)."""
-        with patch.object(db, 'execute', side_effect=Exception("DB error")):
-            with pytest.raises(Exception):
-                policy_manager.add_policy(
-                    rule_id=unique_rule_id("error_policy"),
-                    rule_name="Error Policy",
-                    target_type="goal",
-                    conditions={},
-                    effect="allow"
-                )
-            
-            assert policy_manager.logger.error.called
+        logger = Mock()
+        bad_session_factory = Mock(side_effect=Exception("DB error"))
+        policy_manager = PolicyManager(bad_session_factory, logger=logger)
+
+        with pytest.raises(Exception):
+            await policy_manager.add_policy(
+                rule_id=unique_rule_id("error_policy"),
+                rule_name="Error Policy",
+                target_type="goal",
+                conditions={},
+                effect="allow",
+            )
+
+        assert policy_manager.logger.error.called
     
-    def test_add_policy_clears_cache(self, policy_manager):
+    @pytest.mark.asyncio
+    async def test_add_policy_clears_cache(self, policy_manager, test_user):
         """Test that adding policy clears cache (covers line 230)."""
         # Populate cache
-        policy_manager.load_policies()
+        await policy_manager.load_policies(user_id=test_user)
         assert len(policy_manager._policy_cache) > 0
         
         # Add new policy
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("clear_cache"),
             rule_name="Clear Cache",
             target_type="goal",
@@ -198,17 +210,19 @@ class TestPolicyManagerCoverage:
     # Update Policy Tests
     # ========================================================================
     
-    def test_update_policy_not_found(self, policy_manager):
+    @pytest.mark.asyncio
+    async def test_update_policy_not_found(self, policy_manager):
         """Test updating non-existent policy (covers line 259)."""
         with pytest.raises(ValueError, match="not found"):
-            policy_manager.update_policy(
+            await policy_manager.update_policy(
                 rule_id="nonexistent-rule",
                 effect="block"
             )
     
-    def test_update_policy_conditions_only(self, policy_manager):
+    @pytest.mark.asyncio
+    async def test_update_policy_conditions_only(self, policy_manager, db):
         """Test updating only conditions (covers lines 285-287)."""
-        rule_id = policy_manager.add_policy(
+        rule_id = await policy_manager.add_policy(
             rule_id=unique_rule_id("update_cond"),
             rule_name="Update Conditions",
             target_type="goal",
@@ -218,12 +232,12 @@ class TestPolicyManagerCoverage:
         )
         
         new_conditions = {"priority": "high", "category": "work"}
-        policy_manager.update_policy(
+        await policy_manager.update_policy(
             rule_id=rule_id,
             conditions=new_conditions
         )
         
-        row = policy_manager.db.fetch_one(
+        row = db.fetch_one(
             "SELECT * FROM agency_policy_rules WHERE rule_id = ?",
             (rule_id,)
         )
@@ -231,9 +245,10 @@ class TestPolicyManagerCoverage:
         stored_conditions = json.loads(row["conditions"])
         assert stored_conditions == new_conditions
     
-    def test_update_policy_effect_only(self, policy_manager):
+    @pytest.mark.asyncio
+    async def test_update_policy_effect_only(self, policy_manager, db):
         """Test updating only effect (covers lines 289-291)."""
-        rule_id = policy_manager.add_policy(
+        rule_id = await policy_manager.add_policy(
             rule_id=unique_rule_id("update_effect"),
             rule_name="Update Effect",
             target_type="goal",
@@ -242,21 +257,22 @@ class TestPolicyManagerCoverage:
             priority=50
         )
         
-        policy_manager.update_policy(
+        await policy_manager.update_policy(
             rule_id=rule_id,
             effect="block"
         )
         
-        row = policy_manager.db.fetch_one(
+        row = db.fetch_one(
             "SELECT * FROM agency_policy_rules WHERE rule_id = ?",
             (rule_id,)
         )
         
         assert row["effect"] == "block"
     
-    def test_update_policy_priority_only(self, policy_manager):
+    @pytest.mark.asyncio
+    async def test_update_policy_priority_only(self, policy_manager, db):
         """Test updating only priority (covers lines 293-295)."""
-        rule_id = policy_manager.add_policy(
+        rule_id = await policy_manager.add_policy(
             rule_id=unique_rule_id("update_priority"),
             rule_name="Update Priority",
             target_type="goal",
@@ -265,21 +281,22 @@ class TestPolicyManagerCoverage:
             priority=50
         )
         
-        policy_manager.update_policy(
+        await policy_manager.update_policy(
             rule_id=rule_id,
             priority=90
         )
         
-        row = policy_manager.db.fetch_one(
+        row = db.fetch_one(
             "SELECT * FROM agency_policy_rules WHERE rule_id = ?",
             (rule_id,)
         )
         
         assert row["priority"] == 90
     
-    def test_update_policy_active_flag(self, policy_manager):
+    @pytest.mark.asyncio
+    async def test_update_policy_active_flag(self, policy_manager, db):
         """Test updating active flag (covers lines 297-299)."""
-        rule_id = policy_manager.add_policy(
+        rule_id = await policy_manager.add_policy(
             rule_id=unique_rule_id("update_active"),
             rule_name="Update Active",
             target_type="goal",
@@ -289,40 +306,42 @@ class TestPolicyManagerCoverage:
         )
         
         # Deactivate policy
-        policy_manager.update_policy(
+        await policy_manager.update_policy(
             rule_id=rule_id,
             active=False
         )
         
-        row = policy_manager.db.fetch_one(
+        row = db.fetch_one(
             "SELECT * FROM agency_policy_rules WHERE rule_id = ?",
             (rule_id,)
         )
         
-        assert row["active"] == 0
+        assert row["active"] in (0, False)
     
-    def test_update_policy_database_error(self, policy_manager, db):
+    @pytest.mark.asyncio
+    async def test_update_policy_database_error(self, policy_manager):
         """Test error handling when updating policy fails (covers lines 315-318)."""
-        rule_id = policy_manager.add_policy(
+        rule_id = await policy_manager.add_policy(
             rule_id=unique_rule_id("update_error"),
             rule_name="Update Error",
             target_type="goal",
             conditions={},
-            effect="allow"
+            effect="allow",
         )
-        
-        with patch.object(db, 'execute', side_effect=Exception("DB error")):
-            with pytest.raises(Exception):
-                policy_manager.update_policy(
-                    rule_id=rule_id,
-                    effect="block"
-                )
-            
-            assert policy_manager.logger.error.called
+
+        logger = Mock()
+        bad_session_factory = Mock(side_effect=Exception("DB error"))
+        broken_policy_manager = PolicyManager(bad_session_factory, logger=logger)
+
+        with pytest.raises(Exception):
+            await broken_policy_manager.update_policy(rule_id=rule_id, effect="block")
+
+        assert broken_policy_manager.logger.error.called
     
-    def test_update_policy_clears_cache(self, policy_manager):
+    @pytest.mark.asyncio
+    async def test_update_policy_clears_cache(self, policy_manager, test_user):
         """Test that updating policy clears cache (covers line 313)."""
-        rule_id = policy_manager.add_policy(
+        rule_id = await policy_manager.add_policy(
             rule_id=unique_rule_id("update_cache"),
             rule_name="Update Cache",
             target_type="goal",
@@ -331,11 +350,11 @@ class TestPolicyManagerCoverage:
         )
         
         # Populate cache
-        policy_manager.load_policies()
+        await policy_manager.load_policies(user_id=test_user)
         assert len(policy_manager._policy_cache) > 0
         
         # Update policy
-        policy_manager.update_policy(
+        await policy_manager.update_policy(
             rule_id=rule_id,
             effect="block"
         )
@@ -637,9 +656,9 @@ class TestEnhancedEthicsGateCoverage:
         return _DB(test_db)
     
     @pytest.fixture
-    def policy_manager(self, db):
+    def policy_manager(self, session_factory):
         """Create policy manager."""
-        return PolicyManager(db)
+        return PolicyManager(session_factory)
     
     @pytest.fixture
     def ethics_gate(self, db, policy_manager):
@@ -647,13 +666,14 @@ class TestEnhancedEthicsGateCoverage:
         logger = Mock()
         return EnhancedEthicsGate(db, policy_manager, logger=logger)
     
-    def test_check_ethics_no_policies(self, ethics_gate, test_user, db):
+    @pytest.mark.asyncio
+    async def test_check_ethics_no_policies(self, ethics_gate, test_user, db):
         """Test ethics check with no applicable policies (covers lines 764-765)."""
         # Clear all policies
         db.execute("DELETE FROM agency_policy_rules WHERE user_id = ? OR user_id IS NULL", (test_user,))
         db.commit()
         
-        decision, reasoning, rules = ethics_gate.check_ethics(
+        decision, reasoning, rules = await ethics_gate.check_ethics(
             user_id=test_user,
             target_type="goal",
             target_id="test-goal-no-policies",
@@ -664,9 +684,10 @@ class TestEnhancedEthicsGateCoverage:
         assert "No policies apply" in reasoning
         assert len(rules) == 0
     
-    def test_check_ethics_needs_consent(self, ethics_gate, policy_manager, test_user):
+    @pytest.mark.asyncio
+    async def test_check_ethics_needs_consent(self, ethics_gate, policy_manager, test_user):
         """Test ethics check that needs consent (covers lines 777-783)."""
-        policy_manager.add_policy(
+        await policy_manager.add_policy(
             rule_id=unique_rule_id("consent_policy"),
             rule_name="Consent Policy",
             target_type="goal",
@@ -676,7 +697,7 @@ class TestEnhancedEthicsGateCoverage:
             priority=70
         )
         
-        decision, reasoning, rules = ethics_gate.check_ethics(
+        decision, reasoning, rules = await ethics_gate.check_ethics(
             user_id=test_user,
             target_type="goal",
             target_id="test-goal-consent",

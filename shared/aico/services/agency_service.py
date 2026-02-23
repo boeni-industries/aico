@@ -519,7 +519,7 @@ class AgencyService:
     async def save_bandit_arm(self, arm_data: Dict[str, Any]) -> None:
         """Save or update a bandit arm configuration."""
         try:
-            from aico.data.agency.models import ArbiterBanditArm
+            from aico.data.arbiter.bandit_models import ArbiterBanditArm
             arm = ArbiterBanditArm(**arm_data)
             existing = await self.uow.arbiter_bandit_arms.get_by_id(arm.arm_id)
             if existing:
@@ -545,6 +545,12 @@ class AgencyService:
                     normalized.append(arm.model_dump())
                 else:
                     normalized.append(dict(arm.__dict__))
+
+            for row in normalized:
+                for k in ("created_at", "updated_at", "last_pulled"):
+                    v = row.get(k)
+                    if hasattr(v, "isoformat"):
+                        row[k] = v.isoformat()
             return normalized
         except Exception as e:
             logger.error(f"[AGENCY_SERVICE] Failed to get bandit arms: {e}")

@@ -60,6 +60,101 @@ def test_db():
             f"Expected '{expected_db_name}'. Set AICO_TEST_DB_NAME if needed."
         )
     cursor.execute("SET search_path TO aico_core,public")
+    # Ensure test DB schema is up-to-date enough for the current codebase.
+    # This is intentionally minimal and idempotent: only add columns that newer
+    # code expects but older test DBs may not yet have.
+    cursor.execute(
+        "ALTER TABLE IF EXISTS ethics_value_profiles "
+        "ADD COLUMN IF NOT EXISTS autonomy_level TEXT DEFAULT 'balanced'"
+    )
+
+    cursor.execute(
+        "ALTER TABLE IF EXISTS user_feedback_requests "
+        "ALTER COLUMN responded_at TYPE TIMESTAMPTZ USING NULLIF(responded_at::text, '')::timestamptz"
+    )
+    cursor.execute(
+        "ALTER TABLE IF EXISTS user_feedback_requests "
+        "ALTER COLUMN created_at TYPE TIMESTAMPTZ USING NULLIF(created_at::text, '')::timestamptz"
+    )
+    
+    # Create interaction_requests table if missing
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS interaction_requests (
+            interaction_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            interaction_type TEXT NOT NULL,
+            requirement TEXT NOT NULL,
+            status TEXT NOT NULL,
+            category TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT,
+            prompt TEXT,
+            context_json JSONB,
+            allowed_options JSONB,
+            expected_answer_type TEXT,
+            answer_text TEXT,
+            answer_json JSONB,
+            answered_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ,
+            idempotency_key TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_interaction_requests_idempotency_key
+        ON interaction_requests (user_id, idempotency_key)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_requests_user_status
+        ON interaction_requests (user_id, status, created_at DESC)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_requests_correlation
+        ON interaction_requests (correlation_id)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_requests_expires
+        ON interaction_requests (expires_at)
+        WHERE expires_at IS NOT NULL
+    """)
+    
+    # Create interaction_events table if missing
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS interaction_events (
+            event_id TEXT PRIMARY KEY,
+            interaction_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            from_status TEXT,
+            to_status TEXT,
+            payload_json JSONB,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_events_interaction
+        ON interaction_events (interaction_id, created_at ASC)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_events_user_time
+        ON interaction_events (user_id, created_at DESC)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_events_correlation
+        ON interaction_events (correlation_id, created_at ASC)
+    """)
+    
     db.commit()
     cursor.close()
     

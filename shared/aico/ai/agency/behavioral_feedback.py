@@ -530,4 +530,4 @@ class BehavioralFeedbackService:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"[FEEDBACK] Failed to get satisfaction trend: {e}")
-            return []
+            raise
