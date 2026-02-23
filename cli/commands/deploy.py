@@ -40,6 +40,79 @@ from aico.security.key_manager import AICOKeyManager
 console = Console()
 
 
+def _get_aico_repo_root() -> Path:
+    """Resolve the AICO repo root by walking upwards from this file."""
+
+    current = Path(__file__).resolve()
+    for parent in [current.parent, *current.parents]:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    # Fallback: assume cli/commands/deploy.py => repo root is three levels up
+    return Path(__file__).parent.parent.parent.resolve()
+
+
+def _resolve_component_path(component_name: str) -> Path:
+    """Resolve external component path.
+
+    Resolution order:
+    1) Env var override: AICO_COMPONENT_<NAME>_DIR
+    2) Config: system.components.<name>.path
+    3) Convention default: ../aico-<name> relative to AICO repo root
+    """
+
+    env_key = f"AICO_COMPONENT_{component_name.upper()}_DIR"
+    if override := os.getenv(env_key):
+        return Path(override).expanduser().resolve()
+
+    repo_root = _get_aico_repo_root()
+
+    # Use runtime config (created by `uv run aico config init`).
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    cfg_path = config.get_optional(f"system.components.{component_name}.path", default="")
+
+    if isinstance(cfg_path, str) and cfg_path.strip():
+        candidate = Path(os.path.expanduser(cfg_path.strip()))
+        if not candidate.is_absolute():
+            candidate = (repo_root / candidate)
+        return candidate.resolve()
+
+    # Convention default
+    return (repo_root / f"../aico-{component_name}").resolve()
+
+
+def _run_compose_file(compose_file: Path, args: list[str], env: dict | None = None, cwd: Path | None = None) -> int:
+    """Run docker compose against a specific compose file."""
+
+    if not compose_file.exists():
+        console.print(format_error(f"Docker compose file not found: {compose_file}"))
+        return 1
+
+    cmd = [
+        "docker",
+        "compose",
+        "-f",
+        str(compose_file),
+    ] + args
+
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
+
+    try:
+        result = subprocess.run(cmd, check=False, env=run_env, cwd=str(cwd) if cwd else None)
+        if result.returncode != 0:
+            console.print(
+                format_error(
+                    f"docker compose command failed with exit code {result.returncode}:\n" + " ".join(cmd)
+                )
+            )
+        return result.returncode
+    except FileNotFoundError:
+        console.print(format_error("'docker' command not found. Install Docker and ensure it is on your PATH."))
+        return 1
+
+
 def _generate_secure_password(length: int = 32) -> str:
     """Generate a cryptographically secure password."""
     # Use URL-safe base64 encoding for compatibility
@@ -345,7 +418,7 @@ def _run_compose(args: list[str], env: dict = None) -> int:
         return 1
 
 
-def _nuke_postgres() -> int:
+def _nuke_postgres(shadow: bool = False) -> int:
     """COMPLETE reset: force kill containers, unmount volumes, remove images, networks, credentials, cache."""
 
     console.print("💣 [bold yellow]NUKING Postgres - COMPLETE cleanup of ALL artifacts...[/bold yellow]")
@@ -899,8 +972,63 @@ def _nuke_influx() -> int:
     return 0
 
 
+def _nuke_studio(studio_dir: Path) -> int:
+    """Reset Studio container/image artifacts."""
+
+    console.print("💣 [bold yellow]NUKING Studio - cleanup of Docker artifacts...[/bold yellow]")
+
+    # Best-effort removal: Studio containers + images only.
+    # IMPORTANT: do NOT run `docker compose down` here because Studio shares the
+    # project namespace (`name: aico`) with other components.
+    # A project-level down would stop/remove unrelated containers.
+
+    # Remove via compose (scoped to the studio service in the studio compose file)
+    prod_compose = studio_dir / "docker" / "compose.prod.yml"
+    dev_compose = studio_dir / "docker" / "compose.dev.yml"
+    if prod_compose.exists():
+        _run_compose_file(prod_compose, ["rm", "-s", "-f", "studio"], cwd=studio_dir)
+    if dev_compose.exists():
+        _run_compose_file(dev_compose, ["rm", "-s", "-f", "studio"], cwd=studio_dir)
+
+    # Also remove any explicitly named containers (for older compose versions / manual runs)
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", "aico-studio"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["docker", "rm", "-f", "aico-studio-dev"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    try:
+        subprocess.run(
+            ["docker", "rmi", "-f", "aico-studio:local"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["docker", "rmi", "-f", "aico-studio-dev:local"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    console.print(format_success("✅ Studio nuked"))
+    return 0
+
+
 app = typer.Typer(
-    help="Deployment orchestration for AICO backends (Postgres, InfluxDB, Loki).",
+    help="Deployment orchestration for AICO components (infra services + Studio).",
     invoke_without_command=False,
 )
 
@@ -1343,6 +1471,72 @@ def deploy_grafana(
     console.print(format_info(f"💡 Password: (stored in keyring - retrieve with: aico security keyring get grafana_admin_password)"))
     console.print(format_info("💡 Loki datasource is pre-configured and ready to use"))
     console.print(format_info("💡 Navigate to Explore → Loki to query logs"))
+    console.print("")
+
+
+@app.command("studio", help="Provision AICO Studio (Docker), with --dev for npm start and --nuke for full reset")
+def deploy_studio(
+    dev: bool = typer.Option(
+        False,
+        "--dev",
+        help="Run Studio in dev mode (npm start) with source bind-mounts.",
+    ),
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Studio container + image before provisioning.",
+    ),
+    api_base_url: str = typer.Option(
+        "",
+        "--api-base-url",
+        help="AICO Gateway API base URL (e.g. http://localhost:8771/api/v1). Overrides default.",
+    ),
+):
+    """Deploy or refresh the AICO Studio web UI.
+
+    - Production mode (default): builds a static bundle and serves via nginx.
+    - Dev mode (--dev): runs `npm start` inside a container with bind mounts.
+
+    The backend URL is configured at runtime via AICO_STUDIO_API_BASE_URL.
+    """
+
+    console.print("\n" + "=" * 60)
+    console.print("🧩 [bold cyan]AICO Studio Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    studio_dir = _resolve_component_path("studio")
+    if not studio_dir.exists():
+        console.print(format_error(f"Studio directory not found: {studio_dir}"))
+        console.print(format_info("Set system.components.studio.path in system.yaml or export AICO_COMPONENT_STUDIO_DIR."))
+        raise typer.Exit(1)
+
+    compose_file = studio_dir / "docker" / ("compose.dev.yml" if dev else "compose.prod.yml")
+    if not compose_file.exists():
+        console.print(format_error(f"Studio compose file not found: {compose_file}"))
+        console.print(format_info("Ensure aico-studio has docker/compose.prod.yml and docker/compose.dev.yml."))
+        raise typer.Exit(1)
+
+    if nuke:
+        _nuke_studio(studio_dir)
+
+    # Default API base URL for local dev.
+    api_url = api_base_url.strip() or os.getenv("AICO_STUDIO_API_BASE_URL") or "http://localhost:8771/api/v1"
+
+    env = {
+        "AICO_STUDIO_API_BASE_URL": api_url,
+    }
+
+    console.print(format_info(f"Using Studio directory: {studio_dir}"))
+    console.print(format_info(f"Using API base URL: {api_url}"))
+
+    console.print("🚀 [cyan]Starting Studio container...[/cyan]")
+    code = _run_compose_file(compose_file, ["up", "-d", "--build"], env=env, cwd=studio_dir)
+    if code != 0:
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ Studio deployment completed successfully!"))
+    console.print(format_info("💡 Studio will be available at: http://localhost:3002"))
     console.print("")
 
 
