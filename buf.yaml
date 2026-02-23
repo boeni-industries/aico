@@ -1,0 +1,15 @@
+version: v1
+
+name: buf.build/aico/aico
+
+build:
+  roots:
+    - proto
+
+breaking:
+  use:
+    - FILE
+
+lint:
+  use:
+    - DEFAULT

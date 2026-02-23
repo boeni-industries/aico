@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
@@ -18,6 +19,12 @@ EXCLUDED_PATH_PREFIXES: tuple[str, ...] = (
 
 def _build_public_app() -> FastAPI:
     from aico.core.version import get_backend_version
+    from aico.core.config import ConfigurationManager
+
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_config_dir = repo_root / "config"
+    os.environ.setdefault("AICO_CONFIG_DIR", str(repo_config_dir))
+    ConfigurationManager(config_dir=repo_config_dir).initialize(lightweight=True)
 
     app = FastAPI(
         title="AICO Backend API",
@@ -85,7 +92,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate public OpenAPI spec (golden artifact)")
     parser.add_argument(
         "--output",
-        default="openapi/public-openapi.json",
+        default="contracts/openapi/v1.json",
         help="Output path for generated OpenAPI spec (json)",
     )
     parser.add_argument(
@@ -110,7 +117,7 @@ def main() -> int:
         if existing != rendered:
             raise SystemExit(
                 "OpenAPI artifact differs from generated spec. "
-                "Run scripts/generate_openapi_public.py to update openapi/public-openapi.json"
+                "Run scripts/generate_openapi_public.py to update contracts/openapi/v1.json"
             )
         return 0
 
