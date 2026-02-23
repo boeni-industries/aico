@@ -48,6 +48,8 @@ from .exceptions import (
     handle_scheduler_exceptions
 )
 
+from backend.api.errors import raise_api_error
+
 router = APIRouter()
 logger = get_logger("api.scheduler_router")
 
@@ -601,9 +603,10 @@ async def acknowledge_execution(
         success = await scheduler_service.acknowledge_execution(execution_id)
         
         if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Execution {execution_id} not found"
+            raise_api_error(
+                status_code=404,
+                error_code="SCHEDULER_EXECUTION_NOT_FOUND",
+                message=f"Execution {execution_id} not found",
             )
         
         logger.info(f"Acknowledged execution: {execution_id}")

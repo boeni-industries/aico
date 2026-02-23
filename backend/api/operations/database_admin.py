@@ -356,7 +356,8 @@ def validate_sql_query(query: str, allow_destructive: bool = False) -> tuple[boo
     # Check for forbidden patterns (always blocked)
     for pattern in FORBIDDEN_SQL_PATTERNS:
         if re.search(pattern, query_upper, re.IGNORECASE):
-            return False, f"Forbidden operation detected: {pattern.replace('\\b', '').replace('\\s+', ' ')}", False
+            cleaned_pattern = pattern.replace("\\b", "").replace("\\s+", " ")
+            return False, f"Forbidden operation detected: {cleaned_pattern}", False
     
     # Check for destructive patterns (require confirmation)
     is_destructive = False

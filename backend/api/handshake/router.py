@@ -9,9 +9,10 @@ from fastapi.responses import JSONResponse
 from typing import Dict, Any
 import time
 from aico.core.logging import get_logger
+from backend.api.errors import raise_api_error
 
 router = APIRouter()
-logger = get_logger("api.handshake")
+logger = get_logger("backend.api.handshake")
 
 # This will be injected during app initialization
 transport_manager = None
@@ -34,9 +35,10 @@ async def handshake(request: Request):
         
         if "handshake_request" not in request_data:
             logger.warning("Invalid handshake request format - missing handshake_request field")
-            raise HTTPException(
-                status_code=400, 
-                detail="Invalid handshake request format"
+            raise_api_error(
+                status_code=400,
+                error_code="HANDSHAKE_INVALID_REQUEST",
+                message="Invalid handshake request format",
             )
         
         handshake_request = request_data["handshake_request"]
@@ -73,7 +75,8 @@ async def handshake(request: Request):
         logger.error(f"Handshake processing failed: {e}", extra={
             "error_type": type(e).__name__
         })
-        raise HTTPException(
+        raise_api_error(
             status_code=500,
-            detail="Internal handshake processing error"
+            error_code="HANDSHAKE_PROCESSING_FAILED",
+            message="Internal handshake processing error",
         )

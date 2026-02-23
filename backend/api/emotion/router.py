@@ -7,13 +7,14 @@ Provides access to current emotional state and history.
 
 from typing import Annotated, Optional
 from datetime import datetime, timedelta, UTC
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, Depends, Query
 import os
 from aico.core.logging import get_logger
 from .schemas import EmotionStateResponse, EmotionHistoryResponse, EmotionHistoryItem
 from .dependencies import get_current_user, get_emotion_engine
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
+from backend.api.errors import raise_api_error
 
 logger = get_logger("aico.api.emotion.router")
 
@@ -41,7 +42,11 @@ async def get_current_emotion(
         current_state = emotion_engine.current_state
         
         if current_state is None:
-            raise HTTPException(status_code=404, detail="No emotional state available")
+            raise_api_error(
+                status_code=404,
+                error_code="EMOTION_STATE_NOT_AVAILABLE",
+                message="No emotional state available",
+            )
         
         # Convert to response format
         return EmotionStateResponse(
@@ -57,7 +62,11 @@ async def get_current_emotion(
         raise
     except Exception as e:
         logger.error(f"Error retrieving current emotion: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve emotional state: {str(e)}")
+        raise_api_error(
+            status_code=500,
+            error_code="EMOTION_STATE_FETCH_FAILED",
+            message="Failed to retrieve emotional state",
+        )
 
 
 @router.get("/history", response_model=EmotionHistoryResponse)
@@ -112,7 +121,11 @@ async def get_emotion_history(
                 since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
                 filters["timestamp_gte"] = since_dt
             except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid 'since' timestamp format. Use ISO 8601 format.")
+                raise_api_error(
+                    status_code=400,
+                    error_code="EMOTION_SINCE_INVALID",
+                    message="Invalid 'since' timestamp format. Use ISO 8601 format.",
+                )
         elif hours:
             cutoff = datetime.now(UTC) - timedelta(hours=hours)
             filters["timestamp_gte"] = cutoff
@@ -156,4 +169,8 @@ async def get_emotion_history(
         raise
     except Exception as e:
         logger.error(f"Error retrieving emotion history: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve emotion history: {str(e)}")
+        raise_api_error(
+            status_code=500,
+            error_code="EMOTION_HISTORY_FETCH_FAILED",
+            message="Failed to retrieve emotion history",
+        )

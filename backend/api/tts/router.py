@@ -10,11 +10,11 @@ from fastapi.responses import StreamingResponse
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
 from aico.proto.aico_modelservice_pb2 import TtsRequest, TtsStreamChunk
-from backend.api.conversation.dependencies import get_current_user
+from backend.api.dependencies import get_current_user
 from .schemas import TtsSynthesizeRequest
+from backend.api.errors import raise_api_error
 
 logger = get_logger("aico.api.tts.router")
-
 
 router = APIRouter()
 
@@ -22,25 +22,16 @@ router = APIRouter()
 async def get_message_bus_client(request: Request):
     """Get message bus client from service container"""
     if not hasattr(request.app.state, 'service_container'):
-        raise HTTPException(
-            status_code=500,
-            detail="Service container not available"
-        )
+        raise_api_error(status_code=500, error_code="SERVICE_CONTAINER_NOT_AVAILABLE", message="Service container not available")
     
     container = request.app.state.service_container
     message_bus_plugin = container.get_service("message_bus_plugin")
     
     if not message_bus_plugin or not hasattr(message_bus_plugin, 'message_bus_host'):
-        raise HTTPException(
-            status_code=500,
-            detail="Message bus plugin not available"
-        )
+        raise_api_error(status_code=500, error_code="MESSAGE_BUS_PLUGIN_NOT_AVAILABLE", message="Message bus plugin not available")
     
     if not message_bus_plugin.message_bus_host:
-        raise HTTPException(
-            status_code=500,
-            detail="Message bus host not initialized"
-        )
+        raise_api_error(status_code=500, error_code="MESSAGE_BUS_HOST_NOT_INITIALIZED", message="Message bus host not initialized")
     
     # Register TTS API module
     try:
@@ -53,12 +44,23 @@ async def get_message_bus_client(request: Request):
         if "already registered" in str(e).lower():
             logger.debug("Module tts_api already registered")
             # Try to get existing client
-            client = await message_bus_plugin.register_module(
-                "tts_api",
-                [AICOTopics.MODELSERVICE_TTS_STREAM]
-            )
-            return client
-        raise HTTPException(status_code=500, detail=f"Failed to register message bus client: {e}")
+            try:
+                client = await message_bus_plugin.register_module(
+                    "tts_api",
+                    [AICOTopics.MODELSERVICE_TTS_STREAM]
+                )
+                return client
+            except Exception as e:
+                raise_api_error(
+                    status_code=500,
+                    error_code="MESSAGE_BUS_CLIENT_REGISTRATION_FAILED",
+                    message="Failed to register message bus client",
+                )
+        raise_api_error(
+            status_code=500,
+            error_code="MESSAGE_BUS_CLIENT_REGISTRATION_FAILED",
+            message="Failed to register message bus client",
+        )
 
 
 @router.post("/synthesize")
@@ -257,7 +259,8 @@ async def synthesize_tts(
         tb = traceback.format_exc()
         logger.error(f"TTS synthesis failed: {e}")
         logger.error(f"Traceback: {tb}")
-        raise HTTPException(
+        raise_api_error(
             status_code=500,
-            detail=f"TTS synthesis failed: {str(e)}"
+            error_code="TTS_SYNTHESIS_FAILED",
+            message="TTS synthesis failed",
         )

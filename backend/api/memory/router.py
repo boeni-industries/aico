@@ -10,7 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from pydantic import BaseModel, Field
 
 from aico.core.logging import get_logger
-from backend.api.memory.dependencies import get_current_user
+
+from backend.api.errors import raise_api_error
+from backend.api.dependencies import get_current_user
 
 logger = get_logger("backend.api.memory")
 
@@ -153,9 +155,10 @@ async def get_semantic_stats(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         
         # Get memory manager from AI registry
@@ -163,23 +166,26 @@ async def get_semantic_stats(
         memory_manager = ai_registry.get("memory")
         
         if not memory_manager:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Memory manager not initialized"
+            raise_api_error(
+                status_code=503,
+                error_code="MEMORY_MANAGER_NOT_INITIALIZED",
+                message="Memory manager not initialized",
             )
         
         if not hasattr(memory_manager, '_semantic_store'):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Semantic memory not initialized"
+            raise_api_error(
+                status_code=503,
+                error_code="SEMANTIC_MEMORY_NOT_INITIALIZED",
+                message="Semantic memory not initialized",
             )
         
         semantic_store = memory_manager._semantic_store
         
         if not semantic_store:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Semantic memory not initialized"
+            raise_api_error(
+                status_code=503,
+                error_code="SEMANTIC_MEMORY_NOT_INITIALIZED",
+                message="Semantic memory not initialized",
             )
         
         # Get stats from semantic store (synchronous method - offload to thread)
@@ -199,14 +205,13 @@ async def get_semantic_stats(
             retrieval_quality_percent=stats.get('retrieval_quality_percent', 0.0)
         )
         
-    except HTTPException:
-        raise
     except Exception as e:
         error_msg = f"❌ SEMANTIC STATS ENDPOINT FAILURE: {e}"
         logger.error(error_msg)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve semantic memory statistics: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="SEMANTIC_MEMORY_STATS_FAILED",
+            message="Failed to retrieve semantic memory statistics",
         )
 
 
@@ -233,9 +238,10 @@ async def get_working_stats(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         
         # Get memory manager from AI registry
@@ -243,23 +249,26 @@ async def get_working_stats(
         memory_manager = ai_registry.get("memory")
         
         if not memory_manager:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Memory manager not initialized"
+            raise_api_error(
+                status_code=503,
+                error_code="MEMORY_MANAGER_NOT_INITIALIZED",
+                message="Memory manager not initialized",
             )
         
         if not hasattr(memory_manager, '_working_store'):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Working memory not initialized"
+            raise_api_error(
+                status_code=503,
+                error_code="WORKING_MEMORY_NOT_INITIALIZED",
+                message="Working memory not initialized",
             )
         
         working_store = memory_manager._working_store
         
         if not working_store:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Working memory not initialized"
+            raise_api_error(
+                status_code=503,
+                error_code="WORKING_MEMORY_NOT_INITIALIZED",
+                message="Working memory not initialized",
             )
         
         # Get stats from working store
@@ -279,8 +288,6 @@ async def get_working_stats(
             recent_activity=recent_activity
         )
         
-    except HTTPException:
-        raise
     except Exception as e:
         error_msg = f"❌ WORKING STATS ENDPOINT FAILURE: {e}"
         logger.error(error_msg)
@@ -290,9 +297,10 @@ async def get_working_stats(
         print(f"Error: {e}")
         print(f"User ID: {user.get('user_id')}")
         print(f"{'='*80}\n")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve working memory statistics: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="WORKING_MEMORY_STATS_FAILED",
+            message="Failed to retrieve working memory statistics",
         )
 
 

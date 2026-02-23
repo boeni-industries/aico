@@ -1,45 +1,129 @@
-"""
-Global API Dependencies
+"""Global API dependencies.
 
-Shared dependencies used across multiple API domains.
+This module is the canonical place for REST + WebSocket authentication dependencies.
 """
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Dict, Any
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
 import jwt
+from fastapi import Depends, HTTPException, Request, WebSocket, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 from aico.core.logging import get_logger
+
+from backend.api.errors import raise_api_error
+
 
 security = HTTPBearer()
 logger = get_logger("api.dependencies")
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
-    """
-    Verify JWT token and return user information.
-    Used for endpoints requiring any authenticated user.
-    """
-    try:
-        token = credentials.credentials
-        # Note: auth_manager will be injected via dependency injection in actual usage
-        # This is a placeholder that will be updated when integrating with main.py
-        
-        # For now, return a basic structure
-        # TODO: Integrate with AuthenticationManager from main.py
-        return {
-            "user_uuid": "placeholder",
-            "username": "placeholder", 
-            "roles": [],
-            "permissions": set(),
-            "token": token
-        }
-        
-    except Exception as e:
-        logger.error(f"Token verification failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed"
+def get_auth_manager(request: Request):
+    if not hasattr(request.app.state, "service_container"):
+        raise_api_error(
+            status_code=500,
+            error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
+            message="Service container not initialized",
         )
+
+    container = request.app.state.service_container
+    security_plugin = container.get_service("security_plugin")
+    if security_plugin is None or not hasattr(security_plugin, "auth_manager"):
+        raise_api_error(
+            status_code=500,
+            error_code="SECURITY_PLUGIN_NOT_INITIALIZED",
+            message="Security plugin not initialized",
+        )
+
+    return security_plugin.auth_manager
+
+
+def _normalize_user_payload(*, token: str, payload: dict[str, Any]) -> Dict[str, Any]:
+    user_id = payload.get("user_id") or payload.get("user_uuid") or payload.get("sub")
+    if not user_id:
+        raise_api_error(
+            status_code=401,
+            error_code="AUTH_TOKEN_MISSING_USER_ID",
+            message="Invalid token: missing user id",
+        )
+
+    tenant_id = payload.get("tenant_id")
+    roles = payload.get("roles", [])
+    permissions = set(payload.get("permissions", []))
+
+    return {
+        "tenant_id": tenant_id,
+        "user_id": user_id,
+        "user_uuid": user_id,
+        "username": payload.get("username"),
+        "roles": roles,
+        "permissions": permissions,
+        "token": token,
+    }
+
+
+def _decode_and_verify_jwt(*, token: str, auth_manager) -> dict[str, Any]:
+    try:
+        return jwt.decode(
+            token,
+            auth_manager._get_jwt_secret(),
+            algorithms=[getattr(auth_manager, "jwt_algorithm", "HS256")],
+            options={"verify_aud": False},
+        )
+    except jwt.ExpiredSignatureError:
+        raise_api_error(status_code=401, error_code="AUTH_TOKEN_EXPIRED", message="Token has expired")
+    except jwt.InvalidTokenError:
+        raise_api_error(status_code=401, error_code="AUTH_TOKEN_INVALID", message="Invalid token")
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    auth_manager=Depends(get_auth_manager),
+) -> Dict[str, Any]:
+    token = credentials.credentials
+
+    payload = _decode_and_verify_jwt(token=token, auth_manager=auth_manager)
+
+    if hasattr(auth_manager, "revoked_tokens") and token in auth_manager.revoked_tokens:
+        raise_api_error(status_code=401, error_code="AUTH_TOKEN_REVOKED", message="Token has been revoked")
+
+    return _normalize_user_payload(token=token, payload=payload)
+
+
+def authenticate_websocket(*, websocket: WebSocket) -> Dict[str, Any]:
+    auth_header = websocket.headers.get("authorization")
+    token: Optional[str] = None
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if token is None:
+        token = websocket.query_params.get("token")
+    if token is None:
+        raise_api_error(status_code=401, error_code="AUTH_TOKEN_REQUIRED", message="Missing token")
+
+    if not hasattr(websocket.app.state, "service_container"):
+        raise_api_error(
+            status_code=500,
+            error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
+            message="Service container not initialized",
+        )
+
+    container = websocket.app.state.service_container
+    security_plugin = container.get_service("security_plugin")
+    if security_plugin is None or not hasattr(security_plugin, "auth_manager"):
+        raise_api_error(
+            status_code=500,
+            error_code="SECURITY_PLUGIN_NOT_INITIALIZED",
+            message="Security plugin not initialized",
+        )
+
+    auth_manager = security_plugin.auth_manager
+    payload = _decode_and_verify_jwt(token=token, auth_manager=auth_manager)
+    if hasattr(auth_manager, "revoked_tokens") and token in auth_manager.revoked_tokens:
+        raise_api_error(status_code=401, error_code="AUTH_TOKEN_REVOKED", message="Token has been revoked")
+
+    return _normalize_user_payload(token=token, payload=payload)
 
 
 def create_auth_dependency(auth_manager):
@@ -60,13 +144,13 @@ def create_auth_dependency(auth_manager):
                     options={"verify_aud": False}
                 )
             except jwt.ExpiredSignatureError:
-                raise HTTPException(status_code=401, detail="Token has expired")
+                raise_api_error(status_code=401, error_code="AUTH_TOKEN_EXPIRED", message="Token has expired")
             except jwt.InvalidTokenError:
-                raise HTTPException(status_code=401, detail="Invalid token")
+                raise_api_error(status_code=401, error_code="AUTH_TOKEN_INVALID", message="Invalid token")
             
             # Check if token is revoked
             if token in auth_manager.revoked_tokens:
-                raise HTTPException(status_code=401, detail="Token has been revoked")
+                raise_api_error(status_code=401, error_code="AUTH_TOKEN_REVOKED", message="Token has been revoked")
             
             return {
                 "user_uuid": payload["user_uuid"],
@@ -80,7 +164,7 @@ def create_auth_dependency(auth_manager):
             raise
         except Exception as e:
             logger.error(f"Token verification failed: {e}")
-            raise HTTPException(status_code=401, detail="Authentication failed")
+            raise_api_error(status_code=401, error_code="AUTH_FAILED", message="Authentication failed")
     
     return verify_token
 
@@ -97,10 +181,7 @@ def create_admin_dependency(auth_manager):
         permissions = user.get("permissions", set())
         
         if "admin" not in roles and "*" not in permissions and "admin.*" not in permissions:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
+            raise_api_error(status_code=403, error_code="ADMIN_REQUIRED", message="Admin access required")
         
         return user
     

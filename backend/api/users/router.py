@@ -17,6 +17,8 @@ from .schemas import (
     UserResponse, AuthenticationResponse, UserStatsResponse, UserListResponse
 )
 
+from backend.api.errors import error_responses, raise_api_error
+
 def _user_to_response(user) -> UserResponse:
     """Convert UserProfile to UserResponse (DRY helper)"""
     return UserResponse(
@@ -55,7 +57,7 @@ async def get_admin_dependency(
         return {"user_uuid": user.get("user_uuid"), "username": user.get("username")}
     except Exception as e:
         logger.error(f"Admin authentication failed: {e}")
-        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+        raise_api_error(status_code=401, error_code="ADMIN_AUTH_FAILED", message="Invalid admin credentials")
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -156,10 +158,7 @@ async def update_user(
     updates = {k: v for k, v in request.dict().items() if v is not None}
     
     if not updates:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No updates provided"
-        )
+        raise_api_error(status_code=400, error_code="USER_UPDATE_EMPTY", message="No updates provided")
     
     # Validate user type if provided
     if "user_type" in updates:
@@ -242,7 +241,11 @@ async def list_users(
     )
 
 
-@router.post("/authenticate", response_model=AuthenticationResponse)
+@router.post(
+    "/authenticate",
+    response_model=AuthenticationResponse,
+    responses=error_responses(401, 423, 500),
+)
 async def authenticate_user(
     request: AuthenticateRequest,
     request_obj: Request,
@@ -304,9 +307,10 @@ async def authenticate_user(
                 reason="user_not_found",
             )
             await uow.commit()
-            return AuthenticationResponse(
-                success=False,
-                error="User not found"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_INVALID_CREDENTIALS",
+                message="Invalid credentials",
             )
         
         # Get credentials via repository
@@ -319,9 +323,10 @@ async def authenticate_user(
                 reason="no_credentials",
             )
             await uow.commit()
-            return AuthenticationResponse(
-                success=False,
-                error="No credentials found for user"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_INVALID_CREDENTIALS",
+                message="Invalid credentials",
             )
         
         # Check if account is locked
@@ -333,9 +338,11 @@ async def authenticate_user(
                 reason="account_locked",
             )
             await uow.commit()
-            return AuthenticationResponse(
-                success=False,
-                error=f"Account locked until {credentials.locked_until.isoformat()}"
+            raise_api_error(
+                status_code=423,
+                error_code="AUTH_ACCOUNT_LOCKED",
+                message="Account locked",
+                details={"locked_until": credentials.locked_until.isoformat()},
             )
         
         # Verify PIN using bcrypt (must match CLI UserService hashing)
@@ -350,10 +357,11 @@ async def authenticate_user(
                 reason="invalid_pin",
             )
             await uow.commit()
-            
-            return AuthenticationResponse(
-                success=False,
-                error="Invalid PIN"
+
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_INVALID_CREDENTIALS",
+                message="Invalid credentials",
             )
         
         # Reset failed attempts on successful login
@@ -490,13 +498,18 @@ async def authenticate_user(
         except Exception:
             # Avoid masking the original auth failure.
             pass
-        return AuthenticationResponse(
-            success=False,
-            error="Authentication system error"
+        raise_api_error(
+            status_code=500,
+            error_code="AUTH_SYSTEM_ERROR",
+            message="Authentication system error",
         )
 
 
-@router.post("/refresh", response_model=AuthenticationResponse)
+@router.post(
+    "/refresh",
+    response_model=AuthenticationResponse,
+    responses=error_responses(400, 401, 500),
+)
 async def refresh_token(
     request: Request,
     auth_manager = Depends(get_auth_manager)
@@ -514,9 +527,10 @@ async def refresh_token(
                 refresh_token = auth_header[7:]  # Remove "Bearer " prefix
         
         if not refresh_token:
-            return AuthenticationResponse(
-                success=False,
-                error="No refresh token provided"
+            raise_api_error(
+                status_code=400,
+                error_code="AUTH_REFRESH_TOKEN_REQUIRED",
+                message="No refresh token provided",
             )
         
         # Decode refresh token to verify it's valid and get user info
@@ -530,9 +544,10 @@ async def refresh_token(
             
             # Verify this is actually a refresh token
             if payload.get("type") != "refresh":
-                return AuthenticationResponse(
-                    success=False,
-                    error="Invalid token type - refresh token required"
+                raise_api_error(
+                    status_code=401,
+                    error_code="AUTH_REFRESH_TOKEN_INVALID",
+                    message="Invalid token type - refresh token required",
                 )
             
             # Generate new access token
@@ -552,21 +567,24 @@ async def refresh_token(
             )
             
         except jwt.ExpiredSignatureError:
-            return AuthenticationResponse(
-                success=False,
-                error="Refresh token expired - please login again"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_REFRESH_TOKEN_EXPIRED",
+                message="Refresh token expired - please login again",
             )
-        except jwt.InvalidTokenError as e:
-            return AuthenticationResponse(
-                success=False,
-                error=f"Invalid refresh token: {str(e)}"
+        except jwt.InvalidTokenError:
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_REFRESH_TOKEN_INVALID",
+                message="Invalid refresh token",
             )
             
     except Exception as e:
         logger.error(f"Token refresh failed: {e}")
-        return AuthenticationResponse(
-            success=False,
-            error="Token refresh system error"
+        raise_api_error(
+            status_code=500,
+            error_code="AUTH_REFRESH_SYSTEM_ERROR",
+            message="Token refresh system error",
         )
 
 
@@ -579,7 +597,7 @@ async def set_user_pin(
 ):
     """Set or update user's PIN"""
     if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
+        raise_api_error(status_code=500, error_code="USER_SERVICE_NOT_INITIALIZED", message="User service not initialized")
     
     # Validate UUID format
     validate_uuid(user_uuid)
@@ -605,16 +623,17 @@ async def unlock_user(
 ):
     """Unlock user account"""
     if not user_service:
-        raise HTTPException(status_code=500, detail="User service not initialized")
+        raise_api_error(status_code=500, error_code="USER_SERVICE_NOT_INITIALIZED", message="User service not initialized")
     
     # Validate UUID format
     validate_uuid(user_uuid)
     
     success = await user_service.unlock_user(user_uuid)
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found or no authentication configured"
+        raise_api_error(
+            status_code=404,
+            error_code="USER_UNLOCK_NOT_FOUND",
+            message="User not found or no authentication configured",
         )
     
     logger.info("User unlocked via API", extra={
@@ -623,18 +642,22 @@ async def unlock_user(
     })
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(401, 500),
+)
 async def logout_user(request: Request):
     """Logout user by revoking current JWT token"""
     # Extract token from Authorization header
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No valid token provided")
+        raise_api_error(status_code=401, error_code="AUTH_TOKEN_REQUIRED", message="No valid token provided")
     
     token = auth_header.split(" ")[1]
     
     if not auth_manager:
-        raise HTTPException(status_code=500, detail="Authentication manager not initialized")
+        raise_api_error(status_code=500, error_code="AUTH_MANAGER_NOT_INITIALIZED", message="Authentication manager not initialized")
     
     # Delete the session completely on logout
     if auth_manager.session_service:
@@ -650,8 +673,13 @@ async def logout_user(request: Request):
     })
 
 
-@router.post("/refresh", response_model=AuthenticationResponse)
-async def refresh_token(
+@router.post(
+    "/refresh/legacy",
+    response_model=AuthenticationResponse,
+    deprecated=True,
+    responses=error_responses(401, 404, 500),
+)
+async def refresh_token_legacy(
     request: Request,
     auth_manager = Depends(get_auth_manager),
     uow: UnitOfWork = Depends(get_uow),
@@ -660,18 +688,22 @@ async def refresh_token(
     # Extract current token from Authorization header
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No valid token provided")
+        raise_api_error(status_code=401, error_code="AUTH_TOKEN_REQUIRED", message="No valid token provided")
     
     token = auth_header.split(" ")[1]
     
     if not auth_manager:
-        raise HTTPException(status_code=500, detail="Authentication manager not initialized")
+        raise_api_error(status_code=500, error_code="AUTH_MANAGER_NOT_INITIALIZED", message="Authentication manager not initialized")
     
     # Use the new refresh_token method from auth_manager
     new_token = auth_manager.refresh_token(token, device_uuid="web-client")
     
     if not new_token:
-        raise HTTPException(status_code=401, detail="Token refresh failed - token may be expired or revoked")
+        raise_api_error(
+            status_code=401,
+            error_code="AUTH_TOKEN_REFRESH_FAILED",
+            message="Token refresh failed - token may be expired or revoked",
+        )
     
     # Extract user information from new token to get user data
     try:
@@ -685,12 +717,12 @@ async def refresh_token(
         user_uuid = payload.get("user_uuid", payload.get("sub"))
         username = payload.get("username")
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to decode new token")
+        raise_api_error(status_code=500, error_code="AUTH_TOKEN_DECODE_FAILED", message="Failed to decode new token")
     
     # Get user data for response
     user = await uow.users.get_by_id(user_uuid)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise_api_error(status_code=404, error_code="USER_NOT_FOUND", message="User not found")
     
     logger.info("Token refreshed with session rotation", extra={
         "user_uuid": user_uuid,
@@ -731,4 +763,4 @@ async def get_user_stats(
         )
     except Exception as e:
         logger.error(f"Failed to compute user stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to compute user stats")
+        raise_api_error(status_code=500, error_code="USER_STATS_FAILED", message="Failed to compute user stats")

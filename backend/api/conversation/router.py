@@ -17,7 +17,8 @@ import json
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from backend.api.conversation.dependencies import get_message_bus_client
-from backend.api.conversation.dependencies import get_current_user
+from backend.api.dependencies import authenticate_websocket, get_current_user
+from backend.api.errors import error_responses, raise_api_error
 from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
 from aico.proto.aico_conversation_pb2 import ConversationContext, Context, RecentHistory
 from aico.proto.aico_conversation_pb2 import ResponseRequest, ResponseParameters
@@ -61,7 +62,10 @@ security = HTTPBearer()
 active_connections: Dict[str, WebSocket] = {}
 
 # Unified endpoint with automatic thread management
-@router.post("/messages")
+@router.post(
+    "/messages",
+    responses=error_responses(400, 401, 403, 408, 409, 422, 500),
+)
 async def send_message_with_auto_thread(
     request: UnifiedMessageRequest,
     stream: str = Query("false", description="Enable streaming response"),
@@ -335,12 +339,20 @@ async def send_message_with_auto_thread(
         raise
     except Exception as e:
         logger.error(f"Failed to send message with auto-thread: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process message")
+        raise_api_error(
+            status_code=500,
+            error_code="CONVERSATION_MESSAGE_PROCESSING_FAILED",
+            message="Failed to process message",
+        )
 
 
 # User-scoped endpoints - no thread management needed with semantic memory
 
-@router.get("/messages", response_model=MessageHistoryResponse)
+@router.get(
+    "/messages",
+    response_model=MessageHistoryResponse,
+    responses=error_responses(401, 500),
+)
 async def get_my_messages(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Messages per page"),
@@ -423,19 +435,21 @@ async def get_my_messages(
         )
         
     except Exception as e:
-        logger.error(f"Failed to get user message history: {e}", extra={
-            "user_id": current_user.get('user_uuid', 'unknown'),
+        logger.error(f"Failed to get message history: {e}", extra={
+            "conversation_id": conversation_id,
             "error": str(e)
         })
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(
+        raise_api_error(
             status_code=500,
-            detail="Failed to retrieve message history"
+            error_code="CONVERSATION_MESSAGE_HISTORY_FAILED",
+            message="Failed to retrieve message history",
         )
-
-
-@router.get("/status")
+@router.get(
+    "/status",
+    responses=error_responses(401, 500),
+)
 async def get_my_conversation_status(
     current_user = Depends(get_current_user)
 ):
@@ -467,9 +481,10 @@ async def get_my_conversation_status(
             "user_id": current_user['user_uuid'],
             "error": str(e)
         })
-        raise HTTPException(
+        raise_api_error(
             status_code=500,
-            detail="Failed to retrieve conversation status"
+            error_code="CONVERSATION_STATUS_FAILED",
+            message="Failed to retrieve conversation status",
         )
 
 
@@ -481,10 +496,15 @@ async def my_conversation_websocket(websocket: WebSocket):
     Provides real-time delivery of AI responses and conversation events
     for the authenticated user. No thread management needed.
     """
-    # TODO: Add WebSocket authentication to get user_id
-    # For now, accept connection without auth (security risk)
+    try:
+        user = authenticate_websocket(websocket=websocket)
+    except HTTPException:
+        await websocket.close(code=4401)
+        return
+
     await websocket.accept()
-    connection_id = f"user_{uuid.uuid4()}"  # User-scoped connection
+    user_id = user["user_id"]
+    connection_id = f"user_{user_id}_{uuid.uuid4()}"
     active_connections[connection_id] = websocket
     
     logger.debug(f"WebSocket connection established", extra={
@@ -500,14 +520,13 @@ async def my_conversation_websocket(websocket: WebSocket):
         async def response_handler(topic: str, message: Any):
             """Handle incoming conversation responses"""
             try:
-                # TODO: Filter by user_id instead of conversation_id once WebSocket auth is implemented
                 if hasattr(message, 'message') and hasattr(message.message, 'text'):
                     # Use message_id from backend if available, otherwise generate one
                     msg_id = getattr(message, 'message_id', None) or str(uuid.uuid4())
                     
                     # Create structured WebSocket response
                     ai_response = WebSocketAIResponse(
-                        conversation_id=f"user_conversation_{connection_id}",
+                        conversation_id=f"user_conversation_{user_id}",
                         message_id=msg_id,  # Use actual message_id from backend
                         message=message.message.text,
                         confidence=getattr(message, 'confidence', None),
@@ -527,7 +546,7 @@ async def my_conversation_websocket(websocket: WebSocket):
                 error_response = WebSocketError(
                     error_code="RESPONSE_PROCESSING_ERROR",
                     error_message=str(e),
-                    conversation_id=f"user_conversation_{connection_id}"
+                    conversation_id=f"user_conversation_{user_id}"
                 )
                 try:
                     await websocket.send_json(error_response.dict())

@@ -14,6 +14,8 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from backend.core.lifecycle_manager import get_auth_manager
 
+from backend.api.errors import raise_api_error
+
 security = HTTPBearer()
 logger = get_logger("api.users_dependencies")
 
@@ -41,22 +43,23 @@ def create_user_auth_dependency(auth_manager):
             
             # Check if token is revoked (both in-memory and database)
             if token in auth_manager.revoked_tokens:
-                raise HTTPException(status_code=401, detail="Token has been revoked")
+                raise_api_error(status_code=401, error_code="AUTH_TOKEN_REVOKED", message="Token has been revoked")
             
             # Check database session status if session service is available
             if auth_manager.session_service:
                 session_info = auth_manager.session_service.get_session_by_token(token)
                 if not session_info or not session_info.is_active:
-                    raise HTTPException(status_code=401, detail="Session has been revoked")
+                    raise_api_error(status_code=401, error_code="AUTH_SESSION_REVOKED", message="Session has been revoked")
             
             # Check if user has admin permissions for user management
             roles = payload.get("roles", [])
             permissions = set(payload.get("permissions", []))
             
             if "admin" not in roles and "*" not in permissions and "user.*" not in permissions:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Admin access required for user management"
+                raise_api_error(
+                    status_code=403,
+                    error_code="ADMIN_REQUIRED",
+                    message="Admin access required for user management",
                 )
             
             return {
@@ -68,23 +71,14 @@ def create_user_auth_dependency(auth_manager):
             }
             
         except jwt.ExpiredSignatureError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token expired"
-            )
+            raise_api_error(status_code=401, error_code="AUTH_TOKEN_EXPIRED", message="Token expired")
         except jwt.InvalidTokenError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+            raise_api_error(status_code=401, error_code="AUTH_TOKEN_INVALID", message="Invalid token")
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"User auth verification failed: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication failed"
-            )
+            raise_api_error(status_code=401, error_code="AUTH_FAILED", message="Authentication failed")
     
     return verify_user_access
 
@@ -99,10 +93,7 @@ def validate_uuid(uuid_str: str) -> str:
         uuid_obj = uuid.UUID(uuid_str)
         return str(uuid_obj)
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid UUID format"
-        )
+        raise_api_error(status_code=400, error_code="UUID_INVALID", message="Invalid UUID format")
 
 
 def validate_user_type(user_type: str) -> str:
@@ -113,9 +104,10 @@ def validate_user_type(user_type: str) -> str:
     default_user_type = config_manager.get('core.user_profiles.default_user_type', 'person')
     allowed_types = {default_user_type}
     if user_type not in allowed_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid user type. Must be one of: {', '.join(allowed_types)}"
+        raise_api_error(
+            status_code=400,
+            error_code="USER_TYPE_INVALID",
+            message=f"Invalid user type. Must be one of: {', '.join(allowed_types)}",
         )
     return user_type
 
@@ -128,15 +120,17 @@ def validate_full_name(full_name: str) -> str:
     max_length = 100
     
     if not full_name or len(full_name.strip()) < min_length:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Full name must be at least {min_length} character(s)"
+        raise_api_error(
+            status_code=400,
+            error_code="FULL_NAME_TOO_SHORT",
+            message=f"Full name must be at least {min_length} character(s)",
         )
     
     if len(full_name) > max_length:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Full name must not exceed {max_length} characters"
+        raise_api_error(
+            status_code=400,
+            error_code="FULL_NAME_TOO_LONG",
+            message=f"Full name must not exceed {max_length} characters",
         )
     
     return full_name.strip()
@@ -152,9 +146,10 @@ def validate_nickname(nickname: Optional[str]) -> Optional[str]:
     max_length = 50
     
     if len(nickname) > max_length:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Nickname must not exceed {max_length} characters"
+        raise_api_error(
+            status_code=400,
+            error_code="NICKNAME_TOO_LONG",
+            message=f"Nickname must not exceed {max_length} characters",
         )
     
     return nickname.strip() if nickname.strip() else None
@@ -171,15 +166,17 @@ def validate_pin(pin: str) -> str:
     require_numeric = pin_policy.get('require_numeric', True)
     
     if not pin or len(pin) < min_length or len(pin) > max_length:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"PIN must be between {min_length} and {max_length} characters"
+        raise_api_error(
+            status_code=400,
+            error_code="PIN_INVALID_LENGTH",
+            message=f"PIN must be between {min_length} and {max_length} characters",
         )
     
     if require_numeric and not pin.isdigit():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="PIN must contain only digits"
+        raise_api_error(
+            status_code=400,
+            error_code="PIN_INVALID_FORMAT",
+            message="PIN must contain only digits",
         )
     
     return pin
