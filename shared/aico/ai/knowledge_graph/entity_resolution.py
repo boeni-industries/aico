@@ -686,7 +686,7 @@ Return valid JSON only."""
                     "id": node.id,
                     "properties": node.properties,
                     "confidence": node.confidence,
-                    "created_at": node.created_at
+                    "created_at": node.created_at.isoformat() if isinstance(node.created_at, datetime) else node.created_at
                 }
                 for node in nodes
             ]
@@ -694,7 +694,7 @@ Return valid JSON only."""
             prompt = f"""Merge these duplicate entities into a single entity. Resolve any conflicts by choosing the most accurate/complete information.
 
 Entities to merge:
-{json.dumps(node_data, indent=2)}
+{json.dumps(node_data, indent=2, default=str)}
 
 Return JSON with:
 - "merged_properties": the merged property dictionary
