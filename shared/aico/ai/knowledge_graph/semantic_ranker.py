@@ -146,8 +146,6 @@ class SemanticEntityRanker:
         try:
             # Get text embedding from modelservice
             # Note: Reuses existing embedding infrastructure (DRY)
-            from aico.ai.knowledge_graph.modelservice_client import KGModelserviceClient
-            
             # Generate embedding for query text
             embedding_response = await self.modelservice.generate_embeddings([text])
             if not embedding_response or not embedding_response.get('embeddings'):

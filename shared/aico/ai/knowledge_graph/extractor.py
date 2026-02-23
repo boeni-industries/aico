@@ -17,7 +17,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
-from .modelservice_client import ModelserviceClient
+from .modelservice_client import KGModelserviceClient
 from .semantic_ranker import SemanticEntityRanker
 
 logger = get_logger("shared.ai.knowledge_graph.extractor")

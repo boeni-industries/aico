@@ -21,7 +21,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
-from .modelservice_client import ModelserviceClient
+from .modelservice_client import KGModelserviceClient
 
 logger = get_logger("shared.ai.knowledge_graph.entity_resolution")
 

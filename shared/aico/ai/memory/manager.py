@@ -80,7 +80,7 @@ from aico.ai.knowledge_graph import (
     EntityResolver,
     GraphFusion
 )
-from aico.ai.knowledge_graph.modelservice_client import ModelserviceClient
+from aico.ai.knowledge_graph.modelservice_client import KGModelserviceClient
 
 # Import AMS components (Phase 1.5)
 from .consolidation import ConsolidationScheduler, IdleDetector
@@ -156,7 +156,7 @@ class MemoryManager(BaseAIProcessor):
         self._kg_extractor: Optional[MultiPassExtractor] = None
         self._kg_resolver: Optional[EntityResolver] = None
         self._kg_fusion: Optional[GraphFusion] = None
-        self._kg_modelservice: Optional[ModelserviceClient] = None
+        self._kg_modelservice: Optional[KGModelserviceClient] = None
         self._kg_initialized = False
         self._kg_background_tasks: set = set()  # Track background extraction tasks
         
@@ -306,7 +306,7 @@ class MemoryManager(BaseAIProcessor):
                 )
             
             # Initialize modelservice client (but don't connect yet - message bus may not be ready)
-            self._kg_modelservice = ModelserviceClient()
+            self._kg_modelservice = KGModelserviceClient()
             
             # Initialize storage (pass UoW factory for PostgreSQL and modelservice for embedding generation)
             self._kg_storage = PropertyGraphStorage(self._uow_factory, chromadb_client, self._kg_modelservice)
