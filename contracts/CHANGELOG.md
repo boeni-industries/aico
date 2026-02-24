@@ -31,6 +31,10 @@ This file tracks all changes to the frozen API contracts in `/contracts/`.
 
 ## [Unreleased]
 
+### 2026-02-24 - Add WebSocket Contract Snapshot
+- **WebSocket v1**: Frozen WebSocket contract at `contracts/websocket/v1.json` (FastAPI WS endpoints + gateway websocket adapter message shapes).
+- **CI Gates**: Added WebSocket contract gate to verify the artifact matches the generated contract.
+
 ### 2026-02-24 - Add Internal OpenAPI Snapshot
 - **OpenAPI internal v1**: Frozen internal `/api/v1` REST contract at `contracts/openapi/internal-v1.json` (includes admin/system/operations/users-sessions).
 - **CI Gates**: OpenAPI contract gate now verifies both public and internal OpenAPI artifacts.

@@ -13,6 +13,9 @@ uv run python scripts/generate_openapi_public.py
 echo "  → Regenerating internal OpenAPI contract..."
 uv run python scripts/generate_openapi_internal.py
 
+echo "  → Regenerating WebSocket contract..."
+uv run python scripts/generate_websocket_contract.py
+
 # Regenerate Proto contract baseline
 echo "  → Updating proto baseline..."
 cp -f proto/*.proto contracts/proto/

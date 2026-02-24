@@ -1,0 +1,609 @@
+{
+  "fastapi": {
+    "endpoints": [
+      {
+        "auth": {
+          "header": "Authorization: Bearer <token>",
+          "query_param_fallback": "token",
+          "type": "jwt"
+        },
+        "description": "User-scoped real-time conversation updates.",
+        "incoming": [
+          {
+            "shape": {
+              "type": "heartbeat"
+            },
+            "type": "heartbeat"
+          }
+        ],
+        "outgoing_schemas": {
+          "ai_response": {
+            "$defs": {
+              "WebSocketMessageType": {
+                "description": "WebSocket message types",
+                "enum": [
+                  "heartbeat",
+                  "heartbeat_ack",
+                  "ai_response",
+                  "system_message",
+                  "error",
+                  "status_update"
+                ],
+                "title": "WebSocketMessageType",
+                "type": "string"
+              }
+            },
+            "description": "AI response via WebSocket",
+            "properties": {
+              "confidence": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Response confidence score",
+                "title": "Confidence"
+              },
+              "conversation_id": {
+                "description": "Conversation ID",
+                "title": "Conversation Id",
+                "type": "string"
+              },
+              "data": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Message payload",
+                "title": "Data"
+              },
+              "message": {
+                "description": "AI response text",
+                "title": "Message",
+                "type": "string"
+              },
+              "message_id": {
+                "description": "AI message ID",
+                "title": "Message Id",
+                "type": "string"
+              },
+              "processing_time_ms": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Processing time in milliseconds",
+                "title": "Processing Time Ms"
+              },
+              "timestamp": {
+                "description": "Message timestamp",
+                "format": "date-time",
+                "title": "Timestamp",
+                "type": "string"
+              },
+              "type": {
+                "$ref": "#/$defs/WebSocketMessageType",
+                "default": "ai_response",
+                "description": "Message type"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "message_id",
+              "message"
+            ],
+            "title": "WebSocketAIResponse",
+            "type": "object"
+          },
+          "error": {
+            "$defs": {
+              "WebSocketMessageType": {
+                "description": "WebSocket message types",
+                "enum": [
+                  "heartbeat",
+                  "heartbeat_ack",
+                  "ai_response",
+                  "system_message",
+                  "error",
+                  "status_update"
+                ],
+                "title": "WebSocketMessageType",
+                "type": "string"
+              }
+            },
+            "description": "Error message via WebSocket",
+            "properties": {
+              "conversation_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Related conversation ID if applicable",
+                "title": "Conversation Id"
+              },
+              "data": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Message payload",
+                "title": "Data"
+              },
+              "error_code": {
+                "description": "Error code",
+                "title": "Error Code",
+                "type": "string"
+              },
+              "error_message": {
+                "description": "Human-readable error message",
+                "title": "Error Message",
+                "type": "string"
+              },
+              "timestamp": {
+                "description": "Message timestamp",
+                "format": "date-time",
+                "title": "Timestamp",
+                "type": "string"
+              },
+              "type": {
+                "$ref": "#/$defs/WebSocketMessageType",
+                "default": "error",
+                "description": "Message type"
+              }
+            },
+            "required": [
+              "error_code",
+              "error_message"
+            ],
+            "title": "WebSocketError",
+            "type": "object"
+          },
+          "status_update": {
+            "$defs": {
+              "WebSocketMessageType": {
+                "description": "WebSocket message types",
+                "enum": [
+                  "heartbeat",
+                  "heartbeat_ack",
+                  "ai_response",
+                  "system_message",
+                  "error",
+                  "status_update"
+                ],
+                "title": "WebSocketMessageType",
+                "type": "string"
+              }
+            },
+            "description": "Status update via WebSocket",
+            "properties": {
+              "conversation_id": {
+                "description": "Conversation ID",
+                "title": "Conversation Id",
+                "type": "string"
+              },
+              "data": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Message payload",
+                "title": "Data"
+              },
+              "details": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Additional status details",
+                "title": "Details"
+              },
+              "status": {
+                "description": "New status",
+                "title": "Status",
+                "type": "string"
+              },
+              "timestamp": {
+                "description": "Message timestamp",
+                "format": "date-time",
+                "title": "Timestamp",
+                "type": "string"
+              },
+              "type": {
+                "$ref": "#/$defs/WebSocketMessageType",
+                "default": "status_update",
+                "description": "Message type"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "status"
+            ],
+            "title": "WebSocketStatusUpdate",
+            "type": "object"
+          }
+        },
+        "path": "/api/v1/conversation/ws"
+      },
+      {
+        "auth": {
+          "header": "Authorization: Bearer <token>",
+          "query_param_fallback": "token",
+          "type": "jwt"
+        },
+        "description": "Admin-scoped real-time scheduler event notifications.",
+        "incoming": [
+          {
+            "shape": {
+              "type": "heartbeat"
+            },
+            "type": "heartbeat"
+          }
+        ],
+        "outgoing_schemas": {
+          "heartbeat_ack": {
+            "additionalProperties": false,
+            "properties": {
+              "timestamp": {
+                "type": "string"
+              },
+              "type": {
+                "const": "heartbeat_ack"
+              }
+            },
+            "required": [
+              "type",
+              "timestamp"
+            ],
+            "type": "object"
+          },
+          "scheduler_event": {
+            "$defs": {
+              "SchedulerEventSeverity": {
+                "description": "Event severity levels",
+                "enum": [
+                  "info",
+                  "warning",
+                  "error",
+                  "critical"
+                ],
+                "title": "SchedulerEventSeverity",
+                "type": "string"
+              },
+              "SchedulerEventType": {
+                "description": "Scheduler event types for WebSocket notifications",
+                "enum": [
+                  "task_stuck",
+                  "task_long_running",
+                  "task_failed",
+                  "task_completed",
+                  "scheduler_error"
+                ],
+                "title": "SchedulerEventType",
+                "type": "string"
+              }
+            },
+            "description": "WebSocket message for scheduler events",
+            "properties": {
+              "details": {
+                "additionalProperties": true,
+                "description": "Event details",
+                "title": "Details",
+                "type": "object"
+              },
+              "severity": {
+                "$ref": "#/$defs/SchedulerEventSeverity",
+                "description": "Event severity"
+              },
+              "task_id": {
+                "description": "Task identifier",
+                "title": "Task Id",
+                "type": "string"
+              },
+              "timestamp": {
+                "description": "Event timestamp (ISO format)",
+                "title": "Timestamp",
+                "type": "string"
+              },
+              "type": {
+                "$ref": "#/$defs/SchedulerEventType",
+                "description": "Event type"
+              }
+            },
+            "required": [
+              "type",
+              "task_id",
+              "severity",
+              "timestamp"
+            ],
+            "title": "SchedulerEventMessage",
+            "type": "object"
+          }
+        },
+        "path": "/api/v1/scheduler/ws/events"
+      }
+    ]
+  },
+  "gateway_websocket_adapter": {
+    "description": "Protocol-level WS server implemented in backend/api_gateway/adapters/websocket_adapter.py (websockets library).",
+    "incoming_messages": {
+      "auth": {
+        "additionalProperties": true,
+        "properties": {
+          "device_uuid": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "type": {
+            "const": "auth"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "heartbeat": {
+        "additionalProperties": true,
+        "properties": {
+          "type": {
+            "const": "heartbeat"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "request": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_type": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          },
+          "type": {
+            "const": "request"
+          }
+        },
+        "required": [
+          "type",
+          "message_type"
+        ],
+        "type": "object"
+      },
+      "subscribe": {
+        "additionalProperties": false,
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "type": {
+            "const": "subscribe"
+          }
+        },
+        "required": [
+          "type",
+          "topic"
+        ],
+        "type": "object"
+      },
+      "unsubscribe": {
+        "additionalProperties": false,
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "type": {
+            "const": "unsubscribe"
+          }
+        },
+        "required": [
+          "type",
+          "topic"
+        ],
+        "type": "object"
+      }
+    },
+    "message_format": "json",
+    "outgoing_messages": {
+      "auth_success": {
+        "additionalProperties": false,
+        "properties": {
+          "roles": {
+            "type": "array"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "const": "auth_success"
+          },
+          "user_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "user_uuid",
+          "roles"
+        ],
+        "type": "object"
+      },
+      "error": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "type": {
+            "const": "error"
+          }
+        },
+        "required": [
+          "type",
+          "error"
+        ],
+        "type": "object"
+      },
+      "heartbeat_ack": {
+        "additionalProperties": false,
+        "properties": {
+          "timestamp": {},
+          "type": {
+            "const": "heartbeat_ack"
+          }
+        },
+        "required": [
+          "type",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "response": {
+        "additionalProperties": true,
+        "properties": {
+          "correlation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "data": {},
+          "error": {},
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "type": {
+            "const": "response"
+          }
+        },
+        "required": [
+          "type",
+          "success"
+        ],
+        "type": "object"
+      },
+      "subscribed": {
+        "additionalProperties": false,
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "type": {
+            "const": "subscribed"
+          }
+        },
+        "required": [
+          "type",
+          "topic"
+        ],
+        "type": "object"
+      },
+      "unsubscribed": {
+        "additionalProperties": false,
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "type": {
+            "const": "unsubscribed"
+          }
+        },
+        "required": [
+          "type",
+          "topic"
+        ],
+        "type": "object"
+      },
+      "welcome": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "type": {
+            "const": "welcome"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "client_id",
+          "server",
+          "version"
+        ],
+        "type": "object"
+      }
+    },
+    "path_default": "/ws"
+  },
+  "version": "v1"
+}

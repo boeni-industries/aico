@@ -1,9 +1,9 @@
 # WIP: Backend Architecture Refactor (Local-first + Cloud/Enterprise)
 
 ## Progress Checklist (tick-off)
-- [ ] Lock interfaces: freeze/version gateway↔core and core↔modelservice contracts; add contract tests
+- [x] Lock interfaces: freeze/version gateway↔core and core↔modelservice contracts; add contract tests
 - [ ] Introduce standalone Gateway service (authn/authz, rate limits, idempotency, WebSockets)
-- [ ] Publish frontend-independent External API Contract (OpenAPI + WebSocket spec + examples)
+- [x] Publish frontend-independent External API Contract (OpenAPI + WebSocket spec + examples)
 - [ ] Centralize identity + scoping: make `tenant_id`/`user_id` mandatory end-to-end; enforce authz on every request/subscription
 - [ ] Postgres source of truth for conversations: add tables + catch-up API
 - [ ] Outbox for durable publication: stop publish-then-store for correctness-critical flows
