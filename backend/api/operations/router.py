@@ -902,34 +902,6 @@ async def get_system_topology(
 # ============================================================================
 # Stage 1: Database Details - Table/Collection Browser
 # ============================================================================
-
-@router.get("/databases/{database_type}/details", response_model=DatabaseDetailsResponse)
-async def get_database_details(
-    database_type: str,
-    request: Request,
-    user: Annotated[dict, Depends(get_current_user)],
-    uow: Annotated[UnitOfWork, Depends(get_uow)]
-) -> DatabaseDetailsResponse:
-    """
-    Get detailed information about database tables/collections.
-    
-    - **postgresql**: Returns list of tables with row counts
-    - **chromadb**: Returns list of collections with document counts
-    - **lmdb**: Returns list of databases with key counts
-    """
-    if database_type == "postgresql":
-        return await database_admin.get_postgresql_details()
-    elif database_type == "chromadb":
-        return await database_admin.get_chromadb_details(request)
-    elif database_type == "lmdb":
-        return await database_admin.get_lmdb_details()
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown database type: {database_type}"
-        )
-
-
 # ============================================================================
 # Stage 2: SQL Query Interface
 # ============================================================================

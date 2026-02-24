@@ -10,6 +10,9 @@ echo "🔄 Regenerating API contracts..."
 echo "  → Regenerating OpenAPI contract..."
 uv run python scripts/generate_openapi_public.py
 
+echo "  → Regenerating internal OpenAPI contract..."
+uv run python scripts/generate_openapi_internal.py
+
 # Regenerate Proto contract baseline
 echo "  → Updating proto baseline..."
 cp -f proto/*.proto contracts/proto/

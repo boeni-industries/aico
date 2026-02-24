@@ -354,10 +354,10 @@ async def get_domain_schema(
 
     return schemas.SchemaResponse(
         domain=domain,
-        schema=schema,
+        schema_definition=schema,
         meta={
-            "sensitive_paths": [],
-            "restart_policy_default": "unknown",
+            "source": "contracts",
+            "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         },
     )
 

@@ -10,7 +10,7 @@ class SettingsService {
   static const Map<String, dynamic> _defaults = {
     'theme_mode': 'system',
     'api_base_url': 'http://localhost:8771/api/v1',
-    'websocket_url': 'ws://localhost:8771/ws',
+    'websocket_url': 'ws://localhost:8772/ws',
     'auto_connect': true,
     'encryption_enabled': true,
     'offline_mode': false,

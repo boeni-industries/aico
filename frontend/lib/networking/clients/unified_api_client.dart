@@ -7,6 +7,7 @@ import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Unified API client that handles both encrypted and unencrypted requests
 /// Uses Dio exclusively for all HTTP operations
@@ -23,10 +24,46 @@ class UnifiedApiClient {
   
   static const Duration _defaultTimeout = Duration(seconds: 120);
   static const String _defaultBaseUrl = 'http://localhost:8771/api/v1';
+  static const String _settingsApiBaseUrlKey = 'settings_api_base_url';
   bool _isInitialized = false;
 
   Future<String> _getBaseUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(_settingsApiBaseUrlKey);
+      if (stored != null && stored.trim().isNotEmpty) {
+        return stored.trim();
+      }
+    } catch (_) {
+      // Fall back to default
+    }
     return _defaultBaseUrl;
+  }
+
+  String _formatApiErrorMessage(dynamic decryptedError) {
+    if (decryptedError is! Map<String, dynamic>) {
+      return decryptedError?.toString() ?? '';
+    }
+
+    final errorCode = (decryptedError['error_code'] ?? '').toString().trim();
+    final message = (decryptedError['message'] ?? '').toString().trim();
+    final requestIdRaw = decryptedError['request_id'];
+    final requestId = requestIdRaw == null ? '' : requestIdRaw.toString().trim();
+
+    final base = [
+      if (errorCode.isNotEmpty) errorCode,
+      if (message.isNotEmpty) message,
+    ].join(': ');
+
+    if (requestId.isNotEmpty) {
+      return base.isNotEmpty ? '$base (request_id=$requestId)' : '(request_id=$requestId)';
+    }
+    if (base.isNotEmpty) return base;
+
+    final detail = decryptedError['detail'];
+    if (detail != null) return detail.toString();
+
+    return decryptedError.toString();
   }
 
   String _normalizeEndpoint(String endpoint) {
@@ -474,7 +511,15 @@ class UnifiedApiClient {
       }
 
       if (response.statusCode != null && response.statusCode! >= 400) {
-        debugPrint('❌ [UnifiedApiClient] HTTP error: ${response.statusCode}');
+        String? errorEnvelope;
+        try {
+          final decrypted = _processResponse<dynamic>(response.data, null);
+          errorEnvelope = _formatApiErrorMessage(decrypted);
+        } catch (_) {
+          // Ignore parsing errors
+        }
+
+        debugPrint('❌ [UnifiedApiClient] HTTP error: ${response.statusCode}${errorEnvelope != null && errorEnvelope.isNotEmpty ? " - $errorEnvelope" : ""}');
         AICOLog.warn('HTTP error response',
           topic: 'network/request/http_error',
           extra: {
@@ -482,7 +527,8 @@ class UnifiedApiClient {
             'endpoint': endpoint,
             'normalized_endpoint': normalizedEndpoint,
             'method': method,
-            'response_data': response.data?.toString()
+            'response_data': response.data?.toString(),
+            if (errorEnvelope != null) 'error_envelope': errorEnvelope,
           });
         return null; // Return null instead of throwing for HTTP errors
       }

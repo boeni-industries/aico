@@ -7,7 +7,8 @@ This directory contains frozen API contracts for AICO's public interfaces.
 ```
 contracts/
 ├── openapi/
-│   └── v1.json          # Frozen OpenAPI 3.x spec for /api/v1
+│   ├── v1.json          # Frozen OpenAPI 3.x spec for public /api/v1
+│   └── internal-v1.json # Frozen OpenAPI 3.x spec for internal /api/v1 (admin/system/operations/users-sessions)
 ├── proto/
 │   ├── *.proto          # Frozen protobuf baseline
 │   └── buf.yaml         # Buf configuration for proto contracts
@@ -66,7 +67,7 @@ The pre-commit hook handles contract regeneration automatically.
 
 ### 5. CI Verification
 CI will automatically verify:
-- ✅ OpenAPI artifact matches generated spec
+- ✅ OpenAPI artifacts match generated specs
 - ✅ Proto changes are backward-compatible (`buf breaking`)
 - ✅ Proto passes linting (`buf lint`)
 - ✅ CHANGELOG.md was updated
@@ -76,6 +77,8 @@ CI will automatically verify:
 Three workflows enforce contract stability:
 
 1. **`openapi-contract.yml`**: Verifies OpenAPI artifact is up to date
+   - public: `contracts/openapi/v1.json`
+   - internal: `contracts/openapi/internal-v1.json`
 2. **`proto-contract.yml`**: Runs `buf breaking` + `buf lint`
 3. **`contract-policy.yml`**: Ensures CHANGELOG.md is updated when contracts change
 

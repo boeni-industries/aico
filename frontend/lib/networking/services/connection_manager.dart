@@ -7,6 +7,7 @@ import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/clients/websocket_client.dart';
 import 'package:aico_frontend/networking/exceptions/api_exceptions.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum ConnectionMode {
   http,
@@ -59,6 +60,10 @@ class ConnectionManager {
   static const Duration _baseRetryDelay = Duration(seconds: 1);
   static const Duration _healthCheckInterval = Duration(seconds: 15);
   static const Duration _maxRetryDelay = Duration(seconds: 30);
+
+  static const String _defaultApiBaseUrl = 'http://localhost:8771/api/v1';
+  static const String _settingsApiBaseUrlKey = 'settings_api_base_url';
+  static const String _settingsWebsocketUrlKey = 'settings_websocket_url';
   
   // Connection monitoring
   Timer? _healthCheckTimer;
@@ -70,7 +75,6 @@ class ConnectionManager {
   final StreamController<bool> _offlineController = StreamController<bool>.broadcast();
   
   static const String _defaultWsUrl = 'ws://localhost:8772';
-  static const String _defaultHttpUrl = 'http://localhost:8771';
 
   ConnectionManager(this._wsClient, this._encryptionService) {
     _initializeConnectivityMonitoring();
@@ -250,7 +254,10 @@ class ConnectionManager {
       });
 
       // Attempt connection
-      await _wsClient.connect(_defaultWsUrl);
+      final prefs = await SharedPreferences.getInstance();
+      final rawWsUrl = (prefs.getString(_settingsWebsocketUrlKey) ?? _defaultWsUrl).trim();
+      final wsUrl = rawWsUrl.isEmpty ? _defaultWsUrl : rawWsUrl;
+      await _wsClient.connect(wsUrl);
       
       return await completer.future;
     } catch (e) {
@@ -269,8 +276,13 @@ class ConnectionManager {
       // Use HttpClient directly to avoid Dio's debugger exception issues
       client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 3);
-      
-      final request = await client.getUrl(Uri.parse('$_defaultHttpUrl/api/v1/health'));
+
+      final prefs = await SharedPreferences.getInstance();
+      final rawBaseUrl = (prefs.getString(_settingsApiBaseUrlKey) ?? _defaultApiBaseUrl).trim();
+      final baseUrl = rawBaseUrl.replaceAll(RegExp(r'/+$'), '');
+      final healthUrl = '$baseUrl/health';
+
+      final request = await client.getUrl(Uri.parse(healthUrl));
       final response = await request.close();
       
       stopwatch.stop();

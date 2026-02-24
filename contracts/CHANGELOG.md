@@ -31,6 +31,10 @@ This file tracks all changes to the frozen API contracts in `/contracts/`.
 
 ## [Unreleased]
 
+### 2026-02-24 - Add Internal OpenAPI Snapshot
+- **OpenAPI internal v1**: Frozen internal `/api/v1` REST contract at `contracts/openapi/internal-v1.json` (includes admin/system/operations/users-sessions).
+- **CI Gates**: OpenAPI contract gate now verifies both public and internal OpenAPI artifacts.
+
 ### 2026-02-24 - Initial Contract Freeze
 - **OpenAPI v1**: Frozen `/api/v1` REST contract at `contracts/openapi/v1.json`
 - **Protobuf**: Frozen proto baseline at `contracts/proto/*.proto`

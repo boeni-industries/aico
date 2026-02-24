@@ -89,6 +89,12 @@ def _iso_utc(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _utc_dt(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _to_user_response(user: UserProfile) -> admin_schemas.AdminUserResponse:
     return admin_schemas.AdminUserResponse(
         uuid=user.uuid,
@@ -560,9 +566,9 @@ async def admin_user_audit_log(
     if action_type:
         conditions.append(system_events.c.metadata["action"].astext == action_type)
     if since:
-        conditions.append(system_events.c.timestamp >= _iso_utc(since))
+        conditions.append(system_events.c.timestamp >= _utc_dt(since))
     if until:
-        conditions.append(system_events.c.timestamp <= _iso_utc(until))
+        conditions.append(system_events.c.timestamp <= _utc_dt(until))
 
     count_stmt = select(system_events.c.id).where(and_(*conditions))
     rows = (await uow._session.execute(count_stmt)).fetchall()
@@ -625,7 +631,7 @@ async def security_posture(
     active_sessions = await uow.sessions.count(filters={"is_active": True})
 
     # Audit posture (events in last 24h)
-    since_24h = _iso_utc(datetime.now(UTC) - timedelta(hours=24))
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
     audit_count_stmt = select(system_events.c.id).where(
         and_(system_events.c.topic == "audit.admin", system_events.c.timestamp >= since_24h)
     )
@@ -794,9 +800,9 @@ async def auth_stats(
     # If the system currently does not emit these events, counts will be zero.
     conditions = []
     if since:
-        conditions.append(system_events.c.timestamp >= _iso_utc(since))
+        conditions.append(system_events.c.timestamp >= _utc_dt(since))
     if until:
-        conditions.append(system_events.c.timestamp <= _iso_utc(until))
+        conditions.append(system_events.c.timestamp <= _utc_dt(until))
 
     success_stmt = select(system_events).where(
         and_(system_events.c.topic == "auth.login.success", *conditions)
@@ -873,9 +879,9 @@ async def failed_auth_attempts(
     if user_uuid:
         conditions.append(system_events.c.metadata["user_uuid"].astext == user_uuid)
     if since:
-        conditions.append(system_events.c.timestamp >= _iso_utc(since))
+        conditions.append(system_events.c.timestamp >= _utc_dt(since))
     if until:
-        conditions.append(system_events.c.timestamp <= _iso_utc(until))
+        conditions.append(system_events.c.timestamp <= _utc_dt(until))
 
     count_stmt = select(system_events.c.id).where(and_(*conditions))
     total_count = len((await uow._session.execute(count_stmt)).fetchall())
@@ -935,9 +941,9 @@ async def audit_list(
     if severity:
         conditions.append(system_events.c.metadata["severity"].astext == severity)
     if since:
-        conditions.append(system_events.c.timestamp >= _iso_utc(since))
+        conditions.append(system_events.c.timestamp >= _utc_dt(since))
     if until:
-        conditions.append(system_events.c.timestamp <= _iso_utc(until))
+        conditions.append(system_events.c.timestamp <= _utc_dt(until))
 
     # search is best-effort (search within details JSON text)
     if search:
