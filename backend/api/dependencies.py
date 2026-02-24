@@ -16,8 +16,21 @@ from aico.core.logging import get_logger
 from backend.api.errors import raise_api_error
 
 
-security = HTTPBearer()
+# Allow endpoints to decide whether missing credentials is an error.
+# This lets local/dev disable auth entirely via configuration.
+security = HTTPBearer(auto_error=False)
 logger = get_logger("api.dependencies")
+
+
+def _is_security_enabled() -> bool:
+    try:
+        from aico.core.config import ConfigurationManager
+
+        cfg = ConfigurationManager()
+        cfg.initialize(lightweight=True)
+        return bool(cfg.get("api_gateway.plugins.security.enabled", True))
+    except Exception:
+        return True
 
 
 def get_auth_manager(request: Request):
@@ -79,9 +92,31 @@ def _decode_and_verify_jwt(*, token: str, auth_manager) -> dict[str, Any]:
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    auth_manager=Depends(get_auth_manager),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    request: Request = None,
 ) -> Dict[str, Any]:
+    if credentials is None:
+        if not _is_security_enabled():
+            return {
+                "tenant_id": None,
+                "user_id": "system_user",
+                "user_uuid": "system_user",
+                "username": "system",
+                "roles": ["system"],
+                "permissions": set(),
+                "token": None,
+            }
+        raise_api_error(status_code=403, error_code="HTTP_403", message="Not authenticated")
+
+    if request is None:
+        raise_api_error(
+            status_code=500,
+            error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
+            message="Service container not initialized",
+        )
+
+    auth_manager = get_auth_manager(request)
+
     token = credentials.credentials
 
     payload = _decode_and_verify_jwt(token=token, auth_manager=auth_manager)
@@ -100,6 +135,16 @@ def authenticate_websocket(*, websocket: WebSocket) -> Dict[str, Any]:
     if token is None:
         token = websocket.query_params.get("token")
     if token is None:
+        if not _is_security_enabled():
+            return {
+                "tenant_id": None,
+                "user_id": "system_user",
+                "user_uuid": "system_user",
+                "username": "system",
+                "roles": ["system"],
+                "permissions": set(),
+                "token": None,
+            }
         raise_api_error(status_code=401, error_code="AUTH_TOKEN_REQUIRED", message="Missing token")
 
     if not hasattr(websocket.app.state, "service_container"):
@@ -112,6 +157,16 @@ def authenticate_websocket(*, websocket: WebSocket) -> Dict[str, Any]:
     container = websocket.app.state.service_container
     security_plugin = container.get_service("security_plugin")
     if security_plugin is None or not hasattr(security_plugin, "auth_manager"):
+        if not _is_security_enabled():
+            return {
+                "tenant_id": None,
+                "user_id": "system_user",
+                "user_uuid": "system_user",
+                "username": "system",
+                "roles": ["system"],
+                "permissions": set(),
+                "token": None,
+            }
         raise_api_error(
             status_code=500,
             error_code="SECURITY_PLUGIN_NOT_INITIALIZED",

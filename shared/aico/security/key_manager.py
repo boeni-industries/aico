@@ -1000,16 +1000,7 @@ class AICOKeyManager:
         # Use first 32 bytes as secret key seed for CurveZMQ
         secret_key_bytes = key_material[:32]
         
-        # Generate deterministic keypair using ZMQ curve functions
-        import zmq
-        from zmq.utils import z85
-        
-        # Encode the 32-byte secret key as Z85 (40 characters)
-        secret_key = z85.encode(secret_key_bytes).decode('ascii')
-        
-        # Generate public key from the secret key
-        public_key = zmq.curve_public(secret_key.encode('ascii')).decode('ascii')
-        
-        _get_logger().debug(f"Derived CurveZMQ keypair for component: {component_name}")
-        
-        return public_key, secret_key
+        raise RuntimeError(
+            "CurveZMQ key derivation is disabled (NATS-only architecture). "
+            "Do not call derive_curve_keypair()."
+        )

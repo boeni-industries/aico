@@ -61,10 +61,6 @@ class GatewayCore:
         self.key_manager = AICOKeyManager(config)
         self.message_bus: Optional[MessageBusClient] = None
         
-        # ZMQ context for plugins
-        import zmq
-        self.zmq_context = zmq.Context()
-        
         # Initialize auth managers (will be properly set up during plugin loading)
         self.auth_manager = None
         self.authz_manager = None
@@ -253,14 +249,13 @@ class GatewayCore:
             if plugin_config.get('enabled', False):
                 self.logger.debug(f"Registering plugin: {plugin_name}")
                 try:
-                    plugin_instance = plugin_class(self.config, self.db_connection, self.zmq_context)
+                    plugin_instance = plugin_class(self.config, self.db_connection, None)
                     
                     # Initialize plugin with dependencies if it has an initialize method
                     if hasattr(plugin_instance, 'initialize'):
                         dependencies = {
                             'config': self.config,
                             'db_connection': self.db_connection,
-                            'zmq_context': self.zmq_context,
                             'gateway': self,
                             'key_manager': self.key_manager
                         }

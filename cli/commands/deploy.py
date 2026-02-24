@@ -130,38 +130,31 @@ def _get_or_create_postgres_password() -> str:
     Returns:
         Postgres password
     """
+    # Non-interactive / container-friendly path: allow callers (CI/Docker) to
+    # provide the password explicitly and skip keyring + master password prompts.
+    env_password = os.getenv("AICO_PG_PASSWORD")
+    if env_password:
+        console.print(format_info("Using Postgres password from environment (AICO_PG_PASSWORD)"))
+        return env_password
+
     config = ConfigurationManager()
     key_manager = AICOKeyManager(config)
-    
+
     # Check if password already exists
-    existing_password = key_manager.get_database_password("postgres", username="postgres")
+    try:
+        existing_password = key_manager.get_database_password("postgres", username="postgres")
+    except Exception as e:
+        existing_password = None
+        console.print(format_warning(f"Keyring unavailable for Postgres password lookup (non-fatal): {e}"))
+
     if existing_password:
         console.print(format_info("Using existing Postgres password from keyring"))
         return existing_password
-    
-    # Generate new password (this will prompt for master password if needed)
-    console.print("🔐 [cyan]Generating new Postgres password from master key...[/cyan]")
-    
-    # Authenticate to get master key (prompts if needed)
-    try:
-        master_key = key_manager.authenticate(interactive=True)
-    except Exception as e:
-        console.print(format_error(f"Failed to authenticate: {e}"))
-        raise typer.Exit(1)
-    
-    # Generate deterministic password from master key
-    # Use purpose-specific derivation for Postgres
-    derived_key = key_manager.derive_purpose_key(master_key, "postgres-password")
-    
-    # Convert derived key to base64 URL-safe string for use as password
-    import base64
-    password = base64.urlsafe_b64encode(derived_key[:32]).decode('utf-8').rstrip('=')
-    
-    # Store in keyring
-    key_manager.store_database_password(password, "postgres", username="postgres")
-    console.print(format_success("Generated and stored new Postgres password"))
-    
-    return password
+
+    # Non-interactive fallback: generate an ephemeral password.
+    # This avoids hanging on master-password prompts in CI/tool-driven execution.
+    console.print(format_warning("Generating ephemeral Postgres password (keyring not available / not initialized)"))
+    return _generate_secure_password(32)
 
 
 def _setup_influx_downsampling(admin_token: str) -> None:
@@ -274,41 +267,37 @@ def _get_or_create_influx_credentials() -> Tuple[str, str]:
     Returns:
         Tuple of (admin_password, admin_token)
     """
+    # Non-interactive / container-friendly path: allow callers (CI/Docker) to
+    # provide credentials explicitly and skip keyring + master password prompts.
+    env_password = os.getenv("AICO_INFLUX_ADMIN_PASSWORD")
+    env_token = os.getenv("AICO_INFLUX_ADMIN_TOKEN")
+    if env_password and env_token:
+        console.print(
+            format_info(
+                "Using InfluxDB credentials from environment (AICO_INFLUX_ADMIN_PASSWORD/AICO_INFLUX_ADMIN_TOKEN)"
+            )
+        )
+        return env_password, env_token
+
     config = ConfigurationManager()
     key_manager = AICOKeyManager(config)
-    
+
     # Check if credentials already exist
-    existing_password = key_manager.get_database_password("influx", username="admin")
-    existing_token = key_manager.get_database_password("influx", username="admin_token")
-    
+    try:
+        existing_password = key_manager.get_database_password("influx", username="admin")
+        existing_token = key_manager.get_database_password("influx", username="admin_token")
+    except Exception as e:
+        existing_password = None
+        existing_token = None
+        console.print(format_warning(f"Keyring unavailable for InfluxDB credential lookup (non-fatal): {e}"))
+
     if existing_password and existing_token:
         console.print(format_info("Using existing InfluxDB credentials from keyring"))
         return existing_password, existing_token
-    
-    # Generate new credentials
-    console.print("🔐 [cyan]Generating new InfluxDB credentials from master key...[/cyan]")
-    
-    # Authenticate to get master key (prompts if needed)
-    try:
-        master_key = key_manager.authenticate(interactive=True)
-    except Exception as e:
-        console.print(format_error(f"Failed to authenticate: {e}"))
-        raise typer.Exit(1)
-    
-    # Generate deterministic credentials from master key
-    password_key = key_manager.derive_purpose_key(master_key, "influx-admin-password")
-    token_key = key_manager.derive_purpose_key(master_key, "influx-admin-token")
-    
-    # Convert derived keys to base64 URL-safe strings for use as credentials
-    import base64
-    password = base64.urlsafe_b64encode(password_key[:32]).decode('utf-8').rstrip('=')
-    token = base64.urlsafe_b64encode(token_key[:64]).decode('utf-8').rstrip('=')
-    
-    # Store in keyring
-    key_manager.store_database_password(password, "influx", username="admin")
-    key_manager.store_database_password(token, "influx", username="admin_token")
-    console.print(format_success("Generated and stored new InfluxDB credentials"))
-    
+
+    console.print(format_warning("Generating ephemeral InfluxDB credentials (keyring not available / not initialized)"))
+    password = _generate_secure_password(32)
+    token = _generate_secure_password(48)
     return password, token
 
 
@@ -1474,6 +1463,117 @@ def deploy_grafana(
     console.print("")
 
 
+@app.command("gateway", help="Provision AICO Gateway (Docker), optionally with --nuke for full reset")
+def deploy_gateway(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Gateway container before provisioning.",
+    ),
+):
+    console.print("\n" + "=" * 60)
+    console.print("🌐 [bold cyan]AICO Gateway Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing Gateway container!"))
+        _nuke_gateway()
+
+    pg_password = _get_or_create_postgres_password()
+    influx_password, influx_token = _get_or_create_influx_credentials()
+
+    env = {
+        "AICO_PG_PASSWORD": pg_password,
+        "AICO_INFLUX_ADMIN_PASSWORD": influx_password,
+        "AICO_INFLUX_ADMIN_TOKEN": influx_token,
+    }
+
+    args = ["up", "-d", "--build", "gateway"]
+
+    console.print("🚀 [cyan]Starting Gateway container...[/cyan]")
+    code = _run_compose(args, env=env)
+    if code != 0:
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ Gateway deployment completed successfully!"))
+    console.print("")
+
+
+@app.command("core", help="Provision AICO Core (Docker), optionally with --nuke for full reset")
+def deploy_core(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Core container before provisioning.",
+    ),
+):
+    console.print("\n" + "=" * 60)
+    console.print("🧠 [bold cyan]AICO Core Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing Core container!"))
+        _nuke_core()
+
+    pg_password = _get_or_create_postgres_password()
+    influx_password, influx_token = _get_or_create_influx_credentials()
+
+    env = {
+        "AICO_PG_PASSWORD": pg_password,
+        "AICO_INFLUX_ADMIN_PASSWORD": influx_password,
+        "AICO_INFLUX_ADMIN_TOKEN": influx_token,
+    }
+
+    args = ["up", "-d", "--build", "core"]
+
+    console.print("🚀 [cyan]Starting Core container...[/cyan]")
+    code = _run_compose(args, env=env)
+    if code != 0:
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ Core deployment completed successfully!"))
+    console.print("")
+
+
+@app.command("modelservice", help="Provision AICO Modelservice (Docker), optionally with --nuke for full reset")
+def deploy_modelservice(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Modelservice container before provisioning.",
+    ),
+):
+    console.print("\n" + "=" * 60)
+    console.print("🤖 [bold cyan]AICO Modelservice Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing Modelservice container!"))
+        _nuke_modelservice()
+
+    pg_password = _get_or_create_postgres_password()
+    influx_password, influx_token = _get_or_create_influx_credentials()
+
+    env = {
+        "AICO_PG_PASSWORD": pg_password,
+        "AICO_INFLUX_ADMIN_PASSWORD": influx_password,
+        "AICO_INFLUX_ADMIN_TOKEN": influx_token,
+    }
+
+    args = ["up", "-d", "--build", "modelservice"]
+
+    console.print("🚀 [cyan]Starting Modelservice container...[/cyan]")
+    code = _run_compose(args, env=env)
+    if code != 0:
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ Modelservice deployment completed successfully!"))
+    console.print("")
+
+
 @app.command("studio", help="Provision AICO Studio (Docker), with --dev for npm start and --nuke for full reset")
 def deploy_studio(
     dev: bool = typer.Option(
@@ -1609,3 +1709,120 @@ def _nuke_grafana():
     console.print("")
     console.print(format_success("✓ Grafana nuked successfully"))
     console.print("")
+
+
+def _nuke_gateway() -> int:
+    """Destroy the Gateway container (and any related artifacts that are safe to remove)."""
+    console.print("💣 [bold yellow]NUKING Gateway - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["kill", "gateway"])
+    _run_compose(["rm", "-f", "gateway"])
+
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", "aico-gateway"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", "label=com.aico.component=gateway"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout.strip():
+            container_ids = result.stdout.strip().split("\n")
+            subprocess.run(
+                ["docker", "rm", "-f", *container_ids],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except FileNotFoundError:
+        return 1
+
+    console.print(format_success("✅ Gateway nuked"))
+    return 0
+
+
+def _nuke_core() -> int:
+    """Destroy the Core container (and any related artifacts that are safe to remove)."""
+    console.print("💣 [bold yellow]NUKING Core - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["kill", "core"])
+    _run_compose(["rm", "-f", "core"])
+
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", "aico-core"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", "label=com.aico.component=core"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout.strip():
+            container_ids = result.stdout.strip().split("\n")
+            subprocess.run(
+                ["docker", "rm", "-f", *container_ids],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except FileNotFoundError:
+        return 1
+
+    console.print(format_success("✅ Core nuked"))
+    return 0
+
+
+def _nuke_modelservice() -> int:
+    """Destroy the Modelservice container (and any related artifacts that are safe to remove)."""
+    console.print("💣 [bold yellow]NUKING Modelservice - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["kill", "modelservice"])
+    _run_compose(["rm", "-f", "modelservice"])
+
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", "aico-modelservice"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", "label=com.aico.component=modelservice"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout.strip():
+            container_ids = result.stdout.strip().split("\n")
+            subprocess.run(
+                ["docker", "rm", "-f", *container_ids],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except FileNotFoundError:
+        return 1
+
+    console.print(format_success("✅ Modelservice nuked"))
+    return 0

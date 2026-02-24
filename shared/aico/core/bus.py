@@ -7,14 +7,13 @@ using Protocol Buffers for all message serialization.
 
 import asyncio
 from datetime import datetime
-import platform
-import threading
 from typing import Optional, Dict, Callable, Set
 import uuid
-import zmq
-import zmq.asyncio
 from .topics import AICOTopics
 from .logging import get_logger
+from nats.aio.client import Client as NATS
+from nats.errors import Error as NATSError
+from nats.errors import TimeoutError as NATSTimeoutError
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message as ProtobufMessage
@@ -47,28 +46,7 @@ except Exception as e:
             def set_processing_time(self, time_ms): pass
         yield NoOpTracker()
 
-# Windows compatibility fix for ZeroMQ
-if platform.system() == "Windows":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 from .config import ConfigurationManager
-
-# Shared static keys for minimal CurveZMQ authentication
-# Use fixed keys so all processes can authenticate with the same broker
-_SHARED_BROKER_PUBLIC = "Yne@$w-vo<fVvi]a<NY6T1ed:M$fCG*[IaLV{hID"
-_SHARED_BROKER_SECRET = "D:)Q[IlAW!ahhC2ac:9*A}h:p?([4%wOTJ%JR%cs"
-
-def _get_shared_broker_keys():
-    """Get shared broker keypair for minimal authentication"""
-    return (_SHARED_BROKER_PUBLIC, _SHARED_BROKER_SECRET)
-
-def _get_shared_broker_public_key():
-    """Get shared broker public key"""
-    return _get_shared_broker_keys()[0]
-
-def _get_shared_broker_secret_key():
-    """Get shared broker secret key"""
-    return _get_shared_broker_keys()[1]
 
 # Optional protobuf imports to avoid chicken/egg problem with CLI
 try:
@@ -114,15 +92,12 @@ class TopicAccessError(MessageBusError):
 class MessageBusClient:
     """Client interface for connecting to the message bus"""
     
-    def __init__(self, client_id: str, zmq_context=None, config_manager=None):
+    def __init__(self, client_id: str, config_manager=None, **_ignored: object):
         self.client_id = client_id
-        self.zmq_context = zmq_context or zmq.asyncio.Context()
         self.config = config_manager
         self._no_subscription_warned_topics: Set[str] = set()
         self.running = False
         self.connected = False
-        self.subscriber = None
-        self.publisher = None
         self.subscriptions = {}
         self.encryption_enabled = True  # Default to encrypted
         
@@ -134,10 +109,6 @@ class MessageBusClient:
             import logging
             self.logger = logging.getLogger(f"shared.bus.client.{client_id}")
         
-        # ZeroMQ context and sockets
-        self.context = self.zmq_context
-        self.publisher = None
-        self.subscriber = None
         self.subscriptions: Dict[str, Callable] = {}
         self.running = False
         self.connected = False  # Initialize connected property
@@ -146,11 +117,10 @@ class MessageBusClient:
         self.persistence_enabled = False
         self.message_log = None
         
-        # CurveZMQ encryption
-        self.encryption_enabled = True
-        self.public_key = None
-        self.secret_key = None
-    
+        # NATS
+        self._nats: Optional[NATS] = None
+        self._nats_url: Optional[str] = None
+
     async def connect(self):
         """Connect to the message bus"""
         try:
@@ -159,54 +129,29 @@ class MessageBusClient:
             config = ConfigurationManager()
             config.initialize(lightweight=True)
             bus_config = config.get("message_bus", {})
-            host = bus_config.get("host", "localhost")
-            pub_port = bus_config.get("pub_port", 5555)
-            sub_port = bus_config.get("sub_port", 5556)
+
+            # NATS-only
+            self._nats_url = (
+                bus_config.get("nats_url")
+                or bus_config.get("url")
+                or "nats://localhost:4222"
+            )
             
-            # Check if encryption is enabled
-            security_config = config.get("security", {})
-            transport_config = security_config.get("transport", {})
-            self.encryption_enabled = transport_config.get("message_bus_encryption", True)
-            
-            if self.encryption_enabled:
-                await self._setup_curve_encryption(config)
-            
-            self.logger.info(f"Connecting to message bus at {host}:{pub_port}/{sub_port} (encryption: {'enabled' if self.encryption_enabled else 'disabled'})")
-            
-            # Verify broker is actually running before connecting
-            if not await self._verify_broker_available(host, pub_port):
-                raise MessageBusError(f"Message bus broker not available at {host}:{pub_port} - is the backend running?")
-            
-            # Publisher socket for sending messages
-            self.publisher = self.context.socket(zmq.PUB)
-            self.publisher.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            self.publisher.setsockopt(zmq.SNDHWM, 10000)  # Send High Water Mark - prevent message drops
-            
-            # Subscriber socket for receiving messages
-            self.subscriber = self.context.socket(zmq.SUB)
-            self.subscriber.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            self.subscriber.setsockopt(zmq.RCVHWM, 10000)  # Receive High Water Mark - prevent message drops
-            
-            # Configure CurveZMQ encryption if enabled
-            if self.encryption_enabled:
-                self._configure_curve_sockets()
-            else:
-                self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} connecting WITHOUT encryption")
-            
-            self.publisher.connect(f"tcp://{host}:{pub_port}")
-            self.subscriber.connect(f"tcp://{host}:{sub_port}")
-            
+            self.logger.info(
+                "Connecting to NATS message bus",
+                extra={"nats_url": self._nats_url, "client_id": self.client_id},
+            )
+
+            nc = NATS()
+            await nc.connect(servers=[self._nats_url])
+            self._nats = nc
+
             self.running = True
             self.connected = True  # Add connected property for compatibility
-            # Update broker_address to reflect actual connection
-            self.broker_address = f"tcp://{host}:{pub_port}"
-            
-            # Test connection with a small delay to catch immediate auth failures
-            await asyncio.sleep(0.1)
-            
-            # Start message processing loop
-            asyncio.create_task(self._message_loop())
-            
+
+            # Compatibility attribute for callers that want to display connection target
+            self.bus_url = self._nats_url
+
         except Exception as e:
             self.logger.error(f"Failed to connect to message bus: {e}")
             raise MessageBusError(f"Connection failed: {e}")
@@ -215,14 +160,32 @@ class MessageBusClient:
         """Disconnect from the message bus"""
         self.running = False
         self.connected = False  # Update connected property
-        
-        if self.publisher:
-            self.publisher.close()
-        if self.subscriber:
-            self.subscriber.close()
-        
-        self.context.term()
+
+        if self._nats is not None:
+            try:
+                await self._nats.drain()
+            finally:
+                await self._nats.close()
+            self._nats = None
+
         self.logger.info("Disconnected from message bus")
+
+    def _topic_to_subject(self, topic: str) -> str:
+        return topic.replace("/", ".")
+
+    def _pattern_to_subject(self, pattern: str) -> str:
+        # Existing callers use ZMQ-style prefix patterns like "conversation/" or "conversation/*".
+        # For NATS we map those to subjects with wildcards.
+        subject = self._topic_to_subject(pattern)
+        if subject in {"*", "**"}:
+            return ">"
+        if subject.endswith("*"):
+            subject = subject[:-1]
+        if subject.endswith("."):
+            return subject + ">"
+        if subject.endswith(".*"):
+            return subject[:-2] + ".>"
+        return subject
     
     async def _verify_broker_available(self, host: str, port: int) -> bool:
         """Verify that the message bus broker is actually running and accepting connections."""
@@ -237,55 +200,6 @@ class MessageBusClient:
         except Exception:
             return False
     
-    async def _setup_curve_encryption(self, config: ConfigurationManager):
-        """Setup CurveZMQ encryption keys using minimal in-memory approach"""
-        try:
-            # Generate client keypair directly in memory
-            client_public, client_secret = zmq.curve_keypair()
-            self.public_key = client_public.decode('ascii')
-            self.secret_key = client_secret.decode('ascii')
-            
-        except Exception as e:
-            # Security logging: Encryption setup failure
-            self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption for {self.client_id}: {e}")
-            # NO PLAINTEXT FALLBACK - Fail securely
-            raise MessageBusError(f"CurveZMQ encryption setup failed for {self.client_id}: {e}")
-    
-    def _configure_curve_sockets(self):
-        """Configure sockets for CurveZMQ encryption"""
-        if not self.encryption_enabled or not self.secret_key:
-            self.logger.warning(f"[SECURITY] WARNING: CurveZMQ encryption disabled for client {self.client_id}")
-            return
-            
-        try:
-            # Get broker's public key for server authentication
-            broker_public_key = self._get_broker_public_key()
-            
-            # Security logging: Broker authentication
-            self.logger.debug(f"[SECURITY] Authenticating broker with public key fingerprint: {broker_public_key[:8]}...")
-            
-            # Configure publisher socket as CURVE client
-            self.publisher.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
-            self.publisher.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
-            self.publisher.setsockopt_string(zmq.CURVE_SERVERKEY, broker_public_key)
-            
-            # Configure subscriber socket as CURVE client
-            self.subscriber.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
-            self.subscriber.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
-            self.subscriber.setsockopt_string(zmq.CURVE_SERVERKEY, broker_public_key)
-            
-        except Exception as e:
-            # Security logging: Socket configuration failure
-            self.logger.error(f"[SECURITY] CRITICAL: Failed to configure CurveZMQ sockets for {self.client_id}: {e}")
-            # NO PLAINTEXT FALLBACK - Fail securely
-            raise MessageBusError(f"CurveZMQ socket configuration failed for {self.client_id}: {e}")
-    
-    def _get_broker_public_key(self) -> str:
-        """Get broker's public key for server authentication - using shared static key"""
-        # Use a shared static broker public key (same as broker uses)
-        # This implements minimal authentication - all clients use same broker key
-        return _get_shared_broker_public_key()
-    
     async def publish(self, topic: str, payload: ProtobufMessage, 
                      correlation_id: Optional[str] = None, 
                      reply_to: Optional[str] = None,
@@ -299,7 +213,7 @@ class MessageBusClient:
             reply_to: Optional specific response topic for this request (enables targeted responses)
             attributes: Optional additional metadata attributes
         """
-        if not self.running:
+        if not self.running or self._nats is None:
             raise MessageBusError("Client not connected")
         
         # Track message publication metrics with client context
@@ -332,8 +246,8 @@ class MessageBusClient:
             # Serialize message
             message_data = message.SerializeToString()
             
-            # Send the message
-            await self.publisher.send_multipart([topic.encode('utf-8'), message_data])
+            subject = self._topic_to_subject(topic)
+            await self._nats.publish(subject, message_data)
             
             # Metrics are automatically recorded by track_message context manager
             # (duration and count are tracked automatically)
@@ -355,71 +269,48 @@ class MessageBusClient:
     
     async def subscribe(self, topic_pattern: str, callback: Callable[[AicoMessage], None]):
         """Subscribe to messages matching a topic pattern"""
-        if not self.running:
+        if not self.running or self._nats is None:
             raise MessageBusError("Client not connected")
-            
-        # Convert pattern to ZMQ filter
-        zmq_filter = self._pattern_to_zmq_filter(topic_pattern)
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, zmq_filter.encode('utf-8'))
-        
-        # Store callback for application-level pattern matching
-        self.subscriptions[topic_pattern] = callback
+
+        subject = self._pattern_to_subject(topic_pattern)
+
+        async def _handler(msg):
+            from ..proto.aico_core_envelope_pb2 import AicoMessage
+
+            envelope = AicoMessage()
+            envelope.ParseFromString(msg.data)
+            await self._invoke_callback(callback, envelope)
+
+        sid = await self._nats.subscribe(subject, cb=_handler)
+
+        # Store subscription handle under the original pattern
+        self.subscriptions[topic_pattern] = sid
         
         # Security logging: Subscription
-        encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
-        self.logger.info(f"Subscribed to {encryption_status} topic pattern: {topic_pattern} (ZMQ filter: '{zmq_filter}')")
-        if not self.encryption_enabled:
-            self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} subscribing to plaintext messages on pattern '{topic_pattern}'")
+        self.logger.info(
+            "Subscribed to NATS subject",
+            extra={"topic_pattern": topic_pattern, "subject": subject, "client_id": self.client_id},
+        )
         
     async def unsubscribe(self, topic_pattern: str):
         """Unsubscribe from a topic pattern"""
-        if topic_pattern in self.subscriptions:
-            del self.subscriptions[topic_pattern]
-            self.subscriber.setsockopt(zmq.UNSUBSCRIBE, topic_pattern.encode('utf-8'))
-            self.logger.info(f"Unsubscribed from topic pattern: {topic_pattern}")
+        if not self.running or self._nats is None:
+            return
+
+        sid = self.subscriptions.get(topic_pattern)
+        if sid is None:
+            return
+
+        await self._nats.unsubscribe(sid)
+        del self.subscriptions[topic_pattern]
+        self.logger.info(f"Unsubscribed from topic pattern: {topic_pattern}")
     
     async def _message_loop(self):
         """Main message processing loop"""
-        while self.running:
-            try:
-                # Receive message with topic
-                topic, message_data = await self.subscriber.recv_multipart()
-                topic = topic.decode('utf-8')
-                
-                # Skip security warnings for infrastructure components to prevent feedback loops
-                if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
-                    self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} received plaintext message on topic '{topic}'")
-                
-                # Encrypted message reception - logging disabled to prevent spam
-                
-                # Deserialize protobuf message
-                from ..proto.aico_core_envelope_pb2 import AicoMessage
-                message = AicoMessage()
-                message.ParseFromString(message_data)
-                
-                # Find the matching subscription pattern for this topic
-                matching_callback = None
-                for pattern, callback in self.subscriptions.items():
-                    # Check if topic matches the subscription pattern
-                    if pattern == "*" or pattern == "**" or topic.startswith(pattern):
-                        matching_callback = callback
-                        break
-            
-                # Only invoke the matching callback, not all callbacks
-                if matching_callback:
-                    await self._invoke_callback(matching_callback, message)
-                else:
-                    # This can be very high-frequency in busy systems; log once per topic.
-                    if topic not in self._no_subscription_warned_topics:
-                        self._no_subscription_warned_topics.add(topic)
-                        self.logger.warning(f"No matching subscription found for topic: {topic}")
-                    else:
-                        self.logger.debug(f"No matching subscription found for topic: {topic}")
-                        
-            except Exception as e:
-                if self.running:
-                    self.logger.error(f"Error in message loop: {e}")
-                    await asyncio.sleep(0.1)  # Brief pause on error
+        raise MessageBusError(
+            "Legacy ZMQ message loop is disabled. "
+            "This codebase is NATS-only: subscribe() registers NATS callbacks directly."
+        )
     
     def _pattern_to_zmq_filter(self, pattern: str) -> str:
         """Convert subscription pattern to ZeroMQ prefix filter"""
@@ -472,252 +363,32 @@ class MessageBusClient:
 
 
 class MessageBusBroker:
-    """Central message bus broker running in the backend service"""
-    
+    """Broker stub (NATS-only).
+
+    In NATS-only mode, the broker is an external service (Docker: aico-nats).
+    """
+
     def __init__(self, config_manager: Optional[ConfigurationManager] = None):
-        """Initialize the broker with ZeroMQ sockets."""
         self.config_manager = config_manager or ConfigurationManager()
-        self.config_manager.initialize(lightweight=True)
-        bus_config = self.config_manager.get("message_bus", {})
-        
-        # Get bind_address from config if not provided
-        self.bind_address = bus_config.get("broker_address", "tcp://*:5555")
-        self.pub_port = bus_config.get("pub_port", 5555)
-        self.sub_port = bus_config.get("sub_port", 5556)
-        
-        # Check if encryption is enabled
-        security_config = self.config_manager.get("security", {})
-        transport_config = security_config.get("transport", {})
-        self.encryption_enabled = transport_config.get("message_bus_encryption", True)
-        
         self.logger = get_logger("shared.bus.broker")
-        
-        # ZeroMQ context and sockets (use asyncio context for compatibility with async clients)
-        import zmq.asyncio
-        self.context = zmq.asyncio.Context()
-        self.logger.debug(f"[BROKER] Using ZMQ context type: {type(self.context).__name__}")
-        self.frontend = None  # Receives from publishers
-        self.backend = None   # Sends to subscribers
-        
-        self.running = False
-        self.clients: Set[str] = set()
-        
-        # Topic access control
-        self.topic_permissions: Dict[str, Set[str]] = {}
-        
-        # CurveZMQ encryption
-        self.server_public_key = None
-        self.server_secret_key = None
     
     async def start(self):
         """Start the message bus broker"""
-        try:
-            self.logger.debug(f"[BROKER] Starting broker - pub_port: {self.pub_port}, sub_port: {self.sub_port} (encryption: {'enabled' if self.encryption_enabled else 'disabled'})")
-            
-            # Create broker sockets
-            self.frontend = self.context.socket(zmq.XSUB)
-            self.frontend.setsockopt(zmq.LINGER, 0)
-            self.frontend.setsockopt(zmq.RCVHWM, 10000)  # Prevent message drops from publishers
-            
-            self.backend = self.context.socket(zmq.XPUB)
-            self.backend.setsockopt(zmq.LINGER, 0)
-            self.backend.setsockopt(zmq.SNDHWM, 10000)  # Prevent message drops to subscribers
-            
-            # Configure CurveZMQ encryption if enabled
-            if self.encryption_enabled:
-                await self._setup_curve_authentication()
-                self._configure_curve_broker_sockets()
-            
-            self.logger.debug(f"[BROKER] Binding frontend (XSUB) to tcp://*:{self.pub_port}")
-            self.frontend.bind(f"tcp://*:{self.pub_port}")
-            
-            self.logger.debug(f"[BROKER] Binding backend (XPUB) to tcp://*:{self.sub_port}")
-            self.backend.bind(f"tcp://*:{self.sub_port}")
-            
-            self.running = True
-            
-            # Start proxy loop
-            await self._start_proxy_task()
-            
-            # Give the task a moment to start
-            await asyncio.sleep(0.1)
-            self.logger.debug(f"[BROKER] Broker startup complete")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to start message bus broker: {e}")
-            raise MessageBusError(f"Broker startup failed: {e}")
-    
+        raise MessageBusError(
+            "Embedded ZMQ broker is disabled. This codebase is NATS-only; "
+            "run NATS as an external service (Docker: aico-nats) and connect via MessageBusClient."
+        )
+
     async def stop(self):
         """Stop the message bus broker"""
-        self.running = False
-        
-        
-        # Close sockets with proper cleanup
-        if self.frontend:
-            self.frontend.close(linger=0)
-        if self.backend:
-            self.backend.close(linger=0)
-        
-        # Give proxy loop a moment to exit
-        await asyncio.sleep(0.2)
-        
-        # Small delay to ensure sockets are fully closed
-        await asyncio.sleep(0.1)
-        
-        # Terminate context
-        if self.context:
-            self.context.term()
-            self.logger.debug("Message bus broker stopped")
-    
-    def _get_authorized_client_keys(self) -> Dict[str, str]:
-        """Get authorized client public keys for CurveZMQ authentication"""
-        try:
-            from aico.security.key_manager import AICOKeyManager
-            from aico.core.config import ConfigurationManager
-            
-            # Initialize key manager
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager(config)
-            
-            # Get master key (non-interactive for service mode)
-            master_key = key_manager.authenticate(interactive=False)
-            
-            # Define all authorized client components
-            authorized_components = [
-                "message_bus_client_api_gateway",
-                "message_bus_client_log_consumer", 
-                "message_bus_client_scheduler",
-                "message_bus_client_cli",
-                "message_bus_client_modelservice",
-                "zmq_log_transport",  # ZMQ log transport for cross-service logging
-                "message_bus_client_system_host",
-                "message_bus_client_backend_modules",
-                "zeromq_adapter",  # API Gateway ZMQ adapter
-                "test_client_health",  # Test script health check client
-                "test_client_completions"  # Test script completions client
-            ]
-            
-            # Derive public keys for all authorized clients
-            authorized_clients = {}
-            for component in authorized_components:
-                public_key, _ = key_manager.derive_curve_keypair(master_key, component)
-                authorized_clients[component] = public_key
-                
-            return authorized_clients
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get authorized client keys: {e}")
-            # Fallback to empty dict - no clients authorized
-            return {}
-    
-    async def _setup_curve_authentication(self):
-        """Setup CurveZMQ encryption for the broker using minimal in-memory approach"""
-        try:
-            # Use shared static broker keys (same approach as working test)
-            self.server_public_key = _get_shared_broker_public_key()
-            self.server_secret_key = _get_shared_broker_secret_key()
-            
-            # Get authorized client keys
-            authorized_clients = self._get_authorized_client_keys()
-            
-        except Exception as e:
-            self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption: {e}")
-            # NO PLAINTEXT FALLBACK - Fail securely
-            raise MessageBusError(f"CurveZMQ encryption setup failed: {e}")
-    
-    def _configure_curve_broker_sockets(self):
-        """Configure broker sockets for CurveZMQ encryption"""
-        if not self.encryption_enabled or not self.server_secret_key:
-            self.logger.warning("[SECURITY] WARNING: CurveZMQ encryption disabled for broker sockets")
-            return
-            
-        try:
-            # Configure frontend socket as CURVE server
-            self.frontend.setsockopt_string(zmq.CURVE_SECRETKEY, self.server_secret_key)
-            self.frontend.setsockopt_string(zmq.CURVE_PUBLICKEY, self.server_public_key)
-            self.frontend.setsockopt(zmq.CURVE_SERVER, 1)
-            
-            # Configure backend socket as CURVE server
-            self.backend.setsockopt_string(zmq.CURVE_SECRETKEY, self.server_secret_key)
-            self.backend.setsockopt_string(zmq.CURVE_PUBLICKEY, self.server_public_key)
-            self.backend.setsockopt(zmq.CURVE_SERVER, 1)
-            
-        except Exception as e:
-            self.logger.error(f"[SECURITY] CRITICAL: Failed to configure CurveZMQ broker sockets: {e}")
-            # NO PLAINTEXT FALLBACK - Fail securely
-            raise MessageBusError(f"CurveZMQ broker socket configuration failed: {e}")
-    
-    async def _start_proxy_task(self):
-        """Start the proxy task in background"""
-        asyncio.create_task(self._proxy_loop())
-    
-    async def _proxy_loop(self):
-        """Main proxy loop for forwarding messages"""
-        try:
-            #print(f"[BROKER PROXY] Starting async proxy: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
-            
-            # Brief delay to ensure sockets are ready
-            await asyncio.sleep(0.1)
-            
-            #print(f"[BROKER PROXY] Starting async message forwarding...")
-            
-            # Manual async proxy implementation
-            import zmq.asyncio
-            poller = zmq.asyncio.Poller()
-            poller.register(self.frontend, zmq.POLLIN)
-            poller.register(self.backend, zmq.POLLIN)
-            
-            while self.running:
-                try:
-                    socks = await poller.poll(timeout=100)  # 100ms timeout
-                    
-                    if not socks:
-                        # No messages - this is normal, continue polling
-                        continue
-                    
-                    for sock, event in socks:
-                        if sock == self.frontend and event == zmq.POLLIN:
-                            # Forward from frontend (publishers) to backend (subscribers)
-                            message = await self.frontend.recv_multipart()
-                            await self.backend.send_multipart(message)
-                            
-                        elif sock == self.backend and event == zmq.POLLIN:
-                            # Forward from backend (subscribers) to frontend (publishers)
-                            # This handles BOTH subscription messages AND response messages from subscribers
-                            message = await self.backend.recv_multipart()
-                            await self.frontend.send_multipart(message)
-                            
-                except Exception as e:
-                    if self.running:
-                        self.logger.error(f"Error in proxy loop: {e}")
-            
-            #print(f"[BROKER PROXY] Proxy loop exiting")
-            self.logger.info("Broker Proxy loop exiting")
-            
-        except Exception as e:
-            if self.running:
-                self.logger.error(f"Error starting proxy loop: {e}")
-                print(f"[BROKER PROXY] Error: {e}")
-    
-    def add_topic_permission(self, client_id: str, topic_pattern: str):
-        """Grant topic access permission to a client"""
-        if client_id not in self.topic_permissions:
-            self.topic_permissions[client_id] = set()
-        self.topic_permissions[client_id].add(topic_pattern)
-        self.logger.info(f"Granted topic '{topic_pattern}' access to client '{client_id}'")
-    
-    def remove_topic_permission(self, client_id: str, topic_pattern: str):
-        """Revoke topic access permission from a client"""
-        if client_id in self.topic_permissions:
-            self.topic_permissions[client_id].discard(topic_pattern)
-            self.logger.info(f"Revoked topic '{topic_pattern}' access from client '{client_id}'")
+        return
 
 
 # Convenience functions for common usage patterns
 
-async def create_client(client_id: str, broker_address: str = "tcp://localhost:5555") -> MessageBusClient:
+async def create_client(client_id: str) -> MessageBusClient:
     """Create and connect a message bus client"""
-    client = MessageBusClient(client_id, broker_address)
+    client = MessageBusClient(client_id)
     await client.connect()
     return client
 
@@ -727,6 +398,6 @@ async def publish_message(client: MessageBusClient, topic: str, payload: Protobu
     await client.publish(topic, payload)
 
 
-def create_broker(bind_address: str = "tcp://*:5555") -> MessageBusBroker:
+def create_broker() -> MessageBusBroker:
     """Create a message bus broker"""
-    return MessageBusBroker(bind_address)
+    return MessageBusBroker()

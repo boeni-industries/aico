@@ -31,11 +31,13 @@ class BackendLifecycleManager:
     and router mounting with proper dependency injection.
     """
     
-    def __init__(self, config_manager: ConfigurationManager):
+    def __init__(self, config_manager: ConfigurationManager, role: str = "monolith"):
         self.config = config_manager
         self.logger = get_logger("backend.core.lifecycle_manager")
         import time
         self.start_time = time.time()
+
+        self.role = role
         
         # Core components
         self.container = ServiceContainer(config_manager)
@@ -70,39 +72,44 @@ class BackendLifecycleManager:
         # 3. Initialize OpenTelemetry instrumentation (now has database access)
         await self._initialize_telemetry()
         
-        # 4. Create FastAPI app
+        if self.role == "core":
+            await self.container.start_all()
+            self._display_service_status()
+            self._display_plugin_status()
+            self.logger.info("AICO core startup complete")
+            return None
+
+        # gateway / monolith
         self.app = self._create_fastapi_app()
-        
+
         # Store start time in app state for health monitoring
         self.app.state.backend_start_time = self.start_time
-        
-        # 5. Configure middleware stack
+
+        # Configure middleware stack
         self._configure_middleware()
-        
-        # 6. Mount API routers
+
+        # Mount API routers
         self._mount_routers()
-        
-        # 7. Instrument FastAPI with OpenTelemetry
+
+        # Instrument FastAPI with OpenTelemetry
         self._instrument_fastapi()
-        
+
         # Start all services
         await self.container.start_all()
-        
+
         # Display service and plugin startup status
         self._display_service_status()
         self._display_plugin_status()
-        
-        # Start ZMQ message broker
+
+        # Legacy broker startup is a no-op in NATS-only mode
         await self._start_message_broker()
-        
+
         # Display available routes
         self._display_routes()
-        
-        # Display log consumer status (debug logic removed)
-        
-        # Start protocol adapters (WebSocket, ZeroMQ)
+
+        # Start protocol adapters (WebSocket)
         await self._start_protocol_adapters()
-        
+
         self.logger.info("AICO backend startup complete")
         return self.app
     
@@ -213,11 +220,6 @@ class BackendLifecycleManager:
             # PostgreSQL uses UnitOfWork pattern per request
             return None
         
-        # ZMQ context factory
-        def create_zmq_context(container: ServiceContainer):
-            import zmq
-            return zmq.Context()
-        
         # Config service factory
         def create_config_service(container: ServiceContainer):
             return container.config
@@ -260,53 +262,47 @@ class BackendLifecycleManager:
             priority=1  # Start first
         )
         
-        self.container.register_service(
-            "zmq_context",
-            create_zmq_context,
-            dependencies=[],
-            priority=10  # Start after database, stop before database
-        )
-        
         # NOTE: Do not register shared UserService here.
         # Backend uses PostgreSQL via UnitOfWork/repositories; the shared UserService
         # expects an asyncpg connection and would be constructed with database=None
         # (since the backend's legacy `database` service is intentionally unused).
         
-        # Task scheduler factory
-        def create_task_scheduler(container: ServiceContainer):
-            from backend.scheduler import TaskScheduler
-            return TaskScheduler("task_scheduler", container)
-        
-        self.container.register_service(
-            "task_scheduler",
-            create_task_scheduler,
-            dependencies=[],
-            priority=25
-        )
-        
-        # Emotion engine factory
-        def create_emotion_engine(container: ServiceContainer, zmq_context=None):
-            from backend.services.emotion_engine import EmotionEngine
-            return EmotionEngine("emotion_engine", container)
-        
-        self.container.register_service(
-            "emotion_engine",
-            create_emotion_engine,
-            dependencies=["zmq_context"],
-            priority=30  # Start after message_bus (20), before conversation_engine (35)
-        )
-        
-        # Conversation engine factory
-        def create_conversation_engine(container: ServiceContainer, zmq_context=None, emotion_engine=None):
-            from backend.services.conversation_engine import ConversationEngine
-            return ConversationEngine("conversation_engine", container)
-        
-        self.container.register_service(
-            "conversation_engine",
-            create_conversation_engine,
-            dependencies=["zmq_context", "emotion_engine"],  # Ensure emotion engine is ready
-            priority=35  # Start after message_bus (20) and emotion_engine (30)
-        )
+        if self.role != "gateway":
+            # Task scheduler factory
+            def create_task_scheduler(container: ServiceContainer):
+                from backend.scheduler import TaskScheduler
+                return TaskScheduler("task_scheduler", container)
+
+            self.container.register_service(
+                "task_scheduler",
+                create_task_scheduler,
+                dependencies=[],
+                priority=25
+            )
+
+            # Emotion engine factory
+            def create_emotion_engine(container: ServiceContainer):
+                from backend.services.emotion_engine import EmotionEngine
+                return EmotionEngine("emotion_engine", container)
+
+            self.container.register_service(
+                "emotion_engine",
+                create_emotion_engine,
+                dependencies=[],
+                priority=30  # Start after message_bus (20), before conversation_engine (35)
+            )
+
+            # Conversation engine factory
+            def create_conversation_engine(container: ServiceContainer, emotion_engine=None):
+                from backend.services.conversation_engine import ConversationEngine
+                return ConversationEngine("conversation_engine", container)
+
+            self.container.register_service(
+                "conversation_engine",
+                create_conversation_engine,
+                dependencies=["emotion_engine"],  # Ensure emotion engine is ready
+                priority=35  # Start after message_bus (20) and emotion_engine (30)
+            )
         
         self.logger.debug("Core services registered")
 
@@ -758,21 +754,21 @@ class BackendLifecycleManager:
         
         self.logger.debug("Plugin services registered")
     
-    def _get_plugin_dependencies(self, plugin_name: str) -> List[str]:
+    def _get_plugin_dependencies(self, plugin_name: str) -> list:
         """Get plugin dependencies based on plugin type"""
         # Standard dependencies for different plugin types
         dependency_map = {
-            "security": ["database", "zmq_context"],
+            "security": ["database"],
             "encryption": ["database"],
             "rate_limiting": ["database"],
             "validation": [],
             "routing": [],
-            "message_bus": ["zmq_context"],
+            "message_bus": [],
             # AI plugins need message bus for inter-plugin communication
-            "embodiment": ["zmq_context"],
-            "agency": ["zmq_context"],
-            "emotion": ["zmq_context"],
-            "personality": ["zmq_context"],
+            "embodiment": [],
+            "agency": [],
+            "emotion": [],
+            "personality": [],
         }
         
         return dependency_map.get(plugin_name, [])
@@ -806,7 +802,6 @@ class BackendLifecycleManager:
                 'config': self.config,
                 'logger': self.logger,
                 'db_connection': self.container.get_service('database'),
-                'zmq_context': self.container.get_service('zmq_context'),
             }
             
             # Add plugin services as dependencies
@@ -870,7 +865,11 @@ class BackendLifecycleManager:
                 app.state.lifecycle_manager = self
                 
                 # Store task scheduler for scheduler API endpoints
-                task_scheduler = self.container.get_service('task_scheduler')
+                task_scheduler = None
+                try:
+                    task_scheduler = self.container.get_service('task_scheduler')
+                except Exception:
+                    task_scheduler = None
                 if task_scheduler:
                     app.state.task_scheduler = task_scheduler
                 
@@ -979,12 +978,23 @@ class BackendLifecycleManager:
         self.logger.debug("API routers mounted")
 
         # Apply encryption middleware as final ASGI wrapper (after all routers mounted)
-        self.logger.debug("Starting encryption middleware initialization")
-        key_manager = AICOKeyManager(self.config)
-        # Store reference to FastAPI app before wrapping for route display
-        self.fastapi_app = self.app
-        self.app = EncryptionMiddleware(self.app, key_manager)
-        self.logger.debug("Encryption middleware started successfully")
+        plugin_enabled = bool(self.config.get("api_gateway.plugins.encryption.enabled", True))
+        transport_enabled = bool(self.config.get("security.transport.encryption.enabled", True))
+        if plugin_enabled and transport_enabled:
+            self.logger.debug("Starting encryption middleware initialization")
+            key_manager = AICOKeyManager(self.config)
+            # Store reference to FastAPI app before wrapping for route display
+            self.fastapi_app = self.app
+            self.app = EncryptionMiddleware(self.app, key_manager)
+            self.logger.debug("Encryption middleware started successfully")
+        else:
+            self.logger.info(
+                "Encryption middleware disabled",
+                extra={
+                    "plugin_enabled": plugin_enabled,
+                    "transport_enabled": transport_enabled,
+                },
+            )
 
     def _mount_domain_routers(self) -> None:
         """Mount domain-specific API routers"""
@@ -1079,17 +1089,9 @@ class BackendLifecycleManager:
     
     async def _start_message_broker(self) -> None:
         """Start ZMQ message broker"""
-        try:
-            message_bus_plugin = self.container.get_service('message_bus_plugin')
-            if message_bus_plugin:
-                # Message bus plugin starts broker in its start() method
-                # Notify ZMQ log transport that broker is ready to flush buffered messages
-                self._notify_log_transport_broker_ready()
-            else:
-                self.logger.warning("ZMQ message broker not available - message_bus_plugin not found")
-                
-        except Exception as e:
-            self.logger.error(f"Failed to start message broker: {e}")
+        # NATS-only: broker is an external dependency (Docker: aico-nats).
+        # Legacy embedded ZMQ broker startup is intentionally disabled.
+        self.logger.info("Message broker startup skipped (NATS-only; external bus)")
     
     def _notify_log_transport_broker_ready(self) -> None:
         """Notify ZMQ log transport that broker is ready, but delay buffer flush until LogConsumer is subscribed"""

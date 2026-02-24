@@ -343,7 +343,7 @@ class ConfigurationManager:
             runtime_source = ConfigSource(
                 name="runtime",
                 priority=5,
-                path=self.user_config_dir / "runtime.yaml",  # Use platform-specific user config dir
+                path=self._get_runtime_config_file(),
                 data={}
             )
             self.sources.append(runtime_source)
@@ -558,6 +558,18 @@ class ConfigurationManager:
             "AICO_API_PORT": "api_gateway.protocols.rest.port",
             "AICO_ENVIRONMENT": "system.environment",
             "AICO_API_HOST": "api_gateway.host",
+            "AICO_REST_HOST": "api_gateway.rest.host",
+            "AICO_NATS_URL": "message_bus.nats_url",
+            "AICO_INFLUX_URL": "influx.url",
+            "AICO_LOKI_URL": "loki.url",
+            "AICO_PG_HOST": "postgres.host",
+            "AICO_PG_PORT": "postgres.port",
+            "AICO_PG_DB_NAME": "postgres.db_name",
+            "AICO_TRANSPORT_ENCRYPTION_ENABLED": "security.transport.encryption.enabled",
+            "AICO_GATEWAY_ENCRYPTION_PLUGIN_ENABLED": "api_gateway.plugins.encryption.enabled",
+            "AICO_GATEWAY_SECURITY_PLUGIN_ENABLED": "api_gateway.plugins.security.enabled",
+            "AICO_OLLAMA_AUTO_INSTALL": "modelservice.ollama.auto_install",
+            "AICO_OLLAMA_AUTO_START": "modelservice.ollama.auto_start",
             # Path-related environment variables are handled by AICOPaths class
             # AICO_DATA_DIR, AICO_CONFIG_DIR, etc. are used directly by AICOPaths
         }
@@ -579,14 +591,22 @@ class ConfigurationManager:
                 priority=4,
                 data=env_overrides
             ))
-            
-            # Apply environment variable overrides
+
+            # Apply environment variable overrides directly to the in-memory cache.
+            # IMPORTANT: Do not call self.set() here because _apply_environment_variables()
+            # runs during initialize(); calling set() would recursively call initialize().
             for key, value in env_overrides.items():
-                self.set(key, value, persist=False)
+                keys = key.split('.')
+                current = self.config_cache
+                for k in keys[:-1]:
+                    if k not in current or not isinstance(current[k], dict):
+                        current[k] = {}
+                    current = current[k]
+                current[keys[-1]] = value
                 
     def _load_runtime_configs(self) -> None:
         """Load runtime configuration changes from encrypted store."""
-        runtime_file = self.user_config_dir / "runtime.yaml"  # Use platform-specific user config dir
+        runtime_file = self._get_runtime_config_file()
         
         if runtime_file.exists():
             try:
@@ -610,23 +630,39 @@ class ConfigurationManager:
         if os.environ.get('AICO_TEST_MODE') == '1':
             return
         
-        runtime_file = self.user_config_dir / "runtime.yaml"  # Use platform-specific user config dir
+        runtime_file = self._get_runtime_config_file()
         
         # Extract runtime changes (priority 5 source)
         runtime_data = {}
         for source in self.sources:
-            if source.name == "runtime" and source.data:
+            if source.name == "runtime":
                 runtime_data = source.data
                 break
-        
-        # Ensure user directory exists
-        runtime_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         try:
+            runtime_file.parent.mkdir(parents=True, exist_ok=True)
             with open(runtime_file, 'w', encoding='utf-8') as f:
-                yaml.safe_dump(runtime_data, f, default_flow_style=False, sort_keys=True)
-        except (yaml.YAMLError, IOError) as e:
-            raise ConfigurationError(f"Failed to persist runtime config to '{runtime_file}': {e}")
+                yaml.safe_dump(runtime_data, f, default_flow_style=False, sort_keys=False)
+        except Exception as e:
+            # Log error but don't crash - persistence is optional
+            print(f"Warning: Failed to persist runtime config '{runtime_file}': {e}")
+
+    def _get_runtime_config_file(self) -> Path:
+        """Get the runtime config file path.
+
+        Runtime config must be writable. In container deployments `AICO_CONFIG_DIR` is
+        expected to be read-only (image-shipped defaults), so runtime overrides are
+        stored under the data directory by default.
+        """
+        override_dir = os.getenv("AICO_RUNTIME_CONFIG_DIR")
+        if override_dir:
+            return Path(override_dir) / "runtime.yaml"
+
+        try:
+            from aico.core.paths import AICOPaths
+            return AICOPaths.get_data_directory() / "config" / "runtime.yaml"
+        except Exception:
+            return (self.user_config_dir / "runtime.yaml")
         
     def _deep_merge(self, base: Dict, override: Dict) -> None:
         """

@@ -7,7 +7,7 @@ services:
   # Message bus service configuration
   message_bus:
     enabled: true
-    bind_address: "tcp://*:5555"
+    nats_url: "nats://localhost:4222"
     timeout: 120.0
   
   # Task scheduler service configuration  

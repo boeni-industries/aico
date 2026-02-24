@@ -33,7 +33,7 @@ sys.path.insert(0, str(shared_path))
 from aico.core.config import ConfigurationManager
 from aico.core.process import ProcessManager
 from cli.utils.formatting import get_status_chars
-from cli.utils.zmq_client import get_modelservice_health
+from cli.utils.nats_client import get_modelservice_health
 
 console = Console()
 
@@ -44,7 +44,7 @@ chars = get_status_chars()
 def _is_modelservice_running() -> bool:
     """Check if Modelservice is currently running"""
     try:
-        # Primary check: ZMQ health endpoint
+        # Primary check: message bus health request
         health_response = get_modelservice_health()
         if health_response.get("success"):
             return True
@@ -209,7 +209,7 @@ async def _show_service_details(health_data: dict):
         # Get Ollama models if available
         if health_data.get("checks", {}).get("ollama", {}).get("healthy", False):
             try:
-                from cli.utils.zmq_client import get_ollama_models
+                from cli.utils.nats_client import get_ollama_models
                 models_response = get_ollama_models()
                 if models_response.get("success") and models_response.get("data", {}).get("models"):
                     models = models_response["data"]["models"]
@@ -560,7 +560,7 @@ def status():
         is_running = _is_modelservice_running()
         health_data = {}
         
-        # Get health data if running via ZMQ
+        # Get health data if running via message bus
         if is_running:
             try:
                 with Progress(
@@ -569,7 +569,7 @@ def status():
                     console=console,
                     transient=True
                 ) as progress:
-                    # Step 1: Get basic health via ZMQ
+                    # Step 1: Get basic health via message bus
                     task = progress.add_task("Checking modelservice health...", total=None)
                     health_response = get_modelservice_health()
                     
@@ -591,7 +591,7 @@ def status():
                                 "api_gateway": {"status": "unknown", "reachable": False, "error": "connection_failed"},
                                 "ollama": {"healthy": False, "reachable": False, "error": "unknown"}
                             }, 
-                            "issues": ["Health endpoint unreachable via ZMQ"]
+                            "issues": ["Health endpoint unreachable via message bus"]
                         }
             except Exception as e:
                 # Fallback health data for display
@@ -599,10 +599,10 @@ def status():
                     "status": "connection_failed", 
                     "version": "0.0.2", 
                     "checks": {
-                        "api_gateway": {"status": "unknown", "reachable": False, "error": "zmq_connection_failed"},
+                        "api_gateway": {"status": "unknown", "reachable": False, "error": "bus_connection_failed"},
                         "ollama": {"healthy": False, "reachable": False, "error": "unknown"}
                     }, 
-                    "issues": [f"ZMQ health check failed: {str(e)}"]
+                    "issues": [f"Message bus health check failed: {str(e)}"]
                 }
         
         # Primary status header (matching gateway format)
@@ -614,10 +614,10 @@ def status():
                 console.print(f"{chars['globe']} [bold yellow]Modelservice Status: RUNNING (Unhealthy)[/bold yellow]")
             
             version = health_data.get("version", "Unknown")
-            console.print(f"   [dim]Version {version} • ZMQ Message Bus[/dim]")
+            console.print(f"   [dim]Version {version} • Message Bus[/dim]")
         else:
             console.print(f"{chars['globe']} [bold red]Modelservice Status: OFFLINE[/bold red]")
-            console.print(f"   [dim]Not responding via ZMQ[/dim]")
+            console.print(f"   [dim]Not responding via message bus[/dim]")
         
         console.print()
         
@@ -702,9 +702,9 @@ def status():
                 asyncio.run(_show_service_details(health_data))
                 progress.stop()
         
-        # ZMQ Topics table
+        # Topics table
         if is_running:
-            table = Table(title="Available ZMQ Topics", show_header=True, header_style="bold blue")
+            table = Table(title="Available Topics", show_header=True, header_style="bold blue")
             table.add_column("Topic", style="cyan", no_wrap=True)
             table.add_column("Purpose", style="dim")
             
@@ -736,7 +736,7 @@ def models():
             console.print("[dim]Start it with: aico modelservice start[/dim]")
             raise typer.Exit(1)
         
-        from cli.utils.zmq_client import get_ollama_models
+        from cli.utils.nats_client import get_ollama_models
         response = get_ollama_models()
         
         if not response.get("success"):
@@ -789,7 +789,7 @@ def pull(model_name: str = typer.Argument(..., help="Name of the model to downlo
         
         console.print(f"[yellow]📥 Pulling model: {model_name}[/yellow]")
         
-        from cli.utils.zmq_client import pull_ollama_model
+        from cli.utils.nats_client import pull_ollama_model
         response = pull_ollama_model(model_name)
         
         if response.get("success"):
@@ -818,7 +818,7 @@ def embeddings(
         console.print(f"[yellow]🧠 Generating embeddings for: '{text[:50]}{'...' if len(text) > 50 else ''}'[/yellow]")
         console.print(f"[dim]Using model: {model}[/dim]")
         
-        from cli.utils.zmq_client import get_embeddings
+        from cli.utils.nats_client import get_embeddings
         response = get_embeddings(model, text)
         
         if response.get("success"):

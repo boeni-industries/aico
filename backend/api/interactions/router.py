@@ -56,54 +56,30 @@ async def get_message_bus_client(request: Request):
                 message="Service container not initialized",
             )
         
-        container = request.app.state.service_container
-        message_bus_plugin = container.get_service("message_bus_plugin")
-        
-        if not message_bus_plugin or not hasattr(message_bus_plugin, 'message_bus_host'):
-            raise_api_error(
-                status_code=500,
-                error_code="MESSAGE_BUS_PLUGIN_NOT_AVAILABLE",
-                message="Message bus plugin not available",
-            )
-        
-        if not message_bus_plugin.message_bus_host:
-            raise_api_error(
-                status_code=500,
-                error_code="MESSAGE_BUS_HOST_NOT_INITIALIZED",
-                message="Message bus host not initialized",
-            )
-        
-        # Use cached client to avoid re-registration warnings
+        # Use cached client to avoid repeated connections
         global _message_bus_client_cache
         if _message_bus_client_cache:
             return _message_bus_client_cache
 
-        # Best-effort registration: never block interaction transitions.
-        # If message bus registration stalls, we return None and skip notifications.
         start = time.perf_counter()
         try:
-            client = await asyncio.wait_for(
-                message_bus_plugin.register_module(
-                    "interactions_api",
-                    ["interaction.notifications.*"],
-                ),
-                timeout=0.25,
-            )
+            client = MessageBusClient("backend_interactions_api")
+            await asyncio.wait_for(client.connect(), timeout=0.25)
             _message_bus_client_cache = client
             logger.info(
-                "Message bus client registered for interactions",
+                "Message bus client connected for interactions",
                 extra={"elapsed_ms": int((time.perf_counter() - start) * 1000)},
             )
             return client
         except asyncio.TimeoutError:
             logger.warning(
-                "Message bus client registration timed out for interactions",
+                "Message bus client connect timed out for interactions",
                 extra={"timeout_s": 0.25, "elapsed_ms": int((time.perf_counter() - start) * 1000)},
             )
             return None
-        except Exception as reg_error:
+        except Exception:
             logger.exception(
-                "Message bus client registration failed for interactions",
+                "Message bus client connect failed for interactions",
                 extra={"elapsed_ms": int((time.perf_counter() - start) * 1000)},
             )
             return None

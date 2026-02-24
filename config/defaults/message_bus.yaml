@@ -1,6 +1,2 @@
-host: "localhost"
-bind_address: "tcp://*:5555"
-pub_port: 5555  # Frontend port for publishers (broker binds here)
-sub_port: 5556  # Backend port for subscribers (broker binds here)
-broker_address: "tcp://*:5555"
+nats_url: "nats://localhost:4222"
 timeout: 120.0  # Timeout for message bus requests (increased from 60s default)

@@ -18,7 +18,7 @@ dependencies = [
     "pyyaml",
     "jsonschema",
     "watchdog",
-    "pyzmq>=27.0.1",
+    "nats-py>=2.9.0",
     "protobuf>=6.32.0,<7.0.0",
     "grpcio-tools>=1.62.0",
     "platformdirs>=4.0.0",

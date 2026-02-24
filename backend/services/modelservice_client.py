@@ -21,7 +21,7 @@ from aico.core.bus import MessageBusClient
 @dataclass
 class ModelServiceConfig:
     """Configuration for modelservice client."""
-    broker_address: str
+    nats_url: str
     timeout: float
     encryption_enabled: bool = True
 
@@ -40,9 +40,9 @@ class ModelServiceClient:
         # Load configuration from AICO config system
         if config is None:
             bus_config = config_manager.get("message_bus", {})
-            broker_address = bus_config.get("broker_address", "tcp://localhost:5555")
+            nats_url = bus_config.get("nats_url") or bus_config.get("url") or "nats://localhost:4222"
             timeout = bus_config.get("timeout", 60.0)
-            self.config = ModelServiceConfig(broker_address=broker_address, timeout=timeout)
+            self.config = ModelServiceConfig(nats_url=nats_url, timeout=timeout)
         else:
             self.config = config
             
@@ -95,7 +95,7 @@ class ModelServiceClient:
             return False
     
     async def _ensure_connection(self):
-        """Ensure ZMQ connection is established."""
+        """Ensure message bus connection is established."""
         if self.bus_client is None:
             self.bus_client = MessageBusClient(
                 client_id="backend_modelservice_client",
@@ -114,7 +114,7 @@ class ModelServiceClient:
         data: Dict[str, Any],
         timeout_override: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Send a request via ZMQ and wait for response."""
+        """Send a request via the message bus and wait for response."""
         start_time = time.time()
 
         timeout_seconds = timeout_override if timeout_override is not None else self.config.timeout
@@ -520,7 +520,7 @@ class ModelServiceClient:
             
         except Exception as e:
             total_time = time.time() - start_time
-            error_msg = f"ZMQ request failed: {str(e)}"
+            error_msg = f"Message bus request failed: {str(e)}"
             
             if is_embedding_request:
                 import traceback

@@ -3,6 +3,155 @@
 name: aico
 
 services:
+  nats:
+    image: nats:2.10
+    container_name: aico-nats
+    restart: unless-stopped
+    command:
+      - "-js"
+      - "-m"
+      - "8222"
+    ports:
+      - "4222:4222" # client
+      - "8222:8222" # monitoring
+    volumes:
+      - aico-natsdata:/data
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "nats"
+      com.aico.service.type: "message-bus"
+      com.aico.service.role: "nats-jetstream"
+      org.opencontainers.image.title: "AICO NATS"
+      org.opencontainers.image.description: "NATS + JetStream message bus for AICO"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: aico-gateway
+    restart: unless-stopped
+    environment:
+      AICO_ENV: development
+      AICO_CONFIG_DIR: /app/config
+      AICO_DATA_DIR: /var/lib/aico
+      AICO_CACHE_DIR: /var/cache/aico
+      AICO_RUNTIME_DIR: /run/aico
+      AICO_NATS_URL: nats://nats:4222
+      AICO_INFLUX_URL: http://influxdb:8086
+      AICO_LOKI_URL: http://loki:3100
+      AICO_REST_HOST: 0.0.0.0
+      AICO_PG_HOST: postgres
+      AICO_TRANSPORT_ENCRYPTION_ENABLED: "false"
+      AICO_GATEWAY_ENCRYPTION_PLUGIN_ENABLED: "false"
+      AICO_GATEWAY_SECURITY_PLUGIN_ENABLED: "false"
+      AICO_PG_PASSWORD: ${AICO_PG_PASSWORD:-}
+      AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
+      AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
+    volumes:
+      - aico-gateway-state:/var/lib/aico
+      - aico-gateway-cache:/var/cache/aico
+    tmpfs:
+      - /run/aico
+    ports:
+      - "8771:8771"
+    depends_on:
+      - postgres
+      - nats
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "gateway"
+      com.aico.service.type: "application"
+      com.aico.service.role: "http-edge"
+      org.opencontainers.image.title: "AICO Gateway"
+      org.opencontainers.image.description: "AICO API Gateway (HTTP edge)"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  core:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: aico-core
+    restart: unless-stopped
+    command: ["uv", "run", "python", "backend/core_main.py"]
+    environment:
+      AICO_ENV: development
+      AICO_CONFIG_DIR: /app/config
+      AICO_DATA_DIR: /var/lib/aico
+      AICO_CACHE_DIR: /var/cache/aico
+      AICO_RUNTIME_DIR: /run/aico
+      AICO_NATS_URL: nats://nats:4222
+      AICO_INFLUX_URL: http://influxdb:8086
+      AICO_LOKI_URL: http://loki:3100
+      AICO_PG_HOST: postgres
+      AICO_PG_PASSWORD: ${AICO_PG_PASSWORD:-}
+      AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
+      AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
+    volumes:
+      - aico-core-state:/var/lib/aico
+      - aico-core-cache:/var/cache/aico
+    tmpfs:
+      - /run/aico
+    depends_on:
+      - postgres
+      - nats
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "core"
+      com.aico.service.type: "application"
+      com.aico.service.role: "domain-services"
+      org.opencontainers.image.title: "AICO Core"
+      org.opencontainers.image.description: "AICO core services (no public HTTP)"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  modelservice:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.modelservice
+    container_name: aico-modelservice
+    restart: unless-stopped
+    environment:
+      AICO_ENV: development
+      AICO_CONFIG_DIR: /app/config
+      AICO_DATA_DIR: /var/lib/aico
+      AICO_CACHE_DIR: /var/cache/aico
+      AICO_RUNTIME_DIR: /run/aico
+      AICO_NATS_URL: nats://nats:4222
+      AICO_INFLUX_URL: http://influxdb:8086
+      AICO_LOKI_URL: http://loki:3100
+      AICO_REST_HOST: gateway
+      AICO_PG_HOST: postgres
+      AICO_OLLAMA_AUTO_INSTALL: "false"
+      AICO_OLLAMA_AUTO_START: "false"
+      AICO_PG_PASSWORD: ${AICO_PG_PASSWORD:-}
+      AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
+      AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
+    volumes:
+      - aico-modelservice-state:/var/lib/aico
+      - aico-modelservice-cache:/var/cache/aico
+    tmpfs:
+      - /run/aico
+
+    depends_on:
+      - gateway
+      - core
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "modelservice"
+      com.aico.service.type: "application"
+      com.aico.service.role: "model-inference"
+      org.opencontainers.image.title: "AICO Modelservice"
+      org.opencontainers.image.description: "AICO modelservice container"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
   postgres:
     image: postgres:18.1
     container_name: aico-postgres
@@ -170,6 +319,27 @@ services:
       com.aico.deployment.type: "local-dev"
 
 volumes:
+  aico-natsdata:
+    name: aico-natsdata
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "nats"
+      com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+
+  aico-gateway-state:
+    name: aico-gateway-state
+  aico-gateway-cache:
+    name: aico-gateway-cache
+  aico-core-state:
+    name: aico-core-state
+  aico-core-cache:
+    name: aico-core-cache
+  aico-modelservice-state:
+    name: aico-modelservice-state
+  aico-modelservice-cache:
+    name: aico-modelservice-cache
+
   aico-pgdata:
     name: aico-pgdata
     labels:

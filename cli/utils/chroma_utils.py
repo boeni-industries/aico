@@ -216,7 +216,7 @@ def query_chroma_collection(
         embedding_model = config.get("modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         
         try:
-            from cli.utils.zmq_client import get_embeddings
+            from cli.utils.nats_client import get_embeddings
             embeddings_response = get_embeddings(embedding_model, query_text)
             if not embeddings_response.get("success"):
                 return {"error": f"Failed to generate query embeddings: {embeddings_response.get('error', 'Unknown error')}"}
@@ -316,7 +316,7 @@ def add_chroma_document(
         embedding_model = config.get("modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         
         try:
-            from cli.utils.zmq_client import get_embeddings
+            from cli.utils.nats_client import get_embeddings
             console.print(f"[dim]Generating embeddings via modelservice using {embedding_model}...[/dim]")
             
             embeddings_response = get_embeddings(embedding_model, document)

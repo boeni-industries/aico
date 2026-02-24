@@ -39,7 +39,7 @@ class EncryptionMiddleware:
         from aico.core.config import ConfigurationManager
         config_manager = ConfigurationManager()
         config_manager.initialize()
-        config = config_manager.get("security", {}).get("transport_encryption", {})
+        config = config_manager.get("security.transport.encryption", {})
         self.config = config
         self.enabled = config.get("enabled", True)
         

@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from aico.core.logging import get_logger
+from aico.core.bus import MessageBusClient
 from aico.core.topics import AICOTopics
 from aico.proto.aico_modelservice_pb2 import TtsRequest, TtsStreamChunk
 from backend.api.dependencies import get_current_user
@@ -21,46 +22,9 @@ router = APIRouter()
 
 async def get_message_bus_client(request: Request):
     """Get message bus client from service container"""
-    if not hasattr(request.app.state, 'service_container'):
-        raise_api_error(status_code=500, error_code="SERVICE_CONTAINER_NOT_AVAILABLE", message="Service container not available")
-    
-    container = request.app.state.service_container
-    message_bus_plugin = container.get_service("message_bus_plugin")
-    
-    if not message_bus_plugin or not hasattr(message_bus_plugin, 'message_bus_host'):
-        raise_api_error(status_code=500, error_code="MESSAGE_BUS_PLUGIN_NOT_AVAILABLE", message="Message bus plugin not available")
-    
-    if not message_bus_plugin.message_bus_host:
-        raise_api_error(status_code=500, error_code="MESSAGE_BUS_HOST_NOT_INITIALIZED", message="Message bus host not initialized")
-    
-    # Register TTS API module
-    try:
-        client = await message_bus_plugin.register_module(
-            "tts_api",
-            [AICOTopics.MODELSERVICE_TTS_STREAM]
-        )
-        return client
-    except Exception as e:
-        if "already registered" in str(e).lower():
-            logger.debug("Module tts_api already registered")
-            # Try to get existing client
-            try:
-                client = await message_bus_plugin.register_module(
-                    "tts_api",
-                    [AICOTopics.MODELSERVICE_TTS_STREAM]
-                )
-                return client
-            except Exception as e:
-                raise_api_error(
-                    status_code=500,
-                    error_code="MESSAGE_BUS_CLIENT_REGISTRATION_FAILED",
-                    message="Failed to register message bus client",
-                )
-        raise_api_error(
-            status_code=500,
-            error_code="MESSAGE_BUS_CLIENT_REGISTRATION_FAILED",
-            message="Failed to register message bus client",
-        )
+    client = MessageBusClient("backend_tts_api")
+    await client.connect()
+    return client
 
 
 @router.post("/synthesize")

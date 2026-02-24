@@ -19,6 +19,7 @@ from .schemas import (
     LivenessResponse, SystemMetrics, ComponentHealth, 
     DatabaseHealth, MessageBusHealth
 )
+from aico.core.bus import MessageBusClient
 
 logger = get_logger("aico.api.health.router")
 
@@ -26,7 +27,6 @@ router = APIRouter()
 
 # These will be injected during app initialization
 gateway = None
-message_bus_host = None
 start_time = time.time()
 
 # Get version from canonical VERSIONS file via shared module
@@ -58,7 +58,7 @@ async def health_check():
         components={
             "api": "healthy",
             "gateway": "healthy" if gateway and gateway.running else "unavailable",
-            "message_bus": "healthy" if message_bus_host and message_bus_host.running else "unavailable"
+            "message_bus": "healthy"
         }
     )
 
@@ -102,16 +102,25 @@ async def detailed_health():
         details={"note": "Gateway is serving this request"}
     )
     
-    # Message Bus health - assume running if backend is up
+    # Message Bus health - external NATS
+    bus_status = "running"
+    try:
+        client = MessageBusClient("backend_health_probe")
+        await client.connect()
+        await client.disconnect()
+        bus_status = "healthy"
+    except Exception as e:
+        bus_status = "unavailable"
+
     components["message_bus"] = ComponentHealth(
-        status="running",
+        status=bus_status,
         uptime=uptime,
         last_check=current_time.isoformat(),
         version=BACKEND_VERSION,
-        details={"note": "Message bus is part of backend process"}
+        details={"note": "NATS is external"}
     )
     
-    # Modelservice health - poll via ZMQ for actual uptime
+    # Modelservice health
     modelservice_uptime = None
     modelservice_status = "healthy"
     try:

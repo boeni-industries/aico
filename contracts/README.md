@@ -11,6 +11,8 @@ contracts/
 │   └── internal-v1.json # Frozen OpenAPI 3.x spec for internal /api/v1 (admin/system/operations/users-sessions)
 ├── websocket/
 │   └── v1.json          # Frozen WebSocket contract for /api/v1 WS endpoints + gateway WS adapter message shapes
+├── nats/
+│   └── v1.json          # Frozen internal NATS contract (subjects + request/reply patterns)
 ├── proto/
 │   ├── *.proto          # Frozen protobuf baseline
 │   └── buf.yaml         # Buf configuration for proto contracts
@@ -83,8 +85,10 @@ Three workflows enforce contract stability:
    - internal: `contracts/openapi/internal-v1.json`
 2. **`websocket-contract.yml`**: Verifies WebSocket contract artifact is up to date
    - websocket: `contracts/websocket/v1.json`
-3. **`proto-contract.yml`**: Runs `buf breaking` + `buf lint`
-4. **`contract-policy.yml`**: Ensures CHANGELOG.md is updated when contracts change
+3. **`nats-contract.yml`**: Verifies NATS contract artifact is up to date
+   - nats: `contracts/nats/v1.json`
+4. **`proto-contract.yml`**: Runs `buf breaking` + `buf lint`
+5. **`contract-policy.yml`**: Ensures CHANGELOG.md is updated when contracts change
 
 All gates run on:
 - Every pull request

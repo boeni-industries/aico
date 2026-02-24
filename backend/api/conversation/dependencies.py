@@ -14,12 +14,13 @@ import re
 
 from backend.api import dependencies as api_dependencies
 from backend.api.errors import raise_api_error
+from aico.core.bus import MessageBusClient
 
 logger = get_logger("backend.api.conversation.dependencies")
 security = HTTPBearer()
 
-# Module-level cache for message bus client to avoid re-registration warnings
-_message_bus_client_cache = None
+# Module-level cache for message bus client to avoid repeated connections
+_message_bus_client_cache: MessageBusClient | None = None
 logger = get_logger("api.conversation_dependencies")
 
 
@@ -110,49 +111,15 @@ async def get_message_bus_client(request: Request):
                 message="Service container not initialized",
             )
         
-        container = request.app.state.service_container
-        message_bus_plugin = container.get_service("message_bus_plugin")
-        
-        if not message_bus_plugin or not hasattr(message_bus_plugin, 'message_bus_host'):
-            raise_api_error(
-                status_code=500,
-                error_code="MESSAGE_BUS_PLUGIN_NOT_AVAILABLE",
-                message="Message bus plugin not available",
-            )
-        
-        if not message_bus_plugin.message_bus_host:
-            raise_api_error(
-                status_code=500,
-                error_code="MESSAGE_BUS_HOST_NOT_INITIALIZED",
-                message="Message bus host not initialized",
-            )
-        
-        # Use cached client to avoid re-registration warnings
+        # Use cached client to avoid repeated connections
         global _message_bus_client_cache
         if _message_bus_client_cache:
             return _message_bus_client_cache
-        
-        # Register the conversation API module once and cache the client
-        try:
-            client = await message_bus_plugin.register_module(
-                "conversation_api", 
-                ["conversation.*", "ai.response.*"]
-            )
-            _message_bus_client_cache = client
-        except Exception as reg_error:
-            # If registration fails due to already being registered, that's expected
-            if "already registered" in str(reg_error).lower():
-                logger.debug("Module conversation_api already registered, continuing with existing registration")
-                # For now, we'll proceed without caching since we can't get the existing client
-                # This will still work but may show warnings
-                client = await message_bus_plugin.register_module(
-                    "conversation_api", 
-                    ["conversation.*", "ai.response.*"]
-                )
-            else:
-                raise reg_error
-        
-        return _message_bus_client_cache
+
+        client = MessageBusClient("backend_conversation_api")
+        await client.connect()
+        _message_bus_client_cache = client
+        return client
         
     except HTTPException:
         raise

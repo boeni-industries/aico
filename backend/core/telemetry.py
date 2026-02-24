@@ -115,12 +115,32 @@ class TelemetryManager:
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         import os
         
-        # Get InfluxDB config from database.influx section
+        # Resolve InfluxDB URL in a container-safe way.
+        # 1) Environment override (preferred in Docker/K8s)
+        # 2) Global config influx.url (loaded from /app/config + env overlays)
+        # 3) instrumentation.database.influx.* (legacy)
+        influx_url = os.getenv("AICO_INFLUX_URL")
+        influx_org = None
+        influx_bucket = None
+
+        if not influx_url:
+            try:
+                from aico.core.config import ConfigurationManager
+
+                cfg = ConfigurationManager()
+                cfg.initialize(lightweight=True)
+                influx_url = cfg.get_optional("influx.url")
+                influx_org = cfg.get_optional("influx.org")
+                influx_bucket = cfg.get_optional("influx.bucket")
+            except Exception:
+                pass
+
+        # Legacy fallback (kept for compatibility)
         db_config = self.config.get('database', {})
         influx_config = db_config.get('influx', {})
-        influx_url = influx_config.get('url', 'http://127.0.0.1:8086')
-        influx_org = influx_config.get('org', 'aico')
-        influx_bucket = influx_config.get('bucket', 'aico_telemetry')
+        influx_url = influx_url or influx_config.get('url') or 'http://127.0.0.1:8086'
+        influx_org = influx_org or influx_config.get('org') or 'aico'
+        influx_bucket = influx_bucket or influx_config.get('bucket') or 'aico_telemetry'
         
         # Read token from keyring automatically
         from aico.security.key_manager import AICOKeyManager

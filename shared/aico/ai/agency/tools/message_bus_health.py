@@ -1,6 +1,6 @@
 """Message Bus Health Monitoring Tools
 
-Atomic tools for checking ZeroMQ message bus health and connectivity.
+Atomic tools for checking message bus health and connectivity.
 """
 
 from typing import Dict, Any
@@ -14,18 +14,23 @@ logger = get_logger("aico.ai.agency.tools.message_bus_health")
 
 
 async def tool_messagebus_check_status() -> Dict[str, Any]:
-    """Check message bus status by verifying ZMQ context and sockets.
+    """Check message bus status by verifying NATS connectivity.
     
     Returns:
         Dict with ok, data, and error fields following tool contract
     """
     try:
-        # Try to import and check ZMQ
-        import zmq
-        
-        # Check ZMQ version
-        zmq_version = zmq.zmq_version()
-        pyzmq_version = zmq.pyzmq_version()
+        from aico.core.bus import MessageBusClient
+        from aico.core.config import ConfigurationManager
+
+        cfg = ConfigurationManager()
+        cfg.initialize(lightweight=True)
+        bus_config = cfg.get("message_bus", {})
+        nats_url = bus_config.get("nats_url") or bus_config.get("url") or "nats://localhost:4222"
+
+        client = MessageBusClient("tool_messagebus_check_status")
+        await client.connect()
+        await client.disconnect()
         
         # Try to get service container to check if message bus is running
         try:
@@ -44,8 +49,7 @@ async def tool_messagebus_check_status() -> Dict[str, Any]:
                                 "status": "ok",
                                 "error_message": None,
                                 "details": {
-                                    "zmq_version": zmq_version,
-                                    "pyzmq_version": pyzmq_version,
+                                    "nats_url": nats_url,
                                 }
                             },
                             "error": None
@@ -60,15 +64,13 @@ async def tool_messagebus_check_status() -> Dict[str, Any]:
                     "status": "ok",
                     "error_message": None,
                     "details": {
-                        "zmq_version": zmq_version,
-                        "pyzmq_version": pyzmq_version,
-                    }
+                        "nats_url": nats_url,
+                    },
                 },
-                "error": None
+                "error": None,
             }
         
         except Exception as container_error:
-            # Service container not available, but ZMQ is installed
             logger.debug("Service container check failed: %s", container_error)
             return {
                 "ok": True,
@@ -76,23 +78,11 @@ async def tool_messagebus_check_status() -> Dict[str, Any]:
                     "status": "ok",
                     "error_message": None,
                     "details": {
-                        "zmq_version": zmq_version,
-                        "pyzmq_version": pyzmq_version,
-                    }
+                        "nats_url": nats_url,
+                    },
                 },
-                "error": None
+                "error": None,
             }
-    
-    except ImportError:
-        return {
-            "ok": False,
-            "data": {
-                "status": "error",
-                "error_message": "ZMQ not installed",
-                "details": {}
-            },
-            "error": {"code": "import_error", "message": "pyzmq package not found"}
-        }
     
     except Exception as exc:
         logger.error("Message bus health check failed: %s", exc)
@@ -115,9 +105,9 @@ def _register_message_bus_tools():
         ToolDefinition(
             tool_id="tool.messagebus.check_status",
             name="Message Bus Status Check",
-            description="Check ZeroMQ message bus health and connectivity status.",
+            description="Check message bus health and connectivity status.",
             domain="message_bus",
-            backend="zmq",
+            backend="nats",
             runtime_context="backend_service",
             capability_tags=["check_health", "check_connectivity"],
             side_effect_tags=["reads_service_state"],

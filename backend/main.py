@@ -16,10 +16,6 @@ import signal
 import uvicorn
 from pathlib import Path
 
-# Fix Windows asyncio event loop compatibility with ZMQ
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 # Add the backend directory to the Python path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))

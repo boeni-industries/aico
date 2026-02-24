@@ -31,6 +31,10 @@ This file tracks all changes to the frozen API contracts in `/contracts/`.
 
 ## [Unreleased]
 
+### 2026-02-24 - Add NATS Contract Snapshot
+- **NATS v1**: Frozen internal NATS contract at `contracts/nats/v1.json` (subject mapping policy + request/reply patterns).
+- **CI Gates**: Added NATS contract gate to verify the artifact matches the generated contract.
+
 ### 2026-02-24 - Add WebSocket Contract Snapshot
 - **WebSocket v1**: Frozen WebSocket contract at `contracts/websocket/v1.json` (FastAPI WS endpoints + gateway websocket adapter message shapes).
 - **CI Gates**: Added WebSocket contract gate to verify the artifact matches the generated contract.

@@ -16,6 +16,7 @@ import json
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
 from backend.api.conversation.dependencies import get_message_bus_client
 from backend.api.dependencies import authenticate_websocket, get_current_user
 from backend.api.errors import error_responses, raise_api_error
@@ -123,7 +124,7 @@ async def send_message_with_auto_thread(
         conv_message.message.turn_number = 1  # TODO: Track actual turn numbers
         
         # Publish to conversation input topic (ConversationEngine will handle)
-        await bus_client.publish("conversation/user/input/v1", conv_message)
+        await bus_client.publish(AICOTopics.CONVERSATION_USER_INPUT, conv_message)
         
         # Wait for ConversationEngine to process and get the AI response synchronously
         import asyncio
@@ -297,7 +298,7 @@ async def send_message_with_auto_thread(
                 raise
         else:
             # Non-streaming: Subscribe and wait for complete response
-            await bus_client.subscribe("conversation/ai/response/v1", handle_ai_response)
+            await bus_client.subscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
             
             # Wait for response with timeout (allow for unoptimized LLM processing)
             try:
@@ -316,7 +317,7 @@ async def send_message_with_auto_thread(
             finally:
                 # Unsubscribe from the topic
                 try:
-                    await bus_client.unsubscribe("conversation/ai/response/v1")
+                    await bus_client.unsubscribe(AICOTopics.CONVERSATION_AI_RESPONSE)
                 except Exception as e:
                     logger.error(f"Error unsubscribing: {e}")
             

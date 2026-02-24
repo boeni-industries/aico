@@ -1,0 +1,35 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# System deps (kept minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Copy dependency metadata first for better layer caching
+COPY pyproject.toml uv.lock README.md VERSIONS /app/
+
+# Copy source
+COPY shared /app/shared
+COPY backend /app/backend
+COPY cli /app/cli
+COPY modelservice /app/modelservice
+COPY proto /app/proto
+COPY config /app/config
+
+# Install deps (includes backend extras)
+RUN uv sync --frozen --extra backend
+
+EXPOSE 8771
+
+CMD ["uv", "run", "python", "backend/gateway_main.py"]

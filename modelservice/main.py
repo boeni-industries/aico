@@ -1,8 +1,7 @@
 """
-Modelservice main application entry point - ZMQ Message Bus Implementation.
+Modelservice main application entry point - NATS Message Bus Implementation.
 
-This module implements a pure ZeroMQ message bus service that replaces the
-FastAPI/uvicorn HTTP server. All communication is via ZMQ with encryption.
+This module implements a pure NATS message bus service.
 """
 
 import sys
@@ -37,7 +36,7 @@ config_manager = ConfigurationManager()
 config_manager.initialize(lightweight=True)
 # Logging will be initialized service-specifically in initialize_modelservice()
 from aico.core.version import get_modelservice_version
-from .core.zmq_service import ModelserviceZMQService
+from .core.nats_service import ModelserviceNATSService
 
 # Get version from VERSIONS file
 __version__ = get_modelservice_version()
@@ -45,7 +44,7 @@ __version__ = get_modelservice_version()
 # Logger will be initialized after logging setup in initialize_modelservice()
 
 # Global service instance for signal handling
-_zmq_service = None
+_service = None
 
 # Track service start time for uptime calculation
 import time
@@ -79,13 +78,13 @@ async def initialize_modelservice():
     env = os.getenv("AICO_ENV", "development")
 
     # Startup: Display initial info and use standard AICO logging
-    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice (ZMQ)\n" + "=" * 60
+    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice (NATS)\n" + "=" * 60
     print(startup_msg)
     logger.info("AICO Modelservice starting up")
     
-    server_info = f"[>] Communication: ZeroMQ Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: Enabled"
+    server_info = f"[>] Communication: NATS Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}"
     print(server_info)
-    logger.info(f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: Enabled")
+    logger.info(f"Server configuration - Communication: NATS, Environment: {env}, Version: {__version__}")
     
     print("=" * 60)
     
@@ -99,12 +98,12 @@ async def initialize_modelservice():
         print("✅ Backend is available")
         logger.info("Backend confirmed available at startup")
     
-    # Initialize ZMQ service EARLY to capture all subsequent logs
-    print("🔌 Starting ZMQ logging service...")
-    logger.info("Starting ZMQ service early for log capture")
+    # Initialize NATS service EARLY to capture all subsequent logs
+    print("🔌 Starting NATS service...")
+    logger.info("Starting NATS service early for message handling")
     
-    zmq_service = ModelserviceZMQService(cfg, None)  # No ollama_manager yet
-    await zmq_service.start_early()  # New method for early startup
+    service = ModelserviceNATSService(cfg, None)  # No ollama_manager yet
+    await service.start_early()
     
     # Initialize InfluxDB metrics exporter (honor instrumentation flag)
     instrumentation_config = cfg.get("instrumentation", {})
@@ -186,8 +185,8 @@ async def initialize_modelservice():
     from .core.ollama_manager import OllamaManager
     ollama_manager = OllamaManager()
     
-    # Set the ollama_manager in the ZMQ service
-    zmq_service.set_ollama_manager(ollama_manager)
+    # Set the ollama_manager in the service
+    service.set_ollama_manager(ollama_manager)
     
     # Initialize process management for graceful shutdown
     process_manager = None
@@ -251,8 +250,8 @@ async def initialize_modelservice():
     # Initialize models (download + preload into memory)
     await transformers_manager.initialize_models()
     
-    # Inject the preloaded TransformersManager into ZMQ service
-    zmq_service.set_transformers_manager(transformers_manager)
+    # Inject the preloaded TransformersManager into service
+    service.set_transformers_manager(transformers_manager)
     
     # Initialize TTS system (blocking - must complete before service is ready)
     print("🎤 Initializing TTS system...")
@@ -260,7 +259,7 @@ async def initialize_modelservice():
     logger.info("Starting TTS system initialization")
     
     try:
-        await zmq_service.handlers.initialize_tts_system()
+        await service.handlers.initialize_tts_system()
         print("✅ TTS system ready")
         logger.info("TTS system initialized successfully")
     except Exception as e:
@@ -274,12 +273,12 @@ async def initialize_modelservice():
         raise SystemExit(1)
     
     print("=" * 60)
-    print("[+] ZMQ service ready... (Press Ctrl+C to stop)\n")
-    logger.info("Modelservice startup complete, ZMQ service ready")
+    print("[+] NATS service ready... (Press Ctrl+C to stop)\n")
+    logger.info("Modelservice startup complete, NATS service ready")
 
     # Logging will be handled after full ZMQ service initialization in main()
 
-    return cfg, ollama_manager, process_manager, zmq_service
+    return cfg, ollama_manager, process_manager, service
 
 
 async def _check_backend_health(cfg: ConfigurationManager) -> bool:
@@ -288,9 +287,8 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
         import httpx
         
         # Get backend configuration
-        backend_config = cfg.get("api_gateway", {})
-        host = backend_config.get("host", "localhost")
-        port = backend_config.get("port", 8771)
+        host = cfg.get("api_gateway.rest.host", "localhost")
+        port = cfg.get("api_gateway.rest.port", 8771)
         
         # Try to connect to backend health endpoint
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -353,14 +351,18 @@ def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}, initiating shutdown")
     except:
         print(f"Received signal {signum}, initiating shutdown")
-    
-    if _zmq_service:
-        asyncio.create_task(_zmq_service.stop())
+    global _service
+    if _service is not None:
+        try:
+            asyncio.create_task(_service.stop())
+        except RuntimeError:
+            # No running loop in this thread/context
+            pass
 
 
 async def main():
-    """Main entry point for the modelservice ZMQ service."""
-    global _zmq_service
+    """Main entry point for the modelservice NATS service."""
+    global _service
     
     # Initialize these to None so they're always defined for cleanup
     ollama_manager = None
@@ -371,17 +373,17 @@ async def main():
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         
-        # Initialize modelservice and Ollama (ZMQ service started early)
-        config, ollama_manager, process_manager, _zmq_service = await initialize_modelservice()
+        # Initialize modelservice and Ollama (service started early)
+        config, ollama_manager, process_manager, _service = await initialize_modelservice()
         
-        # Complete the full ZMQ service initialization (subscribe to all topics)
-        await _zmq_service.start()
+        # Complete the full service initialization (subscribe to all topics)
+        await _service.start()
         
         # ZMQ log transport removed - logs now go directly to InfluxDB
         
         # Keep the service running (both foreground and background modes)
         # Entering service loop
-        while _zmq_service and _zmq_service.running:
+        while _service and _service.running:
             await asyncio.sleep(1.0)
         # Service loop ended
         
@@ -400,8 +402,8 @@ async def main():
         raise
     finally:
         # Cleanup - ollama_manager and process_manager are always defined (may be None)
-        if _zmq_service:
-            await _zmq_service.stop()
+        if _service:
+            await _service.stop()
         if ollama_manager is not None:
             await shutdown_modelservice(ollama_manager, process_manager)
 
