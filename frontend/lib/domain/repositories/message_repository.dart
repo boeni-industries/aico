@@ -5,6 +5,9 @@ abstract class MessageRepository {
   /// Send a new message
   Future<Message> sendMessage(Message message);
   
+  /// Clear local message cache
+  Future<void> clearLocalCache({String conversationId = ''});
+  
   /// Get messages for a conversation
   Future<List<Message>> getMessages(
     String conversationId, {

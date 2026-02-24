@@ -17,6 +17,11 @@ class MessageRepositoryImpl implements MessageRepository {
   const MessageRepositoryImpl(this._apiClient, this._database);
 
   @override
+  Future<void> clearLocalCache({String conversationId = ''}) async {
+    await _database.clearMessages(conversationId: conversationId);
+  }
+
+  @override
   Future<Message> sendMessage(Message message, {bool stream = false}) async {
     if (stream) {
       // Use streaming logic - this will be handled by the provider
@@ -321,9 +326,15 @@ class MessageRepositoryImpl implements MessageRepository {
     final queryParams = <String, String>{
       'page': '1',
       'page_size': (limit ?? 100).toString(), // Default to 100 messages (backend max)
-      ...?(beforeMessageId != null ? {'before': beforeMessageId} : null),
-      // Note: No conversation_id - backend returns all user messages in sequence
+      // NOTE: backend does not support a 'before' cursor on this endpoint.
+      // Use pagination only.
     };
+
+    // Only include conversation_id filter if provided.
+    // Empty string means: fetch all user messages across conversations.
+    if (conversationId.trim().isNotEmpty) {
+      queryParams['conversation_id'] = conversationId.trim();
+    }
 
     final response = await _apiClient.request<Map<String, dynamic>>(
       'GET',

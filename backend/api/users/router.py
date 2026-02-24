@@ -579,6 +579,9 @@ async def refresh_token(
                 message="Invalid refresh token",
             )
             
+    except HTTPException:
+        # Preserve intended API error status codes produced by raise_api_error().
+        raise
     except Exception as e:
         logger.error(f"Token refresh failed: {e}")
         raise_api_error(

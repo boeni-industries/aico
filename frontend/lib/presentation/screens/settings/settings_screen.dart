@@ -1,4 +1,6 @@
 import 'package:aico_frontend/presentation/providers/settings_provider.dart';
+import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/core/widgets/atoms/aico_button.dart';
 import 'package:aico_frontend/presentation/widgets/common/glassmorphic_switch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,6 +42,55 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: (value) {
               ref.read(settingsProvider.notifier).updateShowThinking(value);
             },
+          ),
+        ),
+
+        const Divider(height: 32),
+
+        Text(
+          'Data',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        ListTile(
+          title: const Text('Clear local chat cache'),
+          subtitle: const Text('Deletes conversation history stored on this device'),
+          trailing: SizedBox(
+            width: 88,
+            height: 36,
+            child: AicoButton.destructive(
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) {
+                    return AlertDialog(
+                      title: const Text('Clear local chat cache?'),
+                      content: const Text(
+                        'This will delete all locally stored conversation history on this device. This cannot be undone.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Clear'),
+                        ),
+                      ],
+                    );
+                  },
+                );
+
+                if (confirmed != true) return;
+
+                await ref.read(conversationProvider.notifier).clearLocalHistory();
+              },
+              child: const Text('Clear'),
+            ),
           ),
         ),
         
