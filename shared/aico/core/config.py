@@ -568,6 +568,8 @@ class ConfigurationManager:
             "AICO_TRANSPORT_ENCRYPTION_ENABLED": "security.transport.encryption.enabled",
             "AICO_GATEWAY_ENCRYPTION_PLUGIN_ENABLED": "api_gateway.plugins.encryption.enabled",
             "AICO_GATEWAY_SECURITY_PLUGIN_ENABLED": "api_gateway.plugins.security.enabled",
+            "AICO_OLLAMA_HOST": "modelservice.ollama.host",
+            "AICO_OLLAMA_PORT": "modelservice.ollama.port",
             "AICO_OLLAMA_AUTO_INSTALL": "modelservice.ollama.auto_install",
             "AICO_OLLAMA_AUTO_START": "modelservice.ollama.auto_start",
             # Path-related environment variables are handled by AICOPaths class

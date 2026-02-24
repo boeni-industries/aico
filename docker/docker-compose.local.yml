@@ -127,6 +127,8 @@ services:
       AICO_LOKI_URL: http://loki:3100
       AICO_REST_HOST: gateway
       AICO_PG_HOST: postgres
+      AICO_OLLAMA_HOST: ollama
+      AICO_OLLAMA_PORT: "11434"
       AICO_OLLAMA_AUTO_INSTALL: "false"
       AICO_OLLAMA_AUTO_START: "false"
       AICO_PG_PASSWORD: ${AICO_PG_PASSWORD:-}
@@ -137,10 +139,10 @@ services:
       - aico-modelservice-cache:/var/cache/aico
     tmpfs:
       - /run/aico
-
     depends_on:
       - gateway
       - core
+      - ollama
     labels:
       com.aico.project: "aico"
       com.aico.component: "modelservice"
@@ -148,6 +150,27 @@ services:
       com.aico.service.role: "model-inference"
       org.opencontainers.image.title: "AICO Modelservice"
       org.opencontainers.image.description: "AICO modelservice container"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aico-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - aico-ollama-models:/root/.ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "ollama"
+      com.aico.service.type: "ml-runtime"
+      com.aico.service.role: "llm-inference"
+      org.opencontainers.image.title: "AICO Ollama"
+      org.opencontainers.image.description: "Ollama LLM runtime for AICO"
       org.opencontainers.image.vendor: "AICO"
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
@@ -386,4 +409,12 @@ volumes:
       com.aico.project: "aico"
       com.aico.component: "grafana"
       com.aico.volume.type: "data"
+      com.aico.managed-by: "aico-cli"
+  
+  aico-ollama-models:
+    name: aico-ollama-models
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "ollama"
+      com.aico.volume.type: "models"
       com.aico.managed-by: "aico-cli"

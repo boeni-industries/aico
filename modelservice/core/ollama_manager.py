@@ -538,7 +538,9 @@ class OllamaManager:
     async def _health_check(self) -> bool:
         """Check if Ollama API is responding using config URL."""
         try:
-            ollama_url = self.ollama_config.get("url", "http://127.0.0.1:11434")
+            host = self.ollama_config.get("host", "127.0.0.1")
+            port = self.ollama_config.get("port", 11434)
+            ollama_url = f"http://{host}:{port}"
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{ollama_url}/api/tags", timeout=5)
                 return response.status_code == 200
@@ -947,7 +949,9 @@ class OllamaManager:
         """
         try:
             self._ensure_logger()
-            ollama_url = self.ollama_config.get("url", "http://127.0.0.1:11434")
+            host = self.ollama_config.get("host", "127.0.0.1")
+            port = self.ollama_config.get("port", 11434)
+            ollama_url = f"http://{host}:{port}"
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{ollama_url}/api/tags", timeout=10)
                 response.raise_for_status()
@@ -994,7 +998,9 @@ class OllamaManager:
         try:
             self.logger.info(f"Removing model: {model_name}")
             
-            ollama_url = self.ollama_config.get("url", "http://127.0.0.1:11434")
+            host = self.ollama_config.get("host", "127.0.0.1")
+            port = self.ollama_config.get("port", 11434)
+            ollama_url = f"http://{host}:{port}"
             
             async with httpx.AsyncClient() as client:
                 response = await client.delete(

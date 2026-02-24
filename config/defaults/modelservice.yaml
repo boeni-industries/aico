@@ -11,7 +11,7 @@ cors_origins:
 default_model: "llama3.2:latest"
 ollama:
   # Connection settings - used by OllamaManager.is_running()
-  host: "127.0.0.1"
+  host: "ollama"
   port: 11434
   
   # Auto-management settings - used by OllamaManager
