@@ -1012,6 +1012,7 @@ class BackendLifecycleManager:
         """Mount domain-specific API routers"""
         self.logger.info("🔧 Starting router mounting process...")
         # Import routers
+        from backend.api.handshake.router import router as handshake_router
         from backend.api.health.router import router as health_router
         from backend.api.echo.router import router as echo_router
         from backend.api.users.router import router as users_router
@@ -1036,6 +1037,11 @@ class BackendLifecycleManager:
         self.logger.info("✅ All routers imported successfully")
         
         # Mount routers with prefixes
+        # NOTE: /api/v1/handshake is handled by EncryptionMiddleware, not a router
+        # The middleware intercepts this path and processes handshakes with proper transport encryption
+        # self.app.include_router(handshake_router, prefix="/api/v1/handshake", tags=["handshake"])
+        # self.logger.info("✅ Mounted: /api/v1/handshake")
+
         self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
         self.logger.info("✅ Mounted: /api/v1/health")
         

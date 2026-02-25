@@ -51,23 +51,27 @@ async def handshake(request: Request):
             "has_signature": "signature" in handshake_request
         })
         
-        # Return handshake response with session establishment
-        response_data = {
-            "status": "session_established",
-            "handshake_response": {
-                "component": "aico_backend",
-                "public_key": "placeholder_server_public_key",
-                "timestamp": int(time.time()),
-                "challenge": "placeholder_challenge",
-                "signature": "placeholder_signature"
+        # Check if transport encryption is enabled
+        from aico.core.config import ConfigurationManager
+        config = ConfigurationManager()
+        encryption_enabled = config.get("security.transport.encryption.enabled", default=False)
+        
+        if not encryption_enabled:
+            # Transport encryption disabled - return bypass response
+            logger.info("Transport encryption disabled - returning bypass handshake")
+            response_data = {
+                "status": "encryption_disabled",
+                "message": "Transport encryption is disabled. Requests will be processed without encryption."
             }
-        }
+            return JSONResponse(content=response_data)
         
-        logger.info("Handshake completed successfully", extra={
-            "client_component": handshake_request.get("component", "unknown")
-        })
-        
-        return JSONResponse(content=response_data)
+        # Transport encryption enabled but not properly initialized
+        logger.warning("Transport encryption enabled but transport manager not initialized")
+        raise_api_error(
+            status_code=503,
+            error_code="TRANSPORT_NOT_INITIALIZED",
+            message="Transport encryption is enabled but not properly initialized. Please check backend configuration.",
+        )
         
     except HTTPException:
         raise

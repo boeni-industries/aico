@@ -113,8 +113,10 @@ class InfluxDBConnection:
         self.org = influx_config.get("org", "aico")
         self.bucket = influx_config.get("bucket", "aico_telemetry")
         
-        # Retrieve token from keyring
-        self.token = key_manager.get_database_password("influx", username="admin_token")
+        # Retrieve token from environment first (container/CI friendly), then keyring.
+        self.token = os.getenv("AICO_INFLUX_ADMIN_TOKEN") or key_manager.get_database_password(
+            "influx", username="admin_token"
+        )
         
         if not self.token:
             raise ValueError(

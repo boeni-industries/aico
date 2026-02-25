@@ -68,7 +68,7 @@ async def get_postgres_pool() -> asyncpg.Pool:
     
     password = os.environ.get("AICO_PG_PASSWORD")
     
-    if not password:
+    if password is None:
         # Try to get from AICOKeyManager (like deploy.py does)
         try:
             key_manager = AICOKeyManager(config)
@@ -78,7 +78,7 @@ async def get_postgres_pool() -> asyncpg.Pool:
         except Exception as e:
             logger.warning(f"Could not retrieve password from AICOKeyManager: {e}")
     
-    if not password:
+    if password is None:
         raise RuntimeError(
             "PostgreSQL password not found. Set AICO_PG_PASSWORD environment variable "
             "or run 'aico deploy postgres' to set up credentials."
@@ -205,7 +205,7 @@ async def get_session_factory() -> async_sessionmaker:
     
     password = os.environ.get("AICO_PG_PASSWORD")
     
-    if not password:
+    if password is None:
         # Try to get from AICOKeyManager (like deploy.py does)
         try:
             key_manager = AICOKeyManager(config)
@@ -215,7 +215,7 @@ async def get_session_factory() -> async_sessionmaker:
         except Exception as e:
             logger.warning(f"Could not retrieve password from AICOKeyManager: {e}")
     
-    if not password:
+    if password is None:
         raise RuntimeError(
             "PostgreSQL password not found. Set AICO_PG_PASSWORD environment variable "
             "or run 'aico deploy postgres' to set up credentials."

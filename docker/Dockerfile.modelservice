@@ -18,6 +18,11 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 COPY pyproject.toml uv.lock README.md VERSIONS /app/
 
+# Install deps (without installing the local project) so this layer is stable
+# across source-only changes.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --extra modelservice --no-install-project
+
 COPY shared /app/shared
 COPY backend /app/backend
 COPY cli /app/cli
@@ -25,6 +30,8 @@ COPY modelservice /app/modelservice
 COPY proto /app/proto
 COPY config /app/config
 
-RUN uv sync --frozen --extra modelservice
+# Install the local project into the already-synced environment.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -e .
 
 CMD ["uv", "run", "python", "-m", "modelservice.main"]

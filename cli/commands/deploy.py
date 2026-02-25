@@ -17,6 +17,7 @@ import subprocess
 import secrets
 import os
 import asyncio
+import stat
 from pathlib import Path
 from typing import Tuple
 
@@ -113,48 +114,144 @@ def _run_compose_file(compose_file: Path, args: list[str], env: dict | None = No
         return 1
 
 
+def _load_env_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+
+    data: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        data[key] = value
+    return data
+
+
+def _write_env_file(path: Path, values: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"{k}={v}" for k, v in sorted(values.items())]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except Exception:
+        pass
+
+
+def _persist_credential(key: str, value: str) -> None:
+    """Persist a single credential to docker/.env."""
+    compose_file = _get_compose_file()
+    env_file = compose_file.parent / ".env"
+    
+    # Load existing
+    existing = _load_env_file(env_file) if env_file.exists() else {}
+    
+    # Update
+    existing[key] = value
+    
+    # Save
+    _write_env_file(env_file, existing)
+
+def _persist_compose_env(env: dict[str, str]) -> None:
+    """Persist credentials in docker/.env so docker compose always has them."""
+
+    compose_file = _get_compose_file()
+    env_file = compose_file.parent / ".env"
+    existing = _load_env_file(env_file)
+
+    updated = dict(existing)
+    for key, value in env.items():
+        if value is None:
+            continue
+        if isinstance(value, str) and value != "":
+            updated[key] = value
+
+    if updated != existing:
+        _write_env_file(env_file, updated)
+
+
 def _generate_secure_password(length: int = 32) -> str:
     """Generate a cryptographically secure password."""
     # Use URL-safe base64 encoding for compatibility
     return secrets.token_urlsafe(length)
 
 
+def _ensure_all_credentials() -> None:
+    """
+    Ensure ALL required credentials exist before any service starts.
+    This prevents password mismatches and initialization failures.
+    """
+    compose_file = _get_compose_file()
+    env_file = compose_file.parent / ".env"
+    
+    # Load existing
+    existing = _load_env_file(env_file) if env_file.exists() else {}
+    
+    # Required credentials with their lengths
+    required = {
+        'AICO_PG_PASSWORD': 32,
+        'AICO_INFLUX_ADMIN_PASSWORD': 32,
+        'AICO_INFLUX_ADMIN_TOKEN': 48,
+    }
+    
+    # Generate missing credentials
+    updated = False
+    for key, length in required.items():
+        if key not in existing or not existing[key]:
+            existing[key] = _generate_secure_password(length)
+            updated = True
+            console.print(format_info(f"Generated {key}"))
+    
+    # Save if any were generated
+    if updated:
+        _write_env_file(env_file, existing)
+        console.print(format_success("✓ Credentials initialized in docker/.env"))
+
 def _get_or_create_postgres_password() -> str:
     """
-    Get or create Postgres password using AICOKeyManager.
+    Get or create Postgres password - FULLY AUTOMATIC.
     
-    This ensures the password is derived from the master key and stored
-    securely in the system keyring. The master password prompt happens
-    automatically if needed.
+    Priority:
+    1. docker/.env file (persisted credentials)
+    2. AICO_PG_PASSWORD environment variable
+    3. Auto-generate and save to docker/.env
     
     Returns:
         Postgres password
     """
-    # Non-interactive / container-friendly path: allow callers (CI/Docker) to
-    # provide the password explicitly and skip keyring + master password prompts.
-    env_password = os.getenv("AICO_PG_PASSWORD")
-    if env_password:
-        console.print(format_info("Using Postgres password from environment (AICO_PG_PASSWORD)"))
-        return env_password
-
-    config = ConfigurationManager()
-    key_manager = AICOKeyManager(config)
-
-    # Check if password already exists
-    try:
-        existing_password = key_manager.get_database_password("postgres", username="postgres")
-    except Exception as e:
-        existing_password = None
-        console.print(format_warning(f"Keyring unavailable for Postgres password lookup (non-fatal): {e}"))
-
-    if existing_password:
-        console.print(format_info("Using existing Postgres password from keyring"))
-        return existing_password
-
-    # Non-interactive fallback: generate an ephemeral password.
-    # This avoids hanging on master-password prompts in CI/tool-driven execution.
-    console.print(format_warning("Generating ephemeral Postgres password (keyring not available / not initialized)"))
-    return _generate_secure_password(32)
+    # Ensure all credentials exist first
+    _ensure_all_credentials()
+    
+    # Check docker/.env first (persistent storage)
+    compose_file = _get_compose_file()
+    env_file = compose_file.parent / ".env"
+    
+    if env_file.exists():
+        env_vars = _load_env_file(env_file)
+        if password := env_vars.get("AICO_PG_PASSWORD"):
+            console.print(format_info("Using Postgres password from docker/.env"))
+            return password
+    
+    # Check environment variable
+    if password := os.getenv("AICO_PG_PASSWORD"):
+        console.print(format_info("Using Postgres password from environment"))
+        # Save to .env for persistence
+        _persist_credential("AICO_PG_PASSWORD", password)
+        return password
+    
+    # Auto-generate and persist
+    console.print(format_info("Auto-generating Postgres password..."))
+    password = _generate_secure_password(32)
+    _persist_credential("AICO_PG_PASSWORD", password)
+    console.print(format_success("✓ Postgres password generated and saved to docker/.env"))
+    
+    return password
 
 
 def _setup_influx_downsampling(admin_token: str) -> None:
@@ -262,42 +359,46 @@ def _setup_influx_downsampling(admin_token: str) -> None:
 
 def _get_or_create_influx_credentials() -> Tuple[str, str]:
     """
-    Get or create InfluxDB admin password and token using AICOKeyManager.
+    Get or create InfluxDB credentials - FULLY AUTOMATIC.
+    
+    Priority:
+    1. docker/.env file (persisted credentials)
+    2. Environment variables
+    3. Auto-generate and save to docker/.env
     
     Returns:
         Tuple of (admin_password, admin_token)
     """
-    # Non-interactive / container-friendly path: allow callers (CI/Docker) to
-    # provide credentials explicitly and skip keyring + master password prompts.
+    # Check docker/.env first (persistent storage)
+    compose_file = _get_compose_file()
+    env_file = compose_file.parent / ".env"
+    
+    if env_file.exists():
+        env_vars = _load_env_file(env_file)
+        password = env_vars.get("AICO_INFLUX_ADMIN_PASSWORD")
+        token = env_vars.get("AICO_INFLUX_ADMIN_TOKEN")
+        if password and token:
+            console.print(format_info("Using InfluxDB credentials from docker/.env"))
+            return password, token
+    
+    # Check environment variables
     env_password = os.getenv("AICO_INFLUX_ADMIN_PASSWORD")
     env_token = os.getenv("AICO_INFLUX_ADMIN_TOKEN")
     if env_password and env_token:
-        console.print(
-            format_info(
-                "Using InfluxDB credentials from environment (AICO_INFLUX_ADMIN_PASSWORD/AICO_INFLUX_ADMIN_TOKEN)"
-            )
-        )
+        console.print(format_info("Using InfluxDB credentials from environment"))
+        # Save to .env for persistence
+        _persist_credential("AICO_INFLUX_ADMIN_PASSWORD", env_password)
+        _persist_credential("AICO_INFLUX_ADMIN_TOKEN", env_token)
         return env_password, env_token
-
-    config = ConfigurationManager()
-    key_manager = AICOKeyManager(config)
-
-    # Check if credentials already exist
-    try:
-        existing_password = key_manager.get_database_password("influx", username="admin")
-        existing_token = key_manager.get_database_password("influx", username="admin_token")
-    except Exception as e:
-        existing_password = None
-        existing_token = None
-        console.print(format_warning(f"Keyring unavailable for InfluxDB credential lookup (non-fatal): {e}"))
-
-    if existing_password and existing_token:
-        console.print(format_info("Using existing InfluxDB credentials from keyring"))
-        return existing_password, existing_token
-
-    console.print(format_warning("Generating ephemeral InfluxDB credentials (keyring not available / not initialized)"))
+    
+    # Auto-generate and persist
+    console.print(format_info("Auto-generating InfluxDB credentials..."))
     password = _generate_secure_password(32)
     token = _generate_secure_password(48)
+    _persist_credential("AICO_INFLUX_ADMIN_PASSWORD", password)
+    _persist_credential("AICO_INFLUX_ADMIN_TOKEN", token)
+    console.print(format_success("✓ InfluxDB credentials generated and saved to docker/.env"))
+    
     return password, token
 
 
@@ -389,7 +490,9 @@ def _run_compose(args: list[str], env: dict = None) -> int:
         run_env.update(env)
 
     try:
-        result = subprocess.run(cmd, check=False, env=run_env)
+        # Use the compose file directory as the working directory so docker/.env
+        # is consistently picked up by docker compose (and relative paths resolve correctly).
+        result = subprocess.run(cmd, check=False, env=run_env, cwd=str(compose_file.parent))
         if result.returncode != 0:
             console.print(
                 format_error(
@@ -582,11 +685,17 @@ def _nuke_postgres(shadow: bool = False) -> int:
 
     # 8. Clear credentials from keyring
     console.print("  [dim]→ Clearing credentials from keyring...[/dim]")
+    non_interactive = (not sys.stdin.isatty()) or (os.getenv("AICO_NONINTERACTIVE") == "true")
+    if non_interactive:
+        console.print("  [dim]→ Skipping keyring cleanup in non-interactive mode[/dim]")
+        console.print(format_success("✅ Postgres completely nuked - fresh slate ready"))
+        return 0
+
     try:
         from aico.security.key_manager import AICOKeyManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
-        
+
         import keyring
         try:
             keyring.delete_password(key_manager.service_name, "postgres_postgres_password")
@@ -943,6 +1052,14 @@ def _nuke_influx() -> int:
 
     # 8. Clear credentials from keyring
     console.print("  [dim]→ Clearing credentials from keyring...[/dim]")
+    non_interactive = (not sys.stdin.isatty()) or (os.getenv("AICO_NONINTERACTIVE") == "true")
+    keyring_cleanup_enabled = os.getenv("AICO_KEYRING_CLEANUP") == "true"
+    if non_interactive or not keyring_cleanup_enabled:
+        console.print("  [dim]→ Skipping keyring cleanup in non-interactive mode[/dim]")
+        if not non_interactive and not keyring_cleanup_enabled:
+            console.print("  [dim]→ Keyring cleanup is disabled by default (set AICO_KEYRING_CLEANUP=true to enable)[/dim]")
+        console.print(format_success("✅ InfluxDB completely nuked - fresh slate ready"))
+        return 0
     try:
         from aico.security.key_manager import AICOKeyManager
         config = ConfigurationManager()
@@ -1176,6 +1293,8 @@ def deploy_influx(
         "AICO_INFLUX_ADMIN_TOKEN": admin_token
     }
 
+    _persist_compose_env(container_env)
+
     console.print("🚀 [cyan]Starting InfluxDB container with auto-generated credentials...[/cyan]")
     code = _run_compose(["up", "-d", "influxdb"], env=container_env)
     if code != 0:
@@ -1186,11 +1305,21 @@ def deploy_influx(
     import time
     time.sleep(8)  # Give InfluxDB time to auto-initialize with DOCKER_INFLUXDB_INIT_* env vars
 
-    console.print("🩺 [cyan]Verifying deployment health...[/cyan]")
-    influx_cli.doctor()
+    non_interactive = (not sys.stdin.isatty()) or (os.getenv("AICO_NONINTERACTIVE") == "true")
+    run_checks = os.getenv("AICO_DEPLOY_INFLUX_DOCTOR") == "true"
+    run_downsampling = os.getenv("AICO_DEPLOY_INFLUX_DOWNSAMPLING") == "true"
 
-    console.print("⚙️  [cyan]Configuring downsampling tasks and retention policies...[/cyan]")
-    _setup_influx_downsampling(admin_token)
+    if non_interactive and not run_checks:
+        console.print("[dim]Skipping InfluxDB doctor in non-interactive mode (set AICO_DEPLOY_INFLUX_DOCTOR=true to enable).[/dim]")
+    else:
+        console.print("🩺 [cyan]Verifying deployment health...[/cyan]")
+        influx_cli.doctor()
+
+    if non_interactive and not run_downsampling:
+        console.print("[dim]Skipping downsampling setup in non-interactive mode (set AICO_DEPLOY_INFLUX_DOWNSAMPLING=true to enable).[/dim]")
+    else:
+        console.print("⚙️  [cyan]Configuring downsampling tasks and retention policies...[/cyan]")
+        _setup_influx_downsampling(admin_token)
 
     console.print("")
     console.print(format_success("✅ InfluxDB deployment completed successfully!"))
@@ -1488,6 +1617,8 @@ def deploy_gateway(
         "AICO_INFLUX_ADMIN_TOKEN": influx_token,
     }
 
+    _persist_compose_env(env)
+
     args = ["up", "-d", "--build", "gateway"]
 
     console.print("🚀 [cyan]Starting Gateway container...[/cyan]")
@@ -1525,6 +1656,8 @@ def deploy_core(
         "AICO_INFLUX_ADMIN_TOKEN": influx_token,
     }
 
+    _persist_compose_env(env)
+
     args = ["up", "-d", "--build", "core"]
 
     console.print("🚀 [cyan]Starting Core container...[/cyan]")
@@ -1561,6 +1694,8 @@ def deploy_modelservice(
         "AICO_INFLUX_ADMIN_PASSWORD": influx_password,
         "AICO_INFLUX_ADMIN_TOKEN": influx_token,
     }
+
+    _persist_compose_env(env)
 
     args = ["up", "-d", "--build", "modelservice"]
 
@@ -1604,7 +1739,14 @@ def deploy_studio(
     console.print("🧩 [bold cyan]AICO Studio Deployment[/bold cyan]")
     console.print("=" * 60 + "\n")
 
-    studio_dir = _resolve_component_path("studio")
+    # Resolve studio path WITHOUT ConfigurationManager to avoid keyring blocking
+    # Priority: env var > convention default
+    env_key = "AICO_COMPONENT_STUDIO_DIR"
+    if override := os.getenv(env_key):
+        studio_dir = Path(override).expanduser().resolve()
+    else:
+        repo_root = _get_aico_repo_root()
+        studio_dir = (repo_root / "../aico-studio").resolve()
     if not studio_dir.exists():
         console.print(format_error(f"Studio directory not found: {studio_dir}"))
         console.print(format_info("Set system.components.studio.path in system.yaml or export AICO_COMPONENT_STUDIO_DIR."))

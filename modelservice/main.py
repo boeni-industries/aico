@@ -131,13 +131,20 @@ async def initialize_modelservice():
                 
                 # Use the global config_manager (already initialized at module level)
                 key_manager = AICOKeyManager(config_manager)
-                influx_token = key_manager.get_database_password("influx", username="admin_token")
+                influx_token = os.getenv("AICO_INFLUX_ADMIN_TOKEN") or key_manager.get_database_password(
+                    "influx", username="admin_token"
+                )
                 
                 if not influx_token:
                     logger.warning("InfluxDB token not found in keyring; metrics may not be exported. Run 'aico deploy influx' to set up credentials.")
             except Exception as e:
                 logger.warning(f"Failed to retrieve InfluxDB token from keyring: {e}")
                 influx_token = None
+
+            if not influx_token:
+                print("⏹️  No InfluxDB token configured; skipping metrics exporter")
+                logger.warning("No InfluxDB token configured; skipping modelservice metrics exporter")
+                raise RuntimeError("InfluxDB token not configured")
             
             # Create resource for modelservice
             resource = Resource.create({

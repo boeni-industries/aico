@@ -149,13 +149,19 @@ class TelemetryManager:
         try:
             config_manager = ConfigurationManager()
             key_manager = AICOKeyManager(config_manager)
-            influx_token = key_manager.get_database_password('influx', username='admin_token')
+            influx_token = os.getenv("AICO_INFLUX_ADMIN_TOKEN") or key_manager.get_database_password(
+                'influx', username='admin_token'
+            )
             
             if not influx_token:
                 logger.warning("InfluxDB token not found in keyring; InfluxDB writes may fail. Run 'aico deploy influx' to set up credentials.")
         except Exception as e:
             logger.warning(f"Failed to retrieve InfluxDB token from keyring: {e}")
             influx_token = None
+
+        if not influx_token:
+            logger.warning("No InfluxDB token configured; skipping InfluxDB metrics exporter")
+            return
         
         # Create InfluxDB exporter
         influx_exporter = OTelInfluxExporter(

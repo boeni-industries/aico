@@ -109,6 +109,10 @@ class OllamaManager:
         except Exception:
             return None
 
+    async def is_running(self) -> bool:
+        """Check if external Ollama container is reachable via HTTP."""
+        return await self._health_check()
+
     async def check_available(self) -> bool:
         """Check Ollama container reachability and minimum version requirements."""
         self._ensure_logger()
