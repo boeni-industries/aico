@@ -78,6 +78,10 @@ class BackendLifecycleManager:
             await self.container.start_all()
             self._display_service_status()
             self._display_plugin_status()
+            
+            # Initialize NATS request handlers for gateway→core communication
+            await self._initialize_nats_handlers()
+            
             self.logger.info("AICO core startup complete")
             return None
 
@@ -103,6 +107,9 @@ class BackendLifecycleManager:
         # Display service and plugin startup status
         self._display_service_status()
         self._display_plugin_status()
+
+        # Initialize gateway NATS client for gateway→core communication
+        await self._initialize_gateway_nats_client()
 
         # Legacy broker startup is a no-op in NATS-only mode
         await self._start_message_broker()
@@ -1143,6 +1150,44 @@ class BackendLifecycleManager:
 
 
 # Dependency injection functions for FastAPI
+    async def _initialize_nats_handlers(self) -> None:
+        """Initialize NATS request handlers for gateway→core communication"""
+        try:
+            from backend.core.nats_handlers import CoreNATSHandlers
+            from aico.core.bus import MessageBusClient
+            
+            # Create dedicated message bus client for request handling
+            message_bus = MessageBusClient("core_request_handler")
+            await message_bus.connect()
+            
+            # Initialize and register handlers
+            handlers = CoreNATSHandlers(self.container)
+            await handlers.setup_handlers(message_bus)
+            
+            self.logger.info("✅ NATS request handlers initialized for gateway→core communication")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize NATS handlers: {e}", exc_info=True)
+            # Don't fail startup if NATS handlers fail - core services can still work
+
+    async def _initialize_gateway_nats_client(self) -> None:
+        """Initialize gateway NATS client for making requests to core"""
+        try:
+            from backend.api_gateway.core.nats_client import initialize_gateway_nats_client
+            from aico.core.bus import MessageBusClient
+            
+            # Create dedicated message bus client for gateway requests
+            message_bus = MessageBusClient("gateway_nats_client")
+            await message_bus.connect()
+            
+            # Initialize the singleton
+            initialize_gateway_nats_client(message_bus)
+            self.logger.info("✅ Gateway NATS client initialized for core communication")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize gateway NATS client: {e}", exc_info=True)
+
+
 def get_service_container(request: Request) -> ServiceContainer:
     """Get service container from FastAPI app state"""
     if not hasattr(request.app.state, 'service_container'):

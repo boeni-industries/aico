@@ -61,12 +61,14 @@ _CACHE_TTL = 15  # 15 seconds cache
 @router.get("/status", response_model=SchedulerStatusResponse)
 @handle_scheduler_exceptions
 async def get_scheduler_status(
-    scheduler: "TaskScheduler" = Depends(get_task_scheduler),
     _auth: bool = Depends(require_admin_access)
 ) -> SchedulerStatusResponse:
-    """Get scheduler status and statistics"""
+    """Get scheduler status and statistics (via NATS from core)"""
     try:
-        status_info = scheduler.get_status()
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        
+        nats_client = get_gateway_nats_client()
+        status_info = await nats_client.request_scheduler_status()
         return SchedulerStatusResponse(**status_info)
     except Exception as e:
         logger.error(f"Failed to get scheduler status: {e}")
@@ -76,47 +78,31 @@ async def get_scheduler_status(
 @router.get("/tasks", response_model=TaskListResponse)
 @handle_scheduler_exceptions
 async def list_tasks(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     enabled_only: bool = False,
     _auth = Depends(require_admin_access)
 ) -> TaskListResponse:
-    """List all scheduled tasks"""
+    """List all scheduled tasks (via NATS from core)"""
     # Check cache first (only for unfiltered requests)
     current_time = time.time()
     if not enabled_only and _tasks_cache["data"] is not None and (current_time - _tasks_cache["timestamp"]) < _CACHE_TTL:
         return _tasks_cache["data"]
     
     try:
-        scheduler_service = SchedulerService(uow)
-        filters = {"enabled": True} if enabled_only else {}
-        tasks = await scheduler_service.list_tasks(filters=filters)
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
         
-        task_responses = [
-            TaskConfigResponse(
-                task_id=task.task_id,
-                task_class=task.task_class,
-                schedule=task.schedule,
-                config=json.loads(task.config) if isinstance(task.config, str) else task.config,
-                enabled=task.enabled,
-                created_at=task.created_at.isoformat() if hasattr(task.created_at, 'isoformat') else task.created_at,
-                updated_at=task.updated_at.isoformat() if hasattr(task.updated_at, 'isoformat') else task.updated_at
-            )
-            for task in tasks
-        ]
+        nats_client = get_gateway_nats_client()
+        response_data = await nats_client.request_scheduler_tasks(enabled_only=enabled_only)
         
-        response = TaskListResponse(
-            tasks=task_responses,
-            total_count=len(task_responses)
-        )
+        result = TaskListResponse(**response_data)
         
-        # Cache the response if no filters applied
+        # Update cache for unfiltered requests
         if not enabled_only:
-            _tasks_cache["data"] = response
+            _tasks_cache["data"] = result
             _tasks_cache["timestamp"] = current_time
         
-        return response
-    except Exception as e:
-        logger.error(f"Failed to list tasks: {e}")
+        return result
+    except Exception as e_outer:
+        logger.error(f"Failed to list tasks via NATS: {e_outer}")
         raise SchedulerNotAvailableError()
 
 

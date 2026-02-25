@@ -5401,6 +5401,16 @@
       "post": {
         "description": "Run the maint.connectivity.full_scan maintenance skill.",
         "operationId": "connectivity_scan_api_v1_agency_connectivity_scan_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5446,6 +5456,16 @@
       "get": {
         "description": "List user's consents.",
         "operationId": "list_consents_api_v1_agency_consent_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5456,6 +5476,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -5471,6 +5501,16 @@
       "post": {
         "description": "Grant or deny consent for a specific action.",
         "operationId": "grant_consent_api_v1_agency_consent_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5527,6 +5567,14 @@
               "title": "Consent Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -5559,6 +5607,16 @@
       "get": {
         "description": "Get current curiosity status - what AICO is curious about.\n\nReturns curiosity level and top curiosity opportunities.",
         "operationId": "get_curiosity_status_api_v1_agency_curiosity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5569,6 +5627,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -5635,6 +5703,14 @@
               ],
               "description": "Optional filter by high-level event type",
               "title": "Event Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -5746,6 +5822,14 @@
               "title": "Page",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -5794,6 +5878,14 @@
               "title": "Goal Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -5841,6 +5933,14 @@
             "schema": {
               "title": "Goal Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -5900,6 +6000,14 @@
               "title": "Force",
               "type": "boolean"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -5954,6 +6062,14 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -6012,6 +6128,14 @@
               "description": "Filter by target type",
               "title": "Target Type"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -6051,6 +6175,16 @@
       "get": {
         "description": "Get user value profile - curiosity settings, proactive level, sensitive areas.",
         "operationId": "get_value_profile_api_v1_agency_profile_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6061,6 +6195,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -6076,6 +6220,16 @@
       "put": {
         "description": "Update user value profile settings.",
         "operationId": "update_value_profile_api_v1_agency_profile_put",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -6160,6 +6314,14 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -6209,6 +6371,14 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -6276,6 +6446,14 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -6322,6 +6500,14 @@
             "schema": {
               "title": "Skill Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -6385,6 +6571,14 @@
               "title": "Recent Lessons Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -6424,6 +6618,16 @@
       "post": {
         "description": "Get detailed metadata for a single skill.",
         "operationId": "get_skill_info_api_v1_agency_skills_info_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -6471,6 +6675,16 @@
       "post": {
         "description": "Invoke a registered Agency skill via SkillInvoker.",
         "operationId": "invoke_skill_api_v1_agency_skills_invoke_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -6516,6 +6730,16 @@
       "post": {
         "description": "List all registered Agency skills.\n\nAuthenticated via standard agency security.",
         "operationId": "list_skills_api_v1_agency_skills_list_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6530,6 +6754,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -6547,6 +6781,16 @@
       "get": {
         "description": "Get complete agency state - intentions, curiosity, profile, and pending consents.\n\nThis is a convenience endpoint that combines multiple agency metrics.\nCached for 15 seconds to handle rapid-fire Studio requests.",
         "operationId": "get_agency_state_api_v1_agency_state_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6557,6 +6801,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -6574,6 +6828,16 @@
       "post": {
         "description": "Get detailed metadata for a single tool.",
         "operationId": "get_tool_info_api_v1_agency_tools_info_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -6621,6 +6885,16 @@
       "post": {
         "description": "Invoke a registered Agency tool directly via ToolRegistry.",
         "operationId": "invoke_tool_api_v1_agency_tools_invoke_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -6666,6 +6940,16 @@
       "post": {
         "description": "List all registered Agency tools from the ToolRegistry.",
         "operationId": "list_tools_api_v1_agency_tools_list_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6680,6 +6964,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -6783,6 +7077,14 @@
               "description": "Show messages after this timestamp",
               "title": "Since"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -6850,6 +7152,14 @@
               "description": "Enable streaming response",
               "title": "Stream",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -6959,6 +7269,16 @@
         "deprecated": true,
         "description": "Legacy start endpoint - redirects to unified messages endpoint",
         "operationId": "start_conversation_legacy_api_v1_conversation_start_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -7006,6 +7326,16 @@
       "get": {
         "description": "Get my conversation status (user-scoped)\n\nReturns conversation activity and status for the authenticated user.\nSemantic memory provides context without explicit thread management.",
         "operationId": "get_my_conversation_status_api_v1_conversation_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7024,6 +7354,16 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           },
           "500": {
             "content": {
@@ -7501,6 +7841,14 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -7567,6 +7915,14 @@
             "schema": {
               "title": "Interaction Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -7664,6 +8020,14 @@
             "schema": {
               "title": "Interaction Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -7792,6 +8156,14 @@
               "title": "Interaction Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -7915,6 +8287,14 @@
               ],
               "title": "Reason"
             }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
           }
         ],
         "responses": {
@@ -8037,6 +8417,14 @@
                 }
               ],
               "title": "Reason"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
             }
           }
         ],
@@ -8898,6 +9286,16 @@
       "get": {
         "description": "Get semantic memory (ChromaDB) statistics.\n\nReturns:\n    - total_vectors: Total vector count across collections\n    - collections: List of collections with counts and dimensions\n    - index_size_mb: Total index size in megabytes\n    - avg_retrieval_latency_ms: Average query latency",
         "operationId": "get_semantic_stats_api_v1_memory_semantic_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8908,6 +9306,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -8926,6 +9334,16 @@
       "get": {
         "description": "Get working memory (LMDB) statistics.\n\nReturns:\n    - active_items: Current number of items in memory\n    - capacity: Maximum capacity\n    - utilization_percent: Memory utilization percentage\n    - ttl_utilization_percent: TTL-based utilization\n    - eviction_rate_per_min: Items evicted per minute\n    - recent_activity: Recent read/write/evict operations",
         "operationId": "get_working_stats_api_v1_memory_working_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8936,6 +9354,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -9210,7 +9638,7 @@
     },
     "/api/v1/scheduler/status": {
       "get": {
-        "description": "Get scheduler status and statistics",
+        "description": "Get scheduler status and statistics (via NATS from core)",
         "operationId": "get_scheduler_status_api_v1_scheduler_status_get",
         "responses": {
           "200": {
@@ -9237,7 +9665,7 @@
     },
     "/api/v1/scheduler/tasks": {
       "get": {
-        "description": "List all scheduled tasks",
+        "description": "List all scheduled tasks (via NATS from core)",
         "operationId": "list_tasks_api_v1_scheduler_tasks_get",
         "parameters": [
           {
@@ -9733,6 +10161,16 @@
       "post": {
         "description": "Synthesize text to speech and stream audio.\n\n**Authentication required:** Bearer token\n\nStreams WAV audio chunks as they're generated by the modelservice.\nAudio format: WAV, 22050 Hz, mono, 16-bit PCM.\n\n**Parameters:**\n- `text`: Text to synthesize (1-5000 characters)\n- `language`: Language code (empty = auto-detect, default: auto-detect)\n- `speed`: Speech speed multiplier 0.5-2.0 (default: 1.0)\n- `voice`: Optional custom voice identifier\n\n**Language Detection:**\n- Backend automatically detects language from text (FastText, 95% accuracy)\n- Supports 217 languages\n- Leave `language` empty for automatic detection (recommended)",
         "operationId": "synthesize_tts_api_v1_tts_synthesize_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

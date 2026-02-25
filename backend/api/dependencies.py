@@ -94,6 +94,7 @@ def _decode_and_verify_jwt(*, token: str, auth_manager) -> dict[str, Any]:
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     request: Request = None,
+    auth_manager=None,
 ) -> Dict[str, Any]:
     if credentials is None:
         if not _is_security_enabled():
@@ -108,14 +109,15 @@ def get_current_user(
             }
         raise_api_error(status_code=403, error_code="HTTP_403", message="Not authenticated")
 
-    if request is None:
-        raise_api_error(
-            status_code=500,
-            error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
-            message="Service container not initialized",
-        )
+    if auth_manager is None:
+        if request is None:
+            raise_api_error(
+                status_code=500,
+                error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
+                message="Service container not initialized",
+            )
 
-    auth_manager = get_auth_manager(request)
+        auth_manager = get_auth_manager(request)
 
     token = credentials.credentials
 

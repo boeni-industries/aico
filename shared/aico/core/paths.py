@@ -35,25 +35,9 @@ class AICOPaths:
         if override := os.getenv("AICO_DATA_DIR"):
             return Path(override)
 
-        # Optional configuration override (user config): system.paths.data_root
-        # If set, this becomes the base directory for all AICO data.
-        try:
-            from aico.core.config import ConfigurationManager
-
-            config_manager = ConfigurationManager()
-            config_manager.initialize(lightweight=True)
-            system_cfg = config_manager.config_cache.get("system")
-            if isinstance(system_cfg, dict):
-                paths_cfg = system_cfg.get("paths")
-                if isinstance(paths_cfg, dict):
-                    data_root = paths_cfg.get("data_root")
-                    if isinstance(data_root, str):
-                        data_root = data_root.strip()
-                        if data_root:
-                            return Path(os.path.expanduser(data_root))
-        except Exception:
-            # If config isn't available yet, fall back to platformdirs.
-            pass
+        # CRITICAL: Do NOT call ConfigurationManager.initialize() here as it creates
+        # a circular dependency loop (ConfigManager -> AICOPaths -> ConfigManager)
+        # Configuration override for data_root should be set via AICO_DATA_DIR env var instead
         
         # Lazy import platformdirs only when needed
         import platformdirs

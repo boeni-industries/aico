@@ -72,8 +72,6 @@ async def get_current_emotion(
 @router.get("/history", response_model=EmotionHistoryResponse)
 async def get_emotion_history(
     user: Annotated[dict, Depends(get_current_user)],
-    emotion_engine: Annotated[object, Depends(get_emotion_engine)],
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     limit: int = Query(50, ge=1, le=1000, description="Maximum number of records to return"),
     hours: Optional[int] = Query(None, ge=1, description="Only return emotions from last N hours"),
     days: Optional[int] = Query(None, ge=1, description="Only return emotions from last N days"),
@@ -110,67 +108,19 @@ async def get_emotion_history(
         since: Filter to emotions after this timestamp
         feeling: Filter by specific emotion label
     """
-    try:
-        # Build filters for repository query
-        filters = {}
-        
-        # Time-based filters
-        if since:
-            try:
-                # Validate ISO timestamp
-                since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
-                filters["timestamp_gte"] = since_dt
-            except ValueError:
-                raise_api_error(
-                    status_code=400,
-                    error_code="EMOTION_SINCE_INVALID",
-                    message="Invalid 'since' timestamp format. Use ISO 8601 format.",
-                )
-        elif hours:
-            cutoff = datetime.now(UTC) - timedelta(hours=hours)
-            filters["timestamp_gte"] = cutoff
-        elif days:
-            cutoff = datetime.now(UTC) - timedelta(days=days)
-            filters["timestamp_gte"] = cutoff
-        
-        # Emotion filter
-        if feeling:
-            filters["feeling"] = feeling
-        
-        # Get emotion history from repository
-        emotion_records = await uow.emotion_history.list(filters=filters, limit=limit)
-        
-        # Sort by timestamp DESC (most recent first)
-        emotion_records.sort(key=lambda e: e.timestamp if e.timestamp else datetime.min, reverse=True)
-        
-        if not emotion_records:
-            return EmotionHistoryResponse(count=0, history=[])
-        
-        # Convert to response format
-        history_items = [
-            EmotionHistoryItem(
-                timestamp=record.timestamp.isoformat() if hasattr(record.timestamp, 'isoformat') else record.timestamp,
-                feeling=record.feeling,
-                valence=record.valence,
-                arousal=record.arousal,
-                intensity=record.intensity
-            )
-            for record in emotion_records
-        ]
-
-        # Emotion history ranges removed to reduce log noise
-        
-        return EmotionHistoryResponse(
-            count=len(history_items),
-            history=history_items
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving emotion history: {e}")
-        raise_api_error(
-            status_code=500,
-            error_code="EMOTION_HISTORY_FETCH_FAILED",
-            message="Failed to retrieve emotion history",
-        )
+    from backend.api_gateway.core.nats_client import get_gateway_nats_client
+    
+    # Calculate hours from days if provided
+    if days:
+        hours = days * 24
+    elif not hours:
+        hours = 24
+    
+    # Request emotion history from core via NATS
+    nats_client = get_gateway_nats_client()
+    history_data = await nats_client.request_emotion_history(
+        limit=limit,
+        hours=hours
+    )
+    
+    return EmotionHistoryResponse(**history_data)

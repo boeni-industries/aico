@@ -630,9 +630,19 @@ class EncryptionMiddleware:
                     "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000) if trace_interactions else None,
                 },
             )
+            origin = request.headers.get("origin") if "request" in locals() else None
+            headers = {}
+            if origin:
+                headers["Access-Control-Allow-Origin"] = origin
+                headers["Access-Control-Allow-Credentials"] = "true"
+                req_headers = request.headers.get("access-control-request-headers") if "request" in locals() else None
+                if req_headers:
+                    headers["Access-Control-Allow-Headers"] = req_headers
+                headers["Access-Control-Allow-Methods"] = request.headers.get("access-control-request-method") or "GET,POST,PUT,PATCH,DELETE,OPTIONS"
             response = JSONResponse(
                 status_code=400,
-                content={"error": "Encryption error", "detail": str(e)}
+                content={"error": "Encryption error", "detail": str(e)},
+                headers=headers or None,
             )
             await response(scope, receive, send)
         except Exception as e:
@@ -646,9 +656,19 @@ class EncryptionMiddleware:
                     "elapsed_ms": int((time.perf_counter() - trace_start) * 1000) if trace_interactions else None,
                 },
             )
+            origin = request.headers.get("origin") if "request" in locals() else None
+            headers = {}
+            if origin:
+                headers["Access-Control-Allow-Origin"] = origin
+                headers["Access-Control-Allow-Credentials"] = "true"
+                req_headers = request.headers.get("access-control-request-headers") if "request" in locals() else None
+                if req_headers:
+                    headers["Access-Control-Allow-Headers"] = req_headers
+                headers["Access-Control-Allow-Methods"] = request.headers.get("access-control-request-method") or "GET,POST,PUT,PATCH,DELETE,OPTIONS"
             response = JSONResponse(
                 status_code=500,
-                content={"error": "Internal server error"}
+                content={"error": "Internal server error"},
+                headers=headers or None,
             )
             await response(scope, receive, send)
         finally:

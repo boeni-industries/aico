@@ -89,6 +89,11 @@ class TopicAccessError(MessageBusError):
     pass  # Standard exception class definition - inherits from MessageBusError
 
 
+class MessageBusTimeoutError(MessageBusError):
+    """Raised when a request/reply times out"""
+    pass  # Standard exception class definition - inherits from MessageBusError
+
+
 class MessageBusClient:
     """Client interface for connecting to the message bus"""
     
@@ -199,6 +204,70 @@ class MessageBusClient:
             return result == 0  # 0 means connection successful
         except Exception:
             return False
+    
+    async def request(self, topic: str, payload: ProtobufMessage, 
+                     timeout: float = 5.0,
+                     attributes: Optional[Dict[str, str]] = None) -> ProtobufMessage:
+        """Send a request and wait for a reply (NATS request/reply pattern)
+        
+        Args:
+            topic: Topic to send request to
+            payload: Protobuf message payload
+            timeout: Timeout in seconds (default 5.0)
+            attributes: Optional additional metadata attributes
+            
+        Returns:
+            Reply message (protobuf)
+            
+        Raises:
+            MessageBusError: If client not connected or request fails
+            MessageBusTimeoutError: If no reply received within timeout
+        """
+        if not self.running or self._nats is None:
+            raise MessageBusError("Client not connected")
+        
+        # Track request metrics
+        with track_message(topic, client_id=self.client_id, direction="request") as tracker:
+            # Create message metadata
+            metadata = _create_message_metadata(
+                message_id=str(uuid.uuid4()),
+                source=self.client_id,
+                message_type=topic
+            )
+            
+            # Add optional attributes
+            if attributes:
+                metadata.attributes.update(attributes)
+            
+            # Create AICO message envelope
+            from ..proto.aico_core_envelope_pb2 import AicoMessage
+            message = AicoMessage()
+            message.metadata.CopyFrom(metadata)
+            
+            # Pack payload into Any field
+            any_payload = ProtoAny()
+            any_payload.Pack(payload)
+            message.any_payload.CopyFrom(any_payload)
+            
+            # Serialize message
+            message_data = message.SerializeToString()
+            
+            subject = self._topic_to_subject(topic)
+            
+            try:
+                # Send request and wait for reply
+                reply_msg = await self._nats.request(subject, message_data, timeout=timeout)
+                
+                # Parse reply envelope
+                reply_envelope = AicoMessage()
+                reply_envelope.ParseFromString(reply_msg.data)
+                
+                return reply_envelope
+                
+            except NATSTimeoutError:
+                raise MessageBusTimeoutError(f"Request to '{topic}' timed out after {timeout}s")
+            except Exception as e:
+                raise MessageBusError(f"Request failed: {e}")
     
     async def publish(self, topic: str, payload: ProtobufMessage, 
                      correlation_id: Optional[str] = None, 

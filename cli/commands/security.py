@@ -34,12 +34,27 @@ from aico.security import AICOKeyManager
 from cli.utils.timezone import format_timestamp_local
 
 def _get_key_manager():
-    """Helper function to get configured AICOKeyManager instance."""
-    from aico.core.config import ConfigurationManager
-    config_manager = ConfigurationManager()
-    config_manager.initialize(lightweight=True)
-    key_manager = AICOKeyManager(config_manager)
-    key_manager.config_manager = config_manager  # Attach for CLI use only
+    """Helper function to get configured AICOKeyManager instance.
+    
+    Uses a minimal config approach to avoid blocking ConfigurationManager initialization.
+    """
+    import sys
+    print("DEBUG: _get_key_manager called", file=sys.stderr, flush=True)
+    
+    # Create a minimal config object that only provides what AICOKeyManager needs
+    class MinimalConfig:
+        def get(self, key, default=None):
+            print(f"DEBUG: MinimalConfig.get({key}, {default})", file=sys.stderr, flush=True)
+            # AICOKeyManager only needs security.keyring_service_name
+            if key == "security.keyring_service_name":
+                return "AICO"
+            return default
+    
+    print("DEBUG: Creating MinimalConfig", file=sys.stderr, flush=True)
+    minimal_config = MinimalConfig()
+    print("DEBUG: Creating AICOKeyManager", file=sys.stderr, flush=True)
+    key_manager = AICOKeyManager(minimal_config)
+    print("DEBUG: AICOKeyManager created successfully", file=sys.stderr, flush=True)
     return key_manager
 
 def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):

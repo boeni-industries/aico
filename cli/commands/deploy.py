@@ -198,6 +198,10 @@ def _ensure_all_credentials() -> None:
         'AICO_PG_PASSWORD': 32,
         'AICO_INFLUX_ADMIN_PASSWORD': 32,
         'AICO_INFLUX_ADMIN_TOKEN': 48,
+        # Keep JWT signing stable across container restarts/rebuilds.
+        # Key name matches AICOKeyManager.get_jwt_secret("api_gateway") => "api_gateway_jwt_secret"
+        # CredentialProvider env var name: AICO_API_GATEWAY_JWT_SECRET
+        'AICO_API_GATEWAY_JWT_SECRET': 48,
     }
     
     # Generate missing credentials

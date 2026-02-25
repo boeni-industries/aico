@@ -660,9 +660,13 @@ class ConfigurationManager:
         if override_dir:
             return Path(override_dir) / "runtime.yaml"
 
+        # CRITICAL: Avoid circular dependency with AICOPaths.get_data_directory()
+        # which calls ConfigurationManager.initialize() during initialization
+        # Use direct platformdirs call instead
         try:
-            from aico.core.paths import AICOPaths
-            return AICOPaths.get_data_directory() / "config" / "runtime.yaml"
+            import platformdirs
+            data_dir = Path(platformdirs.user_data_dir("aico", "boeni-industries"))
+            return data_dir / "config" / "runtime.yaml"
         except Exception:
             return (self.user_config_dir / "runtime.yaml")
         

@@ -21,12 +21,15 @@ security = HTTPBearer(auto_error=False)
 async def get_task_scheduler(request: Request) -> TaskScheduler:
     """
     Get TaskScheduler instance from FastAPI app state.
+    
+    Note: In gateway mode, this will raise an error since scheduler runs in core.
+    Gateway endpoints should use NATS to communicate with core scheduler.
     """
     if not hasattr(request.app.state, 'task_scheduler'):
         raise_api_error(
             status_code=503,
             error_code="SCHEDULER_NOT_AVAILABLE",
-            message="Task scheduler not available",
+            message="Task scheduler not available - use NATS to communicate with core",
         )
     return request.app.state.task_scheduler
 
