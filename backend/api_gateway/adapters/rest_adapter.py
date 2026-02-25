@@ -81,6 +81,9 @@ class RESTAdapter:
             redoc_url=f"{config.get('prefix', '/api/v1')}/redoc"
         )
         
+        # Store encryption middleware in app state for access by endpoints
+        self.app.state.encryption_middleware = self.encryption_middleware
+        
         # Configure CORS
         self._setup_cors()
         

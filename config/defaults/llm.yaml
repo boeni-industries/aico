@@ -5,7 +5,7 @@
 
 # vLLM Configuration
 vllm:
-  host: "localhost"
+  host: "host.docker.internal"  # Use host.docker.internal for Docker containers, localhost for native
   port: 8774  # AICO project port range
   api_key: "EMPTY"  # Local vLLM doesn't require API key
   

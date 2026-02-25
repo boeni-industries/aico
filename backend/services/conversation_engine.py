@@ -707,7 +707,7 @@ class ConversationEngine(BaseService):
             if current_content:
                 messages.append(ModelConversationMessage(role="user", content=current_content))
 
-            system_chars = len(system_prompt) if system_prompt else 0
+            system_chars = len(system_message.get("content", "")) if system_message else 0
             history_chars = history_chars_total if memory_context else 0
             self.logger.info(
                 "🧠 [LLM_CONTEXT] request_id=%s model=%s messages=%s system_chars=%s history_msgs=%s history_chars=%s history_trunc=%s user_chars=%s",
@@ -734,69 +734,167 @@ class ConversationEngine(BaseService):
             
             # Call vLLM directly (async streaming)
             try:
-                response = await self.llm_client.chat_completion(
+                self.logger.info(f"🚀 [vLLM] Calling vLLM with {len(llm_messages)} messages, model={self.model_name}")
+
+                # True streaming from vLLM (OpenAI-compatible stream)
+                stream_iter = await self.llm_client.chat_completion(
                     messages=llm_messages,
                     model=self.model_name,
-                    stream=False,  # Non-streaming for now
-                    **character_params
+                    stream=True,
+                    **character_params,
                 )
-                
-                # Extract response content
-                assistant_content = response["choices"][0]["message"]["content"]
-                
+
+                from aico.proto.aico_conversation_pb2 import StreamingResponse as StreamingResponseProto
+                from aico.core.topics import AICOTopics
+
+                # Split stream into two channels:
+                # - content_type="thinking": content inside <think>...</think>
+                # - content_type="response": content outside tags
+                accumulated_response = ""
+                accumulated_thinking = ""
+                chunk_count = 0
+
+                in_think = False
+                parse_buffer = ""
+                open_tag = "<think>"
+                close_tag = "</think>"
+
+                def _emit_safe_non_tag_suffix(buf: str, tag: str) -> tuple[str, str]:
+                    """Return (emit_text, keep_suffix) keeping at most len(tag)-1 chars to handle split tags."""
+                    keep_len = max(0, len(tag) - 1)
+                    if keep_len == 0 or len(buf) <= keep_len:
+                        return "", buf
+                    return buf[:-keep_len], buf[-keep_len:]
+
+                async def _publish_delta(delta_text: str, *, content_type: str) -> None:
+                    nonlocal accumulated_response, accumulated_thinking
+                    if not delta_text:
+                        return
+
+                    if content_type == "thinking":
+                        accumulated_thinking += delta_text
+                        accumulated_for_type = accumulated_thinking
+                    else:
+                        accumulated_response += delta_text
+                        accumulated_for_type = accumulated_response
+
+                    streaming_chunk = StreamingResponseProto(
+                        request_id=request_id,
+                        content=delta_text,
+                        accumulated_content=accumulated_for_type,
+                        done=False,
+                        content_type=content_type,
+                    )
+
+                    await self.bus_client.publish(
+                        AICOTopics.CONVERSATION_STREAM,
+                        streaming_chunk,
+                        correlation_id=request_id,
+                    )
+
+                async for chunk in stream_iter:
+                    try:
+                        # openai-python streaming chunk object
+                        if not getattr(chunk, "choices", None):
+                            continue
+                        choice0 = chunk.choices[0]
+                        delta = getattr(choice0, "delta", None)
+                        delta_content = getattr(delta, "content", None) if delta else None
+                        if not delta_content:
+                            # can be role/tool_calls/etc.
+                            continue
+
+                        chunk_count += 1
+
+                        parse_buffer += delta_content
+
+                        # Incrementally parse think tags, even if tags are split across deltas.
+                        while True:
+                            if not in_think:
+                                idx = parse_buffer.find(open_tag)
+                                if idx == -1:
+                                    emit_text, keep_suffix = _emit_safe_non_tag_suffix(parse_buffer, open_tag)
+                                    if emit_text:
+                                        await _publish_delta(emit_text, content_type="response")
+                                    parse_buffer = keep_suffix
+                                    break
+
+                                # Emit response text before <think>
+                                before = parse_buffer[:idx]
+                                if before:
+                                    await _publish_delta(before, content_type="response")
+
+                                # Consume the open tag
+                                parse_buffer = parse_buffer[idx + len(open_tag):]
+                                in_think = True
+                                continue
+
+                            # in_think
+                            idx = parse_buffer.find(close_tag)
+                            if idx == -1:
+                                emit_text, keep_suffix = _emit_safe_non_tag_suffix(parse_buffer, close_tag)
+                                if emit_text:
+                                    await _publish_delta(emit_text, content_type="thinking")
+                                parse_buffer = keep_suffix
+                                break
+
+                            before = parse_buffer[:idx]
+                            if before:
+                                await _publish_delta(before, content_type="thinking")
+
+                            parse_buffer = parse_buffer[idx + len(close_tag):]
+                            in_think = False
+                            continue
+
+                        if chunk_count == 1:
+                            self.logger.info(f"📤 [vLLM] Published first streaming delta")
+
+                    except Exception as e:
+                        self.logger.error(f"❌ [vLLM] Error processing streaming delta: {e}")
+
+                # Flush remaining parse buffer after stream ends
+                if parse_buffer:
+                    if in_think:
+                        await _publish_delta(parse_buffer, content_type="thinking")
+                    else:
+                        await _publish_delta(parse_buffer, content_type="response")
+                    parse_buffer = ""
+
+                assistant_content = accumulated_response
+                self.logger.info(
+                    f"✅ [vLLM] Streaming complete ({chunk_count} deltas, response_chars={len(accumulated_response)}, thinking_chars={len(accumulated_thinking)})"
+                )
+
                 # Store response for delivery
                 self.pending_responses[request_id]["llm_response"] = assistant_content
-                
-                # Publish response immediately (non-streaming)
-                await self._deliver_response(request_id, assistant_content)
-                
-                return
+
+                # Final done=True marker chunk
+                final_chunk = StreamingResponseProto(
+                    request_id=request_id,
+                    content="",
+                    accumulated_content=assistant_content,
+                    done=True,
+                    content_type="response",
+                )
+                await self.bus_client.publish(
+                    AICOTopics.CONVERSATION_STREAM,
+                    final_chunk,
+                    correlation_id=request_id,
+                )
+
+                self.logger.info(f"📤 [vLLM] Delivering response to user via _finalize_streaming_response")
+
+                # Deliver final response to user
+                await self._finalize_streaming_response(request_id, assistant_content)
+
+                self.logger.info(f"✅ [vLLM] Response delivered successfully")
                 
             except Exception as e:
-                self.logger.error(f"vLLM call failed: {e}")
-                # Fall back to modelservice if vLLM fails
-                self.logger.warning("Falling back to modelservice...")
-            
-            # Fallback: Create and publish LLM request to modelservice
-            completions_request = CompletionsRequest(
-                model=self.model_name,
-                messages=[ModelConversationMessage(role=m["role"], content=m["content"]) for m in llm_messages],
-                stream=True
-            )
-
-            try:
-                conversation_id = getattr(user_message.message, "conversation_id", "")
-                _ = conversation_id
-            except Exception:
-                pass
-            
-            # Build request-specific response topic for targeted delivery
-            response_topic = AICOTopics.build_response_topic(
-                AICOTopics.MODELSERVICE_CHAT_RESPONSE,
-                "conversation_engine",
-                request_id
-            )
-            
-            # Subscribe to our specific response topic before sending request
-            await self.bus_client.subscribe(response_topic, self._handle_llm_response)
-
-            # Subscribe once to the global streaming topic and route chunks by request_id.
-            # Subscribing per-request creates an ever-growing list of callbacks and can
-            # degrade performance until requests time out.
-            if not self._modelservice_stream_subscribed:
-                await self.bus_client.subscribe(AICOTopics.MODELSERVICE_COMPLETIONS_STREAM, self._handle_modelservice_stream_chunk)
-                self._modelservice_stream_subscribed = True
-            
-            await self.bus_client.publish(
-                AICOTopics.MODELSERVICE_CHAT_REQUEST,
-                completions_request,
-                correlation_id=request_id,
-                reply_to=response_topic  # Tell modelservice where to send response
-            )
-            
-            # Mark request sent and start streaming handler
-            self.pending_responses[request_id]["llm_request_sent"] = True
-            self.pending_responses[request_id]["response_topic"] = response_topic  # Track for cleanup
+                self.logger.error(f"❌ [vLLM] vLLM call failed: {e}", exc_info=True)
+                # Clean up and re-raise - no fallback to Ollama/modelservice
+                if request_id in self.pending_responses:
+                    await self._cleanup_request(request_id)
+                raise
             # Streaming chunks are handled by the shared subscription handler
             # (_handle_modelservice_stream_chunk)
             
@@ -868,6 +966,8 @@ class ConversationEngine(BaseService):
     async def _finalize_streaming_response(self, request_id: str, final_content: str, thinking_content: str = "") -> None:
         """Finalize streaming response and deliver to user (semantic memory approach)"""
         try:
+            self.logger.info(f"🔍 [FINALIZE] Starting finalization for request_id={request_id}")
+            
             if request_id not in self.pending_responses:
                 self.logger.warning(f"Request {request_id} not found in pending responses")
                 return
@@ -878,6 +978,8 @@ class ConversationEngine(BaseService):
             # Extract user info from the original message
             user_id = user_message.user_id
             conversation_id = user_message.message.conversation_id
+            
+            self.logger.info(f"🔍 [FINALIZE] user_id={user_id}, conversation_id={conversation_id}")
             
             # NOTE: AI response storage happens in streaming handler (line ~895)
             # to avoid duplicate storage
@@ -912,18 +1014,22 @@ class ConversationEngine(BaseService):
             conv_message.message.CopyFrom(ai_message)
             
             # Publish final response to both topics for compatibility
+            self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: {AICOTopics.CONVERSATION_RESPONSE}")
             await self.bus_client.publish(
                 AICOTopics.CONVERSATION_RESPONSE,
                 conv_message,
                 correlation_id=request_id
             )
+            self.logger.info(f"✅ [FINALIZE] Published to {AICOTopics.CONVERSATION_RESPONSE}")
             
             # Also publish to AI response topic for API layer
+            self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: conversation/ai/response/v1")
             await self.bus_client.publish(
                 "conversation/ai/response/v1",
                 conv_message,
                 correlation_id=request_id
             )
+            self.logger.info(f"✅ [FINALIZE] Published to conversation/ai/response/v1")
             
             # Phase 3: Log trajectory for behavioral learning
             if request_id in self.pending_responses:

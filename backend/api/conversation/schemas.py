@@ -164,6 +164,7 @@ class UnifiedMessageRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="Conversation ID for thread continuity")
     context: Optional[Dict[str, Any]] = Field(None, description="Optional context for thread resolution")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
+    client_id: Optional[str] = Field(None, description="Client ID for encryption channel lookup")
 
 
 class UnifiedMessageResponse(BaseModel):

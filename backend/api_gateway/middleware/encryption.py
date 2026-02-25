@@ -204,6 +204,13 @@ class EncryptionMiddleware:
                 channel = self.channels.get(client_id)
                 self.logger.debug(f"Using generated client_id: {client_id}")
 
+            # Expose resolved encryption context to downstream FastAPI endpoints
+            # so routers can access request.state.encryption_channel/client_id.
+            # NOTE: Starlette Request.state is backed by scope["state"].
+            scope_state = scope.setdefault("state", {})
+            scope_state["encryption_client_id"] = client_id
+            scope_state["encryption_channel"] = channel
+
             if trace_interactions:
                 self.logger.info(
                     "[ENCRYPTION_TRACE] body_read",
@@ -272,9 +279,11 @@ class EncryptionMiddleware:
             is_binary_encrypted_stream = False
             binary_seq = 0
             binary_final_sent = False
+            ndjson_buffer = b""
             
             async def encrypt_send(message):
                 nonlocal response_start_sent, cached_start_message, is_streaming_response, is_binary_encrypted_stream, binary_seq, binary_final_sent
+                nonlocal ndjson_buffer
                 
                 if message["type"] == "http.response.start":
                     # Check if this is a streaming response
@@ -404,43 +413,60 @@ class EncryptionMiddleware:
                         return
 
                     if is_streaming_response:
-                        # Streaming response: encrypt each chunk individually
-                        encrypted_body = body
-                        
+                        # Streaming NDJSON: body chunks may contain multiple lines or partial lines.
+                        # Buffer and encrypt each complete JSON line as its own encrypted NDJSON frame.
                         if body:
+                            ndjson_buffer += body
+
+                        encrypted_frames: list[bytes] = []
+                        while b"\n" in ndjson_buffer:
+                            line, ndjson_buffer = ndjson_buffer.split(b"\n", 1)
+                            line = line.strip()
+                            if not line:
+                                continue
                             try:
-                                # Try to parse as JSON line (NDJSON format)
-                                chunk_text = body.decode().strip()
-                                if chunk_text:
-                                    chunk_data = json.loads(chunk_text)
-                                    encrypted_payload = channel.encrypt_json_payload(chunk_data)
-                                    encrypted_chunk = {
+                                chunk_data = json.loads(line.decode("utf-8"))
+                                encrypted_payload = channel.encrypt_json_payload(chunk_data)
+                                encrypted_frames.append(
+                                    (json.dumps({
                                         "encrypted": True,
                                         "payload": encrypted_payload,
-                                        "encryption": "xchacha20poly1305"
-                                    }
-                                    encrypted_body = (json.dumps(encrypted_chunk) + "\n").encode()
-                            except (json.JSONDecodeError, UnicodeDecodeError):
-                                # Not JSON or decode failed, encrypt as raw data
-                                if body:
-                                    try:
-                                        # Encrypt raw bytes as base64
-                                        import base64
-                                        encoded_body = base64.b64encode(body).decode()
-                                        encrypted_payload = channel.encrypt_json_payload({"raw_data": encoded_body})
-                                        encrypted_chunk = {
-                                            "encrypted": True,
-                                            "payload": encrypted_payload,
-                                            "encryption": "xchacha20poly1305",
-                                            "type": "raw"
-                                        }
-                                        encrypted_body = (json.dumps(encrypted_chunk) + "\n").encode()
-                                    except Exception:
-                                        # Encryption failed, pass through (should not happen)
-                                        pass
-                        
-                        # Send encrypted chunk
-                        message["body"] = encrypted_body
+                                        "encryption": "xchacha20poly1305",
+                                    }) + "\n").encode("utf-8")
+                                )
+                            except Exception:
+                                # If we can't parse a line as JSON, do NOT leak it.
+                                # Emit an encrypted error frame instead.
+                                error_payload = channel.encrypt_json_payload({
+                                    "type": "error",
+                                    "error": "stream_ndjson_parse_failed",
+                                })
+                                encrypted_frames.append(
+                                    (json.dumps({
+                                        "encrypted": True,
+                                        "payload": error_payload,
+                                        "encryption": "xchacha20poly1305",
+                                    }) + "\n").encode("utf-8")
+                                )
+
+                        # If stream is ending, flush remaining buffer if it contains a final JSON line.
+                        if not more_body and ndjson_buffer.strip():
+                            try:
+                                chunk_data = json.loads(ndjson_buffer.strip().decode("utf-8"))
+                                encrypted_payload = channel.encrypt_json_payload(chunk_data)
+                                encrypted_frames.append(
+                                    (json.dumps({
+                                        "encrypted": True,
+                                        "payload": encrypted_payload,
+                                        "encryption": "xchacha20poly1305",
+                                    }) + "\n").encode("utf-8")
+                                )
+                                ndjson_buffer = b""
+                            except Exception:
+                                # Drop remainder silently to avoid leaking malformed plaintext.
+                                ndjson_buffer = b""
+
+                        message["body"] = b"".join(encrypted_frames)
                         await send(message)
                         
                     else:
@@ -517,6 +543,8 @@ class EncryptionMiddleware:
                             
                             # Create new scope with updated content-length but preserve all headers
                             new_scope = scope.copy()
+                            # Preserve state (incl. encryption_channel) for downstream endpoints
+                            new_scope["state"] = dict(scope.get("state", {}))
                             headers = list(scope.get("headers", []))
                             
                             # Update content-length header

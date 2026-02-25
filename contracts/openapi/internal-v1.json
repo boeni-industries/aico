@@ -1684,7 +1684,7 @@
       "Body_upload_backup_set_api_v1_operations_backup_sets_upload_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -3704,23 +3704,70 @@
         },
         "properties": {
           "arousal": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Mood arousal",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Arousal",
-            "type": "number"
+            "title": "Arousal"
           },
           "feeling": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Subjective feeling label",
-            "title": "Feeling",
-            "type": "string"
+            "title": "Feeling"
           },
           "intensity": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Emotional intensity",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Intensity",
-            "type": "number"
+            "title": "Intensity"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional compact label projection",
+            "title": "Label"
+          },
+          "mood": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional compact mood projection",
+            "title": "Mood"
           },
           "timestamp": {
             "description": "ISO 8601 timestamp",
@@ -3728,19 +3775,22 @@
             "type": "string"
           },
           "valence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": -1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Mood valence",
-            "maximum": 1.0,
-            "minimum": -1.0,
-            "title": "Valence",
-            "type": "number"
+            "title": "Valence"
           }
         },
         "required": [
-          "timestamp",
-          "feeling",
-          "valence",
-          "arousal",
-          "intensity"
+          "timestamp"
         ],
         "title": "EmotionHistoryItem",
         "type": "object"
@@ -12191,6 +12241,18 @@
       "UnifiedMessageRequest": {
         "description": "Request for unified message endpoint with automatic thread resolution",
         "properties": {
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client ID for encryption channel lookup",
+            "title": "Client Id"
+          },
           "context": {
             "anyOf": [
               {
@@ -13097,6 +13159,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [

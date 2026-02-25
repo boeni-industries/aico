@@ -1004,7 +1004,12 @@ class BackendLifecycleManager:
             key_manager = AICOKeyManager(self.config)
             # Store reference to FastAPI app before wrapping for route display
             self.fastapi_app = self.app
-            self.app = EncryptionMiddleware(self.app, key_manager)
+            # Create encryption middleware instance
+            encryption_middleware = EncryptionMiddleware(self.app, key_manager)
+            # Store middleware instance in app.state for access by streaming endpoints
+            self.app.state.encryption_middleware = encryption_middleware
+            # Wrap the app with the middleware
+            self.app = encryption_middleware
             self.logger.debug("Encryption middleware started successfully")
         else:
             self.logger.info(

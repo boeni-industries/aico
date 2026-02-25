@@ -61,6 +61,10 @@ class CharacterManager:
         
         # Start with character's system prompt
         system_content = character["system_prompt"]
+
+        system_content += "\n\nWhen you reason internally, wrap that private reasoning in <think> and </think> tags. Provide the user-facing answer outside of these tags."
+
+        system_content += "\n\nAlways respond in the same language as the user's most recent message."
         
         # Add memory context if provided
         if memory_context and memory_context.get("facts"):

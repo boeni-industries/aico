@@ -3,8 +3,7 @@
 # Each character defines a personality, system prompt, and parameters
 # that customize the base LLM model's behavior.
 
-characters:
-  eve:
+eve:
     base_model: "Qwen/Qwen2.5-7B-Instruct"  # HuggingFace model ID (was: huihui_ai/qwen3-abliterated:8b-v2)
     description: "Eve - Inspired by Samantha from 'Her'"
     

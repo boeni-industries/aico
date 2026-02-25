@@ -69,6 +69,7 @@ active_connections: Dict[str, WebSocket] = {}
 )
 async def send_message_with_auto_thread(
     request: UnifiedMessageRequest,
+    raw_request: Request,
     stream: str = Query("false", description="Enable streaming response"),
     current_user = Depends(get_current_user),
     bus_client = Depends(get_message_bus_client)
@@ -166,19 +167,22 @@ async def send_message_with_auto_thread(
         logger.debug(f"🔍 [API_STREAMING] Stream parameter: '{stream}' -> {stream_enabled} for request {message_id}")
         if stream_enabled:
             logger.debug(f"🔍 [API_STREAMING] ✅ Taking streaming path for request {message_id}")
-            
+
             # Return streaming response using event-driven approach
             async def stream_generator():
                 logger.debug(f"🔍 [API_STREAMING] 🚀 Stream generator started for {message_id}")
                 try:
-                    # Send initial metadata (unencrypted for now - fix encryption later)
+                    # Send initial metadata
                     logger.debug(f"🔍 [API_STREAMING] 📤 Yielding metadata for {message_id}")
-                    yield json.dumps({
+                    metadata = {
                         "type": "metadata",
                         "message_id": message_id,
                         "conversation_id": conversation_id,
                         "timestamp": timestamp.isoformat()
-                    }) + "\n"
+                    }
+
+                    # NOTE: Transport encryption for streaming is handled by EncryptionMiddleware.
+                    yield json.dumps(metadata) + "\n"
                     
                     # Subscribe to streaming chunks from conversation engine
                     from aico.core.topics import AICOTopics
@@ -187,17 +191,23 @@ async def send_message_with_auto_thread(
                     streaming_complete = asyncio.Event()
                     chunk_queue = asyncio.Queue()
                     
+                    logger.info(f"🔍 [API_STREAMING] 🎯 About to subscribe to {AICOTopics.CONVERSATION_STREAM} for message_id={message_id}")
+                    
                     async def handle_streaming_chunk(envelope):
                         try:
+                            logger.info(f"🔍 [API_STREAMING] 📨 Received envelope for streaming")
                             # Extract StreamingResponse from protobuf envelope
                             streaming_chunk = StreamingResponseProto()
                             envelope.any_payload.Unpack(streaming_chunk)
                             
+                            logger.info(f"🔍 [API_STREAMING] 📦 Chunk request_id={streaming_chunk.request_id}, expected={message_id}")
+                            
                             # Only process chunks for our specific request
                             if streaming_chunk.request_id != message_id:
+                                logger.info(f"🔍 [API_STREAMING] ⏭️ Skipping chunk (not for us)")
                                 return  # Not for us, continue listening
                             
-                            logger.debug(f"🔍 [API_STREAMING] 📦 Received chunk for {message_id}: '{streaming_chunk.content}' (done: {streaming_chunk.done})")
+                            logger.info(f"🔍 [API_STREAMING] 📦 Received chunk for {message_id}: '{streaming_chunk.content}' (done: {streaming_chunk.done})")
                             
                             # Put chunk in queue for immediate processing
                             await chunk_queue.put({
@@ -224,9 +234,9 @@ async def send_message_with_auto_thread(
                     
                     # Process chunks from queue as they arrive - truly event-driven
                     timeout_start = asyncio.get_event_loop().time()
-                    logger.debug(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
-                    logger.debug(f"🔍 [API_STREAMING] streaming_complete.is_set() = {streaming_complete.is_set()}")
-                    logger.debug(f"🔍 [API_STREAMING] chunk_queue.qsize() = {chunk_queue.qsize()}")
+                    logger.info(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
+                    logger.info(f"🔍 [API_STREAMING] streaming_complete.is_set() = {streaming_complete.is_set()}")
+                    logger.info(f"🔍 [API_STREAMING] chunk_queue.qsize() = {chunk_queue.qsize()}")
                     
                     chunk_count = 0
                     timeout_count = 0
@@ -235,13 +245,14 @@ async def send_message_with_auto_thread(
                             # Wait for chunk with short timeout to check completion
                             chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
                             chunk_count += 1
-                            logger.debug(f"🔍 [API_STREAMING] 🎯 Got chunk #{chunk_count} from queue: {chunk}")
+                            logger.info(f"🔍 [API_STREAMING] 🎯 Got chunk #{chunk_count} from queue: {chunk}")
                             
                             if "type" in chunk and chunk["type"] == "error":
-                                logger.debug(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
-                                yield json.dumps(chunk) + "\n"
+                                logger.info(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
+                                error_data = chunk
+                                yield json.dumps(error_data) + "\n"
                             else:
-                                logger.debug(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}' (type: {chunk.get('content_type', 'response')})")
+                                logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content'][:100]}...' (type: {chunk.get('content_type', 'response')})")
                                 chunk_data = {
                                     "type": "chunk",
                                     "content": chunk["content"],
@@ -253,17 +264,19 @@ async def send_message_with_auto_thread(
                                 if chunk["done"]:
                                     chunk_data["conversation_id"] = conversation_id
                                     chunk_data["message_id"] = message_id  # Add message_id for feedback linking
-                                    logger.debug(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
+                                    logger.info(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
+
+                                # NOTE: Transport encryption for streaming is handled by EncryptionMiddleware.
                                 yield json.dumps(chunk_data) + "\n"
                                 
                         except asyncio.TimeoutError:
                             # No chunk received, continue waiting
                             timeout_count += 1
                             if timeout_count % 50 == 0:  # Log every 5 seconds
-                                logger.debug(f"🔍 [API_STREAMING] ⏱️ Still waiting for chunks... (timeout #{timeout_count}, elapsed: {asyncio.get_event_loop().time() - timeout_start:.1f}s)")
+                                logger.info(f"🔍 [API_STREAMING] ⏱️ Still waiting for chunks... (timeout #{timeout_count}, elapsed: {asyncio.get_event_loop().time() - timeout_start:.1f}s)")
                     
                     # Log why loop exited
-                    logger.debug(f"🔍 [API_STREAMING] Loop exited: streaming_complete={streaming_complete.is_set()}, chunks_received={chunk_count}, timeouts={timeout_count}")
+                    logger.info(f"🔍 [API_STREAMING] Loop exited: streaming_complete={streaming_complete.is_set()}, chunks_received={chunk_count}, timeouts={timeout_count}")
                     
                     # Unsubscribe
                     try:
@@ -277,10 +290,11 @@ async def send_message_with_auto_thread(
                 except Exception as e:
                     logger.error(f"Stream generator error: {e}")
                     logger.debug(f"🔍 [API_STREAMING] ❌ Stream generator failed for {message_id}: {e}")
-                    yield json.dumps({
+                    error_data = {
                         "type": "error",
                         "error": str(e)
-                    }) + "\n"
+                    }
+                    yield json.dumps(error_data) + "\n"
             
             try:
                 response = StreamingResponse(

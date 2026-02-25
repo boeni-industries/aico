@@ -130,10 +130,6 @@ services:
       AICO_INFLUX_URL: http://influxdb:8086
       AICO_LOKI_URL: http://loki:3100
       AICO_REST_HOST: gateway
-      AICO_OLLAMA_HOST: ollama
-      AICO_OLLAMA_PORT: "11434"
-      AICO_OLLAMA_AUTO_INSTALL: "false"
-      AICO_OLLAMA_AUTO_START: "false"
       AICO_PG_PASSWORD: ${AICO_PG_PASSWORD:-}
       AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
       AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
@@ -145,7 +141,6 @@ services:
     depends_on:
       - gateway
       - core
-      - ollama
     labels:
       com.aico.project: "aico"
       com.aico.component: "modelservice"

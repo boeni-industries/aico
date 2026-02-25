@@ -61,8 +61,7 @@ backend = [
     "pydantic>=2.11.7",
     "pyjwt>=2.10.1",
     "uvicorn>=0.35.0",
-    "openai>=1.0.0",  # OpenAI client for vLLM compatibility
-    "vllm>=0.6.0",  # vLLM for production LLM serving
+    "openai>=1.0.0",  # OpenAI client for vLLM HTTP API compatibility
 ]
 
 cli = []

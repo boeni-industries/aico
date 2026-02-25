@@ -593,7 +593,22 @@ CREATE TABLE IF NOT EXISTS "ams_user_memories" (
                 source_message_id TEXT,
                 -- Timestamps
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, user_note TEXT, tags_json JSONB, is_favorite BOOLEAN DEFAULT FALSE, revisit_count INTEGER DEFAULT 0, last_revisited TIMESTAMPTZ, emotional_tone TEXT, memory_type TEXT, content_type TEXT DEFAULT 'message', conversation_title TEXT, conversation_summary TEXT, turn_range TEXT, key_moments_json JSONB, temporal_metadata TEXT DEFAULT NULL, language TEXT
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                -- Memory Album feature columns
+                user_note TEXT,
+                tags_json JSONB,
+                is_favorite BOOLEAN DEFAULT FALSE,
+                revisit_count INTEGER DEFAULT 0,
+                last_revisited TIMESTAMPTZ,
+                emotional_tone TEXT,
+                memory_type TEXT,
+                content_type TEXT DEFAULT 'message',
+                conversation_title TEXT,
+                conversation_summary TEXT,
+                turn_range TEXT,
+                key_moments_json JSONB,
+                temporal_metadata TEXT DEFAULT NULL,
+                language TEXT
             );
 
 CREATE INDEX IF NOT EXISTS idx_facts_category ON "ams_user_memories"(category);
@@ -684,7 +699,8 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
                 jwt_token_hash TEXT NOT NULL,
                 expires_at TIMESTAMPTZ NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT TRUE, session_type TEXT DEFAULT 'unified'
+                is_active BOOLEAN DEFAULT TRUE,
+                session_type TEXT DEFAULT 'unified'
             );
 
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON auth_sessions(is_active, expires_at);
