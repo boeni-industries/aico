@@ -74,6 +74,43 @@ class CoreNATSHandlers:
                 "message": str(e)
             }
     
+    async def handle_emotion_current_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle current emotion state request from gateway"""
+        try:
+            # Get emotion engine service
+            emotion_engine = self.container.get_service("emotion_engine")
+            if emotion_engine is None:
+                return {
+                    "error": "EMOTION_ENGINE_UNAVAILABLE",
+                    "message": "Emotion engine unavailable"
+                }
+            
+            # Get current emotional state from engine
+            current_state = emotion_engine.current_state
+            
+            if current_state is None:
+                return {
+                    "error": "EMOTION_STATE_NOT_AVAILABLE",
+                    "message": "No emotional state available"
+                }
+            
+            # Convert to response format matching EmotionStateResponse schema
+            return {
+                "timestamp": current_state.timestamp.isoformat() + "Z",
+                "primary": current_state.subjective_feeling.value,
+                "confidence": current_state.intensity,
+                "valence": current_state.mood_valence,
+                "arousal": current_state.mood_arousal,
+                "dominance": 0.5  # Default neutral dominance (not yet implemented in CPM)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get current emotion: {e}", exc_info=True)
+            return {
+                "error": "EMOTION_ENGINE_ERROR",
+                "message": str(e)
+            }
+    
     async def handle_emotion_history_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle emotion history request from gateway"""
         try:
@@ -182,11 +219,18 @@ class CoreNATSHandlers:
         )
         self.logger.info(f"✅ Subscribed to scheduler.tasks (sid={sid2})")
         
-        self.logger.info("Subscribing to emotion.history...")
+        self.logger.info("Subscribing to emotion.current...")
         sid3 = await message_bus_client._nats.subscribe(
+            "emotion.current",
+            cb=make_handler(self.handle_emotion_current_request, "emotion.current.reply")
+        )
+        self.logger.info(f"✅ Subscribed to emotion.current (sid={sid3})")
+        
+        self.logger.info("Subscribing to emotion.history...")
+        sid4 = await message_bus_client._nats.subscribe(
             "emotion.history",
             cb=make_handler(self.handle_emotion_history_request, "emotion.history.reply")
         )
-        self.logger.info(f"✅ Subscribed to emotion.history (sid={sid3})")
+        self.logger.info(f"✅ Subscribed to emotion.history (sid={sid4})")
         
-        self.logger.info("Core NATS request handlers registered (scheduler.status, scheduler.tasks, emotion.history)")
+        self.logger.info("Core NATS request handlers registered (scheduler.status, scheduler.tasks, emotion.current, emotion.history)")

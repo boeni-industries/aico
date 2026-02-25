@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     build-essential \
     g++ \
+    postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -32,10 +33,15 @@ COPY modelservice /app/modelservice
 COPY proto /app/proto
 COPY config /app/config
 
+# Copy entrypoint script
+COPY docker/entrypoint-backend.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Install the local project into the already-synced environment.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install -e .
 
 EXPOSE 8771
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uv", "run", "python", "backend/gateway_main.py"]

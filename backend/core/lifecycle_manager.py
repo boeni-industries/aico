@@ -1117,15 +1117,15 @@ class BackendLifecycleManager:
         pass
     
     async def _start_message_broker(self) -> None:
-        """Start ZMQ message broker"""
-        # NATS-only: broker is an external dependency (Docker: aico-nats).
-        # Legacy embedded ZMQ broker startup is intentionally disabled.
+        """Start message broker"""
+        # NATS-only: broker is an external dependency
+        # Legacy embedded broker startup is intentionally disabled.
         self.logger.info("Message broker startup skipped (NATS-only; external bus)")
     
     def _notify_log_transport_broker_ready(self) -> None:
-        """Notify ZMQ log transport that broker is ready, but delay buffer flush until LogConsumer is subscribed"""
-        # ZMQ log transport removed - logs now go directly to InfluxDB
-        # Log consumer service also removed - no longer needed
+        """Notify log transport that broker is ready"""
+        # Logs now go directly to InfluxDB
+        # Log consumer service removed - no longer needed
         pass
     
     def _notify_log_consumer_broker_ready(self) -> None:

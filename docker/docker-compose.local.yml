@@ -54,6 +54,7 @@ services:
     volumes:
       - aico-gateway-state:/var/lib/aico
       - aico-gateway-cache:/var/cache/aico
+      - ./.env:/app/docker/.env
     tmpfs:
       - /run/aico
     ports:
@@ -96,6 +97,7 @@ services:
     volumes:
       - aico-core-state:/var/lib/aico
       - aico-core-cache:/var/cache/aico
+      - ./.env:/app/docker/.env
     tmpfs:
       - /run/aico
     depends_on:
@@ -165,6 +167,18 @@ services:
       - aico-ollama-models:/root/.ollama
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NUM_PARALLEL: "2"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "5m"
+      OLLAMA_FLASH_ATTENTION: "1"
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 12G
+        reservations:
+          cpus: '4'
+          memory: 6G
     labels:
       com.aico.project: "aico"
       com.aico.component: "ollama"

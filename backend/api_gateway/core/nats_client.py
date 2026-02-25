@@ -77,6 +77,29 @@ class GatewayNATSClient:
         except MessageBusError as e:
             raise Exception(f"SCHEDULER_NOT_AVAILABLE: {str(e)}")
     
+    async def request_current_emotion(self) -> Dict[str, Any]:
+        """Request current emotion state from core via NATS"""
+        try:
+            # Send request via NATS
+            reply_msg = await self.bus._nats.request(
+                "emotion.current",
+                b"{}",
+                timeout=5.0
+            )
+            
+            # Parse JSON response directly from bytes
+            response_data = json.loads(reply_msg.data.decode('utf-8'))
+            
+            if response_data.get("error"):
+                raise Exception(f"{response_data['error']}: {response_data.get('message', 'Unknown error')}")
+            
+            return response_data
+            
+        except MessageBusTimeoutError:
+            raise Exception("EMOTION_ENGINE_UNAVAILABLE: Request timed out")
+        except MessageBusError as e:
+            raise Exception(f"EMOTION_ENGINE_UNAVAILABLE: {str(e)}")
+    
     async def request_emotion_history(self, limit: int = 10, hours: int = 24) -> Dict[str, Any]:
         """Request emotion history from core via NATS"""
         try:

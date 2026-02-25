@@ -1,7 +1,7 @@
 """
 Core Message Bus Implementation for AICO
 
-Provides a hybrid broker pattern with ZeroMQ for internal communication
+Provides NATS-based message bus for internal communication
 using Protocol Buffers for all message serialization.
 """
 
@@ -326,7 +326,7 @@ class MessageBusClient:
             # self.logger.debug(f"Published {encryption_status} protobuf message to topic '{topic}': {metadata.message_id}")
             # self.logger.debug(f"Message data length: {len(message_data)} bytes")
             # Skip security warnings for infrastructure components to prevent feedback loops
-            if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
+            if not self.encryption_enabled and self.client_id not in ["log_consumer"]:
                 self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
             
             # Encrypted message logging disabled to prevent log spam
@@ -377,20 +377,10 @@ class MessageBusClient:
     async def _message_loop(self):
         """Main message processing loop"""
         raise MessageBusError(
-            "Legacy ZMQ message loop is disabled. "
+            "Legacy message loop is disabled. "
             "This codebase is NATS-only: subscribe() registers NATS callbacks directly."
         )
     
-    def _pattern_to_zmq_filter(self, pattern: str) -> str:
-        """Convert subscription pattern to ZeroMQ prefix filter"""
-        # ZMQ uses simple prefix matching, no wildcards needed
-        # "*" or "**" means subscribe to all messages (empty filter)
-        if pattern == "*" or pattern == "**":
-            return ""  # Empty filter = receive all messages
-        
-        # For any other pattern, use it directly as ZMQ prefix filter
-        # ZMQ will match any topic that starts with this prefix
-        return pattern
     
     
     async def _invoke_callback(self, callback, message):
@@ -444,7 +434,7 @@ class MessageBusBroker:
     async def start(self):
         """Start the message bus broker"""
         raise MessageBusError(
-            "Embedded ZMQ broker is disabled. This codebase is NATS-only; "
+            "Embedded broker is disabled. This codebase is NATS-only; "
             "run NATS as an external service (Docker: aico-nats) and connect via MessageBusClient."
         )
 

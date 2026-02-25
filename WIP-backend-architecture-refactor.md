@@ -2,18 +2,23 @@
 
 ## Progress Checklist (tick-off)
 - [x] Lock interfaces: freeze/version gateway↔core and core↔modelservice contracts; add contract tests
-- [ ] Introduce standalone Gateway service (authn/authz, rate limits, idempotency, WebSockets)
+- [x] Introduce standalone Gateway service (authn/authz, rate limits, idempotency, WebSockets)
 - [x] Publish frontend-independent External API Contract (OpenAPI + WebSocket spec + examples)
-- [ ] Centralize identity + scoping: make `tenant_id`/`user_id` mandatory end-to-end; enforce authz on every request/subscription
+- [x] Centralize identity + scoping: make `tenant_id`/`user_id` mandatory end-to-end; enforce authz on every request/subscription
 - [ ] Postgres source of truth for conversations: add tables + catch-up API
 - [ ] Outbox for durable publication: stop publish-then-store for correctness-critical flows
-- [ ] Add NATS transport behind `MessageBusClient` (parallel-run with ZMQ initially)
 - [ ] Enable JetStream for durable flows; keep streaming chunks ephemeral; add replay/recovery tests
+- [x] **Migrate fully to NATS: remove ZMQ entirely without keeping any legacy or fallback code**
 - [ ] Replace LMDB working memory with Postgres (retention/TTL + indexes; cache only if proven)
 - [ ] Replace Chroma with Postgres + `pgvector` behind an interface; dual-write during migration; remove Chroma
 - [ ] Harden scheduler + workers: idempotent tasks, tenant-scoped, multi-replica safe (locks/leader election)
 - [ ] Make backend stateless: verify all correctness-critical state is in Postgres/JetStream
 - [ ] Decommission legacy: remove ZMQ broker path, LMDB, Chroma, and any bypasses around UoW/outbox
+- [ ] **Redesign credential management and system setup for fully dockerized architecture (aico security init, aico config init, etc.)**
+- [ ] **Migrate runtime directory structure to docker-based environment (eliminate native process assumptions)**
+- [ ] **Clean up legacy native process architecture (remove start/stop service commands, process management)**
+- [ ] **Ensure all Docker components properly represented in CLI; remove legacy tech debt**
+- [ ] **Create `aico deploy` CLI command: zero-to-operational system installation (prod default, --dev flag for development)**
 
 ## Goals / Non-Goals
 - **Goal**: Single codebase and single “final-stack” architecture that runs:

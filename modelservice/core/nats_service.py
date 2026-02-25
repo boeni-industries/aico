@@ -16,7 +16,7 @@ from aico.core.bus import MessageBusClient
 from aico.core.config import ConfigurationManager
 
 from .protobuf_messages import ModelserviceMessageParser
-from .zmq_handlers import ModelserviceZMQHandlers
+from .handlers import ModelserviceZMQHandlers
 
 
 class ModelserviceNATSService:

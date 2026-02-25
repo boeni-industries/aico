@@ -18,7 +18,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # These are from jsonlines, pysbd (used by Coqui TTS) - not our code
 warnings.filterwarnings('ignore', category=SyntaxWarning)
 
-# Fix Windows asyncio event loop compatibility with ZMQ
+# Fix Windows asyncio event loop compatibility
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -88,7 +88,7 @@ async def initialize_modelservice():
     
     print("=" * 60)
     
-    # Check if backend is running before starting ZMQ service
+    # Check if backend is running before starting NATS service
     print("🔍 Checking backend availability...")
     backend_available = await _check_backend_health(cfg)
     if not backend_available:
@@ -185,10 +185,10 @@ async def initialize_modelservice():
         print("⏹️  Instrumentation disabled in config; skipping metrics setup")
         logger.info("Instrumentation disabled in config; skipping modelservice metrics initialization")
     
-    # ZMQ log transport removed - logs now go directly to InfluxDB
+    # Logs now go directly to InfluxDB
     logger.info("Modelservice logging initialized with InfluxDB")
     
-    # Initialize OllamaManager (now that ZMQ logging is available)
+    # Initialize OllamaManager (now that logging is available)
     from .core.ollama_manager import OllamaManager
     ollama_manager = OllamaManager()
     
@@ -270,7 +270,7 @@ async def initialize_modelservice():
     print("[+] NATS service ready... (Press Ctrl+C to stop)\n")
     logger.info("Modelservice startup complete, NATS service ready")
 
-    # Logging will be handled after full ZMQ service initialization in main()
+    # Logging will be handled after full NATS service initialization in main()
 
     return cfg, ollama_manager, process_manager, service
 
@@ -285,8 +285,8 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
         port = cfg.get("api_gateway.rest.port", 8771)
         
         # Try to connect to backend health endpoint
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(f"http://{host}:{port}/api/v1/health")
+        async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
+            response = await client.get(f"http://{host}:{port}/api/v1/health/")
             return response.status_code == 200
             
     except Exception as e:
@@ -373,7 +373,7 @@ async def main():
         # Complete the full service initialization (subscribe to all topics)
         await _service.start()
         
-        # ZMQ log transport removed - logs now go directly to InfluxDB
+        # Logs now go directly to InfluxDB
         
         # Keep the service running (both foreground and background modes)
         # Entering service loop

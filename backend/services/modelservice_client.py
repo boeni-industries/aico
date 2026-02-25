@@ -1,8 +1,7 @@
 """
-ZMQ client for backend-modelservice communication.
+NATS client for backend-modelservice communication.
 
-Uses ZeroMQ message bus with CurveZMQ encryption for secure communication
-with the modelservice subsystem.
+Uses NATS message bus for secure communication with the modelservice subsystem.
 """
 
 import asyncio
@@ -28,10 +27,9 @@ class ModelServiceConfig:
 
 class ModelServiceClient:
     """
-    ZMQ client for modelservice communication.
+    NATS client for modelservice communication.
     
-    Provides secure communication with modelservice via ZeroMQ message bus
-    with CurveZMQ encryption.
+    Provides secure communication with modelservice via NATS message bus.
     """
     
     def __init__(self, config_manager: ConfigurationManager, config: Optional[ModelServiceConfig] = None):

@@ -23,8 +23,7 @@ router = APIRouter()
 
 @router.get("/current", response_model=EmotionStateResponse)
 async def get_current_emotion(
-    user: Annotated[dict, Depends(get_current_user)],
-    emotion_engine: Annotated[object, Depends(get_emotion_engine)]
+    user: Annotated[dict, Depends(get_current_user)]
 ):
     """
     Get AICO's current emotional state.
@@ -38,34 +37,23 @@ async def get_current_emotion(
     per-user emotional states for personalized interactions.
     """
     try:
-        # Get current emotional state from engine
-        current_state = emotion_engine.current_state
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
         
-        if current_state is None:
-            raise_api_error(
-                status_code=404,
-                error_code="EMOTION_STATE_NOT_AVAILABLE",
-                message="No emotional state available",
-            )
+        # Request current emotion from core via NATS
+        nats_client = get_gateway_nats_client()
+        emotion_data = await nats_client.request_current_emotion()
         
-        # Convert to response format
-        return EmotionStateResponse(
-            timestamp=current_state.timestamp.isoformat() + "Z",
-            primary=current_state.subjective_feeling.value,
-            confidence=current_state.intensity,
-            valence=current_state.mood_valence,
-            arousal=current_state.mood_arousal,
-            dominance=0.5  # Default neutral dominance (not yet implemented in CPM)
-        )
+        return EmotionStateResponse(**emotion_data)
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error retrieving current emotion: {e}")
-        raise_api_error(
+        logger.error(f"Error retrieving current emotion via NATS: {e}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
             status_code=500,
-            error_code="EMOTION_STATE_FETCH_FAILED",
-            message="Failed to retrieve emotional state",
+            content={
+                "error_code": "EMOTION_STATE_FETCH_FAILED",
+                "message": "Failed to retrieve emotional state"
+            }
         )
 
 

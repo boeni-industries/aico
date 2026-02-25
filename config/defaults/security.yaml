@@ -18,7 +18,6 @@ encryption:
       database_operations: 2    # Balanced for database operations
       file_operations: 1        # Lighter for file operations  
       derived_keys: 2           # For derived keys
-      transport_keys: 1         # For CurveZMQ transport keys
       master_key: 3             # For master key derivation
       
       # Memory and parallelism settings (different for each use case)
@@ -26,14 +25,12 @@ encryption:
         database_operations: 262144   # 256MB in KiB (256*1024)
         file_operations: 131072       # 128MB in KiB (128*1024)
         derived_keys: 262144          # 256MB in KiB (256*1024)
-        transport_keys: 65536         # 64MB in KiB (64*1024) - lighter for transport
         master_key: 1048576           # 1GB in KiB (1024*1024)
       
       lanes:
         database_operations: 2        # 2 threads
         file_operations: 2            # 2 threads
         derived_keys: 2               # 2 threads
-        transport_keys: 2             # 2 threads
         master_key: 4                 # 4 threads (parallelism)
       
       length: 32                      # 256-bit output
@@ -48,15 +45,9 @@ file_encryption:
 
 # Transport security settings
 transport:
-  # Message bus encryption using CurveZMQ
+  # Message bus encryption (NATS with TLS)
   message_bus_encryption: true
   
-  # CurveZMQ settings for internal message bus
-  curve_zmq:
-    enabled: true
-    authentication_policy: "CURVE_ALLOW_ANY"  # Zero-config: any valid CURVE client can connect
-    key_rotation_interval: 86400              # 24 hours
-    
   # Transport encryption settings (libsodium-based for HTTP/WebSocket)
   encryption:
     enabled: true
