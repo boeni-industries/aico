@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class AgencyExecutionSnapshot(BaseModel):
@@ -12,6 +12,14 @@ class AgencyExecutionSnapshot(BaseModel):
     snapshot_type: str
     state_data: str
     created_at: datetime
+    
+    @field_validator('created_at', mode='before')
+    @classmethod
+    def normalize_datetime(cls, v):
+        """Normalize PostgreSQL datetime strings with +00 timezone to +00:00 format."""
+        if isinstance(v, str) and v.endswith('+00'):
+            return v + ':00'
+        return v
 
 
 class AgencyPlanExecution(BaseModel):
@@ -39,6 +47,14 @@ class AgencyPlanExecution(BaseModel):
 
     created_at: datetime
     updated_at: datetime
+    
+    @field_validator('created_at', 'updated_at', 'started_at', 'completed_at', 'paused_at', 'cancelled_at', mode='before')
+    @classmethod
+    def normalize_datetime(cls, v):
+        """Normalize PostgreSQL datetime strings with +00 timezone to +00:00 format."""
+        if isinstance(v, str) and v.endswith('+00'):
+            return v + ':00'
+        return v
 
 
 class AgencyStepExecution(BaseModel):
@@ -64,3 +80,11 @@ class AgencyStepExecution(BaseModel):
 
     created_at: datetime
     updated_at: datetime
+    
+    @field_validator('created_at', 'updated_at', 'started_at', 'completed_at', mode='before')
+    @classmethod
+    def normalize_datetime(cls, v):
+        """Normalize PostgreSQL datetime strings with +00 timezone to +00:00 format."""
+        if isinstance(v, str) and v.endswith('+00'):
+            return v + ':00'
+        return v

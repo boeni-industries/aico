@@ -72,6 +72,8 @@ class BackendLifecycleManager:
         # 3. Initialize OpenTelemetry instrumentation (now has database access)
         await self._initialize_telemetry()
         
+        self.logger.info(f"🔍 Role check: self.role='{self.role}', is_core={self.role == 'core'}, is_gateway={self.role == 'gateway'}")
+        
         if self.role == "core":
             await self.container.start_all()
             self._display_service_status()
@@ -80,6 +82,7 @@ class BackendLifecycleManager:
             return None
 
         # gateway / monolith
+        self.logger.info("🚀 Starting gateway/monolith initialization (NOT core role)")
         self.app = self._create_fastapi_app()
 
         # Store start time in app state for health monitoring
@@ -972,8 +975,17 @@ class BackendLifecycleManager:
         if not self.app:
             raise RuntimeError("FastAPI app not created")
 
+        self.logger.info("🚀 _mount_routers() called")
+        
         # Mount domain routers
-        self._mount_domain_routers()
+        try:
+            self._mount_domain_routers()
+            self.logger.info("✅ _mount_domain_routers() completed successfully")
+        except Exception as e:
+            self.logger.error(f"❌ _mount_domain_routers() FAILED: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
 
         self.logger.debug("API routers mounted")
 
@@ -998,6 +1010,7 @@ class BackendLifecycleManager:
 
     def _mount_domain_routers(self) -> None:
         """Mount domain-specific API routers"""
+        self.logger.info("🔧 Starting router mounting process...")
         # Import routers
         from backend.api.health.router import router as health_router
         from backend.api.echo.router import router as echo_router
@@ -1020,9 +1033,11 @@ class BackendLifecycleManager:
         from backend.api.scheduler.router import router as scheduler_router
         from backend.api.users_sessions.router import router as users_sessions_router
         
+        self.logger.info("✅ All routers imported successfully")
+        
         # Mount routers with prefixes
         self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/health", "tags": ["health"]})
+        self.logger.info("✅ Mounted: /api/v1/health")
         
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/echo", "tags": ["echo"]})
@@ -1037,7 +1052,7 @@ class BackendLifecycleManager:
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/logs", "tags": ["logs"]})
         
         self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/conversation", "tags": ["conversation"]})
+        self.logger.info("✅ Mounted: /api/v1/conversation")
 
         self.app.include_router(interactions_router, prefix="/api/v1/interactions", tags=["interactions"])
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/interactions", "tags": ["interactions"]})
@@ -1081,6 +1096,7 @@ class BackendLifecycleManager:
         self.app.include_router(users_sessions_router, prefix="/api/v1/users-sessions", tags=["users-sessions"])
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/users-sessions", "tags": ["users-sessions"]})
         
+        self.logger.info(f"🎉 Router mounting complete: {len(self.app.routes)} total routes")
     
     def _display_routes(self) -> None:
         """Display available API route groups"""

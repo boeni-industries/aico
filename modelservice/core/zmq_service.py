@@ -68,8 +68,6 @@ class ModelserviceZMQService:
             AICOTopics.OLLAMA_MODELS_REQUEST: self._handle_ollama_models,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST: self._handle_ollama_pull,
             AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: self._handle_ollama_remove,
-            AICOTopics.OLLAMA_SERVE_REQUEST: self._handle_ollama_serve,
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: self._handle_ollama_shutdown,
         }
     
     def set_ollama_manager(self, ollama_manager):
@@ -146,8 +144,6 @@ class ModelserviceZMQService:
             AICOTopics.OLLAMA_MODELS_REQUEST,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
             AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST,
-            AICOTopics.OLLAMA_SERVE_REQUEST,
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST,
         ]
             
             subscribed_topics = []
@@ -322,8 +318,6 @@ class ModelserviceZMQService:
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST: AICOTopics.OLLAMA_MODELS_PULL_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: AICOTopics.OLLAMA_MODELS_REMOVE_RESPONSE,
-            AICOTopics.OLLAMA_SERVE_REQUEST: AICOTopics.OLLAMA_SERVE_RESPONSE,
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: AICOTopics.OLLAMA_SHUTDOWN_RESPONSE,
         }
         return response_mapping.get(request_topic)
     
@@ -388,8 +382,6 @@ class ModelserviceZMQService:
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST: AICOTopics.OLLAMA_MODELS_PULL_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: AICOTopics.OLLAMA_MODELS_REMOVE_RESPONSE,
-            AICOTopics.OLLAMA_SERVE_REQUEST: AICOTopics.OLLAMA_SERVE_RESPONSE,
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: AICOTopics.OLLAMA_SHUTDOWN_RESPONSE,
         }
         return mapping.get(request_topic, "unknown/response/v1")
     
@@ -442,27 +434,5 @@ class ModelserviceZMQService:
                 return {"success": True, "data": result}
             else:
                 return {"success": False, "error": "remove_model not implemented"}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    
-    async def _handle_ollama_serve(self, request_data: dict) -> dict:
-        """Handle Ollama serve requests."""
-        try:
-            if hasattr(self.ollama_manager, 'start_server'):
-                result = await self.ollama_manager.start_server()
-                return {"success": True, "data": result}
-            else:
-                return {"success": False, "error": "start_server not implemented"}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    
-    async def _handle_ollama_shutdown(self, request_data: dict) -> dict:
-        """Handle Ollama shutdown requests."""
-        try:
-            if hasattr(self.ollama_manager, 'stop_server'):
-                result = await self.ollama_manager.stop_server()
-                return {"success": True, "data": result}
-            else:
-                return {"success": False, "error": "stop_server not implemented"}
         except Exception as e:
             return {"success": False, "error": str(e)}

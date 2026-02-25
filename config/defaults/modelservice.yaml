@@ -13,10 +13,11 @@ ollama:
   # Connection settings - used by OllamaManager.is_running()
   host: "ollama"
   port: 11434
+  min_version: "0.12.0"
   
   # Auto-management settings - used by OllamaManager
-  auto_install: true  # Automatically install Ollama binary if missing
-  auto_start: true    # Start Ollama server with modelservice
+  auto_install: false  # Ollama runs as a separate container; do not install locally
+  auto_start: false    # Ollama runs as a separate container; do not start locally
   
   # Default models by capability role
   default_models:

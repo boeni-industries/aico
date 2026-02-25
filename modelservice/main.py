@@ -200,39 +200,26 @@ async def initialize_modelservice():
     logger.info("Starting Ollama initialization")
     
     try:
-        if await ollama_manager.ensure_installed():
-            print("✅ Ollama binary ready")
-            logger.info("Ollama binary installation verified")
-            
-            if await ollama_manager.start_ollama():
-                print("✅ Ollama server started")
-                logger.info("Ollama server started successfully")
-                
-                ollama_status = await ollama_manager.get_status()
-                if ollama_status:
-                    version = ollama_status.get('version', 'unknown')
-                    print(f"✅ Ollama v{version} ready at http://127.0.0.1:11434")
-                    logger.info(f"Ollama v{version} ready at http://127.0.0.1:11434")
-                    
-                    # Auto-pull and start default models
-                    started_models = await ollama_manager._ensure_default_models()
-                    
-                    # Report started models
-                    if started_models:
-                        print(f"✅ Started {len(started_models)} model(s): {', '.join(started_models)}")
-                        logger.info(f"Started {len(started_models)} model(s): {', '.join(started_models)}")
-                    else:
-                        print("ℹ️ No models configured for auto-start")
-                        logger.info("No models configured for auto-start")
-                else:
-                    print("⚠️ Could not verify Ollama status")
-                    logger.warning("Could not verify Ollama status")
-            else:
-                print("❌ Ollama server failed to start")
-                logger.error("Ollama server failed to start")
+        ollama_cfg = cfg.get("modelservice.ollama", {})
+        ollama_host = ollama_cfg.get("host", "127.0.0.1")
+        ollama_port = ollama_cfg.get("port", 11434)
+
+        # Ollama is external-only (separate container). Validate reachability and minimum version.
+        await ollama_manager.check_available()
+
+        ollama_status = await ollama_manager.get_status()
+        version = (ollama_status or {}).get("version", "unknown")
+        print(f"✅ Ollama v{version} ready at http://{ollama_host}:{ollama_port}")
+        logger.info(f"Ollama v{version} ready at http://{ollama_host}:{ollama_port}")
+
+        # Auto-pull and start default models
+        started_models = await ollama_manager._ensure_default_models()
+        if started_models:
+            print(f"✅ Started {len(started_models)} model(s): {', '.join(started_models)}")
+            logger.info(f"Started {len(started_models)} model(s): {', '.join(started_models)}")
         else:
-            print("❌ Ollama installation failed")
-            logger.error("Ollama installation failed")
+            print("ℹ️ No models configured for auto-start")
+            logger.info("No models configured for auto-start")
                 
     except Exception as e:
         print(f"❌ Ollama initialization error: {e}")

@@ -74,8 +74,6 @@ class MessageProcessor:
             AICOTopics.OLLAMA_MODELS_REQUEST,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
             AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST,
-            AICOTopics.OLLAMA_SERVE_REQUEST,
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST,
         ]
         self.message_bus.subscribe(topics, self._handle_message)
     

@@ -56,8 +56,6 @@ class ModelserviceNATSService:
             AICOTopics.OLLAMA_MODELS_REQUEST: self._handle_ollama_models,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST: self._handle_ollama_pull,
             AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: self._handle_ollama_remove,
-            AICOTopics.OLLAMA_SERVE_REQUEST: self._handle_ollama_serve,
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: self._handle_ollama_shutdown,
         }
 
     def set_ollama_manager(self, ollama_manager):
@@ -115,8 +113,6 @@ class ModelserviceNATSService:
                 AICOTopics.OLLAMA_MODELS_REQUEST,
                 AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
                 AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST,
-                AICOTopics.OLLAMA_SERVE_REQUEST,
-                AICOTopics.OLLAMA_SHUTDOWN_REQUEST,
             ]
 
             for topic in modelservice_topics:
@@ -203,8 +199,6 @@ class ModelserviceNATSService:
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST: AICOTopics.OLLAMA_MODELS_PULL_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: AICOTopics.OLLAMA_MODELS_REMOVE_RESPONSE,
-            AICOTopics.OLLAMA_SERVE_REQUEST: AICOTopics.OLLAMA_SERVE_RESPONSE,
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: AICOTopics.OLLAMA_SHUTDOWN_RESPONSE,
         }
         return response_mapping.get(request_topic)
 
@@ -235,15 +229,3 @@ class ModelserviceNATSService:
             result = await self.ollama_manager.remove_model(model_name)
             return {"success": True, "data": result}
         return {"success": False, "error": "remove_model not implemented"}
-
-    async def _handle_ollama_serve(self, request_data: dict) -> dict:
-        if hasattr(self.ollama_manager, "start_server"):
-            result = await self.ollama_manager.start_server()
-            return {"success": True, "data": result}
-        return {"success": False, "error": "start_server not implemented"}
-
-    async def _handle_ollama_shutdown(self, request_data: dict) -> dict:
-        if hasattr(self.ollama_manager, "stop_server"):
-            result = await self.ollama_manager.stop_server()
-            return {"success": True, "data": result}
-        return {"success": False, "error": "stop_server not implemented"}
