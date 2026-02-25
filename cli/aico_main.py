@@ -74,7 +74,7 @@ COMMAND_MODULES = {
     "dev": "cli.commands.dev",
     "bus": "cli.commands.bus",
     "modelservice": "cli.commands.modelservice",
-    "ollama": "cli.commands.ollama",
+    "vllm": "cli.commands.vllm",
     "tools": "cli.commands.tools",
     "skills": "cli.commands.skills",
     "gateway": "cli.commands.gateway",
@@ -109,7 +109,7 @@ from cli.commands.scheduler import app as scheduler_app
 from cli.commands.tools import app as tools_app
 from cli.commands.skills import app as skills_app
 from cli.commands.modelservice import app as modelservice_app
-from cli.commands.ollama import app as ollama_app
+from cli.commands.vllm import app as vllm_app
 from cli.commands.lmdb import app as lmdb_app
 from cli.commands.chroma import app as chroma_app
 from cli.commands.kg import app as kg_app
@@ -139,7 +139,7 @@ app.add_typer(emotion_app, name="emotion", help="🎭 Emotional simulation manag
 app.add_typer(dev_app, name="dev", help=f"{chars['dev']} Development utilities")
 app.add_typer(bus_app, name="bus", help=f"{chars['bus']} Message bus management")
 app.add_typer(modelservice_app, name="modelservice", help="🤖 Model service management")
-app.add_typer(ollama_app, name="ollama", help="🦙 Ollama model management")
+app.add_typer(vllm_app, name="vllm", help="🚀 vLLM deployment and management")
 app.add_typer(tools_app, name="tools", help="🛠 Agency tool inspection and live execution")
 app.add_typer(skills_app, name="skills", help="🎯 Agency skills inspection and live execution")
 app.add_typer(chroma_app, name="chroma", help=f"{chars['database']} ChromaDB semantic memory management")
@@ -207,7 +207,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             ("🚌", "bus", "Message bus testing, monitoring, and management"),
             ("🌐", "gateway", "API Gateway management and protocol control"),
             ("🤖", "modelservice", "Model service management and control"),
-            ("🦙", "ollama", "Ollama model management and operations"),
+            ("🚀", "vllm", "vLLM deployment and management (production LLM serving)"),
             ("🎯", "agency", "Agency system control (intentions, values, policies, lessons)"),
             ("💬", "interactions", "Interaction request testing and simulation"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")

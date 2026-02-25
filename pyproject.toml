@@ -61,14 +61,16 @@ backend = [
     "pydantic>=2.11.7",
     "pyjwt>=2.10.1",
     "uvicorn>=0.35.0",
+    "openai>=1.0.0",  # OpenAI client for vLLM compatibility
+    "vllm>=0.6.0",  # vLLM for production LLM serving
 ]
 
 cli = []
 
 modelservice = [
-    "transformers==4.50.3", # Fixed version compatible with GLiNER 0.2.22
+    "transformers>=4.58.0", # Required by vLLM 0.11.0 (includes AutoVideoProcessor)
     "torch>=1.12.0", # Required by transformers for model inference
-    "gliner==0.2.22", # Advanced entity extraction (requires transformers <=4.51.0)
+    "gliner>=0.2.22", # Advanced entity extraction (upgraded for transformers compatibility)
     "sentence-transformers>=5.1.1", # Multilingual embeddings for semantic memory
     "coqui-tts", # Source specified in tool.uv.sources, dependencies overridden
     "piper-tts>=1.2.0", # Fast neural TTS (100x faster than XTTS, no voice cloning)
@@ -101,11 +103,8 @@ cli = "cli"
 backend = "backend"
 
 [tool.uv]
-# Override transformers requirement from coqui-tts to allow 4.50.3
-# Coqui-tts dev branch declares transformers>=4.52.1 but works fine with 4.50.3
-override-dependencies = [
-    "transformers==4.50.3",
-]
+# No overrides - allow latest versions for vLLM and GLiNER compatibility
+override-dependencies = []
 
 [tool.uv.sources]
 # Specify git source for coqui-tts

@@ -157,39 +157,6 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: aico-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - aico-ollama-models:/root/.ollama
-    environment:
-      OLLAMA_HOST: 0.0.0.0:11434
-      OLLAMA_NUM_PARALLEL: "2"
-      OLLAMA_MAX_LOADED_MODELS: "1"
-      OLLAMA_KEEP_ALIVE: "5m"
-      OLLAMA_FLASH_ATTENTION: "1"
-    deploy:
-      resources:
-        limits:
-          cpus: '8'
-          memory: 12G
-        reservations:
-          cpus: '4'
-          memory: 6G
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "ollama"
-      com.aico.service.type: "ml-runtime"
-      com.aico.service.role: "llm-inference"
-      org.opencontainers.image.title: "AICO Ollama"
-      org.opencontainers.image.description: "Ollama LLM runtime for AICO"
-      org.opencontainers.image.vendor: "AICO"
-      com.aico.managed-by: "aico-cli"
-      com.aico.deployment.type: "local-dev"
-
   postgres:
     image: postgres:18.1
     container_name: aico-postgres
@@ -426,10 +393,3 @@ volumes:
       com.aico.volume.type: "data"
       com.aico.managed-by: "aico-cli"
   
-  aico-ollama-models:
-    name: aico-ollama-models
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "ollama"
-      com.aico.volume.type: "models"
-      com.aico.managed-by: "aico-cli"

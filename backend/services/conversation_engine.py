@@ -26,6 +26,8 @@ from aico.proto.aico_core_envelope_pb2 import AicoMessage
 from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
 from aico.proto.aico_modelservice_pb2 import CompletionsResponse, CompletionsRequest, ConversationMessage as ModelConversationMessage
 from aico.ai import ProcessingContext, ai_registry
+from aico.ai.llm.factory import LLMClientFactory
+from aico.ai.characters import CharacterManager
 from backend.core.ai_plugin_base import ProcessingRequest
 from backend.core.service_container import BaseService
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -84,6 +86,12 @@ class ConversationEngine(BaseService):
         # Message bus client
         self.bus_client: Optional[MessageBusClient] = None
 
+        # LLM client (vLLM)
+        self.llm_client = None
+        
+        # Character manager
+        self.character_manager = None
+
         # Optional agency plugin (wired via feature flag and service container)
         self.agency_plugin = None
         
@@ -120,29 +128,32 @@ class ConversationEngine(BaseService):
         self.response_timeout = engine_config.get("response_timeout_seconds", 15.0)
         self.default_response_mode = ResponseMode(engine_config.get("default_response_mode", "text_only"))
         
-        # Load conversation model name from configuration
-        # NO FALLBACK - fail loudly if model configuration is missing or invalid
-        modelservice_config = self.container.config.get("modelservice.ollama")
-        if not modelservice_config:
-            raise ValueError("CRITICAL: Missing modelservice.ollama configuration")
+        # Initialize LLM client (vLLM)
+        try:
+            llm_config = self.container.config.get("llm")
+            if not llm_config:
+                raise ValueError("CRITICAL: Missing llm configuration")
+            
+            self.llm_client = LLMClientFactory.create(llm_config)
+            self.logger.info("✅ vLLM client initialized")
+        except Exception as e:
+            raise ValueError(f"CRITICAL: Failed to initialize vLLM client: {e}")
         
-        default_models = modelservice_config.get("default_models")
-        if not default_models:
-            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models configuration")
-        
-        conversation_model_config = default_models.get("conversation")
-        if not conversation_model_config:
-            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models.conversation configuration")
-        
-        self.model_name = conversation_model_config.get("name")
-        if not self.model_name:
-            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
-
-        self.character_name = conversation_model_config.get("character_name")
-        if not self.character_name and self.model_name:
-            model_base = self.model_name.split(":", 1)[0]
-            model_base = model_base.rsplit("/", 1)[-1]
-            self.character_name = model_base.strip().capitalize() if model_base else None
+        # Initialize character manager
+        try:
+            self.character_manager = CharacterManager(self.container.config)
+            
+            # Get default character from config
+            vllm_config = self.container.config.get("llm.vllm", {})
+            self.character_name = vllm_config.get("default_character", "eve")
+            
+            # Load character configuration
+            character_config = self.character_manager.get_character(self.character_name)
+            self.model_name = character_config.get("base_model")
+            
+            self.logger.info(f"✅ Character manager initialized: {self.character_name} ({self.model_name})")
+        except Exception as e:
+            raise ValueError(f"CRITICAL: Failed to initialize character manager: {e}")
         
         self.logger.debug(f"Conversation engine using model: {self.model_name}")
 
@@ -624,14 +635,21 @@ class ConversationEngine(BaseService):
                 recent_context = memory_data.get("recent_context", [])
                 self.logger.debug(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
             
-            system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id, user_message)
-            if system_prompt:
-                self.logger.debug(f"System prompt: {len(system_prompt)} chars")
+            # Build system message with character personality + memory context
+            memory_facts = None
+            if memory_context:
+                memory_data = memory_context.get("memory_context", {})
+                user_facts = memory_data.get("user_facts", [])
+                if user_facts:
+                    memory_facts = {"facts": [f.get("content", "") for f in user_facts]}
+            
+            system_message = self.character_manager.build_system_message(
+                self.character_name,
+                memory_context=memory_facts
+            )
             
             # Build messages for LLM
-            messages = []
-            if system_prompt and system_prompt.strip():
-                messages.append(ModelConversationMessage(role="system", content=system_prompt))
+            messages = [system_message]
             
             # Add conversation history as actual messages (not just in system prompt)
             history_message_count = 0
@@ -703,12 +721,46 @@ class ConversationEngine(BaseService):
                 current_user_chars,
             )
             
-            # Create and publish LLM request
-            # CRITICAL: Do NOT override Modelfile parameters (temperature, max_tokens, etc.)
-            # The Modelfile defines character-specific settings that should be respected
+            # Get character parameters
+            character_params = self.character_manager.get_parameters(self.character_name)
+            
+            # Convert messages to dict format for LLM client
+            llm_messages = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    llm_messages.append(msg)
+                else:
+                    llm_messages.append({"role": msg.role, "content": msg.content})
+            
+            # Call vLLM directly (async streaming)
+            try:
+                response = await self.llm_client.chat_completion(
+                    messages=llm_messages,
+                    model=self.model_name,
+                    stream=False,  # Non-streaming for now
+                    **character_params
+                )
+                
+                # Extract response content
+                assistant_content = response["choices"][0]["message"]["content"]
+                
+                # Store response for delivery
+                self.pending_responses[request_id]["llm_response"] = assistant_content
+                
+                # Publish response immediately (non-streaming)
+                await self._deliver_response(request_id, assistant_content)
+                
+                return
+                
+            except Exception as e:
+                self.logger.error(f"vLLM call failed: {e}")
+                # Fall back to modelservice if vLLM fails
+                self.logger.warning("Falling back to modelservice...")
+            
+            # Fallback: Create and publish LLM request to modelservice
             completions_request = CompletionsRequest(
                 model=self.model_name,
-                messages=messages,
+                messages=[ModelConversationMessage(role=m["role"], content=m["content"]) for m in llm_messages],
                 stream=True
             )
 
@@ -1099,7 +1151,7 @@ class ConversationEngine(BaseService):
                 prompt_parts.append(f"Additional facts:\n{facts_text}")
                 self.logger.debug(f"Added {len(user_facts)} user facts to system prompt")
             else:
-                # NOTE: Empty system prompt is OK - conversation history is in messages array (Ollama standard)
+                # NOTE: Empty system prompt is OK - conversation history is in messages array (vLLM standard)
                 self.logger.debug(f"No user facts - system prompt empty (history in messages array)")
         else:
             self.logger.warning(f"⚠️ [PROMPT_BUILD] NO memory_context provided")

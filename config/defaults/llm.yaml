@@ -1,0 +1,27 @@
+# LLM Configuration for AICO
+#
+# Defines LLM inference engine settings and connection parameters.
+# Configuration location: config/defaults/llm.yaml
+
+# vLLM Configuration
+vllm:
+  host: "localhost"
+  port: 8774  # AICO project port range
+  api_key: "EMPTY"  # Local vLLM doesn't require API key
+  
+  # Default character to use
+  default_character: "eve"
+  
+  # Server settings (for deployment)
+  server:
+    # GPU settings
+    gpu_memory_utilization: 0.9  # Use 90% of GPU memory
+    tensor_parallel_size: 1      # Number of GPUs to use
+    
+    # Performance settings
+    max_num_seqs: 16             # Max concurrent requests
+    max_model_len: 8192          # Max context length
+    enable_chunked_prefill: true # Better batching
+    
+    # Platform-specific optimizations
+    # These are applied automatically by 'aico vllm deploy'
