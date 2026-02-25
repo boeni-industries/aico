@@ -89,11 +89,39 @@ class CoreNATSHandlers:
                     "message": "Emotion engine unavailable"
                 }
             
-            # Return empty history for now (emotion engine doesn't expose history API)
-            return {"count": 0, "history": []}
+            # Get emotion state history from engine
+            history = await emotion_engine.get_state_history(limit=limit)
+            self.logger.info(f"🎭 Emotion engine returned {len(history)} states (limit={limit})")
+            
+            # Add metadata about data age and diversity
+            metadata = {}
+            if history:
+                from datetime import datetime, UTC
+                
+                # Check data age
+                try:
+                    last_timestamp = datetime.fromisoformat(history[-1]["timestamp"].replace('Z', '+00:00'))
+                    age_hours = (datetime.now(UTC) - last_timestamp).total_seconds() / 3600
+                    metadata["oldest_record_age_hours"] = age_hours
+                    metadata["newest_record_timestamp"] = history[-1]["timestamp"]
+                    metadata["oldest_record_timestamp"] = history[0]["timestamp"]
+                except Exception as e:
+                    self.logger.warning(f"Could not parse timestamp for metadata: {e}")
+                
+                # Check diversity
+                unique_feelings = len(set(h.get('feeling') for h in history))
+                metadata["unique_feelings_count"] = unique_feelings
+                
+                self.logger.info(f"🎭 Data diversity: {unique_feelings} unique feelings, newest record age: {metadata.get('oldest_record_age_hours', 0):.1f}h")
+            
+            return {
+                "count": len(history), 
+                "history": history,
+                "metadata": metadata
+            }
             
         except Exception as e:
-            self.logger.error(f"Failed to get emotion history: {e}")
+            self.logger.error(f"Failed to get emotion history: {e}", exc_info=True)
             return {
                 "error": "EMOTION_ENGINE_ERROR",
                 "message": str(e)

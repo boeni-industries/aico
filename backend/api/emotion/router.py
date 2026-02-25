@@ -108,19 +108,31 @@ async def get_emotion_history(
         since: Filter to emotions after this timestamp
         feeling: Filter by specific emotion label
     """
-    from backend.api_gateway.core.nats_client import get_gateway_nats_client
-    
-    # Calculate hours from days if provided
-    if days:
-        hours = days * 24
-    elif not hours:
-        hours = 24
-    
-    # Request emotion history from core via NATS
-    nats_client = get_gateway_nats_client()
-    history_data = await nats_client.request_emotion_history(
-        limit=limit,
-        hours=hours
-    )
-    
-    return EmotionHistoryResponse(**history_data)
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        
+        # Calculate hours from days if provided
+        if days:
+            hours = days * 24
+        elif not hours:
+            hours = 24
+        
+        # Request emotion history from core via NATS
+        nats_client = get_gateway_nats_client()
+        history_data = await nats_client.request_emotion_history(
+            limit=limit,
+            hours=hours
+        )
+        
+        return EmotionHistoryResponse(**history_data)
+    except Exception as e:
+        logger.error(f"Error retrieving emotion history via NATS: {e}")
+        # Return JSONResponse directly to avoid double-response issue with encryption middleware
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error_code": "EMOTION_ENGINE_UNAVAILABLE",
+                "message": "Emotion engine unavailable"
+            }
+        )

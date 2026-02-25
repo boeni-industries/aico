@@ -3779,6 +3779,19 @@
             },
             "title": "History",
             "type": "array"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata about data age and quality",
+            "title": "Metadata"
           }
         },
         "required": [

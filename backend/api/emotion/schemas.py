@@ -55,6 +55,7 @@ class EmotionHistoryResponse(BaseModel):
     """Emotional state history response"""
     count: int = Field(..., description="Number of history entries")
     history: List[EmotionHistoryItem] = Field(..., description="List of emotional states")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Optional metadata about data age and quality")
     
     class Config:
         json_schema_extra = {

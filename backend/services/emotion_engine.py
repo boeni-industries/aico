@@ -1028,6 +1028,15 @@ class EmotionEngine(BaseService):
                 # Load history (last N entries)
                 history_rows = await uow.emotion_history.get_recent_for_user('system', limit=self.max_history_size)
                 
+                # Deduplicate by timestamp+feeling (database may have duplicates)
+                seen = set()
+                unique_rows = []
+                for row in history_rows:
+                    key = (row.timestamp, row.feeling)
+                    if key not in seen:
+                        seen.add(key)
+                        unique_rows.append(row)
+                
                 # Convert to chronological order (repository returns desc)
                 self.state_history = [
                     {
@@ -1037,11 +1046,11 @@ class EmotionEngine(BaseService):
                         "arousal": row.arousal,
                         "intensity": row.intensity
                     }
-                    for row in reversed(history_rows)
+                    for row in reversed(unique_rows)
                 ]
                 
                 if self.state_history:
-                    self.logger.info(f"🎭 Loaded {len(self.state_history)} historical emotional states")
+                    self.logger.info(f"🎭 Loaded {len(self.state_history)} historical emotional states ({len(history_rows)} total, {len(unique_rows)} unique)")
                     
         except Exception as e:
             self.logger.error(f"Error loading persisted emotional state: {e}")
