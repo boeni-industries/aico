@@ -1242,6 +1242,7 @@ async def tool_db_influx_get_measurements(
     from influxdb_client import InfluxDBClient
     from aico.security import AICOKeyManager
     import asyncio
+    import os
     import time
     
     # Check cache first
@@ -1265,8 +1266,13 @@ async def tool_db_influx_get_measurements(
         if not bucket:
             raise ValueError("Missing required config: influx.bucket")
         
-        key_manager = AICOKeyManager(config)
-        token = key_manager.get_database_password("influx", username="admin_token")
+        token = os.environ.get("AICO_INFLUX_ADMIN_TOKEN") or ""
+        if not token:
+            key_manager = AICOKeyManager(config)
+            token = key_manager.get_database_password("influx", username="admin_token") or ""
+
+        if not token:
+            raise ValueError("Missing required InfluxDB admin token")
         
         # Offload synchronous InfluxDB queries to background thread
         def _query_measurements():

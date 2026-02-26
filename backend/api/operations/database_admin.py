@@ -43,6 +43,45 @@ from backend.api.operations.chromadb_browser import search_chromadb, delete_chro
 logger = get_logger("backend.api.operations.database_admin")
 
 
+def _resolve_postgres_connection_params() -> tuple[str, int, str, str, str]:
+    from aico.core.config import ConfigurationManager
+    from aico.security.key_manager import AICOKeyManager
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    pg_config = config.get("postgres", {})
+
+    db_user = pg_config.get("user", "postgres")
+    db_password = os.environ.get("AICO_PG_PASSWORD")
+    if not db_password:
+        try:
+            key_manager = AICOKeyManager(config)
+            db_password = key_manager.get_database_password("postgres", username=db_user)
+        except Exception:
+            db_password = None
+
+    if not db_password:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Failed to retrieve schema metadata: PostgreSQL password missing. "
+                "Set AICO_PG_PASSWORD in the gateway container environment."
+            ),
+        )
+
+    host = os.environ.get("AICO_PG_HOST") or pg_config.get("host") or "127.0.0.1"
+    port = int(pg_config.get("port", 5432))
+    database = (
+        os.environ.get("AICO_TEST_DB_NAME")
+        or os.environ.get("AICO_POSTGRES_DATABASE")
+        or pg_config.get("db_name")
+        or pg_config.get("database")
+        or "aico"
+    )
+
+    return host, port, database, db_user, db_password
+
+
 # ============================================================================
 # Database Details - Table/Collection Browser
 # ============================================================================
@@ -51,26 +90,14 @@ async def get_postgresql_details() -> DatabaseDetailsResponse:
     """Get detailed information about PostgreSQL database tables"""
     try:
         import psycopg2
-        from aico.core.config import ConfigurationManager
-        from aico.security.key_manager import AICOKeyManager
-        
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        pg_config = config.get('postgres', {})
-        
-        db_user = pg_config.get('user', 'postgres')
-        # In containers, the system keyring may not be available.
-        # Prefer env var injection via docker-compose and fall back to keyring for local dev.
-        db_password = os.environ.get("AICO_PG_PASSWORD") or ''
-        if not db_password:
-            key_manager = AICOKeyManager(config)
-            db_password = key_manager.get_database_password('postgres', username=db_user) or ''
+
+        host, port, database, db_user, db_password = _resolve_postgres_connection_params()
         
         # Connect to PostgreSQL
         conn = psycopg2.connect(
-            host=pg_config.get('host', '127.0.0.1'),
-            port=pg_config.get('port', 5432),
-            database=pg_config.get('db_name', 'aico'),
+            host=host,
+            port=port,
+            database=database,
             user=db_user,
             password=db_password,
             connect_timeout=5
@@ -277,22 +304,15 @@ async def get_schema_metadata() -> SchemaMetadata:
     """
     try:
         import psycopg2
-        from aico.core.config import ConfigurationManager
-        from aico.security.key_manager import AICOKeyManager
-        
-        config = ConfigurationManager()
-        pg_config = config.get('postgres', {})
-        
-        db_user = pg_config.get('user', 'postgres')
-        key_manager = AICOKeyManager(config)
-        db_password = key_manager.get_database_password('postgres', db_user) or ''
+
+        host, port, database, db_user, db_password = _resolve_postgres_connection_params()
         
         # Connect to PostgreSQL
         conn = await asyncio.to_thread(
             psycopg2.connect,
-            host=pg_config.get('host', '127.0.0.1'),
-            port=pg_config.get('port', 5432),
-            database=pg_config.get('db_name', 'aico'),
+            host=host,
+            port=port,
+            database=database,
             user=db_user,
             password=db_password,
             connect_timeout=5
@@ -421,21 +441,14 @@ async def execute_sql_query(
         
         # Connect to PostgreSQL and execute query
         import psycopg2
-        from aico.core.config import ConfigurationManager
-        from aico.security.key_manager import AICOKeyManager
-        
-        config = ConfigurationManager()
-        pg_config = config.get('postgres', {})
-        
-        db_user = pg_config.get('user', 'postgres')
-        key_manager = AICOKeyManager(config)
-        db_password = key_manager.get_database_password('postgres', db_user) or ''
+
+        host, port, database, db_user, db_password = _resolve_postgres_connection_params()
         
         conn = await asyncio.to_thread(
             psycopg2.connect,
-            host=pg_config.get('host', '127.0.0.1'),
-            port=pg_config.get('port', 5432),
-            database=pg_config.get('db_name', 'aico'),
+            host=host,
+            port=port,
+            database=database,
             user=db_user,
             password=db_password,
             connect_timeout=5

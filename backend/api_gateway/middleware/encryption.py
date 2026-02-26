@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional, Callable, Tuple
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Send, Scope
+import hashlib
 
 from aico.core.logging import get_logger
 from aico.security.key_manager import AICOKeyManager
@@ -745,7 +746,12 @@ class EncryptionMiddleware:
         # In production, this could be enhanced with client certificates
         client_ip = request.client.host
         user_agent = request.headers.get("user-agent", "unknown")
-        return f"{client_ip}:{hash(user_agent)}"
+        # IMPORTANT: Do not use Python's built-in hash() here.
+        # hash() is salted per-process (PYTHONHASHSEED) and is not stable across restarts.
+        # An unstable client_id breaks encryption session lookup and causes downstream
+        # 401s / handshake loops / decrypt failures.
+        ua_digest = hashlib.sha256(user_agent.encode("utf-8")).hexdigest()
+        return f"{client_ip}:{ua_digest}"
     
     async def _handle_handshake(self, request: Request) -> Response:
         """Handle encryption handshake"""

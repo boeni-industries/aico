@@ -78,16 +78,25 @@ async def get_database_stats(
             from aico.security.key_manager import AICOKeyManager
             
             config = ConfigurationManager()
+            config.initialize(lightweight=True)
             pg_config = config.get('postgres', {})
             
-            db_host = pg_config.get('host', '127.0.0.1')
+            db_host = os.environ.get("AICO_PG_HOST") or pg_config.get('host', '127.0.0.1')
             db_port = pg_config.get('port', 5432)
-            db_name = pg_config.get('db_name', 'aico')
+            db_name = (
+                os.environ.get("AICO_TEST_DB_NAME")
+                or os.environ.get("AICO_POSTGRES_DATABASE")
+                or pg_config.get('db_name')
+                or pg_config.get('database')
+                or 'aico'
+            )
             db_user = pg_config.get('user', 'postgres')
             
             # Get password from keyring using AICOKeyManager
-            key_manager = AICOKeyManager(config)
-            db_password = key_manager.get_database_password('postgres', db_user) or ''
+            db_password = os.environ.get("AICO_PG_PASSWORD") or ''
+            if not db_password:
+                key_manager = AICOKeyManager(config)
+                db_password = key_manager.get_database_password('postgres', username=db_user) or ''
             
             # Initialize metrics
             db_size = 0
@@ -95,6 +104,7 @@ async def get_database_stats(
             connection_count = 0
             wal_size = 0
             status = "healthy"
+            error_details = None
             
             try:
                 # Connect to PostgreSQL
@@ -138,9 +148,11 @@ async def get_database_stats(
             except psycopg2.OperationalError as e:
                 logger.error(f"Failed to connect to PostgreSQL: {e}")
                 status = "critical"
+                error_details = str(e)
             except Exception as e:
                 logger.error(f"Failed to query PostgreSQL metrics: {e}")
                 status = "degraded"
+                error_details = str(e)
             
             databases.append(DatabaseMetrics(
                 name="PostgreSQL",
@@ -148,6 +160,7 @@ async def get_database_stats(
                 size_bytes=db_size,
                 status=status,
                 location=f"{db_host}:{db_port}/{db_name}",
+                error_details=error_details,
                 table_count=table_count,
                 connection_count=connection_count,
                 wal_size_bytes=wal_size,
@@ -163,6 +176,7 @@ async def get_database_stats(
                 size_bytes=0,
                 status="critical",
                 location="unknown",
+                error_details=f"Critical error: {str(e)}",
             ))
         
         # ChromaDB

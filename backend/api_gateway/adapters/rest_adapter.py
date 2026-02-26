@@ -104,7 +104,15 @@ class RESTAdapter:
     def _setup_cors(self):
         """Configure CORS middleware"""
         # CORS is always enabled for Studio React app - following AICO security paradigm
-        cors_origins = self.config.get("cors_origins", ["http://localhost:3000", "http://127.0.0.1:3000"])
+        cors_origins = self.config.get(
+            "cors_origins",
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3002",
+                "http://127.0.0.1:3002",
+            ],
+        )
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,

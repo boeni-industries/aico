@@ -913,9 +913,18 @@ class BackendLifecycleManager:
 
         # 1. CORS middleware (outermost)
         from fastapi.middleware.cors import CORSMiddleware
+        cors_origins = self.config.get(
+            "api_gateway.cors_origins",
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3002",
+                "http://127.0.0.1:3002",
+            ],
+        )
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],  # Configure appropriately for production
+            allow_origins=cors_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
