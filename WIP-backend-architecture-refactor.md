@@ -5,7 +5,7 @@
 - [x] Introduce standalone Gateway service (authn/authz, rate limits, idempotency, WebSockets)
 - [x] Publish frontend-independent External API Contract (OpenAPI + WebSocket spec + examples)
 - [x] Centralize identity + scoping: make `tenant_id`/`user_id` mandatory end-to-end; enforce authz on every request/subscription
-- [ ] Postgres source of truth for conversations: add tables + catch-up API
+- [x] Postgres source of truth for conversations: add tables + catch-up API
 - [ ] Outbox for durable publication: stop publish-then-store for correctness-critical flows
 - [ ] Enable JetStream for durable flows; keep streaming chunks ephemeral; add replay/recovery tests
 - [x] **Migrate fully to NATS: remove ZMQ entirely without keeping any legacy or fallback code**

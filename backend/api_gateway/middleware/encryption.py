@@ -732,6 +732,12 @@ class EncryptionMiddleware:
         # NEVER skip encryption for admin endpoints - they contain sensitive data
         if path.startswith("/api/v1/admin/"):
             return False
+
+        # Studio operations endpoints use standard HTTP (JWT) and are allowed to run
+        # without transport encryption. This keeps browser fetches working in Studio
+        # without requiring an encryption handshake.
+        if path.startswith("/api/v1/operations/"):
+            return True
             
         # All other /api/v1/ endpoints require encryption by default
         if path.startswith("/api/v1/"):

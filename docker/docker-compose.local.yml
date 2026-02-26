@@ -51,10 +51,13 @@ services:
       AICO_API_GATEWAY_JWT_SECRET: ${AICO_API_GATEWAY_JWT_SECRET:-}
       AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
       AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
+      AICO_HOST_RUNTIME_DIR: /host_runtime/aico
     volumes:
       - aico-gateway-state:/var/lib/aico
       - aico-gateway-cache:/var/cache/aico
       - ./.env:/app/docker/.env
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/Library/Application Support/aico:/host_runtime/aico:ro
     tmpfs:
       - /run/aico
     ports:
@@ -94,10 +97,13 @@ services:
       AICO_API_GATEWAY_JWT_SECRET: ${AICO_API_GATEWAY_JWT_SECRET:-}
       AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
       AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
+      AICO_HOST_RUNTIME_DIR: /host_runtime/aico
     volumes:
       - aico-core-state:/var/lib/aico
       - aico-core-cache:/var/cache/aico
       - ./.env:/app/docker/.env
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/Library/Application Support/aico:/host_runtime/aico:ro
     tmpfs:
       - /run/aico
     depends_on:

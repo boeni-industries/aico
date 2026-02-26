@@ -64,6 +64,14 @@ def _backup_root() -> Path:
     return root
 
 
+def _get_host_runtime_dir() -> Optional[Path]:
+    value = os.environ.get("AICO_HOST_RUNTIME_DIR")
+    if not value:
+        return None
+    p = Path(value)
+    return p if p.exists() else None
+
+
 def _registry_path() -> Path:
     return _backup_root() / "backup_sets_registry.json"
 
@@ -113,8 +121,19 @@ def _run_cmd(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
+def _run_cmd_with_env(cmd: list[str], env: Optional[dict[str, str]] = None) -> subprocess.CompletedProcess:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    return subprocess.run(cmd, capture_output=True, text=True, env=merged_env)
+
+
 async def _run_cmd_async(cmd: list[str]) -> subprocess.CompletedProcess:
     return await asyncio.to_thread(_run_cmd, cmd)
+
+
+async def _run_cmd_async_with_env(cmd: list[str], env: Optional[dict[str, str]] = None) -> subprocess.CompletedProcess:
+    return await asyncio.to_thread(_run_cmd_with_env, cmd, env)
 
 
 def _get_pg_connection_info() -> tuple[str, str, str]:
@@ -139,6 +158,13 @@ def _get_pg_connection_info() -> tuple[str, str, str]:
         )
 
     return db_name, db_user, db_password
+
+
+def _get_pg_host_port() -> tuple[str, str]:
+    # In docker-compose.local.yml the postgres service is reachable via the service name.
+    host = os.environ.get("AICO_PG_HOST") or "postgres"
+    port = os.environ.get("AICO_PG_PORT") or "5432"
+    return host, port
 
 
 def _get_influx_connection_info() -> tuple[str, str, str, str]:
@@ -206,33 +232,33 @@ async def _docker_cp_to(container: str, host_path: Path, container_path: str) ->
 async def _postgres_dump(backup_dir: Path) -> dict:
     db_name, db_user, db_password = _get_pg_connection_info()
 
-    container_tmp = f"/tmp/aico_pg_backup_{int(time.time())}.dump"
+    host, port = _get_pg_host_port()
     host_dest = backup_dir / "postgres" / "pgdump.dump"
     host_dest.parent.mkdir(parents=True, exist_ok=True)
 
-    await _docker_exec(
-        _POSTGRES_PRIMARY_CONTAINER,
-        [
-            "pg_dump",
-            "-Fc",
-            "-Z",
-            "6",
-            "-f",
-            container_tmp,
-            "-U",
-            db_user,
-            "-d",
-            db_name,
-            "-h",
-            "127.0.0.1",
-            "-p",
-            "5432",
-        ],
-        env={"PGPASSWORD": db_password},
-    )
+    cmd = [
+        "pg_dump",
+        "-Fc",
+        "-Z",
+        "6",
+        "-f",
+        str(host_dest),
+        "-U",
+        db_user,
+        "-d",
+        db_name,
+        "-h",
+        host,
+        "-p",
+        str(port),
+    ]
 
-    await _docker_cp_from(_POSTGRES_PRIMARY_CONTAINER, container_tmp, host_dest)
-    await _docker_exec(_POSTGRES_PRIMARY_CONTAINER, ["rm", "-f", container_tmp])
+    result = await _run_cmd_async_with_env(cmd, env={"PGPASSWORD": db_password})
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Command failed: {' '.join(cmd)}\n{(result.stderr or '').strip()}",
+        )
 
     return {
         "path": str(host_dest.relative_to(backup_dir)),
@@ -243,56 +269,66 @@ async def _postgres_dump(backup_dir: Path) -> dict:
 
 
 async def _postgres_restore_to(container: str, dump_path: Path) -> None:
+    # Dockerized setup: restore via TCP to the target Postgres service.
     db_name, db_user, db_password = _get_pg_connection_info()
 
-    container_tmp = "/tmp/aico_restore.dump"
-    await _docker_cp_to(container, dump_path, container_tmp)
+    # `container` parameter historically was a container name; keep the signature but
+    # interpret it as a host selector.
+    host = "postgres" if container == _POSTGRES_PRIMARY_CONTAINER else "postgres-shadow"
+    port = "5432"
 
-    await _docker_exec(
-        container,
-        [
-            "pg_restore",
-            "--clean",
-            "--if-exists",
-            "--no-owner",
-            "--no-privileges",
-            "-U",
-            db_user,
-            "-d",
-            db_name,
-            "-h",
-            "127.0.0.1",
-            "-p",
-            "5432",
-            container_tmp,
-        ],
-        env={"PGPASSWORD": db_password},
-    )
+    cmd = [
+        "pg_restore",
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-privileges",
+        "-U",
+        db_user,
+        "-d",
+        db_name,
+        "-h",
+        host,
+        "-p",
+        port,
+        str(dump_path),
+    ]
 
-    await _docker_exec(container, ["rm", "-f", container_tmp])
+    result = await _run_cmd_async_with_env(cmd, env={"PGPASSWORD": db_password})
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Command failed: {' '.join(cmd)}\n{(result.stderr or '').strip()}",
+        )
 
 
 async def _verify_postgres_container(container: str) -> None:
     db_name, db_user, db_password = _get_pg_connection_info()
 
-    result = await _docker_exec(
-        container,
-        [
-            "psql",
-            "-U",
-            db_user,
-            "-d",
-            db_name,
-            "-h",
-            "127.0.0.1",
-            "-p",
-            "5432",
-            "-t",
-            "-c",
-            "SELECT 1;",
-        ],
-        env={"PGPASSWORD": db_password},
-    )
+    host = "postgres" if container == _POSTGRES_PRIMARY_CONTAINER else "postgres-shadow"
+    port = "5432"
+
+    cmd = [
+        "psql",
+        "-U",
+        db_user,
+        "-d",
+        db_name,
+        "-h",
+        host,
+        "-p",
+        port,
+        "-t",
+        "-c",
+        "SELECT 1;",
+    ]
+
+    result = await _run_cmd_async_with_env(cmd, env={"PGPASSWORD": db_password})
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Command failed: {' '.join(cmd)}\n{(result.stderr or '').strip()}",
+        )
 
     if "1" not in (result.stdout or ""):
         raise HTTPException(
@@ -356,7 +392,15 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
         try:
             manifest["artifacts"]["postgres"] = await _postgres_dump(backup_dir)
 
-            chroma_src = AICOPaths.get_semantic_memory_path()
+            host_runtime = _get_host_runtime_dir()
+
+            # In dockerized mode, Chroma/LMDB may still live on the host runtime directory.
+            # Prefer that mounted location when present so backups reflect the actual live data.
+            chroma_src = (
+                (host_runtime / "data" / "memory" / "semantic")
+                if host_runtime is not None
+                else AICOPaths.get_semantic_memory_path()
+            )
             chroma_tar = backup_dir / "chromadb" / "chromadb.tar.gz"
             chroma_meta = await _backup_directory_to_tar(chroma_src, chroma_tar)
             manifest["artifacts"]["chromadb"] = {
@@ -365,7 +409,11 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
                 "size_bytes": chroma_meta["size_bytes"],
             }
 
-            lmdb_src = AICOPaths.get_working_memory_path()
+            lmdb_src = (
+                (host_runtime / "data" / "memory" / "working")
+                if host_runtime is not None
+                else AICOPaths.get_working_memory_path()
+            )
             lmdb_tar = backup_dir / "lmdb" / "lmdb.tar.gz"
             lmdb_meta = await _backup_directory_to_tar(lmdb_src, lmdb_tar)
             manifest["artifacts"]["lmdb"] = {
@@ -375,26 +423,10 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
             }
 
             if request.include_influx:
-                url, org, bucket, token = _get_influx_connection_info()
-                container_tmp_dir = f"/tmp/aico_influx_backup_{int(time.time())}"
-
-                await _docker_exec(
-                    _INFLUX_CONTAINER,
-                    [
-                        "sh",
-                        "-lc",
-                        f"rm -rf {container_tmp_dir} && mkdir -p {container_tmp_dir} && influx backup {container_tmp_dir} --org {org} --host http://127.0.0.1:8086 --token $INFLUX_TOKEN",
-                    ],
-                    env={"INFLUX_TOKEN": token},
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="InfluxDB backup is not supported in the dockerized setup yet",
                 )
-
-                influx_host_dest = backup_dir / "influxdb" / "influx_backup"
-                await _docker_cp_from(_INFLUX_CONTAINER, container_tmp_dir, influx_host_dest)
-                await _docker_exec(_INFLUX_CONTAINER, ["rm", "-rf", container_tmp_dir])
-
-                manifest["artifacts"]["influxdb"] = {
-                    "path": str(influx_host_dest.relative_to(backup_dir)),
-                }
 
             manifest["completed_at"] = _utc_now_iso()
             (backup_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
