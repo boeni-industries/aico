@@ -73,6 +73,7 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("get-key", "Retrieve value of a specific key from keyring"),
             ("pg-set", "Store Postgres password securely via AICOKeyManager"),
             ("pg-env", "Export Postgres env vars for CI/CD and docker-compose"),
+            ("env-sync", "Sync credentials from an env file (e.g. docker/.env) into the keyring"),
             ("influx-set", "Store InfluxDB API token securely via AICOKeyManager"),
             ("influx-env", "Export InfluxDB env vars for CI/CD and docker-compose"),
             ("user-create", "Create a new user with optional PIN authentication"),
@@ -102,6 +103,7 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             "aico security get-key influx_admin_token_password --show",
             "aico security pg-set",
             "aico security influx-set",
+            "aico security env-sync --env-file docker/.env",
             "aico security pg-env --ci --format env --include-secrets",
             "aico security role-bootstrap <user-uuid>",
             "aico security role-assign <user-uuid> admin",
@@ -391,6 +393,76 @@ def pg_set():
 
     console.print("✅ [green]Postgres password stored securely[/green]")
     console.print("🔐 Use 'aico security pg-env' to export env vars for CI/CD or docker-compose.")
+
+
+@app.command("env-sync", help="Sync credentials from an env file (e.g. docker/.env) into the keyring")
+@sensitive("stores credentials in system keyring")
+def env_sync(
+    env_file: str = typer.Option("docker/.env", "--env-file", "-f", help="Path to env file (default: docker/.env)"),
+    include_jwt: bool = typer.Option(False, "--include-jwt", help="Also sync AICO_API_GATEWAY_JWT_SECRET into the keyring"),
+):
+    """Sync common AICO credentials from an env file into the keyring.
+
+    This is meant to keep docker-compose credentials and host-side CLI credentials in sync.
+    """
+
+    import keyring
+    from pathlib import Path
+
+    console = Console()
+    key_manager = _get_key_manager()
+
+    env_path = Path(env_file)
+    if not env_path.exists():
+        console.print(f"❌ [red]Env file not found: {env_file}[/red]")
+        raise typer.Exit(1)
+
+    raw = env_path.read_text(encoding="utf-8")
+    env_values: dict[str, str] = {}
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        k, v = stripped.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip("\"").strip("'")
+        if k:
+            env_values[k] = v
+
+    synced = 0
+
+    pg_cfg = _load_postgres_config()
+    pg_user = str(pg_cfg.get("user", "postgres"))
+    pg_password = env_values.get("AICO_PG_PASSWORD")
+    if pg_password and pg_password.strip():
+        key_manager.store_database_password(password=pg_password, database_type="postgres", username=pg_user)
+        synced += 1
+    else:
+        console.print(f"⚠️ [yellow]AICO_PG_PASSWORD missing/empty in {env_file} (skipping Postgres)[/yellow]")
+
+    influx_admin_password = env_values.get("AICO_INFLUX_ADMIN_PASSWORD")
+    if influx_admin_password and influx_admin_password.strip():
+        key_manager.store_database_password(password=influx_admin_password, database_type="influx", username="admin_password")
+        synced += 1
+    else:
+        console.print(f"⚠️ [yellow]AICO_INFLUX_ADMIN_PASSWORD missing/empty in {env_file} (skipping)[/yellow]")
+
+    influx_admin_token = env_values.get("AICO_INFLUX_ADMIN_TOKEN")
+    if influx_admin_token and influx_admin_token.strip():
+        key_manager.store_database_password(password=influx_admin_token, database_type="influx", username="admin_token")
+        synced += 1
+    else:
+        console.print(f"⚠️ [yellow]AICO_INFLUX_ADMIN_TOKEN missing/empty in {env_file} (skipping)[/yellow]")
+
+    if include_jwt:
+        jwt_secret = env_values.get("AICO_API_GATEWAY_JWT_SECRET")
+        if jwt_secret and jwt_secret.strip():
+            keyring.set_password(key_manager.service_name, "api_gateway_jwt_secret", jwt_secret)
+            synced += 1
+        else:
+            console.print(f"⚠️ [yellow]AICO_API_GATEWAY_JWT_SECRET missing/empty in {env_file} (skipping JWT)[/yellow]")
+
+    console.print(f"✅ [green]Synced {synced} credential(s) from {env_file} into the keyring[/green]")
 
 
 @app.command("pg-env", help="Export Postgres env vars for CI/CD and docker-compose")

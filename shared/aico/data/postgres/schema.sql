@@ -776,6 +776,86 @@ CREATE INDEX IF NOT EXISTS idx_consents_type ON "consent_user_consents"(consent_
 CREATE INDEX IF NOT EXISTS idx_consents_user ON "consent_user_consents"(user_id);
 
 -- ==========================================================================
+-- Tenants (deployment-level data boundary)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS tenants (
+                tenant_id TEXT PRIMARY KEY,
+                tenant_type TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                primary_language TEXT,
+                metadata_json JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
+
+CREATE TABLE IF NOT EXISTS tenant_memberships (
+                membership_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'member',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_tenant_memberships_tenant_user UNIQUE (tenant_id, user_id)
+            );
+
+CREATE INDEX IF NOT EXISTS idx_tenant_memberships_tenant ON tenant_memberships(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_memberships_user ON tenant_memberships(user_id);
+
+-- ==========================================================================
+-- Conversations (source of truth)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS conversations (
+                tenant_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                agent_id TEXT,
+                title TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (tenant_id, conversation_id)
+            );
+
+CREATE INDEX IF NOT EXISTS idx_conversations_user_time
+    ON conversations (tenant_id, user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_status_time
+    ON conversations (tenant_id, status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+                message_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                agent_id TEXT,
+                actor_type TEXT NOT NULL,
+                actor_id TEXT,
+                message_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                metadata_json JSONB,
+                correlation_id TEXT,
+                request_id TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_conversation_messages_request UNIQUE (tenant_id, user_id, request_id, message_type)
+            );
+
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_time
+    ON conversation_messages (tenant_id, conversation_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_user_time
+    ON conversation_messages (tenant_id, user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_correlation
+    ON conversation_messages (tenant_id, correlation_id)
+    WHERE correlation_id IS NOT NULL;
+
+-- ==========================================================================
 -- Unified Interaction Request System
 -- ==========================================================================
 

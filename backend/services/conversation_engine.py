@@ -269,35 +269,71 @@ class ConversationEngine(BaseService):
             # Unpack the ConversationMessage from the AicoMessage envelope
             conv_message = ConversationMessage()
             message.any_payload.Unpack(conv_message)
+
+            tenant_id = None
+            request_id = None
+            try:
+                tenant_id = message.metadata.attributes.get("tenant_id")
+                request_id = message.metadata.attributes.get("request_id")
+            except Exception:
+                tenant_id = None
+                request_id = None
             
             # Extract user information from the message
             # Use user_id field (actual user UUID), not source (which is just "conversation_api")
             user_id = conv_message.user_id if conv_message.user_id else conv_message.source
             conversation_id = conv_message.message.conversation_id
             
-            self.logger.debug(f"[DEBUG] ConversationEngine: Received user input.", extra={
-                "conversation_id": conversation_id,
-                "user_id": user_id,
-                "message_type": conv_message.message.type
-            })
+            self.logger.debug(
+                "[DEBUG] ConversationEngine: Received user input.",
+                extra={
+                    "conversation_id": conversation_id,
+                    "user_id": user_id,
+                    "message_type": conv_message.message.type,
+                },
+            )
             
             # Get user context (simplified)
             user_context = await self._get_or_create_user_context(user_id)
-            
+
+            # Persist conversation + user message (best effort)
+            try:
+                if not tenant_id:
+                    raise ValueError("Missing tenant_id in envelope metadata")
+                if not request_id:
+                    raise ValueError("Missing request_id in envelope metadata")
+                await self._persist_user_message(
+                    tenant_id=tenant_id,
+                    request_id=request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    content=conv_message.message.text,
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to persist user message: {e}")
+
             # Generate response using semantic memory approach
             await self._generate_response(user_context, conv_message)
-            
+
+            # Store tenant/request ids for response persistence
+            try:
+                req_key = conv_message.message_id if conv_message.message_id else None
+                if req_key and req_key in self.pending_responses:
+                    self.pending_responses[req_key]["tenant_id"] = tenant_id
+                    self.pending_responses[req_key]["http_request_id"] = request_id
+            except Exception:
+                pass
+
             # Phase 6: Async goal extraction (fire-and-forget, no blocking)
             if self.enable_agency and self.agency_plugin:
                 try:
                     message_text = conv_message.message.text
-                    import asyncio
                     asyncio.create_task(
                         self._extract_user_goal_async(
                             user_id=user_id,
                             message_id=conv_message.message_id,
                             message_text=message_text,
-                            conversation_id=conversation_id
+                            conversation_id=conversation_id,
                         )
                     )
                 except Exception as task_error:
@@ -978,8 +1014,27 @@ class ConversationEngine(BaseService):
             # Extract user info from the original message
             user_id = user_message.user_id
             conversation_id = user_message.message.conversation_id
+
+            tenant_id = request_data.get("tenant_id")
+            http_request_id = request_data.get("http_request_id")
             
             self.logger.info(f"🔍 [FINALIZE] user_id={user_id}, conversation_id={conversation_id}")
+
+            # Persist assistant message (best effort; do not block delivery)
+            try:
+                if not tenant_id:
+                    raise ValueError("Missing tenant_id for request")
+                if not http_request_id:
+                    raise ValueError("Missing http_request_id for request")
+                await self._persist_assistant_message(
+                    tenant_id=tenant_id,
+                    request_id=http_request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    content=final_content,
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to persist assistant message: {e}")
             
             # NOTE: AI response storage happens in streaming handler (line ~895)
             # to avoid duplicate storage
@@ -1054,6 +1109,84 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
+
+    async def _persist_user_message(
+        self,
+        *,
+        tenant_id: str,
+        request_id: str,
+        user_id: str,
+        conversation_id: str,
+        content: str,
+    ) -> None:
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.data.conversation.models import ConversationMessage
+
+        now = datetime.now(UTC)
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            await uow.conversations.touch(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                status="active",
+            )
+            await uow.conversation_messages.create_idempotent(
+                ConversationMessage(
+                    message_id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    actor_type="user",
+                    actor_id=user_id,
+                    message_type="user_input",
+                    content=content,
+                    correlation_id=request_id,
+                    request_id=request_id,
+                    created_at=now,
+                )
+            )
+
+    async def _persist_assistant_message(
+        self,
+        *,
+        tenant_id: str,
+        request_id: str,
+        user_id: str,
+        conversation_id: str,
+        content: str,
+    ) -> None:
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.data.conversation.models import ConversationMessage
+
+        now = datetime.now(UTC)
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            await uow.conversations.touch(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                agent_id=getattr(self, "character_name", None),
+                status="active",
+            )
+            await uow.conversation_messages.create_idempotent(
+                ConversationMessage(
+                    message_id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    agent_id=getattr(self, "character_name", None),
+                    actor_type="agent",
+                    actor_id=getattr(self, "character_name", None),
+                    message_type="ai_response",
+                    content=content,
+                    correlation_id=request_id,
+                    request_id=request_id,
+                    created_at=now,
+                )
+            )
     
     def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None, user_message: Optional[ConversationMessage] = None) -> str:
         """Build system prompt with memory context and optional skill template

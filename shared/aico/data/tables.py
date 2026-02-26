@@ -9,7 +9,8 @@ from sqlalchemy import (
     Table, Column, MetaData,
     String, Integer, BigInteger, Boolean, Float, Text,
     ForeignKey, Index, JSON, LargeBinary, PrimaryKeyConstraint, UniqueConstraint,
-    func
+    func,
+    text
 )
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 
@@ -956,13 +957,44 @@ consent_audit_log = Table(
     Column('audit_id', String, primary_key=True),
     Column('consent_id', String, nullable=False),
     Column('user_id', String, nullable=False),
-    Column('action', String, nullable=False),
-    Column('reason', String),
-    Column('metadata', String),
+    Column('action_type', String, nullable=False),
+    Column('actor', String, nullable=False),
+    Column('details', String),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
     Index('idx_consent_audit_consent', 'consent_id'),
-    Index('idx_consent_audit_created', 'created_at'),
     Index('idx_consent_audit_user', 'user_id'),
+    Index('idx_consent_audit_time', 'created_at'),
+)
+
+# ============================================================================
+# Tenant Tables
+# ============================================================================
+
+tenants = Table(
+    'tenants',
+    metadata,
+    Column('tenant_id', String, primary_key=True),
+    Column('tenant_type', String, nullable=False),
+    Column('display_name', String, nullable=False),
+    Column('status', String, nullable=False, default='active'),
+    Column('primary_language', String),
+    Column('metadata_json', JSONB),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('updated_at', TIMESTAMP(timezone=True), nullable=False),
+    Index('idx_tenants_status', 'status'),
+)
+
+tenant_memberships = Table(
+    'tenant_memberships',
+    metadata,
+    Column('membership_id', String, primary_key=True),
+    Column('tenant_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('role', String, nullable=False, default='member'),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    UniqueConstraint('tenant_id', 'user_id', name='uq_tenant_memberships_tenant_user'),
+    Index('idx_tenant_memberships_tenant', 'tenant_id'),
+    Index('idx_tenant_memberships_user', 'user_id'),
 )
 
 # ============================================================================
@@ -1079,6 +1111,49 @@ scheduler_task_executions = Table(
 # ============================================================================
 # Conversation Tables
 # ============================================================================
+
+conversations = Table(
+    'conversations',
+    metadata,
+    Column('tenant_id', String, nullable=False),
+    Column('conversation_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('agent_id', String),
+    Column('title', String),
+    Column('status', String, nullable=False, default='active'),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('updated_at', TIMESTAMP(timezone=True), nullable=False),
+    PrimaryKeyConstraint('tenant_id', 'conversation_id', name='pk_conversations'),
+    Index('idx_conversations_user_time', 'tenant_id', 'user_id', 'updated_at'),
+    Index('idx_conversations_status_time', 'tenant_id', 'status', 'updated_at'),
+)
+
+conversation_messages = Table(
+    'conversation_messages',
+    metadata,
+    Column('message_id', String, primary_key=True),
+    Column('tenant_id', String, nullable=False),
+    Column('conversation_id', String, nullable=False),
+    Column('user_id', String, nullable=False),
+    Column('agent_id', String),
+    Column('actor_type', String, nullable=False),
+    Column('actor_id', String),
+    Column('message_type', String, nullable=False),
+    Column('content', String, nullable=False),
+    Column('metadata_json', JSONB),
+    Column('correlation_id', String),
+    Column('request_id', String, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    Index('idx_conversation_messages_conversation_time', 'tenant_id', 'conversation_id', 'created_at'),
+    Index('idx_conversation_messages_user_time', 'tenant_id', 'user_id', 'created_at'),
+    Index(
+        'idx_conversation_messages_correlation',
+        'tenant_id',
+        'correlation_id',
+        postgresql_where=text('correlation_id IS NOT NULL'),
+    ),
+    UniqueConstraint('tenant_id', 'user_id', 'request_id', 'message_type', name='uq_conversation_messages_request'),
+)
 
 interaction_requests = Table(
     'interaction_requests',
@@ -1251,6 +1326,8 @@ __all__ = [
     'consent_user_consents',
     'consent_records',
     'consent_audit_log',
+    'tenants',
+    'tenant_memberships',
     'ethics_decisions_cache',
     'ethics_gate_audit',
     'ethics_policy_rules',
@@ -1261,6 +1338,8 @@ __all__ = [
     'workflow_stages',
     'system_event_metrics',
     'system_event_replay_sessions',
+    'conversations',
+    'conversation_messages',
     'interaction_requests',
     'interaction_events',
     'emotion_state',

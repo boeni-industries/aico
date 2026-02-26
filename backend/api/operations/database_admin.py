@@ -55,11 +55,16 @@ async def get_postgresql_details() -> DatabaseDetailsResponse:
         from aico.security.key_manager import AICOKeyManager
         
         config = ConfigurationManager()
+        config.initialize(lightweight=True)
         pg_config = config.get('postgres', {})
         
         db_user = pg_config.get('user', 'postgres')
-        key_manager = AICOKeyManager(config)
-        db_password = key_manager.get_database_password('postgres', db_user) or ''
+        # In containers, the system keyring may not be available.
+        # Prefer env var injection via docker-compose and fall back to keyring for local dev.
+        db_password = os.environ.get("AICO_PG_PASSWORD") or ''
+        if not db_password:
+            key_manager = AICOKeyManager(config)
+            db_password = key_manager.get_database_password('postgres', username=db_user) or ''
         
         # Connect to PostgreSQL
         conn = psycopg2.connect(

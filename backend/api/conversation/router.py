@@ -39,6 +39,9 @@ from backend.api.conversation.exceptions import (
     ConversationTimeoutException
 )
 
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
+
 
 _conversation_config = None
 
@@ -79,6 +82,7 @@ async def send_message_with_auto_thread(
     try:
         logger.debug(f"🔍 [API_DEBUG] Received request with stream parameter: '{stream}' (type: {type(stream)})")
         user_id = current_user['user_uuid']
+        tenant_id = current_user["tenant_id"]
         
         # INDUSTRY STANDARD: conversation_id pattern (user_id + session)
         # This follows LangGraph, Azure AI Foundry, and OpenAI Assistant API patterns
@@ -101,6 +105,8 @@ async def send_message_with_auto_thread(
         
         message_id = str(uuid.uuid4())
         timestamp = datetime.now(UTC)
+
+        request_id = raw_request.headers.get("Idempotency-Key") or message_id
         
         # Memory processing now handled by conversation engine - no duplicate background processing needed
         logger.debug(f"Memory processing will be handled by conversation engine for {conversation_id}")
@@ -125,7 +131,17 @@ async def send_message_with_auto_thread(
         conv_message.message.turn_number = 1  # TODO: Track actual turn numbers
         
         # Publish to conversation input topic (ConversationEngine will handle)
-        await bus_client.publish(AICOTopics.CONVERSATION_USER_INPUT, conv_message)
+        await bus_client.publish(
+            AICOTopics.CONVERSATION_USER_INPUT,
+            conv_message,
+            correlation_id=message_id,
+            attributes={
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+            },
+        )
         
         # Wait for ConversationEngine to process and get the AI response synchronously
         import asyncio
@@ -373,7 +389,8 @@ async def get_my_messages(
     page_size: int = Query(50, ge=1, le=100, description="Messages per page"),
     conversation_id: Optional[str] = Query(None, description="Filter by conversation ID"),
     since: Optional[datetime] = Query(None, description="Show messages after this timestamp"),
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
 ):
     """
     Get my message history (user-scoped)
@@ -382,71 +399,46 @@ async def get_my_messages(
     Messages are retrieved from working memory (LMDB) with 24-hour retention.
     """
     try:
-        user_id = current_user['user_uuid']
-        
-        # Get memory manager from AI registry
-        from aico.ai import ai_registry
-        memory_manager = ai_registry.get("memory")
-        
-        if not memory_manager:
-            logger.warning("Memory manager not available")
-            return MessageHistoryResponse(
-                success=True,
-                messages=[],
-                conversation_id=conversation_id or f"user_{user_id}",
-                total_count=0,
-                page=page,
-                page_size=page_size
-            )
-        
-        # Retrieve messages from working memory
+        user_id = current_user["user_uuid"]
+        tenant_id = current_user["tenant_id"]
+
+        limit = page_size
+        offset = (page - 1) * page_size
+
+        filters: dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+        }
         if conversation_id:
-            # Get messages for specific conversation
-            raw_messages = await memory_manager._working_store.retrieve_conversation_history(
-                conversation_id=conversation_id,
-                limit=page_size * page  # Get all messages up to current page
-            )
-        else:
-            # Get all messages for user across conversations
-            raw_messages = await memory_manager._working_store.retrieve_user_history(
-                user_id=user_id,
-                limit=page_size * page
-            )
-        
-        # Filter by timestamp if specified
-        if since:
-            raw_messages = [
-                msg for msg in raw_messages
-                if datetime.fromisoformat(msg.get('timestamp', '').replace('Z', '')) >= since
-            ]
-        
-        # Apply pagination
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_messages = raw_messages[start_idx:end_idx]
-        
-        # Format messages for frontend
+            filters["conversation_id"] = conversation_id
+        if since is not None:
+            filters["created_after"] = since
+
+        # Retrieve messages from Postgres source of truth
+        messages = await uow.conversation_messages.list(filters=filters, limit=limit, offset=offset)
+        total_count = await uow.conversation_messages.count(filters=filters)
+
         formatted_messages = []
-        for msg in paginated_messages:
+        for msg in messages:
             formatted_messages.append({
-                "id": msg.get("message_id", f"{msg.get('conversation_id')}_{msg.get('timestamp')}"),
-                "conversation_id": msg.get("conversation_id"),
-                "user_id": msg.get("user_id"),
-                "content": msg.get("content", ""),
-                "role": msg.get("role", "user"),
-                "timestamp": msg.get("timestamp"),
-                "message_type": msg.get("message_type", "text")
+                "id": msg.message_id,
+                "conversation_id": msg.conversation_id,
+                "user_id": msg.user_id,
+                "content": msg.content,
+                "role": "assistant" if msg.actor_type in {"agent", "assistant"} else "user",
+                "timestamp": msg.created_at.isoformat() if msg.created_at else None,
+                "message_type": msg.message_type,
             })
-        
+
         logger.debug(f"Retrieved {len(formatted_messages)} messages for user {user_id} (page {page})")
-        
+
         return MessageHistoryResponse(
             success=True,
             messages=formatted_messages,
             conversation_id=conversation_id or f"user_{user_id}",
-            total_count=len(raw_messages),
+            total_count=total_count,
             page=page,
-            page_size=page_size
+            page_size=page_size,
         )
         
     except Exception as e:

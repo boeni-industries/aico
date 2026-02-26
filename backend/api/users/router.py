@@ -389,6 +389,31 @@ async def authenticate_user(
         logger.info(f"User roles loaded: {user_roles}", extra={"user_uuid": user.uuid, "roles": user_roles})
         
         user_permissions = []
+
+        # Resolve tenant_id for this user (required for auth)
+        from sqlalchemy import select
+        from aico.data.tables import tenant_memberships
+
+        tenant_id = None
+        try:
+            stmt = (
+                select(tenant_memberships.c.tenant_id)
+                .where(tenant_memberships.c.user_id == user.uuid)
+                .order_by(tenant_memberships.c.created_at.asc())
+                .limit(1)
+            )
+            result = await uow._session.execute(stmt)
+            tenant_id = result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Failed to resolve tenant_id for user: {e}", extra={"user_uuid": user.uuid})
+
+        if not tenant_id:
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_USER_NOT_ASSIGNED_TO_TENANT",
+                message="User is not assigned to a tenant",
+                details={"user_id": user.uuid},
+            )
         
         # Extract User-Agent from request headers for device detection
         user_agent = request_obj.headers.get("user-agent", "")
@@ -397,6 +422,7 @@ async def authenticate_user(
         # Generate JWT access token with proper roles and permissions
         jwt_token = auth_manager.generate_jwt_token(
             user_uuid=user.uuid,
+            tenant_id=tenant_id,
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
@@ -406,6 +432,7 @@ async def authenticate_user(
         # Generate refresh token for token renewal
         refresh_token = auth_manager.generate_refresh_token(
             user_uuid=user.uuid,
+            tenant_id=tenant_id,
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
@@ -512,7 +539,8 @@ async def authenticate_user(
 )
 async def refresh_token(
     request: Request,
-    auth_manager = Depends(get_auth_manager)
+    auth_manager = Depends(get_auth_manager),
+    uow: UnitOfWork = Depends(get_uow),
 ) -> AuthenticationResponse:
     """Refresh access token using refresh token"""
     try:
@@ -549,10 +577,36 @@ async def refresh_token(
                     error_code="AUTH_REFRESH_TOKEN_INVALID",
                     message="Invalid token type - refresh token required",
                 )
+
+            tenant_id = payload.get("tenant_id")
+            if not tenant_id:
+                # Legacy refresh tokens may not have tenant_id. Resolve via memberships.
+                try:
+                    from sqlalchemy import select
+                    from aico.data.tables import tenant_memberships
+
+                    stmt = (
+                        select(tenant_memberships.c.tenant_id)
+                        .where(tenant_memberships.c.user_id == payload["user_uuid"])
+                        .order_by(tenant_memberships.c.created_at.asc())
+                        .limit(1)
+                    )
+                    result = await uow._session.execute(stmt)
+                    tenant_id = result.scalar_one_or_none()
+                except Exception as e:
+                    logger.error(f"Failed to resolve tenant_id during refresh: {e}", extra={"user_uuid": payload.get("user_uuid")})
+
+            if not tenant_id:
+                raise_api_error(
+                    status_code=401,
+                    error_code="AUTH_TOKEN_MISSING_TENANT_ID",
+                    message="Invalid token: missing tenant id",
+                )
             
             # Generate new access token
             new_access_token = auth_manager.generate_jwt_token(
                 user_uuid=payload["user_uuid"],
+                tenant_id=tenant_id,
                 username=payload.get("username"),
                 roles=payload.get("roles", ["user"]),
                 permissions=set(payload.get("permissions", [])),

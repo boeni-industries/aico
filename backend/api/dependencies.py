@@ -63,6 +63,12 @@ def _normalize_user_payload(*, token: str, payload: dict[str, Any]) -> Dict[str,
         )
 
     tenant_id = payload.get("tenant_id")
+    if not tenant_id:
+        raise_api_error(
+            status_code=401,
+            error_code="AUTH_TOKEN_MISSING_TENANT_ID",
+            message="Invalid token: missing tenant id",
+        )
     roles = payload.get("roles", [])
     permissions = set(payload.get("permissions", []))
 
@@ -99,7 +105,7 @@ def get_current_user(
     if credentials is None:
         if not _is_security_enabled():
             return {
-                "tenant_id": None,
+                "tenant_id": "local",
                 "user_id": "system_user",
                 "user_uuid": "system_user",
                 "username": "system",
@@ -139,7 +145,7 @@ def authenticate_websocket(*, websocket: WebSocket) -> Dict[str, Any]:
     if token is None:
         if not _is_security_enabled():
             return {
-                "tenant_id": None,
+                "tenant_id": "local",
                 "user_id": "system_user",
                 "user_uuid": "system_user",
                 "username": "system",
@@ -161,7 +167,7 @@ def authenticate_websocket(*, websocket: WebSocket) -> Dict[str, Any]:
     if security_plugin is None or not hasattr(security_plugin, "auth_manager"):
         if not _is_security_enabled():
             return {
-                "tenant_id": None,
+                "tenant_id": "local",
                 "user_id": "system_user",
                 "user_uuid": "system_user",
                 "username": "system",

@@ -118,8 +118,17 @@ class AuthenticationManager:
         # Initialize default service accounts
         self._initialize_service_accounts()
     
-    def generate_jwt_token(self, user_uuid: str, username: str = None, roles: List[str] = None, 
-                          permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None) -> str:
+    def generate_jwt_token(
+        self,
+        user_uuid: str,
+        *,
+        tenant_id: str,
+        username: str = None,
+        roles: List[str] = None,
+        permissions: Set[str] = None,
+        device_uuid: str = None,
+        expires_minutes: int = None,
+    ) -> str:
         """Generate JWT access token for user (session creation handled at endpoint level)"""
         import time
         from datetime import datetime, timedelta
@@ -131,6 +140,7 @@ class AuthenticationManager:
         payload = {
             "sub": user_uuid,
             "user_uuid": user_uuid,
+            "tenant_id": tenant_id,
             "username": username or user_uuid,
             "roles": roles or ["user"],
             "permissions": list(permissions or set()),
@@ -155,8 +165,16 @@ class AuthenticationManager:
         
         return token
     
-    def generate_refresh_token(self, user_uuid: str, username: str = None, roles: List[str] = None,
-                               permissions: Set[str] = None, device_uuid: str = None) -> str:
+    def generate_refresh_token(
+        self,
+        user_uuid: str,
+        *,
+        tenant_id: str,
+        username: str = None,
+        roles: List[str] = None,
+        permissions: Set[str] = None,
+        device_uuid: str = None,
+    ) -> str:
         """Generate JWT refresh token (long-lived, used only for token refresh)"""
         import time
         from datetime import datetime
@@ -169,6 +187,7 @@ class AuthenticationManager:
         payload = {
             "sub": user_uuid,
             "user_uuid": user_uuid,
+            "tenant_id": tenant_id,
             "username": username or user_uuid,
             "roles": roles or ["user"],
             "permissions": list(permissions or set()),
@@ -194,6 +213,7 @@ class AuthenticationManager:
         """Generate JWT token for CLI access (zero-effort security)"""
         return self.generate_jwt_token(
             user_uuid="cli_user",
+            tenant_id="local",
             username="AICO CLI",
             roles=["admin"],  # CLI gets admin access
             permissions={"*"},  # Full access for CLI
@@ -498,6 +518,7 @@ class AuthenticationManager:
         """Create JWT token for user"""
         payload = {
             "sub": user.user_uuid,
+            "tenant_id": (user.metadata or {}).get("tenant_id", "local"),
             "username": user.username,
             "roles": user.roles,
             "permissions": list(user.permissions),
@@ -537,6 +558,7 @@ class AuthenticationManager:
             # Generate new token
             new_token = self.generate_jwt_token(
                 user_uuid=payload["user_uuid"],
+                tenant_id=payload.get("tenant_id"),
                 username=payload.get("username"),
                 roles=payload.get("roles", ["user"]),
                 permissions=set(payload.get("permissions", [])),

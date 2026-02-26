@@ -6,6 +6,7 @@ import subprocess
 import tarfile
 import time
 import uuid
+import os
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Optional
@@ -118,13 +119,18 @@ async def _run_cmd_async(cmd: list[str]) -> subprocess.CompletedProcess:
 
 def _get_pg_connection_info() -> tuple[str, str, str]:
     config = ConfigurationManager()
+    config.initialize(lightweight=True)
     pg_cfg = config.get("postgres", {}) or {}
 
     db_name = pg_cfg.get("db_name", "aico")
     db_user = pg_cfg.get("user", "postgres")
 
-    key_manager = AICOKeyManager(config)
-    db_password = key_manager.get_database_password("postgres", db_user) or ""
+    # In containers, the system keyring may not be available.
+    # Prefer env var injection via docker-compose and fall back to keyring for local dev.
+    db_password = os.environ.get("AICO_PG_PASSWORD") or ""
+    if not db_password:
+        key_manager = AICOKeyManager(config)
+        db_password = key_manager.get_database_password("postgres", username=db_user) or ""
 
     if not db_password:
         raise HTTPException(
@@ -137,14 +143,18 @@ def _get_pg_connection_info() -> tuple[str, str, str]:
 
 def _get_influx_connection_info() -> tuple[str, str, str, str]:
     config = ConfigurationManager()
+    config.initialize(lightweight=True)
     influx_cfg = config.get("influx", {}) or {}
 
     url = influx_cfg.get("url", "http://127.0.0.1:8086")
     org = influx_cfg.get("org", "aico")
     bucket = influx_cfg.get("bucket", "aico_telemetry")
 
-    key_manager = AICOKeyManager(config)
-    token = key_manager.get_database_password("influx", username="admin_token")
+    # Prefer env var injection in containers, fall back to keyring for local dev.
+    token = os.environ.get("AICO_INFLUX_ADMIN_TOKEN") or ""
+    if not token:
+        key_manager = AICOKeyManager(config)
+        token = key_manager.get_database_password("influx", username="admin_token") or ""
 
     if not token:
         raise HTTPException(

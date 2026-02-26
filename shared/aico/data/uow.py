@@ -92,6 +92,10 @@ class UnitOfWork:
         self._emotion_history_repository = None
         self._interaction_requests_repository = None
         self._interaction_events_repository = None
+        self._conversations_repository = None
+        self._conversation_messages_repository = None
+        self._tenants_repository = None
+        self._tenant_memberships_repository = None
         self._user_feedback_requests_repository = None
         self._ethics_decisions_cache_repository = None
         self._ethics_gate_audit_repository = None
@@ -486,6 +490,38 @@ class UnitOfWork:
             from .repositories.postgres.interaction_requests_repository import PostgresInteractionRequestsRepository
             self._interaction_requests_repository = PostgresInteractionRequestsRepository(self._session)
         return self._interaction_requests_repository
+
+    @property
+    def conversations(self):
+        """Get ConversationsRepository instance."""
+        if self._conversations_repository is None:
+            from .repositories.postgres.conversations_repository import PostgresConversationsRepository
+            self._conversations_repository = PostgresConversationsRepository(self._session)
+        return self._conversations_repository
+
+    @property
+    def conversation_messages(self):
+        """Get ConversationMessagesRepository instance."""
+        if self._conversation_messages_repository is None:
+            from .repositories.postgres.conversation_messages_repository import PostgresConversationMessagesRepository
+            self._conversation_messages_repository = PostgresConversationMessagesRepository(self._session)
+        return self._conversation_messages_repository
+
+    @property
+    def tenants(self):
+        """Get TenantsRepository instance."""
+        if self._tenants_repository is None:
+            from .repositories.postgres.tenants_repository import PostgresTenantsRepository
+            self._tenants_repository = PostgresTenantsRepository(self._session)
+        return self._tenants_repository
+
+    @property
+    def tenant_memberships(self):
+        """Get TenantMembershipsRepository instance."""
+        if self._tenant_memberships_repository is None:
+            from .repositories.postgres.tenant_memberships_repository import PostgresTenantMembershipsRepository
+            self._tenant_memberships_repository = PostgresTenantMembershipsRepository(self._session)
+        return self._tenant_memberships_repository
 
     @property
     def interaction_events(self):

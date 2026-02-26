@@ -67,6 +67,7 @@ COMMAND_MODULES = {
     "chroma": "cli.commands.chroma",
     "kg": "cli.commands.kg",
     "pg": "cli.commands.pg",
+    "tenant": "cli.commands.tenant",
     "influx": "cli.commands.influx",
     "deploy": "cli.commands.deploy",
     "scheduler": "cli.commands.scheduler",
@@ -115,6 +116,7 @@ from cli.commands.chroma import app as chroma_app
 from cli.commands.kg import app as kg_app
 from cli.commands.emotion import app as emotion_app
 from cli.commands.pg import app as pg_app
+from cli.commands.tenant import app as tenant_app
 from cli.commands.influx import app as influx_app
 from cli.commands.deploy import app as deploy_app
 
@@ -130,6 +132,7 @@ app.add_typer(version_app, name="version", help=f"{chars['package']} Version and
 app.add_typer(lmdb_app, name="lmdb", help=f"{chars['database']} LMDB working memory management")
 app.add_typer(kg_app, name="kg", help="💡 Knowledge graph management")
 app.add_typer(pg_app, name="pg", help=f"{chars['database']} Postgres/Timescale backend management (experimental)")
+app.add_typer(tenant_app, name="tenant", help="🏢 Tenant management")
 app.add_typer(influx_app, name="influx", help=f"{chars['database']} InfluxDB time-series database management")
 app.add_typer(deploy_app, name="deploy", help=f"{chars['dev']} Deployment orchestration for Postgres/InfluxDB backends")
 app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
