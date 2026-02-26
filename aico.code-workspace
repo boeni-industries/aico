@@ -1,0 +1,71 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../aico-studio"
+		}
+	],
+	"settings": {
+		"launch": {
+			"version": "0.2.0",
+			"configurations": [
+				{
+					"name": "Flutter Debug (macOS)",
+					"type": "dart",
+					"request": "launch",
+					"program": "${workspaceFolder}/frontend/lib/main.dart",
+					"cwd": "${workspaceFolder}/frontend",
+					"flutterMode": "debug",
+					"deviceId": "macos"
+				},
+				{
+					"name": "Flutter Debug",
+					"type": "dart",
+					"request": "launch",
+					"program": "${workspaceFolder}/frontend/lib/main.dart",
+					"cwd": "${workspaceFolder}/frontend",
+					"flutterMode": "debug",
+					"deviceId": "chrome"
+				},
+				{
+					"name": "Flutter Profile (macOS)",
+					"type": "dart",
+					"request": "launch",
+					"program": "${workspaceFolder}/frontend/lib/main.dart",
+					"cwd": "${workspaceFolder}/frontend",
+					"flutterMode": "profile",
+					"deviceId": "macos"
+				},
+				{
+					"name": "Flutter Profile",
+					"type": "dart",
+					"request": "launch",
+					"program": "${workspaceFolder}/frontend/lib/main.dart",
+					"cwd": "${workspaceFolder}/frontend",
+					"flutterMode": "profile",
+					"deviceId": "chrome"
+				},
+				{
+					"name": "Flutter Release (macOS)",
+					"type": "dart",
+					"request": "launch",
+					"program": "${workspaceFolder}/frontend/lib/main.dart",
+					"cwd": "${workspaceFolder}/frontend",
+					"flutterMode": "release",
+					"deviceId": "macos"
+				},
+				{
+					"name": "Flutter Release",
+					"type": "dart",
+					"request": "launch",
+					"program": "${workspaceFolder}/frontend/lib/main.dart",
+					"cwd": "${workspaceFolder}/frontend",
+					"flutterMode": "release",
+					"deviceId": "chrome"
+				}
+			]
+		}
+	}
+}

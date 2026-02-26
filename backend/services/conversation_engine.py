@@ -296,12 +296,25 @@ class ConversationEngine(BaseService):
             # Get user context (simplified)
             user_context = await self._get_or_create_user_context(user_id)
 
-            # Persist conversation + user message (best effort)
+            # Persist conversation + user message (REQUIRED - Postgres is the source of truth)
+            if not tenant_id:
+                await self._publish_persistence_error(
+                    request_id=conv_message.message_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=f"Missing tenant_id in envelope metadata",
+                )
+                return
+            if not request_id:
+                await self._publish_persistence_error(
+                    request_id=conv_message.message_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=f"Missing request_id in envelope metadata",
+                )
+                return
+
             try:
-                if not tenant_id:
-                    raise ValueError("Missing tenant_id in envelope metadata")
-                if not request_id:
-                    raise ValueError("Missing request_id in envelope metadata")
                 await self._persist_user_message(
                     tenant_id=tenant_id,
                     request_id=request_id,
@@ -310,19 +323,24 @@ class ConversationEngine(BaseService):
                     content=conv_message.message.text,
                 )
             except Exception as e:
-                self.logger.error(f"Failed to persist user message: {e}")
+                self.logger.error(f"Failed to persist user message (aborting processing): {e}")
+                await self._publish_persistence_error(
+                    request_id=conv_message.message_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=f"Failed to persist user message: {e}",
+                )
+                return
 
             # Generate response using semantic memory approach
-            await self._generate_response(user_context, conv_message)
-
-            # Store tenant/request ids for response persistence
-            try:
-                req_key = conv_message.message_id if conv_message.message_id else None
-                if req_key and req_key in self.pending_responses:
-                    self.pending_responses[req_key]["tenant_id"] = tenant_id
-                    self.pending_responses[req_key]["http_request_id"] = request_id
-            except Exception:
-                pass
+            # IMPORTANT: tenant_id + http_request_id must be available for assistant persistence
+            # before any LLM generation/finalization occurs.
+            await self._generate_response(
+                user_context,
+                conv_message,
+                tenant_id=tenant_id,
+                http_request_id=request_id,
+            )
 
             # Phase 6: Async goal extraction (fire-and-forget, no blocking)
             if self.enable_agency and self.agency_plugin:
@@ -343,6 +361,80 @@ class ConversationEngine(BaseService):
             self.logger.error(f"Error handling user input: {e}", extra={
                 "error": str(e)
             })
+
+    async def _publish_persistence_error(
+        self,
+        *,
+        request_id: str | None,
+        user_id: str,
+        conversation_id: str,
+        error: str,
+    ) -> None:
+        """Publish an explicit error response and terminate any streaming for this request.
+
+        This prevents API callers from hanging/timeouting when persistence fails.
+        """
+        try:
+            if not self.bus_client:
+                return
+
+            from aico.core.topics import AICOTopics
+
+            rid = request_id or str(uuid.uuid4())
+
+            # Terminate streaming with an error marker (if the client is streaming)
+            try:
+                from aico.proto.aico_conversation_pb2 import StreamingResponse as StreamingResponseProto
+
+                error_chunk = StreamingResponseProto(
+                    request_id=rid,
+                    content=error,
+                    accumulated_content=error,
+                    done=True,
+                    content_type="error",
+                )
+                await self.bus_client.publish(
+                    AICOTopics.CONVERSATION_STREAM,
+                    error_chunk,
+                    correlation_id=rid,
+                )
+            except Exception:
+                # Streaming termination is best-effort; the HTTP API should still get an error response.
+                pass
+
+            # Also publish a normal final response message (non-streaming path)
+            from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
+            from google.protobuf.timestamp_pb2 import Timestamp
+            import time
+
+            ai_message = Message()
+            ai_message.conversation_id = conversation_id
+            ai_message.type = Message.MessageType.SYSTEM_RESPONSE
+            ai_message.text = error
+            ai_message.turn_number = 1
+
+            conv_message = ConversationMessage()
+            conv_message.message_id = rid
+            conv_message.user_id = user_id
+            conv_message.source = "conversation_engine"
+
+            ts = Timestamp()
+            ts.FromSeconds(int(time.time()))
+            conv_message.timestamp.CopyFrom(ts)
+            conv_message.message.CopyFrom(ai_message)
+
+            await self.bus_client.publish(
+                AICOTopics.CONVERSATION_RESPONSE,
+                conv_message,
+                correlation_id=rid,
+            )
+            await self.bus_client.publish(
+                "conversation/ai/response/v1",
+                conv_message,
+                correlation_id=rid,
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to publish persistence error response: {e}")
     
     # ============================================================================
     # USER & THREAD MANAGEMENT
@@ -407,7 +499,14 @@ class ConversationEngine(BaseService):
     
     # Message analysis removed - semantic memory handles context automatically
     
-    async def _generate_response(self, user_context: UserContext, user_message: ConversationMessage) -> None:
+    async def _generate_response(
+        self,
+        user_context: UserContext,
+        user_message: ConversationMessage,
+        *,
+        tenant_id: str,
+        http_request_id: str,
+    ) -> None:
         """Generate and deliver response based on enabled features"""
         try:
             # Use the message_id from the API Gateway as request_id for proper correlation
@@ -417,6 +516,9 @@ class ConversationEngine(BaseService):
             self.pending_responses[request_id] = {
                 "user_context": user_context,
                 "user_message": user_message,
+                # Required for Postgres source-of-truth persistence
+                "tenant_id": tenant_id,
+                "http_request_id": http_request_id,
                 "components_needed": [],
                 "components_ready": {},
                 "started_at": datetime.now(UTC)
@@ -1020,12 +1122,25 @@ class ConversationEngine(BaseService):
             
             self.logger.info(f"🔍 [FINALIZE] user_id={user_id}, conversation_id={conversation_id}")
 
-            # Persist assistant message (best effort; do not block delivery)
+            # Persist assistant message (REQUIRED - Postgres is the source of truth)
+            if not tenant_id:
+                await self._publish_persistence_error(
+                    request_id=request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error="Missing tenant_id for request",
+                )
+                return
+            if not http_request_id:
+                await self._publish_persistence_error(
+                    request_id=request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error="Missing http_request_id for request",
+                )
+                return
+
             try:
-                if not tenant_id:
-                    raise ValueError("Missing tenant_id for request")
-                if not http_request_id:
-                    raise ValueError("Missing http_request_id for request")
                 await self._persist_assistant_message(
                     tenant_id=tenant_id,
                     request_id=http_request_id,
@@ -1034,7 +1149,14 @@ class ConversationEngine(BaseService):
                     content=final_content,
                 )
             except Exception as e:
-                self.logger.error(f"Failed to persist assistant message: {e}")
+                self.logger.error(f"Failed to persist assistant message (aborting delivery): {e}")
+                await self._publish_persistence_error(
+                    request_id=request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=f"Failed to persist assistant message: {e}",
+                )
+                return
             
             # NOTE: AI response storage happens in streaming handler (line ~895)
             # to avoid duplicate storage

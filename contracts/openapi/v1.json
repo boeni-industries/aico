@@ -7346,6 +7346,133 @@
         ]
       }
     },
+    "/api/v1/conversation/messages/catchup": {
+      "get": {
+        "description": "Catch up on messages after reconnect using Postgres as source of truth.\n\nCursor semantics:\n- If `after_message_id` is provided, we look up its `created_at` in Postgres and\n  return messages with `created_at` strictly greater than that timestamp.\n- Results are ordered ascending (oldest first) to support incremental replay.",
+        "operationId": "catchup_my_messages_api_v1_conversation_messages_catchup_get",
+        "parameters": [
+          {
+            "description": "Filter by conversation ID",
+            "in": "query",
+            "name": "conversation_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by conversation ID",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "description": "Return messages strictly after this message_id",
+            "in": "query",
+            "name": "after_message_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return messages strictly after this message_id",
+              "title": "After Message Id"
+            }
+          },
+          {
+            "description": "Maximum messages to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "description": "Maximum messages to return",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Catchup My Messages",
+        "tags": [
+          "conversation"
+        ]
+      }
+    },
     "/api/v1/conversation/start": {
       "post": {
         "deprecated": true,

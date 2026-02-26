@@ -453,6 +453,96 @@ async def get_my_messages(
             error_code="CONVERSATION_MESSAGE_HISTORY_FAILED",
             message="Failed to retrieve message history",
         )
+
+
+@router.get(
+    "/messages/catchup",
+    response_model=MessageHistoryResponse,
+    responses=error_responses(401, 404, 422, 500),
+)
+async def catchup_my_messages(
+    conversation_id: Optional[str] = Query(None, description="Filter by conversation ID"),
+    after_message_id: Optional[str] = Query(None, description="Return messages strictly after this message_id"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum messages to return"),
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    """Catch up on messages after reconnect using Postgres as source of truth.
+
+    Cursor semantics:
+    - If `after_message_id` is provided, we look up its `created_at` in Postgres and
+      return messages with `created_at` strictly greater than that timestamp.
+    - Results are ordered ascending (oldest first) to support incremental replay.
+    """
+    try:
+        user_id = current_user["user_uuid"]
+        tenant_id = current_user["tenant_id"]
+
+        since_ts: Optional[datetime] = None
+        if after_message_id:
+            anchor = await uow.conversation_messages.get_by_id(after_message_id)
+            if anchor is None:
+                raise_api_error(
+                    status_code=404,
+                    error_code="CONVERSATION_MESSAGE_NOT_FOUND",
+                    message="after_message_id not found",
+                )
+            if anchor.tenant_id != tenant_id or anchor.user_id != user_id:
+                raise_api_error(
+                    status_code=404,
+                    error_code="CONVERSATION_MESSAGE_NOT_FOUND",
+                    message="after_message_id not found",
+                )
+            if conversation_id and anchor.conversation_id != conversation_id:
+                raise_api_error(
+                    status_code=422,
+                    error_code="CONVERSATION_MESSAGE_CURSOR_MISMATCH",
+                    message="after_message_id does not belong to the provided conversation_id",
+                )
+            since_ts = anchor.created_at
+
+        messages = await uow.conversation_messages.list_since(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            since=since_ts,
+            limit=limit,
+        )
+
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append(
+                {
+                    "id": msg.message_id,
+                    "conversation_id": msg.conversation_id,
+                    "user_id": msg.user_id,
+                    "content": msg.content,
+                    "role": "assistant" if msg.actor_type in {"agent", "assistant"} else "user",
+                    "timestamp": msg.created_at.isoformat() if msg.created_at else None,
+                    "message_type": msg.message_type,
+                }
+            )
+
+        return MessageHistoryResponse(
+            success=True,
+            messages=formatted_messages,
+            conversation_id=conversation_id or f"user_{user_id}",
+            total_count=len(formatted_messages),
+            page=1,
+            page_size=limit,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to catch up messages: {e}",
+            extra={"conversation_id": conversation_id, "after_message_id": after_message_id},
+        )
+        raise_api_error(
+            status_code=500,
+            error_code="CONVERSATION_MESSAGE_CATCHUP_FAILED",
+            message="Failed to catch up messages",
+        )
 @router.get(
     "/status",
     responses=error_responses(401, 500),
