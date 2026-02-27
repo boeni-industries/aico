@@ -581,16 +581,28 @@ async def get_system_topology(
                 logger.debug(f"Could not poll modelservice uptime: {e}")
             return "N/A"
         
-        async def check_ollama_status():
+        async def check_vllm_status():
             try:
+                from aico.core.config import ConfigurationManager
                 import httpx
-                
+
+                config = ConfigurationManager()
+                vllm_cfg = config.get("llm.vllm", {})
+
+                host = vllm_cfg.get("host", "localhost")
+                port = int(vllm_cfg.get("port", 8774))
+                base_url = f"http://{host}:{port}"
+
                 async with httpx.AsyncClient(timeout=2.0) as client:
-                    response = await client.get("http://localhost:11434/api/version")
-                    if response.status_code == 200:
+                    resp = await client.get(f"{base_url}/health")
+                    if resp.status_code == 200:
+                        return "healthy"
+
+                    resp = await client.get(f"{base_url}/v1/models")
+                    if resp.status_code == 200:
                         return "healthy"
             except Exception as e:
-                logger.debug(f"Could not poll Ollama: {e}")
+                logger.debug(f"Could not poll vLLM: {e}")
             return "unavailable"
         
         async def get_studio_uptime():
@@ -670,22 +682,22 @@ async def get_system_topology(
         # Execute all checks in parallel
         (
             modelservice_uptime_str,
-            ollama_status,
+            vllm_status,
             studio_uptime_str,
             postgres_uptime_str,
             influxdb_uptime_str
         ) = await asyncio.gather(
             get_modelservice_uptime(),
-            check_ollama_status(),
+            check_vllm_status(),
             get_studio_uptime(),
             get_postgres_uptime(),
             get_influxdb_uptime(),
             return_exceptions=False
         )
         
-        # Get Ollama uptime and version
-        ollama_uptime_str = modelservice_uptime_str  # Ollama managed by modelservice
-        ollama_version = db_versions.get("Ollama", "0.5.x")
+        # Get vLLM "version" (best-effort). vLLM typically does not expose a semantic version string.
+        vllm_uptime_str = "N/A"
+        vllm_version = db_versions.get("vLLM", "unknown")
         
         # Define services
         services = [
@@ -777,14 +789,14 @@ async def get_system_topology(
                 uptime="N/A"
             ),
             ServiceNode(
-                id="ollama",
-                name="Ollama",
-                type="ollama",
-                status=ollama_status,
-                version=ollama_version,
-                host="localhost",
-                port=11434,
-                uptime=ollama_uptime_str
+                id="vllm",
+                name="vLLM",
+                type="llm",
+                status=vllm_status,
+                version=vllm_version,
+                host=config.get("llm.vllm.host") if config else "localhost",
+                port=int(config.get("llm.vllm.port", 8774)) if config else 8774,
+                uptime=vllm_uptime_str
             ),
             ServiceNode(
                 id="lmdb",
@@ -838,12 +850,12 @@ async def get_system_topology(
                 port=8773,
                 status="active"
             ),
-            # Model Service -> Ollama
+            # Backend -> vLLM
             ServiceConnection(
-                from_service="modelservice",
-                to_service="ollama",
+                from_service="backend",
+                to_service="vllm",
                 protocol="HTTP",
-                port=11434,
+                port=int(config.get("llm.vllm.port", 8774)) if config else 8774,
                 status="active"
             ),
             # Backend -> Scheduler

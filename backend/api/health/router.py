@@ -144,27 +144,39 @@ async def detailed_health():
         version=MODELSERVICE_VERSION,
         details={"note": "Modelservice is a separate process"}
     )
-    
-    # Ollama health - managed by modelservice
-    # Try to detect Ollama version from its API
-    ollama_version = "unknown"
-    ollama_status = "healthy"
+
+    # vLLM health - OpenAI-compatible HTTP server
+    vllm_version = "unknown"
+    vllm_status = "healthy"
     try:
+        from aico.core.config import ConfigurationManager
         import httpx
-        response = httpx.get("http://localhost:11434/api/version", timeout=2.0)
-        if response.status_code == 200:
-            version_data = response.json()
-            ollama_version = version_data.get("version", "unknown")
+
+        config = ConfigurationManager()
+        vllm_cfg = config.get("llm.vllm", {})
+
+        host = vllm_cfg.get("host", "localhost")
+        port = int(vllm_cfg.get("port", 8774))
+        base_url = f"http://{host}:{port}"
+
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            # Prefer /health if available
+            resp = await client.get(f"{base_url}/health")
+            if resp.status_code != 200:
+                # Fallback to OpenAI models list
+                resp = await client.get(f"{base_url}/v1/models")
+                if resp.status_code != 200:
+                    vllm_status = "unavailable"
     except Exception as e:
-        logger.debug(f"Could not detect Ollama version: {e}")
-        ollama_status = "unavailable"
-    
-    components["ollama"] = ComponentHealth(
-        status=ollama_status,
-        uptime=modelservice_uptime if ollama_status == "healthy" else None,
+        logger.debug(f"Could not detect vLLM availability: {e}")
+        vllm_status = "unavailable"
+
+    components["vllm"] = ComponentHealth(
+        status=vllm_status,
+        uptime=None,
         last_check=current_time.isoformat(),
-        version=ollama_version,
-        details={"note": "Managed by modelservice"}
+        version=vllm_version,
+        details={"note": "OpenAI-compatible LLM server"}
     )
     
     # Determine overall status

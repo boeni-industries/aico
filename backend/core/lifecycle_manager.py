@@ -266,7 +266,7 @@ class BackendLifecycleManager:
         self.container.register_service(
             "outbox_publisher",
             create_outbox_publisher,
-            dependencies=[],
+            dependencies=["message_bus_plugin"],
             priority=25,  # Start after message bus plugin (20), before higher-level services
         )
         

@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "AICO shared library"
 requires-python = ">=3.13"
 dependencies = [
-    "cryptography",
+    "cryptography>=41.0.0",
     "email-validator>=2.0.0",
     "keyring",
     "pyyaml",

@@ -14,6 +14,9 @@ import sys
 from rich.console import Console
 from pathlib import Path
 import shutil
+import uuid
+import time
+from typing import Optional
 from aico.security import AICOKeyManager
 from aico.core.paths import AICOPaths
 from aico.core.config import ConfigurationManager
@@ -28,7 +31,8 @@ def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", 
         subcommands = [
             ("wipe", "Wipe development data with granular control (--security, --data, --config, --all)"),
             ("reset", "Reset specific subsystems (--agency, --memory, --scheduler)"),
-            ("protoc", "Compile Protocol Buffer files to Python code")
+            ("protoc", "Compile Protocol Buffer files to Python code"),
+            ("test", "Run cross-component test suite with ephemeral Postgres test DB")
         ]
         
         examples = [
@@ -39,7 +43,9 @@ def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", 
             "aico dev wipe --all --dry-run",
             "aico dev reset --agency",
             "aico dev reset --agency --dry-run",
-            "aico dev protoc"
+            "aico dev protoc",
+            "aico dev test",
+            "aico dev test --keep-db"
         ]
         
         format_subcommand_help(
@@ -50,6 +56,78 @@ def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", 
             examples=examples
         )
         raise typer.Exit()
+
+
+def _get_repo_root() -> Path:
+    return Path(__file__).parent.parent.parent
+
+
+def _get_backend_dir() -> Path:
+    return _get_repo_root() / "backend"
+
+
+def _get_postgres_admin_connection(config: ConfigurationManager, *, dbname: str) -> "psycopg2.extensions.connection":
+    import psycopg2
+
+    pg_cfg = config.get("postgres", {}) or {}
+    user = pg_cfg.get("user", "postgres")
+    host = pg_cfg.get("host", "127.0.0.1")
+    port = int(pg_cfg.get("port", 5432))
+
+    key_manager = AICOKeyManager(config)
+    password = key_manager.get_database_password("postgres", username=user)
+    if not password:
+        raise RuntimeError("PostgreSQL password not found in keyring")
+
+    return psycopg2.connect(
+        host=host,
+        port=port,
+        dbname=dbname,
+        user=user,
+        password=password,
+    )
+
+
+def _create_database(config: ConfigurationManager, *, db_name: str) -> None:
+    db = _get_postgres_admin_connection(config, dbname="postgres")
+    db.autocommit = True
+    cur = db.cursor()
+    try:
+        cur.execute(f'CREATE DATABASE "{db_name}"')
+    finally:
+        cur.close()
+        db.close()
+
+
+def _drop_database(config: ConfigurationManager, *, db_name: str) -> None:
+    db = _get_postgres_admin_connection(config, dbname="postgres")
+    db.autocommit = True
+    cur = db.cursor()
+    try:
+        cur.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s AND pid <> pg_backend_pid()",
+            (db_name,),
+        )
+        cur.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
+    finally:
+        cur.close()
+        db.close()
+
+
+def _run_backend_pytest(*, env: dict[str, str], sync: bool, pytest_args: list[str]) -> int:
+    backend_dir = _get_backend_dir()
+    if not backend_dir.exists():
+        console.print(f"❌ [red]Backend directory not found: {backend_dir}[/red]")
+        return 1
+
+    if sync:
+        result = subprocess.run(["uv", "sync"], cwd=str(backend_dir), env=env, check=False)
+        if result.returncode != 0:
+            return result.returncode
+
+    cmd = ["uv", "run", "pytest"] + pytest_args
+    result = subprocess.run(cmd, cwd=str(backend_dir), env=env, check=False)
+    return result.returncode
 
 app = typer.Typer(
     help="🧹 Development utilities (DESTRUCTIVE - dev only)",
@@ -66,17 +144,17 @@ def _check_development_environment():
         console.print("❌ [bold red]SECURITY BLOCK: Development commands disabled in production environment[/bold red]")
         console.print("💡 [dim]Set AICO_ENV=development to enable (only in dev environments!)[/dim]")
         raise typer.Exit(1)
-    
+
     # Check for development indicators
     cwd = Path.cwd()
     dev_indicators = [
         cwd / ".git",
-        cwd / "pyproject.toml", 
+        cwd / "pyproject.toml",
         cwd / "package.json",
         cwd / "requirements.txt",
         cwd / "shared",  # AICO development structure
     ]
-    
+
     if not any(indicator.exists() for indicator in dev_indicators):
         console.print("❌ [bold red]SECURITY BLOCK: No development environment detected[/bold red]")
         console.print("💡 [dim]Development commands require development project structure[/dim]")
@@ -99,6 +177,59 @@ def _require_explicit_confirmation(operation_name: str, items_to_delete: list):
     if confirmation != "YES":
         console.print("❌ [yellow]Confirmation failed. Operation cancelled.[/yellow]")
         raise typer.Exit()
+
+
+@app.command(help="Run tests with an ephemeral Postgres test database")
+def test(
+    keep_db: bool = typer.Option(False, "--keep-db", help="Do not drop the ephemeral test database after the run"),
+    db_name: Optional[str] = typer.Option(None, "--db-name", help="Override test DB name (defaults to a random aico_test_*)"),
+    sync: bool = typer.Option(True, "--sync/--no-sync", help="Run 'uv sync' in backend before executing tests"),
+    pytest_args: list[str] = typer.Argument(None, help="Additional args passed to pytest"),
+    i_know_what_im_doing: bool = typer.Option(False, "--i-know-what-im-doing", help="Skip environment checks (DANGEROUS)"),
+):
+    if not i_know_what_im_doing:
+        _check_development_environment()
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+
+    run_id = uuid.uuid4().hex[:10]
+    test_db_name = db_name or f"aico_test_{run_id}"
+
+    env = os.environ.copy()
+    env["AICO_TEST_DB_NAME"] = test_db_name
+
+    start = time.time()
+    console.print(f"🧪 [cyan]Creating test database[/cyan]: {test_db_name}")
+
+    try:
+        _create_database(config, db_name=test_db_name)
+    except Exception as e:
+        console.print(f"❌ [red]Failed to create test database '{test_db_name}': {e}[/red]")
+        raise typer.Exit(1)
+
+    exit_code = 1
+    try:
+        args = pytest_args or ["tests/integration/test_outbox_fallback.py", "-q"]
+        exit_code = _run_backend_pytest(env=env, sync=sync, pytest_args=args)
+    finally:
+        elapsed = time.time() - start
+        if keep_db:
+            console.print(f"⚠️ [yellow]Keeping test database[/yellow]: {test_db_name}")
+        else:
+            console.print(f"🧹 [cyan]Dropping test database[/cyan]: {test_db_name}")
+            try:
+                _drop_database(config, db_name=test_db_name)
+            except Exception as e:
+                console.print(f"⚠️ [yellow]Failed to drop test database '{test_db_name}': {e}[/yellow]")
+                exit_code = exit_code or 1
+
+        if exit_code == 0:
+            console.print(f"✅ [green]Tests passed[/green] ({elapsed:.2f}s)")
+        else:
+            console.print(f"❌ [red]Tests failed[/red] ({elapsed:.2f}s)")
+
+    raise typer.Exit(exit_code)
 
 
 @app.command(help="Wipe development data with granular control")

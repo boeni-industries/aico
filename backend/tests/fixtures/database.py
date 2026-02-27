@@ -59,6 +59,7 @@ def test_db():
             f"Refusing to run tests against non-test database: '{current_db}'. "
             f"Expected '{expected_db_name}'. Set AICO_TEST_DB_NAME if needed."
         )
+    cursor.execute("CREATE SCHEMA IF NOT EXISTS aico_core")
     cursor.execute("SET search_path TO aico_core,public")
     # Ensure test DB schema is up-to-date enough for the current codebase.
     # This is intentionally minimal and idempotent: only add columns that newer
