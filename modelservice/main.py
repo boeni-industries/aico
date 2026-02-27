@@ -52,7 +52,7 @@ _start_time = time.time()
 
 
 async def initialize_modelservice():
-    """Initialize modelservice with Ollama and return configuration."""
+    """Initialize modelservice and return configuration."""
     # CRITICAL: Validate configuration before proceeding.
     # Validate the already-initialized global config manager to avoid starting file
     # watchers (and to avoid validating a different initialization mode).
@@ -102,7 +102,7 @@ async def initialize_modelservice():
     print("🔌 Starting NATS service...")
     logger.info("Starting NATS service early for message handling")
     
-    service = ModelserviceNATSService(cfg, None)  # No ollama_manager yet
+    service = ModelserviceNATSService(cfg, None)
     await service.start_early()
     
     # Initialize InfluxDB metrics exporter (honor instrumentation flag)
@@ -188,13 +188,6 @@ async def initialize_modelservice():
     # Logs now go directly to InfluxDB
     logger.info("Modelservice logging initialized with InfluxDB")
     
-    # Initialize OllamaManager (now that logging is available)
-    from .core.ollama_manager import OllamaManager
-    ollama_manager = OllamaManager()
-    
-    # Set the ollama_manager in the service
-    service.set_ollama_manager(ollama_manager)
-    
     # Initialize process management for graceful shutdown
     process_manager = None
     if os.getenv("AICO_DETACH_MODE") == "true":
@@ -202,40 +195,7 @@ async def initialize_modelservice():
         process_manager = ProcessManager("modelservice")
         process_manager.write_pid(os.getpid())
     
-    # Initialize Ollama with beautiful status messages
-    print("🔧 Initializing Ollama")
-    logger.info("Starting Ollama initialization")
-    
-    try:
-        ollama_cfg = cfg.get("modelservice.ollama", {})
-        ollama_host = ollama_cfg.get("host", "127.0.0.1")
-        ollama_port = ollama_cfg.get("port", 11434)
-
-        # Ollama is external-only (separate container). Validate reachability and minimum version.
-        await ollama_manager.check_available()
-
-        ollama_status = await ollama_manager.get_status()
-        version = (ollama_status or {}).get("version", "unknown")
-        print(f"✅ Ollama v{version} ready at http://{ollama_host}:{ollama_port}")
-        logger.info(f"Ollama v{version} ready at http://{ollama_host}:{ollama_port}")
-
-        # Auto-pull and start default models
-        started_models = await ollama_manager._ensure_default_models()
-        if started_models:
-            print(f"✅ Started {len(started_models)} model(s): {', '.join(started_models)}")
-            logger.info(f"Started {len(started_models)} model(s): {', '.join(started_models)}")
-        else:
-            print("ℹ️ No models configured for auto-start")
-            logger.info("No models configured for auto-start")
-                
-    except Exception as e:
-        print(f"❌ Ollama initialization error: {e}")
-        logger.error(f"Ollama initialization error: {e}")
-        # Log the full exception for debugging
-        import traceback
-        full_traceback = traceback.format_exc()
-        print(f"Full traceback:\n{full_traceback}")
-        logger.error(f"Full traceback: {full_traceback}")
+    # vLLM is now deployed separately via 'aico vllm' CLI commands
     
     # Initialize and preload TransformersManager
     from .core.transformers_manager import TransformersManager
@@ -272,7 +232,7 @@ async def initialize_modelservice():
 
     # Logging will be handled after full NATS service initialization in main()
 
-    return cfg, ollama_manager, process_manager, service
+    return cfg, None, process_manager, service
 
 
 async def _check_backend_health(cfg: ConfigurationManager) -> bool:
@@ -294,7 +254,7 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
 
 
 async def shutdown_modelservice(ollama_manager, process_manager):
-    """Gracefully shutdown modelservice and Ollama."""
+    """Gracefully shutdown modelservice."""
     # Get logger safely
     try:
         logger = get_logger("modelservice.main")

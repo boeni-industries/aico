@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aico-backend"
+version = "1.0.0"
+description = "AICO backend services (gateway + core)"
+requires-python = ">=3.13"
+dependencies = [
+    "aico-shared",
+    "fastapi>=0.116.1",
+    "uvicorn>=0.35.0",
+    "python-multipart>=0.0.20",
+    "httpx>=0.28.1",
+    "pydantic>=2.11.7",
+    "openai>=1.0.0",
+]
+
+[tool.uv.sources]
+aico-shared = { path = "../shared", editable = true }
+
+[tool.setuptools]
+packages = ["backend"]
+
+[tool.setuptools.package-dir]
+backend = "."

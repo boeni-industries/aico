@@ -12,12 +12,54 @@ from typing import Dict, Any
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusClient
 from aico.core.topics import AICOTopics
-from modelservice.core.protobuf_messages import ModelserviceMessageFactory, ModelserviceMessageParser
+from aico.proto.aico_core_envelope_pb2 import AicoMessage
 
 # Suppress specific async warnings for CLI usage
 warnings.filterwarnings("ignore", message="coroutine.*was never awaited", category=RuntimeWarning)
 
 from aico.core.logging import initialize_logging, get_logger
+
+
+def _get_correlation_id(envelope: AicoMessage) -> str:
+    if "correlation_id" in envelope.metadata.attributes:
+        return envelope.metadata.attributes["correlation_id"]
+    return envelope.metadata.message_id
+
+
+def _extract_payload(envelope: AicoMessage, expected_type: type):
+    if not envelope.HasField("any_payload"):
+        raise ValueError("Envelope has no payload")
+    payload = expected_type()
+    if not envelope.any_payload.Unpack(payload):
+        raise ValueError(f"Failed to unpack payload as {expected_type.__name__}")
+    return payload
+
+
+def _extract_response_payload(envelope: AicoMessage, topic: str):
+    from aico.proto import aico_modelservice_pb2
+
+    response_types = {
+        AICOTopics.MODELSERVICE_HEALTH_RESPONSE: aico_modelservice_pb2.HealthResponse,
+        AICOTopics.MODELSERVICE_STATUS_RESPONSE: aico_modelservice_pb2.StatusResponse,
+        AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE: aico_modelservice_pb2.EmbeddingsResponse,
+        AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE: aico_modelservice_pb2.CompletionsResponse,
+        AICOTopics.MODELSERVICE_MODELS_RESPONSE: aico_modelservice_pb2.ModelsResponse,
+        AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE: aico_modelservice_pb2.ModelInfoResponse,
+        AICOTopics.MODELSERVICE_NER_RESPONSE: aico_modelservice_pb2.NerResponse,
+        AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE: aico_modelservice_pb2.SentimentResponse,
+        AICOTopics.MODELSERVICE_INTENT_CLASSIFICATION_RESPONSE: aico_modelservice_pb2.IntentClassificationResponse,
+        AICOTopics.OLLAMA_STATUS_RESPONSE: aico_modelservice_pb2.OllamaStatusResponse,
+        AICOTopics.OLLAMA_MODELS_RESPONSE: aico_modelservice_pb2.OllamaModelsResponse,
+        AICOTopics.OLLAMA_MODELS_PULL_RESPONSE: aico_modelservice_pb2.OllamaPullResponse,
+        AICOTopics.OLLAMA_MODELS_REMOVE_RESPONSE: aico_modelservice_pb2.OllamaRemoveResponse,
+        AICOTopics.OLLAMA_SERVE_RESPONSE: aico_modelservice_pb2.OllamaServeResponse,
+        AICOTopics.OLLAMA_SHUTDOWN_RESPONSE: aico_modelservice_pb2.OllamaShutdownResponse,
+    }
+
+    response_type = response_types.get(topic)
+    if response_type is None:
+        raise ValueError(f"Unsupported response topic: {topic}")
+    return _extract_payload(envelope, response_type)
 
 
 class CLINATSClient:
@@ -56,13 +98,13 @@ class CLINATSClient:
             async def handle_response(envelope):
                 nonlocal response_payload
                 try:
-                    if ModelserviceMessageParser.get_correlation_id(envelope) != correlation_id:
+                    if _get_correlation_id(envelope) != correlation_id:
                         return
 
                     if response_topic == AICOTopics.MODELSERVICE_HEALTH_RESPONSE:
                         from aico.proto.aico_modelservice_pb2 import HealthResponse
 
-                        health_response = ModelserviceMessageFactory.extract_payload(envelope, HealthResponse)
+                        health_response = _extract_payload(envelope, HealthResponse)
                         response_payload = {
                             "success": health_response.success,
                             "data": {
@@ -78,7 +120,7 @@ class CLINATSClient:
                     elif response_topic == AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE:
                         from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
 
-                        embeddings_response = ModelserviceMessageFactory.extract_payload(envelope, EmbeddingsResponse)
+                        embeddings_response = _extract_payload(envelope, EmbeddingsResponse)
                         response_payload = {
                             "success": embeddings_response.success,
                             "data": {"embedding": list(embeddings_response.embedding)},
@@ -89,7 +131,7 @@ class CLINATSClient:
                     elif response_topic == AICOTopics.OLLAMA_MODELS_RESPONSE:
                         from aico.proto.aico_modelservice_pb2 import ModelsResponse
 
-                        models_response = ModelserviceMessageFactory.extract_payload(envelope, ModelsResponse)
+                        models_response = _extract_payload(envelope, ModelsResponse)
                         response_payload = {"success": models_response.success, "data": {"models": []}}
                         for model in models_response.models:
                             model_dict = {
@@ -105,7 +147,7 @@ class CLINATSClient:
                             response_payload["error"] = models_response.error
 
                     else:
-                        protobuf_response = ModelserviceMessageParser.extract_response_payload(envelope, response_topic)
+                        protobuf_response = _extract_response_payload(envelope, response_topic)
                         response_payload = {"success": getattr(protobuf_response, "success", False), "data": {}}
                         if hasattr(protobuf_response, "error") and protobuf_response.HasField("error"):
                             response_payload["error"] = protobuf_response.error

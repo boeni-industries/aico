@@ -33,15 +33,10 @@ from cli.utils.timezone import format_timestamp_local
 shared_path = Path(__file__).parent.parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
-# Add backend path for cron parser
-backend_path = Path(__file__).parent.parent.parent / "backend"
-sys.path.insert(0, str(backend_path))
-
 from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
 from aico.security import AICOKeyManager
 from cli.utils.pg_connection import get_pg_connection
-from scheduler.cron import CronParser
 
 console = Console()
 
@@ -56,10 +51,6 @@ def _describe_cron(cron_expr: str) -> str:
         0 0 1 * *      -> "Monthly on the 1st at midnight"
     """
     try:
-        parser = CronParser()
-        if not parser.validate(cron_expr):
-            return cron_expr
-        
         fields = cron_expr.split()
         if len(fields) != 5:
             return cron_expr

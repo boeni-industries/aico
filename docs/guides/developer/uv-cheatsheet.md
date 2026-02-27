@@ -1,53 +1,36 @@
-# UV Commands Cheat Sheet for AICO Workspace
+# UV Commands Cheat Sheet for AICO (Per-Component Projects)
 
-## UV Workspace Setup & Sync
+AICO uses UV, but **not** as a single root workspace. Each Python component is its own UV project with its own `pyproject.toml` and `uv.lock`:
 
-Initial setup - install all dependencies for full development:
+- `shared/`
+- `cli/`
+- `backend/`
+- `modelservice/`
+
+This is required because some components intentionally depend on conflicting versions.
+
+## Setup & Sync
+
+CLI setup (host machine; the CLI runs locally):
+
 ```bash
-uv sync --extra cli --extra backend --extra test
+cd cli
+uv sync --frozen
 ```
 
-Sync only core dependencies (shared by all components) - ⚠️ DANGEROUS: Will remove CLI/backend deps:
-```bash
-# uv sync  # DON'T USE - removes optional dependencies
-```
+Backend/modelservice run in Docker for local development:
 
-Sync specific groups only:
 ```bash
-uv sync --extra cli                    # CLI development only
-uv sync --extra backend               # Backend development only
-uv sync --extra cli --extra backend   # CLI + Backend development
-```
-
-Force reinstall everything (nuclear option) - ⚠️ DANGEROUS without extras:
-```bash
-uv sync --reinstall --extra cli --extra backend --extra test
-```
-
-Sync after pulling git changes or editing pyproject.toml:
-```bash
-uv sync --extra cli --extra backend --extra test  # ⚠️ IMPORTANT: Always specify extras to avoid removing dependencies
+docker compose -f docker/docker-compose.local.yml up --build
 ```
 
 ## Dependency Management
 
-Add to core dependencies (shared by CLI, backend, shared):
+Add a dependency (run inside the component directory you want to change):
 ```bash
-uv add requests                       # Single package
-uv add "pydantic>=2.0.0"             # With version constraint
-uv add cryptography keyring psutil   # Multiple packages at once
-```
-
-Add to specific optional dependency groups:
-```bash
-uv add --group cli typer-cli          # CLI-specific dependency
-uv add --group backend "fastapi[all]" # Backend-specific with extras
-uv add --group test pytest-mock       # Test-specific dependency
-```
-
-Add development dependencies (Note: --dev flag may not work as expected):
-```bash
-uv add --group test black mypy ruff  # Remove --dev flag
+uv add <package>
+uv lock
+uv sync --frozen
 ```
 
 Remove dependencies:
@@ -61,13 +44,15 @@ uv remove requests httpx aiofiles     # Remove multiple packages
 Upgrade dependencies:
 ```bash
 uv add "fastapi>=0.117.0" --upgrade   # Upgrade specific package
-uv sync --upgrade --extra cli --extra backend --extra test  # Upgrade everything safely
+uv lock --upgrade
+uv sync --frozen
 ```
 
 ## Running Code with UV
 
-CLI Commands (always use 'uv run' - never direct python):
+CLI Commands:
 ```bash
+cd cli
 uv run aico --help                    # Show CLI help
 uv run aico gateway status            # Check gateway status
 uv run aico gateway start --no-detach # Start gateway in foreground
@@ -75,19 +60,16 @@ uv run aico db init                   # Initialize database
 uv run aico security setup            # Setup security
 ```
 
-Backend Server:
+Backend + Core + Modelservice:
+
 ```bash
-uv run python backend/main.py         # Direct Python execution
-uv run uvicorn backend.main:app --reload --port 8700  # Development server
-uv run uvicorn backend.main:app --host 0.0.0.0 --port 8771  # Custom host/port
+docker compose -f docker/docker-compose.local.yml up --build
 ```
 
 Testing:
 ```bash
-uv run pytest                         # Run all tests
-uv run pytest --cov=shared --cov=backend --cov=cli  # With coverage
-uv run pytest backend/tests/test_api.py  # Specific test file
-uv run pytest -v -s                   # Verbose output
+cd cli
+uv run pytest
 ```
 
 ## Inspection & Debugging
@@ -113,56 +95,18 @@ uv pip check                         # Check for dependency conflicts
 
 Lock file management:
 ```bash
-uv lock                              # Generate/update uv.lock
-uv lock --upgrade                    # Upgrade all packages in lock
+uv lock                              # Generate/update the component uv.lock
+uv lock --upgrade                    # Upgrade packages in the component lock
 ```
 
-## AICO-Specific Workflows
+## Resetting a component environment
 
-Full development setup (recommended):
+If you need a clean reinstall for a component:
+
 ```bash
-uv sync --extra cli --extra backend --extra test
+rm -rf .venv
+uv sync --frozen
 ```
-
-CLI-only development:
-```bash
-uv sync --extra cli
-uv run aico gateway start
-```
-
-Backend-only development:
-```bash
-uv sync --extra backend
-uv run uvicorn backend.main:app --reload
-```
-
-Add new CLI feature dependency:
-```bash
-uv add --group cli rich-click
-uv sync --extra cli --extra backend --extra test  # Always sync all groups
-uv run aico --help  # Test CLI works
-```
-
-Add new backend feature dependency:
-```bash
-uv add --group backend redis
-uv sync --extra cli --extra backend --extra test  # Always sync all groups
-uv run python backend/main.py
-```
-
-Reset everything (troubleshooting):
-```bash
-# Windows: rmdir /s .venv
-# Unix: rm -rf .venv
-uv sync --extra cli --extra backend --extra test  # Reinstall everything
-```
-
-## AICO Dependency Groups
-
-- **Core (shared)**: cryptography, keyring, PostgreSQL-client, pyyaml, jsonschema, watchdog, pyzmq, protobuf, platformdirs, psutil, passlib, bcrypt
-- **CLI group**: typer, rich, requests
-- **Backend group**: fastapi, httpx, pydantic, pyjwt, uvicorn, chromadb
-- **Test group**: pytest
 
 ## Best Practices
 
@@ -174,8 +118,8 @@ python script.py                     # ❌ Bad - may miss packages
 
 Always sync after changes:
 ```bash
-uv sync --extra cli --extra backend --extra test  # After editing pyproject.toml
-uv sync --extra cli --extra backend --extra test  # After git pull
+uv lock
+uv sync --frozen
 ```
 
 Use version constraints for stability:
@@ -199,17 +143,12 @@ Group dependencies logically:
 
 ### Most Common Commands
 ```bash
-# Setup
-uv sync --extra cli --extra backend --extra test
+# CLI setup
+cd cli
+uv sync --frozen
 
-# Daily usage
-uv run aico gateway status
-uv run uvicorn backend.main:app --reload
-uv run pytest
-
-# Adding dependencies (always sync all groups after)
-uv add --group cli new-package
-uv sync --extra cli --extra backend --extra test
+# Run services
+docker compose -f docker/docker-compose.local.yml up --build
 ```
 
 ### Troubleshooting
@@ -219,9 +158,9 @@ uv pip check
 
 # Nuclear reset (Windows)
 rmdir /s .venv
-uv sync --extra cli --extra backend --extra test
+uv sync --frozen
 
 # Nuclear reset (Unix)
 rm -rf .venv
-uv sync --extra cli --extra backend --extra test
+uv sync --frozen
 ```

@@ -48,7 +48,6 @@ chars = get_platform_chars()
 def _get_jwt_token() -> Optional[str]:
     """Get stored JWT token for CLI authentication from secure keyring"""
     try:
-        from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
         return key_manager.get_jwt_token("api_gateway")
@@ -58,7 +57,6 @@ def _get_jwt_token() -> Optional[str]:
 def _store_jwt_token(token: str) -> None:
     """Store JWT token for CLI authentication in secure keyring"""
     try:
-        from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
         key_manager.store_jwt_token("api_gateway", token)
@@ -513,7 +511,6 @@ def restart():
 def status():
     """Show API Gateway status and configuration"""
     try:
-        # Use ConfigurationManager instead of direct YAML access
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
         config = config_manager.get("api_gateway", {})
@@ -665,7 +662,6 @@ def status():
                 import jwt
                 from aico.security.key_manager import AICOKeyManager
                 
-                from aico.core.config import ConfigurationManager
                 config = ConfigurationManager()
                 key_manager = AICOKeyManager(config)
                 jwt_secret = key_manager.get_jwt_secret("api_gateway")
@@ -1024,7 +1020,6 @@ def auth_login():
     """Generate and store JWT token for CLI authentication (zero-effort security)"""
     try:
         # Check if master password is set up first
-        from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
         if not key_manager.has_stored_key():
@@ -1103,7 +1098,6 @@ def auth_login():
 def auth_logout():
     """Remove stored JWT token"""
     try:
-        from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
         if key_manager.remove_jwt_token("api_gateway"):
@@ -1126,7 +1120,6 @@ def auth_status():
                 import jwt
                 from aico.security.key_manager import AICOKeyManager
                 
-                from aico.core.config import ConfigurationManager
                 config = ConfigurationManager()
                 key_manager = AICOKeyManager(config)
                 jwt_secret = key_manager.get_jwt_secret("api_gateway")

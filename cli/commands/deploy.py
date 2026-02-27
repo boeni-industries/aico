@@ -1136,16 +1136,51 @@ def _nuke_studio(studio_dir: Path) -> int:
             stderr=subprocess.DEVNULL,
         )
     except FileNotFoundError:
-        return 1
+        pass
 
     console.print(format_success("✅ Studio nuked"))
+
+
+def _nuke_vllm() -> int:
+    """Destroy the vLLM container (and any related artifacts that are safe to remove)."""
+    console.print("💣 [bold yellow]NUKING vLLM - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["--profile", "vllm", "kill", "vllm"])
+    _run_compose(["--profile", "vllm", "rm", "-f", "vllm"])
+
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", "aico-vllm"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", "label=com.aico.component=vllm"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout.strip():
+            container_ids = result.stdout.strip().split("\n")
+            subprocess.run(
+                ["docker", "rm", "-f", *container_ids],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except FileNotFoundError:
+        return 1
+
+    console.print(format_success("✅ vLLM nuked"))
     return 0
 
 
-app = typer.Typer(
-    help="Deployment orchestration for AICO components (infra services + Studio).",
-    invoke_without_command=False,
-)
+app = typer.Typer(help="Deploy and provision AICO infrastructure")
 
 
 @app.command("pg", help="Provision Postgres (container + schema), optionally with --nuke for full reset")
@@ -1741,6 +1776,70 @@ def deploy_modelservice(
 
     console.print("")
     console.print(format_success("✅ Modelservice deployment completed successfully!"))
+    console.print("")
+
+
+@app.command("vllm", help="Provision vLLM (Docker with GPU), optionally with --nuke for full reset")
+def deploy_vllm(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy vLLM container before provisioning.",
+    ),
+    model: str = typer.Option(
+        "Qwen/Qwen2.5-3B-Instruct",
+        "--model",
+        help="HuggingFace model to deploy (e.g., Qwen/Qwen2.5-3B-Instruct)",
+    ),
+):
+    """Deploy vLLM inference server with GPU support (Linux/Windows only).
+    
+    This command deploys vLLM as a Docker container with NVIDIA GPU passthrough.
+    The service uses the 'vllm' profile and must be explicitly started.
+    
+    Note: On macOS, use 'aico vllm deploy' instead for Metal GPU support.
+    """
+    import platform
+    system = platform.system()
+    
+    console.print("\n" + "=" * 60)
+    console.print("🚀 [bold cyan]vLLM Deployment (Docker + GPU)[/bold cyan]")
+    console.print("=" * 60 + "\n")
+    
+    # Check platform
+    if system == "Darwin":
+        console.print(format_warning("⚠️  macOS detected - Docker GPU passthrough not supported"))
+        console.print(format_info("💡 Use 'aico vllm deploy' for macOS Metal GPU support"))
+        console.print("")
+        raise typer.Exit(1)
+    
+    console.print(f"[dim]Platform: {system} (GPU passthrough enabled)[/dim]\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing vLLM container!"))
+        _nuke_vllm()
+
+    # Set model via environment
+    env = {
+        "VLLM_MODEL": model,
+    }
+    
+    _persist_compose_env(env)
+
+    # Use --profile to activate vLLM service
+    args = ["--profile", "vllm", "up", "-d", "vllm"]
+
+    console.print(f"🚀 [cyan]Starting vLLM container with model: {model}[/cyan]")
+    console.print("[dim]This will download the model on first run (may take several minutes)[/dim]\n")
+    
+    code = _run_compose(args, env=env)
+    if code != 0:
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ vLLM deployment completed successfully!"))
+    console.print(format_info("💡 API available at: http://localhost:8774"))
+    console.print(format_info("💡 Check logs: docker logs -f aico-vllm"))
     console.print("")
 
 

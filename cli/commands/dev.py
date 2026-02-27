@@ -531,22 +531,20 @@ def protoc(
         console.print("❌ [red]Output directory not found: shared/aico/proto[/red]")
         raise typer.Exit(1)
     
-    # Find venv site-packages directory for protobuf includes
-    venv_site_packages = None
-    possible_venv_paths = [
-        project_root / ".venv" / "Lib" / "site-packages",  # Windows
-        project_root / ".venv" / "lib" / "python3.11" / "site-packages",  # Linux/macOS
-        project_root / ".venv" / "lib" / "python3.12" / "site-packages",  # Linux/macOS
-        project_root / ".venv" / "lib" / "python3.13" / "site-packages",  # Linux/macOS
-    ]
-    
-    for path in possible_venv_paths:
-        if path.exists() and (path / "google" / "protobuf").exists():
-            venv_site_packages = path
-            break
-    
-    if not venv_site_packages:
-        console.print("❌ [red]Could not find venv site-packages with protobuf. Ensure your venv is activated and protobuf is installed.[/red]")
+    # Use the protoc bundled in grpcio-tools to avoid relying on a potentially
+    # outdated system protoc.
+    try:
+        import grpc_tools  # noqa: F401
+        from pathlib import Path as _Path
+        import sys as _sys
+
+        grpc_tools_proto = _Path(grpc_tools.__file__).parent / "_proto"
+        if not grpc_tools_proto.exists():
+            console.print("❌ [red]grpcio-tools _proto include directory not found.[/red]")
+            raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"❌ [red]grpcio-tools is required for protoc compilation: {e}[/red]")
+        console.print("💡 [dim]Fix by syncing the CLI environment (cli/): uv sync --frozen[/dim]")
         raise typer.Exit(1)
     
     # Automatically discover all .proto files in the proto directory
@@ -562,10 +560,12 @@ def protoc(
         raise typer.Exit(1)
     
     cmd = [
-        "protoc",
+        _sys.executable,
+        "-m",
+        "grpc_tools.protoc",
         f"-I=proto",
-        f"-I={venv_site_packages}",
-        "--python_out=shared/aico/proto"
+        f"-I={grpc_tools_proto}",
+        "--python_out=shared/aico/proto",
     ] + proto_files
     
     if dry_run:
@@ -580,7 +580,7 @@ def protoc(
         console.print(f"Command: {' '.join(cmd)}")
         console.print(f"Include paths:")
         console.print(f"  - proto/")
-        console.print(f"  - {venv_site_packages}")
+        console.print(f"  - {grpc_tools_proto}")
         console.print(f"Output directory: shared/aico/proto")
     
     try:
@@ -638,11 +638,7 @@ def protoc(
             console.print(e.stderr)
         raise typer.Exit(1)
     except FileNotFoundError:
-        console.print("❌ [red]protoc command not found. Please install Protocol Buffers compiler.[/red]")
-        console.print("💡 [dim]Install instructions:[/dim]")
-        console.print("  Windows: choco install protoc")
-        console.print("  macOS: brew install protobuf")
-        console.print("  Ubuntu/Debian: sudo apt-get install protobuf-compiler")
+        console.print("❌ [red]Python executable not found for grpcio-tools protoc invocation.[/red]")
         raise typer.Exit(1)
 
 

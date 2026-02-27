@@ -82,7 +82,8 @@ services:
       dockerfile: docker/Dockerfile.backend
     container_name: aico-core
     restart: unless-stopped
-    command: ["uv", "run", "python", "backend/core_main.py"]
+    working_dir: /app/backend
+    command: ["/app/backend/.venv/bin/python", "core_main.py"]
     environment:
       AICO_ENV: development
       AICO_CONFIG_DIR: /app/config
@@ -288,6 +289,54 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
+  vllm:
+    image: vllm/vllm-openai:v0.6.4.post1
+    container_name: aico-vllm
+    restart: unless-stopped
+    profiles:
+      - vllm
+    environment:
+      AICO_ENV: development
+      HF_HOME: /root/.cache/huggingface
+    ports:
+      - "8774:8000"
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    shm_size: 4gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command:
+      - --model
+      - ${VLLM_MODEL:-Qwen/Qwen2.5-3B-Instruct}
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --gpu-memory-utilization
+      - "0.9"
+      - --max-num-seqs
+      - "32"
+      - --max-model-len
+      - "8192"
+      - --enable-chunked-prefill
+      - --tensor-parallel-size
+      - "1"
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "vllm"
+      com.aico.service.type: "application"
+      com.aico.service.role: "llm-inference"
+      org.opencontainers.image.title: "AICO vLLM"
+      org.opencontainers.image.description: "vLLM inference server with GPU support"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
   grafana:
     image: grafana/grafana:12.1.0
     container_name: aico-grafana
@@ -393,4 +442,3 @@ volumes:
       com.aico.component: "grafana"
       com.aico.volume.type: "data"
       com.aico.managed-by: "aico-cli"
-  

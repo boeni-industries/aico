@@ -106,10 +106,8 @@ from cli.commands.security import app as security_app
 from cli.commands.dev import app as dev_app
 from cli.commands.logs import app as logs_app
 from cli.commands.bus import app as bus_app
-from cli.commands.scheduler import app as scheduler_app
 from cli.commands.tools import app as tools_app
 from cli.commands.skills import app as skills_app
-from cli.commands.modelservice import app as modelservice_app
 from cli.commands.vllm import app as vllm_app
 from cli.commands.lmdb import app as lmdb_app
 from cli.commands.chroma import app as chroma_app
@@ -137,11 +135,9 @@ app.add_typer(influx_app, name="influx", help=f"{chars['database']} InfluxDB tim
 app.add_typer(deploy_app, name="deploy", help=f"{chars['dev']} Deployment orchestration for Postgres/InfluxDB backends")
 app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
 app.add_typer(logs_app, name="logs", help=f"{chars['logs']} Log management and analysis")
-app.add_typer(scheduler_app, name="scheduler", help="⏰ Task scheduler management")
 app.add_typer(emotion_app, name="emotion", help="🎭 Emotional simulation management")
 app.add_typer(dev_app, name="dev", help=f"{chars['dev']} Development utilities")
 app.add_typer(bus_app, name="bus", help=f"{chars['bus']} Message bus management")
-app.add_typer(modelservice_app, name="modelservice", help="🤖 Model service management")
 app.add_typer(vllm_app, name="vllm", help="🚀 vLLM deployment and management")
 app.add_typer(tools_app, name="tools", help="🛠 Agency tool inspection and live execution")
 app.add_typer(skills_app, name="skills", help="🎯 Agency skills inspection and live execution")
@@ -150,6 +146,18 @@ app.add_typer(chroma_app, name="chroma", help=f"{chars['database']} ChromaDB sem
 try:
     from cli.commands import gateway
     app.add_typer(gateway.app, name="gateway", help=f"{chars['gateway']} API Gateway management")
+except ImportError:
+    pass
+
+try:
+    from cli.commands import modelservice
+    app.add_typer(modelservice.app, name="modelservice", help="🤖 Model service management and control")
+except ImportError:
+    pass
+
+try:
+    from cli.commands import scheduler
+    app.add_typer(scheduler.app, name="scheduler", help="⏰ Task scheduler management")
 except ImportError:
     pass
 

@@ -29,17 +29,23 @@ RUN set -eux; \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Copy dependency metadata first for better layer caching
-COPY pyproject.toml uv.lock README.md VERSIONS /app/
+# Copy dependency metadata + required local path deps first.
+# NOTE: backend depends on shared via a local path source (../shared), so we need
+# the shared project present before running uv.
+COPY shared /app/shared
+COPY backend /app/backend
+COPY backend/uv.lock /app/backend/uv.lock
+COPY README.md VERSIONS /app/
 
 # Install deps (without installing the local project) so this layer is stable
 # across source-only changes.
+WORKDIR /app/backend
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --extra backend --no-install-project
+    uv sync --frozen --no-install-project
 
-# Copy source
-COPY shared /app/shared
-COPY backend /app/backend
+WORKDIR /app
+
+# Copy remaining source
 COPY cli /app/cli
 COPY modelservice /app/modelservice
 COPY proto /app/proto
@@ -49,11 +55,15 @@ COPY config /app/config
 COPY docker/entrypoint-backend.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Install the local project into the already-synced environment.
+# Install the local backend project into the already-synced environment.
+# NOTE: Must run in /app/backend so uv finds /app/backend/.venv.
+WORKDIR /app/backend
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install -e .
+
+WORKDIR /app/backend
 
 EXPOSE 8771
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["uv", "run", "python", "backend/gateway_main.py"]
+CMD ["/app/backend/.venv/bin/python", "gateway_main.py"]

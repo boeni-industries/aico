@@ -856,6 +856,30 @@ CREATE INDEX IF NOT EXISTS idx_conversation_messages_correlation
     WHERE correlation_id IS NOT NULL;
 
 -- ==========================================================================
+-- Outbox (durable publication fallback)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS outbox_events (
+                event_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                payload_bytes BYTEA NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                available_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                sent_at TIMESTAMPTZ
+            );
+
+CREATE INDEX IF NOT EXISTS idx_outbox_events_pending
+    ON outbox_events (status, available_at, created_at)
+    WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_outbox_events_created
+    ON outbox_events (created_at);
+
+-- ==========================================================================
 -- Unified Interaction Request System
 -- ==========================================================================
 

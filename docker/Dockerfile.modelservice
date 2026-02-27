@@ -16,22 +16,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-COPY pyproject.toml uv.lock README.md VERSIONS /app/
+COPY shared /app/shared
+COPY modelservice /app/modelservice
+COPY modelservice/uv.lock /app/modelservice/uv.lock
+COPY README.md VERSIONS /app/
 
 # Install deps (without installing the local project) so this layer is stable
 # across source-only changes.
+WORKDIR /app/modelservice
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --extra modelservice --no-install-project
+    uv sync --frozen --no-install-project
 
-COPY shared /app/shared
+WORKDIR /app
+
 COPY backend /app/backend
 COPY cli /app/cli
-COPY modelservice /app/modelservice
 COPY proto /app/proto
 COPY config /app/config
 
-# Install the local project into the already-synced environment.
+# Install the local modelservice project into the already-synced environment.
+WORKDIR /app/modelservice
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install -e .
 
-CMD ["uv", "run", "python", "-m", "modelservice.main"]
+WORKDIR /app/modelservice
+
+CMD ["/app/modelservice/.venv/bin/python", "-m", "modelservice.main"]

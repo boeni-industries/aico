@@ -6,7 +6,7 @@
 - [x] Publish frontend-independent External API Contract (OpenAPI + WebSocket spec + examples)
 - [x] Centralize identity + scoping: make `tenant_id`/`user_id` mandatory end-to-end; enforce authz on every request/subscription
 - [x] Postgres source of truth for conversations: add tables + catch-up API
-- [ ] Outbox for durable publication: stop publish-then-store for correctness-critical flows
+- [ ] Outbox fallback for durable publication: keep streaming chunks ephemeral; ensure final response notifications are eventually delivered
 - [ ] Enable JetStream for durable flows; keep streaming chunks ephemeral; add replay/recovery tests
 - [x] **Migrate fully to NATS: remove ZMQ entirely without keeping any legacy or fallback code**
 - [ ] Replace LMDB working memory with Postgres (retention/TTL + indexes; cache only if proven)

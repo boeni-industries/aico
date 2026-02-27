@@ -67,8 +67,7 @@ aico/
 ├── LICENSE
 ├── README.md
 ├── mkdocs.yml         # MkDocs config for docs
-├── pyproject.toml     # Unified Python dependencies
-└── uv.lock            # UV dependency lock file
+└── (Python deps are managed per component: shared/, backend/, modelservice/, cli/)
 ```
 
 **Key Points:**
@@ -127,8 +126,10 @@ You should see `Python 3.13.5`.
 > 
 > AICO uses application-level encryption with SQLCipher for all databases (PostgreSQL in the backend and Drift on the frontend). Semantic memory and knowledge graph embeddings use ChromaDB, and working memory/cache uses LMDB, all with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
-### 3. UV Workspace Setup (Single Virtual Environment)
-AICO uses UV workspace management with a unified `pyproject.toml` at the root and a single shared virtual environment for all Python components.
+### 3. UV Setup (Per-Component Projects)
+AICO uses UV for Python dependency management. Each Python component is its own UV project with its own `pyproject.toml` and `uv.lock`.
+
+This is required because some components intentionally use conflicting dependency versions (e.g. backend vs modelservice).
 
 **Important (Development): Use `AICO_CONFIG_DIR` to isolate your runtime config**
  
@@ -152,53 +153,39 @@ AICO reads and edits configuration from the *runtime config directory* (platform
 **Initial Setup:**
 
   ```sh
-  # Clone and navigate to project root
+  # From the repo root
   cd aico
 
-  # Initialize UV workspace with all optional dependencies
-  uv sync --extra cli --extra backend --extra test --extra modelservice
+  # Local development: install CLI dependencies (CLI runs on the host)
+  cd cli
+  uv sync --frozen
 
   # Verify installation
   uv run aico --help
-  uv run python -c "import fastapi; print('Backend deps ready')"
   ```
 
 **Key Changes from Previous Setup:**
-- **Single `.venv`** at project root instead of per-component environments
-- **Unified `pyproject.toml`** with optional dependency groups (`cli`, `backend`, `test`)
-- **UV workspace commands** replace manual venv activation
-- **Shared dependencies** automatically resolved across all components
-- **Dependency overrides**: UV's `override-dependencies` resolves GLiNER/Coqui-TTS conflict (transformers version)
+- Python dependencies are managed **per component**:
+  - `shared/pyproject.toml`
+  - `cli/pyproject.toml`
+  - `backend/pyproject.toml`
+  - `modelservice/pyproject.toml`
+- `shared/` is consumed as an editable path dependency by the other components.
 
 **Working with the Workspace:**
 
   ```sh
-  # Run CLI commands
+  # Run CLI commands (from cli/)
   uv run aico gateway status
   uv run aico db init
 
-  # Run backend server
-  uv run python backend/main.py
-  # or with uvicorn
-  uv run uvicorn backend.main:app --reload --port 8700
-
-  # Install additional dependencies
-  uv add requests  # adds to core dependencies
-  uv add --group cli typer-cli  # adds to CLI group
-  uv add --group backend fastapi-users  # adds to backend group
-
-  # Sync after pyproject.toml changes
-  uv sync
+  # Add a dependency to the CLI component
+  uv add <package>
+  uv lock
+  uv sync --frozen
   ```
 
-> **Benefits of UV Workspace:**
-> - Single environment eliminates activation/deactivation complexity
-> - Consistent dependency resolution across all components
-> - **Cache**: LMDB for high-performance session caching
-> - Simplified IDE configuration (one Python interpreter)
-> - Automatic shared library integration
-
-> **IDE Setup:** Point your IDE to the `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (Unix) in the project root.
+> **IDE Setup:** Point your IDE to the interpreter inside the component you're working on (e.g. `cli/.venv/...`).
 
 ---
 
@@ -282,23 +269,21 @@ npm install -g @lcov-viewer/cli
 
 Below are the build and run commands for each major part of the system. Substitute your platform (Windows, macOS, Linux) as appropriate.
 
-### Backend (Python FastAPI)
+### Backend + Core + Modelservice (Docker)
 
-- **All platforms (UV workspace):**
-  ```sh
-  # From project root
-  uv run python backend/main.py
-  # or with uvicorn
-  uv run uvicorn backend.main:app --reload --port 8771
-  # Visit http://127.0.0.1:8771
-  ```
+Backend (`gateway` + `core`) and `modelservice` run in Docker in local development.
+
+```sh
+# From repo root
+docker compose -f docker/docker-compose.local.yml up --build
+```
 
 ### CLI (Python CLI)
 
 #### Run the CLI in development
 - **All platforms:**
   ```sh
-  # From project root
+  # From cli/
   uv run aico --help
   uv run aico gateway status
   uv run aico db init
@@ -348,12 +333,20 @@ Below are the build and run commands for each major part of the system. Substitu
 ## Development Notes
 
 ### Dependency Management
-AICO uses UV workspace management with a unified `pyproject.toml` and shared virtual environment:
+AICO uses UV per component:
 
-- Add dependencies: `uv add <package>` or `uv add --group <group> <package>`
-- Python version: `>=3.13` (PyInstaller compatibility)
-- Sync dependencies: `uv sync` after changes
-- Optional groups: `cli`, `backend`, `test`
+- **CLI**: `cli/pyproject.toml` + `cli/uv.lock`
+- **Backend**: `backend/pyproject.toml` + `backend/uv.lock`
+- **Modelservice**: `modelservice/pyproject.toml` + `modelservice/uv.lock`
+- **Shared**: `shared/pyproject.toml` + `shared/uv.lock`
+
+When you change dependencies in a component:
+
+```sh
+uv add <package>
+uv lock
+uv sync --frozen
+```
 
 ### Project Structure
 The project follows a monorepo structure with shared libraries and unified tooling across all components.
@@ -813,18 +806,26 @@ npm install -g protoc-gen-js protoc-gen-grpc-web
 
 ### Generating Code
 
+**Recommended:** Use the CLI helper so the correct include paths are selected automatically:
+
+```sh
+# From the repo root
+./aico dev protoc
+```
+
+This runs `protoc` from the **repo root** and automatically includes the active CLI venv's `site-packages` (for Google well-known types).
+
 **Note:** All commands assume you're starting from the AICO project root directory.
 
 For Python, you must include both the `proto` directory and your venv's `site-packages` as `-I` (include) paths, so that Google well-known types are found.
 
 **Python (Backend & Shared):**
 
-From the **project root**, run:
+From the **project root**, run (adjust the `-I` path to match the Python environment you're using, e.g. `shared/.venv/...` or `cli/.venv/...`):
 
 ```sh
-protoc -I=proto -I=.venv/Lib/site-packages --python_out=shared/aico/proto proto/aico_core_api_gateway.proto proto/aico_core_common.proto proto/aico_core_envelope.proto proto/aico_core_logging.proto proto/aico_core_plugin_system.proto proto/aico_core_update_system.proto proto/aico_emotion.proto proto/aico_integration.proto proto/aico_personality.proto proto/aico_conversation.proto proto/aico_modelservice.proto
+protoc -I=proto -I=<path-to-site-packages> --python_out=shared/aico/proto proto/aico_core_api_gateway.proto proto/aico_core_common.proto proto/aico_core_envelope.proto proto/aico_core_logging.proto proto/aico_core_plugin_system.proto proto/aico_core_update_system.proto proto/aico_emotion.proto proto/aico_integration.proto proto/aico_personality.proto proto/aico_conversation.proto proto/aico_modelservice.proto
 ```
-- Note: UV workspace uses `.venv` at project root, not `backend/.venv`.
 - If you get errors about missing `google/protobuf/*.proto` files, make sure your venv's `site-packages/google/protobuf/` directory contains the `.proto` files. If not, download them from the [official repo](https://github.com/protocolbuffers/protobuf/tree/main/src/google/protobuf) and copy them in.
 
 **Dart (Flutter Frontend):**

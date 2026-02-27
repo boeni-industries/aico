@@ -257,6 +257,18 @@ class BackendLifecycleManager:
             dependencies=[],
             priority=5  # Start early, stop late
         )
+
+        # Outbox publisher (durable publication fallback)
+        def create_outbox_publisher(_container: ServiceContainer):
+            from backend.services.outbox_publisher import OutboxPublisherService
+            return OutboxPublisherService("outbox_publisher", _container)
+
+        self.container.register_service(
+            "outbox_publisher",
+            create_outbox_publisher,
+            dependencies=[],
+            priority=25,  # Start after message bus plugin (20), before higher-level services
+        )
         
         self.container.register_service(
             "chromadb_client",

@@ -139,50 +139,10 @@ async def _enhance_health_data(health_data: dict):
                 "error": str(e)
             }
     
-    async def check_ollama():
-        try:
-            start_time = time.time()
-            async with httpx.AsyncClient(timeout=1.5) as client:
-                response = await client.get("http://127.0.0.1:11434/api/tags")
-                response_time = (time.time() - start_time) * 1000
-                
-                if response.status_code == 200:
-                    return {
-                        "healthy": True,
-                        "reachable": True,
-                        "status": "running",
-                        "response_time_ms": round(response_time)
-                    }
-                else:
-                    return {
-                        "healthy": False,
-                        "reachable": True,
-                        "status": "error",
-                        "error": f"HTTP {response.status_code}"
-                    }
-        except httpx.ConnectError:
-            return {
-                "healthy": False,
-                "reachable": False,
-                "status": "offline",
-                "error": "connection_refused"
-            }
-        except Exception as e:
-            return {
-                "healthy": False,
-                "reachable": False,
-                "status": "unknown",
-                "error": str(e)
-            }
+    # Only check API Gateway (vLLM is deployed separately)
+    gateway_result = await check_api_gateway()
     
-    # Run both checks concurrently
-    gateway_result, ollama_result = await asyncio.gather(
-        check_api_gateway(),
-        check_ollama(),
-        return_exceptions=True
-    )
-    
-    # Handle results
+    # Handle result
     if isinstance(gateway_result, Exception):
         health_data["checks"]["api_gateway"] = {
             "status": "unknown",
@@ -191,49 +151,12 @@ async def _enhance_health_data(health_data: dict):
         }
     else:
         health_data["checks"]["api_gateway"] = gateway_result
-    
-    if isinstance(ollama_result, Exception):
-        health_data["checks"]["ollama"] = {
-            "healthy": False,
-            "reachable": False,
-            "status": "unknown",
-            "error": str(ollama_result)
-        }
-    else:
-        health_data["checks"]["ollama"] = ollama_result
 
 
 async def _show_service_details(health_data: dict):
     """Show additional service details for healthy services."""
     try:
-        # Get Ollama models if available
-        if health_data.get("checks", {}).get("ollama", {}).get("healthy", False):
-            try:
-                from cli.utils.nats_client import get_ollama_models
-                models_response = get_ollama_models()
-                if models_response.get("success") and models_response.get("data", {}).get("models"):
-                    models = models_response["data"]["models"]
-                    
-                    console.print()
-                    table = Table(title="Available Models", show_header=True, header_style="bold blue")
-                    table.add_column("Model", style="cyan", no_wrap=True)
-                    table.add_column("Size", justify="right", style="dim")
-                    table.add_column("Modified", style="dim")
-                    
-                    for model in models[:5]:  # Show top 5 models
-                        name = model.get("name", "unknown")
-                        size = _format_size(model.get("size", 0))
-                        modified = model.get("modified_at", "unknown")
-                        if modified != "unknown" and len(modified) > 10:
-                            modified = modified[:10]  # Show just date part
-                        table.add_row(name, size, modified)
-                    
-                    if len(models) > 5:
-                        table.add_row("...", f"+{len(models) - 5} more", "")
-                    
-                    console.print(table)
-            except Exception:
-                pass  # Silently skip if models can't be retrieved
+        # vLLM models are managed separately via 'aico vllm' commands
         
         # Show configuration summary
         config = _get_modelservice_config()
@@ -245,12 +168,8 @@ async def _show_service_details(health_data: dict):
             
             # Show key configuration values
             rest_config = config.get("rest", {})
-            ollama_config = config.get("ollama", {})
             
             table.add_row("REST API", f"{rest_config.get('host', '127.0.0.1')}:{rest_config.get('port', 8773)}")
-            table.add_row("Ollama URL", f"{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}")
-            table.add_row("Auto Start", "✓" if ollama_config.get("auto_start", True) else "✗")
-            table.add_row("Auto Install", "✓" if ollama_config.get("auto_install", True) else "✗")
             
             console.print(table)
             
@@ -280,16 +199,12 @@ def modelservice_callback(ctx: typer.Context, help: bool = typer.Option(False, "
             ("stop", "Stop the Modelservice"),
             ("restart", "Restart the Modelservice"),
             ("status", "Show service status and health"),
-            ("models", "List available models"),
-            ("pull", "Download a model"),
             ("embeddings", "Test embedding generation")
         ]
         
         examples = [
             "aico modelservice start",
             "aico modelservice status",
-            "aico modelservice models",
-            "aico modelservice pull paraphrase-multilingual",
             "aico modelservice embeddings 'test text'"
         ]
         
@@ -577,7 +492,7 @@ def status():
                         health_data = health_response.get("data", {})
                         
                         # Step 2: Enhanced health checks
-                        progress.update(task, description="Checking API Gateway and Ollama...")
+                        progress.update(task, description="Checking API Gateway...")
                         asyncio.run(_enhance_health_data(health_data))
                         
                         progress.update(task, description="Health checks complete!")
@@ -588,8 +503,7 @@ def status():
                             "status": "connection_failed", 
                             "version": "0.0.2", 
                             "checks": {
-                                "api_gateway": {"status": "unknown", "reachable": False, "error": "connection_failed"},
-                                "ollama": {"healthy": False, "reachable": False, "error": "unknown"}
+                                "api_gateway": {"status": "unknown", "reachable": False, "error": "connection_failed"}
                             }, 
                             "issues": ["Health endpoint unreachable via message bus"]
                         }
@@ -599,8 +513,7 @@ def status():
                     "status": "connection_failed", 
                     "version": "0.0.2", 
                     "checks": {
-                        "api_gateway": {"status": "unknown", "reachable": False, "error": "bus_connection_failed"},
-                        "ollama": {"healthy": False, "reachable": False, "error": "unknown"}
+                        "api_gateway": {"status": "unknown", "reachable": False, "error": "bus_connection_failed"}
                     }, 
                     "issues": [f"Message bus health check failed: {str(e)}"]
                 }
@@ -712,9 +625,7 @@ def status():
                 ("modelservice/health/request", "Service health and status"),
                 ("modelservice/completions/request", "Text generation"),
                 ("modelservice/models/request", "List available models"),
-                ("modelservice/status/request", "Service status information"),
-                ("ollama/status/request", "Ollama service status"),
-                ("ollama/models/request", "Ollama model management")
+                ("modelservice/status/request", "Service status information")
             ]
             
             for topic, purpose in topics:
@@ -727,80 +638,7 @@ def status():
         raise typer.Exit(1)
 
 
-@app.command("models")
-def models():
-    """List available models in Ollama."""
-    try:
-        if not _is_modelservice_running():
-            console.print(f"[red]{chars['cross']} Modelservice is not running[/red]")
-            console.print("[dim]Start it with: aico modelservice start[/dim]")
-            raise typer.Exit(1)
-        
-        from cli.utils.nats_client import get_ollama_models
-        response = get_ollama_models()
-        
-        if not response.get("success"):
-            console.print(f"[red]{chars['cross']} Failed to get models: {response.get('error', 'Unknown error')}[/red]")
-            raise typer.Exit(1)
-        
-        models_data = response.get("data", {}).get("models", [])
-        if not models_data:
-            console.print("[yellow]No models found[/yellow]")
-            return
-        
-        table = Table(
-            title="✨ [bold cyan]Available Models[/bold cyan]",
-            title_justify="left",
-            border_style="bright_blue",
-            header_style="bold yellow",
-            box=box.SIMPLE_HEAD,
-            padding=(0, 1)
-        )
-        table.add_column("Name", style="cyan", no_wrap=False, min_width=30)
-        table.add_column("Type", style="green", width=10)
-        table.add_column("Size", justify="right", style="bright_blue", width=12)
-        table.add_column("Modified", style="dim", width=12)
-        
-        for model in models_data:
-            name = model.get("name", "unknown")
-            model_type = "embedding" if any(emb in name.lower() for emb in ["embed", "minilm", "paraphrase", "bge"]) else "llm"
-            size = _format_size(model.get("size", 0))
-            modified = model.get("modified_at", "unknown")
-            if modified != "unknown" and len(modified) > 10:
-                modified = modified[:10]
-            
-            table.add_row(name, model_type, size, modified)
-        
-        console.print(table)
-        
-    except Exception as e:
-        console.print(f"[red]{chars['cross']} Error listing models: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@app.command("pull")
-def pull(model_name: str = typer.Argument(..., help="Name of the model to download")):
-    """Download a model via Ollama."""
-    try:
-        if not _is_modelservice_running():
-            console.print(f"[red]{chars['cross']} Modelservice is not running[/red]")
-            console.print("[dim]Start it with: aico modelservice start[/dim]")
-            raise typer.Exit(1)
-        
-        console.print(f"[yellow]📥 Pulling model: {model_name}[/yellow]")
-        
-        from cli.utils.nats_client import pull_ollama_model
-        response = pull_ollama_model(model_name)
-        
-        if response.get("success"):
-            console.print(f"[green]{chars['check']} Successfully pulled model: {model_name}[/green]")
-        else:
-            console.print(f"[red]{chars['cross']} Failed to pull model: {response.get('error', 'Unknown error')}[/red]")
-            raise typer.Exit(1)
-            
-    except Exception as e:
-        console.print(f"[red]{chars['cross']} Error pulling model: {e}[/red]")
-        raise typer.Exit(1)
+# Ollama-specific commands removed - use 'aico vllm' for LLM model management
 
 
 @app.command("embeddings")

@@ -65,6 +65,27 @@ user_proactive_preferences = Table(
     Column('updated_at', TIMESTAMP(timezone=True), nullable=False),
 )
 
+# ==========================================================================
+# Outbox (durable publication fallback)
+# ==========================================================================
+
+outbox_events = Table(
+    'outbox_events',
+    metadata,
+    Column('event_id', String, primary_key=True),
+    Column('tenant_id', String, nullable=False),
+    Column('subject', String, nullable=False),
+    Column('payload_bytes', LargeBinary, nullable=False),
+    Column('status', String, nullable=False, server_default=text("'pending'")),
+    Column('attempts', Integer, nullable=False, server_default=text("0")),
+    Column('last_error', Text),
+    Column('available_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.current_timestamp()),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.current_timestamp()),
+    Column('sent_at', TIMESTAMP(timezone=True)),
+    Index('idx_outbox_events_pending', 'status', 'available_at', 'created_at'),
+    Index('idx_outbox_events_created', 'created_at'),
+)
+
 user_feedback_requests = Table(
     'user_feedback_requests',
     metadata,

@@ -259,7 +259,8 @@ Prereqs:
 Install dependencies:
 
 ```bash
-uv sync --extra cli --extra backend --extra modelservice --extra test
+cd cli
+uv sync --frozen
 ```
 
 Start the backend (API Gateway) via the CLI:

@@ -28,6 +28,7 @@ from aico.proto.aico_modelservice_pb2 import CompletionsResponse, CompletionsReq
 from aico.ai import ProcessingContext, ai_registry
 from aico.ai.llm.factory import LLMClientFactory
 from aico.ai.characters import CharacterManager
+from aico.data.uow import UnitOfWork
 from backend.core.ai_plugin_base import ProcessingRequest
 from backend.core.service_container import BaseService
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -1191,22 +1192,34 @@ class ConversationEngine(BaseService):
             conv_message.message.CopyFrom(ai_message)
             
             # Publish final response to both topics for compatibility
-            self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: {AICOTopics.CONVERSATION_RESPONSE}")
-            await self.bus_client.publish(
-                AICOTopics.CONVERSATION_RESPONSE,
-                conv_message,
-                correlation_id=request_id
-            )
-            self.logger.info(f"✅ [FINALIZE] Published to {AICOTopics.CONVERSATION_RESPONSE}")
-            
-            # Also publish to AI response topic for API layer
-            self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: conversation/ai/response/v1")
-            await self.bus_client.publish(
-                "conversation/ai/response/v1",
-                conv_message,
-                correlation_id=request_id
-            )
-            self.logger.info(f"✅ [FINALIZE] Published to conversation/ai/response/v1")
+            try:
+                self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: {AICOTopics.CONVERSATION_RESPONSE}")
+                await self.bus_client.publish(
+                    AICOTopics.CONVERSATION_RESPONSE,
+                    conv_message,
+                    correlation_id=request_id,
+                )
+                self.logger.info(f"✅ [FINALIZE] Published to {AICOTopics.CONVERSATION_RESPONSE}")
+
+                # Also publish to AI response topic for API layer
+                self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: conversation/ai/response/v1")
+                await self.bus_client.publish(
+                    "conversation/ai/response/v1",
+                    conv_message,
+                    correlation_id=request_id,
+                )
+                self.logger.info(f"✅ [FINALIZE] Published to conversation/ai/response/v1")
+            except Exception as publish_error:
+                self.logger.error(f"❌ [FINALIZE] Final response publish failed; enqueueing outbox fallback: {publish_error}")
+                try:
+                    await self._enqueue_outbox_fallback(
+                        tenant_id=tenant_id,
+                        topics=[AICOTopics.CONVERSATION_RESPONSE, "conversation/ai/response/v1"],
+                        payload_envelope=conv_message,
+                        correlation_id=request_id,
+                    )
+                except Exception as outbox_error:
+                    self.logger.error(f"❌ [FINALIZE] Outbox enqueue failed after publish failure: {outbox_error}")
             
             # Phase 3: Log trajectory for behavioral learning
             if request_id in self.pending_responses:
@@ -1231,6 +1244,67 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
+
+    async def _enqueue_outbox_fallback(
+        self,
+        *,
+        tenant_id: str,
+        topics: list[str],
+        payload_envelope: Any,
+        correlation_id: str,
+    ) -> None:
+        """Enqueue an outbox event for later publication.
+
+        This is a fallback path used only when inline publish fails.
+        It must never be used for streaming chunks.
+        """
+        if not self.bus_client:
+            raise RuntimeError("bus_client not available")
+
+        from aico.data.outbox.models import OutboxEvent
+        from aico.data.postgres.connection import get_session_factory
+
+        # We enqueue the raw NATS payload bytes (protobuf envelope) so the outbox publisher
+        # can publish without needing protobuf types.
+        if self.bus_client._nats is None:  # type: ignore[attr-defined]
+            raise RuntimeError("NATS client not connected")
+
+        # Rebuild the exact bytes that MessageBusClient.publish() would send.
+        from aico.proto.aico_core_envelope_pb2 import AicoMessage
+        from google.protobuf.any_pb2 import Any as ProtoAny
+        from aico.core.bus import _create_message_metadata
+
+        now = datetime.now(UTC)
+        session_factory = await get_session_factory()
+
+        async with UnitOfWork(session_factory) as uow:
+            for topic in topics:
+                metadata = _create_message_metadata(
+                    message_id=str(uuid.uuid4()),
+                    source="conversation_engine",
+                    message_type=topic,
+                )
+                metadata.attributes["correlation_id"] = correlation_id
+
+                envelope = AicoMessage()
+                envelope.metadata.CopyFrom(metadata)
+                any_payload = ProtoAny()
+                any_payload.Pack(payload_envelope)
+                envelope.any_payload.CopyFrom(any_payload)
+                payload_bytes = envelope.SerializeToString()
+
+                event = OutboxEvent(
+                    event_id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    subject=topic.replace("/", "."),
+                    payload_bytes=payload_bytes,
+                    status="pending",
+                    attempts=0,
+                    available_at=now,
+                    created_at=now,
+                    sent_at=None,
+                )
+                await uow.outbox_events.enqueue(event)
 
     async def _persist_user_message(
         self,

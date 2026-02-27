@@ -154,7 +154,29 @@ def test_db():
         CREATE INDEX IF NOT EXISTS idx_interaction_events_correlation
         ON interaction_events (correlation_id, created_at ASC)
     """)
-    
+
+    # Create outbox_events table if missing (used for durable publication fallback)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS outbox_events (
+            event_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            payload_bytes BYTEA NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            available_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            sent_at TIMESTAMPTZ
+        )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_outbox_events_pending
+        ON outbox_events (status, available_at, created_at)
+        WHERE status = 'pending'
+    """)
+
     db.commit()
     cursor.close()
     

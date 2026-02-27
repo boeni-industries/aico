@@ -13,11 +13,11 @@ The AICO CLI is a comprehensive command-line interface for managing, operating, 
 **Installation:**
 ```bash
 # Development mode (editable install)
-cd /path/to/aico
-uv pip install -e .
+cd /path/to/aico/cli
+uv sync --frozen
 
 # Run CLI
-aico --help
+uv run aico --help
 ```
 
 ---
@@ -844,10 +844,11 @@ aico pg exec "SELECT * FROM users" > users-backup.sql
 ### Command Not Found
 ```bash
 # Ensure CLI is installed
-uv pip install -e .
+cd /path/to/aico/cli
+uv sync --frozen
 
 # Check installation
-which aico
+uv run which aico
 aico --help
 ```
 

@@ -94,6 +94,7 @@ class UnitOfWork:
         self._interaction_events_repository = None
         self._conversations_repository = None
         self._conversation_messages_repository = None
+        self._outbox_events_repository = None
         self._tenants_repository = None
         self._tenant_memberships_repository = None
         self._user_feedback_requests_repository = None
@@ -506,6 +507,14 @@ class UnitOfWork:
             from .repositories.postgres.conversation_messages_repository import PostgresConversationMessagesRepository
             self._conversation_messages_repository = PostgresConversationMessagesRepository(self._session)
         return self._conversation_messages_repository
+
+    @property
+    def outbox_events(self):
+        """Get OutboxEventsRepository instance."""
+        if self._outbox_events_repository is None:
+            from .repositories.postgres.outbox_events_repository import PostgresOutboxEventsRepository
+            self._outbox_events_repository = PostgresOutboxEventsRepository(self._session)
+        return self._outbox_events_repository
 
     @property
     def tenants(self):
