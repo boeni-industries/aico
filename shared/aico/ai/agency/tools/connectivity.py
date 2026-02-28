@@ -10,7 +10,6 @@ from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
 from aico.data.uow import UnitOfWork
 from aico.data.influx.connection import InfluxDBConnection
-from aico.data.lmdb import get_lmdb_path, initialize_lmdb_env
 from .registry import ToolDefinition, get_tool_registry
 
 
@@ -114,87 +113,19 @@ async def tool_db_influx_ping() -> Dict[str, Any]:
         }
 
 
-async def tool_db_chroma_ping() -> Dict[str, Any]:
-    """Atomic tool: ping local ChromaDB (semantic store) via heartbeat.
-
-    This checks that the local ChromaDB PersistentClient can be created and
-    responds to a simple heartbeat call.
-    """
-
-    start = datetime.now(UTC)
-    try:
-        import chromadb
-        from chromadb.config import Settings
-
-        chroma_path = AICOPaths.get_semantic_memory_path()
-        client = chromadb.PersistentClient(
-            path=str(chroma_path),
-            settings=Settings(anonymized_telemetry=False, allow_reset=True),
-        )
-
-        # heartbeat() is a cheap connectivity check
-        ok = True
-        try:
-            client.heartbeat()
-        except Exception:
-            ok = False
-
-        latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
-        status = "ok" if ok else "error"
-        return {
-            "ok": ok,
-            "data": {
-                "status": status,
-                "latency_ms": latency_ms,
-                "error_message": None if ok else "Chroma heartbeat failed",
-                "details": {},
-            },
-            "error": None if ok else {
-                "code": "db_chroma_ping_failed",
-                "message": "Chroma heartbeat failed",
-            },
-        }
-    except Exception as exc:  # pragma: no cover - defensive safety net
-        logger.error("[TOOL_CONNECTIVITY] ChromaDB ping failed: %s", exc)
-        latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
-        return {
-            "ok": False,
-            "data": {
-                "status": "error",
-                "latency_ms": latency_ms,
-                "error_message": str(exc),
-                "details": {},
-            },
-            "error": {
-                "code": "db_chroma_ping_failed",
-                "message": str(exc),
-            },
-        }
-
-
 async def tool_db_lmdb_ping() -> Dict[str, Any]:
     """Atomic tool: ping LMDB working memory by opening and closing the env."""
 
     start = datetime.now(UTC)
     try:
-        import lmdb
-
-        config = ConfigurationManager()
-        config.initialize(lightweight=True)
-        db_path = get_lmdb_path(config)
-        initialize_lmdb_env(config)
-
-        env = lmdb.open(str(db_path), max_dbs=1)
-        env.close()
-
         latency_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
         return {
             "ok": True,
             "data": {
-                "status": "ok",
+                "status": "deprecated",
                 "latency_ms": latency_ms,
                 "error_message": None,
-                "details": {"path": str(db_path)},
+                "details": {},
             },
             "error": None,
         }
@@ -362,42 +293,6 @@ def _register_connectivity_tools() -> None:
             resource_profile="tiny",
             default_timeout_seconds=3,
             handler=tool_db_influx_ping,
-        )
-    )
-
-    # ChromaDB
-    registry.register_tool(
-        ToolDefinition(
-            tool_id="tool.db.chroma.ping",
-            name="ChromaDB Ping",
-            description="Check local ChromaDB (semantic store) connectivity via heartbeat().",
-            domain="connectivity",
-            backend="python",
-            runtime_context="backend_service",
-            capability_tags=["check_health", "check_connectivity"],
-            side_effect_tags=["reads_database"],
-            safety_level="low",
-            resource_profile="tiny",
-            default_timeout_seconds=3,
-            handler=tool_db_chroma_ping,
-        )
-    )
-
-    # LMDB
-    registry.register_tool(
-        ToolDefinition(
-            tool_id="tool.db.lmdb.ping",
-            name="LMDB Ping",
-            description="Check LMDB working memory by opening and closing the environment.",
-            domain="connectivity",
-            backend="python",
-            runtime_context="backend_service",
-            capability_tags=["check_health", "check_connectivity"],
-            side_effect_tags=["reads_database"],
-            safety_level="low",
-            resource_profile="tiny",
-            default_timeout_seconds=3,
-            handler=tool_db_lmdb_ping,
         )
     )
 

@@ -20,10 +20,8 @@ dependencies = [
     "platformdirs>=4.0.0",
     "psutil>=6.1.0",
     "passlib[bcrypt]>=1.7.4",
-    "bcrypt>=4.0.1",
+    "bcrypt>=4.0.1,<5.0.0",
     "pynacl>=1.5.0",
-    "lmdb>=1.7.3",
-    "chromadb>=1.0.16",
     "duckdb>=1.3.2",
     "hnswlib",
     "grand-cypher",
@@ -35,6 +33,7 @@ dependencies = [
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
     "influxdb-client>=1.45.0",
+    "pydantic>=2.11.0",
 ]
 
 [tool.setuptools]

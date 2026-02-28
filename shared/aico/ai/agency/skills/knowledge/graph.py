@@ -139,7 +139,7 @@ class UpdateKnowledgeGraphSkill(Skill):
 
             graph = PropertyGraph(nodes=nodes, edges=[])
 
-            # Save entire graph via PropertyGraphStorage (dual-write to Postgres + ChromaDB)
+            # Save entire graph via PropertyGraphStorage (Postgres with pgvector)
             await self.kg_storage.save_graph(graph)
             
             result = {

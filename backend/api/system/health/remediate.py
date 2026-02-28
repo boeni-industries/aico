@@ -130,8 +130,6 @@ async def get_remediation_service(
         registry.register(RemediationPostgresArchiveSkill(session_factory))
         registry.register(RemediationDatabaseDiskPressureSkill(session_factory))
         registry.register(RemediationChromaCompactSkill())
-        registry.register(RemediationLmdbCompactSkill())
-        registry.register(RemediationLmdbCleanupSkill())
         
         # Register InfluxDB remediation skills
         registry.register(RemediationInfluxGetMeasurementsSkill(config))

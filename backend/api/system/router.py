@@ -96,50 +96,28 @@ async def get_system_overview(
         uptime_formatted = format_uptime(uptime_seconds)
         timer.stop("uptime_calc")
         
-        timer.start("lmdb_conversation_scan")
-        # Get active conversations count from working memory (LMDB)
-        # Conversations are stored in LMDB, not in SQL tables
-        # OPTIMIZED: Limit scan to avoid performance issues
+        timer.start("working_memory_conversation_count")
+        # Count active conversations from Postgres-backed working memory
         active_conversations = 0
         try:
-            from aico.ai import ai_registry
-            memory_manager = ai_registry.get("memory")
-            
-            if memory_manager and hasattr(memory_manager, '_working_store'):
-                working_store = memory_manager._working_store
-                
-                # Count unique conversation_ids from LMDB keys in last 24 hours
-                from datetime import datetime, timedelta, UTC
-                cutoff_time = datetime.now(UTC) - timedelta(days=1)
-                
-                conversation_ids = set()
-                db = working_store.dbs.get("session_memory")
-                if db:
-                    with working_store.env.begin(db=db) as txn:
-                        cursor = txn.cursor()
-                        # OPTIMIZATION: Limit scan to 1000 keys max to avoid slow full scans
-                        scan_count = 0
-                        max_scan = 1000
-                        for key_bytes, _ in cursor:
-                            scan_count += 1
-                            if scan_count > max_scan:
-                                break
-                            
-                            key_str = key_bytes.decode('utf-8')
-                            # Key format: {conversation_id}:{timestamp}
-                            if ':' in key_str:
-                                conv_id, timestamp_str = key_str.split(':', 1)
-                                try:
-                                    msg_time = datetime.fromisoformat(timestamp_str.rstrip('Z'))
-                                    if msg_time > cutoff_time:
-                                        conversation_ids.add(conv_id)
-                                except:
-                                    pass
-                
-                active_conversations = len(conversation_ids)
+            from datetime import datetime, timedelta, UTC
+            from sqlalchemy import func, or_, select
+            from aico.data.tables import working_memory_messages
+
+            cutoff_time = datetime.now(UTC) - timedelta(days=1)
+
+            stmt = (
+                select(func.count(func.distinct(working_memory_messages.c.conversation_id)))
+                .where(
+                    working_memory_messages.c.stored_at >= cutoff_time,
+                    or_(working_memory_messages.c.expires_at.is_(None), working_memory_messages.c.expires_at > datetime.now(UTC)),
+                )
+            )
+            result = await uow._session.execute(stmt)
+            active_conversations = int(result.scalar() or 0)
         except Exception as e:
             logger.debug(f"Conversation count unavailable: {e}")
-        timer.stop("lmdb_conversation_scan")
+        timer.stop("working_memory_conversation_count")
         
         timer.start("db_goals_query")
         # Get active goals count from agency_goals table

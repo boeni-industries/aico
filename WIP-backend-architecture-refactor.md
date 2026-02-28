@@ -6,10 +6,10 @@
 - [x] Publish frontend-independent External API Contract (OpenAPI + WebSocket spec + examples)
 - [x] Centralize identity + scoping: make `tenant_id`/`user_id` mandatory end-to-end; enforce authz on every request/subscription
 - [x] Postgres source of truth for conversations: add tables + catch-up API
-- [ ] Outbox fallback for durable publication: keep streaming chunks ephemeral; ensure final response notifications are eventually delivered
-- [ ] Enable JetStream for durable flows; keep streaming chunks ephemeral; add replay/recovery tests
+- [x] Outbox fallback for durable publication: keep streaming chunks ephemeral; ensure final response notifications are eventually delivered
+- [x] Enable JetStream for durable flows; keep streaming chunks ephemeral; add replay/recovery tests
 - [x] **Migrate fully to NATS: remove ZMQ entirely without keeping any legacy or fallback code**
-- [ ] Replace LMDB working memory with Postgres (retention/TTL + indexes; cache only if proven)
+- [x] Replace LMDB working memory with Postgres (retention/TTL + indexes; cache only if proven)
 - [ ] Replace Chroma with Postgres + `pgvector` behind an interface; dual-write during migration; remove Chroma
 - [ ] Harden scheduler + workers: idempotent tasks, tenant-scoped, multi-replica safe (locks/leader election)
 - [ ] Make backend stateless: verify all correctness-critical state is in Postgres/JetStream
@@ -21,6 +21,11 @@
 - [ ] **Create `aico deploy` CLI command: zero-to-operational system installation (prod default, --dev flag for development)**
 - [ ] **Create `aico upgrade` CLI: Analyze and refactor to the current system reality with the architectural change to virtualized / docker containers**
 - [ ] Update AICO-Studio to use the new architectur (e.g. the split of gateway, core, modelservice) and in general to reflect the new architecture. We have also changed the used DB's for example. We need to align the AICO-Studio to the new architecture.
+- [ ] Observability: add OpenTelemetry Collector (OTLP ingest + tail sampling + spanmetrics)
+- [ ] Observability: add Tempo (+ Grafana Tempo datasource) for trace/span drilldown
+- [ ] Observability: propagate W3C trace context over NATS/JetStream headers
+- [ ] Observability: correlate logs↔traces (inject `trace_id`/`span_id` into Loki logs; Grafana trace→logs links)
+- [ ] Observability: add Grafana dashboards for core golden paths (request→core→modelservice; NATS/JetStream; Postgres)
 
 ## Goals / Non-Goals
 - **Goal**: Single codebase and single “final-stack” architecture that runs:
@@ -93,6 +98,19 @@
 - **Request/Reply**: standardize correlation + reply subjects.
 - **Streaming**: stream chunks on dedicated subjects; optionally persist via JetStream when replay is needed.
 - **AuthZ** (future): enforce subject-level permissions for tenant/user scoping.
+
+### Scheduler scalability (JetStream + Postgres)
+- **Current reality**: scheduler overlap prevention is primarily **per-process** (in-memory `running_tasks` + `max_concurrent_tasks`). In multi-replica deployments this can lead to **overlapping executions** and **load spikes**.
+- **Decision (for scalable scheduler)**:
+  - Use **JetStream** as a durable **work-queue** for scheduler jobs (e.g. `scheduler.jobs.*`).
+  - Keep **Postgres** as the system of record (task definitions + execution history) and as an **idempotency/overlap guard**.
+- **Pattern**:
+  - Scheduler becomes a **job producer** (enqueue due runs to JetStream).
+  - One or more worker replicas become **job consumers** (pull+ack; scale horizontally).
+  - Worker uses Postgres to dedupe/avoid overlap (e.g. unique execution identifier per scheduled run); redeliveries are safe and simply `ACK` after detecting duplicates.
+- **Backpressure / coalescing**:
+  - Use JetStream consumer limits (e.g. `max_ack_pending`) and worker concurrency caps.
+  - Coalesce misfires: if a task is already running, avoid enqueueing unbounded backlogs; allow "skip" or "coalesce to one pending" policies per task.
 
 ## Public API Specification (frontend-independent)
 

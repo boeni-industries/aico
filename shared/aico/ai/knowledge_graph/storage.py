@@ -1,8 +1,8 @@
 """
 Property Graph Storage
 
-Hybrid storage backend using ChromaDB (semantic search) and PostgreSQL (relational queries).
-Implements dual-write pattern for consistency.
+Hybrid storage backend using pgvector (semantic search) and PostgreSQL (relational queries).
+Embeddings stored in Postgres for unified data management.
 """
 
 from typing import List, Optional, Dict, Any
@@ -22,43 +22,28 @@ class PropertyGraphStorage:
     """
     Hybrid storage backend for property graphs.
     
-    Uses ChromaDB for semantic search and PostgreSQL for fast filtering/traversal.
-    All operations are dual-write to maintain consistency.
+    Uses pgvector for semantic search and PostgreSQL for fast filtering/traversal.
+    All data stored in Postgres for unified management.
     """
     
     def __init__(
         self,
         uow_factory,  # UnitOfWork factory for PostgreSQL
-        chromadb_client: Any,  # chromadb.Client
         modelservice_client: Any = None  # ModelserviceClient for embeddings
     ):
         """
-        Initialize storage with UoW factory and ChromaDB client.
+        Initialize storage with UoW factory.
         
         Args:
             uow_factory: Unit of Work factory for PostgreSQL access
-            chromadb_client: ChromaDB client for semantic search
             modelservice_client: Modelservice client for embedding generation
         """
         self.uow_factory = uow_factory
-        self.chromadb = chromadb_client
         self.modelservice = modelservice_client
-        
-        # Get or create collections
-        # NOTE: We provide embeddings manually (via modelservice) to avoid ChromaDB auto-generation
-        # which would block the thread pool. This follows the same pattern as semantic memory.
-        self._node_collection = self.chromadb.get_or_create_collection(
-            name="kg_nodes",
-            metadata={"hnsw:space": "cosine"}
-        )
-        self._edge_collection = self.chromadb.get_or_create_collection(
-            name="kg_edges",
-            metadata={"hnsw:space": "cosine"}
-        )
     
     async def save_node(self, node: Node) -> None:
         """
-        Save node to both ChromaDB and PostgreSQL.
+        Save node to PostgreSQL with pgvector embedding.
         
         Args:
             node: Node to save
@@ -68,23 +53,35 @@ class PropertyGraphStorage:
             async with self.uow_factory() as uow:
                 await uow.kg_nodes.create(node)
                 await uow.commit()
-            # Generate embedding and save to ChromaDB
-            doc = node.to_chromadb_document()
+            
+            # Generate embedding and save to pgvector
+            doc = node.to_chromadb_document()  # Still uses same document format
             
             # Generate embedding via modelservice
             embedding_result = await self.modelservice.generate_embeddings([doc["document"]])
             embeddings = embedding_result.get("embeddings", [])
             
-            def _sync_save_to_chroma():
-                """Synchronous ChromaDB write - runs in thread pool"""
-                self._node_collection.upsert(
-                    ids=[doc["id"]],
-                    embeddings=[embeddings[0]],
-                    documents=[doc["document"]],
-                    metadatas=[doc["metadata"]]
-                )
-            
-            await asyncio.to_thread(_sync_save_to_chroma)
+            if embeddings:
+                embedding_str = '[' + ','.join(str(x) for x in embeddings[0]) + ']'
+                
+                # Save to pgvector table
+                async with self.uow_factory() as uow:
+                    await uow.session.execute(
+                        """
+                        INSERT INTO aico_core.kg_node_embeddings (node_id, embedding, document)
+                        VALUES (:node_id, :embedding::vector, :document)
+                        ON CONFLICT (node_id) DO UPDATE SET
+                            embedding = EXCLUDED.embedding,
+                            document = EXCLUDED.document,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        {
+                            'node_id': node.id,
+                            'embedding': embedding_str,
+                            'document': doc["document"]
+                        }
+                    )
+                    await uow.commit()
             
             logger.debug(f"Saved node {node.id} (label={node.label})")
             
@@ -94,7 +91,7 @@ class PropertyGraphStorage:
     
     async def save_edge(self, edge: Edge) -> None:
         """
-        Save edge to both ChromaDB and PostgreSQL.
+        Save edge to PostgreSQL with pgvector embedding.
         
         Args:
             edge: Edge to save
@@ -105,19 +102,32 @@ class PropertyGraphStorage:
                 await uow.kg_edges.create(edge)
                 await uow.commit()
             
-            # Generate embedding and save to ChromaDB
+            # Generate embedding and save to pgvector
             doc = edge.to_chromadb_document()
             embedding_result = await self.modelservice.generate_embeddings([doc["document"]])
             embeddings = embedding_result.get("embeddings", [])
             
-            def _sync_save_to_chroma():
-                self._edge_collection.upsert(
-                    ids=[doc["id"]],
-                    embeddings=[embeddings[0]],
-                    documents=[doc["document"]],
-                    metadatas=[doc["metadata"]]
-                )
-            await asyncio.to_thread(_sync_save_to_chroma)
+            if embeddings:
+                embedding_str = '[' + ','.join(str(x) for x in embeddings[0]) + ']'
+                
+                # Save to pgvector table
+                async with self.uow_factory() as uow:
+                    await uow.session.execute(
+                        """
+                        INSERT INTO aico_core.kg_edge_embeddings (edge_id, embedding, document)
+                        VALUES (:edge_id, :embedding::vector, :document)
+                        ON CONFLICT (edge_id) DO UPDATE SET
+                            embedding = EXCLUDED.embedding,
+                            document = EXCLUDED.document,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        {
+                            'edge_id': edge.id,
+                            'embedding': embedding_str,
+                            'document': doc["document"]
+                        }
+                    )
+                    await uow.commit()
             
             logger.debug(f"Saved edge {edge.id} (type={edge.relation_type})")
             

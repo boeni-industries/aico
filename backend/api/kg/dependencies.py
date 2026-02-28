@@ -74,14 +74,9 @@ def get_kg_storage(request: Request):
         # Get database connection
         db_connection = container.get_service("database")
         
-        # Get shared ChromaDB client from service container
-        # This ensures all services use the same ChromaDB instance (singleton pattern)
-        chromadb_client = container.get_service("chromadb_client")
-        logger.debug("Retrieved shared ChromaDB client from service container")
-        
-        # Create storage instance
+        # Create storage instance with PostgreSQL + pgvector only
         from aico.ai.knowledge_graph import PropertyGraphStorage
-        storage = PropertyGraphStorage(db_connection, chromadb_client, None)
+        storage = PropertyGraphStorage(db_connection, None, None)
         
         return storage
         

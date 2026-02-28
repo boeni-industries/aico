@@ -363,7 +363,6 @@ def _create_manifest_base(backup_id: str, include_influx: bool) -> dict:
         "included": {
             "postgres": True,
             "chromadb": True,
-            "lmdb": True,
             "influxdb": bool(include_influx),
         },
         "containers": {
@@ -372,7 +371,7 @@ def _create_manifest_base(backup_id: str, include_influx: bool) -> dict:
             "influxdb": _INFLUX_CONTAINER,
         },
         "artifacts": {},
-        "restore_order": ["postgres", "chromadb", "lmdb", "influxdb"],
+        "restore_order": ["postgres", "chromadb", "influxdb"],
     }
 
 
@@ -394,7 +393,7 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
 
             host_runtime = _get_host_runtime_dir()
 
-            # In dockerized mode, Chroma/LMDB may still live on the host runtime directory.
+            # In dockerized mode, Chroma may still live on the host runtime directory.
             # Prefer that mounted location when present so backups reflect the actual live data.
             chroma_src = (
                 (host_runtime / "data" / "memory" / "semantic")
@@ -407,19 +406,6 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
                 "path": str(chroma_tar.relative_to(backup_dir)),
                 "sha256": chroma_meta["sha256"],
                 "size_bytes": chroma_meta["size_bytes"],
-            }
-
-            lmdb_src = (
-                (host_runtime / "data" / "memory" / "working")
-                if host_runtime is not None
-                else AICOPaths.get_working_memory_path()
-            )
-            lmdb_tar = backup_dir / "lmdb" / "lmdb.tar.gz"
-            lmdb_meta = await _backup_directory_to_tar(lmdb_src, lmdb_tar)
-            manifest["artifacts"]["lmdb"] = {
-                "path": str(lmdb_tar.relative_to(backup_dir)),
-                "sha256": lmdb_meta["sha256"],
-                "size_bytes": lmdb_meta["size_bytes"],
             }
 
             if request.include_influx:
@@ -728,18 +714,6 @@ async def restore_backup_set(request: BackupSetRestoreRequest) -> BackupSetResto
                 shutil.rmtree(target)
             target.mkdir(parents=True, exist_ok=True)
             with tarfile.open(chroma_tar, "r:gz") as tf:
-                _safe_extract_tar(tf, target.parent)
-
-        lmdb_rel = artifacts.get("lmdb", {}).get("path")
-        if lmdb_rel:
-            lmdb_tar = backup_dir / lmdb_rel
-            target = AICOPaths.get_working_memory_path()
-            pre = target.parent / f"{target.name}.pre_restore_{int(time.time())}"
-            if target.exists():
-                shutil.copytree(target, pre)
-                shutil.rmtree(target)
-            target.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(lmdb_tar, "r:gz") as tf:
                 _safe_extract_tar(tf, target.parent)
 
         if manifest.get("included", {}).get("influxdb"):

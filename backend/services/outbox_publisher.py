@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, UTC
 
 from aico.core.bus import MessageBusClient
+from aico.core.jetstream import JetStreamManager, JetStreamStreamSpec
+from nats.js.api import RetentionPolicy
 from aico.data.postgres.connection import get_session_factory
 from aico.data.uow import UnitOfWork
 
@@ -49,6 +51,36 @@ class OutboxPublisherService(BaseService):
         self._stop_event.clear()
         self._bus = MessageBusClient("outbox_publisher")
         await self._bus.connect()
+
+        if self._bus._nats is not None:
+            js = JetStreamManager(self._bus._nats)
+            await js.ensure_stream(
+                JetStreamStreamSpec(
+                    name="OUTBOX_EVENTS",
+                    subjects=["conversation.>"],
+                    retention=RetentionPolicy.LIMITS,
+                    max_age_seconds=60 * 60 * 24 * 7,
+                    duplicate_window_seconds=60 * 60,
+                )
+            )
+            await js.ensure_stream(
+                JetStreamStreamSpec(
+                    name="INTERACTION_NOTIFICATIONS",
+                    subjects=["interaction.notifications.>"],
+                    retention=RetentionPolicy.LIMITS,
+                    max_age_seconds=60 * 60 * 24 * 7,
+                    duplicate_window_seconds=60 * 60,
+                )
+            )
+            await js.ensure_stream(
+                JetStreamStreamSpec(
+                    name="AUDIT_EVENTS",
+                    subjects=["audit.events.>"],
+                    retention=RetentionPolicy.LIMITS,
+                    max_age_seconds=60 * 60 * 24 * 30,
+                    duplicate_window_seconds=60 * 60,
+                )
+            )
 
         self._task = asyncio.create_task(self._run_loop())
         self.logger.info(
@@ -87,6 +119,11 @@ class OutboxPublisherService(BaseService):
         if not self._bus:
             return
 
+        if self._bus._nats is None:
+            return
+
+        js = JetStreamManager(self._bus._nats)
+
         session_factory = await get_session_factory()
         async with UnitOfWork(session_factory) as uow:
             events = await uow.outbox_events.fetch_pending(limit=self.config.batch_size)
@@ -107,7 +144,7 @@ class OutboxPublisherService(BaseService):
                     continue
 
                 try:
-                    await self._bus._nats.publish(event.subject, event.payload_bytes)
+                    await self._publish_outbox_event(js, event_id=event.event_id, subject=event.subject, payload_bytes=event.payload_bytes)
                     await uow.outbox_events.mark_sent(event_id=event.event_id)
                 except Exception as e:
                     backoff = min(
@@ -120,3 +157,15 @@ class OutboxPublisherService(BaseService):
                         next_available_at=datetime.now(UTC) + timedelta(seconds=backoff),
                         attempts=attempts_next,
                     )
+
+    async def _publish_outbox_event(self, js: JetStreamManager, *, event_id: str, subject: str, payload_bytes: bytes) -> None:
+        await js.publish(subject, payload_bytes, headers={"Nats-Msg-Id": event_id})
+        await js.publish(
+            "audit.events.outbox",
+            payload_bytes,
+            headers={
+                "Nats-Msg-Id": f"audit:{event_id}",
+                "aico-original-subject": subject,
+                "aico-event-id": event_id,
+            },
+        )

@@ -10,6 +10,7 @@ import os
 import importlib
 import inspect
 import uuid
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set, Type
 from pathlib import Path
@@ -85,7 +86,6 @@ class TaskRegistry:
             "backend.scheduler.tasks.maintenance",
             "backend.scheduler.tasks.ams_consolidation",  # AMS Phase 1.5
             "backend.scheduler.tasks.kg_consolidation",  # KG consolidation
-            "backend.scheduler.tasks.lmdb_cleanup",  # LMDB cleanup
             "backend.scheduler.tasks.ams_feedback_classification",  # AMS Phase 3
             "backend.scheduler.tasks.ams_thompson_sampling",  # AMS Phase 3
             "backend.scheduler.tasks.ams_trajectory_cleanup",  # AMS Phase 3
@@ -286,7 +286,14 @@ class TaskExecutor:
         self.stuck_buffer_seconds = 300  # 5 minute buffer beyond timeout
         self.last_stuck_check: Optional[datetime] = None
     
-    async def execute_task(self, task_class: Type[BaseTask], task_config: Dict[str, Any], retry_count: int = 0) -> TaskResult:
+    async def execute_task(
+        self,
+        task_class: Type[BaseTask],
+        task_config: Dict[str, Any],
+        *,
+        retry_count: int = 0,
+        run_key: str | None = None,
+    ) -> TaskResult:
         """Execute a single task with full lifecycle management"""
         task_id = task_config['task_id']
         execution_id = str(uuid.uuid4())
@@ -327,16 +334,34 @@ class TaskExecutor:
         # Track job execution metrics
         with track_job(task_id, queue_name=task_config.get('queue', 'default')) as tracker:
             try:
-                # Record execution start via SchedulerService
+                # Record execution start via SchedulerService (run_key enables distributed idempotency)
                 async with UnitOfWork(session_factory) as uow:
                     scheduler_service = SchedulerService(uow)
-                    await scheduler_service.create_execution({
-                        'execution_id': execution_id,
-                        'task_id': task_id,
-                        'status': 'running',
-                        'started_at': start_time,
-                        'created_at': start_time
-                    })
+                    try:
+                        await scheduler_service.create_execution({
+                            'execution_id': execution_id,
+                            'task_id': task_id,
+                            'run_key': run_key,
+                            'status': 'running',
+                            'started_at': start_time,
+                            'created_at': start_time
+                        })
+                    except Exception as e:
+                        # Only treat database uniqueness conflicts as duplicates.
+                        # Anything else should fail loudly (otherwise we mask real bugs).
+                        if run_key:
+                            try:
+                                from sqlalchemy.exc import IntegrityError
+
+                                if isinstance(e, IntegrityError):
+                                    self.logger.warning(
+                                        f"Duplicate scheduler execution detected for {task_id} run_key={run_key}: {e}"
+                                    )
+                                    return TaskResult(success=False, message="Duplicate execution", skipped=True)
+                            except Exception:
+                                # If SQLAlchemy isn't present for some reason, fall through and re-raise.
+                                pass
+                        raise
                 
                 # Create task instance and context
                 task_instance = task_class()
@@ -808,6 +833,8 @@ class TaskScheduler(BaseService):
         self.running = False
         self.scheduler_task: Optional[asyncio.Task] = None
         self.next_run_times: Dict[str, datetime] = {}
+
+        self._bus_client = None
     
     async def initialize(self) -> None:
         """Initialize scheduler components"""
@@ -830,6 +857,14 @@ class TaskScheduler(BaseService):
         if self.running:
             self.logger.warning("Scheduler is already running")
             return
+
+        # Optional bus client for distributed mode (JetStream job publishing)
+        try:
+            from aico.core.bus import MessageBusClient
+            self._bus_client = MessageBusClient("task_scheduler")
+            await self._bus_client.connect()
+        except Exception:
+            self._bus_client = None
         
         self.logger.info("Starting AICO Task Scheduler")
         
@@ -1023,6 +1058,43 @@ class TaskScheduler(BaseService):
                     next_run = self.cron_parser.next_run_time(schedule, datetime.now(timezone.utc))
                     if next_run:
                         self.next_run_times[task_id] = next_run
+
+            # Distributed mode: publish scheduled runs to JetStream job queue and return.
+            scheduler_config = self.get_config("scheduler", {})
+            distributed_cfg = (scheduler_config.get("distributed") or {}) if isinstance(scheduler_config, dict) else {}
+            distributed_enabled = bool(distributed_cfg.get("enabled", False))
+            if distributed_enabled and is_scheduled:
+                if self._bus_client is None or getattr(self._bus_client, "_nats", None) is None:
+                    self.logger.error("Distributed scheduler enabled but bus client is not available")
+                    return
+
+                scheduled_for = self.next_run_times.get(task_id)
+                if scheduled_for is None:
+                    scheduled_for = datetime.now(timezone.utc)
+
+                run_key = f"{task_id}:{scheduled_for.isoformat()}"
+                job = {
+                    "task_id": task_id,
+                    "run_key": run_key,
+                    "task_config": task_config,
+                    "scheduled_for": scheduled_for.isoformat(),
+                }
+
+                from aico.core.jetstream import JetStreamManager, JetStreamStreamSpec
+
+                js = JetStreamManager(self._bus_client._nats)
+                await js.ensure_stream(
+                    JetStreamStreamSpec(
+                        name=distributed_cfg.get("stream_name", "SCHEDULER_JOBS"),
+                        subjects=[distributed_cfg.get("subject_filter", "scheduler.jobs.*")],
+                    )
+                )
+
+                await js.publish(
+                    distributed_cfg.get("publish_subject", "scheduler.jobs.run"),
+                    json.dumps(job).encode("utf-8"),
+                )
+                return
 
             # Prevent enqueue storms: if already running or already queued, don't enqueue again
             if task_id in self.task_executor.running_tasks:

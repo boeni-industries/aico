@@ -2,11 +2,9 @@
 Database Administration Endpoints - Phase 1 Advanced Features
 
 Provides advanced database management capabilities:
-- Table/Collection browser with detailed metrics
+- Table browser with detailed metrics
 - SQL query execution interface
 - Storage growth trends and analytics
-- LMDB key-value browsing
-- ChromaDB semantic search
 """
 
 import asyncio
@@ -24,21 +22,11 @@ from fastapi import HTTPException, status
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths, get_default_database_path
 from backend.api.operations.schemas import (
-    DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo,
+    DatabaseDetailsResponse, TableInfo, CollectionInfo,
     QueryRequest, QueryResult,
     StorageTrendResponse,
-    LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyInfo, LMDBKeyValueResponse,
-    ChromaDBSearchRequest, ChromaDBSearchResponse, ChromaDBDocument,
-    ChromaDBDeleteRequest, ChromaDBDeleteResponse,
-    ChromaDBBrowseResponse,
     SchemaMetadata,
 )
-
-# Import browser functions
-from backend.api.operations.lmdb_browser import (
-    browse_lmdb_keys, get_lmdb_key_value, delete_lmdb_keys, find_orphaned_lmdb_entries
-)
-from backend.api.operations.chromadb_browser import search_chromadb, delete_chromadb_documents, browse_chromadb_collection
 
 logger = get_logger("backend.api.operations.database_admin")
 
@@ -181,95 +169,6 @@ async def get_influxdb_details() -> DatabaseDetailsResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve InfluxDB details: {str(e)}"
-        )
-
-
-async def get_chromadb_details(request) -> DatabaseDetailsResponse:
-    """Get detailed information about ChromaDB collections"""
-    try:
-        collections = []
-        
-        # Try to get ChromaDB client from service container
-        from backend.core.lifecycle_manager import get_service_container
-        container = get_service_container(request)
-        
-        if container:
-            chroma_client = container.get_service("chromadb_client")
-            if chroma_client:
-                chroma_collections = chroma_client.list_collections()
-                
-                for collection in chroma_collections:
-                    # Get document count
-                    doc_count = collection.count()
-                    
-                    # Get metadata
-                    metadata = collection.metadata if hasattr(collection, 'metadata') else {}
-                    
-                    # Try to get embedding dimension from first document
-                    dimension = None
-                    if doc_count > 0:
-                        try:
-                            sample = collection.peek(1)
-                            if sample and 'embeddings' in sample and sample['embeddings']:
-                                dimension = len(sample['embeddings'][0])
-                        except Exception:
-                            pass
-                    
-                    collections.append(CollectionInfo(
-                        name=collection.name,
-                        document_count=doc_count,
-                        metadata=metadata,
-                        dimension=dimension
-                    ))
-        
-        return DatabaseDetailsResponse(
-            database_type="chromadb",
-            collections=collections
-        )
-    except Exception as e:
-        logger.error(f"Failed to get ChromaDB details: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve ChromaDB details: {str(e)}"
-        )
-
-
-async def get_lmdb_details() -> DatabaseDetailsResponse:
-    """Get detailed information about LMDB databases"""
-    try:
-        databases = []
-        
-        # Try to get memory manager from AI registry
-        from aico.ai import ai_registry
-        memory_manager = ai_registry.get("memory")
-        
-        if memory_manager and hasattr(memory_manager, '_working_store'):
-            working_store = memory_manager._working_store
-            
-            for db_name, db in working_store.dbs.items():
-                # Count keys in this database
-                key_count = 0
-                try:
-                    with working_store.env.begin(db=db) as txn:
-                        key_count = txn.stat()['entries']
-                except Exception as e:
-                    logger.warning(f"Failed to get key count for LMDB database {db_name}: {e}")
-                
-                databases.append(LMDBDatabaseInfo(
-                    name=db_name,
-                    key_count=key_count,
-                    size_bytes=None  # Would require page analysis
-                ))
-        
-        return DatabaseDetailsResponse(
-            database_type="lmdb",
-            databases=databases
-        )
-    except Exception as e:
-        logger.error(f"Failed to get LMDB details: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve LMDB details: {str(e)}"
         )
 
 
@@ -586,16 +485,6 @@ async def get_storage_trends(database_name: str) -> StorageTrendResponse:
             chroma_path = AICOPaths.get_data_directory() / "data" / "memory" / "semantic"
             if os.path.exists(chroma_path):
                 for dirpath, dirnames, filenames in os.walk(chroma_path):
-                    for filename in filenames:
-                        filepath = os.path.join(dirpath, filename)
-                        try:
-                            current_size += os.path.getsize(filepath)
-                        except Exception:
-                            pass
-        elif database_name == "LMDB":
-            lmdb_path = AICOPaths.get_data_directory() / "data" / "memory" / "working"
-            if os.path.exists(lmdb_path):
-                for dirpath, dirnames, filenames in os.walk(lmdb_path):
                     for filename in filenames:
                         filepath = os.path.join(dirpath, filename)
                         try:

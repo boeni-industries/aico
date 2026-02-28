@@ -69,49 +69,6 @@ def register_remediation_tools():
     ))
     
     # ========================================================================
-    # ChromaDB Remediation Tools
-    # ========================================================================
-    
-    registry.register_tool(ToolDefinition(
-        tool_id="tool.db.chroma.get_collection_stats",
-        name="ChromaDB Get Collection Stats",
-        description="Get statistics for all ChromaDB collections",
-        domain="db",
-        backend="chroma",
-        capability_tags=["query_stats", "analyze"],
-        side_effect_tags=["reads_database"],
-        safety_level="low",
-        resource_profile="tiny",
-        handler=database_remediation.tool_db_chroma_get_collection_stats,
-    ))
-    
-    registry.register_tool(ToolDefinition(
-        tool_id="tool.db.chroma.delete_vectors",
-        name="ChromaDB Delete Vectors",
-        description="Delete vectors from a ChromaDB collection",
-        domain="db",
-        backend="chroma",
-        capability_tags=["delete", "cleanup"],
-        side_effect_tags=["modifies_storage", "deletes_data"],
-        safety_level="high",
-        resource_profile="small",
-        handler=database_remediation.tool_db_chroma_delete_vectors,
-    ))
-    
-    registry.register_tool(ToolDefinition(
-        tool_id="tool.db.chroma.compact_store",
-        name="ChromaDB Compact Store",
-        description="Trigger compaction for ChromaDB",
-        domain="db",
-        backend="chroma",
-        capability_tags=["compact", "optimize"],
-        side_effect_tags=["modifies_storage"],
-        safety_level="low",
-        resource_profile="small",
-        handler=database_remediation.tool_db_chroma_compact_store,
-    ))
-    
-    # ========================================================================
     # InfluxDB Remediation Tools
     # ========================================================================
     
@@ -152,49 +109,6 @@ def register_remediation_tools():
         safety_level="high",
         resource_profile="small",
         handler=database_remediation.tool_db_influx_drop_measurement,
-    ))
-    
-    # ========================================================================
-    # LMDB Remediation Tools
-    # ========================================================================
-    
-    registry.register_tool(ToolDefinition(
-        tool_id="tool.db.lmdb.check_map_size",
-        name="LMDB Check Map Size",
-        description="Check LMDB map size usage",
-        domain="db",
-        backend="lmdb",
-        capability_tags=["query_size", "analyze"],
-        side_effect_tags=["reads_database"],
-        safety_level="low",
-        resource_profile="tiny",
-        handler=database_remediation.tool_db_lmdb_check_map_size,
-    ))
-    
-    registry.register_tool(ToolDefinition(
-        tool_id="tool.db.lmdb.compact",
-        name="LMDB Compact",
-        description="Compact LMDB database by copying to a new file",
-        domain="db",
-        backend="lmdb",
-        capability_tags=["compact", "optimize"],
-        side_effect_tags=["modifies_storage", "requires_restart"],
-        safety_level="medium",
-        resource_profile="medium",
-        handler=database_remediation.tool_db_lmdb_compact,
-    ))
-    
-    registry.register_tool(ToolDefinition(
-        tool_id="tool.db.lmdb.delete_keys_by_prefix",
-        name="LMDB Delete Keys by Prefix",
-        description="Delete keys from LMDB by prefix",
-        domain="db",
-        backend="lmdb",
-        capability_tags=["delete", "cleanup"],
-        side_effect_tags=["modifies_storage", "deletes_data"],
-        safety_level="high",
-        resource_profile="small",
-        handler=database_remediation.tool_db_lmdb_delete_keys_by_prefix,
     ))
     
     # ========================================================================

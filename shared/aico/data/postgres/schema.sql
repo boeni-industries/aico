@@ -10,6 +10,8 @@
 CREATE SCHEMA IF NOT EXISTS aico_core;
 SET search_path TO aico_core, public;
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- Tables created without foreign key constraints to avoid dependency ordering issues
 
 CREATE TABLE IF NOT EXISTS agency_arbiter_adjustments (
@@ -880,6 +882,92 @@ CREATE INDEX IF NOT EXISTS idx_outbox_events_created
     ON outbox_events (created_at);
 
 -- ==========================================================================
+-- Working Memory (Postgres-backed LMDB replacement)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS working_memory_messages (
+                id BIGSERIAL PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                user_id TEXT,
+                message_id TEXT,
+                role TEXT,
+                content TEXT,
+                language TEXT,
+                message_type TEXT,
+                payload_json JSONB,
+                stored_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMPTZ,
+                last_accessed_at TIMESTAMPTZ,
+                access_count INTEGER NOT NULL DEFAULT 0
+            );
+
+CREATE INDEX IF NOT EXISTS idx_working_memory_conversation_stored_at
+    ON working_memory_messages (conversation_id, stored_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_working_memory_user_stored_at
+    ON working_memory_messages (user_id, stored_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_working_memory_expires_at
+    ON working_memory_messages (expires_at)
+    WHERE expires_at IS NOT NULL;
+
+-- ==========================================================================
+-- Vector Memory (pgvector) - Replaces ChromaDB
+-- ==========================================================================
+
+-- Conversation segments with embeddings for semantic search
+CREATE TABLE IF NOT EXISTS conversation_segments (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    embedding vector(768) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_segments_user
+    ON conversation_segments (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_segments_conversation
+    ON conversation_segments (conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_segments_timestamp
+    ON conversation_segments (timestamp DESC);
+
+-- HNSW index for fast vector similarity search
+CREATE INDEX IF NOT EXISTS idx_conversation_segments_embedding
+    ON conversation_segments USING hnsw (embedding vector_cosine_ops);
+
+-- Knowledge graph nodes with embeddings
+CREATE TABLE IF NOT EXISTS kg_node_embeddings (
+    node_id TEXT PRIMARY KEY REFERENCES kg_nodes(id) ON DELETE CASCADE,
+    embedding vector(768) NOT NULL,
+    document TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HNSW index for KG node semantic search
+CREATE INDEX IF NOT EXISTS idx_kg_node_embeddings_vector
+    ON kg_node_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- Knowledge graph edges with embeddings
+CREATE TABLE IF NOT EXISTS kg_edge_embeddings (
+    edge_id TEXT PRIMARY KEY REFERENCES kg_edges(id) ON DELETE CASCADE,
+    embedding vector(768) NOT NULL,
+    document TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HNSW index for KG edge semantic search
+CREATE INDEX IF NOT EXISTS idx_kg_edge_embeddings_vector
+    ON kg_edge_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- ==========================================================================
 -- Unified Interaction Request System
 -- ==========================================================================
 
@@ -1140,6 +1228,7 @@ CREATE TABLE IF NOT EXISTS "scheduler_task_executions" (
                 id BIGSERIAL PRIMARY KEY,
                 task_id TEXT NOT NULL,
                 execution_id TEXT NOT NULL,
+                run_key TEXT,
                 status TEXT NOT NULL,
                 started_at TIMESTAMPTZ NOT NULL,
                 completed_at TIMESTAMPTZ,
@@ -1154,6 +1243,13 @@ CREATE INDEX IF NOT EXISTS idx_task_executions_started_at ON "scheduler_task_exe
 CREATE INDEX IF NOT EXISTS idx_task_executions_task_id ON "scheduler_task_executions" (task_id);
 
 CREATE INDEX IF NOT EXISTS idx_task_executions_acknowledged ON "scheduler_task_executions" (status, acknowledged) WHERE status = 'failed' AND acknowledged = FALSE;
+
+ALTER TABLE "scheduler_task_executions"
+    ADD COLUMN IF NOT EXISTS run_key TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduler_task_executions_run_key
+    ON "scheduler_task_executions" (task_id, run_key)
+    WHERE run_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS "scheduler_tasks" (
                 task_id TEXT PRIMARY KEY,

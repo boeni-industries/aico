@@ -335,6 +335,88 @@ class MessageBusClient:
             # Persist message if enabled
             if self.persistence_enabled:
                 await self._persist_message(message)
+
+    async def publish_durable(
+        self,
+        topic: str,
+        payload: ProtobufMessage,
+        *,
+        correlation_id: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        attributes: Optional[Dict[str, str]] = None,
+        audit_subject: str = "audit.events.bus",
+    ) -> None:
+        if not self.running or self._nats is None:
+            raise MessageBusError("Client not connected")
+
+        from aico.core.jetstream import JetStreamManager, JetStreamStreamSpec
+        from nats.js.api import RetentionPolicy
+
+        # Create message metadata
+        metadata = _create_message_metadata(
+            message_id=str(uuid.uuid4()),
+            source=self.client_id,
+            message_type=topic,
+        )
+
+        if correlation_id:
+            metadata.attributes["correlation_id"] = correlation_id
+        if reply_to:
+            metadata.attributes["reply_to"] = reply_to
+        if attributes:
+            metadata.attributes.update(attributes)
+
+        from ..proto.aico_core_envelope_pb2 import AicoMessage
+
+        message = AicoMessage()
+        message.metadata.CopyFrom(metadata)
+
+        any_payload = ProtoAny()
+        any_payload.Pack(payload)
+        message.any_payload.CopyFrom(any_payload)
+
+        message_data = message.SerializeToString()
+        subject = self._topic_to_subject(topic)
+
+        js = JetStreamManager(self._nats)
+        await js.ensure_stream(
+            JetStreamStreamSpec(
+                name="OUTBOX_EVENTS",
+                subjects=["conversation.>"],
+                retention=RetentionPolicy.LIMITS,
+                max_age_seconds=60 * 60 * 24 * 7,
+                duplicate_window_seconds=60 * 60,
+            )
+        )
+        await js.ensure_stream(
+            JetStreamStreamSpec(
+                name="INTERACTION_NOTIFICATIONS",
+                subjects=["interaction.notifications.>"],
+                retention=RetentionPolicy.LIMITS,
+                max_age_seconds=60 * 60 * 24 * 7,
+                duplicate_window_seconds=60 * 60,
+            )
+        )
+        await js.ensure_stream(
+            JetStreamStreamSpec(
+                name="AUDIT_EVENTS",
+                subjects=["audit.events.>"],
+                retention=RetentionPolicy.LIMITS,
+                max_age_seconds=60 * 60 * 24 * 30,
+                duplicate_window_seconds=60 * 60,
+            )
+        )
+
+        await js.publish(subject, message_data, headers={"Nats-Msg-Id": metadata.message_id})
+        await js.publish(
+            audit_subject,
+            message_data,
+            headers={
+                "Nats-Msg-Id": f"audit:{metadata.message_id}",
+                "aico-original-subject": subject,
+                "aico-message-id": metadata.message_id,
+            },
+        )
     
     async def subscribe(self, topic_pattern: str, callback: Callable[[AicoMessage], None]):
         """Subscribe to messages matching a topic pattern"""

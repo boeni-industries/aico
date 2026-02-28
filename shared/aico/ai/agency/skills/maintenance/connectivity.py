@@ -30,7 +30,7 @@ class MaintenanceConnectivityFullScanSkill(Skill):
 
     Initial implementation focuses on PostgreSQL connectivity and returns a
     structured result shape that can be extended with additional checks for
-    ChromaDB, InfluxDB, modelservice, and message bus.
+    InfluxDB, modelservice, and message bus.
     """
 
     def __init__(self, session_factory: Any):
@@ -77,7 +77,6 @@ class MaintenanceConnectivityFullScanSkill(Skill):
         return [
             "tool.db.postgres.ping",
             "tool.db.influx.ping",
-            "tool.db.chroma.ping",
             "tool.db.lmdb.ping",
             "tool.modelservice.ping",
             "tool.ollama.ping",
@@ -149,10 +148,6 @@ class MaintenanceConnectivityFullScanSkill(Skill):
         influx_result = await _run_tool("tool.db.influx.ping")
         checks["influx"] = influx_result["data"]
 
-        # ChromaDB (semantic store)
-        chroma_result = await _run_tool("tool.db.chroma.ping")
-        checks["chroma"] = chroma_result["data"]
-
         # LMDB (working memory)
         lmdb_result = await _run_tool("tool.db.lmdb.ping")
         checks["lmdb"] = lmdb_result["data"]
@@ -216,7 +211,7 @@ class MaintenanceConnectivityVerifyComponentSkill(Skill):
 
     @property
     def description(self) -> str:
-        return "Check connectivity for a single backend component (e.g. postgres, influx, chroma)."
+        return "Check connectivity for a single backend component (e.g. postgres, influx, lmdb)."
 
     @property
     def category(self) -> str:
@@ -229,7 +224,7 @@ class MaintenanceConnectivityVerifyComponentSkill(Skill):
                 name="component",
                 type=SkillParameterType.STRING,
                 description=(
-                    "Name of the component to verify (postgres, influx, chroma, "
+                    "Name of the component to verify (postgres, influx, "
                     "lmdb, modelservice, ollama)."
                 ),
                 required=True,
@@ -248,7 +243,6 @@ class MaintenanceConnectivityVerifyComponentSkill(Skill):
         component_tools: Dict[str, str] = {
             "postgres": "tool.db.postgres.ping",
             "influx": "tool.db.influx.ping",
-            "chroma": "tool.db.chroma.ping",
             "lmdb": "tool.db.lmdb.ping",
             "modelservice": "tool.modelservice.ping",
             "ollama": "tool.ollama.ping",

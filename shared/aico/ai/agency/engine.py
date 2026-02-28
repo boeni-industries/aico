@@ -192,7 +192,6 @@ class AgencyEngine(BaseAIProcessor):
             RemediationPostgresVacuumSkill,
             RemediationPostgresArchiveSkill,
             RemediationDatabaseDiskPressureSkill,
-            RemediationChromaCompactSkill,
             RemediationLmdbCompactSkill,
             RemediationLmdbCleanupSkill,
             RemediationInfluxGetMeasurementsSkill,
@@ -271,7 +270,6 @@ class AgencyEngine(BaseAIProcessor):
             self.skill_registry.register(RemediationPostgresVacuumSkill(session_factory))
             self.skill_registry.register(RemediationPostgresArchiveSkill(session_factory))
             self.skill_registry.register(RemediationDatabaseDiskPressureSkill(session_factory))
-            self.skill_registry.register(RemediationChromaCompactSkill())
             self.skill_registry.register(RemediationLmdbCompactSkill())
             self.skill_registry.register(RemediationLmdbCleanupSkill())
             self.skill_registry.register(RemediationInfluxGetMeasurementsSkill(config_manager))

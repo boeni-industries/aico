@@ -51,6 +51,7 @@ class SchedulerTaskExecution(BaseModel):
     id: Optional[int] = None
 
     execution_id: str
+    run_key: Optional[str] = None
     task_id: str
     status: TaskStatus
     # Allow partial update payloads by making started_at optional

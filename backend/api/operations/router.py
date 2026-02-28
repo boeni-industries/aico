@@ -14,10 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from datetime import datetime, timedelta, UTC
 
 from aico.core.logging import get_logger
+from aico.core.paths import AICOPaths
 from aico.core.version import get_backend_version, get_modelservice_version
 from backend.api.operations.schemas import (
     DatabaseStatsResponse, DatabaseMetrics,
-    DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo,
+    DatabaseDetailsResponse, TableInfo, CollectionInfo,
     QueryRequest, QueryResult, SchemaMetadata,
     StorageTrendResponse, StorageDataPoint,
     ActiveSessionsResponse, UserSession,
@@ -35,7 +36,7 @@ logger = get_logger("backend.api.operations")
 
 router = APIRouter()
 
-# Include database routes (LMDB/ChromaDB browsing, SQL queries, backup sets)
+# Include database routes (SQL queries, backup sets)
 router.include_router(database_routes.router, tags=["databases"])
 
 
@@ -64,9 +65,9 @@ async def get_database_stats(
     user: Annotated[dict, Depends(get_current_user)]
 ) -> DatabaseStatsResponse:
     """
-    Get database statistics for all databases (PostgreSQL, ChromaDB, LMDB).
+    Get database statistics for all databases (PostgreSQL, InfluxDB).
     
-    Returns metrics including size, table/collection counts, and health status.
+    Returns metrics including size, table counts, and health status.
     """
     try:
         databases = []
@@ -173,156 +174,6 @@ async def get_database_stats(
             databases.append(DatabaseMetrics(
                 name="PostgreSQL",
                 type="postgresql",
-                size_bytes=0,
-                status="critical",
-                location="unknown",
-                error_details=f"Critical error: {str(e)}",
-            ))
-        
-        # ChromaDB
-        try:
-            from aico.core.paths import AICOPaths
-            chroma_path = AICOPaths.get_data_directory() / "data" / "memory" / "semantic"
-            
-            # Get directory size
-            chroma_size = 0
-            if os.path.exists(str(chroma_path)):
-                for dirpath, dirnames, filenames in os.walk(str(chroma_path)):
-                    for filename in filenames:
-                        filepath = os.path.join(dirpath, filename)
-                        chroma_size += get_file_size(filepath)
-            
-            # Get collection count
-            collection_count = 0
-            document_count = 0
-            chroma_error = None
-            try:
-                # Try to get ChromaDB client from service container
-                from backend.core.lifecycle_manager import get_service_container
-                container = get_service_container(request)
-                if container:
-                    chroma_client = container.get_service("chromadb_client")
-                    if chroma_client:
-                        collections = chroma_client.list_collections()
-                        collection_count = len(collections)
-                        for collection in collections:
-                            document_count += collection.count()
-                    else:
-                        chroma_error = "ChromaDB client not available in service container"
-                        logger.error("ChromaDB client not found in service container")
-                else:
-                    chroma_error = "Service container not available"
-                    logger.error("Service container not available for ChromaDB stats")
-            except Exception as e:
-                chroma_error = f"Failed to query ChromaDB: {str(e)}"
-                logger.exception(f"Could not get ChromaDB stats: {e}")
-            
-            # Determine status and error details
-            if chroma_size == 0 and not os.path.exists(str(chroma_path)):
-                status = "degraded"
-                error_details = "ChromaDB directory does not exist"
-                logger.error(f"ChromaDB directory does not exist: {chroma_path}")
-            elif chroma_size == 0:
-                status = "degraded"
-                error_details = "ChromaDB directory is empty"
-                logger.error(f"ChromaDB directory is empty: {chroma_path}")
-            elif chroma_error:
-                status = "degraded"
-                error_details = chroma_error
-            else:
-                status = "healthy"
-                error_details = None
-            
-            databases.append(DatabaseMetrics(
-                name="ChromaDB",
-                type="chromadb",
-                size_bytes=chroma_size,
-                status=status,
-                location=str(chroma_path),
-                error_details=error_details,
-                collection_count=collection_count,
-                document_count=document_count,
-                index_size_bytes=chroma_size,  # Approximate
-            ))
-        except Exception as e:
-            logger.error(f"Failed to get ChromaDB metrics: {e}")
-            databases.append(DatabaseMetrics(
-                name="ChromaDB",
-                type="chromadb",
-                size_bytes=0,
-                status="critical",
-                location="unknown",
-                error_details=f"Critical error: {str(e)}",
-            ))
-        
-        # LMDB
-        try:
-            lmdb_path = AICOPaths.get_data_directory() / "data" / "memory" / "working"
-            
-            # Get directory size
-            lmdb_size = 0
-            if os.path.exists(str(lmdb_path)):
-                for dirpath, dirnames, filenames in os.walk(str(lmdb_path)):
-                    for filename in filenames:
-                        filepath = os.path.join(dirpath, filename)
-                        lmdb_size += get_file_size(filepath)
-            
-            # Get database and key counts
-            db_count = 0
-            key_count = 0
-            map_size = 0
-            lmdb_error = None
-            try:
-                from aico.ai import ai_registry
-                memory_manager = ai_registry.get("memory")
-                if memory_manager and hasattr(memory_manager, '_working_store'):
-                    working_store = memory_manager._working_store
-                    db_count = len(working_store.dbs)
-                    map_size = working_store.env.info()['map_size']
-                    
-                    # Count keys across all databases
-                    for db_name, db in working_store.dbs.items():
-                        with working_store.env.begin(db=db) as txn:
-                            key_count += txn.stat()['entries']
-                else:
-                    lmdb_error = "Memory manager not available or missing working store"
-                    logger.error("Memory manager not available or missing working store for LMDB stats")
-            except Exception as e:
-                lmdb_error = f"Failed to query LMDB: {str(e)}"
-                logger.exception(f"Could not get LMDB stats: {e}")
-            
-            # Determine status and error details
-            if lmdb_size == 0 and not os.path.exists(str(lmdb_path)):
-                status = "degraded"
-                error_details = "LMDB directory does not exist"
-                logger.error(f"LMDB directory does not exist: {lmdb_path}")
-            elif lmdb_size == 0:
-                status = "degraded"
-                error_details = "LMDB directory is empty"
-                logger.error(f"LMDB directory is empty: {lmdb_path}")
-            elif lmdb_error:
-                status = "degraded"
-                error_details = lmdb_error
-            else:
-                status = "healthy"
-                error_details = None
-            
-            databases.append(DatabaseMetrics(
-                name="LMDB",
-                type="lmdb",
-                size_bytes=lmdb_size,
-                status=status,
-                location=str(lmdb_path),
-                error_details=error_details,
-                database_count=db_count,
-                key_count=key_count,
-                map_size_bytes=map_size,
-            ))
-        except Exception as e:
-            logger.error(f"Failed to get LMDB metrics: {e}")
-            databases.append(DatabaseMetrics(
-                name="LMDB",
-                type="lmdb",
                 size_bytes=0,
                 status="critical",
                 location="unknown",
@@ -702,13 +553,12 @@ async def get_system_topology(
         # Define services
         services = [
             ServiceNode(
-                id="backend",
-                name="Backend",
+                id="core",
+                name="Backend Core",
                 type="backend",
                 status="healthy",
                 version=backend_version,
                 host="localhost",
-                port=8771,
                 uptime=backend_uptime_str
             ),
             ServiceNode(
@@ -751,13 +601,34 @@ async def get_system_topology(
                 uptime=backend_uptime_str
             ),
             ServiceNode(
-                id="bus",
-                name="Message Bus",
+                id="nats",
+                name="NATS",
                 type="bus",
                 status="healthy",
-                version=backend_version,
+                version="2.10",
                 host="localhost",
-                uptime=backend_uptime_str
+                port=4222,
+                uptime="N/A"
+            ),
+            ServiceNode(
+                id="loki",
+                name="Loki",
+                type="database",
+                status="healthy",
+                version="2.9.0",
+                host="localhost",
+                port=3100,
+                uptime="N/A"
+            ),
+            ServiceNode(
+                id="grafana",
+                name="Grafana",
+                type="monitoring",
+                status="healthy",
+                version="12.1",
+                host="localhost",
+                port=3001,
+                uptime="N/A"
             ),
             ServiceNode(
                 id="postgresql",
@@ -780,15 +651,6 @@ async def get_system_topology(
                 uptime=influxdb_uptime_str
             ),
             ServiceNode(
-                id="chromadb",
-                name="ChromaDB",
-                type="database",
-                status="healthy",
-                version=db_versions.get("ChromaDB", "0.5.x"),
-                host="localhost",
-                uptime="N/A"
-            ),
-            ServiceNode(
                 id="vllm",
                 name="vLLM",
                 type="llm",
@@ -798,30 +660,13 @@ async def get_system_topology(
                 port=int(config.get("llm.vllm.port", 8774)) if config else 8774,
                 uptime=vllm_uptime_str
             ),
-            ServiceNode(
-                id="lmdb",
-                name="LMDB",
-                type="database",
-                status="healthy",
-                version=db_versions.get("LMDB", "0.9.x"),
-                host="localhost",
-                uptime="N/A"
-            ),
         ]
         
         # Define connections
         connections = [
-            # Studio -> Gateway
+            # Frontend -> Gateway
             ServiceConnection(
                 from_service="studio",
-                to_service="gateway",
-                protocol="HTTP/WebSocket",
-                port=8771,
-                status="active"
-            ),
-            # Frontend (Flutter) -> Gateway
-            ServiceConnection(
-                from_service="Frontend",
                 to_service="gateway",
                 protocol="HTTP/WebSocket",
                 port=8771,
@@ -835,78 +680,98 @@ async def get_system_topology(
                 port=8771,
                 status="active"
             ),
-            # Gateway -> Backend
+            # Gateway -> Core
             ServiceConnection(
                 from_service="gateway",
-                to_service="backend",
-                protocol="HTTP",
+                to_service="core",
+                protocol="Internal",
                 status="active"
             ),
-            # Backend -> Model Service
+            # Core -> Model Service
             ServiceConnection(
-                from_service="backend",
+                from_service="core",
                 to_service="modelservice",
                 protocol="HTTP",
                 port=8773,
                 status="active"
             ),
-            # Backend -> vLLM
+            # Core -> vLLM
             ServiceConnection(
-                from_service="backend",
+                from_service="core",
                 to_service="vllm",
                 protocol="HTTP",
                 port=int(config.get("llm.vllm.port", 8774)) if config else 8774,
                 status="active"
             ),
-            # Backend -> Scheduler
+            # Core -> Scheduler
             ServiceConnection(
-                from_service="backend",
+                from_service="core",
                 to_service="scheduler",
                 protocol="Internal",
                 status="active"
             ),
-            # Backend -> Message Bus
+            # Core -> NATS
             ServiceConnection(
-                from_service="backend",
-                to_service="bus",
-                protocol="ZMQ",
+                from_service="core",
+                to_service="nats",
+                protocol="NATS",
+                port=4222,
                 status="active"
             ),
-            # Backend -> PostgreSQL
+            # Core -> PostgreSQL
             ServiceConnection(
-                from_service="backend",
+                from_service="core",
                 to_service="postgresql",
                 protocol="PostgreSQL",
                 port=5432,
                 status="active"
             ),
-            # Backend -> InfluxDB
+            # Core -> InfluxDB
             ServiceConnection(
-                from_service="backend",
+                from_service="core",
                 to_service="influxdb",
                 protocol="HTTP",
                 port=8086,
                 status="active"
             ),
-            # Backend -> ChromaDB
-            ServiceConnection(
-                from_service="backend",
-                to_service="chromadb",
-                protocol="HTTP",
-                status="active"
-            ),
-            # Backend -> LMDB
-            ServiceConnection(
-                from_service="backend",
-                to_service="lmdb",
-                protocol="Direct",
-                status="active"
-            ),
-            # Scheduler -> Message Bus
+            # Scheduler -> NATS
             ServiceConnection(
                 from_service="scheduler",
-                to_service="bus",
-                protocol="ZMQ",
+                to_service="nats",
+                protocol="NATS",
+                port=4222,
+                status="active"
+            ),
+            # Core -> Loki (logging)
+            ServiceConnection(
+                from_service="core",
+                to_service="loki",
+                protocol="HTTP",
+                port=3100,
+                status="active"
+            ),
+            # Gateway -> Loki (logging)
+            ServiceConnection(
+                from_service="gateway",
+                to_service="loki",
+                protocol="HTTP",
+                port=3100,
+                status="active"
+            ),
+            # Grafana -> Loki (query)
+            ServiceConnection(
+                from_service="grafana",
+                to_service="loki",
+                protocol="HTTP",
+                port=3100,
+                status="active"
+            ),
+            # Grafana -> InfluxDB (metrics)
+            ServiceConnection(
+                from_service="grafana",
+                to_service="influxdb",
+                protocol="HTTP",
+                port=8086,
                 status="active"
             ),
         ]

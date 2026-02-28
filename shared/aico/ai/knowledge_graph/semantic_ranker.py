@@ -2,7 +2,7 @@
 Semantic Entity Ranker for Knowledge Graph Extraction.
 
 Implements two-stage semantic retrieval:
-1. Semantic similarity search using ChromaDB embeddings
+1. Semantic similarity search using pgvector embeddings
 2. Multi-factor reranking (semantic, temporal, centrality, frequency)
 
 Follows AICO guidelines: DRY, KISS, explicit over implicit.
@@ -22,11 +22,11 @@ class SemanticEntityRanker:
     """
     Ranks entities by semantic relevance to current text.
     
-    Uses existing ChromaDB embeddings and HNSW index for fast similarity search.
+    Uses pgvector embeddings and HNSW index for fast similarity search.
     Applies multi-factor scoring to select most relevant entities for LLM context.
     
     Scoring Factors:
-    - Semantic relevance (40%): Cosine similarity from ChromaDB
+    - Semantic relevance (40%): Cosine similarity from pgvector
     - Temporal recency (30%): Exponential decay with 30-day half-life
     - Graph centrality (20%): PageRank score (future implementation)
     - Co-occurrence frequency (10%): Entity mention count
@@ -35,20 +35,17 @@ class SemanticEntityRanker:
     def __init__(
         self,
         modelservice_client,
-        chroma_client,
-        collection_name: str = "kg_nodes"
+        uow_factory
     ):
         """
         Initialize semantic entity ranker.
         
         Args:
             modelservice_client: Client for generating embeddings
-            chroma_client: ChromaDB client for similarity search
-            collection_name: Name of ChromaDB collection for entities
+            uow_factory: Unit of Work factory for PostgreSQL access
         """
         self.modelservice = modelservice_client
-        self.chroma_client = chroma_client
-        self.collection_name = collection_name
+        self.uow_factory = uow_factory
         
         # Scoring weights (tunable)
         self.SEMANTIC_WEIGHT = 0.4
@@ -133,7 +130,7 @@ class SemanticEntityRanker:
         n_results: int
     ) -> List[Tuple[str, float]]:
         """
-        Perform semantic similarity search using ChromaDB.
+        Perform semantic similarity search using pgvector.
         
         Args:
             text: Query text
@@ -145,35 +142,40 @@ class SemanticEntityRanker:
         """
         try:
             # Get text embedding from modelservice
-            # Note: Reuses existing embedding infrastructure (DRY)
-            # Generate embedding for query text
             embedding_response = await self.modelservice.generate_embeddings([text])
             if not embedding_response or not embedding_response.get('embeddings'):
                 logger.error("🎯 [SEMANTIC_RANKER] Failed to generate text embedding")
                 return []
             
             text_embedding = embedding_response['embeddings'][0]
+            embedding_str = '[' + ','.join(str(x) for x in text_embedding) + ']'
             
-            # Query ChromaDB for similar entities
-            collection = self.chroma_client.get_collection(name=self.collection_name)
-            results = collection.query(
-                query_embeddings=[text_embedding],
-                n_results=n_results,
-                where={"user_id": user_id, "is_current": True}
-            )
+            # Query pgvector for similar entities
+            async with self.uow_factory() as uow:
+                result = await uow.session.execute(
+                    """
+                    SELECT 
+                        e.node_id,
+                        1 - (e.embedding <=> :embedding::vector) as similarity
+                    FROM aico_core.kg_node_embeddings e
+                    JOIN aico_core.kg_nodes n ON e.node_id = n.id
+                    WHERE n.user_id = :user_id AND n.is_current = true
+                    ORDER BY e.embedding <=> :embedding::vector
+                    LIMIT :limit
+                    """,
+                    {
+                        'embedding': embedding_str,
+                        'user_id': user_id,
+                        'limit': n_results
+                    }
+                )
+                rows = result.fetchall()
             
-            if not results or not results['ids']:
+            if not rows:
                 return []
             
-            # Extract (id, distance) pairs
-            # ChromaDB returns distances, convert to similarity scores
-            candidates = []
-            for i, entity_id in enumerate(results['ids'][0]):
-                distance = results['distances'][0][i]
-                # Convert L2 distance to similarity (1 - normalized_distance)
-                # Assuming embeddings are normalized, distance ∈ [0, 2]
-                similarity = max(0.0, 1.0 - (distance / 2.0))
-                candidates.append((entity_id, similarity))
+            # Extract (id, similarity) pairs
+            candidates = [(row[0], row[1]) for row in rows]
             
             logger.info(
                 f"🎯 [SEMANTIC_RANKER] Found {len(candidates)} semantic candidates "
@@ -196,7 +198,7 @@ class SemanticEntityRanker:
         Apply multi-factor reranking to semantic candidates.
         
         Args:
-            candidates: List of (entity_id, semantic_score) from ChromaDB
+            candidates: List of (entity_id, semantic_score) from pgvector
             existing_entities: Full list of entity dicts
             max_results: Number of top entities to return
             

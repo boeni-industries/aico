@@ -1360,7 +1360,7 @@
           },
           "included": {
             "additionalProperties": true,
-            "description": "Component inclusion map (postgres/chromadb/lmdb/influxdb)",
+            "description": "Component inclusion map (postgres/lmdb/influxdb)",
             "title": "Included",
             "type": "object"
           },
@@ -1913,242 +1913,6 @@
         "title": "ChangesResponse",
         "type": "object"
       },
-      "ChromaDBBrowseDocument": {
-        "description": "ChromaDB document for browsing",
-        "properties": {
-          "document": {
-            "description": "Document content",
-            "title": "Document",
-            "type": "string"
-          },
-          "id": {
-            "description": "Document ID",
-            "title": "Id",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "description": "Document metadata",
-            "title": "Metadata",
-            "type": "object"
-          }
-        },
-        "required": [
-          "id",
-          "document",
-          "metadata"
-        ],
-        "title": "ChromaDBBrowseDocument",
-        "type": "object"
-      },
-      "ChromaDBBrowseResponse": {
-        "description": "Response for ChromaDB browse operation",
-        "properties": {
-          "collection_name": {
-            "description": "Collection name",
-            "title": "Collection Name",
-            "type": "string"
-          },
-          "documents": {
-            "description": "Documents",
-            "items": {
-              "$ref": "#/components/schemas/ChromaDBBrowseDocument"
-            },
-            "title": "Documents",
-            "type": "array"
-          },
-          "total_count": {
-            "description": "Total documents",
-            "title": "Total Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "collection_name",
-          "documents",
-          "total_count"
-        ],
-        "title": "ChromaDBBrowseResponse",
-        "type": "object"
-      },
-      "ChromaDBDeleteRequest": {
-        "description": "Request to delete ChromaDB documents",
-        "properties": {
-          "collection_name": {
-            "description": "Collection name",
-            "title": "Collection Name",
-            "type": "string"
-          },
-          "document_ids": {
-            "description": "List of document IDs to delete",
-            "items": {
-              "type": "string"
-            },
-            "title": "Document Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "collection_name",
-          "document_ids"
-        ],
-        "title": "ChromaDBDeleteRequest",
-        "type": "object"
-      },
-      "ChromaDBDeleteResponse": {
-        "description": "Response for ChromaDB delete operation",
-        "properties": {
-          "collection_name": {
-            "description": "Collection name",
-            "title": "Collection Name",
-            "type": "string"
-          },
-          "deleted_count": {
-            "description": "Number of documents deleted",
-            "title": "Deleted Count",
-            "type": "integer"
-          },
-          "success": {
-            "description": "Whether operation succeeded",
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "collection_name",
-          "deleted_count",
-          "success"
-        ],
-        "title": "ChromaDBDeleteResponse",
-        "type": "object"
-      },
-      "ChromaDBDocument": {
-        "description": "ChromaDB document result",
-        "properties": {
-          "content": {
-            "description": "Document content",
-            "title": "Content",
-            "type": "string"
-          },
-          "distance": {
-            "description": "Vector distance",
-            "title": "Distance",
-            "type": "number"
-          },
-          "id": {
-            "description": "Document ID",
-            "title": "Id",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "description": "Document metadata",
-            "title": "Metadata",
-            "type": "object"
-          },
-          "similarity_score": {
-            "description": "Similarity score",
-            "title": "Similarity Score",
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "content",
-          "metadata",
-          "similarity_score",
-          "distance"
-        ],
-        "title": "ChromaDBDocument",
-        "type": "object"
-      },
-      "ChromaDBSearchRequest": {
-        "description": "Request to search ChromaDB",
-        "properties": {
-          "collection_name": {
-            "description": "Collection name",
-            "title": "Collection Name",
-            "type": "string"
-          },
-          "conversation_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Filter by conversation_id",
-            "title": "Conversation Id"
-          },
-          "limit": {
-            "default": 10,
-            "description": "Maximum results to return",
-            "title": "Limit",
-            "type": "integer"
-          },
-          "min_similarity": {
-            "default": 0.4,
-            "description": "Minimum similarity score",
-            "title": "Min Similarity",
-            "type": "number"
-          },
-          "query_text": {
-            "description": "Search query text",
-            "title": "Query Text",
-            "type": "string"
-          },
-          "user_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Filter by user_id",
-            "title": "User Id"
-          }
-        },
-        "required": [
-          "collection_name",
-          "query_text"
-        ],
-        "title": "ChromaDBSearchRequest",
-        "type": "object"
-      },
-      "ChromaDBSearchResponse": {
-        "description": "Response for ChromaDB search",
-        "properties": {
-          "collection_name": {
-            "description": "Collection name",
-            "title": "Collection Name",
-            "type": "string"
-          },
-          "documents": {
-            "description": "Matching documents",
-            "items": {
-              "$ref": "#/components/schemas/ChromaDBDocument"
-            },
-            "title": "Documents",
-            "type": "array"
-          },
-          "total_count": {
-            "description": "Number of results",
-            "title": "Total Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "collection_name",
-          "documents",
-          "total_count"
-        ],
-        "title": "ChromaDBSearchResponse",
-        "type": "object"
-      },
       "ClusteringMetrics": {
         "description": "Clustering and community metrics.",
         "properties": {
@@ -2180,6 +1944,30 @@
           "modularity_score"
         ],
         "title": "ClusteringMetrics",
+        "type": "object"
+      },
+      "CollectionInfo": {
+        "description": "Collection metadata.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "dimension": {
+            "title": "Dimension",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "count",
+          "dimension"
+        ],
+        "title": "CollectionInfo",
         "type": "object"
       },
       "ComponentHealth": {
@@ -2886,40 +2674,10 @@
       "DatabaseDetailsResponse": {
         "description": "Response model for database details",
         "properties": {
-          "collections": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/backend__api__operations__schemas__CollectionInfo"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Collections (ChromaDB)",
-            "title": "Collections"
-          },
           "database_type": {
-            "description": "Database type (postgres, chromadb, lmdb)",
+            "description": "Database type (postgresql, influxdb)",
             "title": "Database Type",
             "type": "string"
-          },
-          "databases": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/LMDBDatabaseInfo"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Databases (LMDB)",
-            "title": "Databases"
           },
           "tables": {
             "anyOf": [
@@ -3018,18 +2776,6 @@
             "description": "Number of buckets (InfluxDB)",
             "title": "Bucket Count"
           },
-          "collection_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Number of collections (ChromaDB)",
-            "title": "Collection Count"
-          },
           "connection_count": {
             "anyOf": [
               {
@@ -3042,18 +2788,6 @@
             "description": "Active connections (PostgreSQL)",
             "title": "Connection Count"
           },
-          "database_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Number of databases (LMDB)",
-            "title": "Database Count"
-          },
           "database_name": {
             "anyOf": [
               {
@@ -3065,18 +2799,6 @@
             ],
             "description": "Database name (PostgreSQL)",
             "title": "Database Name"
-          },
-          "document_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Number of documents (ChromaDB)",
-            "title": "Document Count"
           },
           "error_details": {
             "anyOf": [
@@ -3102,46 +2824,10 @@
             "description": "Database host (PostgreSQL)",
             "title": "Host"
           },
-          "index_size_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Index size in bytes (ChromaDB)",
-            "title": "Index Size Bytes"
-          },
-          "key_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Number of keys (LMDB)",
-            "title": "Key Count"
-          },
           "location": {
             "description": "Database location (file path or connection string)",
             "title": "Location",
             "type": "string"
-          },
-          "map_size_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Map size in bytes (LMDB)",
-            "title": "Map Size Bytes"
           },
           "measurement_count": {
             "anyOf": [
@@ -3219,7 +2905,7 @@
             "title": "Table Count"
           },
           "type": {
-            "description": "Database type (postgresql, chromadb, lmdb, influxdb)",
+            "description": "Database type (postgresql, influxdb)",
             "title": "Type",
             "type": "string"
           },
@@ -5712,266 +5398,6 @@
         "title": "LLMMetrics",
         "type": "object"
       },
-      "LMDBBrowseRequest": {
-        "description": "Request to browse LMDB keys",
-        "properties": {
-          "database_name": {
-            "description": "LMDB database name (e.g., session_memory)",
-            "title": "Database Name",
-            "type": "string"
-          },
-          "key_prefix": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Filter by key prefix",
-            "title": "Key Prefix"
-          },
-          "limit": {
-            "default": 50,
-            "description": "Maximum keys to return",
-            "title": "Limit",
-            "type": "integer"
-          },
-          "offset": {
-            "default": 0,
-            "description": "Offset for pagination",
-            "title": "Offset",
-            "type": "integer"
-          },
-          "user_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Filter by user_id in value",
-            "title": "User Id"
-          }
-        },
-        "required": [
-          "database_name"
-        ],
-        "title": "LMDBBrowseRequest",
-        "type": "object"
-      },
-      "LMDBBrowseResponse": {
-        "description": "Response for LMDB browse operation",
-        "properties": {
-          "database_name": {
-            "description": "Database name",
-            "title": "Database Name",
-            "type": "string"
-          },
-          "has_more": {
-            "description": "Whether more results exist",
-            "title": "Has More",
-            "type": "boolean"
-          },
-          "keys": {
-            "description": "List of keys",
-            "items": {
-              "$ref": "#/components/schemas/LMDBKeyInfo"
-            },
-            "title": "Keys",
-            "type": "array"
-          },
-          "total_count": {
-            "description": "Total matching keys",
-            "title": "Total Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "database_name",
-          "keys",
-          "total_count",
-          "has_more"
-        ],
-        "title": "LMDBBrowseResponse",
-        "type": "object"
-      },
-      "LMDBDatabaseInfo": {
-        "description": "Information about an LMDB database",
-        "properties": {
-          "key_count": {
-            "description": "Number of keys",
-            "title": "Key Count",
-            "type": "integer"
-          },
-          "name": {
-            "description": "Database name",
-            "title": "Name",
-            "type": "string"
-          },
-          "size_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Database size",
-            "title": "Size Bytes"
-          }
-        },
-        "required": [
-          "name",
-          "key_count"
-        ],
-        "title": "LMDBDatabaseInfo",
-        "type": "object"
-      },
-      "LMDBDeleteRequest": {
-        "description": "Request to delete LMDB keys",
-        "properties": {
-          "database_name": {
-            "description": "Database name",
-            "title": "Database Name",
-            "type": "string"
-          },
-          "keys": {
-            "description": "Keys to delete",
-            "items": {
-              "type": "string"
-            },
-            "title": "Keys",
-            "type": "array"
-          }
-        },
-        "required": [
-          "database_name",
-          "keys"
-        ],
-        "title": "LMDBDeleteRequest",
-        "type": "object"
-      },
-      "LMDBDeleteResponse": {
-        "description": "Response for LMDB delete operation",
-        "properties": {
-          "deleted_count": {
-            "description": "Number of keys deleted",
-            "title": "Deleted Count",
-            "type": "integer"
-          },
-          "failed_count": {
-            "description": "Number of keys that failed to delete",
-            "title": "Failed Count",
-            "type": "integer"
-          },
-          "failed_keys": {
-            "description": "Keys that failed to delete",
-            "items": {
-              "type": "string"
-            },
-            "title": "Failed Keys",
-            "type": "array"
-          }
-        },
-        "required": [
-          "deleted_count",
-          "failed_count",
-          "failed_keys"
-        ],
-        "title": "LMDBDeleteResponse",
-        "type": "object"
-      },
-      "LMDBKeyInfo": {
-        "description": "Information about an LMDB key-value pair",
-        "properties": {
-          "key": {
-            "description": "Key name",
-            "title": "Key",
-            "type": "string"
-          },
-          "size_bytes": {
-            "description": "Value size in bytes",
-            "title": "Size Bytes",
-            "type": "integer"
-          },
-          "timestamp": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Timestamp if available in value",
-            "title": "Timestamp"
-          },
-          "value_preview": {
-            "description": "Preview of value (truncated)",
-            "title": "Value Preview",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "value_preview",
-          "size_bytes"
-        ],
-        "title": "LMDBKeyInfo",
-        "type": "object"
-      },
-      "LMDBKeyValueResponse": {
-        "description": "Response model for LMDB key value",
-        "properties": {
-          "database_name": {
-            "description": "Database name",
-            "title": "Database Name",
-            "type": "string"
-          },
-          "key": {
-            "description": "Key name",
-            "title": "Key",
-            "type": "string"
-          },
-          "metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Additional metadata",
-            "title": "Metadata"
-          },
-          "size_bytes": {
-            "description": "Size in bytes",
-            "title": "Size Bytes",
-            "type": "integer"
-          },
-          "value": {
-            "additionalProperties": true,
-            "description": "Full value",
-            "title": "Value",
-            "type": "object"
-          }
-        },
-        "required": [
-          "key",
-          "value",
-          "size_bytes",
-          "database_name"
-        ],
-        "title": "LMDBKeyValueResponse",
-        "type": "object"
-      },
       "LessonListResponse": {
         "properties": {
           "lessons": {
@@ -7654,69 +7080,6 @@
           "is_current"
         ],
         "title": "NodeVersion",
-        "type": "object"
-      },
-      "OrphanedEntriesResponse": {
-        "description": "Response for orphaned entries query",
-        "properties": {
-          "orphaned_count": {
-            "description": "Number of orphaned entries",
-            "title": "Orphaned Count",
-            "type": "integer"
-          },
-          "orphaned_entries": {
-            "description": "List of orphaned entries",
-            "items": {
-              "$ref": "#/components/schemas/OrphanedEntry"
-            },
-            "title": "Orphaned Entries",
-            "type": "array"
-          },
-          "total_entries": {
-            "description": "Total entries in database",
-            "title": "Total Entries",
-            "type": "integer"
-          },
-          "valid_user_count": {
-            "description": "Number of valid users in system",
-            "title": "Valid User Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total_entries",
-          "orphaned_count",
-          "orphaned_entries",
-          "valid_user_count"
-        ],
-        "title": "OrphanedEntriesResponse",
-        "type": "object"
-      },
-      "OrphanedEntry": {
-        "description": "Orphaned LMDB entry information",
-        "properties": {
-          "key": {
-            "description": "Entry key",
-            "title": "Key",
-            "type": "string"
-          },
-          "preview": {
-            "description": "Value preview",
-            "title": "Preview",
-            "type": "string"
-          },
-          "user_id": {
-            "description": "Referenced user ID that doesn't exist",
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "user_id",
-          "preview"
-        ],
-        "title": "OrphanedEntry",
         "type": "object"
       },
       "Pagination": {
@@ -9609,7 +8972,7 @@
           },
           "collections": {
             "items": {
-              "$ref": "#/components/schemas/backend__api__memory__router__CollectionInfo"
+              "$ref": "#/components/schemas/CollectionInfo"
             },
             "title": "Collections",
             "type": "array"
@@ -13526,76 +12889,6 @@
           "timestamp"
         ],
         "title": "HealthResponse",
-        "type": "object"
-      },
-      "backend__api__memory__router__CollectionInfo": {
-        "description": "Collection metadata.",
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "dimension": {
-            "title": "Dimension",
-            "type": "integer"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "count",
-          "dimension"
-        ],
-        "title": "CollectionInfo",
-        "type": "object"
-      },
-      "backend__api__operations__schemas__CollectionInfo": {
-        "description": "Information about a ChromaDB collection",
-        "properties": {
-          "dimension": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Embedding dimension",
-            "title": "Dimension"
-          },
-          "document_count": {
-            "description": "Number of documents",
-            "title": "Document Count",
-            "type": "integer"
-          },
-          "metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Collection metadata",
-            "title": "Metadata"
-          },
-          "name": {
-            "description": "Collection name",
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "document_count"
-        ],
-        "title": "CollectionInfo",
         "type": "object"
       }
     },
@@ -20480,7 +19773,7 @@
     },
     "/api/v1/memory/semantic/stats": {
       "get": {
-        "description": "Get semantic memory (ChromaDB) statistics.\n\nReturns:\n    - total_vectors: Total vector count across collections\n    - collections: List of collections with counts and dimensions\n    - index_size_mb: Total index size in megabytes\n    - avg_retrieval_latency_ms: Average query latency",
+        "description": "Get semantic memory (pgvector/PostgreSQL) statistics.\n\nReturns:\n    - total_vectors: Total vector count across collections\n    - collections: List of collections with counts and dimensions\n    - index_size_mb: Total index size in megabytes\n    - avg_retrieval_latency_ms: Average query latency",
         "operationId": "get_semantic_stats_api_v1_memory_semantic_stats_get",
         "parameters": [
           {
@@ -20528,7 +19821,7 @@
     },
     "/api/v1/memory/working/stats": {
       "get": {
-        "description": "Get working memory (LMDB) statistics.\n\nReturns:\n    - active_items: Current number of items in memory\n    - capacity: Maximum capacity\n    - utilization_percent: Memory utilization percentage\n    - ttl_utilization_percent: TTL-based utilization\n    - eviction_rate_per_min: Items evicted per minute\n    - recent_activity: Recent read/write/evict operations",
+        "description": "Get working memory (PostgreSQL) statistics.\n\nReturns:\n    - active_items: Current number of items in memory\n    - capacity: Maximum capacity\n    - utilization_percent: Memory utilization percentage\n    - ttl_utilization_percent: TTL-based utilization\n    - eviction_rate_per_min: Items evicted per minute\n    - recent_activity: Recent read/write/evict operations",
         "operationId": "get_working_stats_api_v1_memory_working_stats_get",
         "parameters": [
           {
@@ -20602,7 +19895,7 @@
         ]
       },
       "post": {
-        "description": "Create a coordinated backup set (PostgreSQL + ChromaDB + LMDB + optional InfluxDB).",
+        "description": "Create a coordinated backup set (PostgreSQL + ChromaDB + optional InfluxDB).",
         "operationId": "create_backup_set_api_v1_operations_backup_sets_post",
         "requestBody": {
           "content": {
@@ -20957,7 +20250,7 @@
     },
     "/api/v1/operations/databases": {
       "get": {
-        "description": "Get database statistics for all databases (PostgreSQL, ChromaDB, LMDB).\n\nReturns metrics including size, table/collection counts, and health status.",
+        "description": "Get database statistics for all databases (PostgreSQL, InfluxDB).\n\nReturns metrics including size, table counts, and health status.",
         "operationId": "get_database_stats_api_v1_operations_databases_get",
         "responses": {
           "200": {
@@ -20979,161 +20272,6 @@
         "summary": "Get Database Stats",
         "tags": [
           "operations"
-        ]
-      }
-    },
-    "/api/v1/operations/databases/chromadb/collections/{collection_name}/browse": {
-      "get": {
-        "description": "Browse all documents in a ChromaDB collection.",
-        "operationId": "browse_chromadb_collection_api_v1_operations_databases_chromadb_collections__collection_name__browse_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "collection_name",
-            "required": true,
-            "schema": {
-              "title": "Collection Name",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChromaDBBrowseResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Browse Chromadb Collection",
-        "tags": [
-          "operations",
-          "databases"
-        ]
-      }
-    },
-    "/api/v1/operations/databases/chromadb/documents": {
-      "delete": {
-        "description": "Delete documents from ChromaDB collection.",
-        "operationId": "delete_chromadb_documents_api_v1_operations_databases_chromadb_documents_delete",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChromaDBDeleteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChromaDBDeleteResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Delete Chromadb Documents",
-        "tags": [
-          "operations",
-          "databases"
-        ]
-      }
-    },
-    "/api/v1/operations/databases/chromadb/search": {
-      "post": {
-        "description": "Search ChromaDB using semantic similarity.\n\nSupports:\n- Natural language queries\n- Filtering by user_id, conversation_id\n- Minimum similarity threshold\n- Result limit",
-        "operationId": "search_chromadb_api_v1_operations_databases_chromadb_search_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChromaDBSearchRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChromaDBSearchResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Search Chromadb",
-        "tags": [
-          "operations",
-          "databases"
         ]
       }
     },
@@ -21179,209 +20317,6 @@
           }
         ],
         "summary": "Execute Influx Query",
-        "tags": [
-          "operations",
-          "databases"
-        ]
-      }
-    },
-    "/api/v1/operations/databases/lmdb/browse": {
-      "post": {
-        "description": "Browse LMDB keys with filtering and pagination.\n\nSupports filtering by:\n- Key prefix\n- User ID (searches in value JSON)\n- Pagination (limit/offset)",
-        "operationId": "browse_lmdb_keys_api_v1_operations_databases_lmdb_browse_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LMDBBrowseRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LMDBBrowseResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Browse Lmdb Keys",
-        "tags": [
-          "operations",
-          "databases"
-        ]
-      }
-    },
-    "/api/v1/operations/databases/lmdb/keys": {
-      "delete": {
-        "description": "Delete multiple keys from LMDB database.",
-        "operationId": "delete_lmdb_keys_api_v1_operations_databases_lmdb_keys_delete",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LMDBDeleteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LMDBDeleteResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Delete Lmdb Keys",
-        "tags": [
-          "operations",
-          "databases"
-        ]
-      }
-    },
-    "/api/v1/operations/databases/lmdb/{database_name}/key/{key}": {
-      "get": {
-        "description": "Get the full value for a specific LMDB key.\n\nReturns the complete JSON value for the key.",
-        "operationId": "get_lmdb_key_value_api_v1_operations_databases_lmdb__database_name__key__key__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "database_name",
-            "required": true,
-            "schema": {
-              "title": "Database Name",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "key",
-            "required": true,
-            "schema": {
-              "title": "Key",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LMDBKeyValueResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Get Lmdb Key Value",
-        "tags": [
-          "operations",
-          "databases"
-        ]
-      }
-    },
-    "/api/v1/operations/databases/lmdb/{database_name}/orphaned": {
-      "get": {
-        "description": "Find LMDB entries that reference non-existent users.\n\nThis helps identify and clean up orphaned data from deleted users.",
-        "operationId": "find_orphaned_entries_api_v1_operations_databases_lmdb__database_name__orphaned_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "database_name",
-            "required": true,
-            "schema": {
-              "title": "Database Name",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrphanedEntriesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Find Orphaned Entries",
         "tags": [
           "operations",
           "databases"
@@ -21513,7 +20448,7 @@
     },
     "/api/v1/operations/databases/{database_type}/details": {
       "get": {
-        "description": "Get detailed information about database tables/collections.\n\n- **postgresql**: Returns list of tables with row counts\n- **chromadb**: Returns list of collections with document counts\n- **lmdb**: Returns list of databases with key counts\n- **influxdb**: Returns basic database information",
+        "description": "Get detailed information about database tables/collections.\n\n- **postgresql**: Returns list of tables with row counts\n- **lmdb**: Removed\n- **influxdb**: Returns basic database information",
         "operationId": "get_database_details_api_v1_operations_databases__database_type__details_get",
         "parameters": [
           {
@@ -23355,7 +22290,7 @@
     },
     "/api/v1/system/metrics/memory": {
       "get": {
-        "description": "Get memory system metrics from LMDB, InfluxDB, PostgreSQL, and ChromaDB.",
+        "description": "Get memory system metrics from PostgreSQL, InfluxDB, and ChromaDB.",
         "operationId": "get_memory_metrics_api_v1_system_metrics_memory_get",
         "responses": {
           "200": {

@@ -184,10 +184,11 @@ async def _publish_interaction_notification(
     event_payload = event.model_dump(mode="json") if hasattr(event, "model_dump") else event
     payload_struct = Struct()
     payload_struct.update({"interaction": interaction_payload, "event": event_payload})
-    await bus_client.publish(
+    await bus_client.publish_durable(
         f"interaction.notifications.{user_id}",
         payload_struct,
         correlation_id=correlation_id,
+        audit_subject="audit.events.interaction",
     )
 
 

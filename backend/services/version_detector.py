@@ -122,8 +122,6 @@ class DatabaseVersionDetector:
     DEFAULT_VERSIONS = {
         "PostgreSQL": "18.1",
         "InfluxDB": "2.8.0",
-        "ChromaDB": "0.5.x",
-        "LMDB": "0.9.x",
         "vLLM": "unknown",
     }
     
@@ -157,8 +155,6 @@ class DatabaseVersionDetector:
         methods = {
             "PostgreSQL": "docker exec + SELECT version()",
             "InfluxDB": "docker exec + influxd version",
-            "ChromaDB": "python package version",
-            "LMDB": "python package version",
             "vLLM": "HTTP API /health or /v1/models",
         }
         return methods.get(db_name, "unknown")
@@ -172,10 +168,6 @@ class DatabaseVersionDetector:
                 version = await self._detect_postgresql_version()
             elif db_name == "InfluxDB":
                 version = await self._detect_influxdb_version()
-            elif db_name == "ChromaDB":
-                version = await self._detect_chromadb_version()
-            elif db_name == "LMDB":
-                version = await self._detect_lmdb_version()
             elif db_name == "vLLM":
                 version = await self._detect_vllm_version()
             else:
@@ -269,49 +261,6 @@ class DatabaseVersionDetector:
         # If we get here, detection failed
         fallback = self.DEFAULT_VERSIONS["InfluxDB"]
         logger.error(f"InfluxDB version detection FAILED - using fallback: {fallback}")
-        return fallback
-    
-    async def _detect_chromadb_version(self) -> str:
-        """Detect ChromaDB version from Python package"""
-        logger.debug("Attempting ChromaDB version detection from Python package...")
-        
-        try:
-            import chromadb
-            version = chromadb.__version__
-            logger.info(f"ChromaDB version detected successfully: {version}")
-            return version
-        except ImportError:
-            logger.error("ChromaDB package not installed - cannot detect version")
-        except AttributeError:
-            logger.error("ChromaDB package has no __version__ attribute")
-        except Exception as e:
-            logger.error(f"ChromaDB version detection failed: {e}", exc_info=True)
-        
-        # If we get here, detection failed
-        fallback = self.DEFAULT_VERSIONS["ChromaDB"]
-        logger.error(f"ChromaDB version detection FAILED - using fallback: {fallback}")
-        return fallback
-    
-    async def _detect_lmdb_version(self) -> str:
-        """Detect LMDB version from Python package"""
-        logger.debug("Attempting LMDB version detection from Python package...")
-        
-        try:
-            import lmdb
-            version = lmdb.version()
-            version_str = ".".join(map(str, version))
-            logger.info(f"LMDB version detected successfully: {version_str}")
-            return version_str
-        except ImportError:
-            logger.error("LMDB package not installed - cannot detect version")
-        except AttributeError:
-            logger.error("LMDB package has no version() function")
-        except Exception as e:
-            logger.error(f"LMDB version detection failed: {e}", exc_info=True)
-        
-        # If we get here, detection failed
-        fallback = self.DEFAULT_VERSIONS["LMDB"]
-        logger.error(f"LMDB version detection FAILED - using fallback: {fallback}")
         return fallback
     
     async def _detect_vllm_version(self) -> str:

@@ -69,7 +69,7 @@ from aico.core.logging import get_logger
 from aico.ai.base import ProcessingContext, ProcessingResult, BaseAIProcessor
 
 # Import memory stores (will be implemented in phases)
-from .working import WorkingMemoryStore
+from .working_postgres import PostgresWorkingMemoryStore
 from .semantic import SemanticMemoryStore
 from .context import ContextAssembler, ContextItem  # Uses context/ subdirectory
 
@@ -222,14 +222,22 @@ class MemoryManager(BaseAIProcessor):
         try:
             # Phase 1: Initialize working memory (immediate)
             if self._memory_config.get("working", {}).get("enabled", True):
-                self._working_store = WorkingMemoryStore(self.config)
+                working_cfg = self._memory_config.get("working", {})
+                driver = working_cfg.get("driver", "postgres")
+                if driver != "postgres":
+                    raise RuntimeError("LMDB working memory is no longer supported; set core.memory.working.driver=postgres")
+                if not self._uow_factory:
+                    raise RuntimeError("Postgres working memory requires uow_factory")
+                self._working_store = PostgresWorkingMemoryStore(self.config, uow_factory=self._uow_factory)
                 await self._working_store.initialize()
                 logger.info("Working memory store initialized")
             
             # Initialize semantic memory if enabled
             if self._memory_config.get("semantic", {}).get("enabled", False):
                 logger.info("[SEMANTIC] Semantic memory enabled in config, initializing...")
-                self._semantic_store = SemanticMemoryStore(self.config)
+                if not self._uow_factory:
+                    raise RuntimeError("Semantic memory (pgvector) requires uow_factory")
+                self._semantic_store = SemanticMemoryStore(self.config, self._uow_factory)
                 
                 # CRITICAL FIX: Get modelservice from backend services and inject dependency
                 try:
@@ -290,33 +298,17 @@ class MemoryManager(BaseAIProcessor):
             
             logger.info("🕸️ [KG] Using UoW factory for PostgreSQL access")
             
-            # Get ChromaDB client from semantic store
-            chromadb_client = None
-            if self._semantic_store and hasattr(self._semantic_store, '_chroma_client'):
-                chromadb_client = self._semantic_store._chroma_client
-            else:
-                logger.warning("🕸️ [KG] ChromaDB client not available from semantic store")
-                # Create our own ChromaDB client
-                import chromadb
-                from chromadb.config import Settings
-                chromadb_path = AICOPaths.get_semantic_memory_path()
-                chromadb_client = chromadb.PersistentClient(
-                    path=str(chromadb_path),
-                    settings=Settings(anonymized_telemetry=False, allow_reset=True)
-                )
-            
             # Initialize modelservice client (but don't connect yet - message bus may not be ready)
             self._kg_modelservice = KGModelserviceClient()
             
-            # Initialize storage (pass UoW factory for PostgreSQL and modelservice for embedding generation)
-            self._kg_storage = PropertyGraphStorage(self._uow_factory, chromadb_client, self._kg_modelservice)
+            # Initialize storage with pgvector (pass UoW factory for PostgreSQL and modelservice for embedding generation)
+            self._kg_storage = PropertyGraphStorage(self._uow_factory, self._kg_modelservice)
             
-            # Initialize extraction pipeline with ChromaDB for semantic ranking
-            # Pass chromadb_client to enable state-of-the-art semantic entity ranking
+            # Initialize extraction pipeline with pgvector for semantic ranking
             self._kg_extractor = MultiPassExtractor(
                 self._kg_modelservice, 
                 self.config,
-                chromadb_client=chromadb_client  # Enable semantic ranking
+                uow_factory=self._uow_factory  # Enable pgvector semantic ranking
             )
             
             # Initialize entity resolver

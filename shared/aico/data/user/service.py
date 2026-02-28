@@ -81,7 +81,14 @@ class UserService:
                 # Create authentication record if PIN provided
                 if pin:
                     auth_uuid = str(uuid.uuid4())
-                    pin_hash = self.pwd_context.hash(pin)
+                    # Truncate PIN to 72 bytes to comply with bcrypt limits
+                    # Must truncate bytes, not characters, for proper UTF-8 handling
+                    pin_bytes = pin.encode('utf-8')
+                    if len(pin_bytes) > 72:
+                        pin_to_hash = pin_bytes[:72].decode('utf-8', errors='ignore')
+                    else:
+                        pin_to_hash = pin
+                    pin_hash = self.pwd_context.hash(pin_to_hash)
                     
                     await self.db.execute("""
                         INSERT INTO auth_user_credentials 
@@ -350,7 +357,13 @@ class UserService:
                         return False
                 
                 # Hash new PIN
-                pin_hash = self.pwd_context.hash(new_pin)
+                # Truncate PIN to 72 bytes to comply with bcrypt limits
+                pin_bytes = new_pin.encode('utf-8')
+                if len(pin_bytes) > 72:
+                    pin_to_hash = pin_bytes[:72].decode('utf-8', errors='ignore')
+                else:
+                    pin_to_hash = new_pin
+                pin_hash = self.pwd_context.hash(pin_to_hash)
                 
                 # Update or insert authentication data
                 if auth_data:
@@ -408,7 +421,13 @@ class UserService:
                     raise ValueError(f"User not found: {user_uuid}")
                 
                 # Hash new PIN
-                pin_hash = self.pwd_context.hash(new_pin)
+                # Truncate PIN to 72 bytes to comply with bcrypt limits
+                pin_bytes = new_pin.encode('utf-8')
+                if len(pin_bytes) > 72:
+                    pin_to_hash = pin_bytes[:72].decode('utf-8', errors='ignore')
+                else:
+                    pin_to_hash = new_pin
+                pin_hash = self.pwd_context.hash(pin_to_hash)
                 
                 # Check if user already has authentication data
                 auth_data = await self.db.fetchrow("""
@@ -643,7 +662,13 @@ class UserService:
             if not user:
                 return False
             
-            pin_hash = self.pwd_context.hash(new_pin)
+            # Truncate PIN to 72 bytes to comply with bcrypt limits
+            pin_bytes = new_pin.encode('utf-8')
+            if len(pin_bytes) > 72:
+                pin_to_hash = pin_bytes[:72].decode('utf-8', errors='ignore')
+            else:
+                pin_to_hash = new_pin
+            pin_hash = self.pwd_context.hash(pin_to_hash)
             
             async with self.db.transaction():
                 # Check if authentication record exists

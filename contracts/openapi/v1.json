@@ -9493,7 +9493,7 @@
     },
     "/api/v1/memory/semantic/stats": {
       "get": {
-        "description": "Get semantic memory (ChromaDB) statistics.\n\nReturns:\n    - total_vectors: Total vector count across collections\n    - collections: List of collections with counts and dimensions\n    - index_size_mb: Total index size in megabytes\n    - avg_retrieval_latency_ms: Average query latency",
+        "description": "Get semantic memory (pgvector/PostgreSQL) statistics.\n\nReturns:\n    - total_vectors: Total vector count across collections\n    - collections: List of collections with counts and dimensions\n    - index_size_mb: Total index size in megabytes\n    - avg_retrieval_latency_ms: Average query latency",
         "operationId": "get_semantic_stats_api_v1_memory_semantic_stats_get",
         "parameters": [
           {
@@ -9541,7 +9541,7 @@
     },
     "/api/v1/memory/working/stats": {
       "get": {
-        "description": "Get working memory (LMDB) statistics.\n\nReturns:\n    - active_items: Current number of items in memory\n    - capacity: Maximum capacity\n    - utilization_percent: Memory utilization percentage\n    - ttl_utilization_percent: TTL-based utilization\n    - eviction_rate_per_min: Items evicted per minute\n    - recent_activity: Recent read/write/evict operations",
+        "description": "Get working memory (PostgreSQL) statistics.\n\nReturns:\n    - active_items: Current number of items in memory\n    - capacity: Maximum capacity\n    - utilization_percent: Memory utilization percentage\n    - ttl_utilization_percent: TTL-based utilization\n    - eviction_rate_per_min: Items evicted per minute\n    - recent_activity: Recent read/write/evict operations",
         "operationId": "get_working_stats_api_v1_memory_working_stats_get",
         "parameters": [
           {

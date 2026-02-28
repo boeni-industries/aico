@@ -60,7 +60,7 @@ AICO’s instrumentation system is designed to be **privacy-first, local-first, 
 ## Core Components (Across All Stages)
 
 ### Instrumentation Layer (OpenTelemetry)
-- **Traces:** Distributed tracing with automatic context propagation via ZeroMQ envelopes
+- **Traces:** Distributed tracing with end-to-end context propagation across HTTP/WebSocket and NATS/JetStream
 - **Metrics:** Counters, gauges, histograms for performance and health monitoring
 - **Logs:** Structured logs with trace correlation and semantic attributes
 - **Auto-Instrumentation:** FastAPI, PostgreSQL, HTTP clients instrumented automatically
@@ -73,7 +73,7 @@ AICO’s instrumentation system is designed to be **privacy-first, local-first, 
   - Pro: Opt-in, local only
   - Dev: Enabled by default
   - Production: Configurable, with authentication
-- **OTLP Exporter (Dev/Production):** Push traces to Jaeger, metrics to collectors
+- **OTLP Exporter (Dev/Production):** Push traces/metrics/logs via OTLP (typically to an OpenTelemetry Collector)
   - Casual/Pro: Disabled
   - Dev: Enabled by default
   - Production: Opt-in, configurable endpoint
@@ -92,10 +92,10 @@ AICO’s instrumentation system is designed to be **privacy-first, local-first, 
 
 ### Distributed Tracing in a Message Bus Architecture
 
-**OpenTelemetry Context Propagation via ZeroMQ:**
-- Every ZeroMQ message envelope includes W3C Trace Context headers
-- Modules extract trace context, create child spans, and propagate to downstream messages
-- Enables end-to-end tracing across all modules in event-driven architecture
+**OpenTelemetry Context Propagation via NATS / JetStream:**
+- Every NATS message includes W3C Trace Context headers
+- Producers inject trace context; consumers extract context and start child spans
+- Enables end-to-end tracing across HTTP/WebSocket → NATS request/reply, pub/sub, and JetStream work-queue flows
 
 **Envelope Format (W3C Trace Context):**
 ```json
@@ -115,8 +115,51 @@ AICO’s instrumentation system is designed to be **privacy-first, local-first, 
 
 **Implementation:**
 - Use `opentelemetry.propagate` to inject/extract context
-- Automatic span creation for message handlers
-- Trace correlation across async operations
+- Inject into NATS message headers (preferred: native headers)
+- Extract in NATS subscribers and JetStream consumers before invoking handlers
+- Always propagate a stable `request_id` / `correlation_id` (for idempotency + joins) alongside trace context
+
+---
+
+## Extended Strategy (Core Services)
+
+### What we optimize for
+- **Stable golden-path observability:** when architecture changes, the same core flows remain traceable.
+- **Per-operation metrics by default:** consistent duration + error-rate coverage without case-by-case profiling.
+- **Drilldown workflow:** dashboard → trace → span → correlated logs.
+
+### Golden paths (must be end-to-end)
+- **Gateway request → Core processing → Modelservice inference**
+- **NATS request/reply** (command/response) and **streaming subjects** (ephemeral)
+- **JetStream work-queue jobs** (durable) including retry/redelivery
+- **Persistence boundaries** (Postgres): conversation writes, outbox publication, working memory, interaction tables
+
+### Span model (naming + boundaries)
+- **HTTP/WebSocket entry:** `http.server` / `ws.session`
+- **Domain operations:** `conversation.handle_message`, `memory.assemble_context`, `interactions.process`, `tts.synthesize`
+- **Bus operations:** `nats.publish`, `nats.request`, `nats.consume`, `jetstream.ack`
+- **I/O operations:** `db.query`, `db.transaction`
+
+Span attributes must be bounded (low-cardinality) for metrics and search:
+- `service.name`, `operation`, `success`
+- `nats.subject` (bounded taxonomy)
+- `model.name` (bounded set)
+- Avoid high-cardinality identifiers (e.g. `user_id`, `conversation_id`) as metric dimensions.
+
+### Per-operation metrics (two layers)
+- **Custom business metrics (OTel Meter):** use the documented AICO pattern for stable, curated KPIs.
+- **RED metrics from spans (Collector):** derive rate/errors/duration per operation from traces using span-to-metrics.
+
+### Sampling (keep overhead low, keep slow/error)
+- Default head sampling can be modest.
+- Add tail-based rules in the collector to retain:
+  - slow traces
+  - traces with errors
+  - traces for selected critical operations
+
+### Trace → Log correlation (Grafana + Loki)
+- Include `trace_id` (and ideally `span_id`) in all structured logs.
+- Configure Grafana to jump from Tempo trace spans to Loki logs by `trace_id`.
 
 ---
 
@@ -141,7 +184,7 @@ meter = metrics.get_meter("aico.backend")
 - **FastAPI:** `opentelemetry-instrumentation-fastapi` (automatic middleware)
 - **PostgreSQL:** `opentelemetry-instrumentation-PostgreSQL3` (query tracing)
 - **HTTP Clients:** `opentelemetry-instrumentation-requests` (outbound calls)
-- **ZeroMQ:** Custom propagator for message bus context
+- **NATS/JetStream:** Propagator that injects/extracts W3C Trace Context into NATS headers
 
 ### Layer 3: Custom Metrics (Business Logic)
 ```python
@@ -184,7 +227,7 @@ inference_duration = meter.create_histogram(
 
 **Dev Mode:**
 - Prometheus exporter on `/metrics` (enabled by default)
-- OTLP exporter to Jaeger (traces)
+- OTLP exporter to OpenTelemetry Collector (traces + optional span-derived metrics)
 - Grafana dashboards (pre-configured local stack)
 
 **Production Mode:**
@@ -211,7 +254,7 @@ graph TD;
     Model[Modelservice]
     Memory[Memory System]
     Scheduler[Scheduler]
-    Bus[Message Bus<br/>ZeroMQ]
+    Bus[Message Bus<br/>NATS/JetStream]
   end
   
   subgraph OpenTelemetry SDK
@@ -239,11 +282,11 @@ graph TD;
   subgraph Dev Mode Only
     Tracer -.-> OTLP[OTLP Exporter]
     Meter -.-> Prom[Prometheus<br/>/metrics]
-    OTLP -.-> Jaeger[Jaeger UI]
-    Prom -.-> Grafana[Grafana]
+    OTLP -.-> Collector[OpenTelemetry Collector]
+    Collector -.-> Tempo[Tempo]
+    Tempo -.-> Grafana[Grafana]
   end
 ```
-
 
 ## Dependencies
 
@@ -272,14 +315,13 @@ dev = [
 2. **Phase 2:** Add custom metrics for business logic (API Gateway, Modelservice, etc.)
 3. **Phase 3:** Create local storage adapter, feed Studio dashboard
 4. **Phase 4:** Add health calculator using OTel metrics
-5. **Phase 5:** Add optional Prometheus/Jaeger exporters for dev mode
-6. **Phase 6:** Create pre-built Grafana dashboards
+5. **Phase 5:** Add OpenTelemetry Collector + Tempo for trace drilldown in Grafana
+6. **Phase 6:** Create pre-built Grafana dashboards (logs + metrics + traces)
 
 ## References
 - [OpenTelemetry Python](https://opentelemetry.io/docs/languages/python/)
 - [OpenTelemetry FastAPI](https://opentelemetry-python-contrib.readthedocs.io/en/latest/instrumentation/fastapi/fastapi.html)
 - [Prometheus](https://prometheus.io/)
-- [Jaeger](https://www.jaegertracing.io/)
+- [Grafana Tempo](https://grafana.com/oss/tempo/)
 - [Grafana](https://grafana.com/)
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/)
-

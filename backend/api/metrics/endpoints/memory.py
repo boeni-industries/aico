@@ -14,7 +14,9 @@ Metrics sourced from InfluxDB (memory_query measurement) and database queries.
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Annotated
 import os
-import lmdb
+from datetime import datetime, UTC
+
+from sqlalchemy import func, or_, select
 
 from ..models import MemoryMetrics, MetricValue
 from ..influx_client import MetricsInfluxClient
@@ -22,6 +24,7 @@ from aico.core.logging import get_logger
 from backend.api.system.dependencies import get_current_user
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
+from aico.data.tables import working_memory_messages
 
 logger = get_logger("backend.api.metrics.memory")
 
@@ -33,30 +36,18 @@ async def get_memory_metrics(
     user: Annotated[dict, Depends(get_current_user)],
     uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> MemoryMetrics:
-    """Get memory system metrics from LMDB, InfluxDB, PostgreSQL, and ChromaDB."""
+    """Get memory system metrics from PostgreSQL, InfluxDB, and ChromaDB."""
     try:
-        # Working Memory - count entries in LMDB sub-databases
+        # Working Memory - Postgres-backed
         working_memory_count = 0
         try:
-            lmdb_path = os.path.expanduser("~/Library/Application Support/aico/data/memory/working")
-            if os.path.exists(lmdb_path):
-                env = lmdb.open(lmdb_path, readonly=True, lock=False, max_dbs=10)
-                
-                # Count entries in session_memory database
-                with env.begin() as txn:
-                    session_db = env.open_db(b'session_memory', txn=txn)
-                    session_stat = txn.stat(session_db)
-                    working_memory_count += session_stat['entries']
-                
-                # Count entries in user_sessions database
-                with env.begin() as txn:
-                    user_db = env.open_db(b'user_sessions', txn=txn)
-                    user_stat = txn.stat(user_db)
-                    working_memory_count += user_stat['entries']
-                
-                env.close()
+            now = datetime.now(UTC)
+            stmt = select(func.count()).select_from(working_memory_messages).where(
+                or_(working_memory_messages.c.expires_at.is_(None), working_memory_messages.c.expires_at > now)
+            )
+            working_memory_count = (await uow._session.execute(stmt)).scalar() or 0
         except Exception as e:
-            logger.debug(f"Failed to read LMDB working memory: {e}")
+            logger.debug(f"Failed to read Postgres working memory: {e}")
         
         # Semantic Queries - rate from InfluxDB downsampled data
         semantic_qps = 0.0
@@ -104,17 +95,7 @@ async def get_memory_metrics(
         # Storage Breakdown - calculate sizes
         storage_breakdown = {}
         try:
-            # LMDB size
-            if os.path.exists(lmdb_path):
-                lmdb_size = sum(os.path.getsize(os.path.join(lmdb_path, f)) for f in os.listdir(lmdb_path) if os.path.isfile(os.path.join(lmdb_path, f)))
-                storage_breakdown["LMDB"] = round(lmdb_size / (1024 * 1024), 2)
-            
-            # ChromaDB size
-            chromadb_path = os.path.expanduser("~/Library/Application Support/aico/data/chromadb")
-            if os.path.exists(chromadb_path):
-                chromadb_size = sum(os.path.getsize(os.path.join(dp, f)) for dp, dn, filenames in os.walk(chromadb_path) for f in filenames)
-                storage_breakdown["ChromaDB"] = round(chromadb_size / (1024 * 1024), 2)
-            
+            # PostgreSQL KG size (approximate from row counts)
             # PostgreSQL KG size (approximate from row counts)
             kg_size_estimate = (kg_node_count * 0.5 + kg_edge_count * 0.3) / 1024  # Rough estimate in MB
             storage_breakdown["PostgreSQL"] = round(kg_size_estimate, 2)

@@ -84,7 +84,7 @@ def refresh_versions(
 
 @app.command("show")
 def show_version(
-    database: str = typer.Argument(..., help="Database name (PostgreSQL, InfluxDB, ChromaDB, LMDB, Ollama)")
+    database: str = typer.Argument(..., help="Database name (PostgreSQL, InfluxDB, ChromaDB, Ollama)")
 ):
     """
     Show detailed version information for a specific database.

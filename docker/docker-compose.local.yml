@@ -160,7 +160,7 @@ services:
       com.aico.deployment.type: "local-dev"
 
   postgres:
-    image: postgres:18.1
+    image: pgvector/pgvector:0.8.1-pg18
     container_name: aico-postgres
     restart: unless-stopped
     environment:
@@ -202,7 +202,7 @@ services:
       com.aico.deployment.type: "local-dev"
 
   postgres-shadow:
-    image: postgres:18.1
+    image: pgvector/pgvector:0.8.1-pg18
     container_name: aico-postgres-shadow
     restart: unless-stopped
     environment:

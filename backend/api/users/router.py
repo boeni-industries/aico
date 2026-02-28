@@ -346,7 +346,15 @@ async def authenticate_user(
             )
         
         # Verify PIN using bcrypt (must match CLI UserService hashing)
-        if not pwd_context.verify(request.pin, credentials.pin_hash):
+        # Truncate PIN to 72 bytes to comply with bcrypt limits
+        # Must truncate bytes, not characters, for proper UTF-8 handling
+        pin_bytes = request.pin.encode('utf-8')
+        if len(pin_bytes) > 72:
+            pin_to_verify = pin_bytes[:72].decode('utf-8', errors='ignore')
+        else:
+            pin_to_verify = request.pin
+        
+        if not pwd_context.verify(pin_to_verify, credentials.pin_hash):
             # Increment failed attempts
             await uow.credentials.increment_failed_attempts(request.user_uuid)
 

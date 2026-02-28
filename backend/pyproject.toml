@@ -17,6 +17,7 @@ dependencies = [
     "openai>=1.0.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "websockets>=13.0",
 ]
 
 [tool.uv.sources]

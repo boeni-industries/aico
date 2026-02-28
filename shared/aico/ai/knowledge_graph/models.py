@@ -91,24 +91,6 @@ class Node:
         """Convert to dictionary for serialization."""
         return asdict(self)
     
-    def to_chromadb_document(self) -> Dict[str, Any]:
-        """Convert to ChromaDB document format."""
-        # Combine all text fields for embedding
-        text_content = f"{self.label}: {json.dumps(self.properties, sort_keys=True, default=str)} | {self.source_text}"
-        
-        return {
-            "id": self.id,
-            "document": text_content,
-            "metadata": {
-                "user_id": self.user_id,
-                "label": self.label,
-                "confidence": self.confidence,
-                "created_at": self.created_at.isoformat() if self.created_at else "",
-                "is_current": int(self.is_current),
-                "canonical_id": self.canonical_id or self.id
-            }
-        }
-    
     def to_postgres_tuple(self) -> tuple:
         """Convert to tuple for PostgreSQL insertion."""
         return (
@@ -201,25 +183,6 @@ class Edge:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return asdict(self)
-    
-    def to_chromadb_document(self) -> Dict[str, Any]:
-        """Convert to ChromaDB document format."""
-        # Combine all text fields for embedding
-        text_content = f"{self.relation_type}: {json.dumps(self.properties, sort_keys=True, default=str)} | {self.source_text}"
-        
-        return {
-            "id": self.id,
-            "document": text_content,
-            "metadata": {
-                "user_id": self.user_id,
-                "source_id": self.source_id,
-                "target_id": self.target_id,
-                "relation_type": self.relation_type,
-                "confidence": self.confidence,
-                "created_at": self.created_at.isoformat() if self.created_at else "",
-                "is_current": int(self.is_current)
-            }
-        }
     
     def to_postgres_tuple(self) -> tuple:
         """Convert to tuple for PostgreSQL insertion."""

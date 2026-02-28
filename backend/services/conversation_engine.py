@@ -1194,19 +1194,21 @@ class ConversationEngine(BaseService):
             # Publish final response to both topics for compatibility
             try:
                 self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: {AICOTopics.CONVERSATION_RESPONSE}")
-                await self.bus_client.publish(
+                await self.bus_client.publish_durable(
                     AICOTopics.CONVERSATION_RESPONSE,
                     conv_message,
                     correlation_id=request_id,
+                    audit_subject="audit.events.conversation.final",
                 )
                 self.logger.info(f"✅ [FINALIZE] Published to {AICOTopics.CONVERSATION_RESPONSE}")
 
                 # Also publish to AI response topic for API layer
                 self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: conversation/ai/response/v1")
-                await self.bus_client.publish(
+                await self.bus_client.publish_durable(
                     "conversation/ai/response/v1",
                     conv_message,
                     correlation_id=request_id,
+                    audit_subject="audit.events.conversation.final",
                 )
                 self.logger.info(f"✅ [FINALIZE] Published to conversation/ai/response/v1")
             except Exception as publish_error:

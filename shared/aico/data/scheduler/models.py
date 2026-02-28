@@ -20,6 +20,7 @@ class TaskExecution(BaseModel):
     id: int | None = None
     task_id: str
     execution_id: str
+    run_key: str | None = None
     status: str
     started_at: datetime
     completed_at: Optional[datetime] = None

@@ -78,6 +78,41 @@ def test_db():
         "ALTER COLUMN created_at TYPE TIMESTAMPTZ USING NULLIF(created_at::text, '')::timestamptz"
     )
     
+    # Create scheduler tables if missing (needed for distributed scheduler idempotency)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_tasks (
+            task_id TEXT PRIMARY KEY,
+            task_class TEXT NOT NULL,
+            schedule TEXT NOT NULL,
+            config TEXT,
+            enabled BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_task_executions (
+            id BIGSERIAL PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            execution_id TEXT NOT NULL,
+            run_key TEXT,
+            status TEXT NOT NULL,
+            started_at TIMESTAMPTZ NOT NULL,
+            completed_at TIMESTAMPTZ,
+            result TEXT,
+            error_message TEXT,
+            duration_seconds DOUBLE PRECISION,
+            acknowledged BOOLEAN DEFAULT FALSE
+        )
+    """)
+
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduler_task_executions_run_key
+        ON scheduler_task_executions (task_id, run_key)
+        WHERE run_key IS NOT NULL
+    """)
+
     # Create interaction_requests table if missing
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS interaction_requests (
@@ -176,6 +211,38 @@ def test_db():
         CREATE INDEX IF NOT EXISTS idx_outbox_events_pending
         ON outbox_events (status, available_at, created_at)
         WHERE status = 'pending'
+    """)
+
+    # Working memory table (Postgres-backed LMDB replacement)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS working_memory_messages (
+            id BIGSERIAL PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            user_id TEXT,
+            message_id TEXT,
+            role TEXT,
+            content TEXT,
+            language TEXT,
+            message_type TEXT,
+            payload_json JSONB,
+            stored_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMPTZ,
+            last_accessed_at TIMESTAMPTZ,
+            access_count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_working_memory_conversation_stored_at
+        ON working_memory_messages (conversation_id, stored_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_working_memory_user_stored_at
+        ON working_memory_messages (user_id, stored_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_working_memory_expires_at
+        ON working_memory_messages (expires_at)
+        WHERE expires_at IS NOT NULL
     """)
 
     db.commit()

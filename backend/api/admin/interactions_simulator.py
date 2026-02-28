@@ -189,12 +189,13 @@ async def simulate_interaction(
             "event": event.model_dump(mode="json"),
         })
         
-        # Publish to user topic
+        # Publish to user topic (durable)
         topic = f"interaction.notifications.{request.user_id}"
-        await bus_client.publish(
+        await bus_client.publish_durable(
             topic,
             payload_struct,
             correlation_id=correlation_id,
+            audit_subject="audit.events.interaction",
         )
         
         logger.info(
@@ -209,10 +210,11 @@ async def simulate_interaction(
         
         # Optionally publish to admin topic
         if request.broadcast_admin:
-            await bus_client.publish(
+            await bus_client.publish_durable(
                 "interaction.notifications.admin",
                 payload_struct,
                 correlation_id=correlation_id,
+                audit_subject="audit.events.interaction",
             )
             logger.info(
                 f"Published interaction notification to admin topic",

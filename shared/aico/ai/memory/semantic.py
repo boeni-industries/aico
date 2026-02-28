@@ -5,12 +5,12 @@ Conversation-segment storage with vector embeddings for context retrieval.
 Hybrid search combining semantic similarity (embeddings) and keyword relevance (BM25).
 
 Core Functionality:
-- Segment storage: Store conversation chunks with embeddings in ChromaDB
+- Segment storage: Store conversation chunks with embeddings in Postgres/pgvector
 - Hybrid search: RRF fusion of semantic (cosine) + keyword (BM25) ranking
 - Simple integration: Clean interface for memory manager
 
 Architecture:
-- ChromaDB: Vector storage for conversation segments with cosine similarity
+- Postgres/pgvector: Vector storage for conversation segments with cosine similarity
 - BM25: Keyword-based ranking with IDF filtering for relevance
 - RRF Fusion: Reciprocal Rank Fusion for combining semantic + keyword scores
 - Direct modelservice integration for embeddings
@@ -27,11 +27,8 @@ from dataclasses import dataclass
 import uuid
 import math
 from collections import Counter
-import chromadb
-from chromadb.config import Settings
 
 from aico.core.config import ConfigurationManager
-from aico.core.paths import AICOPaths
 from aico.core.logging import get_logger
 from .fusion import calculate_rrf_scores, calculate_weighted_scores
 from .temporal import TemporalMetadata
@@ -63,19 +60,16 @@ class ConversationSegment:
 
 
 class SemanticMemoryStore:
-    """V3 Semantic Memory Store - Hybrid search with BM25 + semantic"""
+    """V4 Semantic Memory Store - Postgres/pgvector with hybrid search"""
     
-    def __init__(self, config_manager: ConfigurationManager):
+    def __init__(self, config_manager: ConfigurationManager, uow_factory):
         self.config = config_manager
+        self.uow_factory = uow_factory
         self._initialized = False
-        self._chroma_client = None
-        self._collection = None
         self._modelservice = None
         
         # Configuration
         memory_config = self.config.get("memory.semantic", {})
-        self._db_path = AICOPaths.get_semantic_memory_path()
-        self._collection_name = "conversation_segments"
         self._embedding_model = "paraphrase-multilingual"
         self._max_results = memory_config.get("max_results", 10)
         self._min_similarity = memory_config.get("min_similarity", 0.4)
@@ -83,8 +77,8 @@ class SemanticMemoryStore:
         # Hybrid search configuration
         self._fusion_method = memory_config.get("fusion_method", "rrf")
         self._rrf_rank_constant = memory_config.get("rrf_rank_constant", 0)  # 0 = adaptive
-        self._bm25_min_idf = memory_config.get("bm25_min_idf", 0.3)  # IDF filtering threshold (lowered for small datasets)
-        self._min_semantic_score = memory_config.get("min_semantic_score", 0.0)  # Relevance threshold (disabled for browsing)
+        self._bm25_min_idf = memory_config.get("bm25_min_idf", 0.3)  # IDF filtering threshold
+        self._min_semantic_score = memory_config.get("min_semantic_score", 0.0)  # Relevance threshold
         self._semantic_weight = memory_config.get("semantic_weight", 0.7)
         self._bm25_weight = memory_config.get("bm25_weight", 0.3)
         
@@ -93,9 +87,7 @@ class SemanticMemoryStore:
         self._temporal_enabled = temporal_config.get("enabled", True)
         self._confidence_decay_rate = temporal_config.get("confidence_decay_rate", 0.001)
         
-        # CRITICAL: This log MUST show all three parameters to confirm code is loaded
-        logger.info(f"✅ SemanticMemoryStore V3 initialized (fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}, temporal={self._temporal_enabled})")
-        logger.debug(f"🔍 DEBUG: Config values loaded - fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}")
+        logger.info(f"✅ SemanticMemoryStore V4 (pgvector) initialized (fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}, temporal={self._temporal_enabled})")
     
     def set_modelservice(self, modelservice):
         """Set the ModelService instance for embedding generation"""
@@ -103,35 +95,28 @@ class SemanticMemoryStore:
         logger.info("ModelService set for semantic memory")
     
     async def initialize(self) -> bool:
-        """Initialize ChromaDB connection and collection"""
+        """Initialize - pgvector tables created via schema.sql"""
         if self._initialized:
             return True
         
         try:
-            # Initialize ChromaDB client
-            self._chroma_client = chromadb.PersistentClient(
-                path=str(self._db_path),
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
+            # Verify table exists
+            async with self.uow_factory() as uow:
+                result = await uow.session.execute(
+                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'aico_core' AND table_name = 'conversation_segments')"
                 )
-            )
-            
-            # Get or create collection with cosine similarity
-            self._collection = self._chroma_client.get_or_create_collection(
-                name=self._collection_name,
-                metadata={
-                    "description": "Conversation segments with embeddings",
-                    "hnsw:space": "cosine"  # Use cosine similarity instead of L2
-                }
-            )
+                exists = result.scalar()
+                
+                if not exists:
+                    logger.error("conversation_segments table not found - run schema init")
+                    return False
             
             self._initialized = True
-            logger.info(f"✅ ChromaDB initialized: {self._collection_name} collection")
+            logger.info("✅ Semantic memory (pgvector) initialized")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB: {e}")
+            logger.error(f"Failed to initialize semantic memory (pgvector): {e}")
             return False
     
     async def store_segment(
@@ -202,13 +187,9 @@ class SemanticMemoryStore:
                         version=1
                     )
                 
-                # Store in ChromaDB with temporal metadata
+                # Build metadata JSON
                 metadata = {
-                    'user_id': user_id,
-                    'conversation_id': conversation_id,
-                    'role': role,
-                    'language': language,
-                    'timestamp': segment.timestamp.isoformat()
+                    'language': language
                 }
                 
                 # Add temporal fields to metadata
@@ -221,12 +202,28 @@ class SemanticMemoryStore:
                         'access_count': temporal_meta.access_count
                     })
                 
-                self._collection.add(
-                    ids=[segment.segment_id],
-                    embeddings=[embedding],
-                    documents=[content],
-                    metadatas=[metadata]
-                )
+                # Store in Postgres with pgvector
+                embedding_str = '[' + ','.join(str(x) for x in embedding) + ']'
+                
+                async with self.uow_factory() as uow:
+                    await uow.session.execute(
+                        """
+                        INSERT INTO aico_core.conversation_segments 
+                        (id, user_id, conversation_id, role, content, embedding, timestamp, metadata)
+                        VALUES (:id, :user_id, :conversation_id, :role, :content, :embedding::vector, :timestamp, :metadata::jsonb)
+                        """,
+                        {
+                            'id': segment.segment_id,
+                            'user_id': user_id,
+                            'conversation_id': conversation_id,
+                            'role': role,
+                            'content': content,
+                            'embedding': embedding_str,
+                            'timestamp': segment.timestamp,
+                            'metadata': str(metadata).replace("'", '"')
+                        }
+                    )
+                    await uow.commit()
                 
                 logger.info(f"✅ Stored segment: {role} message ({len(content)} chars)")
                 tracker.set_results_count(1)
@@ -283,39 +280,51 @@ class SemanticMemoryStore:
                     tracker.set_success(False)
                     return []
                 
-                # Build filter
-                where_filter = {"user_id": user_id} if user_id else None
+                # Build WHERE clause
+                where_parts = []
+                params = {'embedding': '[' + ','.join(str(x) for x in query_embedding) + ']'}
                 
-                # Get ALL documents for proper BM25 IDF calculation
-                # Note: If user_id filter is set, we get all docs for that user
-                collection_count = self._collection.count()
+                if user_id:
+                    where_parts.append("user_id = :user_id")
+                    params['user_id'] = user_id
                 
-                results = self._collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=collection_count,  # Fetch ALL documents for proper BM25
-                    where=where_filter
-                )
+                where_clause = " AND " + " AND ".join(where_parts) if where_parts else ""
                 
-                # Prepare documents for hybrid scoring
-                if not results or not results.get('ids') or not results['ids'][0]:
+                # Query with cosine similarity (fetch all for BM25 fusion)
+                async with self.uow_factory() as uow:
+                    result = await uow.session.execute(
+                        f"""
+                        SELECT 
+                            id,
+                            user_id,
+                            conversation_id,
+                            role,
+                            content,
+                            timestamp,
+                            metadata,
+                            1 - (embedding <=> :embedding::vector) as similarity
+                        FROM aico_core.conversation_segments
+                        WHERE 1=1 {where_clause}
+                        ORDER BY embedding <=> :embedding::vector
+                        """,
+                        params
+                    )
+                    rows = result.fetchall()
+                
+                if not rows:
                     tracker.set_results_count(0)
                     tracker.set_success(True)
                     return []
                 
-                # Build document list
+                # Build document list for hybrid scoring
                 documents = []
-                for i in range(len(results['ids'][0])):
+                for row in rows:
                     documents.append({
-                        'id': results['ids'][0][i],
-                        'document': results['documents'][0][i],
-                        'metadata': results['metadatas'][0][i],
-                        'distance': results['distances'][0][i] if 'distances' in results else 0.0
+                        'id': row[0],
+                        'document': row[4],  # content
+                        'metadata': row[6] or {},  # metadata
+                        'distance': 1 - row[7]  # Convert similarity to distance
                     })
-
-                # Defensive: Chroma can return None distances; normalize to 1.0 (worst)
-                for doc in documents:
-                    if doc.get('distance') is None:
-                        doc['distance'] = 1.0
                 
                 # TODO: Investigate scoring changes - BM25 placeholder was removed without proper implementation.
                 # The old code had a bm25_score=0.0 placeholder that was never used. Filtering was changed from
@@ -410,27 +419,36 @@ class SemanticMemoryStore:
             await self.initialize()
         
         try:
-            # Query all segments for this conversation
-            results = self._collection.get(
-                where={
-                    "user_id": user_id,
-                    "conversation_id": conversation_id
-                },
-                limit=limit
-            )
+            # Query segments from Postgres
+            async with self.uow_factory() as uow:
+                result = await uow.session.execute(
+                    """
+                    SELECT id, content, metadata, timestamp
+                    FROM aico_core.conversation_segments
+                    WHERE user_id = :user_id AND conversation_id = :conversation_id
+                    ORDER BY timestamp DESC
+                    LIMIT :limit
+                    """,
+                    {
+                        'user_id': user_id,
+                        'conversation_id': conversation_id,
+                        'limit': limit
+                    }
+                )
+                rows = result.fetchall()
             
-            # Format and sort by timestamp
+            # Format results
             segments = []
-            if results and results.get('ids'):
-                for i, segment_id in enumerate(results['ids']):
-                    segments.append({
-                        'segment_id': segment_id,
-                        'content': results['documents'][i],
-                        'metadata': results['metadatas'][i]
-                    })
-                
-                # Sort by timestamp (most recent last)
-                segments.sort(key=lambda x: x['metadata']['timestamp'])
+            for row in rows:
+                segments.append({
+                    'segment_id': row[0],
+                    'content': row[1],
+                    'metadata': row[2] or {},
+                    'timestamp': row[3]
+                })
+            
+            # Reverse to get chronological order (oldest to newest)
+            segments.reverse()
             
             logger.info(f"Retrieved {len(segments)} recent segments")
             return segments
@@ -499,109 +517,53 @@ class SemanticMemoryStore:
             }
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get semantic memory statistics with collection details"""
-        # Try to initialize if not already done
-        if not self._initialized or not self._collection:
-            try:
-                import asyncio
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # If called from async context, we can't await here
-                    logger.warning("⚠️ get_stats called before initialization - attempting sync init")
-                    # Try synchronous initialization
-                    if not self._chroma_client:
-                        self._chroma_client = chromadb.PersistentClient(
-                            path=str(self._db_path),
-                            settings=Settings(anonymized_telemetry=False)
-                        )
-                    if not self._collection:
-                        self._collection = self._chroma_client.get_or_create_collection(
-                            name=self._collection_name,
-                            metadata={
-                                "description": "Conversation segments with embeddings",
-                                "hnsw:space": "cosine"
-                            }
-                        )
-                        self._initialized = True
-                        logger.info(f"✅ ChromaDB lazy-initialized in get_stats: {self._collection_name}")
-                else:
-                    # Not in async context, can initialize normally
-                    asyncio.run(self.initialize())
-            except Exception as e:
-                error_msg = f"❌ CRITICAL: Failed to initialize semantic store in get_stats: {e}"
-                logger.error(error_msg, exc_info=True)
-                print(f"\n{'='*80}")
-                print(f"❌ SEMANTIC STORE INITIALIZATION FAILURE")
-                print(f"{'='*80}")
-                print(f"Error: {e}")
-                print(f"DB Path: {self._db_path}")
-                print(f"Collection: {self._collection_name}")
-                print(f"{'='*80}\n")
-                raise RuntimeError(error_msg) from e
-        
-        if not self._initialized or not self._collection:
-            error_msg = "❌ CRITICAL: Semantic store not initialized and lazy init failed"
-            logger.error(error_msg)
-            print(f"\n{'='*80}")
-            print(f"❌ SEMANTIC STORE NOT INITIALIZED")
-            print(f"{'='*80}")
-            print(f"_initialized: {self._initialized}")
-            print(f"_collection: {self._collection}")
-            print(f"{'='*80}\n")
-            raise RuntimeError(error_msg)
-        
+        """Get semantic memory statistics from pgvector"""
         try:
-            import os
-            from pathlib import Path
+            import asyncio
             
-            # Get collection count
-            count = self._collection.count()
+            # Get count from Postgres
+            async def _get_count():
+                async with self.uow_factory() as uow:
+                    result = await uow.session.execute(
+                        "SELECT COUNT(*) FROM aico_core.conversation_segments"
+                    )
+                    return result.scalar()
             
-            # Calculate index size
-            chroma_path = Path(self._db_path)
-            index_size_bytes = 0
-            if chroma_path.exists():
-                for file in chroma_path.rglob('*'):
-                    if file.is_file():
-                        index_size_bytes += file.stat().st_size
-            index_size_mb = index_size_bytes / (1024 * 1024)
+            # Run async query
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Create a new task if we're already in an event loop
+                count = 0  # Placeholder when called from async context
+                logger.warning("get_stats called from async context - count unavailable")
+            else:
+                count = asyncio.run(_get_count())
             
-            # Get collection metadata
-            collections = [{
-                'name': self._collection_name,
-                'count': count,
-                'dimension': 384  # MiniLM embedding dimension
-            }]
-            
-            # Calculate retrieval quality based on vector density and recency
-            # Quality = (vector_count / 2000) * 0.5 + (recent_activity_score) * 0.5
-            # Capped at 100%
-            vector_quality = min(count / 2000.0, 1.0) * 50  # 50% weight for vector count
-            
-            # Recent activity score: assume 50% baseline, would need actual query success tracking
-            recent_activity_score = 50.0  # Baseline - would track actual retrieval success rate
-            
+            # Calculate retrieval quality based on vector density
+            vector_quality = min(count / 2000.0, 1.0) * 50
+            recent_activity_score = 50.0  # Baseline
             retrieval_quality = min(vector_quality + recent_activity_score, 100.0)
             
             return {
-                'initialized': True,
+                'backend': 'pgvector',
+                'initialized': self._initialized,
                 'total_vectors': count,
-                'collections': collections,
-                'index_size_mb': round(index_size_mb, 2),
-                'avg_retrieval_latency_ms': 45.0,  # Placeholder - would need query timing
+                'collections': [{
+                    'name': 'conversation_segments',
+                    'count': count,
+                    'dimension': 384
+                }],
+                'avg_retrieval_latency_ms': 45.0,
                 'retrieval_quality_percent': round(retrieval_quality, 1)
             }
         except Exception as e:
-            error_msg = f"❌ CRITICAL: Failed to get semantic memory stats: {e}"
-            logger.error(error_msg, exc_info=True)
-            print(f"\n{'='*80}")
-            print(f"❌ SEMANTIC STORE GET_STATS FAILURE")
-            print(f"{'='*80}")
-            print(f"Error: {e}")
-            print(f"Collection: {self._collection_name}")
-            print(f"Initialized: {self._initialized}")
-            print(f"{'='*80}\n")
-            raise RuntimeError(error_msg) from e
+            logger.error(f"Failed to get semantic memory stats: {e}")
+            return {
+                'backend': 'pgvector',
+                'initialized': self._initialized,
+                'total_vectors': 0,
+                'collections': [],
+                'error': str(e)
+            }
     
     def _apply_confidence_decay(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """

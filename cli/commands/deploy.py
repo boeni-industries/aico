@@ -613,12 +613,18 @@ def _nuke_postgres(shadow: bool = False) -> int:
     except FileNotFoundError:
         pass
 
-    # 4. Remove Docker images (postgres:18.1 and any dangling images)
+    # 4. Remove Docker images (postgres and pgvector variants) and any dangling images
     console.print("  [dim]→ Removing Docker images...[/dim]")
     try:
-        # Remove specific postgres image
+        # Remove specific postgres images
         subprocess.run(
             ["docker", "rmi", "-f", "postgres:18.1"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["docker", "rmi", "-f", "pgvector/pgvector:0.8.1-pg18"],
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

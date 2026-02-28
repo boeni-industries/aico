@@ -13,9 +13,18 @@ from sqlalchemy import (
     text
 )
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
+from sqlalchemy.types import UserDefinedType
 
 # MetaData instance - all tables will be registered here
 metadata = MetaData(schema="aico_core")
+
+
+class Vector(UserDefinedType):
+    def __init__(self, dimensions: int):
+        self.dimensions = dimensions
+
+    def get_col_spec(self, **kw):
+        return f"vector({self.dimensions})"
 
 # ============================================================================
 # User & Authentication Tables
@@ -82,8 +91,33 @@ outbox_events = Table(
     Column('available_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.current_timestamp()),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.current_timestamp()),
     Column('sent_at', TIMESTAMP(timezone=True)),
-    Index('idx_outbox_events_pending', 'status', 'available_at', 'created_at'),
+    Index('idx_outbox_events_pending', 'status', 'available_at', 'created_at', postgresql_where=text("status = 'pending'")),
     Index('idx_outbox_events_created', 'created_at'),
+)
+
+# ==========================================================================
+# Working Memory (Postgres-backed LMDB replacement)
+# ==========================================================================
+
+working_memory_messages = Table(
+    'working_memory_messages',
+    metadata,
+    Column('id', BigInteger, primary_key=True),
+    Column('conversation_id', String, nullable=False),
+    Column('user_id', String),
+    Column('message_id', String),
+    Column('role', String),
+    Column('content', Text),
+    Column('language', String),
+    Column('message_type', String),
+    Column('payload_json', JSONB),
+    Column('stored_at', TIMESTAMP(timezone=True), nullable=False, server_default=func.current_timestamp()),
+    Column('expires_at', TIMESTAMP(timezone=True)),
+    Column('last_accessed_at', TIMESTAMP(timezone=True)),
+    Column('access_count', Integer, nullable=False, server_default=text("0")),
+    Index('idx_working_memory_conversation_stored_at', 'conversation_id', 'stored_at'),
+    Index('idx_working_memory_user_stored_at', 'user_id', 'stored_at'),
+    Index('idx_working_memory_expires_at', 'expires_at', postgresql_where=text('expires_at IS NOT NULL')),
 )
 
 user_feedback_requests = Table(
@@ -609,20 +643,26 @@ kg_nodes = Table(
     Column('user_id', String, ForeignKey('user_profiles.uuid', ondelete='CASCADE'), nullable=False),
     Column('label', String, nullable=False),
     Column('properties', JSONB, nullable=False),
-    Column('confidence', Float, nullable=False, default=1.0),
-    Column('source_text', Text),
+    Column('confidence', Float, nullable=False),
+    Column('source_text', Text, nullable=False),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
     Column('updated_at', TIMESTAMP(timezone=True), nullable=False),
-    Column('language', String),
     Column('valid_from', TIMESTAMP(timezone=True)),
     Column('valid_until', TIMESTAMP(timezone=True)),
-    Column('is_current', Boolean, nullable=False, default=True),
+    Column('is_current', Boolean, server_default=text('true')),
     Column('canonical_id', String),
     Column('aliases_json', JSONB),
+    Column('language', String),
     Column('reason', String),
-    Index('idx_kg_nodes_user', 'user_id'),
-    Index('idx_kg_nodes_label', 'label'),
-    Index('idx_kg_nodes_current', 'is_current'),
+    Column('tenant_id', String, nullable=False, server_default=text("'03e34c91-7605-4984-950f-5deb1a947a36'")),
+    UniqueConstraint('user_id', 'label', 'properties', 'is_current', name='kg_nodes_user_id_label_properties_is_current_key'),
+    Index('idx_kg_nodes_canonical', 'canonical_id'),
+    Index('idx_kg_nodes_label_user', 'user_id', 'label', 'is_current'),
+    Index('idx_kg_nodes_reason', 'reason', postgresql_where=text('reason IS NOT NULL')),
+    Index('idx_kg_nodes_temporal', 'user_id', 'is_current', 'valid_from'),
+    Index('idx_kg_nodes_tenant_id', 'tenant_id'),
+    Index('idx_kg_nodes_user_created', 'user_id', 'created_at'),
+    Index('idx_kg_nodes_user_label', 'user_id', 'label'),
 )
 
 kg_edges = Table(
@@ -634,19 +674,66 @@ kg_edges = Table(
     Column('target_id', String, ForeignKey('kg_nodes.id', ondelete='CASCADE'), nullable=False),
     Column('relation_type', String, nullable=False),
     Column('properties', JSONB),
-    Column('confidence', Float, nullable=False, default=1.0),
-    Column('source_text', Text),
+    Column('confidence', Float),
+    Column('source_text', Text, nullable=False),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
-    Column('updated_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('updated_at', TIMESTAMP(timezone=True)),
     Column('valid_from', TIMESTAMP(timezone=True)),
     Column('valid_until', TIMESTAMP(timezone=True)),
-    Column('is_current', Boolean, nullable=False, default=True),
+    Column('is_current', Boolean, server_default=text('true')),
     Column('reason', String),
-    Index('idx_kg_edges_user', 'user_id'),
+    Column('tenant_id', String, nullable=False, server_default=text("'03e34c91-7605-4984-950f-5deb1a947a36'")),
+    UniqueConstraint('user_id', 'source_id', 'target_id', 'relation_type', 'is_current', name='kg_edges_user_id_source_id_target_id_relation_type_is_curre_key'),
+    Index('idx_kg_edges_relation_user', 'user_id', 'relation_type', 'is_current'),
     Index('idx_kg_edges_source', 'source_id'),
     Index('idx_kg_edges_target', 'target_id'),
-    Index('idx_kg_edges_relation', 'relation_type'),
-    Index('idx_kg_edges_current', 'is_current'),
+    Index('idx_kg_edges_temporal', 'user_id', 'is_current', 'valid_from'),
+    Index('idx_kg_edges_user_relation', 'user_id', 'relation_type'),
+    Index('idx_kg_edges_reason', 'reason', postgresql_where=text('reason IS NOT NULL')),
+    Index('idx_kg_edges_tenant_id', 'tenant_id'),
+)
+
+
+conversation_segments = Table(
+    'conversation_segments',
+    metadata,
+    Column('id', String, primary_key=True),
+    Column('user_id', String, nullable=False),
+    Column('conversation_id', String, nullable=False),
+    Column('role', String, nullable=False),
+    Column('content', Text, nullable=False),
+    Column('embedding', Vector(768), nullable=False),
+    Column('timestamp', TIMESTAMP(timezone=True), nullable=False),
+    Column('metadata', JSONB),
+    Column('created_at', TIMESTAMP(timezone=True), server_default=func.current_timestamp()),
+    Index('idx_conversation_segments_user', 'user_id'),
+    Index('idx_conversation_segments_conversation', 'conversation_id'),
+    Index('idx_conversation_segments_timestamp', text('"timestamp" DESC')),
+    Index('idx_conversation_segments_embedding', 'embedding', postgresql_using='hnsw', postgresql_ops={'embedding': 'vector_cosine_ops'}),
+)
+
+
+kg_node_embeddings = Table(
+    'kg_node_embeddings',
+    metadata,
+    Column('node_id', String, ForeignKey('kg_nodes.id', ondelete='CASCADE'), primary_key=True),
+    Column('embedding', Vector(768), nullable=False),
+    Column('document', Text, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), server_default=func.current_timestamp()),
+    Column('updated_at', TIMESTAMP(timezone=True), server_default=func.current_timestamp()),
+    Index('idx_kg_node_embeddings_vector', 'embedding', postgresql_using='hnsw', postgresql_ops={'embedding': 'vector_cosine_ops'}),
+)
+
+
+kg_edge_embeddings = Table(
+    'kg_edge_embeddings',
+    metadata,
+    Column('edge_id', String, ForeignKey('kg_edges.id', ondelete='CASCADE'), primary_key=True),
+    Column('embedding', Vector(768), nullable=False),
+    Column('document', Text, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), server_default=func.current_timestamp()),
+    Column('updated_at', TIMESTAMP(timezone=True), server_default=func.current_timestamp()),
+    Index('idx_kg_edge_embeddings_vector', 'embedding', postgresql_using='hnsw', postgresql_ops={'embedding': 'vector_cosine_ops'}),
 )
 
 # ============================================================================
@@ -1118,15 +1205,17 @@ scheduler_task_executions = Table(
     Column('id', BigInteger, primary_key=True, autoincrement=True),
     Column('task_id', String, nullable=False),
     Column('execution_id', String, nullable=False),
+    Column('run_key', String),
     Column('status', String, nullable=False),
     Column('started_at', TIMESTAMP(timezone=True), nullable=False),
     Column('completed_at', TIMESTAMP(timezone=True)),
-    Column('result', String),
-    Column('error_message', String),
+    Column('result', Text),
+    Column('error_message', Text),
     Column('duration_seconds', Float),
     Column('acknowledged', Boolean, default=False),
-    Index('idx_task_executions_task_id', 'task_id'),
     Index('idx_task_executions_started_at', 'started_at'),
+    Index('idx_task_executions_task_id', 'task_id'),
+    Index('idx_task_executions_acknowledged', 'status', 'acknowledged'),
 )
 
 # ============================================================================

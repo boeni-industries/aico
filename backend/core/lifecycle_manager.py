@@ -234,22 +234,6 @@ class BackendLifecycleManager:
         def create_config_service(container: ServiceContainer):
             return container.config
         
-        # ChromaDB client factory (shared singleton)
-        def create_chromadb_client(container: ServiceContainer):
-            from aico.core.paths import AICOPaths
-            import chromadb
-            from chromadb.config import Settings
-            
-            chromadb_path = AICOPaths.get_semantic_memory_path()
-            # Use consistent settings for all ChromaDB clients
-            return chromadb.PersistentClient(
-                path=str(chromadb_path),
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True  # Match semantic memory settings
-                )
-            )
-        
         # Register services
         self.container.register_service(
             "database",
@@ -266,15 +250,8 @@ class BackendLifecycleManager:
         self.container.register_service(
             "outbox_publisher",
             create_outbox_publisher,
-            dependencies=["message_bus_plugin"],
+            dependencies=[],  # No dependencies - uses container internally
             priority=25,  # Start after message bus plugin (20), before higher-level services
-        )
-        
-        self.container.register_service(
-            "chromadb_client",
-            create_chromadb_client,
-            dependencies=[],
-            priority=6  # After database
         )
         
         self.container.register_service(
@@ -300,6 +277,18 @@ class BackendLifecycleManager:
                 create_task_scheduler,
                 dependencies=[],
                 priority=25
+            )
+
+            # Scheduler worker (JetStream consumer)
+            def create_scheduler_worker(container: ServiceContainer):
+                from backend.services.scheduler_worker import SchedulerWorkerService
+                return SchedulerWorkerService("scheduler_worker", container)
+
+            self.container.register_service(
+                "scheduler_worker",
+                create_scheduler_worker,
+                dependencies=[],
+                priority=26,
             )
 
             # Emotion engine factory

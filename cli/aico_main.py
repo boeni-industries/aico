@@ -63,8 +63,6 @@ COMMAND_MODULES = {
     "config": "cli.commands.config",
     "version": "cli.commands.version",
     "security": "cli.commands.security",
-    "lmdb": "cli.commands.lmdb",
-    "chroma": "cli.commands.chroma",
     "kg": "cli.commands.kg",
     "pg": "cli.commands.pg",
     "tenant": "cli.commands.tenant",
@@ -109,8 +107,6 @@ from cli.commands.bus import app as bus_app
 from cli.commands.tools import app as tools_app
 from cli.commands.skills import app as skills_app
 from cli.commands.vllm import app as vllm_app
-from cli.commands.lmdb import app as lmdb_app
-from cli.commands.chroma import app as chroma_app
 from cli.commands.kg import app as kg_app
 from cli.commands.emotion import app as emotion_app
 from cli.commands.pg import app as pg_app
@@ -127,7 +123,6 @@ app = typer.Typer(
 
 app.add_typer(config_app, name="config", help=f"{chars['config']} Configuration management")
 app.add_typer(version_app, name="version", help=f"{chars['package']} Version and build information") 
-app.add_typer(lmdb_app, name="lmdb", help=f"{chars['database']} LMDB working memory management")
 app.add_typer(kg_app, name="kg", help="💡 Knowledge graph management")
 app.add_typer(pg_app, name="pg", help=f"{chars['database']} Postgres/Timescale backend management (experimental)")
 app.add_typer(tenant_app, name="tenant", help="🏢 Tenant management")
@@ -141,7 +136,6 @@ app.add_typer(bus_app, name="bus", help=f"{chars['bus']} Message bus management"
 app.add_typer(vllm_app, name="vllm", help="🚀 vLLM deployment and management")
 app.add_typer(tools_app, name="tools", help="🛠 Agency tool inspection and live execution")
 app.add_typer(skills_app, name="skills", help="🎯 Agency skills inspection and live execution")
-app.add_typer(chroma_app, name="chroma", help=f"{chars['database']} ChromaDB semantic memory management")
 
 try:
     from cli.commands import gateway
@@ -204,9 +198,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
         
         commands = [
             (chars["package"], "version", "Manage and synchronize versions across all AICO system parts"),
-            (chars["database"], "lmdb", "LMDB working memory management"),
-            (chars["database"], "chroma", "ChromaDB semantic memory management"),
-            (chars["database"], "pg", "PostgreSQL database management"),
+            (chars["database"], "pg", "PostgreSQL database management (with pgvector)"),
             (chars["database"], "influx", "InfluxDB time-series database management"),
             ("🚀", "deploy", "Deployment orchestration for Postgres/InfluxDB backends"),
             ("💡", "kg", "Knowledge graph management and inspection"),

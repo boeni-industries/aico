@@ -303,24 +303,21 @@ class HealthService:
         
         # Get tool handlers
         pg_health_tool = tool_registry.get("tool.db.postgres.health")
-        chroma_health_tool = tool_registry.get("tool.db.chroma.health")
         influx_health_tool = tool_registry.get("tool.db.influx.health")
-        lmdb_health_tool = tool_registry.get("tool.db.lmdb.health")
+        lmdb_health_tool = None
         
         # Run all in parallel
         results = await asyncio.gather(
             connectivity_task,
             pg_health_tool.handler() if pg_health_tool else asyncio.sleep(0),
-            chroma_health_tool.handler() if chroma_health_tool else asyncio.sleep(0),
             influx_health_tool.handler() if influx_health_tool else asyncio.sleep(0),
-            lmdb_health_tool.handler() if lmdb_health_tool else asyncio.sleep(0),
             self._run_skill("maint.db.influx.get_measurements", {}),
             self._run_skill("maint.messagebus.check_health", {}),
             return_exceptions=True,
         )
         
         # Unpack results
-        connectivity, pg_health, chroma_health, influx_health, lmdb_health, measurements_result, messagebus_result = results
+        connectivity, pg_health, influx_health, measurements_result, messagebus_result = results
         
         # Handle exceptions
         if isinstance(connectivity, Exception):
@@ -383,33 +380,7 @@ class HealthService:
             details={"tables": pg_tables} if pg_tables else None,
         ))
         
-        # ChromaDB
-        chroma_check = checks.get("chroma", {})
-        chroma_status = chroma_check.get("status")
-        
-        # Use parallel result (already fetched)
-        if isinstance(chroma_health, Exception):
-            logger.error(f"ChromaDB health check failed: {chroma_health}")
-            chroma_health = {"data": {"details": {}}}
-        chroma_details = chroma_health.get("data", {}).get("details", {})
-        chroma_collections = chroma_details.get("collections", 0)
-        chroma_collection_list = chroma_details.get("collection_list", [])
-        
-        services.append(ServiceHealth(
-            name="ChromaDB",
-            status=self._map_service_status(chroma_status),
-            group="storage",
-            metric=ServiceMetric(
-                label="Collections",
-                value=str(chroma_collections),
-                unit="collections",
-            ),
-            trend=None,
-            last_checked=now,
-            details={"collections": chroma_collection_list} if chroma_collection_list else None,
-        ))
-        
-        # InfluxDB Time Series Database
+        # LMDBInfluxDB Time Series Database
         influx_check = checks.get("influx", {})
         influx_status = influx_check.get("status")
         
@@ -473,29 +444,7 @@ class HealthService:
             details={"measurements": influx_measurements} if influx_measurements else None,
         ))
         
-        # LMDB
-        lmdb_check = checks.get("lmdb", {})
-        lmdb_status = lmdb_check.get("status")
         
-        # Use parallel result (already fetched)
-        if isinstance(lmdb_health, Exception):
-            logger.error(f"LMDB health check failed: {lmdb_health}")
-            lmdb_health = {"data": {"details": {}}}
-        lmdb_details = lmdb_health.get("data", {}).get("details", {})
-        lmdb_entries = lmdb_details.get("entries", 0)
-        
-        services.append(ServiceHealth(
-            name="LMDB",
-            status=self._map_service_status(lmdb_status),
-            group="storage",
-            metric=ServiceMetric(
-                label="Entries",
-                value=str(lmdb_entries),
-                unit="entries",
-            ),
-            trend=None,
-            last_checked=now,
-        ))
         
         # Message Bus (ZeroMQ) - use parallel result (already fetched)
         if isinstance(messagebus_result, Exception):
@@ -618,7 +567,6 @@ class HealthService:
             "postgres": "maint.connectivity.verify_component",
             "chroma": "maint.connectivity.verify_component",
             "influx": "maint.connectivity.verify_component",
-            "lmdb": "maint.connectivity.verify_component",
             "modelservice": "maint.connectivity.verify_component",
             "ollama": "maint.connectivity.verify_component",
         }

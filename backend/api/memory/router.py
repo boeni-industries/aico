@@ -13,6 +13,12 @@ from aico.core.logging import get_logger
 
 from backend.api.errors import raise_api_error
 from backend.api.dependencies import get_current_user
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
+
+from sqlalchemy import func, select
+
+from aico.data.tables import conversation_segments
 
 logger = get_logger("backend.api.memory")
 
@@ -141,10 +147,11 @@ class WorkingMemoryStatsResponse(BaseModel):
 @router.get("/semantic/stats", response_model=SemanticMemoryStatsResponse)
 async def get_semantic_stats(
     user: Annotated[dict, Depends(get_current_user)],
-    request: Request
+    request: Request,
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
 ):
     """
-    Get semantic memory (ChromaDB) statistics.
+    Get semantic memory (pgvector/PostgreSQL) statistics.
     
     Returns:
         - total_vectors: Total vector count across collections
@@ -188,21 +195,20 @@ async def get_semantic_stats(
                 message="Semantic memory not initialized",
             )
         
-        # Get stats from semantic store (synchronous method - offload to thread)
-        import asyncio
-        stats = await asyncio.to_thread(semantic_store.get_stats)
-        
-        # Convert collections to proper Pydantic models
+        # Query stats directly from Postgres to avoid event-loop issues in legacy store stats helpers
+        stmt = select(func.count()).select_from(conversation_segments)
+        total_vectors = (await uow._session.execute(stmt)).scalar() or 0
+
         collections = [
-            CollectionInfo(**col) for col in stats.get('collections', [])
+            CollectionInfo(name="conversation_segments", count=int(total_vectors), dimension=768)
         ]
-        
+
         return SemanticMemoryStatsResponse(
-            total_vectors=stats.get('total_vectors', 0),
+            total_vectors=int(total_vectors),
             collections=collections,
-            index_size_mb=stats.get('index_size_mb', 0.0),
-            avg_retrieval_latency_ms=stats.get('avg_retrieval_latency_ms', 0.0),
-            retrieval_quality_percent=stats.get('retrieval_quality_percent', 0.0)
+            index_size_mb=0.0,
+            avg_retrieval_latency_ms=0.0,
+            retrieval_quality_percent=0.0,
         )
         
     except Exception as e:
@@ -225,7 +231,7 @@ async def get_working_stats(
     request: Request
 ):
     """
-    Get working memory (LMDB) statistics.
+    Get working memory (PostgreSQL) statistics.
     
     Returns:
         - active_items: Current number of items in memory
@@ -255,14 +261,7 @@ async def get_working_stats(
                 message="Memory manager not initialized",
             )
         
-        if not hasattr(memory_manager, '_working_store'):
-            raise_api_error(
-                status_code=503,
-                error_code="WORKING_MEMORY_NOT_INITIALIZED",
-                message="Working memory not initialized",
-            )
-        
-        working_store = memory_manager._working_store
+        working_store = getattr(memory_manager, '_working_store', None)
         
         if not working_store:
             raise_api_error(
@@ -271,7 +270,7 @@ async def get_working_stats(
                 message="Working memory not initialized",
             )
         
-        # Get stats from working store
+        # Get stats from working store (Postgres-backed)
         stats = await working_store.get_stats()
         
         # Convert recent_activity to proper Pydantic models
@@ -279,12 +278,18 @@ async def get_working_stats(
             ActivityEntry(**activity) for activity in stats.get('recent_activity', [])
         ]
         
+        active_items = stats.get('active_items', 0)
+        capacity = stats.get('capacity', max(10000, int(active_items) * 2 if isinstance(active_items, int) else 10000))
+        utilization_percent = stats.get('utilization_percent')
+        if utilization_percent is None:
+            utilization_percent = (active_items / capacity) * 100 if capacity else 0.0
+
         return WorkingMemoryStatsResponse(
-            active_items=stats.get('active_items', 0),
-            capacity=stats.get('capacity', 10000),
-            utilization_percent=stats.get('utilization_percent', 0.0),
-            ttl_utilization_percent=stats.get('ttl_utilization_percent', 0.0),
-            eviction_rate_per_min=stats.get('eviction_rate_per_min', 0.0),
+            active_items=active_items,
+            capacity=capacity,
+            utilization_percent=float(utilization_percent),
+            ttl_utilization_percent=float(stats.get('ttl_utilization_percent', utilization_percent)),
+            eviction_rate_per_min=float(stats.get('eviction_rate_per_min', 0.0)),
             recent_activity=recent_activity
         )
         

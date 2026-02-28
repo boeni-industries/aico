@@ -307,37 +307,6 @@ class TemporalQueryBuilder:
         
         return where_clause, params
     
-    def build_chromadb_filter(self) -> Dict[str, Any]:
-        """
-        Build ChromaDB metadata filter for this query.
-        
-        Returns:
-            Dictionary of metadata filters for ChromaDB
-        """
-        filters = {}
-        
-        # User filter
-        if self._user_id:
-            filters["user_id"] = self._user_id
-        
-        # Time range filter (ChromaDB supports comparison operators)
-        if self._time_range:
-            start, end = self._time_range.get_bounds()
-            
-            if self._time_range.range_type == TimeRangeType.POINT_IN_TIME:
-                filters["created_at"] = {"$lte": start.isoformat()}
-            else:
-                filters["created_at"] = {
-                    "$gte": start.isoformat(),
-                    "$lte": end.isoformat()
-                }
-        
-        # Confidence filter
-        if self._min_confidence > 0:
-            filters["confidence"] = {"$gte": self._min_confidence}
-        
-        return filters
-    
     def reset(self) -> "TemporalQueryBuilder":
         """Reset the builder to initial state."""
         self.__init__()
