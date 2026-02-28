@@ -560,6 +560,8 @@ class ConfigurationManager:
             "AICO_API_HOST": "api_gateway.host",
             "AICO_REST_HOST": "api_gateway.rest.host",
             "AICO_NATS_URL": "message_bus.nats_url",
+            "AICO_INSTRUMENTATION_ENABLED": "instrumentation.enabled",
+            "AICO_INSTRUMENTATION_MODE": "instrumentation.mode",
             "AICO_INFLUX_URL": "influx.url",
             "AICO_LOKI_URL": "loki.url",
             "AICO_PG_HOST": "postgres.host",

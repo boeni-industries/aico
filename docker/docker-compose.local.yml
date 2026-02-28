@@ -40,6 +40,8 @@ services:
       AICO_CACHE_DIR: /var/cache/aico
       AICO_RUNTIME_DIR: /run/aico
       AICO_NATS_URL: nats://nats:4222
+      AICO_INSTRUMENTATION_ENABLED: "true"
+      AICO_INSTRUMENTATION_MODE: "dev"
       AICO_INFLUX_URL: http://influxdb:8086
       AICO_LOKI_URL: http://loki:3100
       AICO_REST_HOST: 0.0.0.0
@@ -91,6 +93,8 @@ services:
       AICO_CACHE_DIR: /var/cache/aico
       AICO_RUNTIME_DIR: /run/aico
       AICO_NATS_URL: nats://nats:4222
+      AICO_INSTRUMENTATION_ENABLED: "true"
+      AICO_INSTRUMENTATION_MODE: "dev"
       AICO_INFLUX_URL: http://influxdb:8086
       AICO_LOKI_URL: http://loki:3100
       AICO_PG_HOST: postgres
