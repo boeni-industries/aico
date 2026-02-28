@@ -55,7 +55,7 @@ class PropertyGraphStorage:
                 await uow.commit()
             
             # Generate embedding and save to pgvector
-            doc = node.to_chromadb_document()  # Still uses same document format
+            doc = node.to_document()
             
             # Generate embedding via modelservice
             embedding_result = await self.modelservice.generate_embeddings([doc["document"]])
@@ -103,7 +103,7 @@ class PropertyGraphStorage:
                 await uow.commit()
             
             # Generate embedding and save to pgvector
-            doc = edge.to_chromadb_document()
+            doc = edge.to_document()
             embedding_result = await self.modelservice.generate_embeddings([doc["document"]])
             embeddings = embedding_result.get("embeddings", [])
             
@@ -137,7 +137,7 @@ class PropertyGraphStorage:
     
     async def save_graph(self, graph: PropertyGraph, superseded_node_ids: set = None) -> None:
         """
-        Save property graph to both PostgreSQL and ChromaDB.
+        Save property graph to PostgreSQL with pgvector embeddings.
         
         Args:
             graph: PropertyGraph to save
@@ -171,52 +171,7 @@ class PropertyGraphStorage:
                 
                 await uow.commit()
         
-        # Clean up ChromaDB embeddings
-        async with self.uow_factory() as uow:
-            current_nodes = await uow.kg_nodes.list(filters={'is_current': True}, limit=100000)
-            current_node_ids = set(node.id for node in current_nodes)
-            
-            current_edges = await uow.kg_edges.list(filters={'is_current': True}, limit=100000)
-            current_edge_ids = set(edge.id for edge in current_edges)
-        
-        def _sync_cleanup_chromadb():
-            # Get all node IDs from ChromaDB
-            try:
-                chroma_nodes = self._node_collection.get()
-                chroma_node_ids = set(chroma_nodes['ids']) if chroma_nodes['ids'] else set()
-            except Exception as e:
-                logger.warning(f"Failed to get ChromaDB node IDs: {e}")
-                chroma_node_ids = set()
-            
-            orphaned_node_ids = chroma_node_ids - current_node_ids
-            
-            # Delete orphaned node embeddings
-            if orphaned_node_ids:
-                try:
-                    self._node_collection.delete(ids=list(orphaned_node_ids))
-                    logger.info(f"Deleted {len(orphaned_node_ids)} orphaned node embeddings from ChromaDB")
-                except Exception as e:
-                    logger.warning(f"Failed to delete orphaned node embeddings: {e}")
-            
-            # Get all edge IDs from ChromaDB
-            try:
-                chroma_edges = self._edge_collection.get()
-                chroma_edge_ids = set(chroma_edges['ids']) if chroma_edges['ids'] else set()
-            except Exception as e:
-                logger.warning(f"Failed to get ChromaDB edge IDs: {e}")
-                chroma_edge_ids = set()
-            
-            orphaned_edge_ids = chroma_edge_ids - current_edge_ids
-            
-            # Delete orphaned edge embeddings
-            if orphaned_edge_ids:
-                try:
-                    self._edge_collection.delete(ids=list(orphaned_edge_ids))
-                    logger.info(f"Deleted {len(orphaned_edge_ids)} orphaned edge embeddings from ChromaDB")
-                except Exception as e:
-                    logger.warning(f"Failed to delete orphaned edge embeddings: {e}")
-        
-        await asyncio.to_thread(_sync_cleanup_chromadb)
+        # Cleanup handled by PostgreSQL CASCADE on kg_nodes/kg_edges foreign keys
         
         # Save nodes and edges to PostgreSQL
         postgres_start = time.time()
@@ -317,91 +272,11 @@ class PropertyGraphStorage:
             await uow.commit()
         
         postgres_time = time.time() - postgres_start
-        print(f"  💾 [STORAGE] ✅ PostgreSQL complete in {postgres_time:.2f}s")
-        
-        # Save to ChromaDB (semantic search) - reuse cached embeddings from resolution
-        node_docs = [node.to_chromadb_document() for node in graph.nodes]
-        
-        # Separate nodes with/without cached embeddings
-        nodes_with_embeddings = [(i, node) for i, node in enumerate(graph.nodes) if node.embedding is not None]
-        nodes_without_embeddings = [(i, node) for i, node in enumerate(graph.nodes) if node.embedding is None]
-        
-        # Initialize embeddings list
-        embeddings = [None] * len(graph.nodes)
-        
-        # Use cached embeddings
-        for i, node in nodes_with_embeddings:
-            embeddings[i] = node.embedding
-        
-        # Generate embeddings only for nodes without cache (fallback)
-        print(f"\n  💾 [STORAGE] Preparing ChromaDB save: {len(nodes_with_embeddings)} cached, {len(nodes_without_embeddings)} need generation")
-        embedding_start = time.time()
-        
-        if nodes_without_embeddings:
-            indices_to_generate = [i for i, _ in nodes_without_embeddings]
-            texts_to_generate = [node_docs[i]["document"] for i in indices_to_generate]
-            
-            print(f"  💾 [STORAGE] Generating embeddings for {len(texts_to_generate)} nodes...")
-            embedding_result = await self.modelservice.generate_embeddings(texts_to_generate)
-            generated_embeddings = embedding_result.get("embeddings", [])
-            
-            for idx, embedding in zip(indices_to_generate, generated_embeddings):
-                embeddings[idx] = embedding
-        
-        embedding_time = time.time() - embedding_start
-        print(f"  💾 [STORAGE] ✅ Embeddings ready in {embedding_time:.2f}s ({len(nodes_with_embeddings)} cached, {len(nodes_without_embeddings)} generated)")
-        
-        # Only save to ChromaDB if we have nodes (avoid empty embeddings list error)
-        if node_docs:
-            chroma_nodes_start = time.time()
-            def _sync_save_nodes_to_chroma():
-                self._node_collection.upsert(
-                    ids=[doc["id"] for doc in node_docs],
-                    embeddings=embeddings,
-                    documents=[doc["document"] for doc in node_docs],
-                    metadatas=[doc["metadata"] for doc in node_docs]
-                )
-            
-            await asyncio.to_thread(_sync_save_nodes_to_chroma)
-            chroma_nodes_time = time.time() - chroma_nodes_start
-            print(f"  💾 [STORAGE] ✅ ChromaDB nodes saved in {chroma_nodes_time:.2f}s")
-        else:
-            print(f"  💾 [STORAGE] ⏭️  No new nodes to save to ChromaDB (edge-only graph)")
-        
-        # Save edges to ChromaDB
-        if graph.edges:
-            print(f"\n  💾 [STORAGE] Processing {len(graph.edges)} edges...")
-            edge_start = time.time()
-            
-            edge_docs = [edge.to_chromadb_document() for edge in graph.edges]
-            edge_texts = [doc["document"] for doc in edge_docs]
-            
-            edge_embedding_start = time.time()
-            edge_embedding_result = await self.modelservice.generate_embeddings(edge_texts)
-            edge_embeddings = edge_embedding_result.get("embeddings", [])
-            edge_embedding_time = time.time() - edge_embedding_start
-            print(f"  💾 [STORAGE] ✅ Edge embeddings generated in {edge_embedding_time:.2f}s")
-            
-            chroma_edges_start = time.time()
-            def _sync_save_edges_to_chroma():
-                self._edge_collection.upsert(
-                    ids=[doc["id"] for doc in edge_docs],
-                    embeddings=edge_embeddings,
-                    documents=[doc["document"] for doc in edge_docs],
-                    metadatas=[doc["metadata"] for doc in edge_docs]
-                )
-            
-            await asyncio.to_thread(_sync_save_edges_to_chroma)
-            chroma_edges_time = time.time() - chroma_edges_start
-            edge_total_time = time.time() - edge_start
-            print(f"  💾 [STORAGE] ✅ ChromaDB edges saved in {chroma_edges_time:.2f}s (total: {edge_total_time:.2f}s)")
         
         # Final summary
         total_storage_time = time.time() - storage_start
         print(f"\n  💾 [STORAGE] ✅ STORAGE COMPLETE in {total_storage_time:.2f}s")
-        print(f"  💾 [STORAGE]    PostgreSQL: {postgres_time:.2f}s ({postgres_time/total_storage_time*100:.1f}%)")
-        print(f"  💾 [STORAGE]    ChromaDB:   {total_storage_time - postgres_time:.2f}s ({(total_storage_time - postgres_time)/total_storage_time*100:.1f}%)")
-        print(f"  💾 [STORAGE]    Saved: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+        print(f"  💾 [STORAGE]    Saved: {len(graph.nodes)} nodes, {len(graph.edges)} edges to PostgreSQL + pgvector")
     
     async def get_node(self, node_id: str) -> Optional[Node]:
         """
@@ -450,7 +325,7 @@ class PropertyGraphStorage:
         label: Optional[str] = None
     ) -> List[Node]:
         """
-        Semantic search for nodes using ChromaDB.
+        Semantic search for nodes using PostgreSQL + pgvector.
         
         Args:
             query: Search query
@@ -461,17 +336,7 @@ class PropertyGraphStorage:
         Returns:
             List of nodes ranked by semantic similarity
         """
-        # Build ChromaDB filter with $and operator
-        where_conditions = [
-            {"user_id": user_id},
-            {"is_current": 1}
-        ]
-        if label:
-            where_conditions.append({"label": label})
-        
-        where_filter = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
-        
-        # Generate query embedding via modelservice (768-dim)
+        # Generate query embedding via modelservice
         if not self.modelservice:
             # Fallback: return all nodes if no modelservice available
             return await self.get_user_nodes(user_id, label=label, current_only=True)
@@ -482,22 +347,58 @@ class PropertyGraphStorage:
         if not query_embedding:
             return []
         
-        # Search ChromaDB with pre-generated embedding
-        results = self._node_collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-            where=where_filter
-        )
+        # Search pgvector with cosine similarity
+        embedding_str = '[' + ','.join(str(x) for x in query_embedding) + ']'
         
-        if not results["ids"] or not results["ids"][0]:
-            return []
+        # Build WHERE clause
+        where_parts = ["n.user_id = :user_id", "n.is_current = TRUE"]
+        params = {'user_id': user_id, 'embedding': embedding_str, 'limit': top_k}
         
-        node_ids = results["ids"][0]
+        if label:
+            where_parts.append("n.label = :label")
+            params['label'] = label
+        
+        where_clause = " AND ".join(where_parts)
+        
+        async with self.uow_factory() as uow:
+            result = await uow.session.execute(
+                f"""
+                SELECT n.id, n.user_id, n.label, n.properties, n.confidence, n.source_text,
+                       n.created_at, n.updated_at, n.language, n.valid_from, n.valid_until,
+                       n.is_current, n.canonical_id, n.aliases_json, n.reason,
+                       1 - (e.embedding <=> :embedding::vector) as similarity
+                FROM aico_core.kg_nodes n
+                JOIN aico_core.kg_node_embeddings e ON n.id = e.node_id
+                WHERE {where_clause}
+                ORDER BY e.embedding <=> :embedding::vector
+                LIMIT :limit
+                """,
+                params
+            )
+            rows = result.fetchall()
+        
+        # Convert rows to Node objects
         nodes = []
-        for node_id in node_ids:
-            node = await self.get_node(node_id)
-            if node:
-                nodes.append(node)
+        for row in rows:
+            import json
+            node = Node(
+                id=row[0],
+                user_id=row[1],
+                label=row[2],
+                properties=json.loads(row[3]) if row[3] else {},
+                confidence=row[4],
+                source_text=row[5],
+                created_at=row[6],
+                updated_at=row[7],
+                language=row[8],
+                valid_from=row[9],
+                valid_until=row[10],
+                is_current=row[11],
+                canonical_id=row[12],
+                aliases_json=row[13],
+                reason=row[14]
+            )
+            nodes.append(node)
         
         return nodes
     

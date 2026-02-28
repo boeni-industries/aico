@@ -10,10 +10,10 @@
 - [x] Enable JetStream for durable flows; keep streaming chunks ephemeral; add replay/recovery tests
 - [x] **Migrate fully to NATS: remove ZMQ entirely without keeping any legacy or fallback code**
 - [x] Replace LMDB working memory with Postgres (retention/TTL + indexes; cache only if proven)
-- [ ] Replace Chroma with Postgres + `pgvector` behind an interface; dual-write during migration; remove Chroma
+- [x] Replace ChromaDB with Postgres + `pgvector` only (no dual-write); ChromaDB fully removed
 - [ ] Harden scheduler + workers: idempotent tasks, tenant-scoped, multi-replica safe (locks/leader election)
 - [ ] Make backend stateless: verify all correctness-critical state is in Postgres/JetStream
-- [ ] Decommission legacy: remove ZMQ broker path, LMDB, Chroma, and any bypasses around UoW/outbox
+- [x] Decommission legacy: remove ZMQ broker path, LMDB, ChromaDB (✅ All removed - using PostgreSQL + pgvector)
 - [ ] **Redesign credential management and system setup for fully dockerized architecture (aico security init, aico config init, etc.)**
 - [ ] **Migrate runtime directory structure to docker-based environment (eliminate native process assumptions)**
 - [ ] **Clean up legacy native process architecture (remove start/stop service commands, process management)**
@@ -180,7 +180,7 @@
   - **Working memory (LMDB replacement)**
     - Prefer **Postgres tables** for correctness + single source of truth.
     - Add **Redis** only as an optional cache/accelerator once there is evidence it is needed.
-  - **Vector store (Chroma replacement)**
+  - **Vector store (Chroma replacement; implemented)**
     - Prefer **Postgres + pgvector** for “single stack” local + cloud.
     - Cloud: managed Postgres + pgvector; Local: the same Postgres container with pgvector enabled.
 - Rule: backend instances must be stateless; no correctness-critical state in local files.
@@ -309,7 +309,7 @@ Wording (final):
    - gateway: edge concerns only
    - core: persistence + domain logic
 7) **Replace LMDB working memory** with Postgres-backed working memory.
-8) **Replace Chroma** with pgvector (or a managed vector DB later, if needed).
+8) **Replace Chroma with Postgres + pgvector**.
 9) **Make backend stateless** (all state in Postgres/Redis/NATS).
 
 ## Open Questions
@@ -318,8 +318,8 @@ Wording (final):
 
 ## Durability (JetStream) vs Ephemeral (core NATS)
 - **Reality check (today)**:
-  - Postgres schema contains **AMS trajectories** (`ams_trajectories.user_input` / `ai_response`) and other derived memory tables, but **no canonical conversation message log** table.
-  - So the closest thing to “conversation truth” is currently **LMDB working memory** (plus optional trajectory logging for behavioral learning).
+   - Postgres schema contains **AMS trajectories** (`ams_trajectories.user_input` / `ai_response`) and other derived memory tables, but **no canonical conversation message log** table.
+   - Conversation “truth” is transitioning to **Postgres-backed conversation tables**; LMDB is not used for correctness-critical storage.
 - **UX requirement**: clients must be able to **catch up** and reflect backend reality after reconnect/restart.
 
 ### Recommended durability matrix (target)

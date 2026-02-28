@@ -4,6 +4,7 @@ Skills for system remediation and maintenance actions.
 """
 
 from .database import (
+    RemediationPostgresVacuumSkill,
     RemediationPostgresArchiveSkill,
     RemediationDatabaseDiskPressureSkill,
 )
@@ -19,6 +20,7 @@ from .service import (
 )
 
 __all__ = [
+    "RemediationPostgresVacuumSkill",
     "RemediationPostgresArchiveSkill",
     "RemediationDatabaseDiskPressureSkill",
     "RemediationInfluxGetMeasurementsSkill",

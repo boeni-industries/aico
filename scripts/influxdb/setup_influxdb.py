@@ -5,27 +5,37 @@ Creates downsampled bucket, sets up retention policies, and creates downsampling
 Run this once to optimize InfluxDB for dashboard performance.
 """
 
+import os
 import sys
 from influxdb_client import InfluxDBClient, BucketRetentionRules
 from influxdb_client.client.tasks_api import TasksApi
 from aico.security import AICOKeyManager
-from aico.core.config import ConfigManager
+from aico.core.config import ConfigurationManager
 
 def setup_influxdb():
     """Set up InfluxDB buckets, retention policies, and downsampling tasks."""
     
     # Load configuration
-    config = ConfigManager()
-    url = config.get("influx.url")
-    org = config.get("influx.org")
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    url = config.get_optional("influx.url") or "http://127.0.0.1:8086"
+    org = config.get_optional("influx.org") or "aico"
     
-    # Get token from key manager
-    key_manager = AICOKeyManager(config)
-    token = key_manager.get_database_password("influx", username="admin_token")
+    # Get token from environment first (container-friendly), then key manager
+    token = os.getenv("AICO_INFLUX_ADMIN_TOKEN")
+    if not token:
+        key_manager = AICOKeyManager(config)
+        token = key_manager.get_database_password("influx", username="admin_token")
     
     print(f"Connecting to InfluxDB at {url}...")
     
     with InfluxDBClient(url=url, token=token, org=org) as client:
+        # Resolve organization (Tasks API expects an Organization object)
+        orgs = client.organizations_api().find_organizations(org=org)
+        if not orgs:
+            raise RuntimeError(f"InfluxDB organization '{org}' not found")
+        org_obj = orgs[0]
+
         # Get APIs
         buckets_api = client.buckets_api()
         tasks_api = client.tasks_api()
@@ -180,7 +190,7 @@ from(bucket: "aico_telemetry")
                     name=task_name,
                     flux=task_def["flux"],
                     every="1m",
-                    organization=org
+                    organization=org_obj,
                 )
                 print(f"  ✓ Created task '{task_name}'")
         

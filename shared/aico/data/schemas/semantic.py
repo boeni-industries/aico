@@ -163,7 +163,7 @@ class SemanticResult:
     Attributes:
         fact: The personal fact that matched the query
         similarity_score: Semantic similarity score (0.0-1.0, higher is better)
-        distance: Vector distance from ChromaDB (lower is better)
+        distance: Vector distance from pgvector (lower is better)
         search_metadata: Additional search context and debugging info
     """
     fact: PersonalFact

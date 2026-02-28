@@ -271,8 +271,9 @@ def _setup_influx_downsampling(admin_token: str) -> None:
     from influxdb_client import InfluxDBClient, BucketRetentionRules
     
     config = ConfigurationManager()
-    url = config.get("influx.url")
-    org = config.get("influx.org")
+    config.initialize(lightweight=True)
+    url = config.get_optional("influx.url") or "http://127.0.0.1:8086"
+    org = config.get_optional("influx.org") or "aico"
     
     try:
         with InfluxDBClient(url=url, token=admin_token, org=org) as client:
@@ -335,13 +336,78 @@ def _setup_influx_downsampling(admin_token: str) -> None:
             
             existing_task_names = set()  # All tasks deleted, recreate all
             
+            # IMPORTANT: field names must match backend/core/otel_influx_exporter.py
+            # Otherwise downsampled measurements stay empty and Studio shows zeros.
             tasks_to_create = [
-                ("downsample_api_requests", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "api_request") |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "status_code_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "api_request_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_api_counts", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "api_request") |> filter(fn: (r) => r._field == "status_code_i") |> aggregateWindow(every: 1m, fn: count, createEmpty: false) |> set(key: "_measurement", value: "api_request_counts_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_messagebus", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "messagebus_event") |> filter(fn: (r) => r._field == "message_count_i" or r._field == "latency_ms_f") |> aggregateWindow(every: 1m, fn: sum, createEmpty: false) |> set(key: "_measurement", value: "messagebus_event_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_scheduler", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "scheduler_job") |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "success_b") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "scheduler_job_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_memory_queries", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "memory_query") |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "result_count_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "memory_query_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
-                ("downsample_model_inference", 'from(bucket: "aico_telemetry") |> range(start: -1m) |> filter(fn: (r) => r._measurement == "model_inference") |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "token_count_i") |> aggregateWindow(every: 1m, fn: mean, createEmpty: false) |> set(key: "_measurement", value: "model_inference_1m") |> to(bucket: "aico_telemetry_downsampled", org: "aico")'),
+                # API gateway
+                (
+                    "downsample_api_requests",
+                    f'from(bucket: "aico_telemetry")'
+                    f' |> range(start: -1m)'
+                    f' |> filter(fn: (r) => r._measurement == "api_request")'
+                    f' |> filter(fn: (r) => r._field == "latency_ms_f" or r._field == "status_code_i")'
+                    f' |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)'
+                    f' |> set(key: "_measurement", value: "api_request_1m")'
+                    f' |> to(bucket: "aico_telemetry_downsampled", org: "{org}")',
+                ),
+                (
+                    "downsample_api_counts",
+                    f'from(bucket: "aico_telemetry")'
+                    f' |> range(start: -1m)'
+                    f' |> filter(fn: (r) => r._measurement == "api_request")'
+                    f' |> filter(fn: (r) => r._field == "status_code_i")'
+                    f' |> aggregateWindow(every: 1m, fn: count, createEmpty: false)'
+                    f' |> set(key: "_measurement", value: "api_request_counts_1m")'
+                    f' |> to(bucket: "aico_telemetry_downsampled", org: "{org}")',
+                ),
+
+                # Message bus
+                (
+                    "downsample_messagebus",
+                    f'from(bucket: "aico_telemetry")'
+                    f' |> range(start: -1m)'
+                    f' |> filter(fn: (r) => r._measurement == "messagebus_event")'
+                    f' |> filter(fn: (r) => r._field == "message_count_i" or r._field == "processing_time_ms_f")'
+                    f' |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)'
+                    f' |> set(key: "_measurement", value: "messagebus_event_1m")'
+                    f' |> to(bucket: "aico_telemetry_downsampled", org: "{org}")',
+                ),
+
+                # Scheduler
+                (
+                    "downsample_scheduler",
+                    f'from(bucket: "aico_telemetry")'
+                    f' |> range(start: -1m)'
+                    f' |> filter(fn: (r) => r._measurement == "scheduler_job")'
+                    f' |> filter(fn: (r) => r._field == "duration_ms_f" or r._field == "success_b")'
+                    f' |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)'
+                    f' |> set(key: "_measurement", value: "scheduler_job_1m")'
+                    f' |> to(bucket: "aico_telemetry_downsampled", org: "{org}")',
+                ),
+
+                # Memory
+                (
+                    "downsample_memory_queries",
+                    f'from(bucket: "aico_telemetry")'
+                    f' |> range(start: -1m)'
+                    f' |> filter(fn: (r) => r._measurement == "memory_query")'
+                    f' |> filter(fn: (r) => r._field == "query_time_ms_f" or r._field == "results_count_i")'
+                    f' |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)'
+                    f' |> set(key: "_measurement", value: "memory_query_1m")'
+                    f' |> to(bucket: "aico_telemetry_downsampled", org: "{org}")',
+                ),
+
+                # Model inference
+                (
+                    "downsample_model_inference",
+                    f'from(bucket: "aico_telemetry")'
+                    f' |> range(start: -1m)'
+                    f' |> filter(fn: (r) => r._measurement == "model_inference")'
+                    f' |> filter(fn: (r) => r._field == "duration_ms_f" or r._field == "tokens_generated_i" or r._field == "prompt_tokens_i" or r._field == "ttft_ms_f")'
+                    f' |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)'
+                    f' |> set(key: "_measurement", value: "model_inference_1m")'
+                    f' |> to(bucket: "aico_telemetry_downsampled", org: "{org}")',
+                ),
             ]
             
             created_count = 0
@@ -1357,7 +1423,7 @@ def deploy_influx(
 
     non_interactive = (not sys.stdin.isatty()) or (os.getenv("AICO_NONINTERACTIVE") == "true")
     run_checks = os.getenv("AICO_DEPLOY_INFLUX_DOCTOR") == "true"
-    run_downsampling = os.getenv("AICO_DEPLOY_INFLUX_DOWNSAMPLING") == "true"
+    disable_downsampling = os.getenv("AICO_DEPLOY_INFLUX_DOWNSAMPLING") == "false"
 
     if non_interactive and not run_checks:
         console.print("[dim]Skipping InfluxDB doctor in non-interactive mode (set AICO_DEPLOY_INFLUX_DOCTOR=true to enable).[/dim]")
@@ -1365,8 +1431,8 @@ def deploy_influx(
         console.print("🩺 [cyan]Verifying deployment health...[/cyan]")
         influx_cli.doctor()
 
-    if non_interactive and not run_downsampling:
-        console.print("[dim]Skipping downsampling setup in non-interactive mode (set AICO_DEPLOY_INFLUX_DOWNSAMPLING=true to enable).[/dim]")
+    if disable_downsampling:
+        console.print("[dim]Skipping downsampling setup (AICO_DEPLOY_INFLUX_DOWNSAMPLING=false).[/dim]")
     else:
         console.print("⚙️  [cyan]Configuring downsampling tasks and retention policies...[/cyan]")
         _setup_influx_downsampling(admin_token)

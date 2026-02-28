@@ -109,6 +109,20 @@ class Node:
             self.canonical_id,
             json.dumps(self.aliases, sort_keys=True) if self.aliases else None
         )
+    
+    def to_document(self) -> Dict[str, Any]:
+        """Convert to document format for embedding generation."""
+        props_str = ", ".join(f"{k}: {v}" for k, v in self.properties.items())
+        document = f"{self.label}: {props_str}"
+        return {
+            "id": self.id,
+            "document": document,
+            "metadata": {
+                "user_id": self.user_id,
+                "label": self.label,
+                "is_current": self.is_current
+            }
+        }
 
 
 @dataclass
@@ -201,6 +215,20 @@ class Edge:
             self.valid_until,
             self.is_current
         )
+    
+    def to_document(self) -> Dict[str, Any]:
+        """Convert to document format for embedding generation."""
+        props_str = ", ".join(f"{k}: {v}" for k, v in self.properties.items()) if self.properties else ""
+        document = f"{self.relation_type}: {props_str}" if props_str else self.relation_type
+        return {
+            "id": self.id,
+            "document": document,
+            "metadata": {
+                "user_id": self.user_id,
+                "relation_type": self.relation_type,
+                "is_current": self.is_current
+            }
+        }
 
 
 @dataclass

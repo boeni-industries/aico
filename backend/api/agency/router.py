@@ -210,8 +210,12 @@ async def get_agency_engine() -> AgencyEngine:
         
         return engine
         
+    except HTTPException:
+        # Preserve the original API error (e.g., AGENCY_ENGINE_NOT_AVAILABLE)
+        raise
+
     except Exception as e:
-        logger.error(f"Failed to get AgencyEngine from registry: {e}")
+        logger.error(f"Failed to get AgencyEngine from registry: {e}", exc_info=True)
         raise_api_error(
             status_code=500,
             error_code="AGENCY_SERVICE_UNAVAILABLE",

@@ -73,7 +73,7 @@ class SemanticEntityRanker:
         Rank entities by composite relevance score.
         
         Two-stage process:
-        1. Semantic search in ChromaDB (top 30-50 candidates)
+        1. Semantic search in pgvector (top 30-50 candidates)
         2. Multi-factor reranking (top max_results)
         
         Args:
@@ -249,7 +249,7 @@ class SemanticEntityRanker:
         
         Args:
             entity: Entity dict with metadata
-            semantic_score: Semantic similarity score from ChromaDB
+            semantic_score: Semantic similarity score from pgvector
             now: Current timestamp for temporal decay
             
         Returns:
