@@ -759,8 +759,8 @@ class SelfReflectionEngine:
                 .where(
                     and_(
                         ethics_gate_audit.c.user_id == user_id,
-                        ethics_gate_audit.c.created_at >= window_start.isoformat(),
-                        ethics_gate_audit.c.created_at <= window_end.isoformat(),
+                        ethics_gate_audit.c.created_at >= window_start,
+                        ethics_gate_audit.c.created_at <= window_end,
                     )
                 )
                 .group_by(ethics_gate_audit.c.decision, ethics_gate_audit.c.policy_rules_applied)
@@ -965,8 +965,8 @@ class SelfReflectionEngine:
                 .where(
                     and_(
                         emotion_history.c.user_id == user_id,
-                        emotion_history.c.timestamp >= window_start.isoformat(),
-                        emotion_history.c.timestamp <= window_end.isoformat(),
+                        emotion_history.c.timestamp >= window_start,
+                        emotion_history.c.timestamp <= window_end,
                     )
                 )
             )

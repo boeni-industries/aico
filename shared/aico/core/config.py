@@ -662,15 +662,20 @@ class ConfigurationManager:
         if override_dir:
             return Path(override_dir) / "runtime.yaml"
 
+        # Under strict fs_guard, writes are only allowed under AICO_DATA_DIR/{runtime,...}.
+        # Store runtime overrides in AICO_DATA_DIR/runtime/runtime.yaml.
+        #
         # CRITICAL: Avoid circular dependency with AICOPaths.get_data_directory()
-        # which calls ConfigurationManager.initialize() during initialization
-        # Use direct platformdirs call instead
+        # which calls ConfigurationManager.initialize() during initialization.
         try:
             import platformdirs
+
             data_dir = Path(platformdirs.user_data_dir("aico", "boeni-industries"))
-            return data_dir / "config" / "runtime.yaml"
+            data_root = Path(os.getenv("AICO_DATA_DIR") or data_dir)
+            return data_root / "runtime" / "runtime.yaml"
         except Exception:
-            return (self.user_config_dir / "runtime.yaml")
+            data_root = Path(os.getenv("AICO_DATA_DIR") or self.user_config_dir)
+            return data_root / "runtime" / "runtime.yaml"
         
     def _deep_merge(self, base: Dict, override: Dict) -> None:
         """

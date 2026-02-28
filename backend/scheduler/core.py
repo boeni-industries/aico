@@ -354,6 +354,16 @@ class TaskExecutor:
                                 from sqlalchemy.exc import IntegrityError
 
                                 if isinstance(e, IntegrityError):
+                                    pgcode = getattr(getattr(e, "orig", None), "pgcode", None)
+                                    constraint_name = getattr(getattr(e, "orig", None), "constraint_name", None)
+                                    is_unique_violation = (
+                                        pgcode == "23505"
+                                        or (isinstance(constraint_name, str) and "run_key" in constraint_name)
+                                    )
+
+                                    if not is_unique_violation:
+                                        raise
+
                                     self.logger.warning(
                                         f"Duplicate scheduler execution detected for {task_id} run_key={run_key}: {e}"
                                     )
@@ -1050,6 +1060,12 @@ class TaskScheduler(BaseService):
                 self.logger.warning(f"Task class not found for {task_id}")
                 return
 
+            # Capture the run timestamp that is due *before* we advance next_run_times.
+            # This value must be stable/deterministic across replicas for distributed idempotency.
+            due_run_at = self.next_run_times.get(task_id)
+            if due_run_at is None:
+                due_run_at = datetime.now(timezone.utc)
+
             # For scheduled tasks, advance next_run immediately to prevent re-enqueueing on every tick
             # This must happen BEFORE the early return checks
             if is_scheduled and task_id in self.next_run_times:
@@ -1068,16 +1084,18 @@ class TaskScheduler(BaseService):
                     self.logger.error("Distributed scheduler enabled but bus client is not available")
                     return
 
-                scheduled_for = self.next_run_times.get(task_id)
-                if scheduled_for is None:
-                    scheduled_for = datetime.now(timezone.utc)
+                tenant_id = task_config.get("tenant_id") or task_config.get("scope", {}).get("tenant_id")
+                run_key_parts = [task_id]
+                if tenant_id:
+                    run_key_parts.append(str(tenant_id))
+                run_key_parts.append(due_run_at.isoformat())
+                run_key = ":".join(run_key_parts)
 
-                run_key = f"{task_id}:{scheduled_for.isoformat()}"
                 job = {
                     "task_id": task_id,
                     "run_key": run_key,
                     "task_config": task_config,
-                    "scheduled_for": scheduled_for.isoformat(),
+                    "scheduled_for": due_run_at.isoformat(),
                 }
 
                 from aico.core.jetstream import JetStreamManager, JetStreamStreamSpec

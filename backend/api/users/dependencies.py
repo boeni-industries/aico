@@ -155,28 +155,55 @@ def validate_nickname(nickname: Optional[str]) -> Optional[str]:
     return nickname.strip() if nickname.strip() else None
 
 
+def validate_password(password: str) -> str:
+    """Validate interactive password/passcode requirements.
+
+    Policy is configurable to be stricter (min_length only), but never weaker.
+    """
+
+    base_min_length = 12
+    try:
+        config_manager = ConfigurationManager()
+        configured = config_manager.get('security.authentication.admin_passcode_policy', {})
+        configured_min_length = configured.get('min_length') if isinstance(configured, dict) else None
+        if isinstance(configured_min_length, int) and configured_min_length > base_min_length:
+            base_min_length = configured_min_length
+    except Exception:
+        pass
+
+    value = (password or "").strip()
+    if not value:
+        raise_api_error(status_code=400, error_code="PASSWORD_EMPTY", message="Password cannot be empty")
+
+    if any(ch.isspace() for ch in value):
+        raise_api_error(status_code=400, error_code="PASSWORD_WHITESPACE", message="Password must not contain whitespace")
+
+    if len(value) < base_min_length:
+        raise_api_error(
+            status_code=400,
+            error_code="PASSWORD_TOO_SHORT",
+            message=f"Password must be at least {base_min_length} characters",
+        )
+
+    if value.isdigit():
+        raise_api_error(
+            status_code=400,
+            error_code="PASSWORD_DIGITS_ONLY",
+            message="Password must not be digits-only",
+        )
+
+    if not any(ch.islower() for ch in value):
+        raise_api_error(status_code=400, error_code="PASSWORD_MISSING_LOWER", message="Password must contain a lowercase letter")
+    if not any(ch.isupper() for ch in value):
+        raise_api_error(status_code=400, error_code="PASSWORD_MISSING_UPPER", message="Password must contain an uppercase letter")
+    if not any(ch.isdigit() for ch in value):
+        raise_api_error(status_code=400, error_code="PASSWORD_MISSING_DIGIT", message="Password must contain a digit")
+    if not any((not ch.isalnum()) for ch in value):
+        raise_api_error(status_code=400, error_code="PASSWORD_MISSING_SYMBOL", message="Password must contain a symbol")
+
+    return value
+
+
 def validate_pin(pin: str) -> str:
-    """
-    Validate PIN format and requirements using configuration.
-    """
-    config_manager = ConfigurationManager()
-    pin_policy = config_manager.get('security.pin_policy', {})
-    min_length = pin_policy.get('min_length', 4)
-    max_length = pin_policy.get('max_length', 8)
-    require_numeric = pin_policy.get('require_numeric', True)
-    
-    if not pin or len(pin) < min_length or len(pin) > max_length:
-        raise_api_error(
-            status_code=400,
-            error_code="PIN_INVALID_LENGTH",
-            message=f"PIN must be between {min_length} and {max_length} characters",
-        )
-    
-    if require_numeric and not pin.isdigit():
-        raise_api_error(
-            status_code=400,
-            error_code="PIN_INVALID_FORMAT",
-            message="PIN must contain only digits",
-        )
-    
-    return pin
+    """Backwards-compatible alias for legacy clients."""
+    return validate_password(pin)

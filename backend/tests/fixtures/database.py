@@ -6,6 +6,7 @@ Tests can read and write, but must clean up their test data.
 """
 
 import pytest
+import pytest_asyncio
 from pathlib import Path
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
@@ -33,20 +34,91 @@ def test_db():
 
     import os
     expected_db_name = os.environ.get("AICO_TEST_DB_NAME", "aico_test")
+    maintenance_db_name = os.environ.get("AICO_TEST_DB_MAINTENANCE_DB", "aico")
+    pg_container_name = os.environ.get("AICO_TEST_DB_CONTAINER", "aico-postgres")
     
     password = key_manager.get_database_password("postgres", username=pg_cfg.get("user", "postgres"))
     if not password:
         raise RuntimeError("PostgreSQL password not found in keyring")
     
-    # Connect to PostgreSQL
-    db = psycopg2.connect(
-        host=pg_cfg.get("host", "127.0.0.1"),
-        port=int(pg_cfg.get("port", 5432)),
-        dbname=expected_db_name,
-        user=pg_cfg.get("user", "postgres"),
-        password=password,
-        cursor_factory=RealDictCursor
-    )
+    def _connect(dbname: str):
+        return psycopg2.connect(
+            host=pg_cfg.get("host", "127.0.0.1"),
+            port=int(pg_cfg.get("port", 5432)),
+            dbname=dbname,
+            user=pg_cfg.get("user", "postgres"),
+            password=password,
+            cursor_factory=RealDictCursor,
+        )
+
+    def _apply_schema_sql() -> None:
+        import subprocess
+
+        root = Path(__file__).resolve().parents[3]
+        schema_path = root / "shared" / "aico" / "data" / "postgres" / "schema.sql"
+        if not schema_path.exists():
+            raise RuntimeError(f"Schema file not found: {schema_path}")
+
+        with open(schema_path, "r") as f:
+            sql_text = f.read()
+
+        sql_text = "SET statement_timeout = 0;\nSET lock_timeout = 0;\n" + sql_text
+
+        cmd = [
+            "docker",
+            "exec",
+            "-i",
+            "-e",
+            f"PGPASSWORD={password}",
+            pg_container_name,
+            "psql",
+            "-h",
+            "localhost",
+            "-U",
+            pg_cfg.get("user", "postgres"),
+            "-d",
+            expected_db_name,
+            "-v",
+            "ON_ERROR_STOP=1",
+        ]
+        result = subprocess.run(
+            cmd,
+            input=sql_text,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=int(os.environ.get("AICO_TEST_SCHEMA_APPLY_TIMEOUT_SECONDS", "300")),
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Failed to apply schema.sql:\n"
+                + (result.stderr or "")
+                + ("\n" + result.stdout if result.stdout else "")
+            )
+
+    maint = _connect(maintenance_db_name)
+    maint.set_session(autocommit=True)
+    try:
+        cur = maint.cursor()
+
+        cur.execute("ALTER DATABASE template1 REFRESH COLLATION VERSION")
+        cur.execute(f"ALTER DATABASE {maintenance_db_name} REFRESH COLLATION VERSION")
+
+        cur.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s",
+            (expected_db_name,),
+        )
+        exists = cur.fetchone()
+        if exists:
+            cur.execute(f"DROP DATABASE {expected_db_name} WITH (FORCE)")
+        cur.execute(f"CREATE DATABASE {expected_db_name}")
+        cur.close()
+    finally:
+        maint.close()
+
+    _apply_schema_sql()
+
+    db = _connect(expected_db_name)
 
     cursor = db.cursor()
     cursor.execute("SELECT current_database() AS db")
@@ -252,9 +324,18 @@ def test_db():
     
     db.close()
 
+    maint = _connect(maintenance_db_name)
+    maint.set_session(autocommit=True)
+    try:
+        cur = maint.cursor()
+        cur.execute(f"DROP DATABASE IF EXISTS {expected_db_name} WITH (FORCE)")
+        cur.close()
+    finally:
+        maint.close()
 
-@pytest.fixture(scope="session")
-def session_factory(test_db):
+
+@pytest_asyncio.fixture(scope="session")
+async def session_factory(test_db):
     """
     Create async SQLAlchemy session factory for tests.
     
@@ -288,8 +369,8 @@ def session_factory(test_db):
     )
     
     yield factory
-    
-    # Cleanup is handled by engine disposal
+
+    await engine.dispose()
 
 
 @pytest.fixture

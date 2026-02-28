@@ -11,14 +11,14 @@
 - [x] **Migrate fully to NATS: remove ZMQ entirely without keeping any legacy or fallback code**
 - [x] Replace LMDB working memory with Postgres (retention/TTL + indexes; cache only if proven)
 - [x] Replace ChromaDB with Postgres + `pgvector` only (no dual-write); ChromaDB fully removed
-- [ ] Harden scheduler + workers: idempotent tasks, tenant-scoped, multi-replica safe (locks/leader election)
-- [ ] Make backend stateless: verify all correctness-critical state is in Postgres/JetStream
+- [x] Harden scheduler + workers: idempotent tasks, tenant-scoped, multi-replica safe (JetStream work-queue + Postgres idempotency + integration coverage + no-stall test harness)
+- [x] Make backend stateless: verify all correctness-critical state is in Postgres/JetStream (strict fs_guard + outbox restart/idempotency + scheduler dedupe + reconnect catch-up + crash/restart failover)
 - [x] Decommission legacy: remove ZMQ broker path, LMDB, ChromaDB (✅ All removed - using PostgreSQL + pgvector)
 - [ ] **Redesign credential management and system setup for fully dockerized architecture (aico security init, aico config init, etc.)**
 - [ ] **Migrate runtime directory structure to docker-based environment (eliminate native process assumptions)**
 - [ ] **Clean up legacy native process architecture (remove start/stop service commands, process management)**
 - [ ] **Ensure all Docker components properly represented in CLI; remove legacy tech debt**
-- [ ] **Create `aico deploy` CLI command: zero-to-operational system installation (prod default, --dev flag for development)**
+- [x] **Create `aico deploy` CLI command: zero-to-operational system installation (prod default, --dev flag for development)**
 - [ ] **Create `aico upgrade` CLI: Analyze and refactor to the current system reality with the architectural change to virtualized / docker containers**
 - [ ] Update AICO-Studio to use the new architectur (e.g. the split of gateway, core, modelservice) and in general to reflect the new architecture. We have also changed the used DB's for example. We need to align the AICO-Studio to the new architecture.
 - [ ] Observability: add OpenTelemetry Collector (OTLP ingest + tail sampling + spanmetrics)
@@ -26,6 +26,60 @@
 - [ ] Observability: propagate W3C trace context over NATS/JetStream headers
 - [ ] Observability: correlate logs↔traces (inject `trace_id`/`span_id` into Loki logs; Grafana trace→logs links)
 - [ ] Observability: add Grafana dashboards for core golden paths (request→core→modelservice; NATS/JetStream; Postgres)
+
+## Make backend stateless (completed)
+
+### Definition of done
+- Every correctness-critical state is in **Postgres** and/or **NATS/JetStream**.
+- Any service process can be restarted at any time with:
+  - no data loss
+  - no duplicate side effects
+  - no stuck workflows
+
+### State inventory (authoritative)
+
+| Component | State | Source of truth | Restart / scale-out requirement |
+|---|---|---|---|
+| Gateway | auth sessions / tokens | Postgres | stateless beyond caches; multiple replicas safe |
+| Gateway | WS subscriptions / fanout | in-memory | must be recoverable from client reconnect + HTTP catch-up |
+| Core backend | conversations | Postgres | required for HTTP catch-up and replay |
+| Core backend | durable notifications | JetStream / outbox→JetStream | eventual delivery; idempotent consumption |
+| Core backend | scheduler tasks + execution history | Postgres | unique `(task_id, run_key)` prevents duplicates |
+| Core backend | scheduler job queue | JetStream work-queue | pull-consumers; at-least-once; dedupe in Postgres |
+| Modelservice | inference work-in-flight | JetStream / NATS request-reply | safe redelivery; no local checkpoints |
+| All services | metrics / logs / traces | OTLP + Loki/Tempo/Prometheus | never required for correctness |
+
+### Failover tests (must exist)
+
+Progress:
+- [x] Guardrails: strict `fs_guard` blocks runtime writes outside `AICO_DATA_DIR/{runtime,cache,logs,tmp,artifacts}` (backend + modelservice entrypoints)
+- [x] Config persistence: runtime overrides persist under `AICO_DATA_DIR/runtime/runtime.yaml` (tested)
+- [x] Durable outbox restart/idempotency: publisher can be re-run without duplicate publishes (tested)
+- [x] Scheduler job execution idempotency: multi-consumer safe via Postgres run-key dedupe (tested)
+- [x] True crash/restart failover test (process-level): stop producer/worker mid-flight and assert eventual consistency
+- [x] Client reconnect catch-up: Postgres-backed cursor replay via `GET /conversation/messages/catchup` (tested)
+
+1) Durable notification flow
+- Start a request that produces a final durable notification.
+- Kill the producing service before publish.
+- Assert the outbox fallback eventually publishes and consumer receives exactly once (idempotent).
+
+2) Scheduler job execution flow
+- Publish the same job twice (or force redelivery).
+- Run with 2 worker consumers.
+- Assert only one execution row is created (idempotent) and job is ACKed.
+
+3) Client reconnect catch-up
+- Start streaming.
+- Disconnect client mid-stream.
+- Reconnect and validate HTTP catch-up returns the final persisted result.
+
+### Guardrails (prevent regressions)
+- No correctness-critical writes to local disk.
+- Local disk allowed only for:
+  - explicitly configured cache/temp directories
+  - non-authoritative artifacts that can be recomputed
+- Enforce `tenant_id`/`user_id` scoping in all persisted rows and NATS/JetStream subjects.
 
 ## Goals / Non-Goals
 - **Goal**: Single codebase and single “final-stack” architecture that runs:

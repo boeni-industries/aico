@@ -712,7 +712,7 @@ CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_uuid);
 CREATE TABLE IF NOT EXISTS "auth_user_credentials" (
                 uuid TEXT PRIMARY KEY,
                 user_uuid TEXT NOT NULL,
-                pin_hash TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
                 failed_attempts INTEGER DEFAULT 0,
                 locked_until TIMESTAMPTZ,
                 last_login TIMESTAMPTZ,
@@ -720,9 +720,39 @@ CREATE TABLE IF NOT EXISTS "auth_user_credentials" (
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
 
-CREATE INDEX IF NOT EXISTS idx_user_authentication_locked_until ON "auth_user_credentials"(locked_until);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'aico_core'
+      AND table_name = 'auth_user_credentials'
+      AND column_name = 'pin_hash'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'aico_core'
+      AND table_name = 'auth_user_credentials'
+      AND column_name = 'password_hash'
+  ) THEN
+    ALTER TABLE auth_user_credentials RENAME COLUMN pin_hash TO password_hash;
+  END IF;
 
-CREATE INDEX IF NOT EXISTS idx_user_authentication_pin_hash ON "auth_user_credentials"(pin_hash);
+  IF EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'aico_core'
+      AND tablename = 'auth_user_credentials'
+      AND indexname = 'idx_user_authentication_pin_hash'
+  ) THEN
+    DROP INDEX idx_user_authentication_pin_hash;
+  END IF;
+
+  CREATE INDEX IF NOT EXISTS idx_user_authentication_password_hash
+    ON auth_user_credentials(password_hash);
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_user_authentication_locked_until ON "auth_user_credentials"(locked_until);
 
 CREATE INDEX IF NOT EXISTS idx_user_authentication_user ON "auth_user_credentials"(user_uuid);
 
@@ -943,7 +973,7 @@ CREATE INDEX IF NOT EXISTS idx_conversation_segments_embedding
 
 -- Knowledge graph nodes with embeddings
 CREATE TABLE IF NOT EXISTS kg_node_embeddings (
-    node_id TEXT PRIMARY KEY REFERENCES kg_nodes(id) ON DELETE CASCADE,
+    node_id TEXT PRIMARY KEY,
     embedding vector(768) NOT NULL,
     document TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -956,7 +986,7 @@ CREATE INDEX IF NOT EXISTS idx_kg_node_embeddings_vector
 
 -- Knowledge graph edges with embeddings
 CREATE TABLE IF NOT EXISTS kg_edge_embeddings (
-    edge_id TEXT PRIMARY KEY REFERENCES kg_edges(id) ON DELETE CASCADE,
+    edge_id TEXT PRIMARY KEY,
     embedding vector(768) NOT NULL,
     document TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -1637,6 +1667,12 @@ DO $$ BEGIN
   EXCEPTION WHEN duplicate_object THEN NULL; END;
   BEGIN
     ALTER TABLE kg_nodes ADD CONSTRAINT fk_kg_nodes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE kg_node_embeddings ADD CONSTRAINT fk_kg_node_embeddings_node_id_kg_nodes FOREIGN KEY (node_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE kg_edge_embeddings ADD CONSTRAINT fk_kg_edge_embeddings_edge_id_kg_edges FOREIGN KEY (edge_id) REFERENCES kg_edges(id) ON DELETE CASCADE;
   EXCEPTION WHEN duplicate_object THEN NULL; END;
   BEGIN
     ALTER TABLE proactive_analytics ADD CONSTRAINT fk_proactive_analytics_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;

@@ -1,6 +1,6 @@
 # Developer Onboarding: Getting Started with AICO
 
-This guide is for developers and contributors. For general usage, installation, or user onboarding, see the User Guide (file does not exist).
+This guide is for developers and contributors.
 
 Here you'll find everything you need to set up your development environment, understand the project structure, and start contributing.
 
@@ -10,16 +10,22 @@ Here you'll find everything you need to set up your development environment, und
 
 AICO is an open-source, local-first AI companion designed to be emotionally present, embodied, and proactive. The project is modular, privacy-first, and extensible, with contributions welcome from developers, designers, researchers, and more.
 
-### Quick Install (End Users)
+### Quick Start (Developers)
 
-For end users who just want to use the CLI:
+From a fresh repo clone, the canonical way to bootstrap a working local stack (single Docker host) is:
 
 ```bash
-pip install aico[cli]
-aico --help
+# Initialize repo-local config templates (idempotent)
+uv run --project cli aico config init
+
+# Provision infra + schema + tenant + admin/owner user (idempotent)
+uv run --project cli aico deploy system \
+  --tenant-display-name "My Deployment" \
+  --admin-full-name "Owner Admin" \
+  --admin-pin "1234"
 ```
 
-This installs the AICO CLI with all necessary dependencies. For development setup, continue reading below.
+For headless setups you can provide the master password via `AICO_MASTER_PASSWORD` or `--master-password-file`.
 
 ---
 
@@ -44,8 +50,6 @@ aico/
 ├── backend/           # Python FastAPI backend with plugin architecture
 │
 ├── frontend/          # Flutter 3.27+ UI app with encrypted local storage
-│
-├── studio/            # React-based "Studio" for devs, power users, admins (early development)
 │
 ├── cli/               # Python Typer/Rich CLI (v1.1.0, production-ready)
 │
@@ -76,6 +80,8 @@ aico/
 - `docs/` holds all documentation, including architecture and development guides.
 - `site/` is generated from `docs/` for static site hosting.
 
+**Studio note:** AICO Studio is developed in a separate repository (`aico-studio`) and deployed independently.
+
 ---
 
 ## Development Principles
@@ -86,7 +92,7 @@ AICO follows strict guidelines for code quality, modularity, privacy, and extens
 - Simplicity and readability first
 - Modular, message-driven architecture
 - Privacy & security by design
-- Local-first, file-based databases
+- Stateless services: correctness-critical state lives in Postgres and/or NATS/JetStream
 - Extensible via plugins and clear interfaces
 
 ---
@@ -109,8 +115,8 @@ Follow these steps to get started with AICO development:
 git clone git@github.com:<your-username>/aico.git
 ```
 
-### 2. Install Python 3.13.5
-AICO requires Python 3.13.5 for all Python-based components. Download and install it from the official Python website:
+### 2. Install Python (3.13+)
+AICO Python components require Python 3.13+.
 
 - [Python 3.13.5 downloads](https://www.python.org/downloads/release/python-3135/)
 
@@ -120,49 +126,44 @@ python --version
 # or
 py --version
 ```
-You should see `Python 3.13.5`.
+You should see `Python 3.13.x`.
 
-> **ℹ️ Data Encryption Approach**
-> 
-> AICO uses application-level encryption with SQLCipher for all databases (PostgreSQL in the backend and Drift on the frontend). Semantic memory and knowledge graph embeddings use ChromaDB, and working memory/cache uses LMDB, all with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
+> **ℹ️ Storage + Statelessness**
+>
+> The backend is designed to be stateless: correctness-critical state is externalized to Postgres and/or NATS/JetStream.
 
 ### 3. UV Setup (Per-Component Projects)
 AICO uses UV for Python dependency management. Each Python component is its own UV project with its own `pyproject.toml` and `uv.lock`.
 
 This is required because some components intentionally use conflicting dependency versions (e.g. backend vs modelservice).
 
-**Important (Development): Use `AICO_CONFIG_DIR` to isolate your runtime config**
+**Important (Development): isolate runtime config (`AICO_CONFIG_DIR`)**
  
 AICO reads and edits configuration from the *runtime config directory* (platform-dependent) by default. In development, you should point `AICO_CONFIG_DIR` to a repo-local path so different checkouts/branches don't share the same config state.
  
- ```sh
- # Example (recommended): keep runtime config inside the repo
- export AICO_CONFIG_DIR="$PWD/.aico-dev/config"
- 
- # Seed the runtime config directory with schemas/defaults/environments/modelfiles
- uv run aico config init
- ```
+```sh
+# Example (recommended): keep runtime config inside the repo
+export AICO_CONFIG_DIR="$PWD/.aico-dev/config"
 
-**Install UV globally (required):**
+# Seed the runtime config directory with schemas/defaults/environments/modelfiles
+uv run --project cli aico config init
+```
+
+**Install uv globally (required):**
 
   ```sh
   pip install uv
   # or follow: https://github.com/astral-sh/uv#installation
   ```
 
-**Initial Setup:**
+**Initial Setup (CLI project):**
 
-  ```sh
-  # From the repo root
-  cd aico
+```sh
+# From the repo root
 
-  # Local development: install CLI dependencies (CLI runs on the host)
-  cd cli
-  uv sync --frozen
-
-  # Verify installation
-  uv run aico --help
-  ```
+# Verify the CLI runs (uv will resolve the per-project environment)
+uv run --project cli aico --help
+```
 
 **Key Changes from Previous Setup:**
 - Python dependencies are managed **per component**:
@@ -174,16 +175,11 @@ AICO reads and edits configuration from the *runtime config directory* (platform
 
 **Working with the Workspace:**
 
-  ```sh
-  # Run CLI commands (from cli/)
-  uv run aico gateway status
-  uv run aico db init
-
-  # Add a dependency to the CLI component
-  uv add <package>
-  uv lock
-  uv sync --frozen
-  ```
+```sh
+# Run CLI commands (from repo root)
+uv run --project cli aico gateway status
+uv run --project cli aico deploy system --help
+```
 
 > **IDE Setup:** Point your IDE to the interpreter inside the component you're working on (e.g. `cli/.venv/...`).
 
@@ -225,9 +221,9 @@ flutter --version
 
 ---
 
-### 7. Setting Up the React Admin Studio
+### 7. AICO Studio (separate repository)
 
-All React/React-Admin code and dependencies found in `/studio`.
+AICO Studio is developed in the separate `aico-studio` repository and deployed independently.
 
 **Install Node.js & npm:**
 

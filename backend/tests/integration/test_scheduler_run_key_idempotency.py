@@ -45,6 +45,20 @@ async def test_task_executor_run_key_idempotency_prevents_duplicate_execution_ro
         "config": {},
     }
 
+    async with UnitOfWork(session_factory) as uow:
+        svc = SchedulerService(uow)
+        existing = await svc.get_task(task_id)
+        if existing is None:
+            await svc.create_task(
+                {
+                    "task_id": task_id,
+                    "task_class": _RunKeyIdempotencyTask.__name__,
+                    "schedule": "@once",
+                    "config": "{}",
+                    "enabled": True,
+                }
+            )
+
     # First run: should create one execution row
     result1 = await executor.execute_task(_RunKeyIdempotencyTask, task_config, run_key=run_key)
     assert result1.success is True

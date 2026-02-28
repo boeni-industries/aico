@@ -92,6 +92,8 @@ pin_policy:
   require_numeric: true
 
 authentication:
+  admin_passcode_policy:
+    min_length: 12
   password_hashing:
     algorithm: "bcrypt"
     rounds: 12  # Cost factor for bcrypt (2^12 iterations)

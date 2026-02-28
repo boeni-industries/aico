@@ -208,10 +208,15 @@ async def admin_create_user(
     )
 
     await uow.users.create(user)
+
+    raw_password = body.password if getattr(body, "password", None) is not None else body.pin
+    if not raw_password:
+        raise HTTPException(status_code=400, detail="password is required")
+
     credentials = AuthUserCredentials(
         uuid=str(uuid_lib.uuid4()),
         user_uuid=user.uuid,
-        pin_hash=_pwd_context.hash(body.pin),
+        password_hash=_pwd_context.hash(raw_password),
         failed_attempts=0,
         locked_until=None,
         last_login=None,
@@ -457,7 +462,7 @@ async def admin_bulk_delete_users(
 
 @router.put("/users/{user_uuid}/password", response_model=AdminOperationResponse)
 @handle_admin_service_exceptions
-async def admin_set_user_pin(
+async def admin_set_user_password(
     user_uuid: str,
     body: admin_schemas.AdminUserSetPinRequest,
     request: Request,
@@ -472,9 +477,13 @@ async def admin_set_user_pin(
         raise HTTPException(status_code=404, detail="User not found")
 
     now = datetime.now(UTC)
+    raw_password = body.new_password if getattr(body, "new_password", None) is not None else body.new_pin
+    if not raw_password:
+        raise HTTPException(status_code=400, detail="new_password is required")
+
     cred = await uow.credentials.get_by_user_uuid(user_uuid)
     if cred:
-        cred.pin_hash = _pwd_context.hash(body.new_pin)
+        cred.password_hash = _pwd_context.hash(raw_password)
         cred.failed_attempts = 0
         cred.locked_until = None
         await uow.credentials.update(cred)
@@ -482,7 +491,7 @@ async def admin_set_user_pin(
         cred = AuthUserCredentials(
             uuid=str(uuid_lib.uuid4()),
             user_uuid=user_uuid,
-            pin_hash=_pwd_context.hash(body.new_pin),
+            password_hash=_pwd_context.hash(raw_password),
             failed_attempts=0,
             locked_until=None,
             last_login=None,
@@ -494,7 +503,7 @@ async def admin_set_user_pin(
     await _write_audit_event(
         uow=uow,
         timestamp=now,
-        action="admin.user.pin.reset",
+        action="admin.user.password.reset",
         actor=actor,
         resource_type="user",
         resource_id=user_uuid,
@@ -503,7 +512,7 @@ async def admin_set_user_pin(
         details={"require_change_on_login": body.require_change_on_login},
     )
     await uow.commit()
-    return AdminOperationResponse(success=True, message="PIN updated")
+    return AdminOperationResponse(success=True, message="Password updated")
 
 
 @router.post("/users/{user_uuid}/restore", response_model=AdminOperationResponse)

@@ -2,7 +2,44 @@
 
 ## Quick Start: Deploy Everything with Zero Manual Steps
 
-Just run the deploy commands. **No credential setup required.**
+This is the canonical way to go from **zero → fully operational** on a single Docker host.
+
+Prerequisites (from a fresh repo clone):
+- Install **Docker** and ensure the Docker daemon is running.
+- Install **uv** and ensure you have **Python >= 3.13** available.
+- Initialize config templates once (idempotent):
+  ```bash
+  uv run --project cli aico config init
+  ```
+
+Then run the one-command bootstrap:
+
+```bash
+uv run --project cli aico deploy system \
+  --non-interactive \
+  --tenant-display-name "My Deployment" \
+  --admin-full-name "Owner Admin" \
+  --admin-pin "ChangeMe-Strong1!"
+```
+
+This provisions:
+- Postgres (container + schema)
+- Tenant + admin/owner bootstrap
+- Gateway + Core + Modelservice containers (disable with `--no-services`)
+
+Headless master password provisioning:
+- Set `AICO_MASTER_PASSWORD` (supported) or pass `--master-password-file`.
+- The deploy command removes `AICO_MASTER_PASSWORD` from its own process environment after consuming it, and will not forward it into any `docker compose` subprocess environment.
+
+Bootstrap semantics:
+- The earliest-created active non-system user (`user_profiles.uuid != 'system_user'`) is ensured to be:
+  - `owner` in `tenant_memberships` for the bootstrapped tenant
+  - `admin` in `auth_access_policies` (`resource_type='role'`, `permission='admin'`)
+- Deploy state is persisted under `AICO_DATA_DIR/runtime/deploy-state.yaml` for safe re-runs.
+
+## Advanced: Deploy components individually
+
+You can still deploy components individually. **No credential setup required.**
 
 ```bash
 # Deploy infrastructure

@@ -134,9 +134,20 @@ class AskUserSkill(Skill):
             async with UnitOfWork(self._session_factory) as uow:
                 existing = await uow.interaction_requests.get_by_idempotency_key(user_id, idempotency_key)
                 if existing is not None:
+                    existing_context = ""
+                    try:
+                        if isinstance(existing.context_json, dict):
+                            existing_context = existing.context_json.get("context") or ""
+                    except Exception:
+                        existing_context = ""
                     return SkillResult(
                         success=True,
                         output={
+                            "question": existing.prompt,
+                            "context": existing_context,
+                            "urgency": getattr(existing, "severity", None) or urgency,
+                            "expected_answer_type": getattr(existing, "expected_answer_type", None)
+                            or expected_answer_type,
                             "status": existing.status,
                             "interaction_id": existing.interaction_id,
                             "correlation_id": existing.correlation_id,

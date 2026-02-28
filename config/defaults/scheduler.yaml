@@ -9,3 +9,9 @@ scheduler_interval: 1.0  # seconds
 task_timeout: 3600  # 1 hour
 idle_threshold_cpu: 20      # percent
 idle_threshold_memory: 70   # percent
+
+distributed:
+  enabled: false
+  stream_name: "SCHEDULER_JOBS"
+  subject_filter: "scheduler.jobs.*"
+  publish_subject: "scheduler.jobs.run"

@@ -19,7 +19,8 @@ class CreateUserRequest(BaseModel):
         pattern=f'^{ConfigurationManager().get("core.user_profiles.default_user_type", "person")}$',
         description="User type"
     )
-    pin: Optional[str] = Field(None, description="Optional PIN for authentication")
+    password: Optional[str] = Field(None, description="Optional password for authentication")
+    pin: Optional[str] = Field(None, description="Deprecated alias for password")
     primary_language: Optional[str] = Field("en", description="Primary language preference (ISO/BCP-47 code, e.g. 'en', 'de', 'fr')")
     
     @validator('full_name')
@@ -32,11 +33,18 @@ class CreateUserRequest(BaseModel):
         from .dependencies import validate_nickname
         return validate_nickname(v)
     
+    @validator('password')
+    def validate_password(cls, v):
+        if v is not None:
+            from .dependencies import validate_password
+            return validate_password(v)
+        return v
+
     @validator('pin')
     def validate_pin(cls, v):
         if v is not None:
-            from .dependencies import validate_pin
-            return validate_pin(v)
+            from .dependencies import validate_password
+            return validate_password(v)
         return v
 
 
@@ -67,22 +75,38 @@ class UpdateUserRequest(BaseModel):
 class AuthenticateRequest(BaseModel):
     """Request schema for user authentication"""
     user_uuid: str = Field(..., pattern='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', description="User UUID")
-    pin: str = Field(..., description="User PIN")
+    password: str = Field(..., description="User password")
+    pin: Optional[str] = Field(None, description="Deprecated alias for password")
     
+    @validator('password')
+    def validate_password(cls, v):
+        from .dependencies import validate_password
+        return validate_password(v)
+
     @validator('pin')
     def validate_pin(cls, v):
-        from .dependencies import validate_pin
-        return validate_pin(v)
+        if v is None:
+            return v
+        from .dependencies import validate_password
+        return validate_password(v)
 
 
-class SetPinRequest(BaseModel):
-    """Request schema for setting/updating user PIN"""
-    new_pin: str = Field(..., description="New PIN")
+class SetPasswordRequest(BaseModel):
+    """Request schema for setting/updating user password"""
+    new_password: str = Field(..., description="New password")
+    new_pin: Optional[str] = Field(None, description="Deprecated alias for new_password")
     
+    @validator('new_password')
+    def validate_new_password(cls, v):
+        from .dependencies import validate_password
+        return validate_password(v)
+
     @validator('new_pin')
     def validate_new_pin(cls, v):
-        from .dependencies import validate_pin
-        return validate_pin(v)
+        if v is None:
+            return v
+        from .dependencies import validate_password
+        return validate_password(v)
 
 
 class UserResponse(BaseModel):

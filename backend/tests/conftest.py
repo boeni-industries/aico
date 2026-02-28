@@ -13,6 +13,10 @@ from pathlib import Path
 import os
 import shutil
 import tempfile
+import signal
+import faulthandler
+import pytest_asyncio
+from sqlalchemy import text
 
 # Add project root and shared to Python path
 project_root = Path(__file__).parent.parent.parent
@@ -35,6 +39,34 @@ def pytest_sessionstart(session):
         pg_connection._session_factory = None
     except Exception:
         pass
+
+
+def _aico__timeout_seconds() -> int:
+    try:
+        return int(os.environ.get("AICO_PYTEST_TEST_TIMEOUT_SECONDS", "120"))
+    except Exception:
+        return 120
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    timeout = _aico__timeout_seconds()
+
+    def _handle_timeout(_signum, _frame):
+        try:
+            faulthandler.dump_traceback(all_threads=True)
+        except Exception:
+            pass
+        raise TimeoutError(f"Pytest test timed out after {timeout}s: {item.nodeid}")
+
+    old_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, _handle_timeout)
+    signal.alarm(timeout)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -146,6 +178,30 @@ from backend.tests.fixtures.agency import (
     mock_message_bus,
     agency_engine,
 )
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _truncate_core_tables(session_factory):
+    async with session_factory() as session:
+        await session.execute(text("SET search_path TO aico_core,public"))
+        await session.execute(
+            text(
+                "TRUNCATE TABLE "
+                "interaction_events, "
+                "interaction_requests, "
+                "agency_events_log, "
+                "agency_plan_executions, "
+                "agency_step_executions, "
+                "agency_plans, "
+                "agency_goals, "
+                "scheduler_task_executions, "
+                "scheduler_tasks, "
+                "outbox_events, "
+                "working_memory_messages "
+                "RESTART IDENTITY CASCADE"
+            )
+        )
+        await session.commit()
 
 # Make fixtures available to all tests
 __all__ = [

@@ -24,10 +24,13 @@ sys.path.insert(0, str(backend_dir))
 from aico.core.config import ConfigurationManager
 from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import initialize_logging, get_logger, shutdown_logging
+from aico.core.fs_guard import enable_fs_guard
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
 initialize_logging(service_name="backend", enable_loki=True, enable_console=True)
+
+enable_fs_guard()
 
 # Explicitly initialize configuration before validation to avoid implicit initialization
 # (and file watcher startup) during validate_startup_config().

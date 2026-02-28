@@ -242,7 +242,8 @@ class AdminUserCreateRequest(BaseModel):
     full_name: str = Field(..., description="Full name")
     nickname: Optional[str] = Field(None, description="Nickname")
     user_type: str = Field(..., description="User type")
-    pin: str = Field(..., description="Initial PIN")
+    password: Optional[str] = Field(None, description="Initial password")
+    pin: Optional[str] = Field(None, description="Deprecated alias for password")
     primary_language: Optional[str] = Field(None, description="Primary language")
 
 
@@ -285,7 +286,8 @@ class AdminBulkDeleteResponse(BaseModel):
 
 
 class AdminUserSetPinRequest(BaseModel):
-    new_pin: str = Field(..., description="New PIN")
+    new_password: Optional[str] = Field(None, description="New password")
+    new_pin: Optional[str] = Field(None, description="Deprecated alias for new_password")
     require_change_on_login: Optional[bool] = Field(None, description="If true, forces change on next login")
     confirm: bool = Field(False, description="Required confirmation flag")
 

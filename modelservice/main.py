@@ -26,6 +26,7 @@ if sys.platform == "win32":
 from aico.core.config import ConfigurationManager
 from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import get_logger
+from aico.core.fs_guard import enable_fs_guard
 config_manager = ConfigurationManager()
 # Use lightweight initialization in modelservice to avoid starting file watchers.
 # IMPORTANT: This means modelservice no longer hot-reloads configuration files.
@@ -68,6 +69,8 @@ async def initialize_modelservice():
     # Initialize service-specific logging first to capture all subsequent logs
     from aico.core.logging import initialize_logging
     initialize_logging(service_name="modelservice", enable_loki=True, enable_console=True)
+
+    enable_fs_guard()
     
     # Now we can get a logger
     logger = get_logger("modelservice.main")

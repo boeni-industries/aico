@@ -13,7 +13,7 @@ from aico.data.uow import UnitOfWork
 from aico.data.user.models import UserProfile
 from aico.data.system.models import SystemEvent
 from .schemas import (
-    CreateUserRequest, UpdateUserRequest, AuthenticateRequest, SetPinRequest,
+    CreateUserRequest, UpdateUserRequest, AuthenticateRequest, SetPasswordRequest,
     UserResponse, AuthenticationResponse, UserStatsResponse, UserListResponse
 )
 
@@ -31,7 +31,7 @@ def _user_to_response(user) -> UserResponse:
         created_at=user.created_at.isoformat() if user.created_at else None,
         updated_at=user.updated_at.isoformat() if user.updated_at else None
     )
-from .dependencies import validate_uuid, validate_user_type, validate_pin, security
+from .dependencies import validate_uuid, validate_user_type, validate_password, validate_pin, security
 from backend.core.postgres_dependencies import get_uow
 from backend.core.lifecycle_manager import get_auth_manager
 from .exceptions import (
@@ -74,9 +74,9 @@ async def create_user(
     # Validate user type
     validate_user_type(request.user_type)
     
-    # Validate PIN if provided
-    if request.pin:
-        validate_pin(request.pin)
+    raw_password = request.password if request.password is not None else request.pin
+    if raw_password:
+        validate_password(raw_password)
     
     # Create user via repository
     user = UserProfile(
@@ -92,18 +92,26 @@ async def create_user(
     
     await uow.users.create(user)
     
-    # Handle PIN if provided
-    if request.pin:
-        from aico.data.auth.models import UserCredentials
-        import hashlib
-        
-        credentials = UserCredentials(
+    if raw_password:
+        from aico.data.auth.models import AuthUserCredentials
+        from passlib.context import CryptContext
+
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        pw_bytes = raw_password.encode('utf-8')
+        if len(pw_bytes) > 72:
+            pw_to_hash = pw_bytes[:72].decode('utf-8', errors='ignore')
+        else:
+            pw_to_hash = raw_password
+
+        credentials = AuthUserCredentials(
             uuid=str(uuid_lib.uuid4()),
             user_uuid=user.uuid,
-            pin_hash=hashlib.sha256(request.pin.encode()).hexdigest(),
+            password_hash=pwd_context.hash(pw_to_hash),
             failed_attempts=0,
+            locked_until=None,
+            last_login=None,
             created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC)
+            updated_at=datetime.now(UTC),
         )
         await uow.credentials.create(credentials)
     
@@ -254,13 +262,16 @@ async def authenticate_user(
 ) -> AuthenticationResponse:
     """Authenticate a user with PIN and return JWT token - PostgreSQL Repository Pattern"""
     logger.info(f"AUTHENTICATE_USER: Starting authentication for user_uuid: {request.user_uuid}")
-    logger.info(f"AUTHENTICATE_USER: PIN provided: {bool(request.pin)}")
+    raw_password = request.password if request.password is not None else request.pin
+    logger.info(f"AUTHENTICATE_USER: password provided: {bool(raw_password)}")
     
     # Validate UUID format
     validate_uuid(request.user_uuid)
     
-    # Validate PIN format
-    validate_pin(request.pin)
+    if request.user_uuid == "system_user":
+        raise_api_error(status_code=401, error_code="AUTH_INVALID_CREDENTIALS", message="Invalid credentials")
+
+    validate_password(raw_password)
     
     try:
         from datetime import datetime, UTC
@@ -345,16 +356,16 @@ async def authenticate_user(
                 details={"locked_until": credentials.locked_until.isoformat()},
             )
         
-        # Verify PIN using bcrypt (must match CLI UserService hashing)
-        # Truncate PIN to 72 bytes to comply with bcrypt limits
+        # Verify password using bcrypt (must match CLI hashing)
+        # Truncate to 72 bytes to comply with bcrypt limits
         # Must truncate bytes, not characters, for proper UTF-8 handling
-        pin_bytes = request.pin.encode('utf-8')
-        if len(pin_bytes) > 72:
-            pin_to_verify = pin_bytes[:72].decode('utf-8', errors='ignore')
+        pw_bytes = raw_password.encode('utf-8')
+        if len(pw_bytes) > 72:
+            pw_to_verify = pw_bytes[:72].decode('utf-8', errors='ignore')
         else:
-            pin_to_verify = request.pin
+            pw_to_verify = raw_password
         
-        if not pwd_context.verify(pin_to_verify, credentials.pin_hash):
+        if not pwd_context.verify(pw_to_verify, credentials.password_hash):
             # Increment failed attempts
             await uow.credentials.increment_failed_attempts(request.user_uuid)
 
@@ -362,7 +373,7 @@ async def authenticate_user(
                 topic="auth.login.failed",
                 user_uuid=request.user_uuid,
                 user_name=user.full_name,
-                reason="invalid_pin",
+                reason="invalid_password",
             )
             await uow.commit()
 
@@ -653,31 +664,50 @@ async def refresh_token(
         )
 
 
-@router.post("/{user_uuid}/pin", status_code=status.HTTP_204_NO_CONTENT)
-@handle_user_service_exceptions
-async def set_user_pin(
+async def _set_user_password_impl(
+    *,
     user_uuid: str,
-    request: SetPinRequest,
-    admin_user = Depends(get_admin_dependency)
+    request: SetPasswordRequest,
+    admin_user,
 ):
-    """Set or update user's PIN"""
     if not user_service:
         raise_api_error(status_code=500, error_code="USER_SERVICE_NOT_INITIALIZED", message="User service not initialized")
-    
-    # Validate UUID format
+
     validate_uuid(user_uuid)
-    
-    # Validate PIN format
-    validate_pin(request.new_pin)
-    
-    success = await user_service.set_user_pin(user_uuid, request.new_pin)
+
+    raw_password = request.new_password if request.new_password is not None else request.new_pin
+    validate_password(raw_password)
+
+    success = await user_service.set_pin(user_uuid, raw_password)
     if not success:
         raise UserNotFoundError(user_uuid)
-    
-    logger.info("User PIN updated via API", extra={
+
+    logger.info("User password updated via API", extra={
         "user_uuid": user_uuid,
         "updated_by": admin_user.get("user_uuid") if admin_user else "unknown"
     })
+
+
+@router.post("/{user_uuid}/password", status_code=status.HTTP_204_NO_CONTENT)
+@handle_user_service_exceptions
+async def set_user_password(
+    user_uuid: str,
+    request: SetPasswordRequest,
+    admin_user = Depends(get_admin_dependency)
+):
+    """Set or update user's password"""
+    await _set_user_password_impl(user_uuid=user_uuid, request=request, admin_user=admin_user)
+
+
+@router.post("/{user_uuid}/pin", status_code=status.HTTP_204_NO_CONTENT, deprecated=True)
+@handle_user_service_exceptions
+async def set_user_pin(
+    user_uuid: str,
+    request: SetPasswordRequest,
+    admin_user = Depends(get_admin_dependency)
+):
+    """Deprecated alias for setting the user's password."""
+    await _set_user_password_impl(user_uuid=user_uuid, request=request, admin_user=admin_user)
 
 
 @router.post("/{user_uuid}/unlock", status_code=status.HTTP_204_NO_CONTENT)

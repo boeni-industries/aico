@@ -21,6 +21,9 @@ import asyncio
 import stat
 from pathlib import Path
 from typing import Tuple
+import uuid
+import yaml
+import json
 
 import typer
 from rich.console import Console
@@ -98,6 +101,7 @@ def _run_compose_file(compose_file: Path, args: list[str], env: dict | None = No
     ] + args
 
     run_env = os.environ.copy()
+    run_env.pop("AICO_MASTER_PASSWORD", None)
     if env:
         run_env.update(env)
 
@@ -246,21 +250,317 @@ def _get_or_create_postgres_password() -> str:
         if password := env_vars.get("AICO_PG_PASSWORD"):
             console.print(format_info("Using Postgres password from docker/.env"))
             return password
-    
+
     # Check environment variable
     if password := os.getenv("AICO_PG_PASSWORD"):
         console.print(format_info("Using Postgres password from environment"))
         # Save to .env for persistence
         _persist_credential("AICO_PG_PASSWORD", password)
         return password
-    
+
     # Auto-generate and persist
     console.print(format_info("Auto-generating Postgres password..."))
     password = _generate_secure_password(32)
     _persist_credential("AICO_PG_PASSWORD", password)
     console.print(format_success("✓ Postgres password generated and saved to docker/.env"))
-    
+
     return password
+
+
+def _load_deploy_config(config_file: str | None) -> dict:
+    if not config_file:
+        return {}
+
+    p = Path(config_file).expanduser()
+    if not p.exists():
+        console.print(format_error(f"Config file not found: {p}"))
+        raise typer.Exit(1)
+
+    try:
+        raw = p.read_text(encoding="utf-8")
+        if p.suffix.lower() == ".json":
+            data = json.loads(raw)
+        else:
+            data = yaml.safe_load(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        console.print(format_error(f"Failed to parse config file {p}: {e}"))
+        raise typer.Exit(1)
+
+
+def _read_master_password_from_file(path: str) -> str:
+    p = Path(path).expanduser()
+    if not p.exists():
+        raise ValueError(f"master password file not found: {p}")
+    value = p.read_text(encoding="utf-8").strip()
+    if not value:
+        raise ValueError(f"master password file is empty: {p}")
+    return value
+
+
+def _get_master_password(*, master_password_file: str | None, non_interactive: bool) -> str | None:
+    if master_password_file:
+        return _read_master_password_from_file(master_password_file)
+
+    if pw := os.getenv("AICO_MASTER_PASSWORD"):
+        return pw
+
+    if non_interactive:
+        return None
+
+    return None
+
+
+def _authenticate_for_deploy(*, non_interactive: bool, master_password_file: str | None) -> None:
+    """Ensure master key + JWT secret exist.
+
+    Supports headless bootstrap via master-password file or AICO_MASTER_PASSWORD.
+    """
+
+    config = ConfigurationManager()
+    key_manager = AICOKeyManager(config)
+
+    password = _get_master_password(master_password_file=master_password_file, non_interactive=non_interactive)
+
+    if not password and non_interactive and not key_manager.has_stored_key():
+        console.print(
+            format_error(
+                "Non-interactive deploy requires either --master-password-file or AICO_MASTER_PASSWORD "
+                "(unless master key already exists in keyring)."
+            )
+        )
+        raise typer.Exit(1)
+
+    try:
+        key_manager.authenticate(password=password, interactive=not non_interactive)
+    finally:
+        if "AICO_MASTER_PASSWORD" in os.environ:
+            os.environ.pop("AICO_MASTER_PASSWORD", None)
+
+    try:
+        key_manager.get_jwt_secret("api_gateway")
+    except Exception as e:
+        console.print(format_warning(f"Warning: failed to ensure JWT secret: {e}"))
+
+
+def _validate_admin_passcode(passcode: str, *, min_length: int) -> None:
+    value = passcode.strip()
+    if not value:
+        raise ValueError("Admin passcode cannot be empty")
+    if any(ch.isspace() for ch in value):
+        raise ValueError("Admin passcode must not contain whitespace")
+    if len(value) < min_length:
+        raise ValueError(f"Admin passcode must be at least {min_length} characters")
+
+    has_lower = any(ch.islower() for ch in value)
+    has_upper = any(ch.isupper() for ch in value)
+    has_digit = any(ch.isdigit() for ch in value)
+    has_symbol = any((not ch.isalnum()) for ch in value)
+
+    if not (has_lower and has_upper and has_digit and has_symbol):
+        raise ValueError("Admin passcode must include lowercase, uppercase, digit, and symbol")
+
+
+def _ensure_postgres_password_in_keyring(pg_password: str, *, non_interactive: bool) -> None:
+    """Persist the Postgres password into the keyring when available.
+
+    This is required for CLI helpers that expect `AICOKeyManager.get_database_password()` to work.
+    """
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    pg_cfg = config.get("postgres", {}) or {}
+    user = pg_cfg.get("user", "postgres")
+
+    key_manager = AICOKeyManager(config)
+
+    try:
+        existing = key_manager.get_database_password("postgres", username=user)
+        if existing:
+            return
+        key_manager.store_database_password(pg_password, "postgres", username=user)
+    except Exception as e:
+        if non_interactive:
+            console.print(format_warning(f"Warning: could not store Postgres password in keyring: {e}"))
+        else:
+            console.print(format_warning(f"Warning: could not store Postgres password in keyring: {e}"))
+
+
+def _bootstrap_postgres(
+    *,
+    tenant_display_name: str,
+    admin_full_name: str,
+    admin_pin: str | None,
+    primary_language: str | None,
+    non_interactive: bool,
+) -> tuple[str, str]:
+    """Idempotently ensure tenant + admin user + membership + admin role exist."""
+
+    import psycopg2
+    from passlib.context import CryptContext
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+
+    pg_cfg = config.get("postgres", {}) or {}
+    host = pg_cfg.get("host", "127.0.0.1")
+    port = int(pg_cfg.get("port", 5432))
+    db_name = pg_cfg.get("db_name", "aico")
+    user = pg_cfg.get("user", "postgres")
+
+    key_manager = AICOKeyManager(config)
+    pg_password = key_manager.get_database_password("postgres", username=user) or os.getenv("AICO_PG_PASSWORD")
+    if not pg_password:
+        raise RuntimeError("Postgres password not available; run 'aico deploy pg' first")
+
+    conn = psycopg2.connect(host=host, port=port, dbname=db_name, user=user, password=pg_password)
+    conn.autocommit = False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO aico_core, public;")
+
+            cur.execute(
+                "SELECT tenant_id FROM tenants WHERE display_name = %s AND tenant_type = 'deployment' LIMIT 1;",
+                (tenant_display_name,),
+            )
+            row = cur.fetchone()
+            if row:
+                tenant_id = str(row[0])
+            else:
+                tenant_id = str(uuid.uuid4())
+                cur.execute(
+                    """
+                    INSERT INTO tenants (
+                        tenant_id, tenant_type, display_name, status, primary_language, metadata_json, created_at, updated_at
+                    ) VALUES (
+                        %s, 'deployment', %s, 'active', %s, NULL, NOW(), NOW()
+                    );
+                    """,
+                    (tenant_id, tenant_display_name, primary_language),
+                )
+
+            cur.execute(
+                "SELECT uuid FROM user_profiles WHERE full_name = %s AND is_active = TRUE ORDER BY created_at ASC LIMIT 1;",
+                (admin_full_name,),
+            )
+            row = cur.fetchone()
+            if row:
+                admin_user_uuid = str(row[0])
+            else:
+                admin_user_uuid = str(uuid.uuid4())
+                cur.execute(
+                    """
+                    INSERT INTO user_profiles (uuid, full_name, nickname, user_type, is_active, primary_language, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, TRUE, %s, NOW(), NOW());
+                    """,
+                    (admin_user_uuid, admin_full_name, None, "person", primary_language or "en"),
+                )
+
+            # Ensure the earliest-created non-system user is the bootstrap admin/owner.
+            cur.execute(
+                """
+                SELECT uuid
+                FROM user_profiles
+                WHERE uuid != %s AND is_active = TRUE
+                ORDER BY created_at ASC
+                LIMIT 1;
+                """,
+                ("system_user",),
+            )
+            row = cur.fetchone()
+            bootstrap_user_uuid = str(row[0]) if row else admin_user_uuid
+
+            if admin_pin:
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+                pin_bytes = admin_pin.encode("utf-8")
+                if len(pin_bytes) > 72:
+                    pin_to_hash = pin_bytes[:72].decode("utf-8", errors="ignore")
+                else:
+                    pin_to_hash = admin_pin
+                pin_hash = pwd_context.hash(pin_to_hash)
+
+                cur.execute("SELECT uuid FROM auth_user_credentials WHERE user_uuid = %s;", (admin_user_uuid,))
+                auth_row = cur.fetchone()
+                if auth_row:
+                    cur.execute(
+                        "UPDATE auth_user_credentials SET password_hash = %s, updated_at = NOW() WHERE user_uuid = %s;",
+                        (pin_hash, admin_user_uuid),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO auth_user_credentials (uuid, user_uuid, password_hash, failed_attempts, created_at, updated_at)
+                        VALUES (%s, %s, %s, 0, NOW(), NOW());
+                        """,
+                        (str(uuid.uuid4()), admin_user_uuid, pin_hash),
+                    )
+
+            cur.execute(
+                "SELECT membership_id FROM tenant_memberships WHERE tenant_id = %s AND user_id = %s;",
+                (tenant_id, bootstrap_user_uuid),
+            )
+            row = cur.fetchone()
+            if not row:
+                cur.execute(
+                    """
+                    INSERT INTO tenant_memberships (membership_id, tenant_id, user_id, role, created_at)
+                    VALUES (%s, %s, %s, 'owner', NOW());
+                    """,
+                    (str(uuid.uuid4()), tenant_id, bootstrap_user_uuid),
+                )
+
+            cur.execute(
+                """
+                SELECT uuid FROM auth_access_policies
+                WHERE user_uuid = %s AND resource_type = 'role' AND permission = 'admin' AND is_active = TRUE
+                LIMIT 1;
+                """,
+                (bootstrap_user_uuid,),
+            )
+            row = cur.fetchone()
+            if not row:
+                cur.execute(
+                    """
+                    INSERT INTO auth_access_policies (uuid, user_uuid, resource_type, resource_uuid, permission, is_active, created_at)
+                    VALUES (%s, %s, 'role', NULL, 'admin', TRUE, NOW());
+                    """,
+                    (str(uuid.uuid4()), bootstrap_user_uuid),
+                )
+
+        conn.commit()
+        return tenant_id, bootstrap_user_uuid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _write_deploy_state(tenant_id: str, admin_user_uuid: str) -> None:
+    from aico.core.paths import AICOPaths
+
+    runtime_dir = AICOPaths.get_runtime_path()
+    path = runtime_dir / "deploy-state.yaml"
+    payload = {
+        "version": 1,
+        "tenant_id": tenant_id,
+        "admin_user_uuid": admin_user_uuid,
+    }
+    path.write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")
+
+
+def _load_deploy_state() -> dict:
+    from aico.core.paths import AICOPaths
+
+    runtime_dir = AICOPaths.get_runtime_path()
+    path = runtime_dir / "deploy-state.yaml"
+    if not path.exists():
+        return {}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 def _setup_influx_downsampling(admin_token: str) -> None:
@@ -1253,6 +1553,131 @@ def _nuke_vllm() -> int:
 
 
 app = typer.Typer(help="Deploy and provision AICO infrastructure")
+
+
+@app.command("system", help="Provision full AICO system (one-command bootstrap)")
+def deploy_system(
+    config_file: str = typer.Option(None, "--config", help="YAML/JSON config file for non-interactive bootstrap"),
+    non_interactive: bool = typer.Option(False, "--non-interactive", help="Fail instead of prompting for missing values"),
+    services: bool = typer.Option(
+        True,
+        "--services/--no-services",
+        help="Also deploy gateway/core/modelservice containers (recommended for zero-to-operational)",
+    ),
+    master_password_file: str = typer.Option(
+        None,
+        "--master-password-file",
+        help="Path to a file containing the master password (recommended for headless/server installs)",
+    ),
+    tenant_display_name: str = typer.Option(None, "--tenant-display-name", help="Tenant display name"),
+    admin_full_name: str = typer.Option(None, "--admin-full-name", help="Admin/owner full name"),
+    admin_pin: str = typer.Option(None, "--admin-pin", help="Optional admin PIN (will be hashed and stored)"),
+    primary_language: str = typer.Option(None, "--primary-language", help="Optional primary language (BCP-47 code)")
+):
+    """One-command bootstrap: infra + schema + tenant + admin user.
+
+    Secrets:
+    - Reads master password from --master-password-file or AICO_MASTER_PASSWORD.
+    - Best-effort scrubs AICO_MASTER_PASSWORD from this process env after use.
+    """
+
+    cfg = _load_deploy_config(config_file)
+
+    if master_password_file is None:
+        master_password_file = (
+            cfg.get("security", {}) if isinstance(cfg.get("security"), dict) else {}
+        ).get("master_password_file")
+
+    if isinstance(cfg.get("system"), dict) and isinstance(cfg["system"].get("services"), bool):
+        services = bool(cfg["system"]["services"])
+
+    if tenant_display_name is None:
+        tenant_display_name = (
+            cfg.get("tenant", {}) if isinstance(cfg.get("tenant"), dict) else {}
+        ).get("display_name")
+    if admin_full_name is None:
+        admin_full_name = (
+            cfg.get("admin", {}) if isinstance(cfg.get("admin"), dict) else {}
+        ).get("full_name")
+    if admin_pin is None:
+        admin_pin = (
+            cfg.get("admin", {}) if isinstance(cfg.get("admin"), dict) else {}
+        ).get("pin")
+    if primary_language is None:
+        primary_language = (
+            cfg.get("tenant", {}) if isinstance(cfg.get("tenant"), dict) else {}
+        ).get("primary_language")
+
+    if tenant_display_name is None:
+        if non_interactive:
+            console.print(format_error("Missing --tenant-display-name (or tenant.display_name in --config)"))
+            raise typer.Exit(1)
+        tenant_display_name = typer.prompt("Tenant display name")
+
+    if admin_full_name is None:
+        if non_interactive:
+            console.print(format_error("Missing --admin-full-name (or admin.full_name in --config)"))
+            raise typer.Exit(1)
+        admin_full_name = typer.prompt("Admin full name")
+
+    # Admin passcode policy (may be configured to be stricter, but never weaker).
+    min_length = 12
+    try:
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        configured = config.get_optional("security.authentication.admin_passcode_policy.min_length", default=None)
+        if isinstance(configured, int) and configured > min_length:
+            min_length = configured
+    except Exception:
+        pass
+
+    if admin_pin is None:
+        if non_interactive:
+            console.print(format_error("Missing --admin-pin (or admin.pin in --config)"))
+            raise typer.Exit(1)
+        admin_pin = typer.prompt("Admin passcode", hide_input=True)
+
+    try:
+        _validate_admin_passcode(admin_pin, min_length=min_length)
+    except Exception as e:
+        console.print(format_error(str(e)))
+        raise typer.Exit(1)
+
+    console.rule("[bold cyan]AICO System Deployment[/bold cyan]")
+
+    _authenticate_for_deploy(non_interactive=non_interactive, master_password_file=master_password_file)
+
+    # Provision Postgres (container + schema). This is idempotent without --nuke.
+    deploy_pg(nuke=False, shadow=False)
+
+    # Ensure pg password is available for subsequent CLI DB operations.
+    pg_password = _get_or_create_postgres_password()
+    _ensure_postgres_password_in_keyring(pg_password, non_interactive=non_interactive)
+
+    # Ensure internal system user exists (required by various subsystems)
+    asyncio.run(_ensure_system_user_async())
+
+    state = _load_deploy_state()
+    if state.get("tenant_id") and state.get("admin_user_uuid"):
+        console.print(format_info("Deploy state already exists; ensuring bootstrap is consistent..."))
+
+    tenant_id, admin_user_uuid = _bootstrap_postgres(
+        tenant_display_name=tenant_display_name,
+        admin_full_name=admin_full_name,
+        admin_pin=admin_pin,
+        primary_language=primary_language,
+        non_interactive=non_interactive,
+    )
+    _write_deploy_state(tenant_id=tenant_id, admin_user_uuid=admin_user_uuid)
+
+    if services:
+        deploy_gateway(nuke=False)
+        deploy_core(nuke=False)
+        deploy_modelservice(nuke=False)
+
+    console.print(format_success("✅ System bootstrap complete"))
+    console.print(f"tenant_id: {tenant_id}")
+    console.print(f"admin_user_uuid: {admin_user_uuid}")
 
 
 @app.command("pg", help="Provision Postgres (container + schema), optionally with --nuke for full reset")

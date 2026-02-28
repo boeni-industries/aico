@@ -18,12 +18,14 @@ sys.path.insert(0, str(backend_dir))
 from aico.core.config import ConfigurationManager
 from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import initialize_logging, get_logger, shutdown_logging
+from aico.core.fs_guard import enable_fs_guard
 
 from core.lifecycle_manager import BackendLifecycleManager
 
 
 config_manager = ConfigurationManager()
 initialize_logging(service_name="core", enable_loki=True, enable_console=True)
+enable_fs_guard()
 config_manager.initialize(lightweight=False)
 validate_startup_config(config_manager, service="backend")
 print_config_summary(config_manager)

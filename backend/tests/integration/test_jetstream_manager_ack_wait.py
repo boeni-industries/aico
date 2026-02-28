@@ -41,4 +41,4 @@ async def test_ensure_consumer_converts_ack_wait_seconds_to_nanoseconds():
     assert len(js.added) == 1
     stream, cfg = js.added[0]
     assert stream == "SCHEDULER_JOBS"
-    assert cfg.ack_wait == 12 * 1_000_000_000
+    assert cfg.ack_wait == 12

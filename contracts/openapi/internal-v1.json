@@ -424,10 +424,29 @@
             "description": "Nickname",
             "title": "Nickname"
           },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Initial password",
+            "title": "Password"
+          },
           "pin": {
-            "description": "Initial PIN",
-            "title": "Pin",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deprecated alias for password",
+            "title": "Pin"
           },
           "primary_language": {
             "anyOf": [
@@ -449,8 +468,7 @@
         },
         "required": [
           "full_name",
-          "user_type",
-          "pin"
+          "user_type"
         ],
         "title": "AdminUserCreateRequest",
         "type": "object"
@@ -597,10 +615,29 @@
             "title": "Confirm",
             "type": "boolean"
           },
+          "new_password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New password",
+            "title": "New Password"
+          },
           "new_pin": {
-            "description": "New PIN",
-            "title": "New Pin",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deprecated alias for new_password",
+            "title": "New Pin"
           },
           "require_change_on_login": {
             "anyOf": [
@@ -615,9 +652,6 @@
             "title": "Require Change On Login"
           }
         },
-        "required": [
-          "new_pin"
-        ],
         "title": "AdminUserSetPinRequest",
         "type": "object"
       },
@@ -1075,10 +1109,22 @@
       "AuthenticateRequest": {
         "description": "Request schema for user authentication",
         "properties": {
-          "pin": {
-            "description": "User PIN",
-            "title": "Pin",
+          "password": {
+            "description": "User password",
+            "title": "Password",
             "type": "string"
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deprecated alias for password",
+            "title": "Pin"
           },
           "user_uuid": {
             "description": "User UUID",
@@ -1089,7 +1135,7 @@
         },
         "required": [
           "user_uuid",
-          "pin"
+          "password"
         ],
         "title": "AuthenticateRequest",
         "type": "object"
@@ -2555,6 +2601,18 @@
             "description": "Optional nickname",
             "title": "Nickname"
           },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional password for authentication",
+            "title": "Password"
+          },
           "pin": {
             "anyOf": [
               {
@@ -2564,7 +2622,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional PIN for authentication",
+            "description": "Deprecated alias for password",
             "title": "Pin"
           },
           "primary_language": {
@@ -9767,19 +9825,31 @@
         "title": "SessionsListResponse",
         "type": "object"
       },
-      "SetPinRequest": {
-        "description": "Request schema for setting/updating user PIN",
+      "SetPasswordRequest": {
+        "description": "Request schema for setting/updating user password",
         "properties": {
-          "new_pin": {
-            "description": "New PIN",
-            "title": "New Pin",
+          "new_password": {
+            "description": "New password",
+            "title": "New Password",
             "type": "string"
+          },
+          "new_pin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deprecated alias for new_password",
+            "title": "New Pin"
           }
         },
         "required": [
-          "new_pin"
+          "new_password"
         ],
-        "title": "SetPinRequest",
+        "title": "SetPasswordRequest",
         "type": "object"
       },
       "SimulateInteractionRequest": {
@@ -15175,7 +15245,7 @@
     },
     "/api/v1/admin/users/{user_uuid}/password": {
       "put": {
-        "operationId": "admin_set_user_pin_api_v1_admin_users__user_uuid__password_put",
+        "operationId": "admin_set_user_password_api_v1_admin_users__user_uuid__password_put",
         "parameters": [
           {
             "in": "path",
@@ -15224,7 +15294,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin Set User Pin",
+        "summary": "Admin Set User Password",
         "tags": [
           "admin"
         ]
@@ -24036,9 +24106,61 @@
         ]
       }
     },
+    "/api/v1/users/{user_uuid}/password": {
+      "post": {
+        "description": "Set or update user's password",
+        "operationId": "set_user_password_api_v1_users__user_uuid__password_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_uuid",
+            "required": true,
+            "schema": {
+              "title": "User Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set User Password",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/v1/users/{user_uuid}/pin": {
       "post": {
-        "description": "Set or update user's PIN",
+        "deprecated": true,
+        "description": "Deprecated alias for setting the user's password.",
         "operationId": "set_user_pin_api_v1_users__user_uuid__pin_post",
         "parameters": [
           {
@@ -24055,7 +24177,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SetPinRequest"
+                "$ref": "#/components/schemas/SetPasswordRequest"
               }
             }
           },

@@ -18,6 +18,26 @@ AICO's configuration management system provides a unified, hierarchical, and sec
 - **Environment Isolation**: Clear separation between dev/staging/prod environments
 - **Cross-Platform**: Consistent behavior across Windows, macOS, Linux
 
+## Runtime filesystem write guard (fs_guard)
+
+AICO enforces a strict runtime filesystem write guard (`fs_guard`) in backend entrypoints. Any attempt to write files outside approved runtime locations will **fail loudly** (CRITICAL log + exception).
+
+### Allowed write locations
+
+Writes are only allowed under `AICO_DATA_DIR` in the following subdirectories:
+- `AICO_DATA_DIR/runtime`
+- `AICO_DATA_DIR/cache`
+- `AICO_DATA_DIR/logs`
+- `AICO_DATA_DIR/tmp`
+- `AICO_DATA_DIR/artifacts`
+
+This supports stateless service processes (especially in Docker/HA deployments) by preventing correctness-critical state from accidentally being written to local disk.
+
+### Configuration implications
+
+- `AICO_CONFIG_DIR` may be treated as read-only in container deployments.
+- Runtime overrides must be persisted in a writable location under `AICO_DATA_DIR`.
+
 ## Architecture Overview
 
 ```mermaid

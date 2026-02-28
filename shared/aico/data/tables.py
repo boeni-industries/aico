@@ -213,14 +213,14 @@ auth_user_credentials = Table(
     metadata,
     Column('uuid', String, primary_key=True),
     Column('user_uuid', String, ForeignKey('user_profiles.uuid', ondelete='CASCADE'), nullable=False),
-    Column('pin_hash', String, nullable=False),
+    Column('password_hash', String, nullable=False),
     Column('failed_attempts', Integer, default=0),
     Column('locked_until', TIMESTAMP(timezone=True)),
     Column('last_login', TIMESTAMP(timezone=True)),
     Column('created_at', TIMESTAMP(timezone=True)),
     Column('updated_at', TIMESTAMP(timezone=True)),
     Index('idx_user_authentication_locked_until', 'locked_until'),
-    Index('idx_user_authentication_pin_hash', 'pin_hash'),
+    Index('idx_user_authentication_password_hash', 'password_hash'),
     Index('idx_user_authentication_user', 'user_uuid'),
 )
 
