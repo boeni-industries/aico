@@ -952,27 +952,49 @@ class TaskScheduler(BaseService):
                 break
     
     async def _check_for_triggers(self) -> List[str]:
-        """Check for manually triggered tasks via trigger files."""
+        """Check for manually triggered tasks via trigger files.
+        
+        Checks both container-native (/run/aico/triggers) and legacy host bind mount
+        locations for backward compatibility during migration.
+        """
         triggered_tasks = []
+        
+        # Check container-native location (priority)
         try:
-            from aico.core.paths import AICOPaths
-            paths = AICOPaths()
-            trigger_dir = paths.get_runtime_path() / "scheduler" / "triggers"
-
-            if not trigger_dir.exists():
-                return []
-
-            for trigger_file in trigger_dir.glob("*.trigger"):
-                task_id = trigger_file.stem
-                self.logger.debug(f"Manual trigger file detected for task: {task_id}")
-                triggered_tasks.append(task_id)
-                try:
-                    trigger_file.unlink()  # Delete after processing
-                except OSError as e:
-                    self.logger.error(f"Failed to delete trigger file {trigger_file}: {e}")
-
+            import os
+            runtime_dir = Path(os.getenv("AICO_RUNTIME_DIR", "/run/aico"))
+            trigger_dir = runtime_dir / "triggers"
+            
+            if trigger_dir.exists():
+                for trigger_file in trigger_dir.glob("*.trigger"):
+                    task_id = trigger_file.stem
+                    if task_id not in triggered_tasks:
+                        self.logger.debug(f"Manual trigger file detected (container-native): {task_id}")
+                        triggered_tasks.append(task_id)
+                    try:
+                        trigger_file.unlink()
+                    except OSError as e:
+                        self.logger.error(f"Failed to delete trigger file {trigger_file}: {e}")
         except Exception as e:
-            self.logger.error(f"Error checking for task triggers: {e}")
+            self.logger.error(f"Error checking container-native triggers: {e}")
+        
+        # Check legacy host bind mount location (backward compatibility)
+        try:
+            host_runtime = os.getenv("AICO_HOST_RUNTIME_DIR")
+            if host_runtime:
+                legacy_trigger_dir = Path(host_runtime) / "triggers"
+                if legacy_trigger_dir.exists():
+                    for trigger_file in legacy_trigger_dir.glob("*.trigger"):
+                        task_id = trigger_file.stem
+                        if task_id not in triggered_tasks:
+                            self.logger.debug(f"Manual trigger file detected (legacy host): {task_id}")
+                            triggered_tasks.append(task_id)
+                        try:
+                            trigger_file.unlink()
+                        except OSError as e:
+                            self.logger.error(f"Failed to delete trigger file {trigger_file}: {e}")
+        except Exception as e:
+            self.logger.error(f"Error checking legacy host triggers: {e}")
 
         return triggered_tasks
 

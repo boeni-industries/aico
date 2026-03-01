@@ -14,12 +14,12 @@
 - [x] Harden scheduler + workers: idempotent tasks, tenant-scoped, multi-replica safe (JetStream work-queue + Postgres idempotency + integration coverage + no-stall test harness)
 - [x] Make backend stateless: verify all correctness-critical state is in Postgres/JetStream (strict fs_guard + outbox restart/idempotency + scheduler dedupe + reconnect catch-up + crash/restart failover)
 - [x] Decommission legacy: remove ZMQ broker path, LMDB, ChromaDB (✅ All removed - using PostgreSQL + pgvector)
-- [ ] **Redesign credential management and system setup for fully dockerized architecture (aico security init, aico config init, etc.)**
-- [ ] **Migrate runtime directory structure to docker-based environment (eliminate native process assumptions)**
+- [x] **Redesign credential management and system setup for fully dockerized architecture (✅ Docker Compose secrets system implemented: `docker/secrets/*` mounted to `/run/secrets/*`, CredentialProvider reads from secrets, `aico security secrets-show/secrets-sync` for admin access, `aico deploy` bootstraps from legacy .env)**
+- [x] **Migrate runtime directory structure to docker-based environment (✅ Phase 1 complete: Removed host bind mount, scheduler uses `/run/aico/triggers` (tmpfs), CLI triggers via API, backward compatible during migration, zero data loss verified)**
 - [x] **Clean up legacy native process architecture (remove start/stop service commands, process management)**
 - [x] **Ensure all Docker components properly represented in CLI; remove legacy tech debt**
 - [x] **Create `aico deploy` CLI command: zero-to-operational system installation (prod default, --dev flag for development)**
-- [ ] **Create `aico upgrade` CLI: Analyze and refactor to the current system reality with the architectural change to virtualized / docker containers**
+- [x] **Create `aico upgrade` CLI: Analyze and refactor to the current system reality with the architectural change to virtualized / docker containers (✅ Implemented: `aico upgrade status/check/run/rollback` with pre-flight checks, database backup, safe container updates, and rollback capability)**
 - [ ] Update AICO-Studio to use the new architectur (e.g. the split of gateway, core, modelservice) and in general to reflect the new architecture. We have also changed the used DB's for example. We need to align the AICO-Studio to the new architecture.
 - [ ] Observability: add OpenTelemetry Collector (OTLP ingest + tail sampling + spanmetrics)
 - [ ] Observability: add Tempo (+ Grafana Tempo datasource) for trace/span drilldown

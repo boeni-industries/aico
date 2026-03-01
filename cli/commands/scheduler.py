@@ -501,14 +501,7 @@ def trigger_task(
 ):
     """Manually trigger a task to run immediately"""
     try:
-        from aico.core.paths import AICOPaths
-
-        paths = AICOPaths()
-        trigger_dir = paths.get_runtime_path() / "scheduler" / "triggers"
-        trigger_dir.mkdir(parents=True, exist_ok=True)
-
-        # Use a simple file-based trigger mechanism
-        trigger_file = trigger_dir / f"{task_id}.trigger"
+        from cli.utils.api_client import get_gateway_client
         
         with Progress(
             SpinnerColumn(),
@@ -517,22 +510,34 @@ def trigger_task(
         ) as progress:
             progress.add_task(description=f"Triggering task '{task_id}'...", total=None)
             
-            # Check task exists before triggering
-            with _get_database_connection() as db:
-                cursor = db.cursor()
-                cursor.execute("SELECT task_id FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
-                if not cursor.fetchone():
+            # Trigger task via API (container-native approach)
+            with get_gateway_client() as client:
+                response = client.post(f"/api/v1/scheduler/tasks/{task_id}/trigger")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("success"):
+                        console.print(f"[green]Successfully triggered task '{task_id}'[/green]")
+                        console.print("[dim]Note: The task will run on the next scheduler check.[/dim]")
+                        console.print(
+                            f"[dim]Tip: To see what happened, run [cyan]aico scheduler history {task_id}[/cyan] after it executes.[/dim]"
+                        )
+                    else:
+                        console.print(f"[yellow]Task trigger request sent but returned: {data.get('message', 'Unknown status')}[/yellow]")
+                elif response.status_code == 404:
                     console.print(f"[red]Task not found: {task_id}[/red]")
                     raise typer.Exit(1)
-
-            # Create the trigger file
-            trigger_file.touch()
-
-        console.print(f"[green]Successfully sent trigger request for task '{task_id}'[/green]")
-        console.print("[dim]Note: The task will run on the next scheduler check.[/dim]")
-        console.print(
-            f"[dim]Tip: To see what happened, run [cyan]aico scheduler history {task_id}[/cyan] after it executes.[/dim]"
-        )
+                elif response.status_code == 403:
+                    console.print(f"[red]Permission denied. Admin access required to trigger tasks.[/red]")
+                    raise typer.Exit(1)
+                else:
+                    console.print(f"[red]Failed to trigger task: HTTP {response.status_code}[/red]")
+                    try:
+                        error_data = response.json()
+                        console.print(f"[red]{error_data.get('detail', 'Unknown error')}[/red]")
+                    except Exception:
+                        pass
+                    raise typer.Exit(1)
 
     except Exception as e:
         console.print(f"[red]Error triggering task: {e}[/red]")

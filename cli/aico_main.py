@@ -68,6 +68,7 @@ COMMAND_MODULES = {
     "tenant": "cli.commands.tenant",
     "influx": "cli.commands.influx",
     "deploy": "cli.commands.deploy",
+    "upgrade": "cli.commands.upgrade",
     "scheduler": "cli.commands.scheduler",
     "emotion": "cli.commands.emotion",
     "dev": "cli.commands.dev",
@@ -115,6 +116,7 @@ from cli.commands.pg import app as pg_app
 from cli.commands.tenant import app as tenant_app
 from cli.commands.influx import app as influx_app
 from cli.commands.deploy import app as deploy_app
+from cli.commands.upgrade import app as upgrade_app
 
 app = typer.Typer(
     name="aico",
@@ -130,6 +132,7 @@ app.add_typer(pg_app, name="pg", help=f"{chars['database']} Postgres/Timescale b
 app.add_typer(tenant_app, name="tenant", help="🏢 Tenant management")
 app.add_typer(influx_app, name="influx", help=f"{chars['database']} InfluxDB time-series database management")
 app.add_typer(deploy_app, name="deploy", help=f"{chars['dev']} Deployment orchestration for Postgres/InfluxDB backends")
+app.add_typer(upgrade_app, name="upgrade", help="⬆️  System upgrade management with rollback capability")
 app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
 app.add_typer(logs_app, name="logs", help=f"{chars['logs']} Log management and analysis")
 app.add_typer(emotion_app, name="emotion", help="🎭 Emotional simulation management")
@@ -203,6 +206,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             (chars["database"], "pg", "PostgreSQL database management (with pgvector)"),
             (chars["database"], "influx", "InfluxDB time-series database management"),
             ("🚀", "deploy", "Deployment orchestration for Postgres/InfluxDB backends"),
+            ("⬆️", "upgrade", "System upgrade management with rollback capability"),
             ("💡", "kg", "Knowledge graph management and inspection"),
             (chars["security"], "security", "Master password setup and security management"),
             (chars["config"], "config", "Configuration management and validation"),
