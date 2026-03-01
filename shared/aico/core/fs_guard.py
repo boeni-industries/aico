@@ -28,6 +28,10 @@ def _normalize_path(path: str | os.PathLike[str]) -> Path:
 
 
 def _is_allowed(path: Path) -> bool:
+    # Allow /tmp for system libraries (e.g., keyring backend detection)
+    if str(path).startswith("/tmp/"):
+        return True
+    
     for root in _ALLOWED_ROOTS:
         try:
             if path.is_relative_to(root):

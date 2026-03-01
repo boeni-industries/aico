@@ -509,8 +509,11 @@ async def authenticate_user(
         logger.info(f"Authentication success response: {response.dict()}")
         return response
         
+    except HTTPException:
+        # Re-raise HTTPException (401, 404, etc.) without converting to 500
+        raise
     except Exception as e:
-        logger.error(f"Authentication failed: {e}")
+        logger.error(f"Authentication system error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         try:
