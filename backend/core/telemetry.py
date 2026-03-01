@@ -142,14 +142,15 @@ class TelemetryManager:
         influx_org = influx_org or influx_config.get('org') or 'aico'
         influx_bucket = influx_bucket or influx_config.get('bucket') or 'aico_telemetry'
         
-        # Read token from keyring automatically
         from aico.security.key_manager import AICOKeyManager
+        from aico.security.credential_provider import CredentialProvider
         from aico.core.config import ConfigurationManager
         
         try:
             config_manager = ConfigurationManager()
             key_manager = AICOKeyManager(config_manager)
-            influx_token = os.getenv("AICO_INFLUX_ADMIN_TOKEN") or key_manager.get_database_password(
+            provider = CredentialProvider()
+            influx_token = provider.get("influx_admin_token") or key_manager.get_database_password(
                 'influx', username='admin_token'
             )
             

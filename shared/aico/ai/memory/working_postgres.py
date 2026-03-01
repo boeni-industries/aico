@@ -164,12 +164,40 @@ class PostgresWorkingMemoryStore:
             active = (await uow._session.execute(active_stmt)).scalar() or 0
             expired = (await uow._session.execute(expired_stmt)).scalar() or 0
 
+            # Get recent activity (last 10 messages)
+            recent_stmt = (
+                select(working_memory_messages)
+                .where(
+                    or_(working_memory_messages.c.expires_at.is_(None), working_memory_messages.c.expires_at > now)
+                )
+                .order_by(working_memory_messages.c.stored_at.desc())
+                .limit(10)
+            )
+            recent_result = await uow._session.execute(recent_stmt)
+            recent_rows = recent_result.fetchall()
+
         capacity = max(10000, int(active) * 2)
         utilization_percent = (active / capacity) * 100 if capacity else 0.0
+
+        # Build recent_activity list
+        recent_activity = []
+        for row in recent_rows:
+            mapping = row._mapping
+            recent_activity.append({
+                "id": f"{mapping['conversation_id']}:{mapping['stored_at'].isoformat()}",
+                "timestamp": mapping["stored_at"].isoformat(),
+                "action": "stored",
+                "conversation_id": mapping["conversation_id"],
+                "role": mapping["role"],
+                "preview": mapping["content"] or "",
+            })
 
         return {
             "active_items": int(active),
             "expired_items": int(expired),
             "capacity": capacity,
             "utilization_percent": round(utilization_percent, 2),
+            "ttl_utilization_percent": round(utilization_percent, 2),  # Simplified for now
+            "eviction_rate_per_min": round(expired / 60.0, 2) if expired > 0 else 0.0,
+            "recent_activity": recent_activity,
         }

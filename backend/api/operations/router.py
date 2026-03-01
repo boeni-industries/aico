@@ -77,6 +77,7 @@ async def get_database_stats(
             import psycopg2
             from aico.core.config import ConfigurationManager
             from aico.security.key_manager import AICOKeyManager
+            from aico.security.credential_provider import CredentialProvider
             
             config = ConfigurationManager()
             config.initialize(lightweight=True)
@@ -93,8 +94,8 @@ async def get_database_stats(
             )
             db_user = pg_config.get('user', 'postgres')
             
-            # Get password from keyring using AICOKeyManager
-            db_password = os.environ.get("AICO_PG_PASSWORD") or ''
+            provider = CredentialProvider()
+            db_password = provider.get("pg_password") or ''
             if not db_password:
                 key_manager = AICOKeyManager(config)
                 db_password = key_manager.get_database_password('postgres', username=db_user) or ''

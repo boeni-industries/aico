@@ -1346,6 +1346,20 @@ class ConversationEngine(BaseService):
                 )
             )
 
+        # Best-effort working-memory population (UI uses this for "Working" stats).
+        # Keep this decoupled from persistence: failures must not affect the golden path.
+        try:
+            memory_manager = ai_registry.get("memory")
+            if memory_manager:
+                await memory_manager.store_message(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    content=content,
+                    role="user",
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to store user message in working memory: {e}")
+
     async def _persist_assistant_message(
         self,
         *,
@@ -1385,6 +1399,19 @@ class ConversationEngine(BaseService):
                     created_at=now,
                 )
             )
+
+        # Best-effort working-memory population (UI uses this for "Working" stats).
+        try:
+            memory_manager = ai_registry.get("memory")
+            if memory_manager:
+                await memory_manager.store_message(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    content=content,
+                    role="assistant",
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to store assistant message in working memory: {e}")
     
     def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None, user_message: Optional[ConversationMessage] = None) -> str:
         """Build system prompt with memory context and optional skill template

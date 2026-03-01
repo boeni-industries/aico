@@ -69,11 +69,12 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("session", "Show CLI session status and timeout information"),
             ("clear", "Clear cached master key (forces password re-entry)"),
             ("test", "Performance diagnostics and key derivation benchmarking"),
-            ("list-keys", "List all AICO keys stored in system keyring"),
             ("get-key", "Retrieve value of a specific key from keyring"),
             ("pg-set", "Store Postgres password securely via AICOKeyManager"),
             ("pg-env", "Export Postgres env vars for CI/CD and docker-compose"),
-            ("env-sync", "Sync credentials from an env file (e.g. docker/.env) into the keyring"),
+            ("env-sync", "Sync credentials from an env file into the keyring"),
+            ("secrets-show", "Show docker/compose secrets on disk (docker/secrets/*)"),
+            ("secrets-sync", "Sync docker/compose secrets (docker/secrets/*) into the keyring"),
             ("influx-set", "Store InfluxDB API token securely via AICOKeyManager"),
             ("influx-env", "Export InfluxDB env vars for CI/CD and docker-compose"),
             ("user-create", "Create a new user with optional password authentication"),
@@ -99,12 +100,12 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             "aico security session",
             "aico security test",
             "aico security passwd",
-            "aico security list-keys",
             "aico security get-key influx_admin_password",
             "aico security get-key influx_admin_token_password --show",
             "aico security pg-set",
             "aico security influx-set",
-            "aico security env-sync --env-file docker/.env",
+            "aico security secrets-show",
+            "aico security secrets-sync",
             "aico security pg-env --ci --format env --include-secrets",
             "aico security role-bootstrap <user-uuid>",
             "aico security role-assign <user-uuid> admin",
@@ -399,7 +400,7 @@ def pg_set():
 @app.command("env-sync", help="Sync credentials from an env file (e.g. docker/.env) into the keyring")
 @sensitive("stores credentials in system keyring")
 def env_sync(
-    env_file: str = typer.Option("docker/.env", "--env-file", "-f", help="Path to env file (default: docker/.env)"),
+    env_file: str = typer.Option("docker/.env", "--env-file", "-f", help="Path to env file"),
     include_jwt: bool = typer.Option(False, "--include-jwt", help="Also sync AICO_API_GATEWAY_JWT_SECRET into the keyring"),
 ):
     """Sync common AICO credentials from an env file into the keyring.
@@ -464,6 +465,102 @@ def env_sync(
             console.print(f"⚠️ [yellow]AICO_API_GATEWAY_JWT_SECRET missing/empty in {env_file} (skipping JWT)[/yellow]")
 
     console.print(f"✅ [green]Synced {synced} credential(s) from {env_file} into the keyring[/green]")
+
+
+def _get_docker_secrets_dir() -> Path:
+    if getattr(sys, 'frozen', False):
+        repo_root = Path.cwd()
+    else:
+        repo_root = Path(__file__).parent.parent.parent
+    return (repo_root / "docker" / "secrets").resolve()
+
+
+@app.command("secrets-show", help="Show docker/compose secrets stored as files under docker/secrets/*")
+@sensitive("shows docker secrets from disk")
+def secrets_show(
+    show_values: bool = typer.Option(False, "--show", "-s", help="Show secret values (redacted by default)"),
+):
+    secrets_dir = _get_docker_secrets_dir()
+    if not secrets_dir.exists():
+        console.print(f"❌ [red]Secrets directory not found: {secrets_dir}[/red]")
+        raise typer.Exit(1)
+
+    secret_files = [
+        "pg_password",
+        "api_gateway_jwt_secret",
+        "influx_admin_password",
+        "influx_admin_token",
+    ]
+
+    table = Table(title=f"Docker Secrets (on disk): {secrets_dir}", show_header=True, header_style="bold blue", box=box.SIMPLE)
+    table.add_column("Secret", style="cyan")
+    table.add_column("Exists")
+    table.add_column("Value")
+
+    for name in secret_files:
+        p = secrets_dir / name
+        exists = p.exists()
+        value = ""
+        if exists:
+            if show_values:
+                value = p.read_text(encoding="utf-8").strip()
+            else:
+                value = "********"
+        table.add_row(name, "✓" if exists else "✗", value)
+
+    console.print()
+    console.print(table)
+
+
+@app.command("secrets-sync", help="Sync docker/compose secrets (docker/secrets/*) into the system keyring")
+@sensitive("stores docker secrets in system keyring")
+def secrets_sync(
+    include_jwt: bool = typer.Option(True, "--include-jwt/--no-include-jwt", help="Also sync api_gateway_jwt_secret"),
+):
+    import keyring
+
+    secrets_dir = _get_docker_secrets_dir()
+    if not secrets_dir.exists():
+        console.print(f"❌ [red]Secrets directory not found: {secrets_dir}[/red]")
+        raise typer.Exit(1)
+
+    key_manager = _get_key_manager()
+
+    pg_cfg = _load_postgres_config()
+    pg_user = str(pg_cfg.get("user", "postgres"))
+
+    synced = 0
+
+    pg_path = secrets_dir / "pg_password"
+    if pg_path.exists():
+        pg_password = pg_path.read_text(encoding="utf-8").strip()
+        if pg_password:
+            key_manager.store_database_password(password=pg_password, database_type="postgres", username=pg_user)
+            synced += 1
+
+    influx_pw_path = secrets_dir / "influx_admin_password"
+    if influx_pw_path.exists():
+        influx_admin_password = influx_pw_path.read_text(encoding="utf-8").strip()
+        if influx_admin_password:
+            key_manager.store_database_password(password=influx_admin_password, database_type="influx", username="admin_password")
+            synced += 1
+
+    influx_token_path = secrets_dir / "influx_admin_token"
+    if influx_token_path.exists():
+        influx_admin_token = influx_token_path.read_text(encoding="utf-8").strip()
+        if influx_admin_token:
+            key_manager.store_database_password(password=influx_admin_token, database_type="influx", username="admin_token")
+            synced += 1
+
+    if include_jwt:
+        jwt_path = secrets_dir / "api_gateway_jwt_secret"
+        if jwt_path.exists():
+            jwt_secret = jwt_path.read_text(encoding="utf-8").strip()
+            if jwt_secret:
+                keyring.set_password(key_manager.service_name, "api_gateway_jwt_secret", jwt_secret)
+                synced += 1
+
+    console.print(f"✅ [green]Synced {synced} secret(s) from {secrets_dir} into the keyring[/green]")
 
 
 @app.command("pg-env", help="Export Postgres env vars for CI/CD and docker-compose")
@@ -577,119 +674,6 @@ def influx_set():
     console.print("🔐 Use 'aico security influx-env' to export env vars for CI/CD or docker-compose.")
 
 
-@app.command("list-keys", help="List all AICO keys stored in system keyring")
-def list_keys(
-    show_values: bool = typer.Option(False, "--show", "-s", help="Show actual key values (redacted by default)")
-):
-    """List all AICO keys stored in the system keyring.
-    
-    Shows all keys managed by AICO including database passwords, tokens, and secrets.
-    Values are redacted by default for security.
-    """
-    import keyring
-    import subprocess
-    
-    key_manager = _get_key_manager()
-    service_name = key_manager.service_name
-    
-    console.print(f"\n🔑 [bold cyan]AICO Keyring Entries[/bold cyan] (service: {service_name})\n")
-    
-    # Get all keyring entries for AICO service
-    try:
-        # Use security command to list all AICO keyring entries
-        result = subprocess.run(
-            ["security", "dump-keychain"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True
-        )
-        
-        # Parse the output to find AICO entries
-        # Format: "acct" comes before "svce" in each entry block
-        entries = []
-        current_entry = {}
-        
-        for line in result.stdout.split('\n'):
-            # Look for account name first
-            if '"acct"<blob>=' in line:
-                try:
-                    account = line.split('"acct"<blob>="')[1].split('"')[0]
-                    current_entry = {'account': account}
-                except (IndexError, ValueError):
-                    continue
-            # Then look for service name
-            elif '"svce"<blob>=' in line and current_entry.get('account'):
-                if '"AICO"' in line or '"AICO_Test"' in line:
-                    service = 'AICO' if '"AICO"' in line and 'Test' not in line else 'AICO_Test'
-                    current_entry['service'] = service
-                    entries.append(current_entry)
-                current_entry = {}
-        
-        # Remove duplicates based on account name
-        seen = set()
-        unique_entries = []
-        for entry in entries:
-            if entry['account'] not in seen:
-                seen.add(entry['account'])
-                unique_entries.append(entry)
-        entries = unique_entries
-        
-        # Create table
-        table = Table(
-            title="Stored Keys",
-            show_header=True,
-            header_style="bold yellow",
-            border_style="bright_blue",
-            box=box.SIMPLE_HEAD
-        )
-        table.add_column("Key Name", style="bold white", justify="left")
-        table.add_column("Type", style="cyan", justify="left")
-        table.add_column("Value", style="dim", justify="left")
-        
-        # Categorize and display entries
-        for entry in entries:
-            account = entry['account']
-            
-            # Determine key type
-            if 'password' in account:
-                key_type = "Database Password"
-            elif 'token' in account:
-                key_type = "API Token"
-            elif 'secret' in account:
-                key_type = "Secret"
-            elif account == 'master_key':
-                key_type = "Master Key"
-            elif account == 'salt':
-                key_type = "Salt"
-            else:
-                key_type = "Other"
-            
-            # Get value if requested
-            if show_values:
-                try:
-                    value = keyring.get_password(entry['service'], account)
-                    if value:
-                        display_value = value
-                    else:
-                        display_value = "[red]Not found[/red]"
-                except Exception as e:
-                    display_value = f"[red]Error: {e}[/red]"
-            else:
-                display_value = "********"
-            
-            table.add_row(account, key_type, display_value)
-        
-        console.print(table)
-        console.print(f"\n📊 Total: {len(entries)} keys stored\n")
-        
-        if not show_values:
-            console.print("💡 [dim]Use --show to display actual values (use with caution)[/dim]")
-        
-    except Exception as e:
-        console.print(f"❌ [red]Failed to list keyring entries: {e}[/red]")
-        raise typer.Exit(1)
-
-
 @app.command("get-key", help="Retrieve value of a specific key from keyring")
 @sensitive("retrieves sensitive key value from system keyring")
 def get_key(
@@ -719,7 +703,7 @@ def get_key(
         
         if not value:
             console.print(f"❌ [red]Key '{key_name}' not found in keyring[/red]")
-            console.print(f"\n💡 Use 'aico security list-keys' to see available keys")
+            console.print("\n💡 Use 'aico security secrets-sync' to populate the keyring from docker/secrets/*")
             raise typer.Exit(1)
         
         # Copy to clipboard if requested

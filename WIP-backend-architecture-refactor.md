@@ -16,8 +16,8 @@
 - [x] Decommission legacy: remove ZMQ broker path, LMDB, ChromaDB (✅ All removed - using PostgreSQL + pgvector)
 - [ ] **Redesign credential management and system setup for fully dockerized architecture (aico security init, aico config init, etc.)**
 - [ ] **Migrate runtime directory structure to docker-based environment (eliminate native process assumptions)**
-- [ ] **Clean up legacy native process architecture (remove start/stop service commands, process management)**
-- [ ] **Ensure all Docker components properly represented in CLI; remove legacy tech debt**
+- [x] **Clean up legacy native process architecture (remove start/stop service commands, process management)**
+- [x] **Ensure all Docker components properly represented in CLI; remove legacy tech debt**
 - [x] **Create `aico deploy` CLI command: zero-to-operational system installation (prod default, --dev flag for development)**
 - [ ] **Create `aico upgrade` CLI: Analyze and refactor to the current system reality with the architectural change to virtualized / docker containers**
 - [ ] Update AICO-Studio to use the new architectur (e.g. the split of gateway, core, modelservice) and in general to reflect the new architecture. We have also changed the used DB's for example. We need to align the AICO-Studio to the new architecture.

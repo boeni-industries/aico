@@ -48,21 +48,9 @@ __version__ = get_backend_version()
 
 # Global components - config_manager already initialized above
 logger = get_logger("backend.main")
-process_manager = None
 shutdown_event = asyncio.Event()
 
-try:
-    # Initialize process manager AFTER logging is set up
-    from aico.core.process import ProcessManager
-    process_manager = ProcessManager("gateway")
-    process_manager.write_pid(os.getpid())
-    
-    
-    # Lifecycle manager already imported above
-    
-except Exception as e:
-    print(f"Initialization error: {e}")
-    sys.exit(1)
+# Lifecycle manager already imported above
 
 
 async def setup_backend_components():

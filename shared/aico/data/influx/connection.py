@@ -29,6 +29,7 @@ from influxdb_client.client.exceptions import InfluxDBError
 
 from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
+from aico.security.credential_provider import CredentialProvider
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +114,8 @@ class InfluxDBConnection:
         self.org = influx_config.get("org", "aico")
         self.bucket = influx_config.get("bucket", "aico_telemetry")
         
-        # Retrieve token from environment first (container/CI friendly), then keyring.
-        self.token = os.getenv("AICO_INFLUX_ADMIN_TOKEN") or key_manager.get_database_password(
+        provider = CredentialProvider()
+        self.token = provider.get("influx_admin_token") or key_manager.get_database_password(
             "influx", username="admin_token"
         )
         

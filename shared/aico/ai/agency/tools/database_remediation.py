@@ -788,6 +788,7 @@ async def tool_db_influx_get_measurements(
     """
     from influxdb_client import InfluxDBClient
     from aico.security import AICOKeyManager
+    from aico.security.credential_provider import CredentialProvider
     import asyncio
     import os
     import time
@@ -813,7 +814,8 @@ async def tool_db_influx_get_measurements(
         if not bucket:
             raise ValueError("Missing required config: influx.bucket")
         
-        token = os.environ.get("AICO_INFLUX_ADMIN_TOKEN") or ""
+        provider = CredentialProvider()
+        token = provider.get("influx_admin_token") or ""
         if not token:
             key_manager = AICOKeyManager(config)
             token = key_manager.get_database_password("influx", username="admin_token") or ""

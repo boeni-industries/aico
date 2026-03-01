@@ -59,9 +59,41 @@ def _utc_now_iso() -> str:
 
 
 def _backup_root() -> Path:
-    root = AICOPaths.get_data_directory() / "backups" / "backup_sets"
+    root = AICOPaths.get_data_directory() / "artifacts" / "backups" / "backup_sets"
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def _validate_output_root(output_root: Path) -> Path:
+    output_root = output_root.expanduser()
+    if not output_root.is_absolute():
+        output_root = (Path.cwd() / output_root)
+    output_root = output_root.resolve(strict=False)
+
+    data_root = AICOPaths.get_data_directory().resolve(strict=False)
+    allowed_roots = (
+        data_root / "runtime",
+        data_root / "cache",
+        data_root / "logs",
+        data_root / "tmp",
+        data_root / "artifacts",
+    )
+
+    try:
+        if any(output_root.is_relative_to(r) for r in allowed_roots):
+            return output_root
+    except Exception:
+        # Fallback for Python < 3.9 or unusual path behavior
+        if any(str(output_root).startswith(str(r)) for r in allowed_roots):
+            return output_root
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            "output_path is outside allowed roots. "
+            "Writes are only allowed under AICO_DATA_DIR/{runtime,cache,logs,tmp,artifacts}."
+        ),
+    )
 
 
 def _get_host_runtime_dir() -> Optional[Path]:
@@ -74,6 +106,12 @@ def _get_host_runtime_dir() -> Optional[Path]:
 
 def _registry_path() -> Path:
     return _backup_root() / "backup_sets_registry.json"
+
+
+def _archives_root() -> Path:
+    root = _backup_root() / "archives"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def _load_registry() -> dict:
@@ -141,12 +179,13 @@ def _get_pg_connection_info() -> tuple[str, str, str]:
     config.initialize(lightweight=True)
     pg_cfg = config.get("postgres", {}) or {}
 
+    from aico.security.credential_provider import CredentialProvider
+
     db_name = pg_cfg.get("db_name", "aico")
     db_user = pg_cfg.get("user", "postgres")
 
-    # In containers, the system keyring may not be available.
-    # Prefer env var injection via docker-compose and fall back to keyring for local dev.
-    db_password = os.environ.get("AICO_PG_PASSWORD") or ""
+    provider = CredentialProvider()
+    db_password = provider.get("pg_password") or ""
     if not db_password:
         key_manager = AICOKeyManager(config)
         db_password = key_manager.get_database_password("postgres", username=db_user) or ""
@@ -176,8 +215,8 @@ def _get_influx_connection_info() -> tuple[str, str, str, str]:
     org = influx_cfg.get("org", "aico")
     bucket = influx_cfg.get("bucket", "aico_telemetry")
 
-    # Prefer env var injection in containers, fall back to keyring for local dev.
-    token = os.environ.get("AICO_INFLUX_ADMIN_TOKEN") or ""
+    provider = CredentialProvider()
+    token = provider.get("influx_admin_token") or ""
     if not token:
         key_manager = AICOKeyManager(config)
         token = key_manager.get_database_password("influx", username="admin_token") or ""
@@ -380,7 +419,9 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
         backup_id = str(uuid.uuid4())
         root = _backup_root()
 
-        target_root = Path(request.output_path) if request.output_path else root
+        target_root = root
+        if request.output_path:
+            target_root = _validate_output_root(Path(request.output_path))
         target_root.mkdir(parents=True, exist_ok=True)
 
         backup_dir = target_root / backup_id
@@ -482,7 +523,7 @@ def download_backup_set(backup_id: str) -> FileResponse:
     if not backup_dir.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set directory missing")
 
-    tar_path = backup_dir.parent / f"{backup_id}.tar.gz"
+    tar_path = _archives_root() / f"{backup_id}.tar.gz"
 
     with tarfile.open(tar_path, "w:gz") as tf:
         tf.add(backup_dir, arcname=backup_dir.name)
@@ -503,9 +544,15 @@ def delete_backup_set(backup_id: str) -> BackupSetDeleteResponse:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
 
     backup_dir = Path(match["path"])
-    tar_path = backup_dir.parent / f"{backup_id}.tar.gz"
 
-    freed_bytes = _safe_dir_size_bytes(backup_dir) + _safe_dir_size_bytes(tar_path)
+    preferred_tar_path = _archives_root() / f"{backup_id}.tar.gz"
+    legacy_tar_path = backup_dir.parent / f"{backup_id}.tar.gz"
+
+    freed_bytes = (
+        _safe_dir_size_bytes(backup_dir)
+        + _safe_dir_size_bytes(preferred_tar_path)
+        + _safe_dir_size_bytes(legacy_tar_path)
+    )
 
     deleted_dir = False
     deleted_archive = False
@@ -514,9 +561,10 @@ def delete_backup_set(backup_id: str) -> BackupSetDeleteResponse:
         shutil.rmtree(backup_dir)
         deleted_dir = True
 
-    if tar_path.exists():
-        tar_path.unlink()
-        deleted_archive = True
+    for tar_path in (preferred_tar_path, legacy_tar_path):
+        if tar_path.exists():
+            tar_path.unlink()
+            deleted_archive = True
 
     registry["backup_sets"] = [b for b in backup_sets if b.get("backup_id") != backup_id]
     _save_registry(registry)
@@ -613,7 +661,9 @@ def prune_backup_sets(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
 async def upload_backup_set(file: UploadFile, output_path: Optional[str]) -> BackupSetUploadResponse:
     async with _backup_lock:
         import_id = str(uuid.uuid4())
-        root = Path(output_path) if output_path else _backup_root()
+        root = _backup_root()
+        if output_path:
+            root = _validate_output_root(Path(output_path))
         root.mkdir(parents=True, exist_ok=True)
 
         staging_dir = root / f".upload_{import_id}"

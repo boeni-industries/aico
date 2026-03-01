@@ -3,14 +3,6 @@
 High-level orchestration for deploying and bootstrapping infrastructure
 backends (Postgres, InfluxDB, Loki, and Grafana). These commands are intended to be used
 in CI/CD pipelines or for one-shot local provisioning.
-
-Fully automated credential management (ZERO manual effort):
-- Backend containers auto-generate PostgreSQL password on first run via entrypoint script
-- Credentials are persisted in docker/.env for reuse across container restarts
-- CLI deploy commands ensure docker/.env exists with all required credentials
-- Containers receive credentials via environment variable injection
-- Fallback: CLI generates credentials if docker/.env doesn't exist
-- Zero manual credential management required - just run docker-compose up
 """
 
 import sys
@@ -149,36 +141,25 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
         pass
 
 
-def _persist_credential(key: str, value: str) -> None:
-    """Persist a single credential to docker/.env."""
+def _get_secrets_dir() -> Path:
     compose_file = _get_compose_file()
-    env_file = compose_file.parent / ".env"
-    
-    # Load existing
-    existing = _load_env_file(env_file) if env_file.exists() else {}
-    
-    # Update
-    existing[key] = value
-    
-    # Save
-    _write_env_file(env_file, existing)
+    return (compose_file.parent / "secrets").resolve()
 
-def _persist_compose_env(env: dict[str, str]) -> None:
-    """Persist credentials in docker/.env so docker compose always has them."""
 
-    compose_file = _get_compose_file()
-    env_file = compose_file.parent / ".env"
-    existing = _load_env_file(env_file)
+def _read_secret_file(path: Path) -> str:
+    value = path.read_text(encoding="utf-8").strip()
+    if "\n" in value:
+        value = value.splitlines()[0].strip()
+    return value
 
-    updated = dict(existing)
-    for key, value in env.items():
-        if value is None:
-            continue
-        if isinstance(value, str) and value != "":
-            updated[key] = value
 
-    if updated != existing:
-        _write_env_file(env_file, updated)
+def _write_secret_file(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(value.strip() + "\n", encoding="utf-8")
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except Exception:
+        pass
 
 
 def _generate_secure_password(length: int = 32) -> str:
@@ -187,84 +168,81 @@ def _generate_secure_password(length: int = 32) -> str:
     return secrets.token_urlsafe(length)
 
 
-def _ensure_all_credentials() -> None:
+def _ensure_all_secrets() -> dict[str, str]:
     """
-    Ensure ALL required credentials exist before any service starts.
-    This prevents password mismatches and initialization failures.
+    Ensure ALL required secrets exist before any service starts.
+
+    This is the unified mechanism for dev + prod:
+    - Secrets are stored as files under docker/secrets/*
+    - docker-compose mounts them into containers as /run/secrets/*
     """
+    secrets_dir = _get_secrets_dir()
+
+    # If this environment already ran with docker/.env based credentials (legacy),
+    # bootstrap secrets from there to avoid breaking authentication against
+    # existing volumes (e.g., Postgres/Influx already initialized).
     compose_file = _get_compose_file()
-    env_file = compose_file.parent / ".env"
-    
-    # Load existing
-    existing = _load_env_file(env_file) if env_file.exists() else {}
-    
-    # Required credentials with their lengths
-    required = {
-        'AICO_PG_PASSWORD': 32,
-        'AICO_INFLUX_ADMIN_PASSWORD': 32,
-        'AICO_INFLUX_ADMIN_TOKEN': 48,
-        # Keep JWT signing stable across container restarts/rebuilds.
-        # Key name matches AICOKeyManager.get_jwt_secret("api_gateway") => "api_gateway_jwt_secret"
-        # CredentialProvider env var name: AICO_API_GATEWAY_JWT_SECRET
-        'AICO_API_GATEWAY_JWT_SECRET': 48,
+    legacy_env_file = compose_file.parent / ".env"
+    legacy_env = _load_env_file(legacy_env_file) if legacy_env_file.exists() else {}
+    legacy_map = {
+        "pg_password": "AICO_PG_PASSWORD",
+        "influx_admin_password": "AICO_INFLUX_ADMIN_PASSWORD",
+        "influx_admin_token": "AICO_INFLUX_ADMIN_TOKEN",
+        "api_gateway_jwt_secret": "AICO_API_GATEWAY_JWT_SECRET",
     }
-    
-    # Generate missing credentials
+
+    required = {
+        "pg_password": 32,
+        "influx_admin_password": 32,
+        "influx_admin_token": 48,
+        "api_gateway_jwt_secret": 48,
+    }
+
+    resolved: dict[str, str] = {}
     updated = False
-    for key, length in required.items():
-        if key not in existing or not existing[key]:
-            existing[key] = _generate_secure_password(length)
-            updated = True
-            console.print(format_info(f"Generated {key}"))
-    
-    # Save if any were generated
+
+    for name, length in required.items():
+        p = secrets_dir / name
+        if p.exists():
+            value = _read_secret_file(p)
+            if value:
+                resolved[name] = value
+                continue
+
+        # Bootstrap from legacy docker/.env if available
+        legacy_key = legacy_map.get(name)
+        if legacy_key:
+            legacy_value = legacy_env.get(legacy_key, "").strip()
+            if legacy_value:
+                _write_secret_file(p, legacy_value)
+                resolved[name] = legacy_value
+                updated = True
+                console.print(format_info(f"Imported legacy secret {name} from docker/.env"))
+                continue
+
+        value = _generate_secure_password(length)
+        _write_secret_file(p, value)
+        resolved[name] = value
+        updated = True
+        console.print(format_info(f"Generated secret {name}"))
+
     if updated:
-        _write_env_file(env_file, existing)
-        console.print(format_success("✓ Credentials initialized in docker/.env"))
+        console.print(format_success("✓ Secrets initialized in docker/secrets/"))
+
+    return resolved
 
 def _get_or_create_postgres_password() -> str:
     """
     Get or create Postgres password - FULLY AUTOMATIC.
     
-    Priority:
-    1. docker/.env file (persisted credentials - may be auto-generated by container entrypoint)
-    2. AICO_PG_PASSWORD environment variable
-    3. Auto-generate and save to docker/.env (CLI fallback)
-    
-    Note: Backend containers have entrypoint scripts that auto-generate passwords
-    on first run if docker/.env doesn't exist. This function ensures docker/.env
-    exists before containers start, providing a fallback if needed.
+    Unified mechanism:
+    - docker/secrets/pg_password (file)
     
     Returns:
         Postgres password
     """
-    # Ensure all credentials exist first
-    _ensure_all_credentials()
-    
-    # Check docker/.env first (persistent storage)
-    compose_file = _get_compose_file()
-    env_file = compose_file.parent / ".env"
-    
-    if env_file.exists():
-        env_vars = _load_env_file(env_file)
-        if password := env_vars.get("AICO_PG_PASSWORD"):
-            console.print(format_info("Using Postgres password from docker/.env"))
-            return password
-
-    # Check environment variable
-    if password := os.getenv("AICO_PG_PASSWORD"):
-        console.print(format_info("Using Postgres password from environment"))
-        # Save to .env for persistence
-        _persist_credential("AICO_PG_PASSWORD", password)
-        return password
-
-    # Auto-generate and persist
-    console.print(format_info("Auto-generating Postgres password..."))
-    password = _generate_secure_password(32)
-    _persist_credential("AICO_PG_PASSWORD", password)
-    console.print(format_success("✓ Postgres password generated and saved to docker/.env"))
-
-    return password
+    secrets = _ensure_all_secrets()
+    return secrets["pg_password"]
 
 
 def _load_deploy_config(config_file: str | None) -> dict:
@@ -736,45 +714,15 @@ def _get_or_create_influx_credentials() -> Tuple[str, str]:
     """
     Get or create InfluxDB credentials - FULLY AUTOMATIC.
     
-    Priority:
-    1. docker/.env file (persisted credentials)
-    2. Environment variables
-    3. Auto-generate and save to docker/.env
+    Unified mechanism:
+    - docker/secrets/influx_admin_password
+    - docker/secrets/influx_admin_token
     
     Returns:
         Tuple of (admin_password, admin_token)
     """
-    # Check docker/.env first (persistent storage)
-    compose_file = _get_compose_file()
-    env_file = compose_file.parent / ".env"
-    
-    if env_file.exists():
-        env_vars = _load_env_file(env_file)
-        password = env_vars.get("AICO_INFLUX_ADMIN_PASSWORD")
-        token = env_vars.get("AICO_INFLUX_ADMIN_TOKEN")
-        if password and token:
-            console.print(format_info("Using InfluxDB credentials from docker/.env"))
-            return password, token
-    
-    # Check environment variables
-    env_password = os.getenv("AICO_INFLUX_ADMIN_PASSWORD")
-    env_token = os.getenv("AICO_INFLUX_ADMIN_TOKEN")
-    if env_password and env_token:
-        console.print(format_info("Using InfluxDB credentials from environment"))
-        # Save to .env for persistence
-        _persist_credential("AICO_INFLUX_ADMIN_PASSWORD", env_password)
-        _persist_credential("AICO_INFLUX_ADMIN_TOKEN", env_token)
-        return env_password, env_token
-    
-    # Auto-generate and persist
-    console.print(format_info("Auto-generating InfluxDB credentials..."))
-    password = _generate_secure_password(32)
-    token = _generate_secure_password(48)
-    _persist_credential("AICO_INFLUX_ADMIN_PASSWORD", password)
-    _persist_credential("AICO_INFLUX_ADMIN_TOKEN", token)
-    console.print(format_success("✓ InfluxDB credentials generated and saved to docker/.env"))
-    
-    return password, token
+    secrets = _ensure_all_secrets()
+    return secrets["influx_admin_password"], secrets["influx_admin_token"]
 
 
 def _get_compose_file() -> Path:
@@ -865,16 +813,11 @@ def _run_compose(args: list[str], env: dict = None) -> int:
         run_env.update(env)
 
     try:
-        # Use the compose file directory as the working directory so docker/.env
-        # is consistently picked up by docker compose (and relative paths resolve correctly).
+        # Use the compose file directory as the working directory so relative paths
+        # inside docker-compose.local.yml resolve correctly.
         result = subprocess.run(cmd, check=False, env=run_env, cwd=str(compose_file.parent))
         if result.returncode != 0:
-            console.print(
-                format_error(
-                    f"docker compose command failed with exit code {result.returncode}:\n"
-                    + " ".join(cmd)
-                )
-            )
+            console.print(format_error(f"docker compose failed with exit code {result.returncode}"))
         return result.returncode
     except FileNotFoundError:
         console.print(
@@ -1825,19 +1768,11 @@ def deploy_influx(
         console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
         _nuke_influx()
 
-    # Get or create InfluxDB credentials (prompts for master password if needed)
+    # Ensure secrets exist on disk; compose will mount them into the container.
     admin_password, admin_token = _get_or_create_influx_credentials()
-    
-    # Prepare environment for container
-    container_env = {
-        "AICO_INFLUX_ADMIN_PASSWORD": admin_password,
-        "AICO_INFLUX_ADMIN_TOKEN": admin_token
-    }
 
-    _persist_compose_env(container_env)
-
-    console.print("🚀 [cyan]Starting InfluxDB container with auto-generated credentials...[/cyan]")
-    code = _run_compose(["up", "-d", "influxdb"], env=container_env)
+    console.print("🚀 [cyan]Starting InfluxDB container with compose secrets...[/cyan]")
+    code = _run_compose(["up", "-d", "influxdb"], env=None)
     if code != 0:
         console.print(format_error("Failed to start InfluxDB container"))
         raise typer.Exit(code)
@@ -2141,13 +2076,11 @@ def deploy_gateway(
         help="Destroy Gateway container before provisioning.",
     ),
 ):
-    """Deploy AICO Gateway container with automatic credential management.
-    
-    Credentials are handled automatically:
-    - CLI ensures docker/.env exists with all required credentials
-    - Container entrypoint auto-generates missing credentials on first run
-    - Credentials persist across container restarts via docker/.env
-    - Zero manual configuration required
+    """Deploy AICO Gateway container.
+
+    Secrets are handled via docker/compose secrets:
+    - CLI ensures docker/secrets/* exists
+    - docker-compose mounts secrets into containers under /run/secrets/*
     """
     console.print("\n" + "=" * 60)
     console.print("🌐 [bold cyan]AICO Gateway Deployment[/bold cyan]")
@@ -2157,23 +2090,12 @@ def deploy_gateway(
         console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing Gateway container!"))
         _nuke_gateway()
 
-    # Ensure credentials exist in docker/.env (CLI-side generation as fallback)
-    # Container entrypoint will also auto-generate if missing
-    pg_password = _get_or_create_postgres_password()
-    influx_password, influx_token = _get_or_create_influx_credentials()
-
-    env = {
-        "AICO_PG_PASSWORD": pg_password,
-        "AICO_INFLUX_ADMIN_PASSWORD": influx_password,
-        "AICO_INFLUX_ADMIN_TOKEN": influx_token,
-    }
-
-    _persist_compose_env(env)
+    _ensure_all_secrets()
 
     args = ["up", "-d", "--build", "gateway"]
 
     console.print("🚀 [cyan]Starting Gateway container...[/cyan]")
-    code = _run_compose(args, env=env)
+    code = _run_compose(args, env=None)
     if code != 0:
         raise typer.Exit(code)
 
@@ -2190,13 +2112,11 @@ def deploy_core(
         help="Destroy Core container before provisioning.",
     ),
 ):
-    """Deploy AICO Core container with automatic credential management.
-    
-    Credentials are handled automatically:
-    - CLI ensures docker/.env exists with all required credentials
-    - Container entrypoint auto-generates missing credentials on first run
-    - Credentials persist across container restarts via docker/.env
-    - Zero manual configuration required
+    """Deploy AICO Core container.
+
+    Secrets are handled via docker/compose secrets:
+    - CLI ensures docker/secrets/* exists
+    - docker-compose mounts secrets into containers under /run/secrets/*
     """
     console.print("\n" + "=" * 60)
     console.print("🧠 [bold cyan]AICO Core Deployment[/bold cyan]")
@@ -2206,23 +2126,12 @@ def deploy_core(
         console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing Core container!"))
         _nuke_core()
 
-    # Ensure credentials exist in docker/.env (CLI-side generation as fallback)
-    # Container entrypoint will also auto-generate if missing
-    pg_password = _get_or_create_postgres_password()
-    influx_password, influx_token = _get_or_create_influx_credentials()
-
-    env = {
-        "AICO_PG_PASSWORD": pg_password,
-        "AICO_INFLUX_ADMIN_PASSWORD": influx_password,
-        "AICO_INFLUX_ADMIN_TOKEN": influx_token,
-    }
-
-    _persist_compose_env(env)
+    _ensure_all_secrets()
 
     args = ["up", "-d", "--build", "core"]
 
     console.print("🚀 [cyan]Starting Core container...[/cyan]")
-    code = _run_compose(args, env=env)
+    code = _run_compose(args, env=None)
     if code != 0:
         raise typer.Exit(code)
 
@@ -2252,22 +2161,12 @@ def deploy_modelservice(
         console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing Modelservice container!"))
         _nuke_modelservice()
 
-    # Ensure credentials exist in docker/.env for consistency
-    pg_password = _get_or_create_postgres_password()
-    influx_password, influx_token = _get_or_create_influx_credentials()
-
-    env = {
-        "AICO_PG_PASSWORD": pg_password,
-        "AICO_INFLUX_ADMIN_PASSWORD": influx_password,
-        "AICO_INFLUX_ADMIN_TOKEN": influx_token,
-    }
-
-    _persist_compose_env(env)
+    _ensure_all_secrets()
 
     args = ["up", "-d", "--build", "modelservice"]
 
     console.print("🚀 [cyan]Starting Modelservice container...[/cyan]")
-    code = _run_compose(args, env=env)
+    code = _run_compose(args, env=None)
     if code != 0:
         raise typer.Exit(code)
 
@@ -2321,8 +2220,6 @@ def deploy_vllm(
         "VLLM_MODEL": model,
     }
     
-    _persist_compose_env(env)
-
     # Use --profile to activate vLLM service
     args = ["--profile", "vllm", "up", "-d", "vllm"]
 

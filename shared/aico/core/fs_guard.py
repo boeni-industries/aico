@@ -96,6 +96,13 @@ def _default_allowed_roots() -> list[Path]:
         data_root / "tmp",
         data_root / "artifacts",
     ]
+    
+    # Also allow AICO_CACHE_DIR if set (for HuggingFace models, etc.)
+    cache_dir = os.getenv("AICO_CACHE_DIR")
+    if cache_dir:
+        cache_path = _normalize_path(cache_dir)
+        if cache_path not in roots:
+            roots.append(cache_path)
 
     for r in roots:
         try:

@@ -49,15 +49,15 @@ services:
       AICO_TRANSPORT_ENCRYPTION_ENABLED: "true"
       AICO_GATEWAY_ENCRYPTION_PLUGIN_ENABLED: "true"
       AICO_GATEWAY_SECURITY_PLUGIN_ENABLED: "true"
-      AICO_PG_PASSWORD: ${AICO_PG_PASSWORD:-}
-      AICO_API_GATEWAY_JWT_SECRET: ${AICO_API_GATEWAY_JWT_SECRET:-}
-      AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
-      AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
       AICO_HOST_RUNTIME_DIR: /host_runtime/aico
+    secrets:
+      - pg_password
+      - api_gateway_jwt_secret
+      - influx_admin_password
+      - influx_admin_token
     volumes:
       - aico-gateway-state:/var/lib/aico
       - aico-gateway-cache:/var/cache/aico
-      - ./.env:/app/docker/.env
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/Library/Application Support/aico:/host_runtime/aico:ro
     tmpfs:
@@ -98,15 +98,15 @@ services:
       AICO_INFLUX_URL: http://influxdb:8086
       AICO_LOKI_URL: http://loki:3100
       AICO_PG_HOST: postgres
-      AICO_PG_PASSWORD: ${AICO_PG_PASSWORD:-}
-      AICO_API_GATEWAY_JWT_SECRET: ${AICO_API_GATEWAY_JWT_SECRET:-}
-      AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
-      AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
       AICO_HOST_RUNTIME_DIR: /host_runtime/aico
+    secrets:
+      - pg_password
+      - api_gateway_jwt_secret
+      - influx_admin_password
+      - influx_admin_token
     volumes:
       - aico-core-state:/var/lib/aico
       - aico-core-cache:/var/cache/aico
-      - ./.env:/app/docker/.env
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/Library/Application Support/aico:/host_runtime/aico:ro
     tmpfs:
@@ -141,9 +141,12 @@ services:
       AICO_INFLUX_URL: http://influxdb:8086
       AICO_LOKI_URL: http://loki:3100
       AICO_REST_HOST: gateway
-      AICO_PG_PASSWORD: ${AICO_PG_PASSWORD:-}
-      AICO_INFLUX_ADMIN_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
-      AICO_INFLUX_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
+      HF_HOME: /var/cache/aico/huggingface
+      TRANSFORMERS_CACHE: /var/cache/aico/huggingface
+    secrets:
+      - pg_password
+      - influx_admin_password
+      - influx_admin_token
     volumes:
       - aico-modelservice-state:/var/lib/aico
       - aico-modelservice-cache:/var/cache/aico
@@ -171,8 +174,10 @@ services:
       # Non-secret parameters; safe to keep here
       POSTGRES_DB: aico
       POSTGRES_USER: postgres
-      # Secret is provided via environment (AICO_PG_PASSWORD), never hardcoded
-      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD:-}
+      # Postgres official image supports *_FILE
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - pg_password
     ports:
       # Expose to host so aico CLI / psql can connect (matches core.yaml defaults)
       - "5432:5432"
@@ -212,7 +217,9 @@ services:
     environment:
       POSTGRES_DB: aico
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD:-}
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - pg_password
     ports:
       # Shadow instance exposed on a different port to avoid clashes
       - "55432:5432"
@@ -241,15 +248,17 @@ services:
     image: influxdb:2
     container_name: aico-influxdb
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", "export DOCKER_INFLUXDB_INIT_PASSWORD=\"$$(cat /run/secrets/influx_admin_password)\"; export DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=\"$$(cat /run/secrets/influx_admin_token)\"; exec /entrypoint.sh influxd" ]
     environment:
-      # InfluxDB initial setup credentials (provided via environment, never hardcoded)
+      # InfluxDB initial setup (secrets are loaded from /run/secrets by entrypoint override)
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: aico-admin
-      DOCKER_INFLUXDB_INIT_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
       DOCKER_INFLUXDB_INIT_ORG: aico
       DOCKER_INFLUXDB_INIT_BUCKET: aico_telemetry
       DOCKER_INFLUXDB_INIT_RETENTION: 720h
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
+    secrets:
+      - influx_admin_password
+      - influx_admin_token
     ports:
       - "8086:8086"
     volumes:
@@ -379,70 +388,55 @@ services:
 
 volumes:
   aico-natsdata:
+    external: true
     name: aico-natsdata
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "nats"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
+
+  aico-influxdata:
+    external: true
+    name: aico-influxdata
+  aico-influxconfig:
+    external: true
+    name: aico-influxconfig
+  aico-lokidata:
+    external: true
+    name: aico-lokidata
+  aico-grafanadata:
+    external: true
+    name: aico-grafanadata
 
   aico-gateway-state:
+    external: true
     name: aico-gateway-state
   aico-gateway-cache:
+    external: true
     name: aico-gateway-cache
   aico-core-state:
+    external: true
     name: aico-core-state
   aico-core-cache:
+    external: true
     name: aico-core-cache
   aico-modelservice-state:
+    external: true
     name: aico-modelservice-state
   aico-modelservice-cache:
+    external: true
     name: aico-modelservice-cache
 
   aico-pgdata:
+    external: true
     name: aico-pgdata
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "postgres"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
   
   aico-pgdata-shadow:
+    external: true
     name: aico-pgdata-shadow
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "postgres-shadow"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
-  
-  aico-influxdata:
-    name: aico-influxdata
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "influxdb"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
-  
-  aico-influxconfig:
-    name: aico-influxconfig
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "influxdb"
-      com.aico.volume.type: "config"
-      com.aico.managed-by: "aico-cli"
-  
-  aico-lokidata:
-    name: aico-lokidata
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "loki"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
-  
-  aico-grafanadata:
-    name: aico-grafanadata
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "grafana"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
+
+secrets:
+  pg_password:
+    file: ./secrets/pg_password
+  api_gateway_jwt_secret:
+    file: ./secrets/api_gateway_jwt_secret
+  influx_admin_password:
+    file: ./secrets/influx_admin_password
+  influx_admin_token:
+    file: ./secrets/influx_admin_token

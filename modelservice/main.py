@@ -58,6 +58,8 @@ async def initialize_modelservice():
     # Validate the already-initialized global config manager to avoid starting file
     # watchers (and to avoid validating a different initialization mode).
     cfg = config_manager
+    process_manager = None
+
     try:
         validate_startup_config(cfg, service="modelservice", fail_fast=True)
         print_config_summary(cfg)
@@ -131,10 +133,12 @@ async def initialize_modelservice():
             influx_token = None
             try:
                 from aico.security.key_manager import AICOKeyManager
+                from aico.security.credential_provider import CredentialProvider
                 
                 # Use the global config_manager (already initialized at module level)
                 key_manager = AICOKeyManager(config_manager)
-                influx_token = os.getenv("AICO_INFLUX_ADMIN_TOKEN") or key_manager.get_database_password(
+                provider = CredentialProvider()
+                influx_token = provider.get("influx_admin_token") or key_manager.get_database_password(
                     "influx", username="admin_token"
                 )
                 
@@ -190,13 +194,6 @@ async def initialize_modelservice():
     
     # Logs now go directly to InfluxDB
     logger.info("Modelservice logging initialized with InfluxDB")
-    
-    # Initialize process management for graceful shutdown
-    process_manager = None
-    if os.getenv("AICO_DETACH_MODE") == "true":
-        from aico.core.process import ProcessManager
-        process_manager = ProcessManager("modelservice")
-        process_manager.write_pid(os.getpid())
     
     # vLLM is now deployed separately via 'aico vllm' CLI commands
     

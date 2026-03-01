@@ -34,13 +34,15 @@ logger = get_logger("backend.api.operations.database_admin")
 def _resolve_postgres_connection_params() -> tuple[str, int, str, str, str]:
     from aico.core.config import ConfigurationManager
     from aico.security.key_manager import AICOKeyManager
+    from aico.security.credential_provider import CredentialProvider
 
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     pg_config = config.get("postgres", {})
 
     db_user = pg_config.get("user", "postgres")
-    db_password = os.environ.get("AICO_PG_PASSWORD")
+    provider = CredentialProvider()
+    db_password = provider.get("pg_password")
     if not db_password:
         try:
             key_manager = AICOKeyManager(config)
@@ -53,7 +55,7 @@ def _resolve_postgres_connection_params() -> tuple[str, int, str, str, str]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
                 "Failed to retrieve schema metadata: PostgreSQL password missing. "
-                "Set AICO_PG_PASSWORD in the gateway container environment."
+                "Configure pg_password via Docker/Compose secrets."
             ),
         )
 

@@ -14,6 +14,7 @@ from sqlalchemy.pool import NullPool
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.security import AICOKeyManager
+from aico.security.credential_provider import CredentialProvider
 
 logger = get_logger("shared.data.postgres.connection")
 
@@ -52,7 +53,7 @@ async def get_postgres_pool() -> asyncpg.Pool:
     if not pg_config:
         raise RuntimeError("PostgreSQL configuration not found in postgres.yaml")
     
-    # Get password from environment or AICOKeyManager
+    # Get password from secrets/env via CredentialProvider (Docker/K8s friendly)
     import os
     
     host = pg_config.get("host", "localhost")
@@ -66,7 +67,8 @@ async def get_postgres_pool() -> asyncpg.Pool:
     )
     user = pg_config.get("user", "postgres")
     
-    password = os.environ.get("AICO_PG_PASSWORD")
+    provider = CredentialProvider()
+    password = provider.get("pg_password")
     
     if password is None:
         # Try to get from AICOKeyManager (like deploy.py does)
@@ -80,8 +82,8 @@ async def get_postgres_pool() -> asyncpg.Pool:
     
     if password is None:
         raise RuntimeError(
-            "PostgreSQL password not found. Set AICO_PG_PASSWORD environment variable "
-            "or run 'aico deploy postgres' to set up credentials."
+            "PostgreSQL password not found. Configure pg_password via Docker/Compose secrets "
+            "(docker/secrets/pg_password => /run/secrets/pg_password) or sync it into the keyring."
         )
     
     # Create connection pool
@@ -200,10 +202,8 @@ async def get_session_factory() -> async_sessionmaker:
     )
     user = pg_config.get("user", "postgres")
     
-    # Get password from environment or AICOKeyManager
-    import os
-    
-    password = os.environ.get("AICO_PG_PASSWORD")
+    provider = CredentialProvider()
+    password = provider.get("pg_password")
     
     if password is None:
         # Try to get from AICOKeyManager (like deploy.py does)
@@ -217,8 +217,8 @@ async def get_session_factory() -> async_sessionmaker:
     
     if password is None:
         raise RuntimeError(
-            "PostgreSQL password not found. Set AICO_PG_PASSWORD environment variable "
-            "or run 'aico deploy postgres' to set up credentials."
+            "PostgreSQL password not found. Configure pg_password via Docker/Compose secrets "
+            "(docker/secrets/pg_password => /run/secrets/pg_password) or sync it into the keyring."
         )
     
     # Create SQLAlchemy async engine with asyncpg

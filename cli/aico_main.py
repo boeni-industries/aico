@@ -79,6 +79,8 @@ COMMAND_MODULES = {
     "gateway": "cli.commands.gateway",
     "agency": "cli.commands.agency",
     "interactions": "cli.commands.interactions",
+    "ps": "cli.commands.ps",
+    "exec": "cli.commands.exec",
 }
 
 # Check if a specific command was requested
