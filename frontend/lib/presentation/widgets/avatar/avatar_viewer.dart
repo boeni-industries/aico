@@ -29,6 +29,7 @@ class AvatarViewer extends ConsumerStatefulWidget {
 class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepAliveClientMixin {
   InAppWebViewController? _webViewController;
   bool _isReady = false;
+  late final dynamic _avatarController; // Save controller reference for safe disposal
   
   @override
   bool get wantKeepAlive => true; // Keep WebView alive across rebuilds
@@ -39,8 +40,9 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
     
     // Register animation callbacks with avatar controller IMMEDIATELY
     // Don't wait for post-frame callback - controller needs these NOW
-    final controller = ref.read(avatarControllerProvider);
-    controller.registerCallbacks(
+    // Save controller reference for safe disposal later
+    _avatarController = ref.read(avatarControllerProvider);
+    _avatarController.registerCallbacks(
       onStartTalking: startTalking,
       onStopTalking: stopTalking,
     );
@@ -245,9 +247,9 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   
   @override
   void dispose() {
-    // Unregister callbacks
-    final controller = ref.read(avatarControllerProvider);
-    controller.unregisterCallbacks();
+    // Unregister callbacks using saved controller reference
+    // Safe to use because we saved it during initState()
+    _avatarController.unregisterCallbacks();
     
     _webViewController?.dispose();
     super.dispose();
