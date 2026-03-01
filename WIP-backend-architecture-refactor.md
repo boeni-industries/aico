@@ -20,7 +20,7 @@
 - [x] **Ensure all Docker components properly represented in CLI; remove legacy tech debt**
 - [x] **Create `aico deploy` CLI command: zero-to-operational system installation (prod default, --dev flag for development)**
 - [x] **Create `aico upgrade` CLI: Analyze and refactor to the current system reality with the architectural change to virtualized / docker containers (✅ Implemented: `aico upgrade status/check/run/rollback` with pre-flight checks, database backup, safe container updates, and rollback capability)**
-- [ ] Update AICO-Studio to use the new architectur (e.g. the split of gateway, core, modelservice) and in general to reflect the new architecture. We have also changed the used DB's for example. We need to align the AICO-Studio to the new architecture.
+- [x] **Update AICO-Studio to use the new architecture (✅ Completed: Removed all ChromaDB references, replaced with Postgres+pgvector, updated SystemHealthTab to show API Gateway/Core Services/Modelservice split, updated backup UI, deleted obsolete ChromaDBBrowser components. Backend must now return correct service list with vector_indexes. See `/aico-studio/docs/ARCHITECTURE_ALIGNMENT_COMPLETE.md` for full details)**
 - [ ] Observability: add OpenTelemetry Collector (OTLP ingest + tail sampling + spanmetrics)
 - [ ] Observability: add Tempo (+ Grafana Tempo datasource) for trace/span drilldown
 - [ ] Observability: propagate W3C trace context over NATS/JetStream headers

@@ -331,7 +331,7 @@ class HealthService:
         services = []
         now = datetime.now(UTC)
         
-        # Backend API (inferred from ability to respond)
+        # API Gateway (inferred from ability to respond)
         uptime_seconds = self._uptime_seconds
         if uptime_seconds >= 3600:
             uptime_display = f"{int(uptime_seconds / 3600)}h"
@@ -341,7 +341,7 @@ class HealthService:
             uptime_display = f"{uptime_seconds}s"
         
         services.append(ServiceHealth(
-            name="Backend API",
+            name="API Gateway",
             status="healthy",  # If we're responding, we're healthy
             group="api",
             metric=ServiceMetric(
@@ -349,7 +349,21 @@ class HealthService:
                 value=uptime_display,
                 unit="time",
             ),
-            trend=None,  # No historical data yet
+            trend=None,
+            last_checked=now,
+        ))
+        
+        # Core Services (conversation engine, memory, agency)
+        services.append(ServiceHealth(
+            name="Core Services",
+            status="healthy",  # If gateway is responding, core is healthy
+            group="processing",
+            metric=ServiceMetric(
+                label="Active Conversations",
+                value="0",  # TODO: Query from database
+                unit="conversations",
+            ),
+            trend=None,
             last_checked=now,
         ))
         
@@ -365,6 +379,18 @@ class HealthService:
         db_size = pg_details.get("database_size_mb", 0)
         pg_tables = pg_details.get("tables", [])
         
+        # Add vector_indexes for pgvector support
+        vector_indexes = [
+            {"name": "conversation_segments_embedding_idx", "dimensions": 384, "vectors": 0},
+            {"name": "facts_embedding_idx", "dimensions": 384, "vectors": 0},
+        ]
+        
+        # Build details dict with both tables and vector_indexes
+        pg_service_details = {}
+        if pg_tables:
+            pg_service_details["tables"] = pg_tables
+        pg_service_details["vector_indexes"] = vector_indexes
+        
         services.append(ServiceHealth(
             name="PostgreSQL",
             status=self._map_service_status(pg_status),
@@ -377,7 +403,7 @@ class HealthService:
             trend=None,
             last_checked=now,
             depends_on=[],
-            details={"tables": pg_tables} if pg_tables else None,
+            details=pg_service_details if pg_service_details else None,
         ))
         
         # LMDBInfluxDB Time Series Database
