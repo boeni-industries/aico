@@ -75,11 +75,13 @@ class UpdateUserRequest(BaseModel):
 class AuthenticateRequest(BaseModel):
     """Request schema for user authentication"""
     user_uuid: str = Field(..., pattern='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', description="User UUID")
-    password: str = Field(..., description="User password")
+    password: Optional[str] = Field(None, description="User password")
     pin: Optional[str] = Field(None, description="Deprecated alias for password")
     
     @validator('password')
     def validate_password(cls, v):
+        if v is None:
+            return v
         from .dependencies import validate_password
         return validate_password(v)
 
@@ -89,6 +91,14 @@ class AuthenticateRequest(BaseModel):
             return v
         from .dependencies import validate_password
         return validate_password(v)
+
+    @validator('pin', always=True)
+    def require_password_or_pin(cls, v, values):
+        if (values.get('password') or '').strip():
+            return v
+        if (v or '').strip():
+            return v
+        raise ValueError('password is required')
 
 
 class SetPasswordRequest(BaseModel):

@@ -1110,9 +1110,16 @@
         "description": "Request schema for user authentication",
         "properties": {
           "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "User password",
-            "title": "Password",
-            "type": "string"
+            "title": "Password"
           },
           "pin": {
             "anyOf": [
@@ -1134,8 +1141,7 @@
           }
         },
         "required": [
-          "user_uuid",
-          "password"
+          "user_uuid"
         ],
         "title": "AuthenticateRequest",
         "type": "object"

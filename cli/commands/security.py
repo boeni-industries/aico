@@ -76,13 +76,14 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("env-sync", "Sync credentials from an env file (e.g. docker/.env) into the keyring"),
             ("influx-set", "Store InfluxDB API token securely via AICOKeyManager"),
             ("influx-env", "Export InfluxDB env vars for CI/CD and docker-compose"),
-            ("user-create", "Create a new user with optional PIN authentication"),
+            ("user-create", "Create a new user with optional password authentication"),
             ("user-list", "List all users with filtering options"),
             ("user-update", "Update user profile information"),
             ("user-delete", "Delete user (soft delete by default, --hard for permanent)"),
             ("user-cleanup", "Remove all soft-deleted users from database (IRREVERSIBLE)"),
-            ("user-auth", "Authenticate user with PIN"),
-            ("user-set-pin", "Set or update user PIN"),
+            ("user-auth", "Authenticate user with password"),
+            ("user-set-password", "Set or update user password"),
+            ("user-set-pin", "Deprecated alias for user-set-password"),
             ("user-stats", "Show user statistics and authentication info"),
             ("role-assign", "Assign role to user (admin, user, service, cli)"),
             ("role-revoke", "Revoke role from user"),
@@ -1438,7 +1439,7 @@ def user_create(
     primary_language: str = typer.Option("en", "--language", "-l", help="Primary language (ISO/BCP-47 code, e.g. 'en', 'de', 'fr')"),
     ctx: typer.Context = typer.Context
 ):
-    """Create a new user with optional PIN authentication"""
+    """Create a new user with optional password authentication"""
     
     if full_name is None:
         console.print("\n❌ [red]Missing required argument: FULL_NAME[/red]\n")
@@ -1447,13 +1448,13 @@ def user_create(
         console.print("[bold yellow]Examples:[/bold yellow]")
         console.print('  aico security user-create "John Doe"')
         console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type person')
-        console.print('  aico security user-create "Bob Wilson" --pin 1234 --type person')
-        console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin 5678')
-        console.print('  aico security user-create "Hans Müller" --language de --pin 1234')
+        console.print('  aico security user-create "Bob Wilson" --pin "SecurePass123!" --type person')
+        console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin "AdminPass456#"')
+        console.print('  aico security user-create "Hans Müller" --language de --pin "Password789$"')
         console.print("\n[bold yellow]Options:[/bold yellow]")
         console.print("  --nickname, -n    Optional nickname for the user")
         console.print("  --type, -t        User type: person (default: person)")
-        console.print("  --pin, -p         Optional PIN for authentication")
+        console.print("  --pin, -p         Optional password for authentication (min 12 chars)")
         console.print("  --language, -l    Primary language (ISO/BCP-47 code, default: en)")
         console.print("\n[dim]Use 'aico security user-list' to see existing users[/dim]")
         raise typer.Exit(1)
@@ -2136,103 +2137,57 @@ def user_list(
 @app.command("user-auth")
 def user_auth(
     user_uuid: str = typer.Argument(None, help="User UUID"),
-    pin: str = typer.Option(None, "--pin", "-p", help="User PIN", hide_input=True),
+    password: str = typer.Option(None, "--password", "-p", help="User password", hide_input=True),
+    pin: str = typer.Option(None, "--pin", help="Deprecated alias for --password", hide_input=True),
     token: bool = typer.Option(False, "--token", "-t", help="Generate and return JWT token for API testing")
 ):
-    """Authenticate user with PIN and optionally generate JWT token"""
+    """Authenticate user with password/passcode and optionally generate JWT token"""
     
     if user_uuid is None:
         console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
         console.print("[bold cyan]Usage:[/bold cyan]")
         console.print("  aico security user-auth [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print('  aico security user-auth abc123def --pin 1234')
+        console.print('  aico security user-auth abc123def --password "your-password"')
         console.print('  aico security user-auth 550e8400-e29b-41d4-a716-446655440000 -p 5678')
-        console.print('  aico security user-auth abc123def --pin 1234 --token  # Generate JWT token')
+        console.print('  aico security user-auth abc123def --password "your-password" --token  # Generate JWT token')
         console.print("\n[bold yellow]Required Options:[/bold yellow]")
-        console.print("  --pin, -p         User's PIN for authentication")
-        console.print("\n[bold yellow]Optional Flags:[/bold yellow]")
-        console.print("  --token, -t       Generate JWT token for API testing")
+        console.print("  --password, -p    User password for authentication")
+        console.print("  --pin            Deprecated alias for --password")
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     
-    if pin is None:
-        console.print("\n❌ [red]Missing required option: --pin[/red]\n")
-        console.print("[bold cyan]Usage:[/bold cyan]")
-        console.print("  aico security user-auth [OPTIONS] USER_UUID\n")
-        console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print(f'  aico security user-auth {user_uuid} --pin 1234')
-        console.print(f'  aico security user-auth {user_uuid} -p 5678')
-        console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
-        raise typer.Exit(1)
+    if password is None:
+        password = pin
+    if password is None:
+        password = typer.prompt("Enter password", hide_input=True)
+
     import asyncio
-    from pathlib import Path
-    from aico.core.config import ConfigurationManager
-    from aico.core.paths import AICOPaths
-    from aico.security.key_manager import AICOKeyManager
     from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
-    
+
+    async def authenticate():
+        pool = await get_postgres_pool()
+        async with pool.acquire() as conn:
+            user_service = UserService(conn)
+            return await user_service.authenticate_user(user_uuid, password)
+
     try:
-        # Initialize configuration and paths
-        config_manager = ConfigurationManager()
-        
-        # Authenticate user using PostgreSQL asyncpg
-        async def authenticate():
-            pool = await get_postgres_pool()
-            async with pool.acquire() as conn:
-                user_service = UserService(conn)
-                result = await user_service.authenticate_user(user_uuid, pin)
-                return result
-        
         result = asyncio.run(authenticate())
-        
-        if result["success"]:
-            user = result["user"]
-            
-            # Generate JWT token if requested
-            jwt_token = None
-            if token:
-                from aico.core.authorization import AuthorizationService
-                from backend.api_gateway.models.core.auth import AuthenticationManager
-                
-                # Get user roles and permissions
-                authz_service = AuthorizationService(db_conn)
-                user_roles = authz_service.get_user_roles(user.uuid)
-                user_permissions = authz_service.get_user_permissions(user.uuid)
-                
-                # Initialize auth manager and generate token
-                auth_manager = AuthenticationManager(config_manager)
-                jwt_token = auth_manager.generate_jwt_token(
-                    user_uuid=user.uuid,
-                    username=user.full_name,
-                    roles=user_roles,
-                    permissions=user_permissions,
-                    device_uuid="cli-testing"
-                )
-            
-            console.print(f"\n✅ [green]Authentication successful[/green]")
-            console.print(f"User: {user.full_name}")
-            if user.nickname:
-                console.print(f"Nickname: {user.nickname}")
-            if result.get("last_login"):
-                console.print(f"Last login: {result['last_login']}")
-            
-            # Output token if generated
-            if jwt_token:
-                console.print(f"\n🔑 [bold cyan]JWT Token:[/bold cyan]")
-                console.print(f"{jwt_token}")
-                console.print(f"\n[dim]Use this token with: curl -H \"Authorization: Bearer <token>\"[/dim]")
-        else:
-            console.print(f"\n❌ [red]Authentication failed: {result['error']}[/red]")
-            if result.get("failed_attempts"):
-                console.print(f"Failed attempts: {result['failed_attempts']}")
-            if result.get("locked"):
-                console.print("⚠️ [yellow]Account is locked[/yellow]")
-        
     except Exception as e:
         console.print(f"❌ [red]Authentication error: {e}[/red]")
         raise typer.Exit(1)
+
+    if result.get("success"):
+        console.print("\n✅ [green]Authentication successful![/green]")
+        if token:
+            console.print("\n⚠️ [yellow]--token is not implemented in this command yet[/yellow]")
+    else:
+        console.print(f"\n❌ [red]Authentication failed: {result.get('error') or 'Unknown error'}[/red]")
+        if result.get("failed_attempts") is not None:
+            console.print(f"Failed attempts: {result['failed_attempts']}")
+        if result.get("locked"):
+            console.print("⚠️ [yellow]Account is locked[/yellow]")
 
 
 @app.command("user-update")
@@ -2570,30 +2525,49 @@ def user_set_pin(
     user_uuid: str = typer.Argument(None, help="User UUID"),
     new_pin: str = typer.Option(None, "--new-pin", "-n", help="New PIN", hide_input=True)
 ):
-    """Set or reset user PIN (admin operation - requires authenticated session)"""
+    """Deprecated alias for user-set-password."""
+
+    if user_uuid is None:
+        console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
+        raise typer.Exit(1)
+
+    if new_pin is None:
+        console.print("\n❌ [red]Missing required option: --new-pin[/red]\n")
+        raise typer.Exit(1)
+
+    user_set_password(user_uuid=user_uuid, new_password=new_pin)
+
+
+@app.command("user-set-password")
+@sensitive("allows resetting user password - requires authenticated session")
+def user_set_password(
+    user_uuid: str = typer.Argument(None, help="User UUID"),
+    new_password: str = typer.Option(None, "--new-password", "-n", help="New password", hide_input=True)
+):
+    """Set or reset user password (admin operation - requires authenticated session)"""
     
     if user_uuid is None:
         console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
         console.print("[bold cyan]Usage:[/bold cyan]")
-        console.print("  aico security user-set-pin [OPTIONS] USER_UUID\n")
+        console.print("  aico security user-set-password [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print('  aico security user-set-pin abc123def --new-pin 1234')
-        console.print('  aico security user-set-pin abc123def -n 5678')
+        console.print('  aico security user-set-password abc123def --new-password "your-password"')
+        console.print('  aico security user-set-password abc123def -n "your-password"')
         console.print("\n[bold yellow]Required Options:[/bold yellow]")
-        console.print("  --new-pin, -n     New PIN for the user")
+        console.print("  --new-password, -n     New password for the user")
         console.print("\n[bold yellow]Note:[/bold yellow]")
         console.print("  This command requires an authenticated CLI session (use 'aico security auth' first)")
-        console.print("  It will overwrite any existing PIN without requiring the old PIN")
+        console.print("  It will overwrite any existing password without requiring the old password")
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     
-    if new_pin is None:
-        console.print("\n❌ [red]Missing required option: --new-pin[/red]\n")
+    if new_password is None:
+        console.print("\n❌ [red]Missing required option: --new-password[/red]\n")
         console.print("[bold cyan]Usage:[/bold cyan]")
-        console.print("  aico security user-set-pin [OPTIONS] USER_UUID\n")
+        console.print("  aico security user-set-password [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print(f'  aico security user-set-pin {user_uuid} --new-pin 1234')
-        console.print(f'  aico security user-set-pin {user_uuid} -n 5678')
+        console.print(f'  aico security user-set-password {user_uuid} --new-password "your-password"')
+        console.print(f'  aico security user-set-password {user_uuid} -n "your-password"')
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     import asyncio
@@ -2609,12 +2583,12 @@ def user_set_pin(
         config_manager = ConfigurationManager()
         
         # Force set PIN using PostgreSQL asyncpg (no old PIN required)
-        async def force_reset_pin():
+        async def force_reset_password():
             pool = await get_postgres_pool()
             async with pool.acquire() as conn:
                 user_service = UserService(conn)
                 try:
-                    result = await user_service.force_set_pin(user_uuid, new_pin)
+                    result = await user_service.force_set_pin(user_uuid, new_password)
                     return result
                 except ValueError as e:
                     if "User not found" in str(e):
@@ -2622,17 +2596,17 @@ def user_set_pin(
                     else:
                         raise
         
-        result = asyncio.run(force_reset_pin())
+        result = asyncio.run(force_reset_password())
         
         if result == "user_not_found":
             console.print(f"❌ [red]User not found: {user_uuid}[/red]")
             raise typer.Exit(1)
         elif result is True:
-            console.print("✅ [green]PIN set successfully[/green]")
-            console.print("[dim]Note: This was an admin PIN reset. The old PIN (if any) has been overwritten.[/dim]")
+            console.print("✅ [green]Password set successfully[/green]")
+            console.print("[dim]Note: This was an admin password reset. The old password (if any) has been overwritten.[/dim]")
         
     except Exception as e:
-        console.print(f"❌ [red]Error setting PIN: {e}[/red]")
+        console.print(f"❌ [red]Error setting password: {e}[/red]")
         raise typer.Exit(1)
 
 
