@@ -18,6 +18,16 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message as ProtobufMessage
 
+# OpenTelemetry for W3C trace context propagation
+try:
+    from opentelemetry import trace, context
+    from opentelemetry.propagate import inject, extract
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+    trace = None
+    context = None
+
 # Optional metrics import
 # Note: We have both bus.py (this file) and bus/ (directory) in aico.core
 # To avoid naming conflicts, we import using importlib
@@ -77,6 +87,26 @@ def _create_message_metadata(message_id: str, source: str, message_type: str) ->
     metadata.message_type = message_type
     metadata.version = "1.0"
     return metadata
+
+
+def _inject_trace_context() -> Dict[str, str]:
+    """Inject W3C trace context into a carrier dict for NATS headers"""
+    if not OTEL_AVAILABLE:
+        return {}
+    
+    carrier = {}
+    inject(carrier)
+    return carrier
+
+
+def _extract_trace_context(headers: Optional[Dict[str, str]]) -> Optional[object]:
+    """Extract W3C trace context from NATS headers and return context"""
+    if not OTEL_AVAILABLE or not headers:
+        return None
+    
+    # Extract trace context from headers
+    ctx = extract(headers)
+    return ctx
 
 
 class MessageBusError(Exception):
@@ -252,11 +282,14 @@ class MessageBusClient:
             # Serialize message
             message_data = message.SerializeToString()
             
+            # Inject W3C trace context into NATS headers
+            trace_headers = _inject_trace_context()
+            
             subject = self._topic_to_subject(topic)
             
             try:
                 # Send request and wait for reply
-                reply_msg = await self._nats.request(subject, message_data, timeout=timeout)
+                reply_msg = await self._nats.request(subject, message_data, timeout=timeout, headers=trace_headers if trace_headers else None)
                 
                 # Parse reply envelope
                 reply_envelope = AicoMessage()
@@ -315,8 +348,11 @@ class MessageBusClient:
             # Serialize message
             message_data = message.SerializeToString()
             
+            # Inject W3C trace context into NATS headers
+            trace_headers = _inject_trace_context()
+            
             subject = self._topic_to_subject(topic)
-            await self._nats.publish(subject, message_data)
+            await self._nats.publish(subject, message_data, headers=trace_headers if trace_headers else None)
             
             # Metrics are automatically recorded by track_message context manager
             # (duration and count are tracked automatically)
@@ -378,6 +414,9 @@ class MessageBusClient:
         message_data = message.SerializeToString()
         subject = self._topic_to_subject(topic)
 
+        # Inject W3C trace context
+        trace_headers = _inject_trace_context()
+
         js = JetStreamManager(self._nats)
         await js.ensure_stream(
             JetStreamStreamSpec(
@@ -407,16 +446,23 @@ class MessageBusClient:
             )
         )
 
-        await js.publish(subject, message_data, headers={"Nats-Msg-Id": metadata.message_id})
-        await js.publish(
-            audit_subject,
-            message_data,
-            headers={
-                "Nats-Msg-Id": f"audit:{metadata.message_id}",
-                "aico-original-subject": subject,
-                "aico-message-id": metadata.message_id,
-            },
-        )
+        # Merge trace context with message ID headers
+        publish_headers = {"Nats-Msg-Id": metadata.message_id}
+        if trace_headers:
+            publish_headers.update(trace_headers)
+        
+        await js.publish(subject, message_data, headers=publish_headers)
+        
+        # Merge trace context with audit headers
+        audit_headers = {
+            "Nats-Msg-Id": f"audit:{metadata.message_id}",
+            "aico-original-subject": subject,
+            "aico-message-id": metadata.message_id,
+        }
+        if trace_headers:
+            audit_headers.update(trace_headers)
+        
+        await js.publish(audit_subject, message_data, headers=audit_headers)
     
     async def subscribe(self, topic_pattern: str, callback: Callable[[AicoMessage], None]):
         """Subscribe to messages matching a topic pattern"""
@@ -430,7 +476,36 @@ class MessageBusClient:
 
             envelope = AicoMessage()
             envelope.ParseFromString(msg.data)
-            await self._invoke_callback(callback, envelope)
+            
+            # Extract W3C trace context from NATS headers
+            trace_ctx = _extract_trace_context(msg.headers)
+            
+            if OTEL_AVAILABLE:
+                # If trace context exists, activate it; otherwise start new trace
+                from opentelemetry.context import attach, detach
+                token = None
+                if trace_ctx:
+                    token = attach(trace_ctx)
+                
+                try:
+                    # Always create a span for message processing
+                    tracer = trace.get_tracer("aico.bus")
+                    with tracer.start_as_current_span(
+                        f"process_message.{topic_pattern}",
+                        attributes={
+                            "messaging.system": "nats",
+                            "messaging.destination": subject,
+                            "messaging.operation": "process",
+                            "messaging.message_id": envelope.metadata.message_id,
+                        }
+                    ):
+                        await self._invoke_callback(callback, envelope)
+                finally:
+                    if token:
+                        detach(token)
+            else:
+                # OpenTelemetry not available, process without tracing
+                await self._invoke_callback(callback, envelope)
 
         sid = await self._nats.subscribe(subject, cb=_handler)
 

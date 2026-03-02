@@ -21,12 +21,12 @@
 - [x] **Create `aico deploy` CLI command: zero-to-operational system installation (prod default, --dev flag for development)**
 - [x] **Create `aico upgrade` CLI: Analyze and refactor to the current system reality with the architectural change to virtualized / docker containers (✅ Implemented: `aico upgrade status/check/run/rollback` with pre-flight checks, database backup, safe container updates, and rollback capability)**
 - [x] **Update AICO-Studio to use the new architecture (✅ Completed: Removed all ChromaDB references, replaced with Postgres+pgvector, updated System Health to show 7 services with API Gateway/Core Services/Modelservice split, PostgreSQL details include vector indexes, backup UI updated, deleted obsolete ChromaDBBrowser components. Studio dev-server HMR WebSocket errors resolved without disabling websockets.)**
-- [ ] Observability: add OpenTelemetry Collector (OTLP ingest + tail sampling + spanmetrics)
-- [ ] Observability: add Tempo (+ Grafana Tempo datasource) for trace/span drilldown
-- [ ] Observability: propagate W3C trace context over NATS/JetStream headers
-- [ ] Observability: correlate logs↔traces (inject `trace_id`/`span_id` into Loki logs; Grafana trace→logs links)
-- [ ] Observability: add Grafana dashboards for core golden paths (request→core→modelservice; NATS/JetStream; Postgres)
-- [ ] Observability: add third Grafana dashboard for span/trace visualization (high-UX, drill-down) and add direct links to the other two dashboards (same style)
+- [x] Observability: add OpenTelemetry Collector (OTLP ingest + tail sampling + spanmetrics)
+- [x] Observability: add Tempo (+ Grafana Tempo datasource) for trace/span drilldown
+- [x] Observability: propagate W3C trace context over NATS/JetStream headers (✅ Implemented: trace context injection in publish/request, extraction in subscribe, full end-to-end trace continuity across Gateway→Core→Modelservice)
+- [x] Observability: correlate logs↔traces (inject `trace_id`/`span_id` into Loki logs; Grafana trace→logs links)
+- [x] Observability: add Grafana dashboards for core golden paths (request→core→modelservice; NATS/JetStream; Postgres)
+- [x] Observability: add third Grafana dashboard for span/trace visualization (high-UX, drill-down) and add direct links to the other two dashboards (same style)
 
 ## Make backend stateless (completed)
 
