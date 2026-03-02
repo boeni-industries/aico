@@ -62,7 +62,7 @@ class CharacterManager:
         # Start with character's system prompt
         system_content = character["system_prompt"]
 
-        system_content += "\n\nWhen you reason internally, wrap that private reasoning in <think> and </think> tags. Provide the user-facing answer outside of these tags."
+        system_content += "\n\nYou MUST include your private reasoning in a <think>...</think> block before your final answer. The user-facing answer MUST be outside of these tags. Do not omit the <think> block."
 
         system_content += "\n\nAlways respond in the same language as the user's most recent message."
         

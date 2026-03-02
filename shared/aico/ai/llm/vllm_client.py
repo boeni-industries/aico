@@ -40,6 +40,14 @@ class VLLMClient(LLMClient):
         """
         # Extract vLLM-specific parameters
         extra_body = {}
+
+        # Qwen3 thinking mode / reasoning models
+        # vLLM supports request-level chat_template_kwargs overrides.
+        chat_template_kwargs = kwargs.pop("chat_template_kwargs", None)
+        if chat_template_kwargs is None:
+            chat_template_kwargs = {"enable_thinking": True}
+        if chat_template_kwargs:
+            extra_body["chat_template_kwargs"] = chat_template_kwargs
         
         # Map AICO parameters to vLLM extra_body
         if "top_k" in kwargs:

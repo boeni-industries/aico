@@ -22369,7 +22369,7 @@
     },
     "/api/v1/system/metrics/modelservice": {
       "get": {
-        "description": "Get comprehensive modelservice inference metrics.\n\nNote: dedicated modelservice inference metrics are not yet exported to Prometheus.\nThis endpoint returns schema-stable default values (zeros) to keep Studio compatible\nuntil OTLP instruments are wired to produce aico_modelservice_* series.",
+        "description": "Get comprehensive modelservice inference metrics.\n\nvLLM exposes a native Prometheus /metrics endpoint. Prometheus scrapes it under job=\"vllm\".\nThis endpoint queries vllm:* series to provide real inference metrics.",
         "operationId": "get_modelservice_metrics_api_v1_system_metrics_modelservice_get",
         "responses": {
           "200": {

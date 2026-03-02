@@ -96,7 +96,12 @@ class ConfigurationManager:
             config_dir = AICOPaths.get_config_directory()
 
         self.config_dir = config_dir
-        self.user_config_dir = config_dir
+
+        # User overrides must be writable at runtime.
+        # In containerized deployments, /app/config is typically read-only.
+        # fs_guard enforces writes under AICO_DATA_DIR/{runtime,cache,logs,tmp,artifacts}.
+        data_root = Path(os.getenv("AICO_DATA_DIR") or AICOPaths.get_data_directory())
+        self.user_config_dir = data_root / "runtime" / "config"
         self.schemas: Dict[str, Dict] = {}
         self.config_cache: Dict[str, Any] = {}
         self.sources: List[ConfigSource] = []
@@ -453,8 +458,9 @@ class ConfigurationManager:
             self.config_dir / "schemas",
             self.config_dir / "defaults", 
             self.config_dir / "environments",
-            self.config_dir / "user",
-            self.config_dir / "user" / "plugins"
+            self.user_config_dir,
+            self.user_config_dir / "user",
+            self.user_config_dir / "user" / "plugins",
         ]
         
         for directory in directories:
@@ -530,7 +536,7 @@ class ConfigurationManager:
                 
     def _load_user_configs(self) -> None:
         """Load user override configurations."""
-        user_dir = self.config_dir / "user"
+        user_dir = self.user_config_dir / "user"
         
         for config_file in user_dir.glob("*.yaml"):
             domain = config_file.stem

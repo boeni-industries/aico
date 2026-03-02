@@ -4,7 +4,7 @@
 # that customize the base LLM model's behavior.
 
 eve:
-    base_model: "Qwen/Qwen2.5-7B-Instruct"  # HuggingFace model ID (was: huihui_ai/qwen3-abliterated:8b-v2)
+    base_model: "huihui-ai/Qwen3-8B-abliterated"  # HuggingFace model ID (was: huihui_ai/qwen3-abliterated:8b-v2)
     description: "Eve - Inspired by Samantha from 'Her'"
     
     # Full character personality and instructions

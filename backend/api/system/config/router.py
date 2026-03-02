@@ -58,7 +58,7 @@ def _default_config_path(cfg: ConfigurationManager, domain: str) -> Path:
 
 
 def _user_config_path(cfg: ConfigurationManager, domain: str) -> Path:
-    return cfg.config_dir / "user" / f"{domain}.yaml"
+    return cfg.user_config_dir / "user" / f"{domain}.yaml"
 
 
 def _domain_exists(cfg: ConfigurationManager, domain: str) -> bool:

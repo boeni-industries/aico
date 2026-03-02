@@ -938,6 +938,22 @@ class ConversationEngine(BaseService):
                             continue
                         choice0 = chunk.choices[0]
                         delta = getattr(choice0, "delta", None)
+
+                        # vLLM/OpenAI-compatible servers may expose reasoning/thinking separately
+                        # (e.g., delta.reasoning or delta.reasoning_content). If present, stream it
+                        # as content_type="thinking" so the Flutter right drawer can display it.
+                        delta_reasoning = None
+                        if delta is not None:
+                            delta_reasoning = getattr(delta, "reasoning", None)
+                            if not delta_reasoning:
+                                delta_reasoning = getattr(delta, "reasoning_content", None)
+
+                        if delta_reasoning:
+                            chunk_count += 1
+                            await _publish_delta(str(delta_reasoning), content_type="thinking")
+                            if chunk_count == 1:
+                                self.logger.info(f"📤 [vLLM] Published first streaming delta")
+
                         delta_content = getattr(delta, "content", None) if delta else None
                         if not delta_content:
                             # can be role/tool_calls/etc.

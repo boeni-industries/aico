@@ -6,6 +6,7 @@ Provides zero-effort vLLM deployment with platform-specific optimizations.
 import sys
 import subprocess
 import platform
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -225,13 +226,28 @@ def _deploy_macos_daemon(model_name: str, character: str, detach: bool):
     # Build command using vllm-metal venv if available
     vllm_python = str(vllm_metal_venv / "bin" / "python") if vllm_metal_venv.exists() else "python"
     
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    vllm_config = config.get("llm.vllm", {})
+    server_config = (vllm_config or {}).get("server", {}) if isinstance(vllm_config, dict) else {}
+
+    max_model_len = int(server_config.get("max_model_len", 8192) or 8192)
+    # With chunked prefill, max_num_batched_tokens is the main tuning knob.
+    # Use a safe default >= max_model_len.
+    max_num_batched_tokens = int(server_config.get("max_num_batched_tokens", max(16384, max_model_len)) or max(16384, max_model_len))
+    if max_num_batched_tokens < max_model_len:
+        max_num_batched_tokens = max_model_len
+
     cmd = [
         vllm_python, "-m", "vllm.entrypoints.openai.api_server",
         "--model", model_name,
         "--host", "0.0.0.0",
         "--port", "8774",
-        "--max-model-len", "8192",
-        "--max-num-batched-tokens", "8192",  # Must be >= max-model-len
+        "--max-model-len", str(max_model_len),
+        "--max-num-batched-tokens", str(max_num_batched_tokens),  # Must be >= max-model-len
+        "--enable-chunked-prefill",
+        "--reasoning-parser", "qwen3",
+        "--default-chat-template-kwargs", '{"enable_thinking": true}',
         # Note: vLLM Metal plugin auto-detects and uses Apple Silicon GPU (MLX backend)
     ]
     
@@ -242,11 +258,16 @@ def _deploy_macos_daemon(model_name: str, character: str, detach: bool):
         # Run as background daemon
         console.print("[cyan]→ Starting as background daemon[/cyan]")
         with open("/tmp/vllm.log", "w") as log_file:
+            run_env = os.environ.copy()
+            # Support gated Hugging Face models.
+            # vLLM/huggingface_hub will look for HF_TOKEN and/or HUGGING_FACE_HUB_TOKEN.
+            # We do not load/store secrets here; we only pass through what the user provided.
             process = subprocess.Popen(
                 cmd,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                start_new_session=True
+                start_new_session=True,
+                env=run_env,
             )
         
         # Save PID for later management
@@ -307,8 +328,8 @@ def _deploy_docker(model_name: str, character: str, detach: bool):
     except Exception as e:
         console.print(format_warning(f"Could not check existing container: {e}"))
     
-    # Use latest stable vLLM version (v0.15.1 as of Feb 2025)
-    vllm_image = "vllm/vllm-openai:v0.15.1"
+    # Use latest vLLM version for reasoning/thinking support
+    vllm_image = "vllm/vllm-openai:latest"
     console.print(f"[dim]→ Using vLLM image: {vllm_image}[/dim]")
     
     # Build Docker command
@@ -319,6 +340,15 @@ def _deploy_docker(model_name: str, character: str, detach: bool):
         "-v", f"{Path.home()}/.cache/huggingface:/root/.cache/huggingface",
         "--shm-size", "4g",  # Increase shared memory for better performance
     ]
+
+    # Pass through Hugging Face tokens for gated model access.
+    # If unset, these env vars are simply not added.
+    hf_token = os.environ.get("HF_TOKEN")
+    hub_token = os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    if hf_token:
+        docker_cmd.extend(["-e", "HF_TOKEN"])
+    if hub_token:
+        docker_cmd.extend(["-e", "HUGGING_FACE_HUB_TOKEN"])
     
     # Add GPU support if available
     if system == "Linux":
@@ -341,8 +371,10 @@ def _deploy_docker(model_name: str, character: str, detach: bool):
         "--gpu-memory-utilization", "0.9",
         "--max-num-seqs", "32",  # Increased for better throughput
         "--max-model-len", "8192",
-        "--max-num-batched-tokens", "8192",
+        "--max-num-batched-tokens", "16384",  # Must be >= max-model-len for chunked prefill
         "--enable-chunked-prefill",  # Better latency for long prompts
+        "--reasoning-parser", "qwen3",  # Enable Qwen3 reasoning extraction
+        "--default-chat-template-kwargs", '{"enable_thinking": true}',  # Enable thinking mode by default
         "--tensor-parallel-size", "1",  # Can be increased for multi-GPU
     ])
     
@@ -395,9 +427,15 @@ def deploy(
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
         
-        # Get characters config (returns {'characters': {'eve': {...}}})
+        # Get characters config.
+        # Supported shapes:
+        # 1) {"eve": {...}, "joi": {...}}
+        # 2) {"characters": {"eve": {...}, "joi": {...}}}
         characters_data = config_manager.get("characters", {})
-        characters = characters_data.get("characters", {})
+        if isinstance(characters_data, dict) and "characters" in characters_data and isinstance(characters_data["characters"], dict):
+            characters = characters_data["characters"]
+        else:
+            characters = characters_data if isinstance(characters_data, dict) else {}
         
         character_config = characters.get(character)
         if not character_config:
