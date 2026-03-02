@@ -27,7 +27,7 @@ async def get_messagebus_metrics():
     """Get message bus metrics from Prometheus."""
     try:
         prom = PrometheusClient()
-        base_selector = '{job="aico-backend"}'
+        base_selector = '{exported_job="aico-backend"}'
 
         messages_per_second = await prom_scalar(
             prom,
@@ -57,7 +57,7 @@ async def get_messagebus_metrics():
         for s in top_topics_samples:
             topic = s.labels.get("topic") or "unknown"
             msgs_1h = float(s.value)
-            topic_selector = '{job="aico-backend",topic="' + topic.replace('"', '\\"') + '"}'
+            topic_selector = '{exported_job="aico-backend",topic="' + topic.replace('"', '\\"') + '"}'
             avg_latency_s = await prom_scalar(
                 prom,
                 "(" \

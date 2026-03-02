@@ -27,7 +27,7 @@ async def get_scheduler_metrics():
     """Get task scheduler metrics from Prometheus."""
     try:
         prom = PrometheusClient()
-        base_selector = '{job="aico-backend"}'
+        base_selector = '{exported_job="aico-backend"}'
 
         jobs_today = await prom_scalar(prom, f"sum(increase(aico_scheduler_job_count_total{base_selector}[24h]))")
         successful_jobs = await prom_scalar(

@@ -31,7 +31,10 @@ async def get_gateway_metrics():
     try:
         prom = PrometheusClient()
 
-        base_selector = '{job="aico-backend"}'
+        # Metrics are exported by the otel-collector Prometheus exporter.
+        # In Prometheus, these series are labeled with job="otel-collector" and exported_job="aico-backend".
+        # Filtering by job="aico-backend" will return no data.
+        base_selector = '{exported_job="aico-backend"}'
         rps = await prom_scalar(prom, f"sum(rate(aico_api_request_count_total{base_selector}[5m]))")
         total_requests_24h = await prom_scalar(prom, f"sum(increase(aico_api_request_count_total{base_selector}[24h]))")
 
@@ -57,7 +60,7 @@ async def get_gateway_metrics():
 
         error_rps = await prom_scalar(
             prom,
-            f"sum(rate(aico_api_request_count_total{{job=\"aico-backend\",status_code_class=~\"4xx|5xx\"}}[5m]))",
+            f"sum(rate(aico_api_request_count_total{{exported_job=\"aico-backend\",status_code_class=~\"4xx|5xx\"}}[5m]))",
         )
         error_rate = (error_rps / rps * 100.0) if rps > 0 else 0.0
         success_rate = 100.0 - error_rate
@@ -89,7 +92,7 @@ async def get_gateway_metrics():
 
         err_range = await prom.query_range(
             "(" \
-            f"sum(rate(aico_api_request_count_total{{job=\\\"aico-backend\\\",status_code_class=~\\\"4xx|5xx\\\"}}[1m]))" \
+            f"sum(rate(aico_api_request_count_total{{exported_job=\"aico-backend\",status_code_class=~\"4xx|5xx\"}}[1m]))" \
             "/" \
             f"sum(rate(aico_api_request_count_total{base_selector}[1m]))" \
             ") * 100",
@@ -122,7 +125,7 @@ async def get_gateway_metrics():
         for s in top_route_samples:
             route = s.labels.get("http_route") or "unknown"
             reqs = int(s.value)
-            route_selector = '{job="aico-backend",http_route="' + route.replace('"', '\\"') + '"}'
+            route_selector = '{exported_job="aico-backend",http_route="' + route.replace('"', '\\"') + '"}'
             route_avg_ms = await prom_scalar(
                 prom,
                 "(" \

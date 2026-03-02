@@ -42,7 +42,9 @@ async def get_system_health_metrics():
         disk_percent = psutil.disk_usage('/').percent
 
         prom = PrometheusClient()
-        base_selector = '{job="aico-backend"}'
+        # Metrics are exported via the otel-collector Prometheus exporter.
+        # In Prometheus they are labeled with job="otel-collector" and exported_job="aico-backend".
+        base_selector = '{exported_job="aico-backend"}'
 
         gateway_rps = await prom_scalar(
             prom,
@@ -51,7 +53,9 @@ async def get_system_health_metrics():
         gateway_total_rps = gateway_rps
         gateway_errors_rps = await prom_scalar(
             prom,
-            f"sum(rate(aico_api_request_count_total{base_selector},status_code_class=~\"5xx\"[1m]))",
+            "sum(rate(aico_api_request_count_total"
+            "{exported_job=\"aico-backend\",status_code_class=~\"5xx\"}"
+            "[1m]))",
         )
 
         system_error_rate = (gateway_errors_rps / gateway_total_rps * 100.0) if gateway_total_rps > 0 else 0.0

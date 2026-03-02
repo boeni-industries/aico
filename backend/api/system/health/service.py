@@ -303,21 +303,18 @@ class HealthService:
         
         # Get tool handlers
         pg_health_tool = tool_registry.get("tool.db.postgres.health")
-        influx_health_tool = tool_registry.get("tool.db.influx.health")
         lmdb_health_tool = None
         
         # Run all in parallel
         results = await asyncio.gather(
             connectivity_task,
             pg_health_tool.handler() if pg_health_tool else asyncio.sleep(0),
-            influx_health_tool.handler() if influx_health_tool else asyncio.sleep(0),
-            self._run_skill("maint.db.influx.get_measurements", {}),
             self._run_skill("maint.messagebus.check_health", {}),
             return_exceptions=True,
         )
         
         # Unpack results
-        connectivity, pg_health, influx_health, measurements_result, messagebus_result = results
+        connectivity, pg_health, messagebus_result = results
         
         # Handle exceptions
         if isinstance(connectivity, Exception):
@@ -405,73 +402,7 @@ class HealthService:
             depends_on=[],
             details=pg_service_details if pg_service_details else None,
         ))
-        
-        # LMDBInfluxDB Time Series Database
-        influx_check = checks.get("influx", {})
-        influx_status = influx_check.get("status")
-        
-        # Use parallel result (already fetched)
-        if isinstance(influx_health, Exception):
-            logger.error(f"InfluxDB health check failed: {influx_health}")
-            influx_health = {"data": {"details": {}}}
-        influx_details = influx_health.get("data", {}).get("details", {})
-        measurement_count = influx_details.get("measurements", 0)
-        
-        # Get detailed measurement list from parallel result (already fetched)
-        influx_measurements = []
-        try:
-            if isinstance(measurements_result, Exception):
-                raise measurements_result
-            print(f"\n{'='*80}")
-            print(f"[SERVICE_HEALTH DEBUG] InfluxDB skill result:")
-            print(f"{measurements_result}")
-            print(f"{'='*80}\n")
-            
-            measurements_output = measurements_result.get("output", {})
-            print(f"[SERVICE_HEALTH DEBUG] InfluxDB output: {measurements_output}\n")
-            
-            # Skill returns tool output in output.result
-            # Tool output structure: {status, latency_ms, error_message, details: {measurements: [...]}}
-            result_data = measurements_output.get("result", {})
-            print(f"[SERVICE_HEALTH DEBUG] InfluxDB result_data: {result_data}\n")
-            
-            # Measurements are directly at result_data.details.measurements
-            tool_details = result_data.get("details", {})
-            print(f"[SERVICE_HEALTH DEBUG] InfluxDB tool_details: {tool_details}\n")
-            
-            measurements_data = tool_details.get("measurements", [])
-            print(f"[SERVICE_HEALTH DEBUG] InfluxDB measurements_data count: {len(measurements_data)}")
-            print(f"[SERVICE_HEALTH DEBUG] InfluxDB measurements_data: {measurements_data}\n")
-            
-            # Sort by points descending, take top 10
-            sorted_measurements = sorted(measurements_data, key=lambda x: x.get("estimated_points", 0), reverse=True)[:10]
-            influx_measurements = [
-                {"name": m["name"], "points": m["estimated_points"]}
-                for m in sorted_measurements
-            ]
-            print(f"[SERVICE_HEALTH DEBUG] InfluxDB final measurements: {influx_measurements}\n")
-        except Exception as exc:
-            print(f"\n[SERVICE_HEALTH DEBUG] EXCEPTION: {exc}")
-            import traceback
-            traceback.print_exc()
-            print()
-        
-        services.append(ServiceHealth(
-            name="InfluxDB",
-            status=self._map_service_status(influx_status),
-            group="storage",
-            metric=ServiceMetric(
-                label="Measurements",
-                value=str(measurement_count),
-                unit="measurements",
-            ),
-            trend=None,
-            last_checked=now,
-            details={"measurements": influx_measurements} if influx_measurements else None,
-        ))
-        
-        
-        
+
         # Message Bus (ZeroMQ) - use parallel result (already fetched)
         if isinstance(messagebus_result, Exception):
             logger.error(f"Message bus health check failed: {messagebus_result}")

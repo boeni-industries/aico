@@ -53,15 +53,10 @@ def get_health_service(
             MaintenanceMessageBusCheckHealthSkill,
             MaintenanceSchedulerCheckHealthSkill,
         )
-        from aico.ai.agency.skills.remediation.influx import RemediationInfluxGetMeasurementsSkill
-        from aico.core.config import ConfigurationManager
         
         # Get backend start time from app state
         import time
         start_time = getattr(request.app.state, 'backend_start_time', time.time())
-        
-        # Get config for InfluxDB skill
-        config = ConfigurationManager()
         
         skill_registry = SkillRegistry()
         skill_registry.register(MaintenanceConnectivityFullScanSkill(session_factory))
@@ -70,7 +65,6 @@ def get_health_service(
         skill_registry.register(MaintenanceAgencyReEvaluateBehaviourHealthSkill(session_factory))
         skill_registry.register(MaintenanceMessageBusCheckHealthSkill())
         skill_registry.register(MaintenanceSchedulerCheckHealthSkill())
-        skill_registry.register(RemediationInfluxGetMeasurementsSkill(config))
         
         skill_invoker = SkillInvoker(skill_registry, session_factory)
         

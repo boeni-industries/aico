@@ -56,14 +56,14 @@ async def get_memory_metrics(
             semantic_qps = await prom_scalar(
                 prom,
                 "sum(rate(aico_api_request_duration_seconds_count"
-                "{job=\"aico-backend\",category=\"memory\",http_route=~\"^/api/v1/memory/semantic/.*\"}"
+                "{exported_job=\"aico-backend\",category=\"memory\",http_route=~\"^/api/v1/memory/semantic/.*\"}"
                 "[5m]))",
             )
             if semantic_qps <= 0:
                 semantic_qps = await prom_scalar(
                     prom,
                     "sum(rate(aico_api_request_duration_seconds_count"
-                    "{job=\"aico-backend\",category=\"memory\"}"
+                    "{exported_job=\"aico-backend\",category=\"memory\"}"
                     "[5m]))",
                 )
             semantic_qps = round(float(semantic_qps), 6) if semantic_qps > 0 else 0.0

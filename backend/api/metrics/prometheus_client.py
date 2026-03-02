@@ -19,18 +19,41 @@ class PrometheusSample:
 
 class PrometheusClient:
     def __init__(self, base_url: Optional[str] = None, timeout_seconds: float = 5.0) -> None:
-        self.base_url = (base_url or os.getenv("AICO_PROMETHEUS_URL") or "http://prometheus:9090").rstrip("/")
+        # NOTE:
+        # - When running inside docker-compose, the Prometheus service is reachable as http://prometheus:9090
+        # - When running the backend directly on the host (common during dev), Prometheus is typically exposed on
+        #   localhost:9090 and the docker DNS name will not resolve.
+        # Prefer explicit overrides via base_url / env var, otherwise default to localhost with a safe fallback.
+        env_url = os.getenv("AICO_PROMETHEUS_URL")
+        self._explicit_base_url = (base_url or env_url)
+        self.base_url = (self._explicit_base_url or "http://localhost:9090").rstrip("/")
         self._timeout = timeout_seconds
+
+    async def _get_json(self, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        urls_to_try = [self.base_url]
+        # If the user did not explicitly configure a base URL, also try the docker DNS name.
+        if not self._explicit_base_url:
+            urls_to_try.append("http://prometheus:9090")
+
+        last_exc: Exception | None = None
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            for base in urls_to_try:
+                try:
+                    resp = await client.get(f"{base.rstrip('/')}{path}", params=params)
+                    resp.raise_for_status()
+                    return resp.json()
+                except Exception as exc:
+                    last_exc = exc
+                    continue
+
+        raise last_exc or RuntimeError("Failed to query Prometheus")
 
     async def query(self, promql: str, ts: Optional[float] = None) -> List[PrometheusSample]:
         params: Dict[str, Any] = {"query": promql}
         if ts is not None:
             params["time"] = ts
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.get(f"{self.base_url}/api/v1/query", params=params)
-            resp.raise_for_status()
-            payload = resp.json()
+        payload = await self._get_json("/api/v1/query", params=params)
 
         if payload.get("status") != "success":
             raise PrometheusQueryError(str(payload))
@@ -66,10 +89,7 @@ class PrometheusClient:
             "step": step_seconds,
         }
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.get(f"{self.base_url}/api/v1/query_range", params=params)
-            resp.raise_for_status()
-            payload = resp.json()
+        payload = await self._get_json("/api/v1/query_range", params=params)
 
         if payload.get("status") != "success":
             raise PrometheusQueryError(str(payload))

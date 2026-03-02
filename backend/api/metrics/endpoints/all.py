@@ -78,6 +78,18 @@ async def get_all_metrics(
         get_messagebus_metrics(),
         get_system_health_metrics(),
     )
+
+    try:
+        logger.info(
+            "[METRICS_ALL] gateway_rps=%s gateway_avg_latency_ms=%s gateway_error_rate_pct=%s system_cpu_pct=%s system_mem_pct=%s",
+            getattr(getattr(gateway, "requests_per_second", None), "value", None),
+            getattr(getattr(gateway, "avg_response_time", None), "value", None),
+            getattr(getattr(gateway, "error_rate", None), "value", None),
+            getattr(system_health, "cpu_percent", None),
+            getattr(system_health, "memory_percent", None),
+        )
+    except Exception:
+        pass
     
     return AllMetrics(
         timestamp=datetime.now(UTC).isoformat() + "Z",
