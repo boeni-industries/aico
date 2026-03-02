@@ -41,72 +41,6 @@
       "title": "\ud83d\udd0e Raw Logs",
       "type": "link",
       "url": "/d/aico-raw-logs"
-    },
-    {
-      "asDropdown": false,
-      "icon": "compass",
-      "includeVars": false,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": false,
-      "title": "\ud83d\udd0d Tempo Explore",
-      "type": "link",
-      "url": "/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22%7D"
-    },
-    {
-      "asDropdown": true,
-      "icon": "filter",
-      "includeVars": false,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": false,
-      "title": "Quick: POST requests",
-      "type": "link",
-      "url": "/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22queryType%22:%22traceql%22,%22query%22:%22%7Bspan.http.method%3D%5C%22POST%5C%22%7D%22%7D%5D%7D"
-    },
-    {
-      "asDropdown": true,
-      "icon": "filter",
-      "includeVars": false,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": false,
-      "title": "Quick: GET requests",
-      "type": "link",
-      "url": "/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22queryType%22:%22traceql%22,%22query%22:%22%7Bspan.http.method%3D%5C%22GET%5C%22%7D%22%7D%5D%7D"
-    },
-    {
-      "asDropdown": true,
-      "icon": "filter",
-      "includeVars": false,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": false,
-      "title": "Quick: NATS traces",
-      "type": "link",
-      "url": "/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22queryType%22:%22traceql%22,%22query%22:%22%7Bspan.messaging.system%3D%5C%22nats%5C%22%7D%22%7D%5D%7D"
-    },
-    {
-      "asDropdown": true,
-      "icon": "filter",
-      "includeVars": false,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": false,
-      "title": "Quick: Errors",
-      "type": "link",
-      "url": "/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22queryType%22:%22traceql%22,%22query%22:%22%7Bstatus%3Derror%7D%22%7D%5D%7D"
-    },
-    {
-      "asDropdown": true,
-      "icon": "filter",
-      "includeVars": false,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": false,
-      "title": "Quick: Slow (>100ms)",
-      "type": "link",
-      "url": "/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22queryType%22:%22traceql%22,%22query%22:%22%7Bduration%3E100ms%7D%22%7D%5D%7D"
     }
   ],
   "liveNow": false,
@@ -309,7 +243,7 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {
@@ -322,17 +256,6 @@
       "15m",
       "30m",
       "1h"
-    ],
-    "time_options": [
-      "5m",
-      "15m",
-      "1h",
-      "6h",
-      "12h",
-      "24h",
-      "2d",
-      "7d",
-      "30d"
     ]
   },
   "timezone": "browser",
