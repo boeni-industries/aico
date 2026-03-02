@@ -9,7 +9,6 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import statistics
 
-from aico.data.influx.connection import InfluxDBConnection
 from aico.core.logging import get_logger
 
 logger = get_logger("backend.api.metrics.influx_client")
@@ -25,17 +24,16 @@ class MetricsInfluxClient:
     
     def __init__(self):
         """Initialize the metrics client."""
-        self._conn: Optional[InfluxDBConnection] = None
+        self._conn = None
     
     def __enter__(self):
         """Context manager entry - establish connection."""
-        self._conn = InfluxDBConnection()
+        raise RuntimeError("InfluxDB metrics backend has been retired; use Prometheus-backed metrics endpoints")
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - close connection."""
         if self._conn:
-            self._conn.close()
             self._conn = None
     
     def query(self, flux_query: str) -> List[Dict[str, Any]]:

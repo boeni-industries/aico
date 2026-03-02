@@ -121,7 +121,6 @@ class DatabaseVersionDetector:
     # Default versions as fallback
     DEFAULT_VERSIONS = {
         "PostgreSQL": "18.1",
-        "InfluxDB": "2.8.0",
         "vLLM": "unknown",
     }
     
@@ -154,7 +153,6 @@ class DatabaseVersionDetector:
         """Get detection method description"""
         methods = {
             "PostgreSQL": "docker exec + SELECT version()",
-            "InfluxDB": "docker exec + influxd version",
             "vLLM": "HTTP API /health or /v1/models",
         }
         return methods.get(db_name, "unknown")
@@ -166,8 +164,6 @@ class DatabaseVersionDetector:
         try:
             if db_name == "PostgreSQL":
                 version = await self._detect_postgresql_version()
-            elif db_name == "InfluxDB":
-                version = await self._detect_influxdb_version()
             elif db_name == "vLLM":
                 version = await self._detect_vllm_version()
             else:
@@ -225,42 +221,6 @@ class DatabaseVersionDetector:
         # If we get here, detection failed
         fallback = self.DEFAULT_VERSIONS["PostgreSQL"]
         logger.error(f"PostgreSQL version detection FAILED - using fallback: {fallback}")
-        return fallback
-    
-    async def _detect_influxdb_version(self) -> str:
-        """Detect InfluxDB version from container"""
-        logger.debug("Attempting InfluxDB version detection via docker exec...")
-        
-        try:
-            # Try docker exec
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["docker", "exec", "aico-influxdb", "influxd", "version"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
-            if result.returncode == 0:
-                # Parse version from output like "InfluxDB v2.8.0 ..."
-                output = result.stdout.strip()
-                if "InfluxDB" in output:
-                    version_part = output.split("InfluxDB")[1].strip().split()[0].lstrip('v')
-                    logger.info(f"InfluxDB version detected successfully: {version_part}")
-                    return version_part
-                else:
-                    logger.error(f"InfluxDB version query returned unexpected format: {output}")
-            else:
-                logger.error(f"InfluxDB version query failed with exit code {result.returncode}: {result.stderr}")
-                
-        except subprocess.TimeoutExpired:
-            logger.error("InfluxDB version detection timed out after 5 seconds")
-        except Exception as e:
-            logger.error(f"InfluxDB version detection failed: {e}", exc_info=True)
-        
-        # If we get here, detection failed
-        fallback = self.DEFAULT_VERSIONS["InfluxDB"]
-        logger.error(f"InfluxDB version detection FAILED - using fallback: {fallback}")
         return fallback
     
     async def _detect_vllm_version(self) -> str:

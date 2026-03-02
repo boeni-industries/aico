@@ -20351,54 +20351,6 @@
         ]
       }
     },
-    "/api/v1/operations/databases/influxdb/query": {
-      "post": {
-        "description": "Execute a Flux query on InfluxDB.\n\nReturns time-series data from the configured InfluxDB instance.",
-        "operationId": "execute_influx_query_api_v1_operations_databases_influxdb_query_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QueryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QueryResult"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Execute Influx Query",
-        "tags": [
-          "operations",
-          "databases"
-        ]
-      }
-    },
     "/api/v1/operations/databases/postgresql/query": {
       "post": {
         "description": "Execute a SQL query on PostgreSQL database.\n\n**Security**:\n- SELECT and SHOW queries allowed by default\n- Destructive operations (DELETE, UPDATE, INSERT) require allow_destructive=true\n- Forbidden operations (DROP, ALTER, TRUNCATE) always blocked\n- Auto-adds LIMIT to SELECT queries\n- Maximum query length: 10,000 characters\n- Execution timeout: 30 seconds",
@@ -22322,7 +22274,7 @@
     },
     "/api/v1/system/metrics/gateway": {
       "get": {
-        "description": "Get API Gateway performance metrics from InfluxDB.\n\nReturns comprehensive metrics including throughput, latency,\nerror rates, and endpoint statistics.\n\nRaises:\n    HTTPException: If metrics collection fails",
+        "description": "Get API Gateway performance metrics from Prometheus.\n\nReturns comprehensive metrics including throughput, latency,\nerror rates, and endpoint statistics.\n\nThe values are derived from the OpenTelemetry-exported Prometheus metrics\nexposed by the collector.",
         "operationId": "get_gateway_metrics_api_v1_system_metrics_gateway_get",
         "responses": {
           "200": {
@@ -22366,7 +22318,7 @@
     },
     "/api/v1/system/metrics/memory": {
       "get": {
-        "description": "Get memory system metrics from PostgreSQL, InfluxDB, and ChromaDB.",
+        "description": "Get memory system metrics from PostgreSQL and Prometheus.",
         "operationId": "get_memory_metrics_api_v1_system_metrics_memory_get",
         "responses": {
           "200": {
@@ -22394,7 +22346,7 @@
     },
     "/api/v1/system/metrics/messagebus": {
       "get": {
-        "description": "Get message bus metrics from InfluxDB.",
+        "description": "Get message bus metrics from Prometheus.",
         "operationId": "get_messagebus_metrics_api_v1_system_metrics_messagebus_get",
         "responses": {
           "200": {
@@ -22417,7 +22369,7 @@
     },
     "/api/v1/system/metrics/modelservice": {
       "get": {
-        "description": "Get comprehensive modelservice inference metrics from InfluxDB.\n\nAggregates metrics across all model types (LLM, NER, sentiment, embeddings).",
+        "description": "Get comprehensive modelservice inference metrics.\n\nNote: dedicated modelservice inference metrics are not yet exported to Prometheus.\nThis endpoint returns schema-stable default values (zeros) to keep Studio compatible\nuntil OTLP instruments are wired to produce aico_modelservice_* series.",
         "operationId": "get_modelservice_metrics_api_v1_system_metrics_modelservice_get",
         "responses": {
           "200": {
@@ -22440,7 +22392,7 @@
     },
     "/api/v1/system/metrics/scheduler": {
       "get": {
-        "description": "Get task scheduler metrics from InfluxDB.",
+        "description": "Get task scheduler metrics from Prometheus.",
         "operationId": "get_scheduler_metrics_api_v1_system_metrics_scheduler_get",
         "responses": {
           "200": {

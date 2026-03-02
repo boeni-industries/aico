@@ -8,18 +8,17 @@ Provides metrics for the memory subsystem including:
 - Storage breakdown
 - Consolidation health
 
-Metrics sourced from InfluxDB (memory_query measurement) and database queries.
+Metrics sourced from Prometheus (gateway request metrics) and database queries.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from typing import Annotated
-import os
 from datetime import datetime, UTC
 
 from sqlalchemy import func, or_, select
 
 from ..models import MemoryMetrics, MetricValue
-from ..influx_client import MetricsInfluxClient
+from ..prometheus_client import PrometheusClient, prom_scalar
 from aico.core.logging import get_logger
 from backend.api.system.dependencies import get_current_user
 from backend.core.postgres_dependencies import get_uow
@@ -36,7 +35,7 @@ async def get_memory_metrics(
     user: Annotated[dict, Depends(get_current_user)],
     uow: Annotated[UnitOfWork, Depends(get_uow)]
 ) -> MemoryMetrics:
-    """Get memory system metrics from PostgreSQL, InfluxDB, and ChromaDB."""
+    """Get memory system metrics from PostgreSQL and Prometheus."""
     try:
         # Working Memory - Postgres-backed
         working_memory_count = 0
@@ -49,15 +48,27 @@ async def get_memory_metrics(
         except Exception as e:
             logger.debug(f"Failed to read Postgres working memory: {e}")
         
-        # Semantic Queries - rate from InfluxDB downsampled data
+        # Semantic Queries - approximate rate from gateway request metrics
         semantic_qps = 0.0
         try:
-            with MetricsInfluxClient() as client:
-                # Query semantic memory operations from last hour using downsampled data
-                query_count_1h = client.count_points("memory_query_1m", "-1h", {"query_type": "semantic_search"})
-                semantic_qps = round(query_count_1h / 3600, 6) if query_count_1h > 0 else 0.0
+            prom = PrometheusClient()
+            # Prefer semantic endpoints only, but fall back to overall memory category.
+            semantic_qps = await prom_scalar(
+                prom,
+                "sum(rate(aico_api_request_duration_seconds_count"
+                "{job=\"aico-backend\",category=\"memory\",http_route=~\"^/api/v1/memory/semantic/.*\"}"
+                "[5m]))",
+            )
+            if semantic_qps <= 0:
+                semantic_qps = await prom_scalar(
+                    prom,
+                    "sum(rate(aico_api_request_duration_seconds_count"
+                    "{job=\"aico-backend\",category=\"memory\"}"
+                    "[5m]))",
+                )
+            semantic_qps = round(float(semantic_qps), 6) if semantic_qps > 0 else 0.0
         except Exception as e:
-            logger.debug(f"Failed to query semantic metrics from InfluxDB: {e}")
+            logger.debug(f"Failed to query semantic metrics from Prometheus: {e}")
         
         kg_node_count = 0
         kg_edge_count = 0

@@ -110,90 +110,51 @@ async def initialize_modelservice():
     service = ModelserviceNATSService(cfg, None)
     await service.start_early()
     
-    # Initialize InfluxDB metrics exporter (honor instrumentation flag)
+    # Initialize OTLP metrics exporter (honor instrumentation flag)
     instrumentation_config = cfg.get("instrumentation", {})
-    if instrumentation_config.get("enabled", False):
-        print("📊 Initializing InfluxDB metrics exporter...")
-        logger.info("Initializing InfluxDB metrics exporter (instrumentation enabled)")
+    exporters_config = instrumentation_config.get("exporters", {}) if isinstance(instrumentation_config, dict) else {}
+    otlp_config = exporters_config.get("otlp", {}) if isinstance(exporters_config, dict) else {}
+
+    if instrumentation_config.get("enabled", False) and otlp_config.get("enabled", False):
+        print("📊 Initializing OTLP metrics exporter...")
+        logger.info("Initializing OTLP metrics exporter (instrumentation enabled)")
         try:
             from opentelemetry import metrics as otel_metrics
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
             from opentelemetry.sdk.metrics import MeterProvider
             from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
             from opentelemetry.sdk.resources import Resource
-            from backend.core.otel_influx_exporter import OTelInfluxExporter
             import socket
-            
-            # Get InfluxDB config
-            influx_config = cfg.get("influx", {})
-            influx_url = influx_config.get("url", "http://127.0.0.1:8086")
-            influx_org = influx_config.get("org", "aico")
-            influx_bucket = influx_config.get("bucket", "aico_telemetry")
-            
-            # Retrieve token from keyring
-            influx_token = None
-            try:
-                from aico.security.key_manager import AICOKeyManager
-                from aico.security.credential_provider import CredentialProvider
-                
-                # Use the global config_manager (already initialized at module level)
-                key_manager = AICOKeyManager(config_manager)
-                provider = CredentialProvider()
-                influx_token = provider.get("influx_admin_token") or key_manager.get_database_password(
-                    "influx", username="admin_token"
-                )
-                
-                if not influx_token:
-                    logger.warning("InfluxDB token not found in keyring; metrics may not be exported. Run 'aico deploy influx' to set up credentials.")
-            except Exception as e:
-                logger.warning(f"Failed to retrieve InfluxDB token from keyring: {e}")
-                influx_token = None
 
-            if not influx_token:
-                print("⏹️  No InfluxDB token configured; skipping metrics exporter")
-                logger.warning("No InfluxDB token configured; skipping modelservice metrics exporter")
-                raise RuntimeError("InfluxDB token not configured")
-            
-            # Create resource for modelservice
+            traces_cfg = otlp_config.get("traces", {}) if isinstance(otlp_config.get("traces"), dict) else {}
+            metrics_cfg = otlp_config.get("metrics", {}) if isinstance(otlp_config.get("metrics"), dict) else {}
+
+            endpoint = metrics_cfg.get("endpoint") or traces_cfg.get("endpoint") or "otel-collector:4317"
+            insecure = bool(metrics_cfg.get("insecure", traces_cfg.get("insecure", True)))
+
             resource = Resource.create({
                 "service.name": "modelservice",
                 "service.version": __version__,
                 "deployment.environment": instrumentation_config.get("mode", "casual"),
                 "host.name": socket.gethostname(),
             })
-            
-            # Create InfluxDB exporter
-            influx_exporter = OTelInfluxExporter(
-                influx_url=influx_url,
-                org=influx_org,
-                bucket=influx_bucket,
-                token=influx_token,
-                resource_attributes=dict(resource.attributes),
+
+            otlp_metrics_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=insecure)
+            metrics_reader = PeriodicExportingMetricReader(
+                exporter=otlp_metrics_exporter,
+                export_interval_millis=15000,
             )
-            
-            # Wrap exporter in periodic reader (exports every 60 seconds, matching backend)
-            influx_reader = PeriodicExportingMetricReader(
-                exporter=influx_exporter,
-                export_interval_millis=60000,  # 60 seconds (as per schema.lp)
-            )
-            
-            # Create and set meter provider
-            meter_provider = MeterProvider(
-                resource=resource,
-                metric_readers=[influx_reader]
-            )
+
+            meter_provider = MeterProvider(resource=resource, metric_readers=[metrics_reader])
             otel_metrics.set_meter_provider(meter_provider)
-            
-            print("✅ InfluxDB metrics exporter ready")
-            logger.info("InfluxDB metrics exporter initialized successfully")
+
+            print("✅ OTLP metrics exporter ready")
+            logger.info("OTLP metrics exporter initialized successfully")
         except Exception as e:
             print(f"⚠️  Metrics initialization failed: {e}")
             logger.warning(f"Metrics initialization failed: {e}")
     else:
-        print("⏹️  Instrumentation disabled in config; skipping metrics setup")
-        logger.info("Instrumentation disabled in config; skipping modelservice metrics initialization")
-    
-    # Logs now go directly to InfluxDB
-    logger.info("Modelservice logging initialized with InfluxDB")
+        logger.info("OTLP metrics export disabled; skipping modelservice metrics exporter")
     
     # vLLM is now deployed separately via 'aico vllm' CLI commands
     

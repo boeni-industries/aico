@@ -30,6 +30,17 @@
       "title": "\ud83d\udd0e Raw Logs",
       "type": "link",
       "url": "/d/aico-raw-logs"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "\ud83d\udd0e Traces",
+      "type": "link",
+      "url": "/d/aico-traces-drilldown"
     }
   ],
   "liveNow": false,
@@ -37,7 +48,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -86,7 +97,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__range]))",
@@ -100,7 +111,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -157,7 +168,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service=~\"$service\", level=\"ERROR\"} |~ \"$search\" [$__range]))",
@@ -171,7 +182,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -228,7 +239,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service=~\"$service\", level=\"CRITICAL\"} |~ \"$search\" [$__range]))",
@@ -242,7 +253,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -291,7 +302,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service=~\"$service\", level=\"WARNING\"} |~ \"$search\" [$__range]))",
@@ -305,7 +316,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -446,7 +457,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum by(level) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [1m]))",
@@ -464,7 +475,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -522,7 +533,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum by(service) (count_over_time({service=~\".+\", level=~\"$level\"} |~ \"$search\" [$__range]))",
@@ -539,7 +550,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -658,7 +669,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum by(level) (count_over_time({service=~\".+\"} |~ \"$search\" [$__range]))",
@@ -675,7 +686,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -755,7 +766,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum by(service) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [1m]))",
@@ -773,7 +784,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -858,7 +869,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\" [1m])) or vector(0)",
@@ -876,7 +887,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -899,7 +910,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\" | json | line_format \"{{ if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
@@ -914,7 +925,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -937,7 +948,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{service=\"backend\"} |~ \"Slow request\" |~ \"$search\" | json | line_format \"{{ if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
@@ -971,7 +982,7 @@
         },
         "datasource": {
           "type": "loki",
-          "uid": "P8E80F9AEF21F6940"
+          "uid": "loki"
         },
         "definition": "label_values(service)",
         "hide": 0,

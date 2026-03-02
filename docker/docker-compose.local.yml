@@ -42,7 +42,6 @@ services:
       AICO_NATS_URL: nats://nats:4222
       AICO_INSTRUMENTATION_ENABLED: "true"
       AICO_INSTRUMENTATION_MODE: "dev"
-      AICO_INFLUX_URL: http://influxdb:8086
       AICO_LOKI_URL: http://loki:3100
       AICO_REST_HOST: 0.0.0.0
       AICO_PG_HOST: postgres
@@ -52,8 +51,6 @@ services:
     secrets:
       - pg_password
       - api_gateway_jwt_secret
-      - influx_admin_password
-      - influx_admin_token
     volumes:
       - aico-gateway-state:/var/lib/aico
       - aico-gateway-cache:/var/cache/aico
@@ -94,14 +91,11 @@ services:
       AICO_NATS_URL: nats://nats:4222
       AICO_INSTRUMENTATION_ENABLED: "true"
       AICO_INSTRUMENTATION_MODE: "dev"
-      AICO_INFLUX_URL: http://influxdb:8086
       AICO_LOKI_URL: http://loki:3100
       AICO_PG_HOST: postgres
     secrets:
       - pg_password
       - api_gateway_jwt_secret
-      - influx_admin_password
-      - influx_admin_token
     volumes:
       - aico-core-state:/var/lib/aico
       - aico-core-cache:/var/cache/aico
@@ -136,15 +130,12 @@ services:
       AICO_CACHE_DIR: /var/cache/aico
       AICO_RUNTIME_DIR: /run/aico
       AICO_NATS_URL: nats://nats:4222
-      AICO_INFLUX_URL: http://influxdb:8086
       AICO_LOKI_URL: http://loki:3100
       AICO_REST_HOST: gateway
       HF_HOME: /var/cache/aico/huggingface
       TRANSFORMERS_CACHE: /var/cache/aico/huggingface
     secrets:
       - pg_password
-      - influx_admin_password
-      - influx_admin_token
     volumes:
       - aico-modelservice-state:/var/lib/aico
       - aico-modelservice-cache:/var/cache/aico
@@ -242,42 +233,8 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev-shadow"
 
-  influxdb:
-    image: influxdb:2
-    container_name: aico-influxdb
-    restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c", "export DOCKER_INFLUXDB_INIT_PASSWORD=\"$$(cat /run/secrets/influx_admin_password)\"; export DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=\"$$(cat /run/secrets/influx_admin_token)\"; exec /entrypoint.sh influxd" ]
-    environment:
-      # InfluxDB initial setup (secrets are loaded from /run/secrets by entrypoint override)
-      DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: aico-admin
-      DOCKER_INFLUXDB_INIT_ORG: aico
-      DOCKER_INFLUXDB_INIT_BUCKET: aico_telemetry
-      DOCKER_INFLUXDB_INIT_RETENTION: 720h
-    secrets:
-      - influx_admin_password
-      - influx_admin_token
-    ports:
-      - "8086:8086"
-    volumes:
-      - aico-influxdata:/var/lib/influxdb2
-      - aico-influxconfig:/etc/influxdb2
-    labels:
-      # Project identification
-      com.aico.project: "aico"
-      com.aico.component: "influxdb"
-      com.aico.service.type: "database"
-      com.aico.service.role: "metrics-timeseries"
-      # Standard Docker labels
-      org.opencontainers.image.title: "AICO InfluxDB Time-Series Database"
-      org.opencontainers.image.description: "Time-series database for AICO metrics and telemetry"
-      org.opencontainers.image.vendor: "AICO"
-      # Management metadata
-      com.aico.managed-by: "aico-cli"
-      com.aico.deployment.type: "local-dev"
-
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.6.7
     container_name: aico-loki
     restart: unless-stopped
     ports:
@@ -297,6 +254,79 @@ services:
       org.opencontainers.image.description: "Log aggregation system for AICO"
       org.opencontainers.image.vendor: "AICO"
       # Management metadata
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.146.1
+    container_name: aico-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8888:8888" # Collector internal telemetry metrics
+      - "8889:8889" # Prometheus exporter (spanmetrics)
+    depends_on:
+      - tempo
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "otel-collector"
+      com.aico.service.type: "observability"
+      com.aico.service.role: "telemetry-router"
+      org.opencontainers.image.title: "AICO OpenTelemetry Collector"
+      org.opencontainers.image.description: "OTLP ingest + tail sampling + spanmetrics"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  tempo:
+    image: grafana/tempo:2.10.1
+    container_name: aico-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "3200:3200" # Tempo HTTP API
+      - "4319:4317" # Optional direct OTLP gRPC (collector uses internal tempo:4317)
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - aico-tempodata:/var/tempo
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "tempo"
+      com.aico.service.type: "observability"
+      com.aico.service.role: "tracing"
+      org.opencontainers.image.title: "AICO Tempo"
+      org.opencontainers.image.description: "Distributed tracing backend"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    container_name: aico-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=24h"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - aico-prometheusdata:/prometheus
+    depends_on:
+      - otel-collector
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "prometheus"
+      com.aico.service.type: "observability"
+      com.aico.service.role: "metrics"
+      org.opencontainers.image.title: "AICO Prometheus"
+      org.opencontainers.image.description: "Metrics backend for spanmetrics and dashboards"
+      org.opencontainers.image.vendor: "AICO"
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
@@ -349,7 +379,7 @@ services:
       com.aico.deployment.type: "local-dev"
 
   grafana:
-    image: grafana/grafana:12.1.0
+    image: grafana/grafana:12.4.0
     container_name: aico-grafana
     restart: unless-stopped
     environment:
@@ -373,6 +403,8 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - loki
+      - tempo
+      - prometheus
     labels:
       com.aico.project: "aico"
       com.aico.component: "grafana"
@@ -384,23 +416,45 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
+  studio:
+    build:
+      context: ../../aico-studio
+      dockerfile: docker/Dockerfile.prod
+    container_name: aico-studio
+    restart: unless-stopped
+    environment:
+      AICO_STUDIO_API_BASE_URL: http://gateway:8771/api/v1
+    ports:
+      - "3002:80"
+    depends_on:
+      - gateway
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "studio"
+      com.aico.service.type: "application"
+      com.aico.service.role: "ui"
+      org.opencontainers.image.title: "AICO Studio"
+      org.opencontainers.image.description: "AICO Studio web UI"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
 volumes:
   aico-natsdata:
     external: true
     name: aico-natsdata
-
-  aico-influxdata:
-    external: true
-    name: aico-influxdata
-  aico-influxconfig:
-    external: true
-    name: aico-influxconfig
   aico-lokidata:
     external: true
     name: aico-lokidata
   aico-grafanadata:
     external: true
     name: aico-grafanadata
+
+  aico-tempodata:
+    name: aico-tempodata
+
+  aico-prometheusdata:
+    name: aico-prometheusdata
 
   aico-gateway-state:
     external: true
@@ -438,7 +492,3 @@ secrets:
     file: ./secrets/pg_password
   api_gateway_jwt_secret:
     file: ./secrets/api_gateway_jwt_secret
-  influx_admin_password:
-    file: ./secrets/influx_admin_password
-  influx_admin_token:
-    file: ./secrets/influx_admin_token

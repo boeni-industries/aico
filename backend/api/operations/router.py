@@ -181,108 +181,6 @@ async def get_database_stats(
                 error_details=f"Critical error: {str(e)}",
             ))
         
-        # InfluxDB
-        try:
-            from aico.data.influx.connection import InfluxDBConnection
-            from aico.core.config import ConfigurationManager
-            
-            config = ConfigurationManager()
-            influx_config = config.get('influx', {})
-            
-            influx_url = influx_config.get('url', 'http://127.0.0.1:8086')
-            influx_org = influx_config.get('org', 'aico')
-            influx_bucket = influx_config.get('bucket', 'aico_telemetry')
-            
-            # Initialize metrics
-            influx_size = 0
-            bucket_count = 0
-            measurement_count = 0
-            series_count = 0
-            status = "healthy"
-            error_details = None
-            
-            try:
-                # Connect to InfluxDB
-                influx_conn = InfluxDBConnection()
-                
-                # Check health
-                health = influx_conn.health()
-                if not health.get('healthy', False):
-                    status = "degraded"
-                    error_details = health.get('message', 'Health check failed')
-                else:
-                    # Get bucket list
-                    buckets_api = influx_conn.client.buckets_api()
-                    buckets = buckets_api.find_buckets().buckets
-                    bucket_count = len(buckets) if buckets else 0
-                    
-                    # Get measurements count for the configured bucket
-                    try:
-                        measurements_query = f'''
-                            import "influxdata/influxdb/schema"
-                            schema.measurements(bucket: "{influx_bucket}")
-                        '''
-                        measurements = influx_conn.query(measurements_query)
-                        measurement_count = len(measurements)
-                    except Exception as e:
-                        logger.debug(f"Could not query measurements: {e}")
-                        measurement_count = 0
-                    
-                    # Get series cardinality (approximate size indicator)
-                    try:
-                        cardinality_query = f'''
-                            from(bucket: "{influx_bucket}")
-                            |> range(start: -30d)
-                            |> group()
-                            |> count()
-                        '''
-                        cardinality = influx_conn.query(cardinality_query)
-                        if cardinality:
-                            series_count = sum(r.get('_value', 0) for r in cardinality)
-                    except Exception as e:
-                        logger.debug(f"Could not query cardinality: {e}")
-                        series_count = 0
-                    
-                    # Estimate size based on series count (rough approximation)
-                    # Average ~1KB per series
-                    influx_size = series_count * 1024 if series_count > 0 else 0
-                
-                influx_conn.close()
-                
-            except ValueError as e:
-                # Token not found in keyring
-                status = "degraded"
-                error_details = str(e)
-                logger.warning(f"InfluxDB credentials not configured: {e}")
-            except Exception as e:
-                status = "degraded"
-                error_details = f"Connection failed: {str(e)}"
-                logger.error(f"Failed to connect to InfluxDB: {e}")
-            
-            databases.append(DatabaseMetrics(
-                name="InfluxDB",
-                type="influxdb",
-                size_bytes=influx_size,
-                status=status,
-                location=influx_url,
-                error_details=error_details,
-                bucket_count=bucket_count,
-                measurement_count=measurement_count,
-                series_count=series_count,
-                org=influx_org,
-                bucket=influx_bucket,
-            ))
-        except Exception as e:
-            logger.error(f"Failed to get InfluxDB metrics: {e}")
-            databases.append(DatabaseMetrics(
-                name="InfluxDB",
-                type="influxdb",
-                size_bytes=0,
-                status="critical",
-                location="unknown",
-                error_details=f"Critical error: {str(e)}",
-            ))
-        
         return DatabaseStatsResponse(databases=databases)
         
     except Exception as e:
@@ -507,43 +405,17 @@ async def get_system_topology(
                 logger.debug(f"Could not get PostgreSQL uptime: {e}")
             return "N/A"
         
-        async def get_influxdb_uptime():
-            try:
-                import subprocess
-                from datetime import datetime, UTC
-                
-                result = await asyncio.to_thread(
-                    subprocess.run,
-                    ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-influxdb"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
-                if result.returncode == 0:
-                    started_at_str = result.stdout.strip()
-                    logger.debug(f"InfluxDB container started at: {started_at_str}")
-                    started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
-                    uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
-                    return format_uptime(uptime_seconds)
-                else:
-                    logger.debug(f"Docker inspect failed for aico-influxdb: {result.stderr}")
-            except Exception as e:
-                logger.debug(f"Could not get InfluxDB uptime: {e}")
-            return "N/A"
-        
         # Execute all checks in parallel
         (
             modelservice_uptime_str,
             vllm_status,
             studio_uptime_str,
-            postgres_uptime_str,
-            influxdb_uptime_str
+            postgres_uptime_str
         ) = await asyncio.gather(
             get_modelservice_uptime(),
             check_vllm_status(),
             get_studio_uptime(),
             get_postgres_uptime(),
-            get_influxdb_uptime(),
             return_exceptions=False
         )
         
@@ -642,16 +514,6 @@ async def get_system_topology(
                 uptime=postgres_uptime_str
             ),
             ServiceNode(
-                id="influxdb",
-                name="InfluxDB",
-                type="database",
-                status="healthy",
-                version=db_versions.get("InfluxDB", "2.8.0"),
-                host="localhost",
-                port=8086,
-                uptime=influxdb_uptime_str
-            ),
-            ServiceNode(
                 id="vllm",
                 name="vLLM",
                 type="llm",
@@ -727,14 +589,6 @@ async def get_system_topology(
                 port=5432,
                 status="active"
             ),
-            # Core -> InfluxDB
-            ServiceConnection(
-                from_service="core",
-                to_service="influxdb",
-                protocol="HTTP",
-                port=8086,
-                status="active"
-            ),
             # Scheduler -> NATS
             ServiceConnection(
                 from_service="scheduler",
@@ -765,14 +619,6 @@ async def get_system_topology(
                 to_service="loki",
                 protocol="HTTP",
                 port=3100,
-                status="active"
-            ),
-            # Grafana -> InfluxDB (metrics)
-            ServiceConnection(
-                from_service="grafana",
-                to_service="influxdb",
-                protocol="HTTP",
-                port=8086,
                 status="active"
             ),
         ]

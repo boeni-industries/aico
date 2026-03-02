@@ -165,11 +165,18 @@ class BackendLifecycleManager:
                 except Exception:
                     self.logger.warning("Database connection not yet available for telemetry")
             
-            # Build config dict expected by initialize_telemetry
+            # Build config dict expected by initialize_telemetry.
+            # Preserve nested exporter configuration (otlp/prometheus/etc.) so
+            # TelemetryManager can honor it.
+            instrumentation_config = self.config.get("instrumentation", {})
+            if not isinstance(instrumentation_config, dict):
+                instrumentation_config = {}
+
             config_dict = {
-                'instrumentation': {
-                    'enabled': enabled,
-                    'mode': mode
+                "instrumentation": {
+                    **instrumentation_config,
+                    "enabled": enabled,
+                    "mode": mode,
                 }
             }
             
@@ -188,7 +195,8 @@ class BackendLifecycleManager:
         
         try:
             from backend.core.telemetry import instrument_fastapi
-            instrument_fastapi(self.app)
+            app_to_instrument = getattr(self, "fastapi_app", None) or self.app
+            instrument_fastapi(app_to_instrument)
             self.logger.info("FastAPI instrumented with OpenTelemetry")
             
         except Exception as e:

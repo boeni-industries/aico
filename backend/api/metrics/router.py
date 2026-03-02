@@ -51,5 +51,5 @@ async def metrics_health():
         "status": "healthy",
         "service": "metrics-api",
         "version": "2.0.0",
-        "backend": "influxdb"
+        "backend": "prometheus"
     }

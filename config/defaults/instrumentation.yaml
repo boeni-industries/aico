@@ -4,4 +4,7 @@ exporters:
   prometheus:
     enabled: false
   otlp:
-    enabled: false
+    enabled: true
+    traces:
+      endpoint: "otel-collector:4317"
+      insecure: true

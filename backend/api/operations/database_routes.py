@@ -47,8 +47,6 @@ async def get_database_details(
     """
     if database_type == "postgresql":
         return await database_admin.get_postgresql_details()
-    elif database_type == "influxdb":
-        return await database_admin.get_influxdb_details()
     else:
         from fastapi import HTTPException, status
         raise HTTPException(
@@ -77,19 +75,6 @@ async def execute_query(
         query_request.limit or 100,
         uow
     )
-
-
-@router.post("/databases/influxdb/query", response_model=QueryResult)
-async def execute_influx_query(
-    query_request: QueryRequest,
-    user: Annotated[dict, Depends(get_current_user)]
-) -> QueryResult:
-    """
-    Execute a Flux query on InfluxDB.
-    
-    Returns time-series data from the configured InfluxDB instance.
-    """
-    return await database_admin.execute_influx_query(query_request.query)
 
 
 # ============================================================================

@@ -1,30 +1,16 @@
-"""
-API Gateway Metrics Endpoint
+"""API Gateway Metrics Endpoint."""
 
-Provides comprehensive performance metrics for the API Gateway including:
-- Request throughput (requests per second)
-- Response times (average, P95, P99)
-- Error rates and success rates
-- Status code distribution
-- Top endpoints by traffic
-- Protocol distribution
+from typing import Any, Dict, List
 
-All metrics sourced from InfluxDB (api_request measurement).
-"""
-
-from typing import Dict, Any, List
-import asyncio
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter
+
+from aico.core.logging import get_logger
 
 from ..models import GatewayMetrics, MetricValue
-from ..influx_client import (
-    MetricsInfluxClient,
-    calculate_percentile,
-    calculate_trend,
-    get_metric_status,
-)
-from aico.core.logging import get_logger
+from ..prometheus_client import PrometheusClient, prom_label_values, prom_scalar
+from ..influx_client import get_metric_status
 
 logger = get_logger("backend.api.metrics.gateway")
 
@@ -34,237 +20,177 @@ router = APIRouter()
 @router.get("/gateway", response_model=GatewayMetrics)
 async def get_gateway_metrics():
     """
-    Get API Gateway performance metrics from InfluxDB.
+    Get API Gateway performance metrics from Prometheus.
     
     Returns comprehensive metrics including throughput, latency,
     error rates, and endpoint statistics.
     
-    Raises:
-        HTTPException: If metrics collection fails
+    The values are derived from the OpenTelemetry-exported Prometheus metrics
+    exposed by the collector.
     """
     try:
-        def _collect_gateway_metrics_sync() -> GatewayMetrics:
-            with MetricsInfluxClient() as client:
-                filters = {"service": "aico-backend"}
+        prom = PrometheusClient()
 
-                # Use downsampled data for better performance - sum pre-aggregated counts
-                recent_count = client.sum_field("api_request_counts_1m", "status_code_i", "-5m", filters)
-                logger.info(f"[GATEWAY_METRICS] recent_count (5m): {recent_count}")
-                requests_per_second = recent_count / 300.0  # 5 minutes = 300 seconds
+        base_selector = '{job="aico-backend"}'
+        rps = await prom_scalar(prom, f"sum(rate(aico_api_request_count_total{base_selector}[5m]))")
+        total_requests_24h = await prom_scalar(prom, f"sum(increase(aico_api_request_count_total{base_selector}[24h]))")
 
-                total_requests_24h = client.sum_field("api_request_counts_1m", "status_code_i", "-1h", filters)  # Reduced from 24h to 1h
-                logger.info(f"[GATEWAY_METRICS] total_requests_24h (1h): {total_requests_24h}")
+        avg_latency_ms = await prom_scalar(
+            prom,
+            "(" \
+            f"sum(rate(aico_api_request_duration_seconds_sum{base_selector}[5m]))" \
+            "/" \
+            f"sum(rate(aico_api_request_duration_seconds_count{base_selector}[5m]))" \
+            ") * 1000",
+        )
 
-                avg_response_time = client.mean_field(
-                    "api_request_1m",
-                    "latency_ms_f",
-                    "-5m",
-                    filters,
-                    bucket="aico_telemetry_downsampled"
-                )
-                logger.info(f"[GATEWAY_METRICS] avg_response_time (5m): {avg_response_time}")
+        p95_ms = await prom_scalar(
+            prom,
+            "histogram_quantile(0.95, sum by (le) (rate(aico_api_request_duration_seconds_bucket" \
+            f"{base_selector}[5m]))) * 1000",
+        )
+        p99_ms = await prom_scalar(
+            prom,
+            "histogram_quantile(0.99, sum by (le) (rate(aico_api_request_duration_seconds_bucket" \
+            f"{base_selector}[5m]))) * 1000",
+        )
 
-                p95_response_time = client.percentile_field(
-                    "api_request_1m",
-                    "latency_ms_f",
-                    0.95,
-                    "-1h",  # Reduced from 24h to 1h
-                    filters,
-                    bucket="aico_telemetry_downsampled"
-                )
-                p99_response_time = client.percentile_field(
-                    "api_request_1m",
-                    "latency_ms_f",
-                    0.99,
-                    "-1h",  # Reduced from 24h to 1h
-                    filters,
-                    bucket="aico_telemetry_downsampled"
-                )
+        error_rps = await prom_scalar(
+            prom,
+            f"sum(rate(aico_api_request_count_total{{job=\"aico-backend\",status_code_class=~\"4xx|5xx\"}}[5m]))",
+        )
+        error_rate = (error_rps / rps * 100.0) if rps > 0 else 0.0
+        success_rate = 100.0 - error_rate
 
-                error_count_4xx = client.count_points(
-                    "api_request",
-                    "-1m",
-                    {**filters, "status_class": "4xx"},
-                )
-                error_count_5xx = client.count_points(
-                    "api_request",
-                    "-1m",
-                    {**filters, "status_class": "5xx"},
-                )
-                total_errors = error_count_4xx + error_count_5xx
-                error_rate = (total_errors / recent_count * 100) if recent_count > 0 else 0.0
-                success_rate = 100.0 - error_rate
+        # Sparklines (5 points, 1-minute step)
+        now = datetime.now(timezone.utc)
+        end_ts = now.timestamp()
+        start_ts = (now - timedelta(minutes=5)).timestamp()
 
-                def _parse_windowed_sparkline(
-                    results: List[Dict[str, Any]],
-                    minutes: int,
-                ) -> List[float]:
-                    series_by_ts: Dict[int, float] = {}
-                    for r in results:
-                        t = r.get("time")
-                        if not t:
-                            continue
-                        try:
-                            ts = int(t.replace(tzinfo=timezone.utc).timestamp())
-                        except Exception:
-                            continue
-                        v = r.get("value")
-                        if v is None:
-                            continue
-                        try:
-                            series_by_ts[ts] = float(v)
-                        except Exception:
-                            continue
+        rps_range = await prom.query_range(
+            f"sum(rate(aico_api_request_count_total{base_selector}[1m]))",
+            start=start_ts,
+            end=end_ts,
+            step_seconds=60,
+        )
+        rps_sparkline = [round(v, 2) for v in (rps_range[0][1] if rps_range else [0.0] * 5)]
 
-                    now = datetime.now(timezone.utc)
-                    rounded = now.replace(second=0, microsecond=0)
-                    out: List[float] = []
-                    for i in range(minutes, 0, -1):
-                        t = rounded - timedelta(minutes=i - 1)
-                        ts = int(t.timestamp())
-                        out.append(series_by_ts.get(ts, 0.0))
-                    return out
+        latency_range = await prom.query_range(
+            "(" \
+            f"sum(rate(aico_api_request_duration_seconds_sum{base_selector}[1m]))" \
+            "/" \
+            f"sum(rate(aico_api_request_duration_seconds_count{base_selector}[1m]))" \
+            ") * 1000",
+            start=start_ts,
+            end=end_ts,
+            step_seconds=60,
+        )
+        latency_sparkline = [round(v, 2) for v in (latency_range[0][1] if latency_range else [0.0] * 5)]
 
-                # Sparklines: Use downsampled data for better performance (5 minutes instead of 12)
-                rps_sparkline_query = f'''
-                    from(bucket: "aico_telemetry_downsampled")
-                    |> range(start: -5m)
-                    |> filter(fn: (r) => r._measurement == "api_request_counts_1m")
-                    |> filter(fn: (r) => r.service == "{filters['service']}")
-                    |> map(fn: (r) => ({{ r with _value: float(v: r._value) / 60.0 }}))
-                    |> keep(columns: ["_time", "_value"])
-                '''
-                rps_sparkline_results = client.query(rps_sparkline_query)
-                rps_sparkline = _parse_windowed_sparkline(rps_sparkline_results, 5)
+        err_range = await prom.query_range(
+            "(" \
+            f"sum(rate(aico_api_request_count_total{{job=\\\"aico-backend\\\",status_code_class=~\\\"4xx|5xx\\\"}}[1m]))" \
+            "/" \
+            f"sum(rate(aico_api_request_count_total{base_selector}[1m]))" \
+            ") * 100",
+            start=start_ts,
+            end=end_ts,
+            step_seconds=60,
+        )
+        error_rate_sparkline = [round(v, 2) for v in (err_range[0][1] if err_range else [0.0] * 5)]
 
-                latency_sparkline_query = f'''
-                    from(bucket: "aico_telemetry_downsampled")
-                    |> range(start: -5m)
-                    |> filter(fn: (r) => r._measurement == "api_request_1m")
-                    |> filter(fn: (r) => r.service == "{filters['service']}")
-                    |> filter(fn: (r) => r._field == "latency_ms_f")
-                    |> keep(columns: ["_time", "_value"])
-                '''
-                latency_sparkline_results = client.query(latency_sparkline_query)
-                latency_sparkline = _parse_windowed_sparkline(latency_sparkline_results, 5)
+        status_distribution_f = await prom_label_values(
+            prom,
+            f"sum by (status_code_class) (increase(aico_api_request_count_total{base_selector}[24h]))",
+            label="status_code_class",
+        )
+        status_distribution = {k: int(v) for k, v in status_distribution_f.items()}
 
-                error_rate_sparkline_query = f'''
-                    total = from(bucket: "aico_telemetry_downsampled")
-                      |> range(start: -5m)
-                      |> filter(fn: (r) => r._measurement == "api_request_counts_1m")
-                      |> filter(fn: (r) => r.service == "{filters['service']}")
-                      |> keep(columns: ["_time", "_value"])
-                      |> rename(columns: {{_value: "total"}})
+        protocol_distribution_f = await prom_label_values(
+            prom,
+            f"sum by (http_scheme) (increase(aico_api_request_count_total{base_selector}[24h]))",
+            label="http_scheme",
+        )
+        protocol_distribution = {k: int(v) for k, v in protocol_distribution_f.items()}
 
-                    errors = from(bucket: "aico_telemetry_downsampled")
-                      |> range(start: -5m)
-                      |> filter(fn: (r) => r._measurement == "api_request_counts_1m")
-                      |> filter(fn: (r) => r.service == "{filters['service']}")
-                      |> filter(fn: (r) => r.status_class == "4xx" or r.status_class == "5xx")
-                      |> keep(columns: ["_time", "_value"])
-                      |> rename(columns: {{_value: "errors"}})
+        # Top endpoints (by request volume)
+        top_route_samples = await prom.query(
+            f"topk(5, sum by (http_route) (increase(aico_api_request_count_total{base_selector}[24h])))"
+        )
 
-                    join(tables: {{t: total, e: errors}}, on: ["_time"], method: "inner")
-                      |> map(fn: (r) => ({{ r with _value: if r.total == 0 then 0.0 else float(v: r.errors) / float(v: r.total) * 100.0 }}))
-                      |> keep(columns: ["_time", "_value"])
-                '''
-                error_rate_sparkline_results = client.query(error_rate_sparkline_query)
-                error_rate_sparkline = _parse_windowed_sparkline(error_rate_sparkline_results, 5)
+        top_endpoints: List[Dict[str, Any]] = []
+        for s in top_route_samples:
+            route = s.labels.get("http_route") or "unknown"
+            reqs = int(s.value)
+            route_selector = '{job="aico-backend",http_route="' + route.replace('"', '\\"') + '"}'
+            route_avg_ms = await prom_scalar(
+                prom,
+                "(" \
+                f"sum(rate(aico_api_request_duration_seconds_sum{route_selector}[5m]))" \
+                "/" \
+                f"sum(rate(aico_api_request_duration_seconds_count{route_selector}[5m]))" \
+                ") * 1000",
+            )
+            top_endpoints.append(
+                {
+                    "path": route,
+                    "requests": reqs,
+                    "avg_latency": round(route_avg_ms, 2),
+                    "error_rate": 0.0,
+                }
+            )
 
-                status_distribution = client.group_count(
-                    "api_request",
-                    "status_class",
-                    "-24h",
-                    filters,
-                )
-
-                endpoint_counts = client.group_count(
-                    "api_request",
-                    "path",
-                    "-24h",
-                    filters,
-                    limit=5,
-                )
-
-                top_endpoints = []
-                for path, count in endpoint_counts.items():
-                    path_filters = {**filters, "path": path}
-                    avg_latency = client.mean_field(
-                        "api_request",
-                        "latency_ms_f",
-                        "-24h",
-                        path_filters,
-                    )
-                    top_endpoints.append(
-                        {
-                            "path": path,
-                            "requests": count,
-                            "avg_latency": round(avg_latency, 2),
-                            "error_rate": 0.0,
-                        }
-                    )
-
-                protocol_distribution = client.group_count(
-                    "api_request",
-                    "protocol",
-                    "-24h",
-                    filters,
-                )
-
-                return GatewayMetrics(
-                    requests_per_second=MetricValue(
-                        value=round(requests_per_second, 2),
-                        unit="req/s",
-                        status=get_metric_status(requests_per_second, {"warning": 50, "critical": 100}),
-                        sparkline_data=[round(v, 2) for v in rps_sparkline],
-                    ),
-                    total_requests_24h=int(total_requests_24h),
-                    avg_response_time=MetricValue(
-                        value=round(avg_response_time, 2),
-                        unit="ms",
-                        status=get_metric_status(avg_response_time, {"warning": 500, "critical": 2000}),
-                        sparkline_data=[round(v, 2) for v in latency_sparkline],
-                    ),
-                    p95_response_time=MetricValue(
-                        value=round(p95_response_time, 2) if p95_response_time else 0,
-                        unit="ms",
-                        status=get_metric_status(p95_response_time, {"warning": 1000, "critical": 3000}),
-                    ),
-                    p99_response_time=MetricValue(
-                        value=round(p99_response_time, 2) if p99_response_time else 0,
-                        unit="ms",
-                        status=get_metric_status(p99_response_time, {"warning": 2000, "critical": 5000}),
-                    ),
-                    error_rate=MetricValue(
-                        value=round(error_rate, 2),
-                        unit="%",
-                        status=get_metric_status(error_rate, {"warning": 1, "critical": 5}),
-                        sparkline_data=[round(v, 2) for v in error_rate_sparkline],
-                    ),
-                    success_rate=MetricValue(
-                        value=round(success_rate, 2),
-                        unit="%",
-                        status=get_metric_status(success_rate, {"warning": 95, "critical": 90}),
-                    ),
-                    status_code_distribution=status_distribution,
-                    top_endpoints=top_endpoints,
-                    protocol_distribution=protocol_distribution,
-                )
-
-        return await asyncio.to_thread(_collect_gateway_metrics_sync)
+        return GatewayMetrics(
+            requests_per_second=MetricValue(
+                value=round(rps, 2),
+                unit="req/s",
+                status=get_metric_status(rps, {"warning": 50, "critical": 100}),
+                sparkline_data=rps_sparkline,
+            ),
+            total_requests_24h=int(total_requests_24h),
+            avg_response_time=MetricValue(
+                value=round(avg_latency_ms, 2),
+                unit="ms",
+                status=get_metric_status(avg_latency_ms, {"warning": 500, "critical": 2000}),
+                sparkline_data=latency_sparkline,
+            ),
+            p95_response_time=MetricValue(
+                value=round(p95_ms, 2),
+                unit="ms",
+                status=get_metric_status(p95_ms, {"warning": 1000, "critical": 3000}),
+            ),
+            p99_response_time=MetricValue(
+                value=round(p99_ms, 2),
+                unit="ms",
+                status=get_metric_status(p99_ms, {"warning": 2000, "critical": 5000}),
+            ),
+            error_rate=MetricValue(
+                value=round(error_rate, 2),
+                unit="%",
+                status=get_metric_status(error_rate, {"warning": 1, "critical": 5}),
+                sparkline_data=error_rate_sparkline,
+            ),
+            success_rate=MetricValue(
+                value=round(success_rate, 2),
+                unit="%",
+                status=get_metric_status(success_rate, {"warning": 95, "critical": 90}),
+            ),
+            status_code_distribution=status_distribution,
+            top_endpoints=top_endpoints,
+            protocol_distribution=protocol_distribution,
+        )
     
     except Exception as e:
-        # If InfluxDB is empty or has no data, return zero metrics instead of failing
         logger.error(f"[GATEWAY_METRICS] Exception occurred, returning zero metrics: {e}", exc_info=True)
         
         # Return empty/zero metrics
         return GatewayMetrics(
-            requests_per_second=MetricValue(value=0.0, unit="req/s", status="healthy", sparkline_data=[0.0] * 12),
-            avg_response_time=MetricValue(value=0.0, unit="ms", status="healthy", sparkline_data=[0.0] * 12),
+            requests_per_second=MetricValue(value=0.0, unit="req/s", status="healthy", sparkline_data=[0.0] * 5),
+            avg_response_time=MetricValue(value=0.0, unit="ms", status="healthy", sparkline_data=[0.0] * 5),
             p95_response_time=MetricValue(value=0.0, unit="ms", status="healthy"),
             p99_response_time=MetricValue(value=0.0, unit="ms", status="healthy"),
-            error_rate=MetricValue(value=0.0, unit="%", status="healthy", sparkline_data=[0.0] * 12),
-            success_rate=MetricValue(value=100.0, unit="%", status="healthy", sparkline_data=[100.0] * 12),
+            error_rate=MetricValue(value=0.0, unit="%", status="healthy", sparkline_data=[0.0] * 5),
+            success_rate=MetricValue(value=100.0, unit="%", status="healthy"),
             total_requests_24h=0,
             status_code_distribution={},
             top_endpoints=[],

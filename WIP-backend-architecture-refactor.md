@@ -26,6 +26,7 @@
 - [ ] Observability: propagate W3C trace context over NATS/JetStream headers
 - [ ] Observability: correlate logs↔traces (inject `trace_id`/`span_id` into Loki logs; Grafana trace→logs links)
 - [ ] Observability: add Grafana dashboards for core golden paths (request→core→modelservice; NATS/JetStream; Postgres)
+- [ ] Observability: add third Grafana dashboard for span/trace visualization (high-UX, drill-down) and add direct links to the other two dashboards (same style)
 
 ## Make backend stateless (completed)
 

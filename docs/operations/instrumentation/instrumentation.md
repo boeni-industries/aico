@@ -5,21 +5,30 @@ title: Instrumentation Architecture
 # Instrumentation Architecture
 
 ## Overview
-AICO's instrumentation system provides unified, privacy-respecting observability across all modules, modes, and devices using **OpenTelemetry** as the industry-standard foundation. It is designed to support both **coupled** (single-device) and **detached** (multi-device/federated) deployments, in line with AICO's core architectural principles as outlined in the [Architecture Overview](../../architecture/architecture-overview.md).
+AICO uses a single, enterprise-grade observability architecture based on **OpenTelemetry**.
 
-### Technology Foundation
-- **OpenTelemetry (OTel)**: CNCF-graduated standard for traces, metrics, and logs
-- **Auto-Instrumentation**: Zero-code instrumentation for FastAPI, PostgreSQL, and other frameworks
-- **Vendor-Neutral**: Export to any backend (Prometheus, Jaeger, Grafana, etc.)
-- **Local-First**: All telemetry stored locally by default, with optional export in dev mode
-- **Apache 2.0 License**: Fully open-source and compatible with AICO's licensing
+The guiding principle is: **OTLP everywhere, Collector as the control plane, Grafana as the UI**.
+
+Signals:
+- **Traces**: end-to-end latency across the full chain (HTTP/WebSocket → NATS/JetStream → Core services → Modelservice → Postgres)
+- **Metrics**: RED metrics (rate/errors/duration) plus curated AICO business KPIs
+- **Logs**: structured logs correlated to traces (trace_id/span_id)
+
+Backends:
+- **Tempo**: traces
+- **Prometheus**: metrics (including span-derived metrics)
+- **Loki**: logs
+- **Grafana**: visualization + drilldown
+
+Routing/processing:
+- **OpenTelemetry Collector**: OTLP ingest, batching/retries, tail sampling, span→metrics
 
 ## Design Goals
-- **Consistent Observability:** Unified approach for logging, metrics, tracing, and auditing across all modules and plugins.
-- **Privacy-First:** All instrumentation is local-first, user-controlled, and zero-knowledge by default. No sensitive data is exported without explicit user consent.
-- **Modular & Extensible:** Instrumentation is a cross-cutting concern, integrated via standard interfaces and message bus topics.
-- **Multi-Modal & Embodied:** Observes not just backend logic, but also embodiment, emotion, and user interaction layers.
-- **Works in All Modes:** Fully functional in both coupled (all-in-one) and detached (distributed/federated) deployments.
+- **Consistent observability**: one architecture across local/dev/prod; no parallel stacks.
+- **Performance optimization**: latency for every chain segment with drilldown from dashboards → traces → spans → logs.
+- **Vendor-neutral**: OTLP transport and OTel semantic conventions enable swapping backends.
+- **Privacy-first**: local-first defaults; explicit opt-in for export.
+- **Tenancy-aware**: tenant isolation without destroying metric cardinality.
 
 ## Instrumentation Modes & Stages
 
@@ -66,18 +75,18 @@ AICO’s instrumentation system is designed to be **privacy-first, local-first, 
 - **Auto-Instrumentation:** FastAPI, PostgreSQL, HTTP clients instrumented automatically
 - **Custom Instrumentation:** Business logic instrumented via OTel SDK
 
+### Collector Layer (Control Plane)
+- **OTLP ingest**: services export OTLP to the collector
+- **Tail sampling**: keep errors + slow traces; baseline sampling for cost control
+- **Span→metrics**: span-derived RED metrics (spanmetrics)
+- **Policy point**: redaction, routing, and data hygiene belong here, not in app code
+
 ### Storage & Export
-- **Local Storage (Always):** PostgreSQL-based metrics store for Studio dashboard
-- **Prometheus Exporter (Pro/Dev/Production):** `/metrics` endpoint for Prometheus scraping
-  - Casual: Disabled by default
-  - Pro: Opt-in, local only
-  - Dev: Enabled by default
-  - Production: Configurable, with authentication
-- **OTLP Exporter (Dev/Production):** Push traces/metrics/logs via OTLP (typically to an OpenTelemetry Collector)
-  - Casual/Pro: Disabled
-  - Dev: Enabled by default
-  - Production: Opt-in, configurable endpoint
-- **Grafana Integration (All Modes):** Pre-built dashboards work with any Grafana instance
+- **Traces (OTLP)**: services export OTLP traces to the collector → Tempo
+- **Metrics (OTLP)**: services export OTLP metrics to the collector → Prometheus (or remote_write in enterprise)
+- **Logs**: Loki is the local-first log store; logs include `trace_id`/`span_id` to enable drilldown from Tempo
+
+InfluxDB is **retired** from the architecture. All metrics must flow through the OTel pipeline.
 
 ### Privacy & Security
 - **Local-First:** All telemetry stored locally by default
@@ -118,6 +127,18 @@ AICO’s instrumentation system is designed to be **privacy-first, local-first, 
 - Inject into NATS message headers (preferred: native headers)
 - Extract in NATS subscribers and JetStream consumers before invoking handlers
 - Always propagate a stable `request_id` / `correlation_id` (for idempotency + joins) alongside trace context
+
+### Tenancy and Cardinality Rules (mandatory)
+Telemetry must support multi-tenancy without making Prometheus unusable.
+
+Rules:
+- **Traces**: `tenant_id` is allowed as a span attribute for search in Tempo.
+- **Metrics**: `tenant_id` is **not** allowed as a Prometheus label by default.
+- **No high-cardinality dimensions** in metrics (examples: `user_id`, `conversation_id`, raw URLs, request ids).
+- For metrics, use bounded dimensions only (examples: `service.name`, `http.route`, `http.method`, `status_code_class`, curated `nats.subject_group`, `job.type`).
+
+Enterprise isolation strategy:
+- Prefer **backend-level tenancy isolation** (separate Prometheus/Mimir tenants or separate scrape targets per tenant) instead of putting raw tenant ids into labels.
 
 ---
 
@@ -226,9 +247,9 @@ inference_duration = meter.create_histogram(
 - Optional Prometheus `/metrics` endpoint (opt-in, local only)
 
 **Dev Mode:**
-- Prometheus exporter on `/metrics` (enabled by default)
-- OTLP exporter to OpenTelemetry Collector (traces + optional span-derived metrics)
-- Grafana dashboards (pre-configured local stack)
+- OTel Collector + Tempo + Prometheus + Loki + Grafana are enabled as a dev-only stack.
+- Services export OTLP traces + metrics to the collector.
+- Collector exports traces to Tempo and metrics to Prometheus.
 
 **Production Mode:**
 - All exporters available and configurable
@@ -249,43 +270,39 @@ inference_duration = meter.create_histogram(
 
 ```mermaid
 graph TD;
-  subgraph AICO Application
-    API[API Gateway<br/>FastAPI]
-    Model[Modelservice]
-    Memory[Memory System]
-    Scheduler[Scheduler]
-    Bus[Message Bus<br/>NATS/JetStream]
+  subgraph AICO
+    GW[Gateway (FastAPI)]
+    CORE[Core]
+    MS[Modelservice]
+    BUS[NATS/JetStream]
+    DB[Postgres]
   end
-  
-  subgraph OpenTelemetry SDK
-    Tracer[Tracer Provider]
-    Meter[Meter Provider]
-    Logger[Logger Provider]
+
+  subgraph OpenTelemetry
+    SDK[OTel SDK (Traces+Metrics)]
+    COL[OTel Collector]
   end
-  
-  API --> Tracer
-  API --> Meter
-  Model --> Tracer
-  Model --> Meter
-  Memory --> Tracer
-  Memory --> Meter
-  Scheduler --> Tracer
-  Scheduler --> Meter
-  Bus --> Tracer
-  
-  Tracer --> LocalStore[Local Storage<br/>PostgreSQL]
-  Meter --> LocalStore
-  Logger --> LocalStore
-  
-  LocalStore --> Studio[Studio Dashboard]
-  
-  subgraph Dev Mode Only
-    Tracer -.-> OTLP[OTLP Exporter]
-    Meter -.-> Prom[Prometheus<br/>/metrics]
-    OTLP -.-> Collector[OpenTelemetry Collector]
-    Collector -.-> Tempo[Tempo]
-    Tempo -.-> Grafana[Grafana]
+
+  subgraph Storage
+    TEMPO[Tempo (Traces)]
+    PROM[Prometheus (Metrics)]
+    LOKI[Loki (Logs)]
   end
+
+  GRAF[Grafana]
+
+  GW --> SDK
+  CORE --> SDK
+  MS --> SDK
+
+  SDK -->|OTLP| COL
+
+  COL --> TEMPO
+  COL --> PROM
+
+  LOKI --> GRAF
+  TEMPO --> GRAF
+  PROM --> GRAF
 ```
 
 ## Dependencies
@@ -311,12 +328,12 @@ dev = [
 
 ## Migration Path
 
-1. **Phase 1:** Install OTel SDK, add auto-instrumentation to FastAPI
-2. **Phase 2:** Add custom metrics for business logic (API Gateway, Modelservice, etc.)
-3. **Phase 3:** Create local storage adapter, feed Studio dashboard
-4. **Phase 4:** Add health calculator using OTel metrics
-5. **Phase 5:** Add OpenTelemetry Collector + Tempo for trace drilldown in Grafana
-6. **Phase 6:** Create pre-built Grafana dashboards (logs + metrics + traces)
+1. **Phase 1:** OTel tracing end-to-end (gateway + core + modelservice) via OTLP → collector → Tempo
+2. **Phase 2:** Span-derived RED metrics via spanmetrics → Prometheus
+3. **Phase 3:** Curated OTel metrics via OTLP metrics → collector → Prometheus
+4. **Phase 4:** Tenancy-safe propagation (trace attributes) + strict metric-cardinality rules
+5. **Phase 5:** Studio metrics API backed by Prometheus (no Influx)
+6. **Phase 6:** Grafana dashboards: logs overview + raw logs + trace drilldown
 
 ## References
 - [OpenTelemetry Python](https://opentelemetry.io/docs/languages/python/)

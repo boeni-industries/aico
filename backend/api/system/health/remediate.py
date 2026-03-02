@@ -110,9 +110,6 @@ async def get_remediation_service(
             RemediationPostgresVacuumSkill,
             RemediationPostgresArchiveSkill,
             RemediationDatabaseDiskPressureSkill,
-            RemediationInfluxGetMeasurementsSkill,
-            RemediationInfluxApplyRetentionSkill,
-            RemediationInfluxDropMeasurementSkill,
             RemediationModelserviceStabiliseSkill,
             RemediationAgencyRecoverPlansSkill,
             RemediationAgencyRebalanceLoadSkill,
@@ -126,11 +123,6 @@ async def get_remediation_service(
         registry.register(RemediationPostgresVacuumSkill(session_factory))
         registry.register(RemediationPostgresArchiveSkill(session_factory))
         registry.register(RemediationDatabaseDiskPressureSkill(session_factory))
-        
-        # Register InfluxDB remediation skills
-        registry.register(RemediationInfluxGetMeasurementsSkill(config))
-        registry.register(RemediationInfluxApplyRetentionSkill(config))
-        registry.register(RemediationInfluxDropMeasurementSkill(config))
         
         # Register service remediation skills
         registry.register(RemediationModelserviceStabiliseSkill())

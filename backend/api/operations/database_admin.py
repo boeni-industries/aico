@@ -154,26 +154,6 @@ async def get_postgresql_details() -> DatabaseDetailsResponse:
         )
 
 
-async def get_influxdb_details() -> DatabaseDetailsResponse:
-    """Get detailed information about InfluxDB"""
-    try:
-        # InfluxDB doesn't have traditional tables/collections to browse
-        # The browser interface uses Flux queries instead
-        # Return empty response to satisfy the interface
-        return DatabaseDetailsResponse(
-            database_type="influxdb",
-            tables=None,
-            collections=None,
-            databases=None
-        )
-    except Exception as e:
-        logger.error(f"Failed to get InfluxDB details: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve InfluxDB details: {str(e)}"
-        )
-
-
 # ============================================================================
 # SQL Query Execution
 # ============================================================================
@@ -384,78 +364,6 @@ async def execute_sql_query(
         
     except Exception as e:
         logger.error(f"SQL query execution failed: {e}")
-        return QueryResult(
-            success=False,
-            error=str(e),
-            columns=[],
-            rows=[],
-            row_count=0,
-            is_destructive=False
-        )
-
-
-async def execute_influx_query(query: str) -> QueryResult:
-    """
-    Execute a Flux query on InfluxDB.
-    
-    Returns time-series data from the configured InfluxDB instance.
-    """
-    try:
-        from aico.data.influx.connection import InfluxDBConnection
-        
-        # Connect to InfluxDB
-        influx_conn = InfluxDBConnection()
-        
-        # Execute query
-        results = influx_conn.query(query)
-        
-        # Convert results to table format
-        if not results:
-            influx_conn.close()
-            return QueryResult(
-                success=True,
-                error=None,
-                columns=[],
-                rows=[],
-                row_count=0,
-                is_destructive=False
-            )
-        
-        # Extract columns from first result
-        columns = list(results[0].keys()) if results else []
-        
-        # Convert results to rows
-        rows = []
-        for result in results:
-            row = [result.get(col) for col in columns]
-            rows.append(row)
-        
-        influx_conn.close()
-        
-        logger.info(f"InfluxDB query executed successfully: {len(rows)} rows returned")
-        
-        return QueryResult(
-            success=True,
-            error=None,
-            columns=columns,
-            rows=rows,
-            row_count=len(rows),
-            is_destructive=False
-        )
-        
-    except ValueError as e:
-        # Token not found in keyring
-        logger.error(f"InfluxDB credentials not configured: {e}")
-        return QueryResult(
-            success=False,
-            error=str(e),
-            columns=[],
-            rows=[],
-            row_count=0,
-            is_destructive=False
-        )
-    except Exception as e:
-        logger.error(f"InfluxDB query execution failed: {e}")
         return QueryResult(
             success=False,
             error=str(e),

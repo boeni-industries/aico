@@ -10,21 +10,28 @@ from contextlib import contextmanager
 
 from opentelemetry import metrics
 
-# Get OpenTelemetry meter
-meter = metrics.get_meter("aico.scheduler")
+_job_duration = None
+_job_counter = None
 
-# Create metrics instruments
-job_duration = meter.create_histogram(
-    name="aico.scheduler.job.duration",
-    description="Scheduler job execution duration in seconds",
-    unit="s"
-)
 
-job_counter = meter.create_counter(
-    name="aico.scheduler.job.count",
-    description="Total number of scheduler jobs executed",
-    unit="1"
-)
+def _ensure_instruments():
+    global _job_duration, _job_counter
+
+    if _job_duration is not None:
+        return
+
+    meter = metrics.get_meter("aico.scheduler")
+
+    _job_duration = meter.create_histogram(
+        name="aico.scheduler.job.duration",
+        description="Scheduler job execution duration in seconds",
+        unit="s",
+    )
+    _job_counter = meter.create_counter(
+        name="aico.scheduler.job.count",
+        description="Total number of scheduler jobs executed",
+        unit="1",
+    )
 
 
 @contextmanager
@@ -67,6 +74,8 @@ def track_job(
         yield tracker
     finally:
         duration = time.perf_counter() - start_time
+
+        _ensure_instruments()
         
         attributes = {
             "job.type": job_type,
@@ -75,8 +84,8 @@ def track_job(
             **extra_attributes
         }
         
-        job_duration.record(duration, attributes)
-        job_counter.add(1, attributes)
+        _job_duration.record(duration, attributes)
+        _job_counter.add(1, attributes)
 
 
 def record_job(
@@ -107,6 +116,7 @@ def record_job(
     
     if error_message:
         attributes["error.message"] = error_message
-    
-    job_duration.record(duration_seconds, attributes)
-    job_counter.add(1, attributes)
+
+    _ensure_instruments()
+    _job_duration.record(duration_seconds, attributes)
+    _job_counter.add(1, attributes)
