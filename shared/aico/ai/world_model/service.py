@@ -268,7 +268,7 @@ class WorldModelService:
         try:
             uncertain_areas = []
             
-            async with UnitOfWork(self.kg_storage._session_factory) as uow:
+            async with UnitOfWork(self.kg._session_factory) as uow:
                 # Find goals with low completion rates (many failed/no executions)
                 goal_completion_query = (
                     select(
@@ -593,7 +593,7 @@ class WorldModelService:
         anomalies = []
         
         try:
-            async with UnitOfWork(self.kg_storage._session_factory) as uow:
+            async with UnitOfWork(self.kg._session_factory) as uow:
                 # Detect duplicate open goals with same title
                 duplicate_goals_query = (
                     select(
@@ -704,7 +704,7 @@ class WorldModelService:
         self_assessment = []
         
         try:
-            async with UnitOfWork(self.kg_storage._session_factory) as uow:
+            async with UnitOfWork(self.kg._session_factory) as uow:
                 if entity_type == "goal_type":
                     # Analyze performance by goal origin (curiosity, hobby, user, maintenance)
                     goal_type_query = (

@@ -37,7 +37,7 @@
 - [ ] Unify WebSocket architecture (single gateway WS termination; remove/merge duplicate WS stacks to avoid inconsistent auth/authz/catch-up).
 - [ ] Tenant-scope NATS subjects (move from attributes-only to subject namespace `aico.<tenant_id>.…`; ensure publish/subscribe enforcement follows scoping).
 - [ ] Enforce streaming durability policy (stream chunks ephemeral; ensure JetStream streams/outbox subjects cannot accidentally persist chunk traffic).
-- [x] **Prove ZMQ removal repo-wide (✅ Verified: Zero active ZMQ code usage; pyzmq dependency remains in modelservice/pyproject.toml line 12 but unused; legacy class names `ModelserviceZMQHandlers` exist but contain only NATS code; broker startup code disabled (no-op stubs); security config references CurveZMQ for documentation only; 250+ doc references are historical; no actual ZMQ imports/sockets/contexts found in application code; recommendation: remove pyzmq dependency and rename legacy classes)**
+- [x] **Prove ZMQ removal repo-wide (✅ COMPLETE: Zero ZMQ code usage.
 
 ### High
 - [ ] Align conversation schema and lifecycle with doc (ensure `conversations` table exists/used; implement status/title/updated_at and conversation lifecycle endpoints as needed).

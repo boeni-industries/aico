@@ -76,10 +76,7 @@ class MaintenanceConnectivityFullScanSkill(Skill):
     def implementation_tools(self) -> List[str]:
         return [
             "tool.db.postgres.ping",
-            "tool.db.influx.ping",
-            "tool.db.lmdb.ping",
             "tool.modelservice.ping",
-            "tool.ollama.ping",
         ]
 
     @property
@@ -144,21 +141,9 @@ class MaintenanceConnectivityFullScanSkill(Skill):
         pg_result = await _run_tool("tool.db.postgres.ping", self._session_factory)
         checks["postgres"] = pg_result["data"]
 
-        # InfluxDB
-        influx_result = await _run_tool("tool.db.influx.ping")
-        checks["influx"] = influx_result["data"]
-
-        # LMDB (working memory)
-        lmdb_result = await _run_tool("tool.db.lmdb.ping")
-        checks["lmdb"] = lmdb_result["data"]
-
         # Modelservice (ZMQ)
         modelservice_result = await _run_tool("tool.modelservice.ping")
         checks["modelservice"] = modelservice_result["data"]
-
-        # Ollama (LLM HTTP backend)
-        ollama_result = await _run_tool("tool.ollama.ping")
-        checks["ollama"] = ollama_result["data"]
 
         # Derive summary status
         summary_status = "healthy"
@@ -224,8 +209,8 @@ class MaintenanceConnectivityVerifyComponentSkill(Skill):
                 name="component",
                 type=SkillParameterType.STRING,
                 description=(
-                    "Name of the component to verify (postgres, influx, "
-                    "lmdb, modelservice, ollama)."
+                    "Name of the component to verify (postgres, "
+                    "modelservice)."
                 ),
                 required=True,
             ),
@@ -242,10 +227,7 @@ class MaintenanceConnectivityVerifyComponentSkill(Skill):
         # Map component names to tool_ids
         component_tools: Dict[str, str] = {
             "postgres": "tool.db.postgres.ping",
-            "influx": "tool.db.influx.ping",
-            "lmdb": "tool.db.lmdb.ping",
             "modelservice": "tool.modelservice.ping",
-            "ollama": "tool.ollama.ping",
         }
 
         tool_id = component_tools.get(component)
