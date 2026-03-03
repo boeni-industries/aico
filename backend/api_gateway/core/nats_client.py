@@ -197,6 +197,151 @@ class GatewayNATSClient:
         """Request operations topology from core via NATS"""
         return await self._nats_request_with_trace("operations.topology", b"{}")
     
+    async def request_agency_state(self, user_id: str) -> Dict[str, Any]:
+        """Request agency state from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.state", payload, timeout=10.0)
+    
+    async def request_agency_intentions(self, user_id: str, limit: int = 10) -> Dict[str, Any]:
+        """Request agency intentions from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "limit": limit}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.intentions", payload, timeout=10.0)
+    
+    async def request_agency_events(self, user_id: str, limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        """Request agency events from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "limit": limit, "offset": offset}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.events", payload, timeout=10.0)
+    
+    async def request_agency_curiosity(self, user_id: str) -> Dict[str, Any]:
+        """Request agency curiosity status from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.curiosity", payload, timeout=10.0)
+    
+    async def request_agency_profile(self, user_id: str) -> Dict[str, Any]:
+        """Request agency value profile from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.profile", payload, timeout=10.0)
+    
+    async def request_agency_profile_update(self, user_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Request agency value profile update from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "update_data": update_data}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.profile.update", payload, timeout=10.0)
+    
+    async def request_agency_policies(self, user_id: str) -> Dict[str, Any]:
+        """Request agency policies from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.policies", payload, timeout=10.0)
+    
+    async def request_agency_consent_grant(self, user_id: str, consent_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Request agency consent grant from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "consent_data": consent_data}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.consent.grant", payload, timeout=10.0)
+    
+    async def request_agency_consents(self, user_id: str) -> Dict[str, Any]:
+        """Request agency consents list from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.consents", payload, timeout=10.0)
+    
+    async def request_agency_consent_revoke(self, user_id: str, consent_id: str) -> Dict[str, Any]:
+        """Request agency consent revoke from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "consent_id": consent_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.consent.revoke", payload, timeout=10.0)
+    
+    async def request_agency_goals(
+        self,
+        user_id: str,
+        status: str = None,
+        origin: str = None,
+        priority: str = None,
+        limit: int = 50,
+        page: int = 1,
+    ) -> Dict[str, Any]:
+        """Request agency goals list from core via NATS"""
+        payload = json.dumps({
+            "user_id": user_id,
+            "status": status,
+            "origin": origin,
+            "priority": priority,
+            "limit": limit,
+            "page": page,
+        }).encode("utf-8")
+        return await self._nats_request_with_trace("agency.goals", payload, timeout=10.0)
+    
+    async def request_agency_goal(self, user_id: str, goal_id: str) -> Dict[str, Any]:
+        """Request agency goal details from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "goal_id": goal_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.goal", payload, timeout=10.0)
+    
+    async def request_agency_goal_plans(self, user_id: str, goal_id: str) -> Dict[str, Any]:
+        """Request agency goal plans from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "goal_id": goal_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.goal.plans", payload, timeout=10.0)
+    
+    async def request_agency_goal_replan(self, user_id: str, goal_id: str) -> Dict[str, Any]:
+        """Request agency goal replan from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "goal_id": goal_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.goal.replan", payload, timeout=30.0)
+    
+    async def request_agency_skills_list(self, user_id: str) -> Dict[str, Any]:
+        """Request agency skills list from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.skills.list", payload, timeout=10.0)
+    
+    async def request_agency_skill_info(self, user_id: str, skill_id: str) -> Dict[str, Any]:
+        """Request agency skill info from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "skill_id": skill_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.skill.info", payload, timeout=10.0)
+    
+    async def request_agency_skill_invoke(self, user_id: str, skill_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Request agency skill invoke from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "skill_data": skill_data}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.skill.invoke", payload, timeout=60.0)
+    
+    async def request_agency_connectivity_scan(self, user_id: str, scan_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Request agency connectivity scan from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "scan_data": scan_data}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.connectivity.scan", payload, timeout=60.0)
+    
+    async def request_agency_tools_list(self, user_id: str) -> Dict[str, Any]:
+        """Request agency tools list from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.tools.list", payload, timeout=10.0)
+    
+    async def request_agency_tool_info(self, user_id: str, tool_id: str) -> Dict[str, Any]:
+        """Request agency tool info from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "tool_id": tool_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.tool.info", payload, timeout=10.0)
+    
+    async def request_agency_tool_invoke(self, user_id: str, tool_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Request agency tool invoke from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "tool_data": tool_data}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.tool.invoke", payload, timeout=60.0)
+    
+    async def request_agency_reflection_runs(self, user_id: str, limit: int = 50) -> Dict[str, Any]:
+        """Request agency reflection runs from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "limit": limit}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.reflection.runs", payload, timeout=10.0)
+    
+    async def request_agency_reflection_lessons(self, user_id: str, limit: int = 50) -> Dict[str, Any]:
+        """Request agency reflection lessons from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "limit": limit}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.reflection.lessons", payload, timeout=10.0)
+    
+    async def request_agency_reflection_self_model(self, user_id: str) -> Dict[str, Any]:
+        """Request agency reflection self-model from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.reflection.self_model", payload, timeout=10.0)
+    
+    async def request_agency_skill_performance(self, user_id: str, skill_id: str) -> Dict[str, Any]:
+        """Request agency skill performance from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "skill_id": skill_id}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.skill.performance", payload, timeout=10.0)
+    
+    async def request_agency_reflection_summary(self, user_id: str, window_days: int = 30) -> Dict[str, Any]:
+        """Request agency reflection summary from core via NATS"""
+        payload = json.dumps({"user_id": user_id, "window_days": window_days}).encode("utf-8")
+        return await self._nats_request_with_trace("agency.reflection.summary", payload, timeout=10.0)
+    
     async def request_operations_create_backup(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Request backup creation from core via NATS"""
         payload = json.dumps(request_data).encode('utf-8')

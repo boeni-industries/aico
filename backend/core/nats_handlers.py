@@ -10,6 +10,7 @@ from typing import Any, Dict
 from aico.core.logging import get_logger
 from google.protobuf.struct_pb2 import Struct
 from opentelemetry import trace
+from backend.core.agency_nats_handlers import AgencyNATSHandlers
 
 logger = get_logger("backend.core.nats_handlers")
 tracer = trace.get_tracer(__name__)
@@ -50,6 +51,7 @@ class CoreNATSHandlers:
     def __init__(self, service_container):
         self.container = service_container
         self.logger = logger
+        self.agency_handlers = AgencyNATSHandlers(service_container)
     
     @trace_nats_handler("scheduler.status")
     async def handle_scheduler_status_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -789,6 +791,245 @@ class CoreNATSHandlers:
                 "error": "KG_QUERY_EXECUTION_FAILED",
                 "message": str(e),
                 "success": False,
+            }
+    
+    # Agency handlers - delegate to AgencyNATSHandlers
+    async def handle_agency_intentions_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_intentions_request(request_data)
+    
+    async def handle_agency_events_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_events_request(request_data)
+    
+    async def handle_agency_curiosity_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_curiosity_request(request_data)
+    
+    async def handle_agency_profile_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_profile_request(request_data)
+    
+    async def handle_agency_profile_update_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_profile_update_request(request_data)
+    
+    async def handle_agency_policies_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_policies_request(request_data)
+    
+    async def handle_agency_consent_grant_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_consent_grant_request(request_data)
+    
+    async def handle_agency_consents_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_consents_request(request_data)
+    
+    async def handle_agency_consent_revoke_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_consent_revoke_request(request_data)
+    
+    async def handle_agency_goals_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_goals_request(request_data)
+    
+    async def handle_agency_goal_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_goal_request(request_data)
+    
+    async def handle_agency_goal_plans_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_goal_plans_request(request_data)
+    
+    async def handle_agency_goal_replan_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_goal_replan_request(request_data)
+    
+    async def handle_agency_skills_list_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_skills_list_request(request_data)
+    
+    async def handle_agency_skill_info_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_skill_info_request(request_data)
+    
+    async def handle_agency_skill_invoke_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_skill_invoke_request(request_data)
+    
+    async def handle_agency_connectivity_scan_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_connectivity_scan_request(request_data)
+    
+    async def handle_agency_tools_list_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_tools_list_request(request_data)
+    
+    async def handle_agency_tool_info_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_tool_info_request(request_data)
+    
+    async def handle_agency_tool_invoke_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_tool_invoke_request(request_data)
+    
+    async def handle_agency_reflection_runs_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_reflection_runs_request(request_data)
+    
+    async def handle_agency_reflection_lessons_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_reflection_lessons_request(request_data)
+    
+    async def handle_agency_reflection_self_model_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_reflection_self_model_request(request_data)
+    
+    async def handle_agency_skill_performance_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_skill_performance_request(request_data)
+    
+    async def handle_agency_reflection_summary_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_reflection_summary_request(request_data)
+    
+    async def handle_agency_state_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle agency state request from gateway"""
+        try:
+            from aico.ai import ai_registry
+            from datetime import datetime, UTC
+            
+            user_id = request_data.get("user_id")
+            if not user_id:
+                return {
+                    "error": "MISSING_USER_ID",
+                    "message": "user_id is required"
+                }
+            
+            # Get agency engine from registry
+            agency_engine = ai_registry.get("agency")
+            if not agency_engine:
+                return {
+                    "error": "AGENCY_ENGINE_NOT_INITIALIZED",
+                    "message": "Agency engine not initialized"
+                }
+            
+            # Get UoW factory
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            
+            async with uow as uow_instance:
+                # Get intention set using correct API
+                intention_set_obj = await agency_engine.get_intention_set(user_id)
+                intentions = intention_set_obj.intentions[:10]
+                
+                # Get all goals for user
+                all_goals = await agency_engine.list_goals_for_user(user_id)
+                
+                # Fetch Goal objects for active intentions and build GoalSummary objects
+                active_intentions = []
+                hobby_goals = []
+                if intentions:
+                    goal_ids = [intent.goal_id for intent in intentions]
+                    goals = await agency_engine.agency_service.get_goals_bulk(goal_ids)
+                    goals_by_id = {goal.goal_id: goal for goal in goals}
+                    
+                    for intent in intentions:
+                        goal = goals_by_id.get(intent.goal_id)
+                        if goal:
+                            goal_summary = {
+                                "goal_id": goal.goal_id,
+                                "title": goal.title,
+                                "description": goal.description,
+                                "origin": goal.origin.value,
+                                "priority": goal.priority.value,
+                                "status": goal.status.value,
+                                "score": intent.arbiter_score,
+                                "priority_band": intent.priority_band.value,
+                                "created_at": goal.created_at.isoformat() if hasattr(goal.created_at, 'isoformat') else str(goal.created_at),
+                                "metadata": goal.metadata or {},
+                            }
+                            active_intentions.append(goal_summary)
+                            if goal.origin.value == "hobby":
+                                hobby_goals.append(goal_summary)
+                
+                # Count open goals
+                open_goals = [g for g in all_goals if g.status.value in ["pending", "active"]]
+                
+                # Build IntentionSetResponse structure
+                intention_set = {
+                    "user_id": user_id,
+                    "primary_focus": active_intentions[0] if active_intentions else None,
+                    "active_intentions": active_intentions,
+                    "open_goals_total": len(open_goals),
+                    "hobby_goals_active": hobby_goals,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                
+                # Build CuriosityStatusResponse structure
+                curiosity_status = {
+                    "user_id": user_id,
+                    "curiosity_level": "medium",
+                    "curiosity_opportunities": [],
+                    "curiosity_goals_active": 0,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                
+                # Build ValueProfileResponse structure
+                value_profile = {
+                    "profile_id": f"profile_{user_id}",
+                    "user_id": user_id,
+                    "curiosity_intensity": 0.5,
+                    "autonomy_level": "balanced",
+                    "sensitive_life_areas": [],
+                    "allowed_curiosity_domains": [],
+                }
+                
+                # Get recent events for active goals
+                active_goal_ids = [intent.goal_id for intent in intentions]
+                recent_events = []
+                
+                if active_goal_ids:
+                    try:
+                        rows = await uow_instance.agency_events_log.get_by_entities_bulk(
+                            entity_type="goal",
+                            entity_ids=active_goal_ids,
+                            limit_per_entity=20,
+                        )
+                        
+                        # Deduplicate and aggregate events
+                        seen_ids = set()
+                        goal_events = []
+                        for row in rows:
+                            event_id = str(row.event_id)
+                            if event_id in seen_ids:
+                                continue
+                            seen_ids.add(event_id)
+                            goal_events.append({
+                                "event_id": event_id,
+                                "user_id": str(row.user_id),
+                                "event_type": str(row.event_type),
+                                "source": str(row.source),
+                                "title": str(row.title or ""),
+                                "description": str(row.description or ""),
+                                "intensity": float(row.intensity or 0.0),
+                                "metadata": row.metadata or {},
+                                "created_at": row.created_at.isoformat() if hasattr(row.created_at, 'isoformat') else str(row.created_at),
+                                "processed": bool(row.processed),
+                                "related_goal_id": str(row.related_goal_id) if row.related_goal_id else None,
+                                "strength": 1,
+                            })
+                        
+                        # Group by goal and aggregate
+                        groups = {}
+                        for ev in goal_events:
+                            gid = ev.get("related_goal_id")
+                            if not gid:
+                                continue
+                            groups.setdefault(gid, []).append(ev)
+                        
+                        for goal_id, group in groups.items():
+                            master = max(group, key=lambda e: e["created_at"])
+                            master["strength"] = len(group)
+                            recent_events.append(master)
+                        
+                        recent_events.sort(key=lambda e: e["created_at"], reverse=True)
+                        recent_events = recent_events[:10]
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Failed to fetch agency events: {e}")
+                
+                return {
+                    "user_id": user_id,
+                    "intention_set": intention_set,
+                    "curiosity_status": curiosity_status,
+                    "value_profile": value_profile,
+                    "consent_required_actions": [],
+                    "recent_events": recent_events,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get agency state: {e}", exc_info=True)
+            return {
+                "error": "AGENCY_STATE_FAILED",
+                "message": str(e)
             }
     
     async def handle_memory_album_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1591,6 +1832,95 @@ class CoreNATSHandlers:
             cb=make_handler(self.handle_memory_album_request, "memory.album.reply")
         )
         self.logger.info(f"✅ Subscribed to memory.album (sid={sid7g})")
+        
+        self.logger.info("Subscribing to agency.state...")
+        sid7h = await message_bus_client._nats.subscribe(
+            "agency.state",
+            cb=make_handler(self.handle_agency_state_request, "agency.state.reply")
+        )
+        self.logger.info(f"✅ Subscribed to agency.state (sid={sid7h})")
+        
+        self.logger.info("Subscribing to agency.goals...")
+        sid7i = await message_bus_client._nats.subscribe(
+            "agency.goals",
+            cb=make_handler(self.handle_agency_goals_request, "agency.goals.reply")
+        )
+        self.logger.info(f"✅ Subscribed to agency.goals (sid={sid7i})")
+        
+        # All remaining agency subscriptions
+        self.logger.info("Subscribing to agency.intentions...")
+        await message_bus_client._nats.subscribe("agency.intentions", cb=make_handler(self.handle_agency_intentions_request, "agency.intentions.reply"))
+        
+        self.logger.info("Subscribing to agency.events...")
+        await message_bus_client._nats.subscribe("agency.events", cb=make_handler(self.handle_agency_events_request, "agency.events.reply"))
+        
+        self.logger.info("Subscribing to agency.curiosity...")
+        await message_bus_client._nats.subscribe("agency.curiosity", cb=make_handler(self.handle_agency_curiosity_request, "agency.curiosity.reply"))
+        
+        self.logger.info("Subscribing to agency.profile...")
+        await message_bus_client._nats.subscribe("agency.profile", cb=make_handler(self.handle_agency_profile_request, "agency.profile.reply"))
+        
+        self.logger.info("Subscribing to agency.profile.update...")
+        await message_bus_client._nats.subscribe("agency.profile.update", cb=make_handler(self.handle_agency_profile_update_request, "agency.profile.update.reply"))
+        
+        self.logger.info("Subscribing to agency.policies...")
+        await message_bus_client._nats.subscribe("agency.policies", cb=make_handler(self.handle_agency_policies_request, "agency.policies.reply"))
+        
+        self.logger.info("Subscribing to agency.consent.grant...")
+        await message_bus_client._nats.subscribe("agency.consent.grant", cb=make_handler(self.handle_agency_consent_grant_request, "agency.consent.grant.reply"))
+        
+        self.logger.info("Subscribing to agency.consents...")
+        await message_bus_client._nats.subscribe("agency.consents", cb=make_handler(self.handle_agency_consents_request, "agency.consents.reply"))
+        
+        self.logger.info("Subscribing to agency.consent.revoke...")
+        await message_bus_client._nats.subscribe("agency.consent.revoke", cb=make_handler(self.handle_agency_consent_revoke_request, "agency.consent.revoke.reply"))
+        
+        self.logger.info("Subscribing to agency.goal...")
+        await message_bus_client._nats.subscribe("agency.goal", cb=make_handler(self.handle_agency_goal_request, "agency.goal.reply"))
+        
+        self.logger.info("Subscribing to agency.goal.plans...")
+        await message_bus_client._nats.subscribe("agency.goal.plans", cb=make_handler(self.handle_agency_goal_plans_request, "agency.goal.plans.reply"))
+        
+        self.logger.info("Subscribing to agency.goal.replan...")
+        await message_bus_client._nats.subscribe("agency.goal.replan", cb=make_handler(self.handle_agency_goal_replan_request, "agency.goal.replan.reply"))
+        
+        self.logger.info("Subscribing to agency.skills.list...")
+        await message_bus_client._nats.subscribe("agency.skills.list", cb=make_handler(self.handle_agency_skills_list_request, "agency.skills.list.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.info...")
+        await message_bus_client._nats.subscribe("agency.skill.info", cb=make_handler(self.handle_agency_skill_info_request, "agency.skill.info.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.invoke...")
+        await message_bus_client._nats.subscribe("agency.skill.invoke", cb=make_handler(self.handle_agency_skill_invoke_request, "agency.skill.invoke.reply"))
+        
+        self.logger.info("Subscribing to agency.connectivity.scan...")
+        await message_bus_client._nats.subscribe("agency.connectivity.scan", cb=make_handler(self.handle_agency_connectivity_scan_request, "agency.connectivity.scan.reply"))
+        
+        self.logger.info("Subscribing to agency.tools.list...")
+        await message_bus_client._nats.subscribe("agency.tools.list", cb=make_handler(self.handle_agency_tools_list_request, "agency.tools.list.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.info...")
+        await message_bus_client._nats.subscribe("agency.tool.info", cb=make_handler(self.handle_agency_tool_info_request, "agency.tool.info.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.invoke...")
+        await message_bus_client._nats.subscribe("agency.tool.invoke", cb=make_handler(self.handle_agency_tool_invoke_request, "agency.tool.invoke.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.runs...")
+        await message_bus_client._nats.subscribe("agency.reflection.runs", cb=make_handler(self.handle_agency_reflection_runs_request, "agency.reflection.runs.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.lessons...")
+        await message_bus_client._nats.subscribe("agency.reflection.lessons", cb=make_handler(self.handle_agency_reflection_lessons_request, "agency.reflection.lessons.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.self_model...")
+        await message_bus_client._nats.subscribe("agency.reflection.self_model", cb=make_handler(self.handle_agency_reflection_self_model_request, "agency.reflection.self_model.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.performance...")
+        await message_bus_client._nats.subscribe("agency.skill.performance", cb=make_handler(self.handle_agency_skill_performance_request, "agency.skill.performance.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.summary...")
+        await message_bus_client._nats.subscribe("agency.reflection.summary", cb=make_handler(self.handle_agency_reflection_summary_request, "agency.reflection.summary.reply"))
+        
+        self.logger.info("✅ Subscribed to all 26 agency endpoints")
         
         self.logger.info("Subscribing to operations.databases...")
         sid8 = await message_bus_client._nats.subscribe(

@@ -1141,6 +1141,7 @@ class BackendLifecycleManager:
         from backend.api.kg.router_gateway import router as kg_router_gw
         from backend.api.operations.router_gateway import router as operations_router_gw
         from backend.api.system.router_gateway import router as system_router_gw
+        from backend.api.agency.router_gateway import router as agency_router_gw
         from backend.api.scheduler.router import router as scheduler_router
         from backend.api.emotion.router import router as emotion_router
         from backend.api.ams.router import router as ams_router
@@ -1185,6 +1186,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(system_router_gw, prefix="/api/v1", tags=["system"])
         self.logger.info("✅ Mounted: /api/v1/system (gateway→core NATS proxy)")
+        
+        self.app.include_router(agency_router_gw, prefix="/api/v1", tags=["agency"])
+        self.logger.info("✅ Mounted: /api/v1/agency (gateway→core NATS proxy)")
         
         self.app.include_router(ams_router, prefix="/api/v1", tags=["ams"])
         self.logger.info("✅ Mounted: /api/v1/ams")
