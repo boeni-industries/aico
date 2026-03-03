@@ -974,25 +974,49 @@ class CoreNATSHandlers:
                         )
                         
                         # Deduplicate and aggregate events
+                        import json
                         seen_ids = set()
                         goal_events = []
+                        
+                        # Map database event types to API enum values
+                        def map_event_type(db_event_type: str) -> str:
+                            """Map database event types to API EventType enum values."""
+                            event_type_lower = db_event_type.lower()
+                            if "curiosity" in event_type_lower or "signal" in event_type_lower:
+                                return "curiosity_signal"
+                            elif "user" in event_type_lower or "trigger" in event_type_lower or "request" in event_type_lower:
+                                return "user_trigger"
+                            elif "external" in event_type_lower or "stimulus" in event_type_lower:
+                                return "external_stimulus"
+                            else:
+                                return "system_observation"
+                        
                         for row in rows:
                             event_id = str(row.event_id)
                             if event_id in seen_ids:
                                 continue
                             seen_ids.add(event_id)
+                            
+                            # Parse event_data JSON if it's a string
+                            event_data = {}
+                            if hasattr(row, 'event_data') and row.event_data:
+                                try:
+                                    event_data = json.loads(row.event_data) if isinstance(row.event_data, str) else row.event_data
+                                except:
+                                    event_data = {}
+                            
                             goal_events.append({
                                 "event_id": event_id,
                                 "user_id": str(row.user_id),
-                                "event_type": str(row.event_type),
-                                "source": str(row.source),
-                                "title": str(row.title or ""),
-                                "description": str(row.description or ""),
-                                "intensity": float(row.intensity or 0.0),
-                                "metadata": row.metadata or {},
+                                "event_type": map_event_type(str(row.event_type)),
+                                "source": str(row.source_component or "system"),
+                                "title": event_data.get("title", row.event_type),
+                                "description": event_data.get("description", ""),
+                                "intensity": event_data.get("intensity", 0.5),
+                                "metadata": event_data,
                                 "created_at": row.created_at.isoformat() if hasattr(row.created_at, 'isoformat') else str(row.created_at),
-                                "processed": bool(row.processed),
-                                "related_goal_id": str(row.related_goal_id) if row.related_goal_id else None,
+                                "processed": True,
+                                "related_goal_id": str(row.entity_id) if row.entity_type == "goal" and row.entity_id else None,
                                 "strength": 1,
                             })
                         
