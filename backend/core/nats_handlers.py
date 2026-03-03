@@ -201,6 +201,8 @@ class CoreNATSHandlers:
         """Handle semantic memory stats request from gateway"""
         try:
             from aico.ai import ai_registry
+            from sqlalchemy import select, func
+            from aico.data.tables import conversation_segments
             
             memory_manager = ai_registry.get("memory")
             if not memory_manager:
@@ -215,16 +217,24 @@ class CoreNATSHandlers:
                     "message": "Semantic memory not initialized"
                 }
             
-            semantic_store = memory_manager._semantic_store
-            stats = await semantic_store.get_stats()  # Now async
-            
-            return {
-                "total_vectors": stats.get("total_vectors", 0),
-                "collections": stats.get("collections", []),
-                "index_size_mb": stats.get("index_size_mb", 0.0),
-                "avg_retrieval_latency_ms": stats.get("avg_retrieval_latency_ms", 0.0),
-                "retrieval_quality_percent": 85.0  # Stub value for now
-            }
+            # Use exact same logic as original router.py - query database directly
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            async with uow as uow_instance:
+                stmt = select(func.count()).select_from(conversation_segments)
+                total_vectors = (await uow_instance._session.execute(stmt)).scalar() or 0
+                
+                collections = [
+                    {"name": "conversation_segments", "count": int(total_vectors), "dimension": 768}
+                ]
+                
+                return {
+                    "total_vectors": int(total_vectors),
+                    "collections": collections,
+                    "index_size_mb": 0.0,
+                    "avg_retrieval_latency_ms": 0.0,
+                    "retrieval_quality_percent": 0.0
+                }
             
         except Exception as e:
             self.logger.error(f"Failed to get semantic memory stats: {e}", exc_info=True)
@@ -254,13 +264,20 @@ class CoreNATSHandlers:
             working_store = memory_manager._working_store
             stats = await working_store.get_stats()
             
-            # Map backend field names to frontend expectations
-            total_entries = stats.get("total_entries", 0)
+            # Use exact same logic as original router.py
+            active_items = stats.get('active_items', 0)
+            capacity = stats.get('capacity', max(10000, int(active_items) * 2 if isinstance(active_items, int) else 10000))
+            utilization_percent = stats.get('utilization_percent')
+            if utilization_percent is None:
+                utilization_percent = (active_items / capacity) * 100 if capacity else 0.0
+            
             return {
-                "active_items": total_entries,
-                "capacity": 1000,  # Stub value for now
-                "utilization_percent": min(100.0, (total_entries / 1000) * 100) if total_entries else 0.0,
-                "ttl_utilization_percent": 0.0  # Stub value for now
+                "active_items": active_items,
+                "capacity": capacity,
+                "utilization_percent": float(utilization_percent),
+                "ttl_utilization_percent": float(stats.get('ttl_utilization_percent', utilization_percent)),
+                "eviction_rate_per_min": float(stats.get('eviction_rate_per_min', 0.0)),
+                "recent_activity": stats.get('recent_activity', [])
             }
             
         except Exception as e:
@@ -271,15 +288,123 @@ class CoreNATSHandlers:
             }
     
     async def handle_kg_stats_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle KG stats request from gateway"""
+        """Handle KG stats request from gateway - matches original router.py logic"""
         try:
-            # KG stats - return stub for now with frontend-expected field names
-            return {
-                "total_nodes": 0,
-                "total_edges": 0,
-                "entity_types": [],
-                "relation_types": []
-            }
+            user_id = request_data.get("user_id")
+            
+            # Get UoW factory from service container
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            
+            async with uow as uow_instance:
+                # Get all nodes and edges for this user
+                all_nodes = await uow_instance.kg_nodes.list(filters={"user_id": user_id}, limit=100000)
+                all_edges = await uow_instance.kg_edges.list(filters={"user_id": user_id}, limit=100000)
+                
+                # Basic counts
+                node_count = len(all_nodes)
+                current_nodes = [n for n in all_nodes if n.is_current]
+                current_node_count = len(current_nodes)
+                historical_node_count = node_count - current_node_count
+                
+                edge_count = len(all_edges)
+                current_edges = [e for e in all_edges if e.is_current]
+                current_edge_count = len(current_edges)
+                historical_edge_count = edge_count - current_edge_count
+                
+                # Node/edge type distributions
+                import json
+                node_types = {}
+                for node in all_nodes:
+                    label = node.label or "unknown"
+                    node_types[label] = node_types.get(label, 0) + 1
+                
+                edge_types = {}
+                for edge in all_edges:
+                    rel_type = edge.relation_type or "unknown"
+                    edge_types[rel_type] = edge_types.get(rel_type, 0) + 1
+                
+                # Total properties
+                total_node_properties = 0
+                for node in all_nodes:
+                    if node.properties:
+                        if isinstance(node.properties, str):
+                            try:
+                                props = json.loads(node.properties)
+                                total_node_properties += len(props)
+                            except:
+                                pass
+                        elif isinstance(node.properties, dict):
+                            total_node_properties += len(node.properties)
+                
+                # Storage size estimation
+                node_data_size = sum(
+                    len(str(node.id or "")) + len(str(node.label or "")) + 
+                    len(str(node.properties or "")) + len(str(node.source_text or ""))
+                    for node in all_nodes
+                )
+                edge_data_size = sum(
+                    len(str(edge.id or "")) + len(str(edge.relation_type or "")) + 
+                    len(str(edge.properties or "")) + len(str(edge.source_text or ""))
+                    for edge in all_edges
+                )
+                storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.3
+                
+                # Health metrics
+                avg_degree = current_edge_count / max(current_node_count, 1)
+                isolated_nodes = sum(1 for node in current_nodes if not any(
+                    e.source_id == node.id or e.target_id == node.id for e in current_edges
+                ))
+                
+                return {
+                    "total_nodes": node_count,
+                    "current_nodes": current_node_count,
+                    "historical_nodes": historical_node_count,
+                    "total_edges": edge_count,
+                    "current_edges": current_edge_count,
+                    "historical_edges": historical_edge_count,
+                    "total_node_properties": total_node_properties,
+                    "node_types": node_types,
+                    "edge_types": edge_types,
+                    "storage_size_mb": round(storage_size_mb, 2),
+                    "user_id": user_id,
+                    "health": {
+                        "orphaned_edges": 0,
+                        "duplicate_nodes": 0,
+                        "stale_nodes_count": 0,
+                        "stale_nodes_percent": 0.0,
+                        "property_completeness": total_node_properties / max(current_node_count, 1),
+                        "nodes_added_24h": 0,
+                        "edges_added_24h": 0
+                    },
+                    "duplicate_pairs": None,
+                    "structure": {
+                        "graph_density": current_edge_count / max((current_node_count * (current_node_count - 1)) / 2, 1) if current_node_count > 1 else 0.0,
+                        "average_degree": avg_degree,
+                        "max_degree": 0,
+                        "min_degree": 0,
+                        "isolated_nodes": isolated_nodes,
+                        "connected_components": 1,
+                        "largest_component_size": current_node_count
+                    },
+                    "temporal": {
+                        "growth_rate_7d": 0.0,
+                        "growth_rate_30d": 0.0,
+                        "most_active_day": None,
+                        "activity_by_day": {}
+                    },
+                    "centrality": {
+                        "top_by_degree": [],
+                        "top_by_pagerank": [],
+                        "top_by_betweenness": []
+                    },
+                    "clustering": {
+                        "global_clustering_coefficient": 0.0,
+                        "average_clustering_coefficient": 0.0,
+                        "communities_detected": 0,
+                        "modularity_score": 0.0
+                    }
+                }
         except Exception as e:
             self.logger.error(f"Failed to get KG stats: {e}", exc_info=True)
             return {
@@ -290,25 +415,37 @@ class CoreNATSHandlers:
     async def handle_kg_nodes_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle KG nodes request from gateway"""
         try:
+            user_id = request_data.get("user_id")
             limit = request_data.get("limit", 1000)
             offset = request_data.get("offset", 0)
+            limit = min(limit, 1000)
             
-            # Get UoW from service container
-            uow = self.container.get_service("uow")
+            # Get UoW factory from service container
+            uow_factory = self.container.get_service("uow")
             
             # Query KG nodes from database
-            async with uow() as uow_instance:
-                nodes = await uow_instance.kg_nodes.list(limit=limit, offset=offset)
+            uow = uow_factory()
+            async with uow as uow_instance:
+                nodes = await uow_instance.kg_nodes.list(filters={"user_id": user_id}, limit=limit, offset=offset)
                 
-                # Convert to dict format
+                # Convert to dict format - match original router.py format
+                import json
                 nodes_list = []
                 for node in nodes:
                     nodes_list.append({
-                        "node_id": node.node_id,
+                        "id": node.id,
+                        "user_id": node.user_id,
                         "label": node.label,
-                        "entity_type": node.entity_type,
-                        "properties": node.properties or {},
-                        "created_at": node.created_at.isoformat() if hasattr(node.created_at, 'isoformat') else str(node.created_at),
+                        "properties": json.loads(node.properties) if isinstance(node.properties, str) else (node.properties or {}),
+                        "confidence": node.confidence,
+                        "source_text": node.source_text,
+                        "created_at": node.created_at.isoformat() if getattr(node, "created_at", None) else None,
+                        "updated_at": node.updated_at.isoformat() if getattr(node, "updated_at", None) else None,
+                        "valid_from": node.valid_from.isoformat() if getattr(node, "valid_from", None) else None,
+                        "valid_until": node.valid_until.isoformat() if getattr(node, "valid_until", None) else None,
+                        "is_current": bool(node.is_current),
+                        "canonical_id": getattr(node, "canonical_id", None),
+                        "aliases": json.loads(node.aliases_json) if isinstance(getattr(node, "aliases_json", None), str) else (getattr(node, "aliases_json", None) or []),
                     })
                 
                 return {
@@ -329,26 +466,41 @@ class CoreNATSHandlers:
     async def handle_kg_edges_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle KG edges request from gateway"""
         try:
+            user_id = request_data.get("user_id")
             limit = request_data.get("limit", 1000)
             offset = request_data.get("offset", 0)
+            limit = min(limit, 1000)
             
-            # Get UoW from service container
-            uow = self.container.get_service("uow")
+            # Get UoW factory from service container
+            uow_factory = self.container.get_service("uow")
             
             # Query KG edges from database
-            async with uow() as uow_instance:
-                edges = await uow_instance.kg_edges.list(limit=limit, offset=offset)
+            uow = uow_factory()
+            async with uow as uow_instance:
+                edges = await uow_instance.kg_edges.list(
+                    filters={"user_id": user_id, "is_current": True},
+                    limit=limit,
+                    offset=offset,
+                )
                 
-                # Convert to dict format
+                # Convert to dict format - match original router.py format
+                import json
                 edges_list = []
                 for edge in edges:
                     edges_list.append({
-                        "edge_id": edge.edge_id,
-                        "source_node_id": edge.source_node_id,
-                        "target_node_id": edge.target_node_id,
+                        "id": edge.id,
+                        "user_id": edge.user_id,
+                        "source_id": edge.source_id,
+                        "target_id": edge.target_id,
                         "relation_type": edge.relation_type,
-                        "properties": edge.properties or {},
-                        "created_at": edge.created_at.isoformat() if hasattr(edge.created_at, 'isoformat') else str(edge.created_at),
+                        "properties": json.loads(edge.properties) if isinstance(edge.properties, str) else (edge.properties or {}),
+                        "confidence": edge.confidence,
+                        "source_text": edge.source_text,
+                        "created_at": edge.created_at.isoformat() if getattr(edge, "created_at", None) else None,
+                        "updated_at": edge.updated_at.isoformat() if getattr(edge, "updated_at", None) else None,
+                        "valid_from": edge.valid_from.isoformat() if getattr(edge, "valid_from", None) else None,
+                        "valid_until": edge.valid_until.isoformat() if getattr(edge, "valid_until", None) else None,
+                        "is_current": bool(edge.is_current),
                     })
                 
                 return {
@@ -365,6 +517,232 @@ class CoreNATSHandlers:
                 "limit": request_data.get("limit", 1000),
                 "offset": request_data.get("offset", 0)
             }
+
+    async def handle_kg_schema_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG schema request from gateway"""
+        try:
+            user_id = request_data.get("user_id")
+
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            async with uow as uow_instance:
+                nodes = await uow_instance.kg_nodes.list(filters={"user_id": user_id, "is_current": True}, limit=10000)
+                edges = await uow_instance.kg_edges.list(filters={"user_id": user_id, "is_current": True}, limit=10000)
+
+                node_labels = sorted(list(set(node.label for node in nodes if getattr(node, "label", None))))
+                relationship_types = sorted(list(set(edge.relation_type for edge in edges if getattr(edge, "relation_type", None))))
+
+                node_properties = [
+                    "id", "label", "confidence", "source_text",
+                    "created_at", "updated_at", "valid_from", "valid_until",
+                    "is_current", "canonical_id", "language", "reason",
+                ]
+
+                relationship_properties = [
+                    "id", "relation_type", "confidence", "source_text",
+                    "created_at", "updated_at", "valid_from", "valid_until",
+                    "is_current", "reason",
+                ]
+
+                return {
+                    "nodeLabels": node_labels,
+                    "relationshipTypes": relationship_types,
+                    "nodeProperties": node_properties,
+                    "relationshipProperties": relationship_properties,
+                }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get KG schema: {e}", exc_info=True)
+            return {
+                "error": "KG_SCHEMA_FAILED",
+                "message": str(e),
+            }
+
+    async def handle_kg_changes_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG changes request from gateway"""
+        try:
+            user_id = request_data.get("user_id")
+            from_timestamp = request_data.get("from_timestamp")
+            to_timestamp = request_data.get("to_timestamp")
+            limit = request_data.get("limit", 1000)
+
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            async with uow as uow_instance:
+                import json
+                from datetime import datetime
+
+                def _parse_iso(ts: Any):
+                    if ts is None:
+                        return None
+                    if isinstance(ts, datetime):
+                        return ts
+                    if isinstance(ts, str):
+                        try:
+                            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        except Exception:
+                            return None
+                    return None
+
+                from_dt = _parse_iso(from_timestamp)
+                to_dt = _parse_iso(to_timestamp)
+
+                def _in_range(value: Any) -> bool:
+                    if value is None:
+                        return False
+                    if isinstance(value, datetime) and from_dt and to_dt:
+                        return from_dt <= value <= to_dt
+                    # Fallback: compare as strings (best-effort)
+                    try:
+                        return str(from_timestamp) <= str(value) <= str(to_timestamp)
+                    except Exception:
+                        return False
+
+                changes: list[dict] = []
+
+                all_nodes = await uow_instance.kg_nodes.list(filters={"user_id": user_id}, limit=100000)
+                nodes_changed = [
+                    n for n in all_nodes
+                    if (_in_range(getattr(n, "created_at", None)) or _in_range(getattr(n, "updated_at", None)))
+                ]
+                nodes_changed.sort(key=lambda n: n.updated_at or n.created_at or "", reverse=True)
+                nodes_changed = nodes_changed[:limit]
+
+                for node in nodes_changed:
+                    properties = getattr(node, "properties", None)
+                    if properties is None:
+                        properties = {}
+                    elif isinstance(properties, dict):
+                        properties = dict(properties)
+                    else:
+                        try:
+                            properties = json.loads(str(properties))
+                            if not isinstance(properties, dict):
+                                properties = {}
+                        except Exception:
+                            properties = {}
+
+                    created_at = getattr(node, "created_at", None)
+                    updated_at = getattr(node, "updated_at", None)
+                    valid_until = getattr(node, "valid_until", None)
+
+                    if created_at and _in_range(created_at):
+                        change_type = "node_created"
+                    elif valid_until and _in_range(valid_until):
+                        change_type = "node_deleted"
+                    else:
+                        change_type = "node_updated"
+
+                    timestamp_val = updated_at or created_at
+                    timestamp_str = timestamp_val.isoformat() if hasattr(timestamp_val, "isoformat") else str(timestamp_val)
+
+                    changes.append(
+                        {
+                            "change_type": change_type,
+                            "entity_type": "node",
+                            "entity_id": node.id,
+                            "entity_label": getattr(node, "label", None),
+                            "timestamp": timestamp_str,
+                            "properties_changed": list(properties.keys()) if change_type == "node_updated" else None,
+                            "old_values": None,
+                            "new_values": properties if change_type != "node_deleted" else None,
+                            "source_text": getattr(node, "source_text", None),
+                            "reason": None,
+                        }
+                    )
+
+                all_edges = await uow_instance.kg_edges.list(filters={"user_id": user_id}, limit=100000)
+                edges_changed = [
+                    e for e in all_edges
+                    if (_in_range(getattr(e, "created_at", None)) or _in_range(getattr(e, "updated_at", None)))
+                ]
+                edges_changed.sort(key=lambda e: e.updated_at or e.created_at or "", reverse=True)
+                edges_changed = edges_changed[:limit]
+
+                for edge in edges_changed:
+                    properties = getattr(edge, "properties", None)
+                    if properties is None:
+                        properties = {}
+                    elif isinstance(properties, dict):
+                        properties = dict(properties)
+                    else:
+                        try:
+                            properties = json.loads(str(properties))
+                            if not isinstance(properties, dict):
+                                properties = {}
+                        except Exception:
+                            properties = {}
+
+                    created_at = getattr(edge, "created_at", None)
+                    updated_at = getattr(edge, "updated_at", None)
+                    valid_until = getattr(edge, "valid_until", None)
+
+                    if created_at and _in_range(created_at):
+                        change_type = "edge_created"
+                    elif valid_until and _in_range(valid_until):
+                        change_type = "edge_deleted"
+                    else:
+                        change_type = "edge_updated"
+
+                    timestamp_val = updated_at or created_at
+                    timestamp_str = timestamp_val.isoformat() if hasattr(timestamp_val, "isoformat") else str(timestamp_val)
+
+                    changes.append(
+                        {
+                            "change_type": change_type,
+                            "entity_type": "edge",
+                            "entity_id": edge.id,
+                            "entity_label": getattr(edge, "relation_type", None),
+                            "timestamp": timestamp_str,
+                            "properties_changed": list(properties.keys()) if change_type == "edge_updated" else None,
+                            "old_values": None,
+                            "new_values": properties if change_type != "edge_deleted" else None,
+                            "source_text": getattr(edge, "source_text", None),
+                            "reason": None,
+                        }
+                    )
+
+                changes.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+                return {
+                    "from_timestamp": from_timestamp,
+                    "to_timestamp": to_timestamp,
+                    "total_changes": len(changes),
+                    "changes": changes[:limit],
+                }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get KG changes: {e}", exc_info=True)
+            return {
+                "error": "KG_CHANGES_FAILED",
+                "message": str(e),
+            }
+
+    async def handle_kg_query_templates_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG query templates request from gateway"""
+        try:
+            from aico.core.paths import AICOPaths
+            import json
+
+            data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
+            templates_path = data_dir / "gql_query_templates.json"
+
+            if not templates_path.exists():
+                return {
+                    "error": "KG_QUERY_TEMPLATES_NOT_INITIALIZED",
+                    "message": "Query templates not initialized. Run 'aico config init' to set up templates.",
+                }
+
+            with open(templates_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            return data
+
+        except Exception as e:
+            self.logger.error(f"Failed to get KG query templates: {e}", exc_info=True)
+            return {
+                "error": "KG_QUERY_TEMPLATES_LOAD_FAILED",
+                "message": str(e),
+            }
     
     async def handle_memory_album_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle memory album request from gateway"""
@@ -375,11 +753,12 @@ class CoreNATSHandlers:
             limit = request_data.get("limit", 50)
             offset = request_data.get("offset", 0)
             
-            # Get UoW from service container
-            uow = self.container.get_service("uow")
+            # Get UoW factory from service container
+            uow_factory = self.container.get_service("uow")
             
             # Query memory album from database
-            async with uow() as uow_instance:
+            uow = uow_factory()
+            async with uow as uow_instance:
                 from aico.ai.memory.memory_album import MemoryAlbumStore
                 
                 memory_store = MemoryAlbumStore()
@@ -1130,13 +1509,34 @@ class CoreNATSHandlers:
             cb=make_handler(self.handle_kg_edges_request, "kg.edges.reply")
         )
         self.logger.info(f"✅ Subscribed to kg.edges (sid={sid7b})")
+
+        self.logger.info("Subscribing to kg.schema...")
+        sid7c = await message_bus_client._nats.subscribe(
+            "kg.schema",
+            cb=make_handler(self.handle_kg_schema_request, "kg.schema.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.schema (sid={sid7c})")
+
+        self.logger.info("Subscribing to kg.changes...")
+        sid7d = await message_bus_client._nats.subscribe(
+            "kg.changes",
+            cb=make_handler(self.handle_kg_changes_request, "kg.changes.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.changes (sid={sid7d})")
+
+        self.logger.info("Subscribing to kg.query-templates...")
+        sid7e = await message_bus_client._nats.subscribe(
+            "kg.query-templates",
+            cb=make_handler(self.handle_kg_query_templates_request, "kg.query-templates.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.query-templates (sid={sid7e})")
         
         self.logger.info("Subscribing to memory.album...")
-        sid7c = await message_bus_client._nats.subscribe(
+        sid7f = await message_bus_client._nats.subscribe(
             "memory.album",
             cb=make_handler(self.handle_memory_album_request, "memory.album.reply")
         )
-        self.logger.info(f"✅ Subscribed to memory.album (sid={sid7c})")
+        self.logger.info(f"✅ Subscribed to memory.album (sid={sid7f})")
         
         self.logger.info("Subscribing to operations.databases...")
         sid8 = await message_bus_client._nats.subscribe(

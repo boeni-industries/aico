@@ -407,7 +407,7 @@ class BackendLifecycleManager:
             )
             
             # UoW factory for core services that need database access
-            async def create_uow_factory(container: ServiceContainer):
+            def create_uow_factory(container: ServiceContainer):
                 from backend.core.postgres_dependencies import get_uow_factory
                 return get_uow_factory()
             
@@ -1143,6 +1143,7 @@ class BackendLifecycleManager:
         from backend.api.system.router_gateway import router as system_router_gw
         from backend.api.scheduler.router import router as scheduler_router
         from backend.api.emotion.router import router as emotion_router
+        from backend.api.ams.router import router as ams_router
         
         # Mount common routers
         self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
@@ -1184,6 +1185,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(system_router_gw, prefix="/api/v1", tags=["system"])
         self.logger.info("✅ Mounted: /api/v1/system (gateway→core NATS proxy)")
+        
+        self.app.include_router(ams_router, prefix="/api/v1", tags=["ams"])
+        self.logger.info("✅ Mounted: /api/v1/ams")
         
         self.logger.info(f"🎉 Gateway HTTP router mounting complete: {len(self.app.routes)} total routes")
     

@@ -95,19 +95,48 @@ class GatewayNATSClient:
         """Request working memory stats from core via NATS"""
         return await self._nats_request_with_trace("memory.working.stats", b"{}")
     
-    async def request_kg_stats(self) -> Dict[str, Any]:
+    async def request_kg_stats(self, user_id: str) -> Dict[str, Any]:
         """Request KG stats from core via NATS"""
-        return await self._nats_request_with_trace("kg.stats", b"{}")
+        payload = json.dumps({"user_id": user_id}).encode('utf-8')
+        return await self._nats_request_with_trace("kg.stats", payload)
     
-    async def request_kg_nodes(self, limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
+    async def request_kg_nodes(self, user_id: str, limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
         """Request KG nodes from core via NATS"""
-        payload = json.dumps({"limit": limit, "offset": offset}).encode('utf-8')
+        payload = json.dumps({"user_id": user_id, "limit": limit, "offset": offset}).encode('utf-8')
         return await self._nats_request_with_trace("kg.nodes", payload)
     
-    async def request_kg_edges(self, limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
+    async def request_kg_edges(self, user_id: str, limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
         """Request KG edges from core via NATS"""
-        payload = json.dumps({"limit": limit, "offset": offset}).encode('utf-8')
+        payload = json.dumps({"user_id": user_id, "limit": limit, "offset": offset}).encode('utf-8')
         return await self._nats_request_with_trace("kg.edges", payload)
+
+    async def request_kg_schema(self, user_id: str) -> Dict[str, Any]:
+        """Request KG schema from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("kg.schema", payload)
+
+    async def request_kg_changes(
+        self,
+        user_id: str,
+        from_timestamp: str,
+        to_timestamp: str,
+        limit: int = 1000,
+    ) -> Dict[str, Any]:
+        """Request KG changes in a time range from core via NATS"""
+        payload = json.dumps(
+            {
+                "user_id": user_id,
+                "from_timestamp": from_timestamp,
+                "to_timestamp": to_timestamp,
+                "limit": limit,
+            }
+        ).encode("utf-8")
+        return await self._nats_request_with_trace("kg.changes", payload)
+
+    async def request_kg_query_templates(self, user_id: str) -> Dict[str, Any]:
+        """Request KG query templates from core via NATS"""
+        payload = json.dumps({"user_id": user_id}).encode("utf-8")
+        return await self._nats_request_with_trace("kg.query-templates", payload)
     
     async def request_memory_album(
         self, 
