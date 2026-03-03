@@ -20808,7 +20808,7 @@
     },
     "/api/v1/scheduler/expected-runs-today": {
       "get": {
-        "description": "Calculate expected number of job runs today based on cron schedules",
+        "description": "Calculate expected number of job runs today based on cron schedules (via NATS from core)",
         "operationId": "get_expected_runs_today_api_v1_scheduler_expected_runs_today_get",
         "responses": {
           "200": {

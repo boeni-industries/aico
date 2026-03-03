@@ -155,6 +155,15 @@ class UnitOfWork:
         """Flush pending changes without committing."""
         if self._session:
             await self._session.flush()
+
+    @property
+    def session(self) -> Optional[AsyncSession]:
+        """Access the underlying SQLAlchemy session.
+
+        NOTE: Prefer repository properties where possible. This exists for
+        low-level SQL access in a few infrastructure components.
+        """
+        return self._session
     
     # ========================================================================
     # Repository Properties (Lazy-loaded)

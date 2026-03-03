@@ -59,8 +59,9 @@ async def setup_backend_components():
     # No shared database connection needed - each request gets its own UnitOfWork
     logger.info("Backend using PostgreSQL with UnitOfWork pattern - no shared connection needed")
     
-    # Create and initialize lifecycle manager with service container
-    lifecycle_manager = BackendLifecycleManager(config_manager)
+    # Create and initialize lifecycle manager with explicit role.
+    # Monolith mode is removed; this entrypoint runs the HTTP gateway.
+    lifecycle_manager = BackendLifecycleManager(config_manager, role="gateway")
     
     # Create FastAPI app using lifecycle manager
     app = await lifecycle_manager.startup()

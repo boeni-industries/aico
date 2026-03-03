@@ -28,6 +28,34 @@
 - [x] Observability: add Grafana dashboards for core golden paths (request→core→modelservice; NATS/JetStream; Postgres)
 - [x] Observability: add third Grafana dashboard for span/trace visualization (high-UX, drill-down) and add direct links to the other two dashboards (same style)
 
+## Gap-Driven Task List (from codebase comparison)
+
+### Critical
+- [ ] Enforce hard Gateway/Core split (no monolith path; gateway must not start core domain services in-process).
+- [ ] Implement gateway idempotency enforcement (reject/require `Idempotency-Key` on side-effecting endpoints; persist and enforce uniqueness as specified).
+- [ ] Make conversation write-path Postgres-authoritative (persist user input + final AI response to `conversation_messages` as source of truth; bus is transport only).
+- [ ] Unify WebSocket architecture (single gateway WS termination; remove/merge duplicate WS stacks to avoid inconsistent auth/authz/catch-up).
+- [ ] Tenant-scope NATS subjects (move from attributes-only to subject namespace `aico.<tenant_id>.…`; ensure publish/subscribe enforcement follows scoping).
+- [ ] Enforce streaming durability policy (stream chunks ephemeral; ensure JetStream streams/outbox subjects cannot accidentally persist chunk traffic).
+- [ ] Prove ZMQ removal repo-wide (assert zero `zmq` usage/imports and remove any remaining legacy artifacts).
+
+### High
+- [ ] Align conversation schema and lifecycle with doc (ensure `conversations` table exists/used; implement status/title/updated_at and conversation lifecycle endpoints as needed).
+- [ ] Standardize error envelope on all non-2xx responses (single `{error_code,message,request_id,details}` schema; remove ad-hoc responses).
+- [ ] Normalize pagination contract to `limit`/`offset` + `items`/`total` for list endpoints (or explicitly update the contract).
+- [ ] Implement real `turn_number` and ordering guarantees (no stubs; deterministic replay/catch-up ordering).
+- [ ] Apply gateway-wide rate limiting consistently across REST (not only WS).
+
+### Medium
+- [ ] Migrate config namespaces toward documented `aico.*` keys (eliminate drift between doc and runtime config lookups).
+- [ ] Encode a single authoritative durability matrix (map each flow to core NATS vs JetStream and enforce in code).
+- [ ] Narrow outbox/JetStream stream subjects (avoid overly-broad `conversation.>` streams; publish only correctness-critical final events via outbox).
+- [ ] Strengthen catch-up cursor semantics (add stable ordering/tiebreak; avoid timestamp-only edge cases).
+
+### Low
+- [ ] Remove remaining legacy/no-op/deprecated endpoints and startup stubs (e.g. deprecated conversation endpoints; no-op broker startup paths).
+- [ ] Refine conversation WS subscription scoping (use tenant/user subjects instead of global topic + in-handler filtering).
+
 ## Make backend stateless (completed)
 
 ### Definition of done

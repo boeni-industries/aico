@@ -100,10 +100,12 @@ class SemanticMemoryStore:
             return True
         
         try:
+            from sqlalchemy import text
+            
             # Verify table exists
             async with self.uow_factory() as uow:
                 result = await uow.session.execute(
-                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'aico_core' AND table_name = 'conversation_segments')"
+                    text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'aico_core' AND table_name = 'conversation_segments')")
                 )
                 exists = result.scalar()
                 
@@ -203,15 +205,17 @@ class SemanticMemoryStore:
                     })
                 
                 # Store in Postgres with pgvector
+                from sqlalchemy import text
+                
                 embedding_str = '[' + ','.join(str(x) for x in embedding) + ']'
                 
                 async with self.uow_factory() as uow:
                     await uow.session.execute(
-                        """
+                        text("""
                         INSERT INTO aico_core.conversation_segments 
                         (id, user_id, conversation_id, role, content, embedding, timestamp, metadata)
                         VALUES (:id, :user_id, :conversation_id, :role, :content, :embedding::vector, :timestamp, :metadata::jsonb)
-                        """,
+                        """),
                         {
                             'id': segment.segment_id,
                             'user_id': user_id,
@@ -290,10 +294,12 @@ class SemanticMemoryStore:
                 
                 where_clause = " AND " + " AND ".join(where_parts) if where_parts else ""
                 
+                from sqlalchemy import text
+                
                 # Query with cosine similarity (fetch all for BM25 fusion)
                 async with self.uow_factory() as uow:
                     result = await uow.session.execute(
-                        f"""
+                        text(f"""
                         SELECT 
                             id,
                             user_id,
@@ -306,7 +312,7 @@ class SemanticMemoryStore:
                         FROM aico_core.conversation_segments
                         WHERE 1=1 {where_clause}
                         ORDER BY embedding <=> :embedding::vector
-                        """,
+                        """),
                         params
                     )
                     rows = result.fetchall()
@@ -419,16 +425,18 @@ class SemanticMemoryStore:
             await self.initialize()
         
         try:
+            from sqlalchemy import text
+            
             # Query segments from Postgres
             async with self.uow_factory() as uow:
                 result = await uow.session.execute(
-                    """
+                    text("""
                     SELECT id, content, metadata, timestamp
                     FROM aico_core.conversation_segments
                     WHERE user_id = :user_id AND conversation_id = :conversation_id
                     ORDER BY timestamp DESC
                     LIMIT :limit
-                    """,
+                    """),
                     {
                         'user_id': user_id,
                         'conversation_id': conversation_id,
@@ -516,27 +524,17 @@ class SemanticMemoryStore:
                 "conversation_id": conversation_id
             }
     
-    def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """Get semantic memory statistics from pgvector"""
         try:
-            import asyncio
+            from sqlalchemy import text
             
             # Get count from Postgres
-            async def _get_count():
-                async with self.uow_factory() as uow:
-                    result = await uow.session.execute(
-                        "SELECT COUNT(*) FROM aico_core.conversation_segments"
-                    )
-                    return result.scalar()
-            
-            # Run async query
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Create a new task if we're already in an event loop
-                count = 0  # Placeholder when called from async context
-                logger.warning("get_stats called from async context - count unavailable")
-            else:
-                count = asyncio.run(_get_count())
+            async with self.uow_factory() as uow:
+                result = await uow.session.execute(
+                    text("SELECT COUNT(*) FROM aico_core.conversation_segments")
+                )
+                count = result.scalar()
             
             # Calculate retrieval quality based on vector density
             vector_quality = min(count / 2000.0, 1.0) * 50
@@ -553,7 +551,8 @@ class SemanticMemoryStore:
                     'dimension': 384
                 }],
                 'avg_retrieval_latency_ms': 45.0,
-                'retrieval_quality_percent': round(retrieval_quality, 1)
+                'retrieval_quality_percent': round(retrieval_quality, 1),
+                'index_size_mb': 0.0  # Add missing field for response schema
             }
         except Exception as e:
             logger.error(f"Failed to get semantic memory stats: {e}")
@@ -562,6 +561,7 @@ class SemanticMemoryStore:
                 'initialized': self._initialized,
                 'total_vectors': 0,
                 'collections': [],
+                'index_size_mb': 0.0,
                 'error': str(e)
             }
     

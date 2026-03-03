@@ -7,6 +7,10 @@ rest:
   port: 8771
   host: "127.0.0.1"
 
+# CORS
+# Used by FastAPI CORS middleware; keep empty by default (no cross-origin access).
+cors_origins: []
+
 # Protocol adapters
 protocols:
   websocket:
@@ -43,7 +47,7 @@ plugins:
     enabled: true
   validation:
     enabled: true
+  routing:
+    enabled: true
   encryption:
     enabled: true
-  agency:
-    enabled: true  # Phase 1: goal system, planning, scheduler integration

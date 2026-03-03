@@ -440,6 +440,7 @@ async def test_user(test_db):
     # Delete Phase 6.8 data (policy & ethics)
     cursor.execute("DELETE FROM aico_core.ethics_gate_audit WHERE user_id = %s", (user_uuid,))
     cursor.execute("DELETE FROM aico_core.ethics_decisions_cache WHERE user_id = %s", (user_uuid,))
+    cursor.execute("DELETE FROM aico_core.ethics_value_profiles WHERE user_id = %s", (user_uuid,))
     cursor.execute("DELETE FROM aico_core.consent_audit_log WHERE user_id = %s", (user_uuid,))
     cursor.execute("DELETE FROM aico_core.consent_user_consents WHERE user_id = %s", (user_uuid,))
     cursor.execute("DELETE FROM aico_core.agency_policy_rules WHERE user_id = %s", (user_uuid,))

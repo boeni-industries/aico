@@ -74,9 +74,11 @@ def _ensure_test_config_dir():
     if "AICO_CONFIG_DIR" in os.environ:
         try:
             cfg_root = Path(os.environ["AICO_CONFIG_DIR"])
-            user_dir = cfg_root / "user"
-            user_dir.mkdir(parents=True, exist_ok=True)
-            (user_dir / "agency.yaml").write_text(
+            data_root = Path(os.environ.get("AICO_DATA_DIR") or (cfg_root / "_test_data"))
+            os.environ["AICO_DATA_DIR"] = str(data_root)
+            runtime_cfg_dir = data_root / "runtime" / "config" / "user"
+            runtime_cfg_dir.mkdir(parents=True, exist_ok=True)
+            (runtime_cfg_dir / "agency.yaml").write_text(
                 "safety_control:\n  autonomy_level: 'balanced'\n",
                 encoding="utf-8",
             )
@@ -104,9 +106,13 @@ def _ensure_test_config_dir():
 
     os.environ["AICO_CONFIG_DIR"] = str(dst_root)
 
-    user_dir = dst_root / "user"
-    user_dir.mkdir(parents=True, exist_ok=True)
-    (user_dir / "agency.yaml").write_text(
+    # Ensure config overrides are written to the correct runtime data location.
+    data_root = dst_root / "_test_data"
+    os.environ["AICO_DATA_DIR"] = str(data_root)
+
+    runtime_cfg_dir = data_root / "runtime" / "config" / "user"
+    runtime_cfg_dir.mkdir(parents=True, exist_ok=True)
+    (runtime_cfg_dir / "agency.yaml").write_text(
         "safety_control:\n  autonomy_level: 'balanced'\n",
         encoding="utf-8",
     )

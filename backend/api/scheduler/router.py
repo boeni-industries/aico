@@ -529,50 +529,18 @@ async def get_executions_in_range(
 @router.get("/expected-runs-today", response_model=dict)
 @handle_scheduler_exceptions
 async def get_expected_runs_today(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
-    scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> dict:
-    """Calculate expected number of job runs today based on cron schedules"""
+    """Calculate expected number of job runs today based on cron schedules (via NATS from core)"""
     try:
-        from datetime import timedelta
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
         
-        scheduler_service = SchedulerService(uow)
-        tasks = await scheduler_service.list_tasks(filters={"enabled": True})
-        
-        now = datetime.now(UTC)
-        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-        
-        total_expected_runs = 0
-        task_run_counts = {}
-        
-        for task in tasks:
-            schedule = task.schedule
-            if not schedule:
-                continue
-                
-            try:
-                # Parse cron and count expected runs for today
-                expected_runs = scheduler.cron_parser.count_runs_in_period(
-                    schedule, day_start, day_end
-                )
-                total_expected_runs += expected_runs
-                task_run_counts[task.task_id] = expected_runs
-            except Exception as e:
-                logger.warning(f"Failed to calculate runs for task {task.task_id}: {e}")
-                continue
-        
-        return {
-            'total_expected_runs': total_expected_runs,
-            'task_run_counts': task_run_counts,
-            'calculated_at': now.isoformat(),
-            'period_start': day_start.isoformat(),
-            'period_end': day_end.isoformat()
-        }
+        nats_client = get_gateway_nats_client()
+        response_data = await nats_client.request_scheduler_expected_runs_today()
+        return response_data
         
     except Exception as e:
-        logger.error(f"Failed to calculate expected runs: {e}")
+        logger.error(f"Failed to get expected runs today: {e}")
         raise SchedulerNotAvailableError()
 
 

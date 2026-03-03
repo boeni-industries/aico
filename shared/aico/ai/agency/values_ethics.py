@@ -129,7 +129,8 @@ class ValuesEthicsService:
     against configured policies and user preferences.
     """
     
-    def __init__(self, logger=None):
+    def __init__(self, config=None, logger=None):
+        self.config = config
         self.logger = logger
         
         # Cache for loaded policies and profiles
@@ -421,9 +422,13 @@ class ValuesEthicsService:
             return profile
         else:
             # Create default profile - read autonomy level from configuration
-            from aico.core.config import ConfigurationManager
-            config = ConfigurationManager()
-            default_autonomy = config.get("agency.safety_control.autonomy_level", "balanced")
+            if self.config is None:
+                from aico.core.config import ConfigurationManager
+                cfg = ConfigurationManager()
+                cfg.initialize(lightweight=True)
+                default_autonomy = cfg.get("agency.safety_control.autonomy_level", "balanced")
+            else:
+                default_autonomy = self.config.get("agency.safety_control.autonomy_level", "balanced")
             
             profile = ValueProfile(
                 user_id=user_id,

@@ -383,7 +383,7 @@ class TransportIdentityManager:
         except Exception as e:
             # Keyring unavailable (e.g., in Docker container)
             # Generate ephemeral identity for this session
-            self.logger.warning(
+            self.logger.info(
                 f"Keyring unavailable for {component_name}, generating ephemeral identity: {e}"
             )
             
@@ -401,7 +401,7 @@ class TransportIdentityManager:
             else:
                 # Ephemeral identity (new keys each restart)
                 seed = os.urandom(32)
-                self.logger.warning(f"Using ephemeral transport identity for {component_name} (will change on restart)")
+                self.logger.info(f"Using ephemeral transport identity for {component_name} (will change on restart)")
             
             identity = ComponentIdentity.from_seed(component_name, seed)
             self._identities[component_name] = identity

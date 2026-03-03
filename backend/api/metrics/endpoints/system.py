@@ -57,6 +57,10 @@ async def get_system_health_metrics():
             "{exported_job=\"aico-backend\",status_code_class=~\"5xx\"}"
             "[1m]))",
         )
+        
+        # Ensure values are never None
+        gateway_total_rps = gateway_total_rps if gateway_total_rps is not None else 0.0
+        gateway_errors_rps = gateway_errors_rps if gateway_errors_rps is not None else 0.0
 
         system_error_rate = (gateway_errors_rps / gateway_total_rps * 100.0) if gateway_total_rps > 0 else 0.0
 
@@ -68,6 +72,9 @@ async def get_system_health_metrics():
             f"sum(rate(aico_api_request_duration_seconds_count{base_selector}[1m]))" \
             ") * 1000",
         )
+        
+        # Ensure avg_latency is never None (can happen with NaN from Prometheus)
+        avg_latency = avg_latency if avg_latency is not None else 0.0
 
         # Calculate component health scores from real metrics
         # API Gateway: Based on error rate (80%) and response time (20%)

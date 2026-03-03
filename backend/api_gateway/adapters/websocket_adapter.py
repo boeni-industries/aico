@@ -11,12 +11,14 @@ Real-time bidirectional communication with:
 
 import asyncio
 import json
-import websockets
 from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass
 import sys
 from pathlib import Path
 from google.protobuf.struct_pb2 import Struct
+
+from websockets.asyncio.server import serve, ServerConnection
+from websockets.exceptions import ConnectionClosed
 
 # Shared modules now installed via UV editable install
 
@@ -38,7 +40,7 @@ from ..middleware.validator import MessageValidator
 @dataclass
 class WebSocketConnection:
     """WebSocket connection state"""
-    websocket: websockets.WebSocketServerProtocol
+    websocket: ServerConnection
     client_id: str
     user: Optional[Any] = None
     user_uuid: Optional[str] = None
@@ -107,7 +109,7 @@ class WebSocketAdapter:
         """Start WebSocket server"""
         try:
             # Start WebSocket server
-            self.server = await websockets.serve(
+            self.server = await serve(
                 self._handle_connection,
                 host,
                 self.port,
@@ -170,7 +172,7 @@ class WebSocketAdapter:
         except Exception as e:
             self.logger.error(f"Error stopping WebSocket adapter: {e}")
     
-    async def _handle_connection(self, websocket):
+    async def _handle_connection(self, websocket: ServerConnection):
         """Handle new WebSocket connection"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         
@@ -203,7 +205,7 @@ class WebSocketAdapter:
             async for message in websocket:
                 await self._handle_message(connection, message)
                 
-        except websockets.exceptions.ConnectionClosed:
+        except ConnectionClosed:
             self.logger.debug(f"WebSocket connection closed: {client_id}")
         except Exception as e:
             self.logger.error(f"WebSocket connection error for {client_id}: {e}")
@@ -464,7 +466,7 @@ class WebSocketAdapter:
         try:
             message_json = json.dumps(message)
             await connection.websocket.send(message_json)
-        except websockets.exceptions.ConnectionClosed:
+        except ConnectionClosed:
             pass # Connection already closed - this is expected and acceptable. No action needed as the connection cleanup will be handled elsewhere
         except Exception as e:
             self.logger.error(f"Error sending WebSocket message: {e}")

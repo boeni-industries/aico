@@ -974,9 +974,26 @@ class EmotionEngine(BaseService):
             return self.current_state.to_compact_dict()
         return None
     
-    async def get_state_history(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get emotional state history (compact projections)"""
-        return self.state_history[-limit:]
+    async def get_state_history(self, limit: int = 100, hours: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get emotional state history (compact projections)
+        
+        Args:
+            limit: Maximum number of records to return
+            hours: Optional time window in hours (only return states from last N hours)
+        """
+        if hours is None:
+            return self.state_history[-limit:]
+        
+        # Filter by time window
+        from datetime import datetime, timedelta, UTC
+        cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
+        
+        filtered_history = [
+            state for state in self.state_history
+            if datetime.fromisoformat(state["timestamp"].replace('Z', '+00:00')) > cutoff_time
+        ]
+        
+        return filtered_history[-limit:]
     
     # ============================================================================
     # STATE PERSISTENCE

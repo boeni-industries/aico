@@ -92,7 +92,7 @@ async def require_admin_access(credentials: Optional[HTTPAuthorizationCredential
     # For now, we'll allow access but log the attempt
     if not credentials:
         logger.warning("Scheduler API access attempted without authentication")
-        # In development, we might allow this, but log it
+        # In development, we allow this
         # In production, this should raise HTTPException
         pass
     

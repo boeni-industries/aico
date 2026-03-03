@@ -146,7 +146,7 @@ class AgencyEngine(BaseAIProcessor):
         )
         
         # Phase 4: Values & Ethics service
-        self.values_ethics = ValuesEthicsService(logger=logger)
+        self.values_ethics = ValuesEthicsService(config=self.config, logger=logger)
         # Values & Ethics initialized
         
         # Phase 4: Goal Arbiter with configuration
