@@ -1017,6 +1017,10 @@ class BackendLifecycleManager:
         from backend.api_gateway.middleware.metrics import MetricsMiddleware
         self.app.add_middleware(MetricsMiddleware)
 
+        # 2b. Idempotency middleware (minimal, scoped to high-risk mutations)
+        from backend.api_gateway.middleware.idempotency import IdempotencyMiddleware
+        self.app.add_middleware(IdempotencyMiddleware)
+
         # 3. Correlation context middleware (request-scoped IDs for structured logging)
         from fastapi import Request
 

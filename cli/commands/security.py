@@ -259,12 +259,12 @@ def setup(
             console.print(f"⚠️ [yellow]File encryption key validation failed: {e}[/yellow]")
             console.print("   File encryption may not work properly")
         
-        # Initialize CurveZMQ transport keys for message bus encryption
+        # Initialize transport keys for message bus encryption
         try:
-            console.print("🔒 Setting up CurveZMQ transport encryption...")
+            console.print("🔒 Setting up NATS transport encryption...")
             master_key = key_manager.authenticate(interactive=False)
             
-            # Test CurveZMQ key derivation for all message bus components
+            # Test key derivation for all message bus components
             curve_components = [
                 "message_bus_broker",
                 "message_bus_client_api_gateway",
@@ -272,26 +272,25 @@ def setup(
                 "message_bus_client_scheduler",
                 "message_bus_client_cli",
                 "message_bus_client_modelservice",
-                "zmq_log_transport",  # ZMQ log transport for cross-service logging
                 "message_bus_client_system_host",
                 "message_bus_client_backend_modules"
             ]
             
             for component in curve_components:
                 public_key, secret_key = key_manager.derive_curve_keypair(master_key, component)
-                # Verify keys are 40-character Z85 encoded strings for CurveZMQ
+                # Verify keys are 40-character Z85 encoded strings
                 if len(public_key) != 40 or len(secret_key) != 40:
-                    raise ValueError(f"Invalid CurveZMQ key length for component '{component}': pub={len(public_key)}, sec={len(secret_key)} chars (expected 40)")
+                    raise ValueError(f"Invalid key length for component '{component}': pub={len(public_key)}, sec={len(secret_key)} chars (expected 40)")
                 # Verify they are valid Z85 strings
                 if not all(c in "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#" for c in public_key + secret_key):
                     raise ValueError(f"Invalid Z85 encoding for component '{component}'")
             
-            console.print("✅ [green]CurveZMQ transport keys validated[/green]")
+            console.print("✅ [green]NATS transport keys validated[/green]")
             console.print("🛡️ [green]Message bus encryption ready[/green]")
-            actions_taken.append("CurveZMQ transport keys validated")
+            actions_taken.append("NATS transport keys validated")
             
         except Exception as e:
-            console.print(f"⚠️ [yellow]CurveZMQ transport key validation failed: {e}[/yellow]")
+            console.print(f"⚠️ [yellow]NATS transport key validation failed: {e}[/yellow]")
             console.print("   Message bus encryption may not work properly")
         
         # Summary of actions taken
@@ -994,99 +993,92 @@ def status(
         )
         console.print(transport_panel)
         
-        # CurveZMQ Message Bus Encryption Section
-        curvezmq_table = Table(
-            title="🔒 CurveZMQ Message Bus Encryption",
+        # NATS Message Bus Encryption Section
+        nats_table = Table(
+            title="🔒 NATS Message Bus Encryption",
             title_justify="left",
             show_header=True,
             header_style="bold yellow",
             border_style="bright_blue",
             box=box.SIMPLE_HEAD
         )
-        curvezmq_table.add_column("Component", style="bold white", justify="left")
-        curvezmq_table.add_column("Status", style="cyan", justify="left")
-        curvezmq_table.add_column("Details", style="dim", justify="left")
+        nats_table.add_column("Component", style="bold white", justify="left")
+        nats_table.add_column("Status", style="cyan", justify="left")
+        nats_table.add_column("Details", style="dim", justify="left")
         
         # Default values for error case
-        curvezmq_enabled = False
-        curvezmq_border = "yellow"
-        curvezmq_status = "CurveZMQ encryption status unknown"
+        nats_enabled = False
+        nats_border = "yellow"
+        nats_status = "NATS encryption status unknown"
         working_components = 0
         total_components = 0
         
         try:
-            # Check CurveZMQ encryption configuration
+            # Check NATS encryption configuration
             transport_config = key_manager.config_manager.get("security", {}).get("transport", {})
-            curvezmq_enabled = transport_config.get("message_bus_encryption", True)
+            nats_enabled = transport_config.get("message_bus_encryption", True)
             
-            if curvezmq_enabled:
-                # Test CurveZMQ key derivation for all components
+            if nats_enabled:
+                # Test key derivation for all components
                 master_key = key_manager.authenticate(interactive=False)
-                curve_components = [
+                nats_components = [
                     ("Broker", "message_bus_broker"),
                     ("API Gateway", "message_bus_client_api_gateway"),
                     ("Log Consumer", "message_bus_client_log_consumer"), 
                     ("Scheduler", "message_bus_client_scheduler"),
                     ("CLI", "message_bus_client_cli"),
                     ("Model Service", "message_bus_client_modelservice"),
-                    ("ZMQ Log Transport", "zmq_log_transport"),
                     ("System Host", "message_bus_client_system_host"),
                     ("Backend Modules", "message_bus_client_backend_modules")
                 ]
                 
-                total_components = len(curve_components)
+                total_components = len(nats_components)
                 
-                for display_name, component_name in curve_components:
+                for display_name, component_name in nats_components:
                     try:
                         public_key, secret_key = key_manager.derive_curve_keypair(master_key, component_name)
                         if len(public_key) == 40 and len(secret_key) == 40:
-                            curvezmq_table.add_row(display_name, "Ready", "CurveZMQ keypair available")
+                            nats_table.add_row(display_name, "Ready", "Keypair available")
                             working_components += 1
                         else:
-                            curvezmq_table.add_row(display_name, "Invalid", f"Key length error: {len(public_key)}/{len(secret_key)} chars")
+                            nats_table.add_row(display_name, "Invalid", f"Key length error: {len(public_key)}/{len(secret_key)} chars")
                     except Exception as e:
-                        curvezmq_table.add_row(display_name, "Error", f"Key derivation failed: {str(e)[:40]}...")
+                        nats_table.add_row(display_name, "Error", f"Key derivation failed: {str(e)[:40]}...")
                 
-                # CurveZMQ configuration details
-                curve_config = transport_config.get("curvezmq", {})
-                auth_policy = curve_config.get("authentication_policy", "CURVE_ALLOW_ANY")
-                key_derivation = curve_config.get("key_derivation", {})
-                iterations = key_derivation.get("iterations", 1)
-                memory_mb = key_derivation.get("memory_cost", 65536) // 1024  # Convert KiB to MB
-                
-                curvezmq_table.add_row("Authentication", "Configured", f"Policy: {auth_policy}")
-                curvezmq_table.add_row("Key Derivation", "Argon2id", f"{iterations} iterations, {memory_mb}MB memory")
+                # NATS configuration details
+                nats_table.add_row("Transport", "Configured", "NATS with TLS")
+                nats_table.add_row("Key Derivation", "Argon2id", "Secure key generation")
                 
                 # Overall status
                 if working_components == total_components:
-                    curvezmq_status = f"All {total_components} components ready for encrypted communication"
-                    curvezmq_border = "green"
+                    nats_status = f"All {total_components} components ready for encrypted communication"
+                    nats_border = "green"
                 elif working_components > 0:
-                    curvezmq_status = f"{working_components}/{total_components} components ready - partial encryption"
-                    curvezmq_border = "yellow"
+                    nats_status = f"{working_components}/{total_components} components ready - partial encryption"
+                    nats_border = "yellow"
                 else:
-                    curvezmq_status = "No components ready - message bus encryption unavailable"
-                    curvezmq_border = "red"
+                    nats_status = "No components ready - message bus encryption unavailable"
+                    nats_border = "red"
             else:
-                curvezmq_table.add_row("Encryption", "Disabled", "Message bus uses plaintext")
-                curvezmq_table.add_row("Security Level", "None", "All inter-component communication unencrypted")
-                curvezmq_status = "CurveZMQ encryption disabled - plaintext message bus"
-                curvezmq_border = "red"
+                nats_table.add_row("Encryption", "Disabled", "Message bus uses plaintext")
+                nats_table.add_row("Security Level", "None", "All inter-component communication unencrypted")
+                nats_status = "NATS encryption disabled - plaintext message bus"
+                nats_border = "red"
                 
         except Exception as e:
-            curvezmq_table.add_row("Configuration", "Error", f"Failed to check status: {str(e)[:50]}...")
-            curvezmq_status = f"CurveZMQ status check failed: {e}"
-            curvezmq_border = "red"
+            nats_table.add_row("Configuration", "Error", f"Failed to check status: {str(e)[:50]}...")
+            nats_status = f"NATS status check failed: {e}"
+            nats_border = "red"
             
-        console.print(curvezmq_table)
+        console.print(nats_table)
         
-        # CurveZMQ Status Summary
-        curvezmq_panel = Panel(
-            curvezmq_status,
+        # NATS Status Summary
+        nats_panel = Panel(
+            nats_status,
             title="🔒 Message Bus Security",
-            border_style=curvezmq_border
+            border_style=nats_border
         )
-        console.print(curvezmq_panel)
+        console.print(nats_panel)
     
     # Show recommendations
     if not health_info["has_master_key"]:

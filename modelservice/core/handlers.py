@@ -1,7 +1,7 @@
 """
-ZeroMQ message handlers for modelservice - pure Protocol Buffer implementation.
+NATS message handlers for modelservice - pure Protocol Buffer implementation.
 
-This module implements ZMQ request/response handlers that work directly with
+This module implements NATS request/response handlers that work directly with
 Protocol Buffer messages, providing type-safe message handling.
 """
 
@@ -33,15 +33,15 @@ from google.protobuf.timestamp_pb2 import Timestamp
 # Logger will be initialized in class constructor to avoid import-time issues
 
 
-class ModelserviceZMQHandlers:
-    """ZeroMQ message handlers for modelservice functionality."""
+class ModelserviceHandlers:
+    """NATS message handlers for modelservice functionality."""
     
     def __init__(self, config: dict, ollama_manager, message_bus_client=None, config_manager=None):
         # Initialize logger first
-        self.logger = get_logger("modelservice.core.zmq_handlers")
+        self.logger = get_logger("modelservice.core.handlers")
         
-        self.logger.debug("ModelserviceZMQHandlers constructor called - initializing...")
-        self.logger.debug("ModelserviceZMQHandlers constructor called - initializing...")
+        self.logger.debug("ModelserviceHandlers constructor called - initializing...")
+        self.logger.debug("ModelserviceHandlers constructor called - initializing...")
         self.config = config
         self.ollama_manager = ollama_manager
         self.message_bus_client = message_bus_client
@@ -68,7 +68,7 @@ class ModelserviceZMQHandlers:
         self.tts_handler = TtsFactory.create_handler(config_manager=self.config_manager)
         self.tts_initialized = False
         
-        self.logger.debug("ModelserviceZMQHandlers initialization complete")
+        self.logger.debug("ModelserviceHandlers initialization complete")
     
     def get_transformer_model(self, model_name: str) -> Any:
         """Get transformer model from TransformersManager.

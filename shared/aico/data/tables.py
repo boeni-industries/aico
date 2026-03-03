@@ -12,6 +12,7 @@ from sqlalchemy import (
     func,
     text
 )
+
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.types import UserDefinedType
 
@@ -25,6 +26,37 @@ class Vector(UserDefinedType):
 
     def get_col_spec(self, **kw):
         return f"vector({self.dimensions})"
+
+# ==========================================================================
+# Idempotency (gateway mutation safety)
+# ==========================================================================
+
+idempotency_requests = Table(
+    "idempotency_requests",
+    metadata,
+    Column("auth_hash", String, primary_key=True),
+    Column("idempotency_key", String, primary_key=True),
+    Column("request_method", String, primary_key=True),
+    Column("request_path", String, primary_key=True),
+    Column("request_hash", String, nullable=False),
+    Column("status", String, nullable=False),
+    Column("response_status_code", Integer),
+    Column("response_body", JSONB),
+    Column(
+        "created_at",
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.current_timestamp(),
+    ),
+    Column(
+        "updated_at",
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.current_timestamp(),
+    ),
+    Column("expires_at", TIMESTAMP(timezone=True), nullable=False),
+    Index("idx_idempotency_requests_expires_at", "expires_at"),
+)
 
 # ============================================================================
 # User & Authentication Tables

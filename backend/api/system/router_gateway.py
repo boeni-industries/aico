@@ -99,6 +99,22 @@ async def get_remediation_history(
         raise_api_error(status_code=500, error_code="REMEDIATE_HISTORY_FAILED", message=str(e))
 
 
+@router.post("/remediate/{skill_id}")
+async def trigger_remediation(
+    skill_id: str,
+    payload: Dict[str, Any],
+    _auth: dict = Depends(get_current_user),
+):
+    """Trigger a remediation skill (gateway→core NATS proxy)"""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_remediate_trigger(skill_id=skill_id, payload=payload)
+    except Exception as e:
+        raise_api_error(status_code=500, error_code="REMEDIATE_TRIGGER_FAILED", message=str(e))
+
+
 @router.post("/health/check/connectivity")
 async def run_connectivity_check(_auth: dict = Depends(get_current_user)):
     """Run connectivity health check (gateway→core NATS proxy)"""

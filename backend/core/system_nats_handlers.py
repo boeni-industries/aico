@@ -456,6 +456,84 @@ class SystemNATSHandlers:
         except Exception as e:
             self.logger.error(f"Failed to get remediation history: {e}", exc_info=True)
             return {"error": "REMEDIATE_HISTORY_FAILED", "message": str(e)}
+
+    async def handle_remediate_trigger_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle remediation trigger request - POST /system/remediate/{skill_id}"""
+        try:
+            skill_id = request_data.get("skill_id")
+            payload = request_data.get("payload") or {}
+
+            if not skill_id:
+                return {"error": "REMEDIATE_TRIGGER_FAILED", "message": "skill_id is required"}
+
+            registry, invoker = self._get_remediation_service()
+            skill = registry.get(skill_id)
+            if not skill:
+                return {"error": "REMEDIATE_TRIGGER_FAILED", "message": f"Unknown skill_id: {skill_id}"}
+
+            params = payload.get("parameters") or {}
+            dry_run = payload.get("dry_run", True)
+            input_data = dict(params)
+            # Safety-first: never force dry_run=False if caller didn't explicitly request it.
+            input_data["dry_run"] = bool(dry_run) or bool(input_data.get("dry_run", False))
+
+            started_at = datetime.now(UTC)
+            result = await invoker.invoke_skill(
+                skill_id=skill_id,
+                user_id="system",
+                input_data=input_data,
+                context={"origin": "gateway_remediate"},
+            )
+            completed_at = datetime.now(UTC)
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+            success = bool(result.get("success", False))
+            output = result.get("output", {}) or {}
+            error = result.get("error")
+
+            # Persist execution history (best-effort)
+            try:
+                async with UnitOfWork(self.session_factory) as uow:
+                    from sqlalchemy import text
+
+                    query = text(
+                        """
+                        INSERT INTO aico_core.remediation_executions
+                        (skill_id, parameters, success, dry_run, output, error, executed_by, executed_at, execution_time_ms)
+                        VALUES (:skill_id, :parameters, :success, :dry_run, :output, :error, :executed_by, :executed_at, :execution_time_ms)
+                        """
+                    )
+
+                    await uow._session.execute(
+                        query,
+                        {
+                            "skill_id": skill_id,
+                            "parameters": json.dumps(params),
+                            "success": success,
+                            "dry_run": bool(input_data.get("dry_run", True)),
+                            "output": json.dumps(output),
+                            "error": error,
+                            "executed_by": "gateway",
+                            "executed_at": started_at,
+                            "execution_time_ms": duration_ms,
+                        },
+                    )
+                    await uow.commit()
+            except Exception as db_exc:
+                self.logger.error(f"Failed to persist remediation execution: {db_exc}")
+
+            return {
+                "skill_id": skill_id,
+                "success": success,
+                "output": output,
+                "error": error,
+                "executed_at": started_at.isoformat(),
+                "execution_time_ms": duration_ms,
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to trigger remediation: {e}", exc_info=True)
+            return {"error": "REMEDIATE_TRIGGER_FAILED", "message": str(e)}
     
     async def handle_health_check_connectivity(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle connectivity health check trigger - POST /system/health/check/connectivity"""

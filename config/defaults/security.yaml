@@ -46,7 +46,7 @@ file_encryption:
 # Transport security settings
 transport:
   # Message bus encryption (NATS with TLS)
-  message_bus_encryption: true
+  message_bus_encryption: true  # NATS uses TLS for transport encryption
   
   # Transport encryption settings (libsodium-based for HTTP/WebSocket)
   encryption:

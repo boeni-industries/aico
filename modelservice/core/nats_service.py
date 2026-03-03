@@ -16,7 +16,7 @@ from aico.core.bus import MessageBusClient
 from aico.core.config import ConfigurationManager
 
 from .protobuf_messages import ModelserviceMessageParser
-from .handlers import ModelserviceZMQHandlers
+from .handlers import ModelserviceHandlers
 
 
 class ModelserviceNATSService:
@@ -32,7 +32,7 @@ class ModelserviceNATSService:
         self.bus_client: Optional[MessageBusClient] = None
         self.processed_correlation_ids = set()
 
-        self.handlers = ModelserviceZMQHandlers(
+        self.handlers = ModelserviceHandlers(
             self.config,
             ollama_manager,
             None,

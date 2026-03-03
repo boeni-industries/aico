@@ -1715,6 +1715,11 @@ class CoreNATSHandlers:
         """Handle remediation history request from gateway"""
         handlers = await self._get_system_handlers()
         return await handlers.handle_remediate_history_request(request_data)
+
+    async def handle_remediate_trigger_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle remediation trigger request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_remediate_trigger_request(request_data)
     
     async def handle_health_check_connectivity_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle connectivity health check trigger from gateway"""
@@ -2081,6 +2086,13 @@ class CoreNATSHandlers:
             cb=make_handler(self.handle_remediate_history_request, "system.remediate.history.reply")
         )
         self.logger.info(f"✅ Subscribed to system.remediate.history (sid={sid18})")
+
+        self.logger.info("Subscribing to system.remediate.trigger...")
+        sid18b = await message_bus_client._nats.subscribe(
+            "system.remediate.trigger",
+            cb=make_handler(self.handle_remediate_trigger_request, "system.remediate.trigger.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.trigger (sid={sid18b})")
         
         self.logger.info("Subscribing to system.health.check.connectivity...")
         sid19 = await message_bus_client._nats.subscribe(

@@ -888,6 +888,28 @@ CREATE INDEX IF NOT EXISTS idx_conversation_messages_correlation
     WHERE correlation_id IS NOT NULL;
 
 -- ==========================================================================
+-- Idempotency (gateway mutation safety)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS idempotency_requests (
+                auth_hash TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                request_method TEXT NOT NULL,
+                request_path TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                status TEXT NOT NULL,
+                response_status_code INTEGER,
+                response_body JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMPTZ NOT NULL,
+                PRIMARY KEY (auth_hash, idempotency_key, request_method, request_path)
+            );
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_requests_expires_at
+    ON idempotency_requests (expires_at);
+
+-- ==========================================================================
 -- Outbox (durable publication fallback)
 -- ==========================================================================
 

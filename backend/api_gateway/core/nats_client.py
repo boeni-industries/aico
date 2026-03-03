@@ -383,6 +383,11 @@ class GatewayNATSClient:
         """Request remediation history from core via NATS"""
         payload = json.dumps({"limit": limit}).encode("utf-8")
         return await self._nats_request_with_trace("system.remediate.history", payload)
+
+    async def request_remediate_trigger(self, skill_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Trigger a remediation skill execution via core NATS handler"""
+        request_payload = json.dumps({"skill_id": skill_id, "payload": payload}).encode("utf-8")
+        return await self._nats_request_with_trace("system.remediate.trigger", request_payload, timeout=60.0)
     
     async def request_health_check_connectivity(self) -> Dict[str, Any]:
         """Request connectivity health check from core via NATS"""
