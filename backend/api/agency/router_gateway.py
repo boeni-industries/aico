@@ -646,7 +646,7 @@ async def get_reflection_summary(
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found in token")
         
-        response_data = await nats_client.request_agency_reflection_summary(user_id=user_id, window_days=days)
+        response_data = await nats_client.request_agency_reflection_summary(user_id=user_id, window_days=days, recent_lessons_limit=recent_lessons_limit)
         if response_data.get("error"):
             raise HTTPException(status_code=500, detail=response_data.get("message", "Failed to get reflection summary"))
         

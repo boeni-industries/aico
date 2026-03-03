@@ -11,6 +11,7 @@ from aico.core.logging import get_logger
 from google.protobuf.struct_pb2 import Struct
 from opentelemetry import trace
 from backend.core.agency_nats_handlers import AgencyNATSHandlers
+from backend.core.system_nats_handlers import SystemNATSHandlers
 
 logger = get_logger("backend.core.nats_handlers")
 tracer = trace.get_tracer(__name__)
@@ -52,6 +53,26 @@ class CoreNATSHandlers:
         self.container = service_container
         self.logger = logger
         self.agency_handlers = AgencyNATSHandlers(service_container)
+        
+        # Initialize system health handlers (will be lazy-loaded when needed)
+        self.system_handlers = None
+        self._system_handlers_start_time = None
+    
+    async def _get_system_handlers(self):
+        """Lazy-load system handlers when first needed."""
+        if self.system_handlers is None:
+            import time
+            if self._system_handlers_start_time is None:
+                self._system_handlers_start_time = time.time()
+            
+            from aico.data.postgres.connection import get_session_factory
+            session_factory = await get_session_factory()
+            self.system_handlers = SystemNATSHandlers(
+                self.container, 
+                session_factory, 
+                self._system_handlers_start_time
+            )
+        return self.system_handlers
     
     @trace_nats_handler("scheduler.status")
     async def handle_scheduler_status_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1672,37 +1693,48 @@ class CoreNATSHandlers:
     
     async def handle_system_health_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle system health request from gateway"""
-        try:
-            # Return health data with frontend-expected structure
-            return {
-                "status": "healthy",
-                "uptime_seconds": 0,
-                "summary": {
-                    "critical_issues": 0,
-                    "warnings": 0
-                },
-                "components": []
-            }
-        except Exception as e:
-            self.logger.error(f"Failed to get system health: {e}", exc_info=True)
-            return {
-                "error": "SYSTEM_HEALTH_FAILED",
-                "message": str(e)
-            }
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_system_health_request(request_data)
     
     async def handle_system_health_services_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle system health services request from gateway"""
-        try:
-            # Return stub health services data
-            return {
-                "services": []
-            }
-        except Exception as e:
-            self.logger.error(f"Failed to get health services: {e}", exc_info=True)
-            return {
-                "error": "HEALTH_SERVICES_FAILED",
-                "message": str(e)
-            }
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_system_health_services_request(request_data)
+    
+    async def handle_system_health_issues_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle system health issues request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_system_health_issues_request(request_data)
+    
+    async def handle_remediate_available_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle available remediation actions request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_remediate_available_request(request_data)
+    
+    async def handle_remediate_history_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle remediation history request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_remediate_history_request(request_data)
+    
+    async def handle_health_check_connectivity_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle connectivity health check trigger from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_health_check_connectivity(request_data)
+    
+    async def handle_health_check_resources_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle resources health check trigger from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_health_check_resources(request_data)
+    
+    async def handle_health_check_models_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle models health check trigger from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_health_check_models(request_data)
+    
+    async def handle_health_check_ai_behaviour_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle AI behaviour health check trigger from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_health_check_ai_behaviour(request_data)
     
     def _extract_request_data(self, request_envelope) -> Dict[str, Any]:
         """Extract JSON data from request envelope"""
@@ -2029,4 +2061,53 @@ class CoreNATSHandlers:
         )
         self.logger.info(f"✅ Subscribed to system.health.services (sid={sid15})")
         
-        self.logger.info("Core NATS request handlers registered (scheduler, emotion, memory, kg, operations, system)")
+        self.logger.info("Subscribing to system.health.issues...")
+        sid16 = await message_bus_client._nats.subscribe(
+            "system.health.issues",
+            cb=make_handler(self.handle_system_health_issues_request, "system.health.issues.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.issues (sid={sid16})")
+        
+        self.logger.info("Subscribing to system.remediate.available...")
+        sid17 = await message_bus_client._nats.subscribe(
+            "system.remediate.available",
+            cb=make_handler(self.handle_remediate_available_request, "system.remediate.available.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.available (sid={sid17})")
+        
+        self.logger.info("Subscribing to system.remediate.history...")
+        sid18 = await message_bus_client._nats.subscribe(
+            "system.remediate.history",
+            cb=make_handler(self.handle_remediate_history_request, "system.remediate.history.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.history (sid={sid18})")
+        
+        self.logger.info("Subscribing to system.health.check.connectivity...")
+        sid19 = await message_bus_client._nats.subscribe(
+            "system.health.check.connectivity",
+            cb=make_handler(self.handle_health_check_connectivity_request, "system.health.check.connectivity.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.connectivity (sid={sid19})")
+        
+        self.logger.info("Subscribing to system.health.check.resources...")
+        sid20 = await message_bus_client._nats.subscribe(
+            "system.health.check.resources",
+            cb=make_handler(self.handle_health_check_resources_request, "system.health.check.resources.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.resources (sid={sid20})")
+        
+        self.logger.info("Subscribing to system.health.check.models...")
+        sid21 = await message_bus_client._nats.subscribe(
+            "system.health.check.models",
+            cb=make_handler(self.handle_health_check_models_request, "system.health.check.models.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.models (sid={sid21})")
+        
+        self.logger.info("Subscribing to system.health.check.ai_behaviour...")
+        sid22 = await message_bus_client._nats.subscribe(
+            "system.health.check.ai_behaviour",
+            cb=make_handler(self.handle_health_check_ai_behaviour_request, "system.health.check.ai_behaviour.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.ai_behaviour (sid={sid22})")
+        
+        self.logger.info("Core NATS request handlers registered (scheduler, emotion, memory, kg, operations, system, health checks)")

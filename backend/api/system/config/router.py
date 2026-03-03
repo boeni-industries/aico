@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from aico.core.config import ConfigurationManager, ConfigurationValidationError
 from aico.core.logging import get_logger
-from backend.api.admin.dependencies import verify_admin_token
+from backend.api.system.dependencies import get_current_user
 
 from . import schemas
 
@@ -257,7 +257,7 @@ def _issue_from_jsonschema_error(
 @router.get("/domains", response_model=schemas.DomainsResponse)
 async def list_domains(
     request: Request,
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.DomainsResponse:
     cfg = _config_manager(request)
 
@@ -308,7 +308,7 @@ async def list_domains(
 async def load_domain(
     domain: str,
     request: Request,
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.DomainConfigResponse:
     cfg = _config_manager(request)
     if not _domain_exists(cfg, domain):
@@ -342,7 +342,7 @@ async def load_domain(
 async def get_domain_schema(
     domain: str,
     request: Request,
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.SchemaResponse:
     cfg = _config_manager(request)
     if not _domain_exists(cfg, domain):
@@ -366,7 +366,7 @@ async def get_domain_schema(
 async def validate_draft(
     body: schemas.ValidateDraftRequest,
     request: Request,
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.ValidateDraftResponse:
     cfg = _config_manager(request)
     domain = body.domain
@@ -428,7 +428,7 @@ async def save_domain(
     domain: str,
     body: schemas.SaveDomainRequest,
     request: Request,
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.SaveDomainResponse:
     cfg = _config_manager(request)
     if not _domain_exists(cfg, domain):
@@ -482,7 +482,7 @@ async def save_domain(
 async def revert_domain_to_factory_defaults(
     domain: str,
     request: Request,
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.RevertDomainResponse:
     cfg = _config_manager(request)
     if not _domain_exists(cfg, domain):
@@ -518,7 +518,7 @@ async def revert_domain_to_factory_defaults(
 async def reload_from_disk(
     body: schemas.ReloadRequest,
     request: Request,
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.ReloadResponse:
     cfg = _config_manager(request)
 
@@ -555,7 +555,7 @@ async def export_config(
     domain: Optional[str] = Query(default=None),
     format: schemas.ConfigFormat = Query(default="yaml"),
     include_sensitive: bool = Query(default=False),
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.ExportResponse:
     cfg = _config_manager(request)
 
@@ -592,7 +592,7 @@ async def export_config(
 async def import_config(
     body: schemas.ImportRequest,
     request: Request,
-    _: Dict[str, Any] = Depends(verify_admin_token),
+    _: Dict[str, Any] = Depends(get_current_user),
 ) -> schemas.ImportResponse:
     cfg = _config_manager(request)
 

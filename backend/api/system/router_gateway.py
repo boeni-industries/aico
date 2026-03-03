@@ -14,6 +14,10 @@ from backend.api.system.dependencies import get_current_user
 
 router = APIRouter(prefix="/system", tags=["system"])
 
+# Include config router for direct access to configuration endpoints
+from backend.api.system.config.router import router as config_router
+router.include_router(config_router, prefix="/config", tags=["system-config"])
+
 
 class AllMetricsResponse(BaseModel):
     """Complete metrics response with all subsystems."""
@@ -57,6 +61,86 @@ async def get_health_services(_auth: dict = Depends(get_current_user)):
         return await nats_client.request_health_services()
     except Exception as e:
         raise_api_error(status_code=500, error_code="HEALTH_SERVICES_FAILED", message=str(e))
+
+
+@router.get("/health/issues")
+async def get_health_issues(_auth: dict = Depends(get_current_user)):
+    """Get system health issues (gateway→core NATS proxy)"""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_health_issues()
+    except Exception as e:
+        raise_api_error(status_code=500, error_code="HEALTH_ISSUES_FAILED", message=str(e))
+
+
+@router.get("/remediate/available")
+async def get_available_remediations(_auth: dict = Depends(get_current_user)):
+    """Get available remediation actions (gateway→core NATS proxy)"""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_remediate_available()
+    except Exception as e:
+        raise_api_error(status_code=500, error_code="REMEDIATE_AVAILABLE_FAILED", message=str(e))
+
+
+@router.get("/remediate/history")
+async def get_remediation_history(
+    _auth: dict = Depends(get_current_user),
+    limit: int = 20
+):
+    """Get remediation history (gateway→core NATS proxy)"""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_remediate_history(limit=limit)
+    except Exception as e:
+        raise_api_error(status_code=500, error_code="REMEDIATE_HISTORY_FAILED", message=str(e))
+
+
+@router.post("/health/check/connectivity")
+async def run_connectivity_check(_auth: dict = Depends(get_current_user)):
+    """Run connectivity health check (gateway→core NATS proxy)"""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_health_check_connectivity()
+    except Exception as e:
+        raise_api_error(status_code=500, error_code="HEALTH_CHECK_FAILED", message=str(e))
+
+
+@router.post("/health/check/resources")
+async def run_resources_check(_auth: dict = Depends(get_current_user)):
+    """Run resources health check (gateway→core NATS proxy)"""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_health_check_resources()
+    except Exception as e:
+        raise_api_error(status_code=500, error_code="HEALTH_CHECK_FAILED", message=str(e))
+
+
+@router.post("/health/check/models")
+async def run_models_check(_auth: dict = Depends(get_current_user)):
+    """Run models health check (gateway→core NATS proxy)"""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_health_check_models()
+    except Exception as e:
+        raise_api_error(status_code=500, error_code="HEALTH_CHECK_FAILED", message=str(e))
+
+
+@router.post("/health/check/ai-behaviour")
+async def run_ai_behaviour_check(_auth: dict = Depends(get_current_user)):
+    """Run AI behaviour health check (gateway→core NATS proxy)"""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_health_check_ai_behaviour()
+    except Exception as e:
+        raise_api_error(status_code=500, error_code="HEALTH_CHECK_FAILED", message=str(e))
 
 
 @router.get("/metrics/all", response_model=AllMetricsResponse)

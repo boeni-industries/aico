@@ -710,11 +710,36 @@ class AgencyNATSHandlers:
             if not user_id:
                 return {"error": "MISSING_USER_ID", "message": "user_id is required"}
             
-            # Return empty runs list for now
-            return {
-                "runs": [],
-                "total": 0,
-            }
+            # Get UoW factory and fetch reflection runs
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            
+            async with uow as uow_instance:
+                runs = await uow_instance.agency_reflection_runs.get_user_runs(user_id)
+                
+                # Convert to response format
+                runs_data = []
+                for run in runs[:limit]:
+                    runs_data.append({
+                        "run_id": run.run_id,
+                        "user_id": run.user_id,
+                        "run_type": run.run_type,
+                        "trigger_reason": run.trigger_reason,
+                        "analysis_window_start": run.analysis_window_start.isoformat() if hasattr(run.analysis_window_start, 'isoformat') else str(run.analysis_window_start),
+                        "analysis_window_end": run.analysis_window_end.isoformat() if hasattr(run.analysis_window_end, 'isoformat') else str(run.analysis_window_end),
+                        "lessons_generated": run.lessons_generated,
+                        "lessons_applied": run.lessons_applied,
+                        "started_at": run.started_at.isoformat() if hasattr(run.started_at, 'isoformat') else str(run.started_at),
+                        "completed_at": run.completed_at.isoformat() if run.completed_at and hasattr(run.completed_at, 'isoformat') else (str(run.completed_at) if run.completed_at else None),
+                        "duration_seconds": run.duration_seconds,
+                        "status": run.status,
+                        "error_message": run.error_message,
+                    })
+                
+                return {
+                    "runs": runs_data,
+                    "total": len(runs),
+                }
             
         except Exception as e:
             self.logger.error(f"Failed to list reflection runs: {e}", exc_info=True)
@@ -725,32 +750,87 @@ class AgencyNATSHandlers:
         try:
             user_id = request_data.get("user_id")
             limit = request_data.get("limit", 50)
+            status = request_data.get("status")
             
             if not user_id:
                 return {"error": "MISSING_USER_ID", "message": "user_id is required"}
             
-            # Return empty lessons list for now
-            return {
-                "lessons": [],
-                "total": 0,
-            }
+            # Get UoW factory and fetch lessons
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            
+            async with uow as uow_instance:
+                filters = {"user_id": user_id}
+                if status:
+                    filters["status"] = status
+                
+                lessons = await uow_instance.lessons.list(filters=filters, limit=limit)
+                total = await uow_instance.lessons.count(filters=filters)
+                
+                # Convert to response format
+                lessons_data = []
+                for lesson in lessons:
+                    lessons_data.append({
+                        "lesson_id": lesson.lesson_id,
+                        "user_id": lesson.user_id,
+                        "lesson_type": lesson.lesson_type,
+                        "target_kind": lesson.target_kind,
+                        "target_id": lesson.target_id,
+                        "summary_text": lesson.summary_text,
+                        "confidence": lesson.confidence,
+                        "scope": lesson.scope,
+                        "status": lesson.status,
+                        "applied_at": lesson.applied_at.isoformat() if lesson.applied_at and hasattr(lesson.applied_at, 'isoformat') else (str(lesson.applied_at) if lesson.applied_at else None),
+                        "source_reflection_run_id": lesson.source_reflection_run_id,
+                        "created_at": lesson.created_at.isoformat() if hasattr(lesson.created_at, 'isoformat') else str(lesson.created_at),
+                        "updated_at": lesson.updated_at.isoformat() if hasattr(lesson.updated_at, 'isoformat') else str(lesson.updated_at),
+                    })
+                
+                return {
+                    "lessons": lessons_data,
+                    "total": total,
+                }
             
         except Exception as e:
-            self.logger.error(f"Failed to list reflection lessons: {e}", exc_info=True)
+            self.logger.error(f"Failed to list lessons: {e}", exc_info=True)
             return {"error": "AGENCY_REFLECTION_LESSONS_FAILED", "message": str(e)}
     
     async def handle_agency_reflection_self_model_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle agency reflection self-model request - mirrors GET /agency/reflection/self-model"""
         try:
             user_id = request_data.get("user_id")
+            limit = request_data.get("limit", 100)
+            
             if not user_id:
                 return {"error": "MISSING_USER_ID", "message": "user_id is required"}
             
-            # Return empty self-model list for now
-            return {
-                "entries": [],
-                "total": 0,
-            }
+            # Get UoW factory and fetch self-model entries
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            
+            async with uow as uow_instance:
+                models = await uow_instance.agency_self_model.get_user_models(user_id)
+                
+                # Convert to response format (apply limit after fetching)
+                models_data = []
+                for model in models[:limit]:
+                    models_data.append({
+                        "model_id": model.model_id,
+                        "user_id": model.user_id,
+                        "entity_type": model.entity_type,
+                        "entity_id": model.entity_id,
+                        "performance_summary": model.performance_summary,
+                        "window_start": model.window_start.isoformat() if hasattr(model.window_start, 'isoformat') else str(model.window_start),
+                        "window_end": model.window_end.isoformat() if hasattr(model.window_end, 'isoformat') else str(model.window_end),
+                        "sample_size": model.sample_size,
+                        "confidence": model.confidence,
+                        "last_updated": model.last_updated.isoformat() if model.last_updated and hasattr(model.last_updated, 'isoformat') else (str(model.last_updated) if model.last_updated else None),
+                    })
+                
+                return {
+                    "models": models_data,
+                    "total": len(models),
+                }
             
         except Exception as e:
             self.logger.error(f"Failed to list self-model: {e}", exc_info=True)
@@ -784,6 +864,7 @@ class AgencyNATSHandlers:
         try:
             user_id = request_data.get("user_id")
             window_days = request_data.get("window_days", 30)
+            recent_lessons_limit = request_data.get("recent_lessons_limit", 10)
             
             if not user_id:
                 return {"error": "MISSING_USER_ID", "message": "user_id is required"}
@@ -792,18 +873,82 @@ class AgencyNATSHandlers:
             window_end = datetime.now(UTC)
             window_start = window_end - timedelta(days=window_days)
             
-            # Return placeholder summary with all required fields
-            return {
-                "user_id": user_id,
-                "window_days": window_days,
-                "window_start": window_start.isoformat(),
-                "window_end": window_end.isoformat(),
-                "reflections": 0,
-                "lessons_total": 0,
-                "lessons_applied": 0,
-                "avg_confidence": None,
-                "recent_lessons": [],
-            }
+            # Get UoW factory and fetch reflection data
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            
+            async with uow as uow_instance:
+                # Get all runs for user
+                all_runs = await uow_instance.agency_reflection_runs.get_user_runs(user_id)
+                
+                # Filter runs within window
+                runs_in_window = [
+                    run for run in all_runs
+                    if run.started_at >= window_start and run.started_at <= window_end
+                ]
+                
+                # Get lessons for user
+                lessons = await uow_instance.lessons.list(filters={"user_id": user_id}, limit=1000)
+                
+                self.logger.info(f"[REFLECTION_SUMMARY] Fetched {len(lessons)} lessons for user {user_id}")
+                self.logger.info(f"[REFLECTION_SUMMARY] Window: {window_start} to {window_end}")
+                
+                # Filter lessons within window (handle timezone-aware datetimes)
+                lessons_in_window = []
+                for lesson in lessons:
+                    # Ensure both datetimes are timezone-aware for comparison
+                    lesson_created = lesson.created_at
+                    if lesson_created.tzinfo is None:
+                        from datetime import timezone
+                        lesson_created = lesson_created.replace(tzinfo=timezone.utc)
+                    
+                    self.logger.info(f"[REFLECTION_SUMMARY] Lesson {lesson.lesson_id} created_at: {lesson_created}, in_window: {lesson_created >= window_start and lesson_created <= window_end}")
+                    
+                    if lesson_created >= window_start and lesson_created <= window_end:
+                        lessons_in_window.append(lesson)
+                
+                self.logger.info(f"[REFLECTION_SUMMARY] Filtered to {len(lessons_in_window)} lessons in window")
+                
+                # Calculate statistics
+                lessons_applied = sum(1 for lesson in lessons_in_window if lesson.applied_at is not None)
+                
+                # Calculate average confidence
+                avg_confidence = None
+                if lessons_in_window:
+                    confidences = [lesson.confidence for lesson in lessons_in_window if lesson.confidence is not None]
+                    if confidences:
+                        avg_confidence = sum(confidences) / len(confidences)
+                
+                # Get recent lessons
+                recent_lessons_data = []
+                for lesson in lessons_in_window[:recent_lessons_limit]:
+                    recent_lessons_data.append({
+                        "lesson_id": lesson.lesson_id,
+                        "user_id": lesson.user_id,
+                        "lesson_type": lesson.lesson_type,
+                        "target_kind": lesson.target_kind,
+                        "target_id": lesson.target_id,
+                        "summary_text": lesson.summary_text,
+                        "confidence": lesson.confidence,
+                        "scope": lesson.scope,
+                        "status": lesson.status,
+                        "applied_at": lesson.applied_at.isoformat() if lesson.applied_at and hasattr(lesson.applied_at, 'isoformat') else (str(lesson.applied_at) if lesson.applied_at else None),
+                        "source_reflection_run_id": lesson.source_reflection_run_id,
+                        "created_at": lesson.created_at.isoformat() if hasattr(lesson.created_at, 'isoformat') else str(lesson.created_at),
+                        "updated_at": lesson.updated_at.isoformat() if hasattr(lesson.updated_at, 'isoformat') else str(lesson.updated_at),
+                    })
+                
+                return {
+                    "user_id": user_id,
+                    "window_days": window_days,
+                    "window_start": window_start.isoformat(),
+                    "window_end": window_end.isoformat(),
+                    "reflections": len(runs_in_window),
+                    "lessons_total": len(lessons_in_window),
+                    "lessons_applied": lessons_applied,
+                    "avg_confidence": avg_confidence,
+                    "recent_lessons": recent_lessons_data,
+                }
             
         except Exception as e:
             self.logger.error(f"Failed to get reflection summary: {e}", exc_info=True)

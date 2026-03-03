@@ -337,9 +337,9 @@ class GatewayNATSClient:
         payload = json.dumps({"user_id": user_id, "skill_id": skill_id}).encode("utf-8")
         return await self._nats_request_with_trace("agency.skill.performance", payload, timeout=10.0)
     
-    async def request_agency_reflection_summary(self, user_id: str, window_days: int = 30) -> Dict[str, Any]:
+    async def request_agency_reflection_summary(self, user_id: str, window_days: int = 30, recent_lessons_limit: int = 10) -> Dict[str, Any]:
         """Request agency reflection summary from core via NATS"""
-        payload = json.dumps({"user_id": user_id, "window_days": window_days}).encode("utf-8")
+        payload = json.dumps({"user_id": user_id, "window_days": window_days, "recent_lessons_limit": recent_lessons_limit}).encode("utf-8")
         return await self._nats_request_with_trace("agency.reflection.summary", payload, timeout=10.0)
     
     async def request_operations_create_backup(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -370,6 +370,35 @@ class GatewayNATSClient:
     async def request_health_services(self) -> Dict[str, Any]:
         """Request health services from core via NATS"""
         return await self._nats_request_with_trace("system.health.services", b"{}")
+    
+    async def request_health_issues(self) -> Dict[str, Any]:
+        """Request health issues from core via NATS"""
+        return await self._nats_request_with_trace("system.health.issues", b"{}")
+    
+    async def request_remediate_available(self) -> Dict[str, Any]:
+        """Request available remediation actions from core via NATS"""
+        return await self._nats_request_with_trace("system.remediate.available", b"{}")
+    
+    async def request_remediate_history(self, limit: int = 20) -> Dict[str, Any]:
+        """Request remediation history from core via NATS"""
+        payload = json.dumps({"limit": limit}).encode("utf-8")
+        return await self._nats_request_with_trace("system.remediate.history", payload)
+    
+    async def request_health_check_connectivity(self) -> Dict[str, Any]:
+        """Request connectivity health check from core via NATS"""
+        return await self._nats_request_with_trace("system.health.check.connectivity", b"{}", timeout=30.0)
+    
+    async def request_health_check_resources(self) -> Dict[str, Any]:
+        """Request resources health check from core via NATS"""
+        return await self._nats_request_with_trace("system.health.check.resources", b"{}", timeout=30.0)
+    
+    async def request_health_check_models(self) -> Dict[str, Any]:
+        """Request models health check from core via NATS"""
+        return await self._nats_request_with_trace("system.health.check.models", b"{}", timeout=30.0)
+    
+    async def request_health_check_ai_behaviour(self) -> Dict[str, Any]:
+        """Request AI behaviour health check from core via NATS"""
+        return await self._nats_request_with_trace("system.health.check.ai_behaviour", b"{}", timeout=30.0)
     
     def _extract_response_data(self, reply_envelope) -> Dict[str, Any]:
         """Extract JSON data from protobuf response envelope"""
