@@ -205,8 +205,23 @@ class MessageBusClient:
 
         self.logger.info("Disconnected from message bus")
 
-    def _topic_to_subject(self, topic: str) -> str:
-        return topic.replace("/", ".")
+    def _topic_to_subject(self, topic: str, tenant_id: Optional[str] = None) -> str:
+        """Convert topic to NATS subject with optional tenant scoping.
+        
+        Args:
+            topic: Base topic string
+            tenant_id: Optional tenant ID for scoping (injected as 'aico.<tenant_id>.' prefix)
+            
+        Returns:
+            NATS subject string with tenant scope if provided
+        """
+        subject = topic.replace("/", ".")
+        
+        # Inject tenant scope if provided and not already present
+        if tenant_id and not subject.startswith("aico."):
+            subject = f"aico.{tenant_id}.{subject}"
+        
+        return subject
 
     def _pattern_to_subject(self, pattern: str) -> str:
         # Existing callers use ZMQ-style prefix patterns like "conversation/" or "conversation/*".
@@ -285,7 +300,9 @@ class MessageBusClient:
             # Inject W3C trace context into NATS headers
             trace_headers = _inject_trace_context()
             
-            subject = self._topic_to_subject(topic)
+            # Extract tenant_id for subject scoping
+            tenant_id = attributes.get("tenant_id") if attributes else None
+            subject = self._topic_to_subject(topic, tenant_id=tenant_id)
             
             try:
                 # Send request and wait for reply
@@ -351,7 +368,9 @@ class MessageBusClient:
             # Inject W3C trace context into NATS headers
             trace_headers = _inject_trace_context()
             
-            subject = self._topic_to_subject(topic)
+            # Extract tenant_id for subject scoping
+            tenant_id = attributes.get("tenant_id") if attributes else None
+            subject = self._topic_to_subject(topic, tenant_id=tenant_id)
             await self._nats.publish(subject, message_data, headers=trace_headers if trace_headers else None)
             
             # Metrics are automatically recorded by track_message context manager
@@ -412,7 +431,10 @@ class MessageBusClient:
         message.any_payload.CopyFrom(any_payload)
 
         message_data = message.SerializeToString()
-        subject = self._topic_to_subject(topic)
+        
+        # Extract tenant_id for subject scoping
+        tenant_id = attributes.get("tenant_id") if attributes else None
+        subject = self._topic_to_subject(topic, tenant_id=tenant_id)
 
         # Inject W3C trace context
         trace_headers = _inject_trace_context()
@@ -421,7 +443,7 @@ class MessageBusClient:
         await js.ensure_stream(
             JetStreamStreamSpec(
                 name="OUTBOX_EVENTS",
-                subjects=["conversation.>"],
+                subjects=["aico.*.conversation.>", "aico.*.interaction.>"],  # Tenant-scoped wildcards
                 retention=RetentionPolicy.LIMITS,
                 max_age_seconds=60 * 60 * 24 * 7,
                 duplicate_window_seconds=60 * 60,
@@ -430,7 +452,7 @@ class MessageBusClient:
         await js.ensure_stream(
             JetStreamStreamSpec(
                 name="INTERACTION_NOTIFICATIONS",
-                subjects=["interaction.notifications.>"],
+                subjects=["aico.*.interaction.notifications.>"],  # Tenant-scoped wildcards
                 retention=RetentionPolicy.LIMITS,
                 max_age_seconds=60 * 60 * 24 * 7,
                 duplicate_window_seconds=60 * 60,
@@ -464,12 +486,23 @@ class MessageBusClient:
         
         await js.publish(audit_subject, message_data, headers=audit_headers)
     
-    async def subscribe(self, topic_pattern: str, callback: Callable[[AicoMessage], None]):
-        """Subscribe to messages matching a topic pattern"""
+    async def subscribe(self, topic_pattern: str, callback: Callable[[AicoMessage], None], tenant_id: Optional[str] = None):
+        """Subscribe to messages matching a topic pattern.
+        
+        Args:
+            topic_pattern: Topic pattern to subscribe to
+            callback: Callback function to invoke for each message
+            tenant_id: Optional tenant ID for scoped subscription (prepends 'aico.<tenant_id>.')
+        """
         if not self.running or self._nats is None:
             raise MessageBusError("Client not connected")
 
-        subject = self._pattern_to_subject(topic_pattern)
+        # Convert pattern to subject and apply tenant scoping
+        base_subject = self._pattern_to_subject(topic_pattern)
+        if tenant_id and not base_subject.startswith("aico."):
+            subject = f"aico.{tenant_id}.{base_subject}"
+        else:
+            subject = base_subject
 
         async def _handler(msg):
             from ..proto.aico_core_envelope_pb2 import AicoMessage
