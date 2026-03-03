@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from backend.api.system.dependencies import get_current_user
 from backend.api.errors import raise_api_error
-from backend.api.kg.schemas import ChangesResponse, GraphStatsResponse
+from backend.api.kg.schemas import ChangesResponse, GQLQueryRequest, GQLQueryResponse, GraphStatsResponse
 
 router = APIRouter(prefix="/kg", tags=["kg"])
 
@@ -66,6 +66,34 @@ async def get_kg_stats(
             status_code=500,
             error_code="KG_STATS_FAILED",
             message=f"Failed to retrieve KG statistics: {str(e)}",
+        )
+
+
+@router.post("/query", response_model=GQLQueryResponse)
+async def execute_kg_query(
+    request: GQLQueryRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Execute a GQL/Cypher query. Proxied to core via NATS."""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+
+        user_id = user.get("user_id")
+        nats_client = get_gateway_nats_client()
+        data = await nats_client.request_kg_query(
+            user_id=user_id,
+            query=request.query,
+            format=request.format,
+            limit=request.limit,
+        )
+
+        return GQLQueryResponse(**data)
+
+    except Exception as e:
+        raise_api_error(
+            status_code=500,
+            error_code="KG_QUERY_FAILED",
+            message=f"Failed to execute KG query: {str(e)}",
         )
 
 

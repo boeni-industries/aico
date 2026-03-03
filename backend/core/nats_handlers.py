@@ -201,7 +201,7 @@ class CoreNATSHandlers:
         """Handle semantic memory stats request from gateway"""
         try:
             from aico.ai import ai_registry
-            from sqlalchemy import select, func
+            from sqlalchemy import select, func, text
             from aico.data.tables import conversation_segments
             
             memory_manager = ai_registry.get("memory")
@@ -223,6 +223,21 @@ class CoreNATSHandlers:
             async with uow as uow_instance:
                 stmt = select(func.count()).select_from(conversation_segments)
                 total_vectors = (await uow_instance._session.execute(stmt)).scalar() or 0
+
+                # Estimate storage size using Postgres relation size (includes table + indexes)
+                index_size_mb = 0.0
+                try:
+                    size_stmt = text("SELECT pg_total_relation_size('aico_core.conversation_segments')")
+                    size_bytes = (await uow_instance._session.execute(size_stmt)).scalar() or 0
+                    index_size_mb = float(size_bytes) / (1024.0 * 1024.0)
+                except Exception:
+                    # If size query fails, keep 0 and fall back below
+                    index_size_mb = 0.0
+
+                # Guard: avoid 0 MB when vectors exist (Studio derives per-MB metrics)
+                if int(total_vectors) > 0 and index_size_mb <= 0.0:
+                    # Rough lower-bound estimate: vector payload only (768 float32)
+                    index_size_mb = max(0.01, (int(total_vectors) * 768 * 4) / (1024.0 * 1024.0))
                 
                 collections = [
                     {"name": "conversation_segments", "count": int(total_vectors), "dimension": 768}
@@ -231,7 +246,7 @@ class CoreNATSHandlers:
                 return {
                     "total_vectors": int(total_vectors),
                     "collections": collections,
-                    "index_size_mb": 0.0,
+                    "index_size_mb": float(index_size_mb),
                     "avg_retrieval_latency_ms": 0.0,
                     "retrieval_quality_percent": 0.0
                 }
@@ -742,6 +757,38 @@ class CoreNATSHandlers:
             return {
                 "error": "KG_QUERY_TEMPLATES_LOAD_FAILED",
                 "message": str(e),
+            }
+
+    async def handle_kg_query_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG GQL/Cypher query execution request from gateway"""
+        try:
+            user_id = request_data.get("user_id")
+            query = request_data.get("query")
+            output_format = request_data.get("format", "dict")
+            limit = request_data.get("limit")
+
+            # Create KG storage like backend.api.kg.dependencies.get_kg_storage
+            from aico.ai.knowledge_graph import PropertyGraphStorage
+            uow_factory = self.container.get_service("uow")
+            kg_storage = PropertyGraphStorage(uow_factory)
+
+            from aico.ai.knowledge_graph.query import GQLQueryExecutor
+            max_results = limit or 1000
+            executor = GQLQueryExecutor(
+                kg_storage,
+                max_results=max_results,
+                timeout_seconds=30,
+            )
+
+            result = await executor.execute(query, user_id, format=output_format)
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Failed to execute KG query: {e}", exc_info=True)
+            return {
+                "error": "KG_QUERY_EXECUTION_FAILED",
+                "message": str(e),
+                "success": False,
             }
     
     async def handle_memory_album_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1530,13 +1577,20 @@ class CoreNATSHandlers:
             cb=make_handler(self.handle_kg_query_templates_request, "kg.query-templates.reply")
         )
         self.logger.info(f"✅ Subscribed to kg.query-templates (sid={sid7e})")
+
+        self.logger.info("Subscribing to kg.query...")
+        sid7f = await message_bus_client._nats.subscribe(
+            "kg.query",
+            cb=make_handler(self.handle_kg_query_request, "kg.query.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.query (sid={sid7f})")
         
         self.logger.info("Subscribing to memory.album...")
-        sid7f = await message_bus_client._nats.subscribe(
+        sid7g = await message_bus_client._nats.subscribe(
             "memory.album",
             cb=make_handler(self.handle_memory_album_request, "memory.album.reply")
         )
-        self.logger.info(f"✅ Subscribed to memory.album (sid={sid7f})")
+        self.logger.info(f"✅ Subscribed to memory.album (sid={sid7g})")
         
         self.logger.info("Subscribing to operations.databases...")
         sid8 = await message_bus_client._nats.subscribe(

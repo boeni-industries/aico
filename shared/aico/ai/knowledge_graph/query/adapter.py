@@ -142,22 +142,28 @@ class KGGraphAdapter:
                 
                     # Add edge with properties from JSON
                     graph.add_edge(source_id, target_id, **properties)
-                
-                # Add database columns as edge attributes
-                graph.edges[source_id, target_id]['id'] = edge_id
-                graph.edges[source_id, target_id]['relation_type'] = relation_type
-                graph.edges[source_id, target_id]['confidence'] = edge.confidence
-                graph.edges[source_id, target_id]['created_at'] = edge.created_at
-                graph.edges[source_id, target_id]['updated_at'] = edge.updated_at
-                graph.edges[source_id, target_id]['is_current'] = edge.is_current
-                
-                # Set __labels__ attribute (GrandCypher uses this for MATCH ()-[r:TYPE]->())
-                # MUST be a set - GrandCypher uses set.intersection() for label matching
-                graph.edges[source_id, target_id]['__labels__'] = {relation_type}
-                if edge_count == 0:  # Log first edge for debugging
-                    logger.info(f"First edge __labels__ type: {type(graph.edges[source_id, target_id]['__labels__'])}, value: {graph.edges[source_id, target_id]['__labels__']}")
-                    logger.info(f"First edge relation_type: {type(relation_type)}, value: {relation_type}")
-                edge_count += 1
+
+                    # Add database columns as edge attributes
+                    graph.edges[source_id, target_id]['id'] = edge_id
+                    graph.edges[source_id, target_id]['relation_type'] = relation_type
+                    graph.edges[source_id, target_id]['confidence'] = edge.confidence
+                    graph.edges[source_id, target_id]['source_text'] = edge.source_text
+                    graph.edges[source_id, target_id]['created_at'] = edge.created_at
+                    graph.edges[source_id, target_id]['updated_at'] = edge.updated_at
+                    graph.edges[source_id, target_id]['valid_from'] = edge.valid_from
+                    graph.edges[source_id, target_id]['valid_until'] = edge.valid_until
+                    graph.edges[source_id, target_id]['is_current'] = edge.is_current
+                    graph.edges[source_id, target_id]['reason'] = edge.reason
+
+                    # Set __labels__ attribute (GrandCypher uses this for MATCH ()-[r:TYPE]->())
+                    # MUST be a set - GrandCypher uses set.intersection() for label matching
+                    graph.edges[source_id, target_id]['__labels__'] = {relation_type}
+                    if edge_count == 0:  # Log first edge for debugging
+                        logger.info(
+                            f"First edge __labels__ type: {type(graph.edges[source_id, target_id]['__labels__'])}, value: {graph.edges[source_id, target_id]['__labels__']}"
+                        )
+                        logger.info(f"First edge relation_type: {type(relation_type)}, value: {relation_type}")
+                    edge_count += 1
             
             logger.info(f"Loaded {edge_count} edges for user {self.user_id}")
             logger.info(f"Graph built successfully: {node_count} nodes, {edge_count} edges")

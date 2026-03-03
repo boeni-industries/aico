@@ -47,10 +47,17 @@ class GatewayNATSClient:
                 reply_msg = await self.bus._nats.request(subject, payload, timeout=timeout)
                 response_data = json.loads(reply_msg.data.decode('utf-8'))
                 
-                if response_data.get("error"):
-                    span.set_status(trace.Status(trace.StatusCode.ERROR, response_data.get('message', 'Unknown error')))
+                # Only treat 'error' as a transport/envelope error when the payload is not an
+                # application-level response (e.g., KG query responses legitimately include an
+                # 'error' field alongside 'success').
+                if response_data.get("error") and "success" not in response_data:
+                    span.set_status(
+                        trace.Status(trace.StatusCode.ERROR, response_data.get("message", "Unknown error"))
+                    )
                     span.set_attribute("error.type", response_data.get("error"))
-                    raise Exception(f"{response_data['error']}: {response_data.get('message', 'Unknown error')}")
+                    raise Exception(
+                        f"{response_data['error']}: {response_data.get('message', 'Unknown error')}"
+                    )
                 
                 span.set_status(trace.Status(trace.StatusCode.OK))
                 span.set_attribute("messaging.response_size_bytes", len(reply_msg.data))
@@ -137,6 +144,24 @@ class GatewayNATSClient:
         """Request KG query templates from core via NATS"""
         payload = json.dumps({"user_id": user_id}).encode("utf-8")
         return await self._nats_request_with_trace("kg.query-templates", payload)
+
+    async def request_kg_query(
+        self,
+        user_id: str,
+        query: str,
+        format: str = "dict",
+        limit: int | None = None,
+    ) -> Dict[str, Any]:
+        """Request KG query execution from core via NATS"""
+        payload = json.dumps(
+            {
+                "user_id": user_id,
+                "query": query,
+                "format": format,
+                "limit": limit,
+            }
+        ).encode("utf-8")
+        return await self._nats_request_with_trace("kg.query", payload, timeout=30.0)
     
     async def request_memory_album(
         self, 
