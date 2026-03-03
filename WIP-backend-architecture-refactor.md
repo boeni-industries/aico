@@ -31,7 +31,7 @@
 ## Gap-Driven Task List (from codebase comparison)
 
 ### Critical
-- [ ] Enforce hard Gateway/Core split (no monolith path; gateway must not start core domain services in-process).
+- [x] Enforce hard Gateway/Core split (no monolith path; gateway must not start core domain services in-process).
 - [ ] Implement gateway idempotency enforcement (reject/require `Idempotency-Key` on side-effecting endpoints; persist and enforce uniqueness as specified).
 - [ ] Make conversation write-path Postgres-authoritative (persist user input + final AI response to `conversation_messages` as source of truth; bus is transport only).
 - [ ] Unify WebSocket architecture (single gateway WS termination; remove/merge duplicate WS stacks to avoid inconsistent auth/authz/catch-up).
