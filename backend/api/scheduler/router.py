@@ -652,19 +652,5 @@ async def get_unacknowledged_failures(
         raise SchedulerNotAvailableError()
 
 
-# WebSocket endpoint for real-time scheduler events
-@router.websocket("/ws/events")
-async def scheduler_events_websocket(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time scheduler event notifications.
-    
-    Provides live updates for:
-    - Stuck tasks (exceeded timeout + buffer)
-    - Long-running tasks (approaching timeout)
-    - Task failures
-    - Critical scheduler errors
-    
-    Follows the same pattern as conversation WebSocket endpoint.
-    """
-    from .events import scheduler_events_websocket as handle_ws
-    await handle_ws(websocket)
+# WebSocket endpoint removed - now handled by API Gateway WebSocket adapter
+# Clients should connect to ws://gateway:8772/ws and subscribe to "scheduler.events"

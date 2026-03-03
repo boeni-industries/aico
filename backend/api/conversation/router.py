@@ -62,8 +62,7 @@ router = APIRouter()
 logger = get_logger("backend.api.conversation")
 security = HTTPBearer()
 
-# Active WebSocket connections for real-time updates
-active_connections: Dict[str, WebSocket] = {}
+# Active WebSocket connections removed - now handled by API Gateway adapter
 
 # Unified endpoint with automatic thread management
 @router.post(
@@ -585,114 +584,8 @@ async def get_my_conversation_status(
         )
 
 
-@router.websocket("/ws")
-async def my_conversation_websocket(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time conversation updates (user-scoped)
-    
-    Provides real-time delivery of AI responses and conversation events
-    for the authenticated user. No thread management needed.
-    """
-    try:
-        user = authenticate_websocket(websocket=websocket)
-    except HTTPException:
-        await websocket.close(code=4401)
-        return
-
-    await websocket.accept()
-    user_id = user["user_id"]
-    connection_id = f"user_{user_id}_{uuid.uuid4()}"
-    active_connections[connection_id] = websocket
-    
-    logger.debug(f"WebSocket connection established", extra={
-        "connection_id": connection_id
-    })
-    
-    try:
-        # Create message bus client to listen for responses
-        bus_client = MessageBusClient(f"conversation_ws_{connection_id}")
-        await bus_client.connect()
-        
-        # Subscribe to conversation responses for this user
-        async def response_handler(topic: str, message: Any):
-            """Handle incoming conversation responses"""
-            try:
-                if hasattr(message, 'message') and hasattr(message.message, 'text'):
-                    # Use message_id from backend if available, otherwise generate one
-                    msg_id = getattr(message, 'message_id', None) or str(uuid.uuid4())
-                    
-                    # Create structured WebSocket response
-                    ai_response = WebSocketAIResponse(
-                        conversation_id=f"user_conversation_{user_id}",
-                        message_id=msg_id,  # Use actual message_id from backend
-                        message=message.message.text,
-                        confidence=getattr(message, 'confidence', None),
-                        processing_time_ms=getattr(message, 'processing_time_ms', None)
-                    )
-                    
-                    await websocket.send_json(ai_response.dict())
-                    
-                    logger.debug(f"Sent AI response via WebSocket", extra={
-                        "connection_id": connection_id
-                    })
-            except Exception as e:
-                logger.error(f"Error handling response: {e}", extra={
-                    "connection_id": connection_id
-                })
-                # Send error to client
-                error_response = WebSocketError(
-                    error_code="RESPONSE_PROCESSING_ERROR",
-                    error_message=str(e),
-                    conversation_id=f"user_conversation_{user_id}"
-                )
-                try:
-                    await websocket.send_json(error_response.dict())
-                except:
-                    pass
-        
-        # Subscribe to AI responses
-        await bus_client.subscribe(AICOTopics.CONVERSATION_AI_RESPONSE, response_handler)
-        
-        # Keep connection alive and handle incoming messages
-        while True:
-            try:
-                # Wait for messages from client (heartbeat, etc.)
-                data = await websocket.receive_json()
-                
-                if data.get("type") == "heartbeat":
-                    await websocket.send_json({"type": "heartbeat_ack"})
-                    
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.error(f"WebSocket error: {e}", extra={
-                    "connection_id": connection_id
-                })
-                break
-    
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {e}", extra={
-            "connection_id": connection_id
-        })
-        raise WebSocketConnectionException(
-            connection_error=str(e),
-            connection_id=connection_id
-        )
-    
-    finally:
-        # Cleanup
-        if connection_id in active_connections:
-            del active_connections[connection_id]
-        
-        try:
-            if 'bus_client' in locals():
-                await bus_client.disconnect()
-        except:
-            pass
-        
-        logger.debug(f"WebSocket connection closed", extra={
-            "connection_id": connection_id
-        })
+# WebSocket endpoint removed - now handled by API Gateway WebSocket adapter
+# Clients should connect to ws://gateway:8772/ws and subscribe to "conversation.responses"
 
 
 @router.post("/health", response_model=HealthResponse)

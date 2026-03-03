@@ -394,10 +394,22 @@ class ConversationEngine(BaseService):
                     done=True,
                     content_type="error",
                 )
+                # Get user context for routing
+                pending_data = self.pending_responses.get(rid, {})
+                user_context = pending_data.get("user_context")
+                tenant_id = pending_data.get("tenant_id")
+                
+                attributes = {}
+                if user_context:
+                    attributes["user_uuid"] = user_context.user_id
+                if tenant_id:
+                    attributes["tenant_id"] = tenant_id
+                
                 await self.bus_client.publish(
                     AICOTopics.CONVERSATION_STREAM,
                     error_chunk,
                     correlation_id=rid,
+                    attributes=attributes if attributes else None,
                 )
             except Exception:
                 # Streaming termination is best-effort; the HTTP API should still get an error response.
@@ -929,6 +941,7 @@ class ConversationEngine(BaseService):
                         AICOTopics.CONVERSATION_STREAM,
                         streaming_chunk,
                         correlation_id=request_id,
+                        attributes={"user_uuid": user_context.user_id, "tenant_id": tenant_id},
                     )
 
                 async for chunk in stream_iter:
@@ -1035,6 +1048,7 @@ class ConversationEngine(BaseService):
                     AICOTopics.CONVERSATION_STREAM,
                     final_chunk,
                     correlation_id=request_id,
+                    attributes={"user_uuid": user_context.user_id, "tenant_id": tenant_id},
                 )
 
                 self.logger.info(f"📤 [vLLM] Delivering response to user via _finalize_streaming_response")
@@ -1085,10 +1099,22 @@ class ConversationEngine(BaseService):
             streaming_response.timestamp = int(time.time() * 1000)
             streaming_response.content_type = content_type
 
+            # Get user context for routing
+            pending_data = self.pending_responses.get(request_id, {})
+            user_context = pending_data.get("user_context")
+            tenant_id = pending_data.get("tenant_id")
+            
+            attributes = {}
+            if user_context:
+                attributes["user_uuid"] = user_context.user_id
+            if tenant_id:
+                attributes["tenant_id"] = tenant_id
+            
             await self.bus_client.publish(
                 AICOTopics.CONVERSATION_STREAM,
                 streaming_response,
                 correlation_id=request_id,
+                attributes=attributes if attributes else None,
             )
 
             if is_done:
@@ -1218,13 +1244,14 @@ class ConversationEngine(BaseService):
                 )
                 self.logger.info(f"✅ [FINALIZE] Published to {AICOTopics.CONVERSATION_RESPONSE}")
 
-                # Also publish to AI response topic for API layer
+                # Also publish to AI response topic for API layer with user_uuid for WS routing
                 self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: conversation/ai/response/v1")
                 await self.bus_client.publish_durable(
                     "conversation/ai/response/v1",
                     conv_message,
                     correlation_id=request_id,
                     audit_subject="audit.events.conversation.final",
+                    attributes={"user_uuid": user_id, "tenant_id": tenant_id},
                 )
                 self.logger.info(f"✅ [FINALIZE] Published to conversation/ai/response/v1")
             except Exception as publish_error:

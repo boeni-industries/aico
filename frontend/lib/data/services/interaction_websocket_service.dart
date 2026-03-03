@@ -54,7 +54,7 @@ class InteractionWebSocketService {
     try {
       debugPrint('[InteractionWS] Connecting to $wsUrl');
       
-      // Create WebSocket channel
+      // Create WebSocket channel to gateway adapter
       _channel = IOWebSocketChannel.connect(Uri.parse(wsUrl));
       _isConnected = true;
       _reconnectAttempts = 0;
@@ -67,26 +67,27 @@ class InteractionWebSocketService {
         cancelOnError: false,
       );
       
-      // Send auth immediately (no welcome wait needed)
-      final token = await getToken();
-      final userUuid = await getUserUuid();
+      // Wait for welcome message from gateway
+      await Future.delayed(const Duration(milliseconds: 100));
       
+      // Authenticate with JWT token
+      final token = await getToken();
       _channel!.sink.add(jsonEncode({
         'type': 'auth',
         'token': token,
       }));
       
-      // Wait a moment for auth to process
+      // Wait for auth to process
       await Future.delayed(const Duration(milliseconds: 500));
       
-      // Subscribe to user's interaction topic
-      final topic = 'interaction.notifications.$userUuid';
+      // Subscribe to interaction notifications topic
+      // Gateway will route based on user_uuid in token
       _channel!.sink.add(jsonEncode({
         'type': 'subscribe',
-        'topic': topic,
+        'topic': 'interaction.notifications',
       }));
       
-      debugPrint('[InteractionWS] Subscribed to $topic');
+      debugPrint('[InteractionWS] Subscribed to interaction notifications');
       
       // Start heartbeat
       _startHeartbeat();

@@ -245,12 +245,15 @@ Progress:
 - The backend currently mounts these route groups under `/api/v1/*`:
   - `health`, `echo`, `users`, `users-sessions`, `admin`, `logs`, `conversation`, `interactions`, `memory-album`, `kg`, `behavioral`, `emotion`, `tts`, `agency`, `system`, `operations`, `scheduler`, plus misc `memory`/`ams` routes.
 
-### WebSocket endpoints (current)
-- `GET /api/v1/conversation/ws`
-- `GET /api/v1/scheduler/ws/events`
+### WebSocket endpoints (unified)
+- ✅ **COMPLETED**: Consolidated to API Gateway WebSocket adapter (`ws://gateway:8772/ws`)
+- Removed duplicate endpoints: `/api/v1/conversation/ws`, `/api/v1/scheduler/ws/events`
+- Gateway adapter handles all real-time events with JWT authentication at handshake
+- User-scoped routing via `user_uuid` in NATS message metadata
+- Clients subscribe to topics: `conversation.responses`, `conversation.stream`, `scheduler.events`
 
 ### Public-API readiness gaps (must close)
-- **WebSocket authentication**: WS endpoints must authenticate (JWT/session) at handshake and enforce user/tenant scoping.
+- ✅ **WebSocket authentication**: Implemented JWT/session auth at handshake with user/tenant scoping.
 - **Identity normalization**: standardize on `tenant_id` + `user_id` naming in tokens, payloads, and DB.
 - **OpenAPI hygiene**: ensure all endpoints have stable request/response models and avoid ad-hoc `dict` responses.
 - **Idempotency enforcement**: gateway must enforce `Idempotency-Key` on all side-effecting endpoints and document retry semantics.

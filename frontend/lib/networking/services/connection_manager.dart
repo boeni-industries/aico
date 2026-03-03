@@ -74,7 +74,7 @@ class ConnectionManager {
   final StreamController<ConnectionHealth> _healthController = StreamController<ConnectionHealth>.broadcast();
   final StreamController<bool> _offlineController = StreamController<bool>.broadcast();
   
-  static const String _defaultWsUrl = 'ws://localhost:8772';
+  static const String _defaultWsUrl = 'ws://localhost:8772/ws';
 
   ConnectionManager(this._wsClient, this._encryptionService) {
     _initializeConnectivityMonitoring();
