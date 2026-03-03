@@ -3,7 +3,6 @@ name: Protobuf Contract Gate
 on:
   pull_request:
   push:
-    branches: [ main, master ]
 
 jobs:
   proto-contract:

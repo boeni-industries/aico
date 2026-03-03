@@ -3,7 +3,6 @@ name: OpenAPI Contract Gate
 on:
   pull_request:
   push:
-    branches: [ main, master ]
 
 jobs:
   openapi-contract:
